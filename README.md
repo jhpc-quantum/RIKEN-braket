@@ -34,11 +34,11 @@ make BOOST_DIR=path/to/boost_x_xx_x
 
 The binary file `bra` is present on `bra/bin/` directory.
 
-The files `bra/qcx/hadamards20.qcx` and `bra/qcx/adder6x2.qcx` are sample "quantum assembler" codes.
+The files `bra/qcx/hadamards08.qcx` and `bra/qcx/adder6x2.qcx` are sample "quantum assembler" codes.
 You can test those assembler codes via:
 
 ```
-mpiexec -np 2 ./bin/bra qcx/hadamards20.qcx 1> stdout 2> stderr
+mpiexec -np 2 ./bin/bra qcx/hadamards08.qcx 1> stdout 2> stderr
 ```
 
 The results are output to `stdout`.
