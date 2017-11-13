@@ -343,7 +343,7 @@ namespace ket
                 local_num_counts*num_threads + std::min(remainder, num_threads));
 
           for (Integer count = first_count; count < last_count; ++count)
-            KET_FORWARD_OR_COPY(function)(count, static_cast<int>(num_futures));
+            KET_FORWARD_OR_COPY(Function, function)(count, static_cast<int>(num_futures));
 
 #     ifndef BOOST_NO_CXX11_RANGE_BASED_FOR
           for (std::future<void> const& future: futures)
@@ -390,7 +390,7 @@ namespace ket
                 local_num_counts*num_threads + std::min(remainder, num_threads));
 
           for (Integer count = first_count; count < last_count; ++count)
-            KET_FORWARD_OR_COPY<Function>(function)(count, static_cast<int>(num_threads)-1);
+            KET_FORWARD_OR_COPY(Function, function)(count, static_cast<int>(num_threads)-1);
 
           threads.join_all();
 #   endif // BOOST_NO_CXX11_HDR_FUTURE

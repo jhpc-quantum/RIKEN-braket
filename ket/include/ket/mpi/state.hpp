@@ -52,7 +52,7 @@
 # include <ket/utility/integer_exp2.hpp>
 # include <ket/utility/is_nothrow_swappable.hpp>
 # include <ket/utility/loop_n.hpp>
-# include <ket/utility/parallel/loop_n.hpp>
+//# include <ket/utility/parallel/loop_n.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
 # include <ket/mpi/utility/detail/swap_local_qubits.hpp>
