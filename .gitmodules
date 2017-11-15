@@ -1,3 +1,108 @@
 [submodule "yampi"]
 	path = yampi
 	url = https://github.com/naoki-yoshioka/yampi.git
+[submodule "boost/random"]
+	path = boost/random
+	url = https://github.com/boostorg/random.git
+[submodule "boost/math"]
+	path = boost/math
+	url = https://github.com/boostorg/math.git
+[submodule "boost/format"]
+	path = boost/format
+	url = https://github.com/boostorg/format.git
+[submodule "boost/thread"]
+	path = boost/thread
+	url = https://github.com/boostorg/thread.git
+[submodule "boost/optional"]
+	path = boost/optional
+	url = https://github.com/boostorg/optional.git
+[submodule "boost/tuple"]
+	path = boost/tuple
+	url = https://github.com/boostorg/tuple.git
+[submodule "boost/container"]
+	path = boost/container
+	url = https://github.com/boostorg/container.git
+[submodule "boost/move"]
+	path = boost/move
+	url = https://github.com/boostorg/move.git
+[submodule "boost/config"]
+	path = boost/config
+	url = https://github.com/boostorg/config.git
+[submodule "boost/iterator"]
+	path = boost/iterator
+	url = https://github.com/boostorg/iterator.git
+[submodule "boost/algorithm"]
+	path = boost/algorithm
+	url = https://github.com/boostorg/algorithm.git
+[submodule "boost/preprocessor"]
+	path = boost/preprocessor
+	url = https://github.com/boostorg/preprocessor.git
+[submodule "boost/type_traits"]
+	path = boost/type_traits
+	url = https://github.com/boostorg/type_traits.git
+[submodule "boost/utility"]
+	path = boost/utility
+	url = https://github.com/boostorg/utility.git
+[submodule "boost/lexical_cast"]
+	path = boost/lexical_cast
+	url = https://github.com/boostorg/lexical_cast.git
+[submodule "boost/range"]
+	path = boost/range
+	url = https://github.com/boostorg/range.git
+[submodule "boost/static_assert"]
+	path = boost/static_assert
+	url = https://github.com/boostorg/static_assert.git
+[submodule "boost/array"]
+	path = boost/array
+	url = https://github.com/boostorg/array.git
+[submodule "boost/core"]
+	path = boost/core
+	url = https://github.com/boostorg/core.git
+[submodule "boost/integer"]
+	path = boost/integer
+	url = https://github.com/boostorg/integer.git
+[submodule "boost/mpl"]
+	path = boost/mpl
+	url = https://github.com/boostorg/mpl.git
+[submodule "boost/throw_exception"]
+	path = boost/throw_exception
+	url = https://github.com/boostorg/throw_exception.git
+[submodule "boost/assert"]
+	path = boost/assert
+	url = https://github.com/boostorg/assert.git
+[submodule "boost/concept_check"]
+	path = boost/concept_check
+	url = https://github.com/boostorg/concept_check.git
+[submodule "boost/numeric_conversion"]
+	path = boost/numeric_conversion
+	url = https://github.com/boostorg/numeric_conversion.git
+[submodule "boost/functional"]
+	path = boost/functional
+	url = https://github.com/boostorg/functional.git
+[submodule "boost/predef"]
+	path = boost/predef
+	url = https://github.com/boostorg/predef.git
+[submodule "boost/function"]
+	path = boost/function
+	url = https://github.com/boostorg/function.git
+[submodule "boost/type_index"]
+	path = boost/type_index
+	url = https://github.com/boostorg/type_index.git
+[submodule "boost/bind"]
+	path = boost/bind
+	url = https://github.com/boostorg/bind.git
+[submodule "boost/intrusive"]
+	path = boost/intrusive
+	url = https://github.com/boostorg/intrusive.git
+[submodule "boost/smart_ptr"]
+	path = boost/smart_ptr
+	url = https://github.com/boostorg/smart_ptr.git
+[submodule "boost/chrono"]
+	path = boost/chrono
+	url = https://github.com/boostorg/chrono.git
+[submodule "boost/ratio"]
+	path = boost/ratio
+	url = https://github.com/boostorg/ratio.git
+[submodule "boost/detail"]
+	path = boost/detail
+	url = https://github.com/boostorg/detail.git
