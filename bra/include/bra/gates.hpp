@@ -252,6 +252,7 @@ namespace bra
     ::bra::gates::const_iterator const last = gates.end();
     for (::bra::gates::const_iterator iter = gates.begin(); iter != last; ++iter)
       state << **iter;
+    return state;
   }
 }
 
