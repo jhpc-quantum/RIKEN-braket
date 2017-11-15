@@ -4,7 +4,6 @@
 
 **bracket** is a tool for simulations of quantum gates on (classical) computers.
 It contains an interpreter of "quantum assembler" *bra* and a C++ template library *ket*.
-It also contains a C++ MPI wrapper library *yampi* for users' convenience.
 
 ## Getting Started
 
@@ -15,7 +14,7 @@ Because **bracket** does not require any compiled Boost libraries, you have just
 You can retrieve the current status of **bracket** by cloning the repository:
 
 ```bash
-git clone https://github.com/naoki-yoshioka/bracket.git
+git clone --recursive https://github.com/naoki-yoshioka/bracket.git
 ```
 
 ## Using *bra*
