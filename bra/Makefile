@@ -19,7 +19,7 @@ build_dir = $(pwd)/build
 bin_dir = $(pwd)/bin
 
 library_dirs = $(KET_DIR) $(YAMPI_DIR)
-idirs = $(include_dir) $(addsuffix /include,$(library_dirs)) $(boost_include_dirs)
+idirs = $(include_dir) $(k_boost_include_dir) $(addsuffix /include,$(library_dirs)) $(boost_include_dirs)
 ldirs = $(addsuffix /lib,$(library_dirs))
 
 sources := $(shell find $(src_dir) -name *.cpp)
@@ -147,7 +147,7 @@ else
     CXX = mpiFCCpx
     common_flags = -Kparallel,openmp
     cxx_flags = --alternative_tokens
-    idirs = $(pwd)/../k_boost/include $(idirs)
+    k_boost_include_dir = $(pwd)/../k_boost/include
   else
     CXX = mpiCC
     common_flags = -fopenmp
