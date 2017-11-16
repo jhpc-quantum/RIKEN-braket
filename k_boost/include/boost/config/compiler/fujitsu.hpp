@@ -1,14 +1,7 @@
-// (C) Copyright Naoki Yoshioka 2016.
-//  Use, modification and distribution are subject to the
-//  Boost Software License, Version 1.0. (See accompanying file
-//  LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
-
-//  See http://www.boost.org for most recent version.
-
 // Parallelnavi for MP10 (Fujitsu) C++ compiler
-// Only for the generation K-1.2.0-20-1
+// for the generation K-1.2.0-20-1
 
-// Macros that describe optional features
+// optional features
 #define BOOST_HAS_CLOCK_GETTIME
 #define BOOST_HAS_DIRENT_H
 #define BOOST_HAS_EXPM1
@@ -27,35 +20,7 @@
 # define BOOST_HAS_LONG_LONG
 #endif
 
-// Macros that describe C++11 features not supported
-#define BOOST_NO_CXX11_ADDRESSOF
-#define BOOST_NO_CXX11_ALIGNAS
-#define BOOST_NO_CXX11_ALLOCATOR
-#define BOOST_NO_CXX11_ATOMIC_SMART_PTR
-#define BOOST_NO_CXX11_HDR_ATOMIC
-#define BOOST_NO_CXX11_HDR_CHRONO
-#define BOOST_NO_CXX11_HDR_CODECVT
-#define BOOST_NO_CXX11_HDR_CONDITION_VARIABLE
-#define BOOST_NO_CXX11_HDR_FORWARD_LIST
-#define BOOST_NO_CXX11_HDR_FUNCTIONAL
-#define BOOST_NO_CXX11_HDR_FUTURE
-#define BOOST_NO_CXX11_HDR_MUTEX
-#define BOOST_NO_CXX11_HDR_RANDOM
-#define BOOST_NO_CXX11_HDR_RATIO
-#define BOOST_NO_CXX11_HDR_REGEX
-#define BOOST_NO_CXX11_HDR_SYSTEM_ERROR
-#define BOOST_NO_CXX11_HDR_THREAD
-#define BOOST_NO_CXX11_HDR_TUPLE
-#define BOOST_NO_CXX11_HDR_TYPEINDEX
-#define BOOST_NO_CXX11_HDR_TYPE_TRAITS // supports only remove_reference, add_rvalue_reference, integral_constant, is_same, underlying_type
-#define BOOST_NO_CXX11_HDR_UNORDERED_MAP
-#define BOOST_NO_CXX11_HDR_UNORDERED_SET
-#define BOOST_NO_CXX11_NUMERIC_LIMITS
-#define BOOST_NO_CXX11_SMART_PTR
-#define BOOST_NO_CXX11_STD_ALIGN
-#define BOOST_NO_CXX11_STD_UNORDERED
-#define BOOST_NO_CXX11_UNIFIED_INITIALIZATION_SYNTAX // there exists a bug
-
+// unsupported C++11 features
 #ifdef __NO_LONG_LONG
 # define BOOST_NO_LONG_LONG
 #endif
@@ -95,9 +60,37 @@
 # define BOOST_NO_CXX11_USER_DEFINED_LITERALS
 # define BOOST_NO_CXX11_VARIADIC_TEMPLATES
 # define BOOST_NO_CXX11_VARIADIC_MACROS
+
+# define BOOST_NO_CXX11_ADDRESSOF
+# define BOOST_NO_CXX11_ALIGNAS
+# define BOOST_NO_CXX11_ALLOCATOR
+# define BOOST_NO_CXX11_ATOMIC_SMART_PTR
+# define BOOST_NO_CXX11_HDR_ATOMIC
+# define BOOST_NO_CXX11_HDR_CHRONO
+# define BOOST_NO_CXX11_HDR_CODECVT
+# define BOOST_NO_CXX11_HDR_CONDITION_VARIABLE
+# define BOOST_NO_CXX11_HDR_FORWARD_LIST
+# define BOOST_NO_CXX11_HDR_FUNCTIONAL
+# define BOOST_NO_CXX11_HDR_FUTURE
+# define BOOST_NO_CXX11_HDR_MUTEX
+# define BOOST_NO_CXX11_HDR_RANDOM
+# define BOOST_NO_CXX11_HDR_RATIO
+# define BOOST_NO_CXX11_HDR_REGEX
+# define BOOST_NO_CXX11_HDR_SYSTEM_ERROR
+# define BOOST_NO_CXX11_HDR_THREAD
+# define BOOST_NO_CXX11_HDR_TUPLE
+# define BOOST_NO_CXX11_HDR_TYPEINDEX
+# define BOOST_NO_CXX11_HDR_TYPE_TRAITS
+# define BOOST_NO_CXX11_HDR_UNORDERED_MAP
+# define BOOST_NO_CXX11_HDR_UNORDERED_SET
+# define BOOST_NO_CXX11_NUMERIC_LIMITS
+# define BOOST_NO_CXX11_SMART_PTR
+# define BOOST_NO_CXX11_STD_ALIGN
+# define BOOST_NO_CXX11_STD_UNORDERED
+# define BOOST_NO_CXX11_UNIFIED_INITIALIZATION_SYNTAX
 #endif
 
-// Macros that describe C++14 features not supported
+// unsupported C++14 features
 #define BOOST_NO_CXX14_AGGREGATE_NSDMI
 #define BOOST_NO_CXX14_BINARY_LITERALS
 #define BOOST_NO_CXX14_CONSTEXPR
