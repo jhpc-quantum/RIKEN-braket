@@ -13,7 +13,11 @@
 
 # include <boost/cstdint.hpp>
 
-# include <boost/random/mersenne_twister.hpp>
+# ifndef BOOST_NO_CXX11_HDR_RANDOM
+#  include <random>
+# else
+#  include <boost/random/mersenne_twister.hpp>
+# endif
 
 # ifdef __FUJITSU // needed for combination of Boost 1.61.0 and Fujitsu compiler
 #  include <boost/utility/in_place_factory.hpp>
@@ -39,6 +43,12 @@
 #  define BRA_array boost::array
 # endif
 
+# ifndef BOOST_NO_CXX11_HDR_RANDOM
+#  define BRA_mt19937_64 std::mt19937_64
+# else
+#  define BRA_mt19937_64 boost::mt19937_64
+# endif
+
 
 namespace bra
 {
@@ -56,7 +66,7 @@ namespace bra
     typedef BRA_array<real_type, 3u> spin_type;
     typedef yampi::allocator<spin_type> spins_allocator_type;
     typedef std::vector<spin_type, spins_allocator_type> spins_type;
-    typedef boost::mt19937_64 random_number_generator_type;
+    typedef BRA_mt19937_64 random_number_generator_type;
     typedef random_number_generator_type::result_type seed_type;
 
     typedef
@@ -285,6 +295,9 @@ namespace bra
   };
 }
 
+
+# undef BRA_mt19937_64
+# undef BRA_array
 
 #endif
 

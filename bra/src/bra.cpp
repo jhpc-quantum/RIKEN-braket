@@ -1,12 +1,18 @@
+#include <boost/config.hpp>
+
 #include <cstddef>
 #include <iostream>
 #include <fstream>
 #include <string>
 #include <utility>
+#ifndef BOOST_NO_CXX11_HDR_RANDOM
+# include <random>
+#else
+# include <boost/random/mersenne_twister.hpp>
+#endif
 
 #include <boost/lexical_cast.hpp>
 #include <boost/format.hpp>
-#include <boost/random/mersenne_twister.hpp>
 
 #include <boost/move/unique_ptr.hpp>
 
@@ -36,13 +42,19 @@
 #include <ket/mpi/gate/controlled_phase_shift.hpp>
 //#include <ket/mpi/gate/toffoli.hpp>
 
+#ifndef BOOST_NO_CXX11_HDR_RANDOM
+# define BRA_mt19937_64 std::mt19937_64
+#else
+# define BRA_mt19937_64 boost::mt19937_64
+#endif
+
 
 int main(int argc, char* argv[])
 {
   std::ios::sync_with_stdio(false);
 
   typedef unsigned int bit_integer_type;
-  typedef boost::mt19937_64 rng_type;
+  typedef BRA_mt19937_64 rng_type;
   typedef rng_type::result_type seed_type;
 
   yampi::environment environment(argc, argv);
