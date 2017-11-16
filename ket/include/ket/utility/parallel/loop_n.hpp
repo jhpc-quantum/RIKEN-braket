@@ -19,10 +19,6 @@
 #       include <boost/thread/lock_guard.hpp>
 #     endif
 #   endif
-#   ifdef __FUJITSU // needed for combination of Boost 1.61.0 and Fujitsu compiler
-#     include <boost/utility/in_place_factory.hpp>
-#     include <boost/utility/typed_in_place_factory.hpp>
-#   endif
 #   include <boost/optional.hpp>
 # else
 #   ifndef BOOST_NO_CXX11_HDR_THREAD
