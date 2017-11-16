@@ -4,6 +4,11 @@ SHELL = /bin/sh
 KET_DIR = $(pwd)/../ket
 YAMPI_DIR = $(pwd)/../yampi
 
+boost_dir = $(pwd)/../boost
+boost_submodules = $(shell ls $(boost_dir))
+boost_submodule_dirs = $(addprefix $(boost_dir)/,$(boost_submodules))
+boost_include_dirs = $(addsuffix /include,$(boost_submodule_dirs))
+
 target = bra
 nodename := $(shell uname -n)
 
@@ -13,8 +18,8 @@ include_dir = $(pwd)/include
 build_dir = $(pwd)/build
 bin_dir = $(pwd)/bin
 
-library_dirs = $(KET_DIR) $(YAMPI_DIR) $(BOOST_DIR)
-idirs = $(include_dir) $(addsuffix /include,$(library_dirs))
+library_dirs = $(KET_DIR) $(YAMPI_DIR)
+idirs = $(include_dir) $(k_boost_include_dir) $(addsuffix /include,$(library_dirs)) $(boost_include_dirs)
 ldirs = $(addsuffix /lib,$(library_dirs))
 
 sources := $(shell find $(src_dir) -name *.cpp)
@@ -135,18 +140,16 @@ debug14: $(bin_dir)/$(target)
 
 ifneq ($(findstring juqueen,$(nodename)),)
   CXX = mpixlcxx
-  BOOST_DIR ?= $(HOME)/aics/170623
   common_flags = -qsmp=omp
   cxx_flags =
 else
   ifneq ($(findstring fe01p,$(nodename)),)
     CXX = mpiFCCpx
-    BOOST_DIR ?= $(HOME)
     common_flags = -Kparallel,openmp
     cxx_flags = --alternative_tokens
+    k_boost_include_dir = $(pwd)/../k_boost/include
   else
     CXX = mpiCC
-    BOOST_DIR ?= /usr
     common_flags = -fopenmp
     cxx_flags =
   endif
@@ -166,24 +169,6 @@ $(src_dir)/%.cpp: $(include_dir)/%.hpp ;
 .PHONY: clean
 clean:
 	$(RM) -r $(build_dir) $(bin_dir) $(distfile)
-
-dist_dir = $(pwd)/$(target)
-distfile = $(target).tar.bz2
-.PHONY: dist
-dist:
-	$(mkdir_p) $(dist_dir)
-	cp -r $(pwd)/Makefile $(dist_dir)/
-	cp -r $(pwd)/README $(dist_dir)/
-	$(mkdir_p) $(dist_dir)/$(src_dir)
-	cp -r $(src_dir)/* $(dist_dir)/$(src_dir)/
-	$(mkdir_p) $(dist_dir)/$(include_dir)
-	cp -r $(include_dir)/* $(dist_dir)/$(include_dir)/
-	$(mkdir_p) $(dist_dir)/$(KET_DIR)
-	cp -r $(KET_DIR)/* $(dist_dir)/$(KET_DIR)/
-	$(mkdir_p) $(dist_dir)/$(YAMPI_DIR)
-	cp -r $(YAMPI_DIR)/* $(dist_dir)/$(YAMPI_DIR)/
-	tar jcvf $(distfile) $(dist_dir)
-	$(RM) -r $(dist_dir)
 
 mkdir_p ?= mkdir -p
 
