@@ -7,9 +7,8 @@ It contains an interpreter of "quantum assembler" *bra* and a C++ template libra
 
 ## Getting Started
 
-**bracket** requires a MPI2-supported C++03 compliant compiler and [Boost library](http://www.boost.org/).
-If you do not have Boost library, get download [the latest version](http://www.boost.org/users/download/) of the library, or get it by using a package manager of your Linux environment.
-Because **bracket** does not require any compiled Boost libraries, you have just to extract the downloaded file.
+**bracket** requires a MPI2-supported C++03 compliant compiler.
+If you do not have any MPI libraries, get it by using a package manager of your \*nix environment.
 
 You can retrieve the current status of **bracket** by cloning the repository:
 
