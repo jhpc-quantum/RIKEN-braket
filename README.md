@@ -24,13 +24,15 @@ On the `bra/` directory, you can compile *bra* via:
 make
 ```
 
-Or, if you downloaded your own Boost library from the official webpage;
-
-```
-make BOOST_DIR=path/to/boost_x_xx_x
-```
-
 The binary file `bra` is present on `bra/bin/` directory.
+
+If you would like to compile it by specified C++ version, type like:
+
+```
+make release03
+make release11
+make release14
+```
 
 The files `bra/qcx/hadamards08.qcx` and `bra/qcx/adder6x2.qcx` are sample "quantum assembler" codes.
 You can test those assembler codes via:
