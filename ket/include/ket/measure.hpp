@@ -31,7 +31,7 @@
 # include <boost/range/algorithm/upper_bound.hpp>
 # include <boost/range/numeric.hpp>
 
-# include <ket/utility/inclusive_scan.hpp>
+# include <ket/utility/loop_n.hpp>
 # include <ket/utility/meta/real_of.hpp>
 
 # ifndef BOOST_NO_CXX11_HDR_RANDOM
