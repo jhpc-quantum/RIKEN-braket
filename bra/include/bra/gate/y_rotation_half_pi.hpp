@@ -10,8 +10,8 @@
 # include <bra/state.hpp>
 
 # ifdef BOOST_NO_CXX11_FINAL
-#  define final 
-#  define override 
+#   define final 
+#   define override 
 # endif // BOOST_NO_CXX11_FINAL
 
 
@@ -42,17 +42,17 @@ namespace bra
 # ifndef BOOST_NO_CXX11_DELETED_FUNCTIONS
       y_rotation_half_pi(y_rotation_half_pi const&) = delete;
       y_rotation_half_pi& operator=(y_rotation_half_pi const&) = delete;
-#  ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
+#   ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
       y_rotation_half_pi(y_rotation_half_pi&&) = delete;
       y_rotation_half_pi& operator=(y_rotation_half_pi&&) = delete;
-#  endif // BOOST_NO_CXX11_RVALUE_REFERENCES
+#   endif // BOOST_NO_CXX11_RVALUE_REFERENCES
 # else // BOOST_NO_CXX11_DELETED_FUNCTIONS
       y_rotation_half_pi(y_rotation_half_pi const&);
       y_rotation_half_pi& operator=(y_rotation_half_pi const&);
-#  ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
+#   ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
       y_rotation_half_pi(y_rotation_half_pi&&);
       y_rotation_half_pi& operator=(y_rotation_half_pi&&);
-#  endif // BOOST_NO_CXX11_RVALUE_REFERENCES
+#   endif // BOOST_NO_CXX11_RVALUE_REFERENCES
 # endif // BOOST_NO_CXX11_DELETED_FUNCTIONS
 
      private:
@@ -69,11 +69,6 @@ namespace bra
 #   undef final 
 #   undef override 
 # endif // BOOST_NO_CXX11_FINAL
-
-# if defined(__IBMCPP__) && (__IBMCPP__ < 1311)
-#   undef final 
-#   undef override 
-# endif // defined(__IBMCPP__) && (__IBMCPP__ < 1311)
 
 #endif
 

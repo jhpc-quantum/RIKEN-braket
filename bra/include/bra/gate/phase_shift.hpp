@@ -10,8 +10,8 @@
 # include <bra/state.hpp>
 
 # ifdef BOOST_NO_CXX11_FINAL
-#  define final 
-#  define override 
+#   define final 
+#   define override 
 # endif // BOOST_NO_CXX11_FINAL
 
 
@@ -48,17 +48,17 @@ namespace bra
 # ifndef BOOST_NO_CXX11_DELETED_FUNCTIONS
       phase_shift(phase_shift const&) = delete;
       phase_shift& operator=(phase_shift const&) = delete;
-#  ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
+#   ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
       phase_shift(phase_shift&&) = delete;
       phase_shift& operator=(phase_shift&&) = delete;
-#  endif // BOOST_NO_CXX11_RVALUE_REFERENCES
+#   endif // BOOST_NO_CXX11_RVALUE_REFERENCES
 # else // BOOST_NO_CXX11_DELETED_FUNCTIONS
       phase_shift(phase_shift const&);
       phase_shift& operator=(phase_shift const&);
-#  ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
+#   ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
       phase_shift(phase_shift&&);
       phase_shift& operator=(phase_shift&&);
-#  endif // BOOST_NO_CXX11_RVALUE_REFERENCES
+#   endif // BOOST_NO_CXX11_RVALUE_REFERENCES
 # endif // BOOST_NO_CXX11_DELETED_FUNCTIONS
 
      private:

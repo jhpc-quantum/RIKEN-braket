@@ -10,8 +10,8 @@
 # include <bra/state.hpp>
 
 # ifdef BOOST_NO_CXX11_FINAL
-#  define final 
-#  define override 
+#   define final 
+#   define override 
 # endif // BOOST_NO_CXX11_FINAL
 
 
@@ -46,17 +46,17 @@ namespace bra
 # ifndef BOOST_NO_CXX11_DELETED_FUNCTIONS
       adj_controlled_not(adj_controlled_not const&) = delete;
       adj_controlled_not& operator=(adj_controlled_not const&) = delete;
-#  ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
+#   ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
       adj_controlled_not(adj_controlled_not&&) = delete;
       adj_controlled_not& operator=(adj_controlled_not&&) = delete;
-#  endif // BOOST_NO_CXX11_RVALUE_REFERENCES
+#   endif // BOOST_NO_CXX11_RVALUE_REFERENCES
 # else // BOOST_NO_CXX11_DELETED_FUNCTIONS
       adj_controlled_not(adj_controlled_not const&);
       adj_controlled_not& operator=(adj_controlled_not const&);
-#  ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
+#   ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
       adj_controlled_not(adj_controlled_not&&);
       adj_controlled_not& operator=(adj_controlled_not&&);
-#  endif // BOOST_NO_CXX11_RVALUE_REFERENCES
+#   endif // BOOST_NO_CXX11_RVALUE_REFERENCES
 # endif // BOOST_NO_CXX11_DELETED_FUNCTIONS
 
      private:

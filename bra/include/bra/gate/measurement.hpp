@@ -12,8 +12,8 @@
 # include <bra/state.hpp>
 
 # ifdef BOOST_NO_CXX11_FINAL
-#  define final 
-#  define override 
+#   define final 
+#   define override 
 # endif // BOOST_NO_CXX11_FINAL
 
 
@@ -44,17 +44,17 @@ namespace bra
 # ifndef BOOST_NO_CXX11_DELETED_FUNCTIONS
       measurement(measurement const&) = delete;
       measurement& operator=(measurement const&) = delete;
-#  ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
+#   ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
       measurement(measurement&&) = delete;
       measurement& operator=(measurement&&) = delete;
-#  endif // BOOST_NO_CXX11_RVALUE_REFERENCES
+#   endif // BOOST_NO_CXX11_RVALUE_REFERENCES
 # else // BOOST_NO_CXX11_DELETED_FUNCTIONS
       measurement(measurement const&);
       measurement& operator=(measurement const&);
-#  ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
+#   ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
       measurement(measurement&&);
       measurement& operator=(measurement&&);
-#  endif // BOOST_NO_CXX11_RVALUE_REFERENCES
+#   endif // BOOST_NO_CXX11_RVALUE_REFERENCES
 # endif // BOOST_NO_CXX11_DELETED_FUNCTIONS
 
      private:

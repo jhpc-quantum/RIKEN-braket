@@ -6,17 +6,17 @@
 # include <complex>
 # include <vector>
 # ifndef BOOST_NO_CXX11_HDR_ARRAY
-#  include <array>
+#   include <array>
 # else
-#  include <boost/array.hpp>
+#   include <boost/array.hpp>
 # endif
 
 # include <boost/cstdint.hpp>
 
 # ifndef BOOST_NO_CXX11_HDR_RANDOM
-#  include <random>
+#   include <random>
 # else
-#  include <boost/random/mersenne_twister.hpp>
+#   include <boost/random/mersenne_twister.hpp>
 # endif
 
 # include <boost/optional.hpp>
@@ -34,15 +34,15 @@
 # include <yampi/wall_clock.hpp>
 
 # ifndef BOOST_NO_CXX11_HDR_ARRAY
-#  define BRA_array std::array
+#   define BRA_array std::array
 # else
-#  define BRA_array boost::array
+#   define BRA_array boost::array
 # endif
 
 # ifndef BOOST_NO_CXX11_HDR_RANDOM
-#  define BRA_mt19937_64 std::mt19937_64
+#   define BRA_mt19937_64 std::mt19937_64
 # else
-#  define BRA_mt19937_64 boost::mt19937_64
+#   define BRA_mt19937_64 boost::mt19937_64
 # endif
 
 
@@ -114,17 +114,17 @@ namespace bra
 # ifndef BOOST_NO_CXX11_DELETED_FUNCTIONS
     state(state const&) = delete;
     state& operator=(state const&) = delete;
-#  ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
+#   ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
     state(state&&) = delete;
     state& operator=(state&&) = delete;
-#  endif // BOOST_NO_CXX11_RVALUE_REFERENCES
+#   endif // BOOST_NO_CXX11_RVALUE_REFERENCES
 # else // BOOST_NO_CXX11_DELETED_FUNCTIONS
     state(state const&);
     state& operator=(state const&);
-#  ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
+#   ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
     state(state&&);
     state& operator=(state&&);
-#  endif // BOOST_NO_CXX11_RVALUE_REFERENCES
+#   endif // BOOST_NO_CXX11_RVALUE_REFERENCES
 # endif // BOOST_NO_CXX11_DELETED_FUNCTIONS
 
    public:

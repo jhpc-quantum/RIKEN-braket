@@ -10,8 +10,8 @@
 # include <bra/state.hpp>
 
 # ifdef BOOST_NO_CXX11_FINAL
-#  define final 
-#  define override 
+#   define final 
+#   define override 
 # endif // BOOST_NO_CXX11_FINAL
 
 
@@ -42,17 +42,17 @@ namespace bra
 # ifndef BOOST_NO_CXX11_DELETED_FUNCTIONS
       adj_hadamard(adj_hadamard const&) = delete;
       adj_hadamard& operator=(adj_hadamard const&) = delete;
-#  ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
+#   ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
       adj_hadamard(adj_hadamard&&) = delete;
       adj_hadamard& operator=(adj_hadamard&&) = delete;
-#  endif // BOOST_NO_CXX11_RVALUE_REFERENCES
+#   endif // BOOST_NO_CXX11_RVALUE_REFERENCES
 # else // BOOST_NO_CXX11_DELETED_FUNCTIONS
       adj_hadamard(adj_hadamard const&);
       adj_hadamard& operator=(adj_hadamard const&);
-#  ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
+#   ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
       adj_hadamard(adj_hadamard&&);
       adj_hadamard& operator=(adj_hadamard&&);
-#  endif // BOOST_NO_CXX11_RVALUE_REFERENCES
+#   endif // BOOST_NO_CXX11_RVALUE_REFERENCES
 # endif // BOOST_NO_CXX11_DELETED_FUNCTIONS
 
      private:

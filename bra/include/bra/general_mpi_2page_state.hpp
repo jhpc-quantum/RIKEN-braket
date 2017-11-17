@@ -17,8 +17,8 @@
 # include <bra/state.hpp>
 
 # ifdef BOOST_NO_CXX11_FINAL
-#  define final 
-#  define override 
+#   define final 
+#   define override 
 # endif // BOOST_NO_CXX11_FINAL
 
 
@@ -62,17 +62,17 @@ namespace bra
 # ifndef BOOST_NO_CXX11_DELETED_FUNCTIONS
     general_mpi_2page_state(general_mpi_2page_state const&) = delete;
     general_mpi_2page_state& operator=(general_mpi_2page_state const&) = delete;
-#  ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
+#   ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
     general_mpi_2page_state(general_mpi_2page_state&&) = delete;
     general_mpi_2page_state& operator=(general_mpi_2page_state&&) = delete;
-#  endif // BOOST_NO_CXX11_RVALUE_REFERENCES
+#   endif // BOOST_NO_CXX11_RVALUE_REFERENCES
 # else // BOOST_NO_CXX11_DELETED_FUNCTIONS
     general_mpi_2page_state(general_mpi_2page_state const&);
     general_mpi_2page_state& operator=(general_mpi_2page_state const&);
-#  ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
+#   ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
     general_mpi_2page_state(general_mpi_2page_state&&);
     general_mpi_2page_state& operator=(general_mpi_2page_state&&);
-#  endif // BOOST_NO_CXX11_RVALUE_REFERENCES
+#   endif // BOOST_NO_CXX11_RVALUE_REFERENCES
 # endif // BOOST_NO_CXX11_DELETED_FUNCTIONS
 
    private:
@@ -106,13 +106,11 @@ namespace bra
     void do_toffoli(
       qubit_type const target_qubit,
       control_qubit_type const control_qubit1,
-      control_qubit_type const control_qubit2,
-      yampi::environment const& environment) override;
+      control_qubit_type const control_qubit2) override;
     void do_adj_toffoli(
       qubit_type const target_qubit,
       control_qubit_type const control_qubit1,
-      control_qubit_type const control_qubit2,
-      yampi::environment const& environment) override;
+      control_qubit_type const control_qubit2) override;
       */
     void do_expectation_values(yampi::rank const root) override;
     void do_measure(yampi::rank const root) override;

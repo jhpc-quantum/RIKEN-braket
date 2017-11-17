@@ -30,12 +30,12 @@ namespace bra
       buffer_(),
       state_integer_datatype_(yampi::basic_datatype_of<state_integer_type>::call()),
       real_datatype_(yampi::basic_datatype_of<real_type>::call()),
-# if MPI_VERSION >= 3
+#if MPI_VERSION >= 3
       complex_datatype_(yampi::basic_datatype_of<complex_type>::call()),
-# else
+#else
       derived_complex_datatype_(real_datatype_, 2, environment),
       complex_datatype_(derived_complex_datatype_.datatype()),
-# endif
+#endif
       communicator_(communicator),
       environment_(environment),
       operations_finish_time_(),
@@ -57,12 +57,12 @@ namespace bra
       buffer_(),
       state_integer_datatype_(yampi::basic_datatype_of<state_integer_type>::call()),
       real_datatype_(yampi::basic_datatype_of<real_type>::call()),
-# if MPI_VERSION >= 3
+#if MPI_VERSION >= 3
       complex_datatype_(yampi::basic_datatype_of<complex_type>::call()),
-# else
+#else
       derived_complex_datatype_(real_datatype_, 2, environment),
       complex_datatype_(derived_complex_datatype_.datatype()),
-# endif
+#endif
       communicator_(communicator),
       environment_(environment),
       operations_finish_time_(),

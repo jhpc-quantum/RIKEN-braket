@@ -10,8 +10,8 @@
 # include <bra/state.hpp>
 
 # ifdef BOOST_NO_CXX11_FINAL
-#  define final 
-#  define override 
+#   define final 
+#   define override 
 # endif // BOOST_NO_CXX11_FINAL
 
 
@@ -42,17 +42,17 @@ namespace bra
 # ifndef BOOST_NO_CXX11_DELETED_FUNCTIONS
       adj_y_rotation_half_pi(adj_y_rotation_half_pi const&) = delete;
       adj_y_rotation_half_pi& operator=(adj_y_rotation_half_pi const&) = delete;
-#  ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
+#   ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
       adj_y_rotation_half_pi(adj_y_rotation_half_pi&&) = delete;
       adj_y_rotation_half_pi& operator=(adj_y_rotation_half_pi&&) = delete;
-#  endif // BOOST_NO_CXX11_RVALUE_REFERENCES
+#   endif // BOOST_NO_CXX11_RVALUE_REFERENCES
 # else // BOOST_NO_CXX11_DELETED_FUNCTIONS
       adj_y_rotation_half_pi(adj_y_rotation_half_pi const&);
       adj_y_rotation_half_pi& operator=(adj_y_rotation_half_pi const&);
-#  ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
+#   ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
       adj_y_rotation_half_pi(adj_y_rotation_half_pi&&);
       adj_y_rotation_half_pi& operator=(adj_y_rotation_half_pi&&);
-#  endif // BOOST_NO_CXX11_RVALUE_REFERENCES
+#   endif // BOOST_NO_CXX11_RVALUE_REFERENCES
 # endif // BOOST_NO_CXX11_DELETED_FUNCTIONS
 
      private:

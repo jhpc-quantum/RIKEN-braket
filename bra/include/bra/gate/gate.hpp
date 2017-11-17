@@ -27,19 +27,19 @@ namespace bra
 # ifndef BOOST_NO_CXX11_DELETED_FUNCTIONS
       gate(gate const&) = delete;
       gate& operator=(gate const&) = delete;
-#  ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
+#   ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
       gate(gate&&) = delete;
       gate& operator=(gate&&) = delete;
-#  endif // BOOST_NO_CXX11_RVALUE_REFERENCES
+#   endif // BOOST_NO_CXX11_RVALUE_REFERENCES
 
 # else // BOOST_NO_CXX11_DELETED_FUNCTIONS
      private:
       gate(gate const&);
       gate& operator=(gate const&);
-#  ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
+#   ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
       gate(gate&&);
       gate& operator=(gate&&);
-#  endif // BOOST_NO_CXX11_RVALUE_REFERENCES
+#   endif // BOOST_NO_CXX11_RVALUE_REFERENCES
 
      public:
 # endif // BOOST_NO_CXX11_DELETED_FUNCTIONS
