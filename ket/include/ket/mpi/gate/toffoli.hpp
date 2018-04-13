@@ -23,6 +23,50 @@ namespace ket
 {
   namespace mpi
   {
+    namespace gate
+    {
+      namespace toffoli_detail
+      {
+      } // namespace toffoli_detail
+
+      template <
+        typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange,
+        typename StateInteger, typename BitInteger,
+        typename Allocator, typename BufferAllocator>
+      inline RandomAccessRange& toffoli(
+        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+        RandomAccessRange& local_state,
+        ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+        KET_array<
+          ::ket::control< ::ket::qubit<StateInteger, BitInteger> >, 2u> const& control_qubits,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        yampi::datatype const datatype,
+        yampi::communicator const communicator,
+        yampi::environment const& environment)
+      {
+        ::ket::mpi::utility::log_with_time_guard<char> print("Toffoli", environment);
+
+        typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
+        KET_array<qubit_type, 3u> const qubits
+          = { target_qubit, control_qubits[0u].qubit(), control_qubits[1u].qubit() };
+        ::ket::mpi::utility::maybe_interchange_qubits(
+          mpi_policy, parallel_policy,
+          local_state, qubits, permutation,
+          buffer, datatype, communicator, environment);
+
+        if (::ket::mpi::page::is_on_page(target_qubit, local_state, permutation))
+        {
+          if (::ket::mpi::page::is_on_page(control_qubits[0u].qubit(), local_state, permutation))
+          {
+            if (::ket::mpi::page::is_on_page(control_qubits[1u].qubit(), local_state, permutation))
+              return ::ket::mpi::gate::page::controlled_
+          }
+        }
+        else if
+      }
+    } // namespace gate
+
     template <
       typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange,
       typename StateInteger, typename BitInteger,
