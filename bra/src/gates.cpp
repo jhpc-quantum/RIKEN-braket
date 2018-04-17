@@ -44,7 +44,7 @@
 #include <bra/gate/adj_controlled_phase_shift.hpp>
 #include <bra/gate/controlled_v.hpp>
 #include <bra/gate/adj_controlled_v.hpp>
-//#include <bra/gate/toffoli.hpp>
+#include <bra/gate/toffoli.hpp>
 #include <bra/gate/measurement.hpp>
 
 
@@ -345,13 +345,10 @@ namespace bra
         qubit_type target;
         boost::tie(control1, control2, target) = read_toffoli(columns);
 
-        throw unsupported_mnemonic_error(first_mnemonic);
-        /*
+        //throw unsupported_mnemonic_error(first_mnemonic);
         data_.push_back(
           boost::movelib::unique_ptr< ::bra::gate::gate >(
-            new ::bra::gate::toffoli(
-              phase_exponent, phase_coefficients_[phase_exponent], target, control)));
-              */
+            new ::bra::gate::toffoli(target, control1, control2)));
       }
       else if (first_mnemonic == "X")
       {

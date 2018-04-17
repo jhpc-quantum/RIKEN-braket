@@ -76,6 +76,7 @@ namespace bra
 # endif // BOOST_NO_CXX11_DELETED_FUNCTIONS
 
    private:
+    unsigned int do_num_page_qubits() const override;
     unsigned int do_num_pages() const override;
 
     void do_hadamard(qubit_type const qubit) override;
@@ -102,7 +103,6 @@ namespace bra
     void do_adj_controlled_v(
       complex_type const phase_coefficient,
       qubit_type const target_qubit, control_qubit_type const control_qubit) override;
-    /*
     void do_toffoli(
       qubit_type const target_qubit,
       control_qubit_type const control_qubit1,
@@ -111,7 +111,6 @@ namespace bra
       qubit_type const target_qubit,
       control_qubit_type const control_qubit1,
       control_qubit_type const control_qubit2) override;
-      */
     void do_expectation_values(yampi::rank const root) override;
     void do_measure(yampi::rank const root) override;
   };
