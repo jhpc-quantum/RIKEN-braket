@@ -8,6 +8,8 @@
 # else
 #   include <boost/array.hpp>
 # endif
+# include <ios>
+# include <sstream>
 
 # include <boost/range/value_type.hpp>
 
@@ -16,6 +18,7 @@
 # include <yampi/communicator.hpp>
 
 # include <ket/qubit.hpp>
+# include <ket/qubit_io.hpp>
 # include <ket/gate/hadamard.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
@@ -78,7 +81,9 @@ namespace ket
         yampi::communicator const communicator,
         yampi::environment const& environment)
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print("Hadamard", environment);
+        std::ostringstream output_string_stream("Hadamard ", std::ios_base::ate);
+        output_string_stream << qubit;
+        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
 
         typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
         KET_array<qubit_type, 1u> qubits = { qubit };
@@ -187,7 +192,9 @@ namespace ket
         yampi::communicator const communicator,
         yampi::environment const& environment)
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print("Conj(Hadamard)", environment);
+        std::ostringstream output_string_stream("Conj(Hadamard) ", std::ios_base::ate);
+        output_string_stream << qubit;
+        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
 
         typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
         KET_array<qubit_type, 1u> qubits = { qubit };
@@ -296,7 +303,9 @@ namespace ket
         yampi::communicator const communicator,
         yampi::environment const& environment)
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print("Adj(Hadamard)", environment);
+        std::ostringstream output_string_stream("Adj(Hadamard) ", std::ios_base::ate);
+        output_string_stream << qubit;
+        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
 
         typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
         KET_array<qubit_type, 1u> qubits = { qubit };

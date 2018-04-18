@@ -8,6 +8,8 @@
 # include <boost/config.hpp>
 
 # include <vector>
+# include <ios>
+# include <sstream>
 
 # include <boost/range/value_type.hpp>
 # include <boost/range/iterator.hpp>
@@ -19,6 +21,8 @@
 
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
+# include <ket/qubit_io.hpp>
+# include <ket/control_io.hpp>
 # include <ket/gate/controlled_phase_shift.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
@@ -144,7 +148,9 @@ namespace ket
         yampi::communicator const communicator,
         yampi::environment const& environment)
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print("Cphase", environment);
+        std::ostringstream output_string_stream("Cphase(coeff) ", std::ios_base::ate);
+        output_string_stream << phase_coefficient << ' ' << target_qubit << ' ' << control_qubit;
+        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
         return ::ket::mpi::gate::controlled_phase_shift_detail::controlled_phase_shift_coeff(
           mpi_policy, parallel_policy,
           local_state, phase_coefficient, target_qubit, control_qubit, permutation,
@@ -238,7 +244,9 @@ namespace ket
         yampi::communicator const communicator,
         yampi::environment const& environment)
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print("Conj(Phase)", environment);
+        std::ostringstream output_string_stream("Conj(Cphase(coeff)) ", std::ios_base::ate);
+        output_string_stream << phase_coefficient << ' ' << target_qubit << ' ' << control_qubit;
+        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
         return ::ket::mpi::gate::controlled_phase_shift_detail::conj_controlled_phase_shift_coeff(
           mpi_policy, parallel_policy,
           local_state, phase_coefficient, target_qubit, control_qubit, permutation,
@@ -307,7 +315,9 @@ namespace ket
         yampi::communicator const communicator,
         yampi::environment const& environment)
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print("Adj(Phase)", environment);
+        std::ostringstream output_string_stream("Adj(Cphase(coeff)) ", std::ios_base::ate);
+        output_string_stream << phase_coefficient << ' ' << target_qubit << ' ' << control_qubit;
+        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
         return ::ket::mpi::gate::controlled_phase_shift_detail::conj_controlled_phase_shift_coeff(
           mpi_policy, parallel_policy,
           local_state, phase_coefficient, target_qubit, control_qubit, permutation,
@@ -403,7 +413,9 @@ namespace ket
         yampi::communicator const communicator,
         yampi::environment const& environment)
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print("Phase", environment);
+        std::ostringstream output_string_stream("Cphase ", std::ios_base::ate);
+        output_string_stream << phase << ' ' << target_qubit << ' ' << control_qubit;
+        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
         return ::ket::mpi::gate::controlled_phase_shift_detail::controlled_phase_shift(
           mpi_policy, parallel_policy,
           local_state, phase, target_qubit, control_qubit, permutation,
@@ -496,7 +508,9 @@ namespace ket
         yampi::communicator const communicator,
         yampi::environment const& environment)
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print("Conj(Phase)", environment);
+        std::ostringstream output_string_stream("Conj(Cphase) ", std::ios_base::ate);
+        output_string_stream << phase << ' ' << target_qubit << ' ' << control_qubit;
+        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
         return ::ket::mpi::gate::controlled_phase_shift_detail::conj_controlled_phase_shift(
           mpi_policy, parallel_policy,
           local_state, phase, target_qubit, control_qubit, permutation,
@@ -565,7 +579,9 @@ namespace ket
         yampi::communicator const communicator,
         yampi::environment const& environment)
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print("Adj(Phase)", environment);
+        std::ostringstream output_string_stream("Adj(Cphase) ", std::ios_base::ate);
+        output_string_stream << phase << ' ' << target_qubit << ' ' << control_qubit;
+        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
         return ::ket::mpi::gate::controlled_phase_shift_detail::conj_controlled_phase_shift(
           mpi_policy, parallel_policy,
           local_state, phase, target_qubit, control_qubit, permutation,

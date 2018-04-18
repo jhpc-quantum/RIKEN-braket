@@ -8,6 +8,8 @@
 # else
 #   include <boost/array.hpp>
 # endif
+# include <ios>
+# include <sstream>
 
 # include <boost/range/value_type.hpp>
 
@@ -17,6 +19,8 @@
 
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
+# include <ket/qubit_io.hpp>
+# include <ket/control_io.hpp>
 # include <ket/gate/toffoli.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
@@ -100,7 +104,9 @@ namespace ket
         yampi::communicator const communicator,
         yampi::environment const& environment)
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print("Toffoli", environment);
+        std::ostringstream output_string_stream("Toffoli ", std::ios_base::ate);
+        output_string_stream << target_qubit << ' ' << control_qubit1 << ' ' << control_qubit2;
+        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
 
         typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
         KET_array<qubit_type, 3u> const qubits
@@ -285,7 +291,9 @@ namespace ket
         yampi::communicator const communicator,
         yampi::environment const& environment)
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print("Conj(Toffoli)", environment);
+        std::ostringstream output_string_stream("Conj(Toffoli) ", std::ios_base::ate);
+        output_string_stream << target_qubit << ' ' << control_qubit1 << ' ' << control_qubit2;
+        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
 
         typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
         KET_array<qubit_type, 3u> const qubits
@@ -470,7 +478,9 @@ namespace ket
         yampi::communicator const communicator,
         yampi::environment const& environment)
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print("Adj(Toffoli)", environment);
+        std::ostringstream output_string_stream("Adj(Toffoli) ", std::ios_base::ate);
+        output_string_stream << target_qubit << ' ' << control_qubit1 << ' ' << control_qubit2;
+        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
 
         typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
         KET_array<qubit_type, 3u> const qubits
@@ -590,9 +600,6 @@ namespace ket
           local_state, target_qubit, control_qubit1, control_qubit2, permutation,
           buffer, datatype, communicator, environment);
       }
-
-
-
     } // namespace gate
   } // namespace mpi
 } // namespace ket
