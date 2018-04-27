@@ -5,6 +5,7 @@
 
 # include <cstddef>
 # include <cassert>
+# include <iostream>
 # include <vector>
 # include <iterator>
 # include <utility>
@@ -31,6 +32,10 @@
 #   endif
 # endif
 
+# ifndef NDEBUG
+#   include <boost/optional.hpp>
+# endif
+
 # include <boost/range/begin.hpp>
 # include <boost/range/end.hpp>
 # include <boost/range/value_type.hpp>
@@ -55,6 +60,9 @@
 # include <yampi/datatype.hpp>
 # include <yampi/communicator.hpp>
 # include <yampi/rank.hpp>
+# ifndef NDEBUG
+#   include <yampi/lowest_io_process.hpp>
+# endif
 
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
@@ -65,6 +73,10 @@
 # include <ket/mpi/utility/detail/swap_local_qubits.hpp>
 # include <ket/mpi/utility/detail/interchange_qubits.hpp>
 # include <ket/mpi/utility/logger.hpp>
+# ifndef NDEBUG
+#   include <ket/qubit_io.hpp>
+#   include <ket/mpi/qubit_permutation_io.hpp>
+# endif
 
 # ifndef BOOST_NO_CXX11_HDR_ARRAY
 #   define KET_array std::array
@@ -245,6 +257,13 @@ namespace ket
             ::ket::mpi::utility::log_with_time_guard<char> print(
               "interchange_qubits<1>", environment);
 
+# ifndef NDEBUG
+            boost::optional<yampi::rank> const maybe_io_rank = yampi::lowest_io_process(environment);
+            yampi::rank const my_rank = yampi::world_communicator().rank(environment);
+            if (maybe_io_rank && my_rank == *maybe_io_rank)
+              std::clog << "[permutation] " << permutation << std::endl;
+# endif // NDEBUG
+
             //  Swaps between xxxbxxx|(~b)xxxxxxxxx and xxx(~b)xxx|bxxxxxxxxx.
             // Upper qubits are global qubits representing MPI rank. Lower
             // qubits are local qubits representing memory address. The first
@@ -259,6 +278,11 @@ namespace ket
               = ::ket::mpi::utility::general_mpi_detail::make_local_swap_qubit_swappable(
                   parallel_policy, local_state, permutation,
                   unswappable_qubits, permutated_local_swap_qubit);
+
+# ifndef NDEBUG
+            if (maybe_io_rank && my_rank == *maybe_io_rank)
+              std::clog << "[permutation] " << permutation << std::endl;
+# endif // NDEBUG
 
 
             // xxxxxbxx(|xxxxxxxxxx)
@@ -297,6 +321,11 @@ namespace ket
 
             using ::ket::mpi::permutate;
             permutate(permutation, qubits[0u], local_swap_qubit);
+
+# ifndef NDEBUG
+            if (maybe_io_rank && my_rank == *maybe_io_rank)
+              std::clog << "[permutation] " << permutation << std::endl;
+# endif // NDEBUG
           }
         };
 
@@ -387,6 +416,13 @@ namespace ket
             ::ket::mpi::utility::log_with_time_guard<char> print(
               "interchange_qubits<2>", environment);
 
+# ifndef NDEBUG
+            boost::optional<yampi::rank> const maybe_io_rank = yampi::lowest_io_process(environment);
+            yampi::rank const my_rank = yampi::world_communicator().rank(environment);
+            if (maybe_io_rank && my_rank == *maybe_io_rank)
+              std::clog << "[permutation] " << permutation << std::endl;
+# endif // NDEBUG
+
             //  Swaps between xxbxb'xx|cc'xxxxxxxx and
             // xxcxc'xx|bb'xxxxxxxx (c = b or ~b). Upper qubits are global
             // qubits representing MPI rank. Lower qubits are local qubits
@@ -465,6 +501,11 @@ namespace ket
             using ::ket::mpi::permutate;
             permutate(permutation, qubits[0u], local_swap_qubit0);
             permutate(permutation, qubits[1u], local_swap_qubit1);
+
+# ifndef NDEBUG
+            if (maybe_io_rank && my_rank == *maybe_io_rank)
+              std::clog << "[permutation] " << permutation << std::endl;
+# endif // NDEBUG
           }
         };
 
@@ -576,6 +617,13 @@ namespace ket
             ::ket::mpi::utility::log_with_time_guard<char> print(
               "interchange_qubits<3>", environment);
 
+# ifndef NDEBUG
+            boost::optional<yampi::rank> const maybe_io_rank = yampi::lowest_io_process(environment);
+            yampi::rank const my_rank = yampi::world_communicator().rank(environment);
+            if (maybe_io_rank && my_rank == *maybe_io_rank)
+              std::clog << "[permutation] " << permutation << std::endl;
+# endif // NDEBUG
+
             //  Swaps between xxbxb'xb''xx|cc'c''xxxxxxxx and
             // xxcxc'xx|bb'xxxxxxxx (c = b or ~b). Upper qubits are global
             // qubits representing MPI rank. Lower qubits are local qubits
@@ -672,6 +720,11 @@ namespace ket
             permutate(permutation, qubits[0u], local_swap_qubit0);
             permutate(permutation, qubits[1u], local_swap_qubit1);
             permutate(permutation, qubits[2u], local_swap_qubit2);
+
+# ifndef NDEBUG
+            if (maybe_io_rank && my_rank == *maybe_io_rank)
+              std::clog << "[permutation] " << permutation << std::endl;
+# endif // NDEBUG
           }
         };
 
