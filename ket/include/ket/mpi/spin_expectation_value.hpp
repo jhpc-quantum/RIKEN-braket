@@ -8,6 +8,8 @@
 # else
 #   include <boost/array.hpp>
 # endif
+# include <ios>
+# include <sstream>
 # ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
 #   include <type_traits>
 # else
@@ -30,12 +32,14 @@
 
 # include <ket/spin_expectation_value.hpp>
 # include <ket/qubit.hpp>
+# include <ket/qubit_io.hpp>
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/meta/real_of.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
 # include <ket/mpi/page/spin_expectation_value.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
+# include <ket/mpi/utility/logger.hpp>
 
 # ifndef BOOST_NO_CXX11_HDR_ARRAY
 #   define KET_array std::array
@@ -116,6 +120,10 @@ namespace ket
       yampi::communicator const communicator,
       yampi::environment const& environment)
     {
+      std::ostringstream output_string_stream("Spin ", std::ios_base::ate);
+      output_string_stream << qubit;
+      ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
+
       typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
       KET_array<qubit_type, 1u> qubits = { qubit };
       ::ket::mpi::utility::maybe_interchange_qubits(
@@ -241,6 +249,10 @@ namespace ket
       yampi::communicator const communicator,
       yampi::environment const& environment)
     {
+      std::ostringstream output_string_stream("Spin ", std::ios_base::ate);
+      output_string_stream << qubit;
+      ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
+
       typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
       KET_array<qubit_type, 1u> qubits = { qubit };
       ::ket::mpi::utility::maybe_interchange_qubits(
