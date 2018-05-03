@@ -749,7 +749,7 @@ namespace ket
             = ::ket::utility::integer_exp2<StateInteger>(get<0u>(minmax_nonpage_permutated_qubits))
               - static_cast<StateInteger>(1u);
           StateInteger const nonpage_middle_bits_mask
-            = (::ket::utility::integer_exp2<StateInteger>(get<1u>(minmax_nonpage_permutated_qubits))
+            = (::ket::utility::integer_exp2<StateInteger>(get<1u>(minmax_nonpage_permutated_qubits) - static_cast<qubit_type>(1u))
                - static_cast<StateInteger>(1u))
               xor nonpage_lower_bits_mask;
           StateInteger const nonpage_upper_bits_mask
@@ -961,7 +961,7 @@ namespace ket
             = ::ket::utility::integer_exp2<StateInteger>(get<0u>(minmax_nonpage_permutated_qubits))
               - static_cast<StateInteger>(1u);
           StateInteger const nonpage_middle_bits_mask
-            = (::ket::utility::integer_exp2<StateInteger>(get<1u>(minmax_nonpage_permutated_qubits))
+            = (::ket::utility::integer_exp2<StateInteger>(get<1u>(minmax_nonpage_permutated_qubits) - static_cast<qubit_type>(1u))
                - static_cast<StateInteger>(1u))
               xor nonpage_lower_bits_mask;
           StateInteger const nonpage_upper_bits_mask
