@@ -74,17 +74,21 @@ int main(int argc, char* argv[])
     return EXIT_FAILURE;
   }
 
-  if (argc < 2 or argc > 3)
+  if (argc < 2 or argc > 4)
   {
     if (is_io_root_rank)
-      std::cerr << "wrong number of arguments: bra qcxfile [seed]" << std::endl;
+      std::cerr << "wrong number of arguments: bra qcxfile [num_page_qubits [seed]]" << std::endl;
     return EXIT_FAILURE;
   }
 
   std::string const filename(argv[1]);
+  unsigned int const num_page_qubits
+    = argc >= 3
+      ? boost::lexical_cast<unsigned int>(argv[2])
+      : 2u;
   seed_type const seed
-    = argc == 3
-      ? boost::lexical_cast<seed_type>(argv[2])
+    = argc == 4
+      ? boost::lexical_cast<seed_type>(argv[3])
       : static_cast<seed_type>(1);
 
   std::ifstream file_stream(filename.c_str());
@@ -100,7 +104,7 @@ int main(int argc, char* argv[])
   //  = bra::make_general_mpi_state(2u, gates.initial_state_value(), gates.num_lqubits(), gates.initial_permutation(), seed, yampi::world_communicator(), environment);
   boost::movelib::unique_ptr<bra::state> state_ptr
     = bra::make_general_mpi_state(
-        2u, gates.initial_state_value(), gates.num_lqubits(), gates.initial_permutation(),
+        num_page_qubits, gates.initial_state_value(), gates.num_lqubits(), gates.initial_permutation(),
         seed, yampi::world_communicator(), environment);
 
   yampi::wall_clock::time_point const start_time = yampi::wall_clock::now(environment);

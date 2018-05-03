@@ -1,5 +1,5 @@
-#ifndef BRA_GENERAL_MPI_2PAGE_STATE_HPP
-# define BRA_GENERAL_MPI_2PAGE_STATE_HPP
+#ifndef BRA_GENERAL_MPI_3PAGE_STATE_HPP
+# define BRA_GENERAL_MPI_3PAGE_STATE_HPP
 
 # include <boost/config.hpp>
 
@@ -24,19 +24,19 @@
 
 namespace bra
 {
-  class general_mpi_2page_state final
+  class general_mpi_3page_state final
     : public ::bra::state
   {
     ket::utility::policy::parallel<unsigned int> parallel_policy_;
     ket::mpi::utility::policy::general_mpi mpi_policy_;
 
     typedef
-      ket::mpi::state<complex_type, 2, yampi::allocator<complex_type> >
+      ket::mpi::state<complex_type, 3, yampi::allocator<complex_type> >
       data_type;
     data_type data_;
 
    public:
-    general_mpi_2page_state(
+    general_mpi_3page_state(
       ::bra::state::state_integer_type const initial_integer,
       unsigned int const num_local_qubits,
       unsigned int const total_num_qubits,
@@ -44,7 +44,7 @@ namespace bra
       yampi::communicator const communicator,
       yampi::environment const& environment);
 
-    general_mpi_2page_state(
+    general_mpi_3page_state(
       ::bra::state::state_integer_type const initial_integer,
       unsigned int const num_local_qubits,
       std::vector<qubit_type> const& initial_permutation,
@@ -53,25 +53,25 @@ namespace bra
       yampi::environment const& environment);
 
 # ifndef BOOST_NO_CXX11_DEFAULTED_FUNCTIONS
-    ~general_mpi_2page_state() = default;
+    ~general_mpi_3page_state() = default;
 # else
-    ~general_mpi_2page_state() { }
+    ~general_mpi_3page_state() { }
 # endif
 
    private:
 # ifndef BOOST_NO_CXX11_DELETED_FUNCTIONS
-    general_mpi_2page_state(general_mpi_2page_state const&) = delete;
-    general_mpi_2page_state& operator=(general_mpi_2page_state const&) = delete;
+    general_mpi_3page_state(general_mpi_3page_state const&) = delete;
+    general_mpi_3page_state& operator=(general_mpi_3page_state const&) = delete;
 #   ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
-    general_mpi_2page_state(general_mpi_2page_state&&) = delete;
-    general_mpi_2page_state& operator=(general_mpi_2page_state&&) = delete;
+    general_mpi_3page_state(general_mpi_3page_state&&) = delete;
+    general_mpi_3page_state& operator=(general_mpi_3page_state&&) = delete;
 #   endif // BOOST_NO_CXX11_RVALUE_REFERENCES
 # else // BOOST_NO_CXX11_DELETED_FUNCTIONS
-    general_mpi_2page_state(general_mpi_2page_state const&);
-    general_mpi_2page_state& operator=(general_mpi_2page_state const&);
+    general_mpi_3page_state(general_mpi_3page_state const&);
+    general_mpi_3page_state& operator=(general_mpi_3page_state const&);
 #   ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
-    general_mpi_2page_state(general_mpi_2page_state&&);
-    general_mpi_2page_state& operator=(general_mpi_2page_state&&);
+    general_mpi_3page_state(general_mpi_3page_state&&);
+    general_mpi_3page_state& operator=(general_mpi_3page_state&&);
 #   endif // BOOST_NO_CXX11_RVALUE_REFERENCES
 # endif // BOOST_NO_CXX11_DELETED_FUNCTIONS
 

@@ -10,9 +10,7 @@
 #include <ket/mpi/gate/controlled_not.hpp>
 #include <ket/mpi/gate/controlled_phase_shift.hpp>
 #include <ket/mpi/gate/controlled_v.hpp>
-/*
 #include <ket/mpi/gate/toffoli.hpp>
-*/
 #include <ket/mpi/all_spin_expectation_values.hpp>
 #include <ket/mpi/measure.hpp>
 
@@ -22,8 +20,11 @@
 
 namespace bra
 {
+  unsigned int general_mpi_state::do_num_page_qubits() const
+  { return 0u; }
+
   unsigned int general_mpi_state::do_num_pages() const
-  { return 2u; }
+  { return 1u; }
 
   general_mpi_state::general_mpi_state(
     ::bra::state::state_integer_type const initial_integer,
@@ -185,7 +186,6 @@ namespace bra
       permutation_, buffer_, complex_datatype_, communicator_, environment_);
   }
 
-  /*
   void general_mpi_state::do_toffoli(
     qubit_type const target_qubit,
     control_qubit_type const control_qubit1,
@@ -207,7 +207,6 @@ namespace bra
       data_, target_qubit, control_qubit1, control_qubit2,
       permutation_, buffer_, complex_datatype_, communicator_, environment_);
   }
-  */
 
   void general_mpi_state::do_expectation_values(yampi::rank const root)
   {

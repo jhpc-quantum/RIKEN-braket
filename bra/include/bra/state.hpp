@@ -150,6 +150,7 @@ namespace bra
     { return measurement_finish_time_; }
 
 
+    unsigned int num_page_qubits() const { return do_num_page_qubits(); }
     unsigned int num_pages() const { return do_num_pages(); }
 
     ::bra::state& hadamard(qubit_type const qubit)
@@ -218,7 +219,6 @@ namespace bra
       return *this;
     }
 
-    /*
     ::bra::state& toffoli(
       qubit_type const target_qubit,
       control_qubit_type const control_qubit1,
@@ -236,11 +236,11 @@ namespace bra
       do_adj_toffoli(target_qubit, control_qubit1, control_qubit2);
       return *this;
     }
-    */
 
     ::bra::state& measurement(yampi::rank const root);
 
    private:
+    virtual unsigned int do_num_page_qubits() const = 0;
     virtual unsigned int do_num_pages() const = 0;
 
     virtual void do_hadamard(qubit_type const qubit) = 0;
@@ -274,7 +274,6 @@ namespace bra
       complex_type const phase_coefficient,
       qubit_type const target_qubit, control_qubit_type const control_qubit)
       = 0;
-    /*
     virtual void do_toffoli(
       qubit_type const target_qubit,
       control_qubit_type const control_qubit1,
@@ -285,7 +284,6 @@ namespace bra
       control_qubit_type const control_qubit1,
       control_qubit_type const control_qubit2)
       = 0;
-      */
     virtual void do_expectation_values(yampi::rank const root) = 0;
     virtual void do_measure(yampi::rank const root) = 0;
   };

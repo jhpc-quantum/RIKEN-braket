@@ -1,0 +1,28 @@
+QUBITS         12
+!bit assignment 0 1 2 3 4 5 11 10 9 8 7 6
+
++Y             0
++Y             0
+-Y             2
+-Y             2
++X             4
++X             4
+-X             7
+-X             7
++Y             9
++Y             9
++Y             11
++Y             11
+
+TOFFOLI        1  2  0
+TOFFOLI        4  5  3
+TOFFOLI        7  8  6
+TOFFOLI        10 11 9
+
+TOFFOLI        2  4  0
+TOFFOLI        7  9  1
+TOFFOLI        11 1  10
+TOFFOLI        1  10 3
+!TOFFOLI        1  10 4
+
+BEGIN MEASUREMENT

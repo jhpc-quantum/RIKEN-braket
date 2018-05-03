@@ -14,19 +14,19 @@
 #include <ket/mpi/all_spin_expectation_values.hpp>
 #include <ket/mpi/measure.hpp>
 
-#include <bra/general_mpi_2page_state.hpp>
+#include <bra/general_mpi_3page_state.hpp>
 #include <bra/state.hpp>
 
 
 namespace bra
 {
-  unsigned int general_mpi_2page_state::do_num_page_qubits() const
-  { return 2u; }
+  unsigned int general_mpi_3page_state::do_num_page_qubits() const
+  { return 3u; }
 
-  unsigned int general_mpi_2page_state::do_num_pages() const
-  { return 4u; }
+  unsigned int general_mpi_3page_state::do_num_pages() const
+  { return 8u; }
 
-  general_mpi_2page_state::general_mpi_2page_state(
+  general_mpi_3page_state::general_mpi_3page_state(
     ::bra::state::state_integer_type const initial_integer,
     unsigned int const num_local_qubits,
     unsigned int const total_num_qubits,
@@ -41,7 +41,7 @@ namespace bra
         permutation_, communicator, environment)
   { }
 
-  general_mpi_2page_state::general_mpi_2page_state(
+  general_mpi_3page_state::general_mpi_3page_state(
     ::bra::state::state_integer_type const initial_integer,
     unsigned int const num_local_qubits,
     std::vector<qubit_type> const& initial_permutation,
@@ -56,7 +56,7 @@ namespace bra
         permutation_, communicator, environment)
   { }
 
-  void general_mpi_2page_state::do_hadamard(
+  void general_mpi_3page_state::do_hadamard(
     qubit_type const qubit)
   {
     ket::mpi::gate::hadamard(
@@ -65,7 +65,7 @@ namespace bra
       permutation_, buffer_, complex_datatype_, communicator_, environment_);
   }
 
-  void general_mpi_2page_state::do_adj_hadamard(
+  void general_mpi_3page_state::do_adj_hadamard(
     qubit_type const qubit)
   {
     ket::mpi::gate::adj_hadamard(
@@ -74,7 +74,7 @@ namespace bra
       permutation_, buffer_, complex_datatype_, communicator_, environment_);
   }
 
-  void general_mpi_2page_state::do_phase_shift(
+  void general_mpi_3page_state::do_phase_shift(
     complex_type const phase_coefficient, qubit_type const qubit)
   {
     ket::mpi::gate::phase_shift_coeff(
@@ -83,7 +83,7 @@ namespace bra
       permutation_, buffer_, complex_datatype_, communicator_, environment_);
   }
 
-  void general_mpi_2page_state::do_adj_phase_shift(
+  void general_mpi_3page_state::do_adj_phase_shift(
     complex_type const phase_coefficient, qubit_type const qubit)
   {
     ket::mpi::gate::adj_phase_shift_coeff(
@@ -92,7 +92,7 @@ namespace bra
       permutation_, buffer_, complex_datatype_, communicator_, environment_);
   }
 
-  void general_mpi_2page_state::do_x_rotation_half_pi(
+  void general_mpi_3page_state::do_x_rotation_half_pi(
     qubit_type const qubit)
   {
     ket::mpi::gate::x_rotation_half_pi(
@@ -101,7 +101,7 @@ namespace bra
       permutation_, buffer_, complex_datatype_, communicator_, environment_);
   }
 
-  void general_mpi_2page_state::do_adj_x_rotation_half_pi(
+  void general_mpi_3page_state::do_adj_x_rotation_half_pi(
     qubit_type const qubit)
   {
     ket::mpi::gate::adj_x_rotation_half_pi(
@@ -110,7 +110,7 @@ namespace bra
       permutation_, buffer_, complex_datatype_, communicator_, environment_);
   }
 
-  void general_mpi_2page_state::do_y_rotation_half_pi(
+  void general_mpi_3page_state::do_y_rotation_half_pi(
     qubit_type const qubit)
   {
     ket::mpi::gate::y_rotation_half_pi(
@@ -119,7 +119,7 @@ namespace bra
       permutation_, buffer_, complex_datatype_, communicator_, environment_);
   }
 
-  void general_mpi_2page_state::do_adj_y_rotation_half_pi(
+  void general_mpi_3page_state::do_adj_y_rotation_half_pi(
     qubit_type const qubit)
   {
     ket::mpi::gate::adj_y_rotation_half_pi(
@@ -128,7 +128,7 @@ namespace bra
       permutation_, buffer_, complex_datatype_, communicator_, environment_);
   }
 
-  void general_mpi_2page_state::do_controlled_not(
+  void general_mpi_3page_state::do_controlled_not(
     qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
     ket::mpi::gate::controlled_not(
@@ -137,7 +137,7 @@ namespace bra
       permutation_, buffer_, complex_datatype_, communicator_, environment_);
   }
 
-  void general_mpi_2page_state::do_adj_controlled_not(
+  void general_mpi_3page_state::do_adj_controlled_not(
     qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
     ket::mpi::gate::adj_controlled_not(
@@ -146,7 +146,7 @@ namespace bra
       permutation_, buffer_, complex_datatype_, communicator_, environment_);
   }
 
-  void general_mpi_2page_state::do_controlled_phase_shift(
+  void general_mpi_3page_state::do_controlled_phase_shift(
     complex_type const phase_coefficient,
     qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
@@ -156,7 +156,7 @@ namespace bra
       permutation_, buffer_, complex_datatype_, communicator_, environment_);
   }
 
-  void general_mpi_2page_state::do_adj_controlled_phase_shift(
+  void general_mpi_3page_state::do_adj_controlled_phase_shift(
     complex_type const phase_coefficient,
     qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
@@ -166,7 +166,7 @@ namespace bra
       permutation_, buffer_, complex_datatype_, communicator_, environment_);
   }
 
-  void general_mpi_2page_state::do_controlled_v(
+  void general_mpi_3page_state::do_controlled_v(
     complex_type const phase_coefficient,
     qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
@@ -176,7 +176,7 @@ namespace bra
       permutation_, buffer_, complex_datatype_, communicator_, environment_);
   }
 
-  void general_mpi_2page_state::do_adj_controlled_v(
+  void general_mpi_3page_state::do_adj_controlled_v(
     complex_type const phase_coefficient,
     qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
@@ -186,7 +186,7 @@ namespace bra
       permutation_, buffer_, complex_datatype_, communicator_, environment_);
   }
 
-  void general_mpi_2page_state::do_toffoli(
+  void general_mpi_3page_state::do_toffoli(
     qubit_type const target_qubit,
     control_qubit_type const control_qubit1,
     control_qubit_type const control_qubit2)
@@ -197,7 +197,7 @@ namespace bra
       permutation_, buffer_, complex_datatype_, communicator_, environment_);
   }
 
-  void general_mpi_2page_state::do_adj_toffoli(
+  void general_mpi_3page_state::do_adj_toffoli(
     qubit_type const target_qubit,
     control_qubit_type const control_qubit1,
     control_qubit_type const control_qubit2)
@@ -208,7 +208,7 @@ namespace bra
       permutation_, buffer_, complex_datatype_, communicator_, environment_);
   }
 
-  void general_mpi_2page_state::do_expectation_values(yampi::rank const root)
+  void general_mpi_3page_state::do_expectation_values(yampi::rank const root)
   {
     maybe_expectation_values_
       = ket::mpi::all_spin_expectation_values<spins_allocator_type>(
@@ -217,7 +217,7 @@ namespace bra
           buffer_, real_datatype_, complex_datatype_, root, communicator_, environment_);
   }
 
-  void general_mpi_2page_state::do_measure(yampi::rank const root)
+  void general_mpi_3page_state::do_measure(yampi::rank const root)
   {
     measured_value_
       = ket::mpi::measure(

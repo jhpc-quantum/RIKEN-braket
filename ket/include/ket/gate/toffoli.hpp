@@ -137,9 +137,8 @@ namespace ket
         ParallelPolicy const parallel_policy,
         RandomAccessIterator const first, RandomAccessIterator const last,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        KET_array<
-          ::ket::control< ::ket::qubit<StateInteger, BitInteger> >, 2u> const&
-          control_qubits)
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
       {
         static_assert(
           KET_is_unsigned<StateInteger>::value,
@@ -150,15 +149,13 @@ namespace ket
         assert(
           ::ket::utility::integer_exp2<StateInteger>(target_qubit)
             < static_cast<StateInteger>(last-first)
-          and ::ket::utility::integer_exp2<StateInteger>(
-                control_qubits[0u].qubit())
+          and ::ket::utility::integer_exp2<StateInteger>(control_qubit1.qubit())
                 < static_cast<StateInteger>(last-first)
-          and ::ket::utility::integer_exp2<StateInteger>(
-                control_qubits[1u].qubit())
+          and ::ket::utility::integer_exp2<StateInteger>(control_qubit2.qubit())
                 < static_cast<StateInteger>(last-first)
-          and target_qubit != control_qubits[0u].qubit()
-          and target_qubit != control_qubits[1u].qubit()
-          and control_qubits[0u].qubit() != control_qubits[1u].qubit());
+          and target_qubit != control_qubit1.qubit()
+          and target_qubit != control_qubit2.qubit()
+          and control_qubit1.qubit() != control_qubit2.qubit());
         assert(
           ::ket::utility::integer_exp2<StateInteger>(
             ::ket::utility::integer_log2<BitInteger>(last-first))
@@ -167,16 +164,14 @@ namespace ket
         typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
 
         KET_array<qubit_type, 3u> sorted_qubits
-          = {target_qubit, control_qubits[0u].qubit(), control_qubits[1u].qubit()};
+          = {target_qubit, control_qubit1.qubit(), control_qubit2.qubit()};
         boost::sort(sorted_qubits);
 
         StateInteger const target_qubit_mask
           = ::ket::utility::integer_exp2<StateInteger>(target_qubit);
         StateInteger const control_qubits_mask
-          = ::ket::utility::integer_exp2<StateInteger>(
-              control_qubits[0u].qubit())
-            bitor ::ket::utility::integer_exp2<StateInteger>(
-                    control_qubits[1u].qubit());
+          = ::ket::utility::integer_exp2<StateInteger>(control_qubit1.qubit())
+            bitor ::ket::utility::integer_exp2<StateInteger>(control_qubit2.qubit());
 
         KET_array<StateInteger, 4u> bits_mask;
         bits_mask[0u]
@@ -234,13 +229,12 @@ namespace ket
     inline void toffoli(
       RandomAccessIterator const first, RandomAccessIterator const last,
       ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-      KET_array<
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> >, 2u> const&
-        control_qubits)
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
     {
       ::ket::gate::toffoli_detail::toffoli_impl(
         ::ket::utility::policy::make_sequential(),
-        first, last, target_qubit, control_qubits);
+        first, last, target_qubit, control_qubit1, control_qubit2);
     }
 
     template <
@@ -250,12 +244,11 @@ namespace ket
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-      KET_array<
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> >, 2u> const&
-        control_qubits)
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
     {
       ::ket::gate::toffoli_detail::toffoli_impl(
-        parallel_policy, first, last, target_qubit, control_qubits);
+        parallel_policy, first, last, target_qubit, control_qubit1, control_qubit2);
     }
 
     namespace ranges
@@ -266,13 +259,12 @@ namespace ket
       inline RandomAccessRange& toffoli(
         RandomAccessRange& state,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        KET_array<
-          ::ket::control< ::ket::qubit<StateInteger, BitInteger> >, 2u> const&
-          control_qubits)
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
       {
         ::ket::gate::toffoli_detail::toffoli_impl(
           ::ket::utility::policy::make_sequential(),
-          boost::begin(state), boost::end(state), target_qubit, control_qubits);
+          boost::begin(state), boost::end(state), target_qubit, control_qubit1, control_qubit2);
         return state;
       }
 
@@ -282,13 +274,12 @@ namespace ket
       inline RandomAccessRange& toffoli(
         ParallelPolicy const parallel_policy, RandomAccessRange& state,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        KET_array<
-          ::ket::control< ::ket::qubit<StateInteger, BitInteger> >, 2u> const&
-          control_qubits)
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
       {
         ::ket::gate::toffoli_detail::toffoli_impl(
           parallel_policy,
-          boost::begin(state), boost::end(state), target_qubit, control_qubits);
+          boost::begin(state), boost::end(state), target_qubit, control_qubit1, control_qubit2);
         return state;
       }
 
@@ -299,14 +290,13 @@ namespace ket
       inline std::vector<Complex, Allocator>& toffoli(
         std::vector<Complex, Allocator>& state,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        KET_array<
-          ::ket::control< ::ket::qubit<StateInteger, BitInteger> >, 2u> const&
-          control_qubits)
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
       {
         ::ket::gate::toffoli_detail::toffoli_impl(
           ::ket::utility::policy::make_sequential(),
           KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
-          target_qubit, control_qubits);
+          target_qubit, control_qubit1, control_qubit2);
         return state;
       }
 
@@ -318,14 +308,13 @@ namespace ket
         ParallelPolicy const parallel_policy,
         std::vector<Complex, Allocator>& state,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        KET_array<
-          ::ket::control< ::ket::qubit<StateInteger, BitInteger> >, 2u> const&
-          control_qubits)
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
       {
         ::ket::gate::toffoli_detail::toffoli_impl(
           parallel_policy,
           KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
-          target_qubit, control_qubits);
+          target_qubit, control_qubit1, control_qubit2);
         return state;
       }
 # endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
@@ -338,10 +327,9 @@ namespace ket
     inline void conj_toffoli(
       RandomAccessIterator const first, RandomAccessIterator const last,
       ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-      KET_array<
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> >, 2u> const&
-        control_qubits)
-    { ::ket::gate::toffoli(first, last, target_qubit, control_qubits); }
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
+    { ::ket::gate::toffoli(first, last, target_qubit, control_qubit1, control_qubit2); }
 
     template <
       typename ParallelPolicy, typename RandomAccessIterator,
@@ -350,10 +338,9 @@ namespace ket
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-      KET_array<
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> >, 2u> const&
-        control_qubits)
-    { ::ket::gate::toffoli(parallel_policy, first, last, target_qubit, control_qubits); }
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
+    { ::ket::gate::toffoli(parallel_policy, first, last, target_qubit, control_qubit1, control_qubit2); }
 
     namespace ranges
     {
@@ -363,10 +350,9 @@ namespace ket
       inline RandomAccessRange& conj_toffoli(
         RandomAccessRange& state,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        KET_array<
-          ::ket::control< ::ket::qubit<StateInteger, BitInteger> >, 2u> const&
-          control_qubits)
-      { return ::ket::gate::ranges::toffoli(state, target_qubit, control_qubits); }
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
+      { return ::ket::gate::ranges::toffoli(state, target_qubit, control_qubit1, control_qubit2); }
 
       template <
         typename ParallelPolicy, typename RandomAccessRange,
@@ -374,10 +360,9 @@ namespace ket
       inline RandomAccessRange& conj_toffoli(
         ParallelPolicy const parallel_policy, RandomAccessRange& state,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        KET_array<
-          ::ket::control< ::ket::qubit<StateInteger, BitInteger> >, 2u> const&
-          control_qubits)
-      { return ::ket::gate::ranges::toffoli(parallel_policy, state, target_qubit, control_qubits); }
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
+      { return ::ket::gate::ranges::toffoli(parallel_policy, state, target_qubit, control_qubit1, control_qubit2); }
     } // namespace ranges
 
 
@@ -387,10 +372,9 @@ namespace ket
     inline void adj_toffoli(
       RandomAccessIterator const first, RandomAccessIterator const last,
       ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-      KET_array<
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> >, 2u> const&
-        control_qubits)
-    { ::ket::gate::conj_toffoli(first, last, target_qubit, control_qubits); }
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
+    { ::ket::gate::conj_toffoli(first, last, target_qubit, control_qubit1, control_qubit2); }
 
     template <
       typename ParallelPolicy, typename RandomAccessIterator,
@@ -399,12 +383,11 @@ namespace ket
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-      KET_array<
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> >, 2u> const&
-        control_qubits)
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
     {
       ::ket::gate::conj_toffoli(
-        parallel_policy, first, last, target_qubit, control_qubits);
+        parallel_policy, first, last, target_qubit, control_qubit1, control_qubit2);
     }
 
     namespace ranges
@@ -415,10 +398,9 @@ namespace ket
       inline RandomAccessRange& adj_toffoli(
         RandomAccessRange& state,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        KET_array<
-          ::ket::control< ::ket::qubit<StateInteger, BitInteger> >, 2u> const&
-          control_qubits)
-      { return ::ket::gate::ranges::conj_toffoli(state, target_qubit, control_qubits); }
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
+      { return ::ket::gate::ranges::conj_toffoli(state, target_qubit, control_qubit1, control_qubit2); }
 
       template <
         typename ParallelPolicy, typename RandomAccessRange,
@@ -426,12 +408,11 @@ namespace ket
       inline RandomAccessRange& adj_toffoli(
         ParallelPolicy const parallel_policy, RandomAccessRange& state,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        KET_array<
-          ::ket::control< ::ket::qubit<StateInteger, BitInteger> >, 2u> const&
-          control_qubits)
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
       {
         return ::ket::gate::ranges::conj_toffoli(
-          parallel_policy, state, target_qubit, control_qubits);
+          parallel_policy, state, target_qubit, control_qubit1, control_qubit2);
       }
     } // namespace ranges
   } // namespace gate
