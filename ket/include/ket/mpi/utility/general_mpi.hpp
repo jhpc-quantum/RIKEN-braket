@@ -261,7 +261,7 @@ namespace ket
             boost::optional<yampi::rank> const maybe_io_rank = yampi::lowest_io_process(environment);
             yampi::rank const my_rank = yampi::world_communicator().rank(environment);
             if (maybe_io_rank && my_rank == *maybe_io_rank)
-              std::clog << "[permutation] " << permutation << std::endl;
+              std::clog << "[permutation before changing qubits] " << permutation << std::endl;
 # endif // NDEBUG
 
             //  Swaps between xxxbxxx|(~b)xxxxxxxxx and xxx(~b)xxx|bxxxxxxxxx.
@@ -281,7 +281,7 @@ namespace ket
 
 # ifndef NDEBUG
             if (maybe_io_rank && my_rank == *maybe_io_rank)
-              std::clog << "[permutation] " << permutation << std::endl;
+              std::clog << "[permutation after changing local swap qubits] " << permutation << std::endl;
 # endif // NDEBUG
 
 
@@ -324,7 +324,7 @@ namespace ket
 
 # ifndef NDEBUG
             if (maybe_io_rank && my_rank == *maybe_io_rank)
-              std::clog << "[permutation] " << permutation << std::endl;
+              std::clog << "[permutation after changing local/global qubits] " << permutation << std::endl;
 # endif // NDEBUG
           }
         };
@@ -420,7 +420,7 @@ namespace ket
             boost::optional<yampi::rank> const maybe_io_rank = yampi::lowest_io_process(environment);
             yampi::rank const my_rank = yampi::world_communicator().rank(environment);
             if (maybe_io_rank && my_rank == *maybe_io_rank)
-              std::clog << "[permutation] " << permutation << std::endl;
+              std::clog << "[permutation before changing qubits] " << permutation << std::endl;
 # endif // NDEBUG
 
             //  Swaps between xxbxb'xx|cc'xxxxxxxx and
@@ -441,6 +441,10 @@ namespace ket
                   parallel_policy, local_state, permutation,
                   unswappable_qubits, permutated_local_swap_qubit1);
 
+# ifndef NDEBUG
+            if (maybe_io_rank && my_rank == *maybe_io_rank)
+              std::clog << "[permutation after changing local swap qubits] " << permutation << std::endl;
+# endif // NDEBUG
 
             // xxbxb'xx(|xxxxxxxxxx)
             StateInteger const source_global_index
@@ -504,7 +508,7 @@ namespace ket
 
 # ifndef NDEBUG
             if (maybe_io_rank && my_rank == *maybe_io_rank)
-              std::clog << "[permutation] " << permutation << std::endl;
+              std::clog << "[permutation after changing local/global qubits] " << permutation << std::endl;
 # endif // NDEBUG
           }
         };
@@ -621,7 +625,7 @@ namespace ket
             boost::optional<yampi::rank> const maybe_io_rank = yampi::lowest_io_process(environment);
             yampi::rank const my_rank = yampi::world_communicator().rank(environment);
             if (maybe_io_rank && my_rank == *maybe_io_rank)
-              std::clog << "[permutation] " << permutation << std::endl;
+              std::clog << "[permutation before changing qubits] " << permutation << std::endl;
 # endif // NDEBUG
 
             //  Swaps between xxbxb'xb''xx|cc'c''xxxxxxxx and
@@ -647,6 +651,10 @@ namespace ket
                   parallel_policy, local_state, permutation,
                   unswappable_qubits, permutated_local_swap_qubit2);
 
+# ifndef NDEBUG
+            if (maybe_io_rank && my_rank == *maybe_io_rank)
+              std::clog << "[permutation after changing local swap qubits] " << permutation << std::endl;
+# endif // NDEBUG
 
             // xxbxb'xb''xx(|xxxxxxxxxx)
             StateInteger const source_global_index
@@ -723,7 +731,7 @@ namespace ket
 
 # ifndef NDEBUG
             if (maybe_io_rank && my_rank == *maybe_io_rank)
-              std::clog << "[permutation] " << permutation << std::endl;
+              std::clog << "[permutation after changing local/global qubits] " << permutation << std::endl;
 # endif // NDEBUG
           }
         };
