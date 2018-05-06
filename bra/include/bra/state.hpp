@@ -159,6 +159,24 @@ namespace bra
     ::bra::state& adj_hadamard(qubit_type const qubit)
     { do_adj_hadamard(qubit); return *this; }
 
+    ::bra::state& pauli_x(qubit_type const qubit)
+    { do_pauli_x(qubit); return *this; }
+
+    ::bra::state& adj_pauli_x(qubit_type const qubit)
+    { do_adj_pauli_x(qubit); return *this; }
+
+    ::bra::state& pauli_y(qubit_type const qubit)
+    { do_pauli_y(qubit); return *this; }
+
+    ::bra::state& adj_pauli_y(qubit_type const qubit)
+    { do_adj_pauli_y(qubit); return *this; }
+
+    ::bra::state& pauli_z(qubit_type const qubit)
+    { do_pauli_z(qubit); return *this; }
+
+    ::bra::state& adj_pauli_z(qubit_type const qubit)
+    { do_adj_pauli_z(qubit); return *this; }
+
     ::bra::state& phase_shift(
       complex_type const phase_coefficient, qubit_type const qubit)
     { do_phase_shift(phase_coefficient, qubit); return *this; }
@@ -245,6 +263,12 @@ namespace bra
 
     virtual void do_hadamard(qubit_type const qubit) = 0;
     virtual void do_adj_hadamard(qubit_type const qubit) = 0;
+    virtual void do_pauli_x(qubit_type const qubit) = 0;
+    virtual void do_adj_pauli_x(qubit_type const qubit) = 0;
+    virtual void do_pauli_y(qubit_type const qubit) = 0;
+    virtual void do_adj_pauli_y(qubit_type const qubit) = 0;
+    virtual void do_pauli_z(qubit_type const qubit) = 0;
+    virtual void do_adj_pauli_z(qubit_type const qubit) = 0;
     virtual void do_phase_shift(complex_type const phase_coefficient, qubit_type const qubit) = 0;
     virtual void do_adj_phase_shift(
       complex_type const phase_coefficient, qubit_type const qubit) = 0;

@@ -33,6 +33,9 @@
 #include <bra/state.hpp>
 #include <bra/gate/gate.hpp>
 #include <bra/gate/hadamard.hpp>
+#include <bra/gate/pauli_x.hpp>
+#include <bra/gate/pauli_y.hpp>
+#include <bra/gate/pauli_z.hpp>
 #include <bra/gate/phase_shift.hpp>
 #include <bra/gate/adj_phase_shift.hpp>
 #include <bra/gate/x_rotation_half_pi.hpp>
@@ -234,6 +237,18 @@ namespace bra
         data_.push_back(
           boost::movelib::unique_ptr< ::bra::gate::gate >(
             new ::bra::gate::hadamard(read_hadamard(columns))));
+      else if (first_mnemonic == "X")
+        data_.push_back(
+          boost::movelib::unique_ptr< ::bra::gate::gate >(
+            new ::bra::gate::pauli_x(read_pauli_x(columns))));
+      else if (first_mnemonic == "Y")
+        data_.push_back(
+          boost::movelib::unique_ptr< ::bra::gate::gate >(
+            new ::bra::gate::pauli_y(read_pauli_y(columns))));
+      else if (first_mnemonic == "Z")
+        data_.push_back(
+          boost::movelib::unique_ptr< ::bra::gate::gate >(
+            new ::bra::gate::pauli_z(read_pauli_z(columns))));
       else if (first_mnemonic == "R" or first_mnemonic == "+R")
       {
         qubit_type target;

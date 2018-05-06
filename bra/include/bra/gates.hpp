@@ -220,6 +220,9 @@ namespace bra
     boost::tuple<control_qubit_type, control_qubit_type, qubit_type> read_2controls_target(columns_type const& columns) const;
 
     qubit_type read_hadamard(columns_type const& columns) const { return read_target(columns); }
+    qubit_type read_pauli_x(columns_type const& columns) const { return read_target(columns); }
+    qubit_type read_pauli_y(columns_type const& columns) const { return read_target(columns); }
+    qubit_type read_pauli_z(columns_type const& columns) const { return read_target(columns); }
     boost::tuple<qubit_type, int> read_phase_shift(columns_type const& columns) const { return read_target_phaseexp(columns); }
     qubit_type read_x_rotation_half_pi(columns_type const& columns) const { return read_target(columns); }
     qubit_type read_adj_x_rotation_half_pi(columns_type const& columns) const { return read_target(columns); }

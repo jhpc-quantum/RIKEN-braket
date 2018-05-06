@@ -81,6 +81,12 @@ namespace bra
 
     void do_hadamard(qubit_type const qubit) override;
     void do_adj_hadamard(qubit_type const qubit) override;
+    void do_pauli_x(qubit_type const qubit) override;
+    void do_adj_pauli_x(qubit_type const qubit) override;
+    void do_pauli_y(qubit_type const qubit) override;
+    void do_adj_pauli_y(qubit_type const qubit) override;
+    void do_pauli_z(qubit_type const qubit) override;
+    void do_adj_pauli_z(qubit_type const qubit) override;
     void do_phase_shift(complex_type const phase_coefficient, qubit_type const qubit) override;
     void do_adj_phase_shift(complex_type const phase_coefficient, qubit_type const qubit) override;
     void do_x_rotation_half_pi(qubit_type const qubit) override;

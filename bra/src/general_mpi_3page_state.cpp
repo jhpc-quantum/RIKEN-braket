@@ -4,6 +4,9 @@
 #include <yampi/environment.hpp>
 
 #include <ket/mpi/gate/hadamard.hpp>
+#include <ket/mpi/gate/pauli_x.hpp>
+#include <ket/mpi/gate/pauli_y.hpp>
+#include <ket/mpi/gate/pauli_z.hpp>
 #include <ket/mpi/gate/phase_shift.hpp>
 #include <ket/mpi/gate/x_rotation_half_pi.hpp>
 #include <ket/mpi/gate/y_rotation_half_pi.hpp>
@@ -69,6 +72,60 @@ namespace bra
     qubit_type const qubit)
   {
     ket::mpi::gate::adj_hadamard(
+      mpi_policy_, parallel_policy_,
+      data_, qubit,
+      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+  }
+
+  void general_mpi_3page_state::do_pauli_x(
+    qubit_type const qubit)
+  {
+    ket::mpi::gate::pauli_x(
+      mpi_policy_, parallel_policy_,
+      data_, qubit,
+      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+  }
+
+  void general_mpi_3page_state::do_adj_pauli_x(
+    qubit_type const qubit)
+  {
+    ket::mpi::gate::adj_pauli_x(
+      mpi_policy_, parallel_policy_,
+      data_, qubit,
+      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+  }
+
+  void general_mpi_3page_state::do_pauli_y(
+    qubit_type const qubit)
+  {
+    ket::mpi::gate::pauli_y(
+      mpi_policy_, parallel_policy_,
+      data_, qubit,
+      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+  }
+
+  void general_mpi_3page_state::do_adj_pauli_y(
+    qubit_type const qubit)
+  {
+    ket::mpi::gate::adj_pauli_y(
+      mpi_policy_, parallel_policy_,
+      data_, qubit,
+      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+  }
+
+  void general_mpi_3page_state::do_pauli_z(
+    qubit_type const qubit)
+  {
+    ket::mpi::gate::pauli_z(
+      mpi_policy_, parallel_policy_,
+      data_, qubit,
+      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+  }
+
+  void general_mpi_3page_state::do_adj_pauli_z(
+    qubit_type const qubit)
+  {
+    ket::mpi::gate::adj_pauli_z(
       mpi_policy_, parallel_policy_,
       data_, qubit,
       permutation_, buffer_, complex_datatype_, communicator_, environment_);
