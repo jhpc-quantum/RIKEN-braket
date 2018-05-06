@@ -16,7 +16,7 @@ namespace bra
 {
   namespace gate
   {
-    std::string const adj_x_rotation_half_pi::name_ = "X+";
+    std::string const adj_x_rotation_half_pi::name_ = "-X";
 
     adj_x_rotation_half_pi::adj_x_rotation_half_pi(qubit_type const qubit)
       : ::bra::gate::gate(), qubit_(qubit)
