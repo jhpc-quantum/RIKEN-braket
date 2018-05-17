@@ -876,7 +876,7 @@ namespace ket
         complex_type const phase_coefficient2 = ::ket::utility::exp_i<complex_type>(-phase2);
 
         using boost::math::constants::one_div_root_two;
-        complex_type const modified_phase_coefficient2 = one_div_root_two<Real>() * phase_coefficient1;
+        complex_type const modified_phase_coefficient2 = one_div_root_two<Real>() * phase_coefficient2;
 
         StateInteger const qubit_mask
           = ::ket::utility::integer_exp2<StateInteger>(qubit);
@@ -1097,8 +1097,8 @@ namespace ket
         using std::cos;
         using std::sin;
         using boost::math::constants::half;
-        Real const sine = sin(half<real_type>() * phase1);
-        Real const cosine = cos(half<real_type>() * phase1);
+        Real const sine = sin(half<Real>() * phase1);
+        Real const cosine = cos(half<Real>() * phase1);
 
         typedef typename std::iterator_traits<RandomAccessIterator>::value_type complex_type;
         complex_type const phase_coefficient2 = ::ket::utility::exp_i<complex_type>(phase2);
@@ -1368,8 +1368,8 @@ namespace ket
         using std::cos;
         using std::sin;
         using boost::math::constants::half;
-        Real const sine = sin(half<real_type>() * phase1);
-        Real const cosine = cos(half<real_type>() * phase1);
+        Real const sine = sin(half<Real>() * phase1);
+        Real const cosine = cos(half<Real>() * phase1);
 
         typedef typename std::iterator_traits<RandomAccessIterator>::value_type complex_type;
         complex_type const phase_coefficient2 = ::ket::utility::exp_i<complex_type>(-phase2);
@@ -1377,6 +1377,12 @@ namespace ket
 
         complex_type const sine_phase_coefficient2 = sine * phase_coefficient2;
         complex_type const cosine_phase_coefficient2 = cosine * phase_coefficient2;
+
+        StateInteger const qubit_mask
+          = ::ket::utility::integer_exp2<StateInteger>(qubit);
+        StateInteger const lower_bits_mask
+          = qubit_mask-static_cast<StateInteger>(1u);
+        StateInteger const upper_bits_mask = compl lower_bits_mask;
 
         using ::ket::utility::loop_n;
 # ifndef BOOST_NO_CXX11_LAMBDAS
