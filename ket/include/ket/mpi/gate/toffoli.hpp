@@ -59,12 +59,12 @@ namespace ket
             ControlQubit const permutated_control_qubit2)
             : parallel_policy_(parallel_policy),
               permutated_target_qubit_(permutated_target_qubit),
-              permutated_control_qubit1_(permutated_control_qubits1),
-              permutated_control_qubit2_(permutated_control_qubits2)
+              permutated_control_qubit1_(permutated_control_qubit1),
+              permutated_control_qubit2_(permutated_control_qubit2)
           { }
 
           template <typename RandomAccessIterator>
-          void operator(
+          void operator()(
             RandomAccessIterator const first,
             RandomAccessIterator const last) const
           {
@@ -246,12 +246,12 @@ namespace ket
             ControlQubit const permutated_control_qubit2)
             : parallel_policy_(parallel_policy),
               permutated_target_qubit_(permutated_target_qubit),
-              permutated_control_qubit1_(permutated_control_qubits1),
-              permutated_control_qubit2_(permutated_control_qubits2)
+              permutated_control_qubit1_(permutated_control_qubit1),
+              permutated_control_qubit2_(permutated_control_qubit2)
           { }
 
           template <typename RandomAccessIterator>
-          void operator(
+          void operator()(
             RandomAccessIterator const first,
             RandomAccessIterator const last) const
           {
@@ -433,12 +433,12 @@ namespace ket
             ControlQubit const permutated_control_qubit2)
             : parallel_policy_(parallel_policy),
               permutated_target_qubit_(permutated_target_qubit),
-              permutated_control_qubit1_(permutated_control_qubits1),
-              permutated_control_qubit2_(permutated_control_qubits2)
+              permutated_control_qubit1_(permutated_control_qubit1),
+              permutated_control_qubit2_(permutated_control_qubit2)
           { }
 
           template <typename RandomAccessIterator>
-          void operator(
+          void operator()(
             RandomAccessIterator const first,
             RandomAccessIterator const last) const
           {

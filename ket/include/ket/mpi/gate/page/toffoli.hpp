@@ -259,7 +259,7 @@ namespace ket
                 one_first_(one_first),
                 nonpage_control_qubit_mask_(nonpage_control_qubit_mask),
                 nonpage_lower_bits_mask_(nonpage_lower_bits_mask),
-                nonpage_upper_bits_msak_(nonpage_upper_bits_mask)
+                nonpage_upper_bits_mask_(nonpage_upper_bits_mask)
             { }
 
             void operator()(StateInteger const index_wo_qubit, int const) const
@@ -468,7 +468,7 @@ namespace ket
               : one_first_(one_first),
                 nonpage_target_qubit_mask_(nonpage_target_qubit_mask),
                 nonpage_lower_bits_mask_(nonpage_lower_bits_mask),
-                nonpage_upper_bits_msak_(nonpage_upper_bits_mask)
+                nonpage_upper_bits_mask_(nonpage_upper_bits_mask)
             { }
 
             void operator()(StateInteger const index_wo_qubit, int const) const
@@ -676,7 +676,7 @@ namespace ket
                 control_qubits_mask_(control_qubits_mask),
                 nonpage_lower_bits_mask_(nonpage_lower_bits_mask),
                 nonpage_middle_bits_mask_(nonpage_middle_bits_mask),
-                nonpage_upper_bits_msak_(nonpage_upper_bits_mask)
+                nonpage_upper_bits_mask_(nonpage_upper_bits_mask)
             { }
 
             void operator()(StateInteger const index_wo_qubit, int const) const
@@ -884,7 +884,7 @@ namespace ket
                 nonpage_control_qubit_mask_(nonpage_control_qubit_mask),
                 nonpage_lower_bits_mask_(nonpage_lower_bits_mask),
                 nonpage_middle_bits_mask_(nonpage_middle_bits_mask),
-                nonpage_upper_bits_msak_(nonpage_upper_bits_mask)
+                nonpage_upper_bits_mask_(nonpage_upper_bits_mask)
             { }
 
             void operator()(StateInteger const index_wo_qubit, int const) const

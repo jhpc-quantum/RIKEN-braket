@@ -538,12 +538,6 @@ namespace ket
 
         void operator()(StateInteger const value_wo_qubit, int const) const
         {
-          // xxxxx1xxxxxx
-          StateInteger const one_index
-            = ((value_wo_qubit bitand upper_bits_mask_) << 1u)
-              bitor (value_wo_qubit bitand lower_bits_mask_) bitor qubit_mask_;
-          *(first_+one_index) *= phase_coefficient_;
-
           // xxxxx0xxxxxx
           StateInteger const zero_index
             = ((value_wo_qubit bitand upper_bits_mask_) << 1u)
@@ -793,12 +787,6 @@ namespace ket
 
         void operator()(StateInteger const value_wo_qubit, int const) const
         {
-          // xxxxx1xxxxxx
-          StateInteger const one_index
-            = ((value_wo_qubit bitand upper_bits_mask_) << 1u)
-              bitor (value_wo_qubit bitand lower_bits_mask_) bitor qubit_mask_;
-          *(first_+one_index) *= phase_coefficient_;
-
           // xxxxx0xxxxxx
           StateInteger const zero_index
             = ((value_wo_qubit bitand upper_bits_mask_) << 1u)
@@ -1016,12 +1004,6 @@ namespace ket
 
         void operator()(StateInteger const value_wo_qubit, int const) const
         {
-          // xxxxx1xxxxxx
-          StateInteger const one_index
-            = ((value_wo_qubit bitand upper_bits_mask_) << 1u)
-              bitor (value_wo_qubit bitand lower_bits_mask_) bitor qubit_mask_;
-          *(first_+one_index) *= phase_coefficient_;
-
           // xxxxx0xxxxxx
           StateInteger const zero_index
             = ((value_wo_qubit bitand upper_bits_mask_) << 1u)
@@ -1287,12 +1269,6 @@ namespace ket
 
         void operator()(StateInteger const value_wo_qubit, int const) const
         {
-          // xxxxx1xxxxxx
-          StateInteger const one_index
-            = ((value_wo_qubit bitand upper_bits_mask_) << 1u)
-              bitor (value_wo_qubit bitand lower_bits_mask_) bitor qubit_mask_;
-          *(first_+one_index) *= phase_coefficient_;
-
           // xxxxx0xxxxxx
           StateInteger const zero_index
             = ((value_wo_qubit bitand upper_bits_mask_) << 1u)

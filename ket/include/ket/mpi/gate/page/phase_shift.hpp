@@ -202,8 +202,8 @@ namespace ket
             template <typename StateInteger>
             void operator()(StateInteger const index, int const) const
             {
-              iterator const zero_iter = zero_first_ + index;
-              iterator const one_iter = one_first_ + index;
+              RandomAccessIterator const zero_iter = zero_first_ + index;
+              RandomAccessIterator const one_iter = one_first_ + index;
               Complex const zero_iter_value = *zero_iter;
 
               typedef
@@ -364,8 +364,8 @@ namespace ket
             template <typename StateInteger>
             void operator()(StateInteger const index, int const) const
             {
-              iterator const zero_iter = zero_first_ + index;
-              iterator const one_iter = one_first_ + index;
+              RandomAccessIterator const zero_iter = zero_first_ + index;
+              RandomAccessIterator const one_iter = one_first_ + index;
               Complex const zero_iter_value = *zero_iter;
 
               typedef
@@ -533,8 +533,8 @@ namespace ket
             template <typename StateInteger>
             void operator()(StateInteger const index, int const) const
             {
-              iterator const zero_iter = zero_first_ + index;
-              iterator const one_iter = one_first_ + index;
+              RandomAccessIterator const zero_iter = zero_first_ + index;
+              RandomAccessIterator const one_iter = one_first_ + index;
               Complex const zero_iter_value = *zero_iter;
 
               *zero_iter *= cosine_;
@@ -546,7 +546,7 @@ namespace ket
           };
 
           template <typename RandomAccessIterator, typename Real, typename Complex>
-          inline phase_shift3_loop_inside<RandomAccessIterator, Complex>
+          inline phase_shift3_loop_inside<RandomAccessIterator, Real, Complex>
           make_phase_shift3_loop_inside(
             RandomAccessIterator const zero_first, RandomAccessIterator const one_first,
             Real const sine, Real const cosine, Complex const& phase_coefficient2,
@@ -711,8 +711,8 @@ namespace ket
             template <typename StateInteger>
             void operator()(StateInteger const index, int const) const
             {
-              iterator const zero_iter = zero_first_ + index;
-              iterator const one_iter = one_first_ + index;
+              RandomAccessIterator const zero_iter = zero_first_ + index;
+              RandomAccessIterator const one_iter = one_first_ + index;
               Complex const zero_iter_value = *zero_iter;
 
               *zero_iter *= cosine_;
@@ -724,7 +724,7 @@ namespace ket
           };
 
           template <typename RandomAccessIterator, typename Real, typename Complex>
-          inline adj_phase_shift3_loop_inside<RandomAccessIterator, Complex>
+          inline adj_phase_shift3_loop_inside<RandomAccessIterator, Real, Complex>
           make_adj_phase_shift3_loop_inside(
             RandomAccessIterator const zero_first, RandomAccessIterator const one_first,
             Real const sine, Real const cosine,
