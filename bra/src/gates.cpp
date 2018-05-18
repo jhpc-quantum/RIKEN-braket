@@ -36,6 +36,10 @@
 #include <bra/gate/pauli_x.hpp>
 #include <bra/gate/pauli_y.hpp>
 #include <bra/gate/pauli_z.hpp>
+#include <bra/gate/s_gate.hpp>
+#include <bra/gate/adj_s_gate.hpp>
+#include <bra/gate/t_gate.hpp>
+#include <bra/gate/adj_t_gate.hpp>
 #include <bra/gate/u1.hpp>
 #include <bra/gate/u2.hpp>
 #include <bra/gate/u3.hpp>
@@ -253,25 +257,25 @@ namespace bra
           boost::movelib::unique_ptr< ::bra::gate::gate >(
             new ::bra::gate::pauli_z(read_pauli_z(columns))));
       else if (first_mnemonic == "S")
-      {
-        throw unsupported_mnemonic_error(first_mnemonic);
-        //data_.push_back(boost::movelib::make_unique< ::bra::gate::s >(read_target(columns)));
-      }
+        data_.push_back(
+          boost::movelib::unique_ptr< ::bra::gate::gate >(
+            new ::bra::gate::s_gate(
+              phase_coefficients_[2u], read_s_gate(columns))));
       else if (first_mnemonic == "S+")
-      {
-        throw unsupported_mnemonic_error(first_mnemonic);
-        //data_.push_back(boost::movelib::make_unique< ::bra::gate::spl >(read_target(columns)));
-      }
+        data_.push_back(
+          boost::movelib::unique_ptr< ::bra::gate::gate >(
+            new ::bra::gate::adj_s_gate(
+              phase_coefficients_[2u], read_adj_s_gate(columns))));
       else if (first_mnemonic == "T")
-      {
-        throw unsupported_mnemonic_error(first_mnemonic);
-        //data_.push_back(boost::movelib::make_unique< ::bra::gate::t >(read_target(columns)));
-      }
+        data_.push_back(
+          boost::movelib::unique_ptr< ::bra::gate::gate >(
+            new ::bra::gate::t_gate(
+              phase_coefficients_[3u], read_t_gate(columns))));
       else if (first_mnemonic == "T+")
-      {
-        throw unsupported_mnemonic_error(first_mnemonic);
-        //data_.push_back(boost::movelib::make_unique< ::bra::gate::tpl >(read_target(columns)));
-      }
+        data_.push_back(
+          boost::movelib::unique_ptr< ::bra::gate::gate >(
+            new ::bra::gate::adj_t_gate(
+              phase_coefficients_[3u], read_adj_t_gate(columns))));
       else if (first_mnemonic == "U1")
       {
         qubit_type target;

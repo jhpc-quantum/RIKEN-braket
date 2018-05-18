@@ -228,6 +228,10 @@ namespace bra
     qubit_type read_pauli_x(columns_type const& columns) const { return read_target(columns); }
     qubit_type read_pauli_y(columns_type const& columns) const { return read_target(columns); }
     qubit_type read_pauli_z(columns_type const& columns) const { return read_target(columns); }
+    qubit_type read_s_gate(columns_type const& columns) const { return read_target(columns); }
+    qubit_type read_adj_s_gate(columns_type const& columns) const { return read_target(columns); }
+    qubit_type read_t_gate(columns_type const& columns) const { return read_target(columns); }
+    qubit_type read_adj_t_gate(columns_type const& columns) const { return read_target(columns); }
     boost::tuple<qubit_type, real_type> read_u1(columns_type const& columns) const { return read_target_phase(columns); }
     boost::tuple<qubit_type, real_type, real_type> read_u2(columns_type const& columns) const { return read_target_2phases(columns); }
     boost::tuple<qubit_type, real_type, real_type, real_type> read_u3(columns_type const& columns) const { return read_target_3phases(columns); }
