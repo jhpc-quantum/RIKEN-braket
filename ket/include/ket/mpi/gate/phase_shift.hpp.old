@@ -946,7 +946,7 @@ namespace ket
             RandomAccessIterator const first,
             RandomAccessIterator const last) const
           {
-            ::ket::gate::phase_shift_coeff(
+            ::ket::gate::phase_shift3(
               parallel_policy_, first, last, phase1_, phase2_, phase3_, qubit_);
           }
         };
