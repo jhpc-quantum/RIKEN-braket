@@ -131,6 +131,60 @@ namespace bra
       permutation_, buffer_, complex_datatype_, communicator_, environment_);
   }
 
+  void general_mpi_3page_state::do_u1(real_type const phase, qubit_type const qubit)
+  {
+    ket::mpi::gate::phase_shift(
+      mpi_policy_, parallel_policy_,
+      data_, phase, qubit,
+      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+  }
+
+  void general_mpi_3page_state::do_adj_u1(real_type const phase, qubit_type const qubit)
+  {
+    ket::mpi::gate::adj_phase_shift(
+      mpi_policy_, parallel_policy_,
+      data_, phase, qubit,
+      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+  }
+
+  void general_mpi_3page_state::do_u2(
+    real_type const phase1, real_type const phase2, qubit_type const qubit)
+  {
+    ket::mpi::gate::phase_shift2(
+      mpi_policy_, parallel_policy_,
+      data_, phase1, phase2, qubit,
+      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+  }
+
+  void general_mpi_3page_state::do_adj_u2(
+    real_type const phase1, real_type const phase2, qubit_type const qubit)
+  {
+    ket::mpi::gate::adj_phase_shift2(
+      mpi_policy_, parallel_policy_,
+      data_, phase1, phase2, qubit,
+      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+  }
+
+  void general_mpi_3page_state::do_u3(
+    real_type const phase1, real_type const phase2, real_type const phase3,
+    qubit_type const qubit)
+  {
+    ket::mpi::gate::phase_shift3(
+      mpi_policy_, parallel_policy_,
+      data_, phase1, phase2, phase3, qubit,
+      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+  }
+
+  void general_mpi_3page_state::do_adj_u3(
+    real_type const phase1, real_type const phase2, real_type const phase3,
+    qubit_type const qubit)
+  {
+    ket::mpi::gate::adj_phase_shift3(
+      mpi_policy_, parallel_policy_,
+      data_, phase1, phase2, phase3, qubit,
+      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+  }
+
   void general_mpi_3page_state::do_phase_shift(
     complex_type const phase_coefficient, qubit_type const qubit)
   {

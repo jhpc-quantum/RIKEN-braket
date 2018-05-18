@@ -87,28 +87,50 @@ namespace bra
     void do_adj_pauli_y(qubit_type const qubit) override;
     void do_pauli_z(qubit_type const qubit) override;
     void do_adj_pauli_z(qubit_type const qubit) override;
-    void do_phase_shift(complex_type const phase_coefficient, qubit_type const qubit) override;
-    void do_adj_phase_shift(complex_type const phase_coefficient, qubit_type const qubit) override;
+    void do_u1(real_type const phase, qubit_type const qubit) override;
+    void do_adj_u1(real_type const phase, qubit_type const qubit) override;
+    void do_u2(
+      real_type const phase1, real_type const phase2,
+      qubit_type const qubit) override;
+    void do_adj_u2(
+      real_type const phase1, real_type const phase2,
+      qubit_type const qubit) override;
+    void do_u3(
+      real_type const phase1, real_type const phase2, real_type const phase3,
+      qubit_type const qubit) override;
+    void do_adj_u3(
+      real_type const phase1, real_type const phase2, real_type const phase3,
+      qubit_type const qubit) override;
+    void do_phase_shift(
+      complex_type const phase_coefficient, qubit_type const qubit) override;
+    void do_adj_phase_shift(
+      complex_type const phase_coefficient, qubit_type const qubit) override;
     void do_x_rotation_half_pi(qubit_type const qubit) override;
     void do_adj_x_rotation_half_pi(qubit_type const qubit) override;
     void do_y_rotation_half_pi(qubit_type const qubit) override;
     void do_adj_y_rotation_half_pi(qubit_type const qubit) override;
     void do_controlled_not(
-      qubit_type const target_qubit, control_qubit_type const control_qubit) override;
+      qubit_type const target_qubit,
+      control_qubit_type const control_qubit) override;
     void do_adj_controlled_not(
-      qubit_type const target_qubit, control_qubit_type const control_qubit) override;
+      qubit_type const target_qubit,
+      control_qubit_type const control_qubit) override;
     void do_controlled_phase_shift(
       complex_type const phase_coefficient,
-      qubit_type const target_qubit, control_qubit_type const control_qubit) override;
+      qubit_type const target_qubit,
+      control_qubit_type const control_qubit) override;
     void do_adj_controlled_phase_shift(
       complex_type const phase_coefficient,
-      qubit_type const target_qubit, control_qubit_type const control_qubit) override;
+      qubit_type const target_qubit,
+      control_qubit_type const control_qubit) override;
     void do_controlled_v(
       complex_type const phase_coefficient,
-      qubit_type const target_qubit, control_qubit_type const control_qubit) override;
+      qubit_type const target_qubit,
+      control_qubit_type const control_qubit) override;
     void do_adj_controlled_v(
       complex_type const phase_coefficient,
-      qubit_type const target_qubit, control_qubit_type const control_qubit) override;
+      qubit_type const target_qubit,
+      control_qubit_type const control_qubit) override;
     void do_toffoli(
       qubit_type const target_qubit,
       control_qubit_type const control_qubit1,

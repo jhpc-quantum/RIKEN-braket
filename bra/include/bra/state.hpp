@@ -177,6 +177,30 @@ namespace bra
     ::bra::state& adj_pauli_z(qubit_type const qubit)
     { do_adj_pauli_z(qubit); return *this; }
 
+    ::bra::state& u1(real_type const phase, qubit_type const qubit)
+    { do_u1(phase, qubit); return *this; }
+
+    ::bra::state& adj_u1(real_type const phase, qubit_type const qubit)
+    { do_adj_u1(phase, qubit); return *this; }
+
+    ::bra::state& u2(
+      real_type const phase1, real_type const phase2, qubit_type const qubit)
+    { do_u2(phase1, phase2, qubit); return *this; }
+
+    ::bra::state& adj_u2(
+      real_type const phase1, real_type const phase2, qubit_type const qubit)
+    { do_adj_u2(phase1, phase2, qubit); return *this; }
+
+    ::bra::state& u3(
+      real_type const phase1, real_type const phase2, real_type const phase3,
+      qubit_type const qubit)
+    { do_u3(phase1, phase2, phase3, qubit); return *this; }
+
+    ::bra::state& adj_u3(
+      real_type const phase1, real_type const phase2, real_type const phase3,
+      qubit_type const qubit)
+    { do_adj_u3(phase1, phase2, phase3, qubit); return *this; }
+
     ::bra::state& phase_shift(
       complex_type const phase_coefficient, qubit_type const qubit)
     { do_phase_shift(phase_coefficient, qubit); return *this; }
@@ -269,7 +293,22 @@ namespace bra
     virtual void do_adj_pauli_y(qubit_type const qubit) = 0;
     virtual void do_pauli_z(qubit_type const qubit) = 0;
     virtual void do_adj_pauli_z(qubit_type const qubit) = 0;
-    virtual void do_phase_shift(complex_type const phase_coefficient, qubit_type const qubit) = 0;
+    virtual void do_u1(real_type const phase, qubit_type const qubit) = 0;
+    virtual void do_adj_u1(real_type const phase, qubit_type const qubit) = 0;
+    virtual void do_u2(
+      real_type const phase1, real_type const phase2,
+      qubit_type const qubit) = 0;
+    virtual void do_adj_u2(
+      real_type const phase1, real_type const phase2,
+      qubit_type const qubit) = 0;
+    virtual void do_u3(
+      real_type const phase1, real_type const phase2, real_type const phase3,
+      qubit_type const qubit) = 0;
+    virtual void do_adj_u3(
+      real_type const phase1, real_type const phase2, real_type const phase3,
+      qubit_type const qubit) = 0;
+    virtual void do_phase_shift(
+      complex_type const phase_coefficient, qubit_type const qubit) = 0;
     virtual void do_adj_phase_shift(
       complex_type const phase_coefficient, qubit_type const qubit) = 0;
     virtual void do_x_rotation_half_pi(qubit_type const qubit) = 0;
