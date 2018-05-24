@@ -506,20 +506,18 @@ namespace ket
         typename StateInteger, typename BitInteger, typename RandomNumberGenerator>
       inline
 # ifndef BOOST_NO_CXX11_SCOPED_ENUMS
-      std::pair<RandomAccessRange&, ::ket::gate::outcome>
+      ::ket::gate::outcome
 # else // BOOST_NO_CXX11_SCOPED_ENUMS
-      std::pair<RandomAccessRange&, ::ket::gate::outcome_::outcome>
+      ::ket::gate::outcome_::outcome
 # endif // BOOST_NO_CXX11_SCOPED_ENUMS
       projective_measurement(
         RandomAccessRange& state,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
         RandomNumberGenerator& random_number_generator)
       {
-        return std::make_pair(
-          state,
-          ::ket::gate::projective_measurement_detail::projective_measurement(
-            ::ket::utility::policy::make_sequential(),
-            boost::begin(state), boost::end(state), qubit, random_number_generator));
+        return ::ket::gate::projective_measurement_detail::projective_measurement(
+          ::ket::utility::policy::make_sequential(),
+          boost::begin(state), boost::end(state), qubit, random_number_generator);
       }
 
       template <
@@ -527,20 +525,18 @@ namespace ket
         typename StateInteger, typename BitInteger, typename RandomNumberGenerator>
       inline
 # ifndef BOOST_NO_CXX11_SCOPED_ENUMS
-      std::pair<RandomAccessRange&, ::ket::gate::outcome>
+      ::ket::gate::outcome
 # else // BOOST_NO_CXX11_SCOPED_ENUMS
-      std::pair<RandomAccessRange&, ::ket::gate::outcome_::outcome>
+      ::ket::gate::outcome_::outcome
 # endif // BOOST_NO_CXX11_SCOPED_ENUMS
       projective_measurement(
         ParallelPolicy const parallel_policy, RandomAccessRange& state,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
         RandomNumberGenerator& random_number_generator)
       {
-        return std::make_pair(
-          state,
-          ::ket::gate::projective_measurement_detail::projective_measurement(
-            parallel_policy,
-            boost::begin(state), boost::end(state), qubit, random_number_generator));
+        return ::ket::gate::projective_measurement_detail::projective_measurement(
+          parallel_policy,
+          boost::begin(state), boost::end(state), qubit, random_number_generator);
       }
 
 # ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
@@ -549,21 +545,19 @@ namespace ket
         typename StateInteger, typename BitInteger, typename RandomNumberGenerator>
       inline
 # ifndef BOOST_NO_CXX11_SCOPED_ENUMS
-      std::pair<std::vector<Complex, Allocator>&, ::ket::gate::outcome>
+      ::ket::gate::outcome
 # else // BOOST_NO_CXX11_SCOPED_ENUMS
-      std::pair<std::vector<Complex, Allocator>&, ::ket::gate::outcome_::outcome>
+      ::ket::gate::outcome_::outcome
 # endif // BOOST_NO_CXX11_SCOPED_ENUMS
       projective_measurement(
         std::vector<Complex, Allocator>& state,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
         RandomNumberGenerator& random_number_generator)
       {
-        return std::make_pair(
-          state,
-          ::ket::gate::projective_measurement_detail::projective_measurement(
-            ::ket::utility::policy::make_sequential(),
-            KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
-            qubit, random_number_generator));
+        return ::ket::gate::projective_measurement_detail::projective_measurement(
+          ::ket::utility::policy::make_sequential(),
+          KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
+          qubit, random_number_generator);
       }
 
       template <
@@ -572,9 +566,9 @@ namespace ket
         typename StateInteger, typename BitInteger, typename RandomNumberGenerator>
       inline
 # ifndef BOOST_NO_CXX11_SCOPED_ENUMS
-      std::pair<std::vector<Complex, Allocator>&, ::ket::gate::outcome>
+      ::ket::gate::outcome
 # else // BOOST_NO_CXX11_SCOPED_ENUMS
-      std::pair<std::vector<Complex, Allocator>&, ::ket::gate::outcome_::outcome>
+      ::ket::gate::outcome_::outcome
 # endif // BOOST_NO_CXX11_SCOPED_ENUMS
       projective_measurement(
         ParallelPolicy const parallel_policy,
@@ -582,12 +576,10 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const qubit,
         RandomNumberGenerator& random_number_generator)
       {
-        return std::make_pair(
-          state,
-          ::ket::gate::projective_measurement_detail::projective_measurement(
-            parallel_policy,
-            KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
-            qubit, random_number_generator));
+        return ::ket::gate::projective_measurement_detail::projective_measurement(
+          parallel_policy,
+          KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
+          qubit, random_number_generator);
       }
 # endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
     } // namespace ranges

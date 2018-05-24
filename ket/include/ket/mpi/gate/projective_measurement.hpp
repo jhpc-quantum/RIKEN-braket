@@ -65,9 +65,9 @@ namespace ket
         typename Allocator, typename BufferAllocator>
       inline
 # ifndef BOOST_NO_CXX11_SCOPED_ENUMS
-      std::pair<RandomAccessRange&, ::ket::gate::outcome>
+      ::ket::gate::outcome
 # else // BOOST_NO_CXX11_SCOPED_ENUMS
-      std::pair<RandomAccessRange&, ::ket::gate::outcome_::outcome>
+      ::ket::gate::outcome_::outcome
 # endif // BOOST_NO_CXX11_SCOPED_ENUMS
       projective_measurement(
         MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
@@ -131,9 +131,9 @@ namespace ket
               zero_probability);
 
 # ifndef BOOST_NO_CXX11_SCOPED_ENUMS
-          return std::make_pair(local_state, ::ket::gate::outcome::zero);
+          return ::ket::gate::outcome::zero;
 # else // BOOST_NO_CXX11_SCOPED_ENUMS
-          return std::make_pair(local_state, ::ket::gate::outcome_::zero);
+          return ::ket::gate::outcome_::zero;
 # endif // BOOST_NO_CXX11_SCOPED_ENUMS
         }
 
@@ -148,9 +148,9 @@ namespace ket
             static_cast<real_type>(1)-zero_probability);
 
 # ifndef BOOST_NO_CXX11_SCOPED_ENUMS
-        return std::make_pair(local_state, ::ket::gate::outcome::one);
+        return ::ket::gate::outcome::one;
 # else // BOOST_NO_CXX11_SCOPED_ENUMS
-        return std::make_pair(local_state, ::ket::gate::outcome_::one);
+        return ::ket::gate::outcome_::one;
 # endif // BOOST_NO_CXX11_SCOPED_ENUMS
       }
 
@@ -160,9 +160,9 @@ namespace ket
         typename Allocator, typename BufferAllocator>
       inline
 # ifndef BOOST_NO_CXX11_SCOPED_ENUMS
-      std::pair<RandomAccessRange&, ::ket::gate::outcome>
+      ::ket::gate::outcome
 # else // BOOST_NO_CXX11_SCOPED_ENUMS
-      std::pair<RandomAccessRange&, ::ket::gate::outcome_::outcome>
+      ::ket::gate::outcome_::outcome
 # endif // BOOST_NO_CXX11_SCOPED_ENUMS
       projective_measurement(
         RandomAccessRange& local_state,
@@ -188,9 +188,9 @@ namespace ket
         typename Allocator, typename BufferAllocator>
       inline
 # ifndef BOOST_NO_CXX11_SCOPED_ENUMS
-      std::pair<RandomAccessRange&, ::ket::gate::outcome>
+      ::ket::gate::outcome
 # else // BOOST_NO_CXX11_SCOPED_ENUMS
-      std::pair<RandomAccessRange&, ::ket::gate::outcome_::outcome>
+      ::ket::gate::outcome_::outcome
 # endif // BOOST_NO_CXX11_SCOPED_ENUMS
       projective_measurement(
         ParallelPolicy const parallel_policy,
