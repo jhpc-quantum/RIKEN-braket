@@ -63,13 +63,7 @@ namespace ket
         typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger, typename RandomNumberGenerator,
         typename Allocator, typename BufferAllocator>
-      inline
-# ifndef BOOST_NO_CXX11_SCOPED_ENUMS
-      ::ket::gate::outcome
-# else // BOOST_NO_CXX11_SCOPED_ENUMS
-      ::ket::gate::outcome_::outcome
-# endif // BOOST_NO_CXX11_SCOPED_ENUMS
-      projective_measurement(
+      inline KET_GATE_OUTCOME_TYPE projective_measurement(
         MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -130,11 +124,7 @@ namespace ket
               boost::begin(local_state), boost::end(local_state), qubit,
               zero_probability);
 
-# ifndef BOOST_NO_CXX11_SCOPED_ENUMS
-          return ::ket::gate::outcome::zero;
-# else // BOOST_NO_CXX11_SCOPED_ENUMS
-          return ::ket::gate::outcome_::zero;
-# endif // BOOST_NO_CXX11_SCOPED_ENUMS
+          return KET_GATE_OUTCOME_VALUE(zero);
         }
 
         if (is_qubit_on_page)
@@ -147,24 +137,14 @@ namespace ket
             boost::begin(local_state), boost::end(local_state), qubit,
             static_cast<real_type>(1)-zero_probability);
 
-# ifndef BOOST_NO_CXX11_SCOPED_ENUMS
-        return ::ket::gate::outcome::one;
-# else // BOOST_NO_CXX11_SCOPED_ENUMS
-        return ::ket::gate::outcome_::one;
-# endif // BOOST_NO_CXX11_SCOPED_ENUMS
+        return KET_GATE_OUTCOME_VALUE(one);
       }
 
       template <
         typename RandomAccessRange,
         typename StateInteger, typename BitInteger, typename RandomNumberGenerator,
         typename Allocator, typename BufferAllocator>
-      inline
-# ifndef BOOST_NO_CXX11_SCOPED_ENUMS
-      ::ket::gate::outcome
-# else // BOOST_NO_CXX11_SCOPED_ENUMS
-      ::ket::gate::outcome_::outcome
-# endif // BOOST_NO_CXX11_SCOPED_ENUMS
-      projective_measurement(
+      inline KET_GATE_OUTCOME_TYPE projective_measurement(
         RandomAccessRange& local_state,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
         RandomNumberGenerator& random_number_generator,
@@ -186,13 +166,7 @@ namespace ket
         typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger, typename RandomNumberGenerator,
         typename Allocator, typename BufferAllocator>
-      inline
-# ifndef BOOST_NO_CXX11_SCOPED_ENUMS
-      ::ket::gate::outcome
-# else // BOOST_NO_CXX11_SCOPED_ENUMS
-      ::ket::gate::outcome_::outcome
-# endif // BOOST_NO_CXX11_SCOPED_ENUMS
-      projective_measurement(
+      inline KET_GATE_OUTCOME_TYPE projective_measurement(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         ::ket::qubit<StateInteger, BitInteger> const qubit,

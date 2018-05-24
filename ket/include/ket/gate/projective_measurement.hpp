@@ -77,8 +77,14 @@ namespace ket
   {
 # ifndef BOOST_NO_CXX11_SCOPED_ENUMS
     enum class outcome : int { unspecified = -1, zero = 0, one = 1 };
+
+#   define KET_GATE_OUTCOME_TYPE ket::gate::outcome
+#   define KET_GATE_OUTCOME_VALUE(value) ket::gate::outcome::value
 # else // BOOST_NO_CXX11_SCOPED_ENUMS
     namespace outcome_ { enum outcome { unspecified = -1, zero = 0, one = 1 }; }
+
+#   define KET_GATE_OUTCOME_TYPE ket::gate::outcome_::outcome
+#   define KET_GATE_OUTCOME_VALUE(value) ket::gate::outcome_::value
 # endif // BOOST_NO_CXX11_SCOPED_ENUMS
 
     namespace projective_measurement_detail
@@ -398,13 +404,7 @@ namespace ket
       template <
         typename ParallelPolicy, typename RandomAccessIterator,
         typename StateInteger, typename BitInteger, typename RandomNumberGenerator>
-      inline
-# ifndef BOOST_NO_CXX11_SCOPED_ENUMS
-      ::ket::gate::outcome
-# else // BOOST_NO_CXX11_SCOPED_ENUMS
-      ::ket::gate::outcome_::outcome
-# endif // BOOST_NO_CXX11_SCOPED_ENUMS
-      projective_measurement(
+      inline KET_GATE_OUTCOME_TYPE projective_measurement(
         ParallelPolicy const parallel_policy,
         RandomAccessIterator const first, RandomAccessIterator const last,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -444,33 +444,19 @@ namespace ket
         {
           ::ket::gate::projective_measurement_detail::change_state_after_measuring_zero(
             parallel_policy, first, last, qubit, zero_probability);
-# ifndef BOOST_NO_CXX11_SCOPED_ENUMS
-          return ::ket::gate::outcome::zero;
-# else // BOOST_NO_CXX11_SCOPED_ENUMS
-          return ::ket::gate::outcome_::zero;
-# endif // BOOST_NO_CXX11_SCOPED_ENUMS
+          return KET_GATE_OUTCOME_VALUE(zero);
         }
 
         ::ket::gate::projective_measurement_detail::change_state_after_measuring_one(
           parallel_policy, first, last, qubit, static_cast<real_type>(1)-zero_probability);
-# ifndef BOOST_NO_CXX11_SCOPED_ENUMS
-        return ::ket::gate::outcome::one;
-# else // BOOST_NO_CXX11_SCOPED_ENUMS
-        return ::ket::gate::outcome_::one;
-# endif // BOOST_NO_CXX11_SCOPED_ENUMS
+        return KET_GATE_OUTCOME_VALUE(one);
       }
     } // namespace projective_measurement_detail
 
     template <
       typename RandomAccessIterator,
       typename StateInteger, typename BitInteger, typename RandomNumberGenerator>
-    inline
-# ifndef BOOST_NO_CXX11_SCOPED_ENUMS
-    ::ket::gate::outcome
-# else // BOOST_NO_CXX11_SCOPED_ENUMS
-    ::ket::gate::outcome_::outcome
-# endif // BOOST_NO_CXX11_SCOPED_ENUMS
-    projective_measurement(
+    inline KET_GATE_OUTCOME_TYPE projective_measurement(
       RandomAccessIterator const first, RandomAccessIterator const last,
       ::ket::qubit<StateInteger, BitInteger> const qubit,
       RandomNumberGenerator& random_number_generator)
@@ -483,13 +469,7 @@ namespace ket
     template <
       typename ParallelPolicy, typename RandomAccessIterator,
       typename StateInteger, typename BitInteger, typename RandomNumberGenerator>
-    inline
-# ifndef BOOST_NO_CXX11_SCOPED_ENUMS
-    ::ket::gate::outcome
-# else // BOOST_NO_CXX11_SCOPED_ENUMS
-    ::ket::gate::outcome_::outcome
-# endif // BOOST_NO_CXX11_SCOPED_ENUMS
-    projective_measurement(
+    inline KET_GATE_OUTCOME_TYPE projective_measurement(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -504,13 +484,7 @@ namespace ket
       template <
         typename RandomAccessRange,
         typename StateInteger, typename BitInteger, typename RandomNumberGenerator>
-      inline
-# ifndef BOOST_NO_CXX11_SCOPED_ENUMS
-      ::ket::gate::outcome
-# else // BOOST_NO_CXX11_SCOPED_ENUMS
-      ::ket::gate::outcome_::outcome
-# endif // BOOST_NO_CXX11_SCOPED_ENUMS
-      projective_measurement(
+      inline KET_GATE_OUTCOME_TYPE projective_measurement(
         RandomAccessRange& state,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
         RandomNumberGenerator& random_number_generator)
@@ -523,13 +497,7 @@ namespace ket
       template <
         typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger, typename RandomNumberGenerator>
-      inline
-# ifndef BOOST_NO_CXX11_SCOPED_ENUMS
-      ::ket::gate::outcome
-# else // BOOST_NO_CXX11_SCOPED_ENUMS
-      ::ket::gate::outcome_::outcome
-# endif // BOOST_NO_CXX11_SCOPED_ENUMS
-      projective_measurement(
+      inline KET_GATE_OUTCOME_TYPE projective_measurement(
         ParallelPolicy const parallel_policy, RandomAccessRange& state,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
         RandomNumberGenerator& random_number_generator)
@@ -543,13 +511,7 @@ namespace ket
       template <
         typename Complex, typename Allocator,
         typename StateInteger, typename BitInteger, typename RandomNumberGenerator>
-      inline
-# ifndef BOOST_NO_CXX11_SCOPED_ENUMS
-      ::ket::gate::outcome
-# else // BOOST_NO_CXX11_SCOPED_ENUMS
-      ::ket::gate::outcome_::outcome
-# endif // BOOST_NO_CXX11_SCOPED_ENUMS
-      projective_measurement(
+      inline KET_GATE_OUTCOME_TYPE projective_measurement(
         std::vector<Complex, Allocator>& state,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
         RandomNumberGenerator& random_number_generator)
@@ -564,13 +526,7 @@ namespace ket
         typename ParallelPolicy,
         typename Complex, typename Allocator,
         typename StateInteger, typename BitInteger, typename RandomNumberGenerator>
-      inline
-# ifndef BOOST_NO_CXX11_SCOPED_ENUMS
-      ::ket::gate::outcome
-# else // BOOST_NO_CXX11_SCOPED_ENUMS
-      ::ket::gate::outcome_::outcome
-# endif // BOOST_NO_CXX11_SCOPED_ENUMS
-      projective_measurement(
+      inline KET_GATE_OUTCOME_TYPE projective_measurement(
         ParallelPolicy const parallel_policy,
         std::vector<Complex, Allocator>& state,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
