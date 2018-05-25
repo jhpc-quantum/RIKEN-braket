@@ -140,7 +140,8 @@ namespace bra
       qubit_type const target_qubit,
       control_qubit_type const control_qubit1,
       control_qubit_type const control_qubit2) override;
-    KET_GATE_OUTCOME_TYPE do_projective_measurement(qubit_type const qubit) override;
+    KET_GATE_OUTCOME_TYPE do_projective_measurement(
+      qubit_type const qubit, yampi::rank const root) override;
     void do_expectation_values(yampi::rank const root) override;
     void do_measure(yampi::rank const root) override;
   };

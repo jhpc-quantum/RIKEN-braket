@@ -83,6 +83,7 @@ namespace ket
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
         yampi::datatype const real_datatype,
         yampi::datatype const complex_datatype,
+        yampi::rank const root,
         yampi::communicator const communicator,
         yampi::environment const& environment)
       {
@@ -120,8 +121,7 @@ namespace ket
           = probability < static_cast<double>(zero_probability)
             ? 0 : 1;
 
-        BOOST_CONSTEXPR_OR_CONST yampi::rank root_rank(0);
-        yampi::broadcast(communicator, root_rank).call(
+        yampi::broadcast(communicator, root).call(
           environment, yampi::make_buffer(zero_or_one));
 
         if (zero_or_one == 0)
@@ -163,6 +163,7 @@ namespace ket
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
         yampi::datatype const real_datatype,
         yampi::datatype const complex_datatype,
+        yampi::rank const root,
         yampi::communicator const communicator,
         yampi::environment const& environment)
       {
@@ -170,7 +171,7 @@ namespace ket
           ::ket::mpi::utility::policy::make_general_mpi(),
           ::ket::utility::policy::make_sequential(),
           local_state, qubit, random_number_generator, permutation,
-          buffer, real_datatype, complex_datatype, communicator, environment);
+          buffer, real_datatype, complex_datatype, root, communicator, environment);
       }
 
       template <
@@ -186,13 +187,14 @@ namespace ket
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
         yampi::datatype const real_datatype,
         yampi::datatype const complex_datatype,
+        yampi::rank const root,
         yampi::communicator const communicator,
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::projective_measurement(
           ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
           local_state, qubit, random_number_generator, permutation,
-          buffer, real_datatype, complex_datatype, communicator, environment);
+          buffer, real_datatype, complex_datatype, root, communicator, environment);
       }
     } // namespace gate
   } // namespace mpi

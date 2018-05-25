@@ -3,6 +3,7 @@
 
 # include <boost/config.hpp>
 
+# include <cstddef>
 # include <complex>
 # include <vector>
 # ifndef BOOST_NO_CXX11_HDR_ARRAY
@@ -10,6 +11,7 @@
 # else
 #   include <boost/array.hpp>
 # endif
+# include <utility>
 
 # include <boost/cstdint.hpp>
 
@@ -49,6 +51,18 @@
 
 namespace bra
 {
+# ifndef BOOST_NO_CXX11_SCOPED_ENUMS
+  enum class finished_process : int { operations, begin_measurement, ket_measure };
+
+#  define BRA_FINISHED_PROCESS_TYPE bra::finished_process
+#  define BRA_FINISHED_PROCESS_VALUE(value) bra::finished_process::value
+# else // BOOST_NO_CXX11_SCOPED_ENUMS
+  namespace finished_process_ { enum finished_process { operations, begin_measurement, ket_measure }; }
+
+#  define BRA_FINISHED_PROCESS_TYPE bra::finished_process_::finished_process
+#  define BRA_FINISHED_PROCESS_VALUE(value) bra::finished_process_::value
+# endif // BOOST_NO_CXX11_SCOPED_ENUMS
+
   class state
   {
    public:
@@ -71,13 +85,16 @@ namespace bra
         state_integer_type, bit_integer_type, yampi::allocator<qubit_type> >
       permutation_type;
 
+    typedef
+      std::pair<yampi::wall_clock::time_point, BRA_FINISHED_PROCESS_TYPE>
+      time_and_process_type;
+
    protected:
     bit_integer_type total_num_qubits_;
-    boost::optional<spins_type> maybe_expectation_values_;
-    state_integer_type measured_value_;
+    std::vector<KET_GATE_OUTCOME_TYPE> last_outcomes_; // return values of ket::mpi::gate::projective_measurement
+    boost::optional<spins_type> maybe_expectation_values_; // return value of ket::mpi::all_spin_expectation_values
+    state_integer_type measured_value_; // return value of ket::mpi::measure
     random_number_generator_type random_number_generator_;
-
-    std::vector<KET_GATE_OUTCOME_TYPE> last_outcomes_;
 
     permutation_type permutation_;
     std::vector<complex_type, yampi::allocator<complex_type> > buffer_;
@@ -90,9 +107,7 @@ namespace bra
     yampi::communicator communicator_;
     yampi::environment const& environment_;
 
-    yampi::wall_clock::time_point operations_finish_time_;
-    yampi::wall_clock::time_point expectation_values_finish_time_;
-    yampi::wall_clock::time_point measurement_finish_time_;
+    std::vector<time_and_process_type> finish_times_and_processes_;
 
    public:
     state(
@@ -132,10 +147,6 @@ namespace bra
 
    public:
     bit_integer_type const& total_num_qubits() const { return total_num_qubits_; }
-    boost::optional<spins_type> const& maybe_expectation_values() const
-    { return maybe_expectation_values_; }
-    state_integer_type const& measured_value() const { return measured_value_; }
-    random_number_generator_type& random_number_generator() { return random_number_generator_; }
 
     bool is_measured(qubit_type const qubit) const
     {
@@ -145,6 +156,11 @@ namespace bra
     int outcome(qubit_type const qubit) const
     { return static_cast<int>(last_outcomes_[static_cast<bit_integer_type>(qubit)]); }
 
+    boost::optional<spins_type> const& maybe_expectation_values() const
+    { return maybe_expectation_values_; }
+    state_integer_type const& measured_value() const { return measured_value_; }
+    random_number_generator_type& random_number_generator() { return random_number_generator_; }
+
     permutation_type const& permutation() const { return permutation_; }
 
     yampi::datatype const& state_integer_datatype() const { return state_integer_datatype_; }
@@ -153,12 +169,9 @@ namespace bra
     yampi::communicator const& communicator() const { return communicator_; }
     yampi::environment const& environment() const { return environment_; }
 
-    yampi::wall_clock::time_point const& operations_finish_time() const
-    { return operations_finish_time_; }
-    yampi::wall_clock::time_point const& expectation_values_finish_time() const
-    { return expectation_values_finish_time_; }
-    yampi::wall_clock::time_point const& measurement_finish_time() const
-    { return measurement_finish_time_; }
+    std::size_t num_finish_processes() const { return finish_times_and_processes_.size(); }
+    time_and_process_type const& finish_time_and_process(std::size_t const n) const
+    { return finish_times_and_processes_[n]; }
 
 
     unsigned int num_page_qubits() const { return do_num_page_qubits(); }
@@ -290,7 +303,7 @@ namespace bra
       return *this;
     }
 
-    ::bra::state& projective_measurement(qubit_type const qubit);
+    ::bra::state& projective_measurement(qubit_type const qubit, yampi::rank const root);
 
     ::bra::state& measurement(yampi::rank const root);
 
@@ -360,7 +373,8 @@ namespace bra
       control_qubit_type const control_qubit1,
       control_qubit_type const control_qubit2)
       = 0;
-    virtual KET_GATE_OUTCOME_TYPE do_projective_measurement(qubit_type const qubit) = 0;
+    virtual KET_GATE_OUTCOME_TYPE do_projective_measurement(
+      qubit_type const qubit, yampi::rank const root) = 0;
     virtual void do_expectation_values(yampi::rank const root) = 0;
     virtual void do_measure(yampi::rank const root) = 0;
   };

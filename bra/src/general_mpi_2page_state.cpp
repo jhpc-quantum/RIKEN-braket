@@ -320,12 +320,13 @@ namespace bra
       permutation_, buffer_, complex_datatype_, communicator_, environment_);
   }
 
-  KET_GATE_OUTCOME_TYPE general_mpi_2page_state::do_projective_measurement(qubit_type const qubit)
+  KET_GATE_OUTCOME_TYPE general_mpi_2page_state::do_projective_measurement(
+    qubit_type const qubit, yampi::rank const root)
   {
     return ket::mpi::gate::projective_measurement(
       mpi_policy_, parallel_policy_,
       data_, qubit, random_number_generator_, permutation_,
-      buffer_, real_datatype_, complex_datatype_, communicator_, environment_);
+      buffer_, real_datatype_, complex_datatype_, root, communicator_, environment_);
   }
 
   void general_mpi_2page_state::do_expectation_values(yampi::rank const root)

@@ -23,10 +23,10 @@ namespace bra
     yampi::communicator const communicator,
     yampi::environment const& environment)
     : total_num_qubits_(total_num_qubits),
+      last_outcomes_(total_num_qubits, KET_GATE_OUTCOME_VALUE(unspecified)),
       maybe_expectation_values_(),
       measured_value_(),
       random_number_generator_(seed),
-      last_outcomes_(total_num_qubits, KET_GATE_OUTCOME_VALUE(unspecified)),
       permutation_(static_cast<permutation_type::size_type>(total_num_qubits)),
       buffer_(),
       state_integer_datatype_(yampi::basic_datatype_of<state_integer_type>::call()),
@@ -39,10 +39,8 @@ namespace bra
 #endif
       communicator_(communicator),
       environment_(environment),
-      operations_finish_time_(),
-      expectation_values_finish_time_(),
-      measurement_finish_time_()
-  { }
+      finish_times_and_processes_()
+  { finish_times_and_processes_.reserve(2u); }
 
   state::state(
     std::vector<qubit_type> const& initial_permutation,
@@ -50,10 +48,10 @@ namespace bra
     yampi::communicator const communicator,
     yampi::environment const& environment)
     : total_num_qubits_(initial_permutation.size()),
+      last_outcomes_(total_num_qubits_, KET_GATE_OUTCOME_VALUE(unspecified)),
       maybe_expectation_values_(),
       measured_value_(),
       random_number_generator_(seed),
-      last_outcomes_(total_num_qubits_, KET_GATE_OUTCOME_VALUE(unspecified)),
       permutation_(
         boost::begin(initial_permutation), boost::end(initial_permutation)),
       buffer_(),
@@ -67,25 +65,34 @@ namespace bra
 #endif
       communicator_(communicator),
       environment_(environment),
-      operations_finish_time_(),
-      expectation_values_finish_time_(),
-      measurement_finish_time_()
-  { }
+      finish_times_and_processes_()
+  { finish_times_and_processes_.reserve(2u); }
 
-  ::bra::state& state::projective_measurement(qubit_type const qubit)
+  ::bra::state& state::projective_measurement(qubit_type const qubit, yampi::rank const root)
   {
     last_outcomes_[static_cast<bit_integer_type>(qubit)]
-      = do_projective_measurement(qubit);
+      = do_projective_measurement(qubit, root);
     return *this;
   }
 
   ::bra::state& state::measurement(yampi::rank const root)
   {
-    operations_finish_time_ = yampi::wall_clock::now(environment_);
+    finish_times_and_processes_.push_back(
+      std::make_pair(
+        yampi::wall_clock::now(environment_), BRA_FINISHED_PROCESS_VALUE(operations)));
+
     do_expectation_values(root);
-    expectation_values_finish_time_ = yampi::wall_clock::now(environment_);
+    finish_times_and_processes_.push_back(
+      std::make_pair(
+        yampi::wall_clock::now(environment_), BRA_FINISHED_PROCESS_VALUE(beign_measuremnet)));
+
+    /*
     do_measure(root);
-    measurement_finish_time_ = yampi::wall_clock::now(environment_);
+    finish_times_and_processes_.push_back(
+      std::make_pair(
+        yampi::wall_clock::now(environment_), BRA_FINISHED_PROCESS_VALUE(ket_measure)));
+        */
+
     return *this;
   }
 }
