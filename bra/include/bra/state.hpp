@@ -137,6 +137,14 @@ namespace bra
     state_integer_type const& measured_value() const { return measured_value_; }
     random_number_generator_type& random_number_generator() { return random_number_generator_; }
 
+    bool is_measured(qubit_type const qubit) const
+    {
+      return last_outcomes_[static_cast<bit_integer_type>(qubit)]
+        != KET_GATE_OUTCOME_VALUE(unspecified);
+    }
+    int outcome(qubit_type const qubit) const
+    { return static_cast<int>(last_outcomes_[static_cast<bit_integer_type>(qubit)]); }
+
     permutation_type const& permutation() const { return permutation_; }
 
     yampi::datatype const& state_integer_datatype() const { return state_integer_datatype_; }
