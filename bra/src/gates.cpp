@@ -415,7 +415,7 @@ namespace bra
       else if (first_mnemonic == "M")
         data_.push_back(
           boost::movelib::unique_ptr< ::bra::gate::gate >(
-            new ::bra::gate::projective_measurement(read_projective_measurement(columns))));
+            new ::bra::gate::projective_measurement(read_projective_measurement(columns), root_)));
       else if (first_mnemonic == "SHORBOX")
         throw unsupported_mnemonic_error(first_mnemonic);
       else if (first_mnemonic == "BEGIN") // BEGIN MEASUREMENT/LEARNING MACHINE

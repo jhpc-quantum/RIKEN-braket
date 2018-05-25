@@ -84,7 +84,7 @@ namespace bra
     do_expectation_values(root);
     finish_times_and_processes_.push_back(
       std::make_pair(
-        yampi::wall_clock::now(environment_), BRA_FINISHED_PROCESS_VALUE(beign_measuremnet)));
+        yampi::wall_clock::now(environment_), BRA_FINISHED_PROCESS_VALUE(begin_measurement)));
 
     /*
     do_measure(root);

@@ -18,12 +18,12 @@ namespace bra
   {
     std::string const projective_measurement::name_ = "M";
 
-    projective_measurement::projective_measurement(qubit_type const qubit)
-      : ::bra::gate::gate(), qubit_(qubit)
+    projective_measurement::projective_measurement(qubit_type const qubit, yampi::rank const root)
+      : ::bra::gate::gate(), qubit_(qubit), root_(root)
     { }
 
     ::bra::state& projective_measurement::do_apply(::bra::state& state) const
-    { return state.projective_measurement(qubit_); }
+    { return state.projective_measurement(qubit_, root_); }
 
     std::string const& projective_measurement::do_name() const { return name_; }
     std::string projective_measurement::do_representation(
