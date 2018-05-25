@@ -26,6 +26,7 @@ namespace bra
       maybe_expectation_values_(),
       measured_value_(),
       random_number_generator_(seed),
+      last_outcomes_(total_num_qubits, KET_GATE_OUTCOME_VALUE(unspecified)),
       permutation_(static_cast<permutation_type::size_type>(total_num_qubits)),
       buffer_(),
       state_integer_datatype_(yampi::basic_datatype_of<state_integer_type>::call()),
@@ -52,6 +53,7 @@ namespace bra
       maybe_expectation_values_(),
       measured_value_(),
       random_number_generator_(seed),
+      last_outcomes_(total_num_qubits_, KET_GATE_OUTCOME_VALUE(unspecified)),
       permutation_(
         boost::begin(initial_permutation), boost::end(initial_permutation)),
       buffer_(),
@@ -69,6 +71,13 @@ namespace bra
       expectation_values_finish_time_(),
       measurement_finish_time_()
   { }
+
+  ::bra::state& state::projective_measurement(qubit_type const qubit)
+  {
+    last_outcomes_[static_cast<bit_integer_type>(qubit)]
+      = do_projective_measurement(qubit);
+    return *this;
+  }
 
   ::bra::state& state::measurement(yampi::rank const root)
   {

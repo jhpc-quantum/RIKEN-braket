@@ -5,6 +5,7 @@
 
 # include <vector>
 
+# include <ket/gate/projective_measurement.hpp>
 # include <ket/utility/parallel/loop_n.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
 # include <ket/mpi/state.hpp>
@@ -139,6 +140,7 @@ namespace bra
       qubit_type const target_qubit,
       control_qubit_type const control_qubit1,
       control_qubit_type const control_qubit2) override;
+    KET_GATE_OUTCOME_TYPE do_projective_measurement(qubit_type const qubit) override;
     void do_expectation_values(yampi::rank const root) override;
     void do_measure(yampi::rank const root) override;
   };

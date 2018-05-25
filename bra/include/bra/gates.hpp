@@ -58,9 +58,19 @@ namespace bra
 # ifndef BOOST_NO_CXX11_SCOPED_ENUMS
   enum class begin_statement : int { error, measurement, learning_machine };
   enum class bit_statement : int { error, assignment };
+
+#  define BRA_BEGIN_STATEMENT_TYPE bra::begin_statement
+#  define BRA_BEGIN_STATEMENT_VALUE(value) bra::begin_statement::value
+#  define BRA_BIT_STATEMENT_TYPE bra::bit_statement
+#  define BRA_BIT_STATEMENT_VALUE(value) bra::bit_statement::value
 # else // BOOST_NO_CXX11_SCOPED_ENUMS
   namespace begin_statement_ { enum begin_statement { error, measurement, learning_machine }; }
   namespace bit_statement_ { enum bit_statement { error, assignment }; }
+
+#  define BRA_BEGIN_STATEMENT_TYPE bra::begin_statement_::begin_statement
+#  define BRA_BEGIN_STATEMENT_VALUE(value) bra::begin_statement_::value
+#  define BRA_BIT_STATEMENT_TYPE bra::bit_statement_::bit_statement
+#  define BRA_BIT_STATEMENT_VALUE(value) bra::bit_statement_::value
 # endif // BOOST_NO_CXX11_SCOPED_ENUMS
 
 
@@ -244,14 +254,10 @@ namespace bra
     boost::tuple<control_qubit_type, qubit_type, int> read_controlled_phase_shift(columns_type const& columns) const { return read_control_target_phaseexp(columns); }
     boost::tuple<control_qubit_type, qubit_type, int> read_controlled_v(columns_type const& columns) const { return read_control_target_phaseexp(columns); }
     boost::tuple<control_qubit_type, control_qubit_type, qubit_type> read_toffoli(columns_type const& columns) const { return read_2controls_target(columns); }
+    qubit_type read_projective_measurement(columns_type const& columns) const { return read_target(columns); }
 
-# ifndef BOOST_NO_CXX11_SCOPED_ENUMS
-    begin_statement read_begin_statement(columns_type& columns) const;
-    bit_statement read_bit_statement(columns_type& columns) const;
-# else
-    begin_statement_::begin_statement read_begin_statement(columns_type& columns) const;
-    bit_statement_::bit_statement read_bit_statement(columns_type& columns) const;
-# endif
+    BRA_BEGIN_STATEMENT_TYPE read_begin_statement(columns_type& columns) const;
+    BRA_BIT_STATEMENT_TYPE read_bit_statement(columns_type& columns) const;
   };
 
   inline bool operator!=(::bra::gates const& lhs, ::bra::gates const& rhs)

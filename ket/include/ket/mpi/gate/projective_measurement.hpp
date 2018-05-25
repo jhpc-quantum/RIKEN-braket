@@ -5,6 +5,8 @@
 
 # include <cmath>
 # include <complex>
+# include <ios>
+# include <sstream>
 # include <vector>
 # ifndef BOOST_NO_CXX11_HDR_ARRAY
 #   include <array>
@@ -17,8 +19,11 @@
 # else
 #   include <boost/random/uniform_real_distribution.hpp>
 # endif
-# include <ios>
-# include <sstream>
+# ifndef BOOST_NO_CXX11_ADDRESSOF
+#   include <memory>
+# else // BOOST_NO_CXX11_ADDRESSOF
+#   include <boost/core/addressof.hpp>
+# endif // BOOST_NO_CXX11_ADDRESSOF
 
 # include <boost/math/constants/constants.hpp>
 # include <boost/range/value_type.hpp>
@@ -50,6 +55,12 @@
 #   define KET_uniform_real_distribution std::uniform_real_distribution
 # else
 #   define KET_uniform_real_distribution boost::random::uniform_real_distribution
+# endif
+
+# ifndef BOOST_NO_CXX11_ADDRESSOF
+#   define KET_addressof std::addressof
+# else
+#   define KET_addressof boost::addressof
 # endif
 
 
@@ -94,7 +105,7 @@ namespace ket
         real_type zero_probability
           = is_qubit_on_page
             ? ::ket::mpi::gate::page::zero_probability(
-                mpi_policy, parallel_policy, local_state, qubit, permutation);
+                mpi_policy, parallel_policy, local_state, qubit, permutation)
             : ::ket::gate::projective_measurement_detail::zero_probability(
                 parallel_policy, boost::begin(local_state), boost::end(local_state), qubit);
 
@@ -188,6 +199,7 @@ namespace ket
 } // namespace ket
 
 
+# undef KET_addressof
 # undef KET_uniform_real_distribution
 # undef KET_array
 

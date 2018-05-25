@@ -41,7 +41,13 @@ namespace ket
           ::ket::qubit<StateInteger, BitInteger> const,
           ::ket::mpi::qubit_permutation<
             StateInteger, BitInteger, Allocator> const&)
-        { return local_state; }
+        {
+          typedef
+            typename ::ket::utility::meta::real_of<
+              typename boost::range_iterator<RandomAccessRange>::type>::type
+            result_type;
+          return result_type(0);
+        }
 
         template <
           typename ParallelPolicy,
@@ -54,7 +60,12 @@ namespace ket
           ::ket::qubit<StateInteger, BitInteger> const,
           ::ket::mpi::qubit_permutation<
             StateInteger, BitInteger, PermutationAllocator> const&)
-        { return local_state; }
+        {
+          typedef
+            typename ::ket::utility::meta::real_of<Complex>::type
+            result_type;
+          return result_type(0);
+        }
 
 
         namespace projective_measurement_detail
@@ -67,7 +78,7 @@ namespace ket
             RandomAccessIterator zero_first_;
 
             zero_probability_loop_inside(
-              Real& zero_probability_,
+              Real& zero_probability,
               RandomAccessIterator const zero_first)
               : zero_probability_(zero_probability), zero_first_(zero_first)
             { }
@@ -166,20 +177,19 @@ namespace ket
           ::ket::qubit<StateInteger, BitInteger> const, Real const,
           ::ket::mpi::qubit_permutation<
             StateInteger, BitInteger, Allocator> const&)
-        { return local_state; }
+        { }
 
         template <
           typename ParallelPolicy,
           typename Complex, typename StateAllocator,
           typename StateInteger, typename BitInteger, typename Real, typename PermutationAllocator>
         inline void change_state_after_measuring_zero(
-        change_state_after_measuring_zero(
           ::ket::mpi::utility::policy::general_mpi const, ParallelPolicy const,
           ::ket::mpi::state<Complex, 0, StateAllocator>& local_state,
           ::ket::qubit<StateInteger, BitInteger> const, Real const,
           ::ket::mpi::qubit_permutation<
             StateInteger, BitInteger, PermutationAllocator> const&)
-        { return local_state; }
+        { }
 
 
         namespace projective_measurement_detail
@@ -230,8 +240,7 @@ namespace ket
           typename ParallelPolicy,
           typename Complex, int num_page_qubits_, typename StateAllocator,
           typename StateInteger, typename BitInteger, typename Real, typename PermutationAllocator>
-        inline typename ::ket::utility::meta::real_of<Complex>::type
-        change_state_after_measuring_zero(
+        inline void change_state_after_measuring_zero(
           ::ket::mpi::utility::policy::general_mpi const,
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>& local_state,
@@ -255,7 +264,7 @@ namespace ket
 
           using std::pow;
           using boost::math::constants::half;
-          Real const multiplier = pow(zero_probability, -half<real_type>());
+          Real const multiplier = pow(zero_probability, -half<Real>());
 
           typedef ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator> local_state_type;
           for (std::size_t base_page_id = 0u;
@@ -312,20 +321,19 @@ namespace ket
           ::ket::qubit<StateInteger, BitInteger> const, Real const,
           ::ket::mpi::qubit_permutation<
             StateInteger, BitInteger, Allocator> const&)
-        { return local_state; }
+        { }
 
         template <
           typename ParallelPolicy,
           typename Complex, typename StateAllocator,
           typename StateInteger, typename BitInteger, typename Real, typename PermutationAllocator>
         inline void change_state_after_measuring_one(
-        change_state_after_measuring_one(
           ::ket::mpi::utility::policy::general_mpi const, ParallelPolicy const,
           ::ket::mpi::state<Complex, 0, StateAllocator>& local_state,
           ::ket::qubit<StateInteger, BitInteger> const, Real const,
           ::ket::mpi::qubit_permutation<
             StateInteger, BitInteger, PermutationAllocator> const&)
-        { return local_state; }
+        { }
 
 
         namespace projective_measurement_detail
@@ -376,8 +384,7 @@ namespace ket
           typename ParallelPolicy,
           typename Complex, int num_page_qubits_, typename StateAllocator,
           typename StateInteger, typename BitInteger, typename Real, typename PermutationAllocator>
-        inline typename ::ket::utility::meta::real_of<Complex>::type
-        change_state_after_measuring_one(
+        inline void change_state_after_measuring_one(
           ::ket::mpi::utility::policy::general_mpi const,
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>& local_state,
@@ -401,7 +408,7 @@ namespace ket
 
           using std::pow;
           using boost::math::constants::half;
-          Real const multiplier = pow(one_probability, -half<real_type>());
+          Real const multiplier = pow(one_probability, -half<Real>());
 
           typedef ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator> local_state_type;
           for (std::size_t base_page_id = 0u;

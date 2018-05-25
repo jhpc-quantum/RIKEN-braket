@@ -55,6 +55,7 @@
 #include <bra/gate/controlled_v.hpp>
 #include <bra/gate/adj_controlled_v.hpp>
 #include <bra/gate/toffoli.hpp>
+#include <bra/gate/projective_measurement.hpp>
 #include <bra/gate/measurement.hpp>
 
 
@@ -219,22 +220,12 @@ namespace bra
       }
       else if (first_mnemonic == "BIT") // BIT ASSIGNMENT
       {
-#ifndef BOOST_NO_CXX11_SCOPED_ENUMS
-        bit_statement const statement = read_bit_statement(columns);
+        BRA_BIT_STATEMENT_TYPE const statement = read_bit_statement(columns);
 
-        if (statement == bit_statement::error)
+        if (statement == BRA_BIT_STATEMENT_VALUE(error))
           throw wrong_mnemonics_error(columns);
-        else if (statement == bit_statement::assignment)
+        else if (statement == BRA_BIT_STATEMENT_VALUE(assignment))
           initial_permutation_ = read_initial_permutation(columns);
-#else // BOOST_NO_CXX11_SCOPED_ENUMS
-        bit_statement_::bit_statement const statement
-          = read_bit_statement(columns);
-
-        if (statement == bit_statement_::error)
-          throw wrong_mnemonics_error(columns);
-        else if (statement == bit_statement_::assignment)
-          initial_permutation_ = read_initial_permutation(columns);
-#endif // BOOST_NO_CXX11_SCOPED_ENUMS
       }
       else if (first_mnemonic == "PERMUTATION")
         throw unsupported_mnemonic_error(first_mnemonic);
@@ -417,37 +408,27 @@ namespace bra
         qubit_type target;
         boost::tie(control1, control2, target) = read_toffoli(columns);
 
-        //throw unsupported_mnemonic_error(first_mnemonic);
         data_.push_back(
           boost::movelib::unique_ptr< ::bra::gate::gate >(
             new ::bra::gate::toffoli(target, control1, control2)));
       }
+      else if (first_mnemonic == "M")
+        data_.push_back(
+          boost::movelib::unique_ptr< ::bra::gate::gate >(
+            new ::bra::gate::projective_measurement(read_projective_measurement(columns))));
       else if (first_mnemonic == "SHORBOX")
         throw unsupported_mnemonic_error(first_mnemonic);
       else if (first_mnemonic == "BEGIN") // BEGIN MEASUREMENT/LEARNING MACHINE
       {
-#ifndef BOOST_NO_CXX11_SCOPED_ENUMS
-        begin_statement const statement = read_begin_statement(columns);
+        BRA_BEGIN_STATEMENT_TYPE const statement = read_begin_statement(columns);
 
-        if (statement == begin_statement::error)
+        if (statement == BRA_BEGIN_STATEMENT_VALUE(error))
           throw wrong_mnemonics_error(columns);
-        else if (statement == begin_statement::measurement)
+        else if (statement == BRA_BEGIN_STATEMENT_VALUE(measurement))
           data_.push_back(
             boost::movelib::unique_ptr< ::bra::gate::gate >(new ::bra::gate::measurement(root_)));
-        else if (statement == begin_statement::learning_machine)
+        else if (statement == BRA_BEGIN_STATEMENT_VALUE(learning_machine))
           throw unsupported_mnemonic_error(first_mnemonic);
-#else // BOOST_NO_CXX11_SCOPED_ENUMS
-        begin_statement_::begin_statement const statement
-          = read_begin_statement(columns);
-
-        if (statement == begin_statement_::error)
-          throw wrong_mnemonics_error(columns);
-        else if (statement == begin_statement_::measurement)
-          data_.push_back(
-            boost::movelib::unique_ptr< ::bra::gate::gate >(new ::bra::gate::measurement(root_)));
-        else if (statement == begin_statement_::learning_machine)
-          throw unsupported_mnemonic_error(first_mnemonic);
-#endif // BOOST_NO_CXX11_SCOPED_ENUMS
       }
       else if (first_mnemonic == "DO") // DO MEASUREMENT
       {
@@ -464,26 +445,14 @@ namespace bra
       else if (first_mnemonic == "END") // END MEASUREMENT/LEARNING MACHINE
       {
         /*
-#ifndef BOOST_NO_CXX11_SCOPED_ENUMS
-        end_statement const statement = read_end_statement(columns);
+        BRA_END_STATEMENT_TYPE const statement = read_end_statement(columns);
 
-        if (statement == end_statement::error)
+        if (statement == BRA_END_STATEMENT_VALUE(error))
           throw wrong_mnemonics_error(columns);
-        else if (statement == end_statement::measurement)
+        else if (statement == BRA_END_STATEMENT_VALUE(measurement))
           data_.push_back(boost::movelib::make_unique< ::bra::gate::measurement >(root_));
-        else if (statement == end_statement::learning_machine)
+        else if (statement == BRA_END_STATEMENT_VALUE(learning_machine))
           throw unsupported_mnemonic_error(first_mnemonic);
-#else // BOOST_NO_CXX11_SCOPED_ENUMS
-        end_statement_::end_statement const statement
-          = read_end_statement(columns);
-
-        if (statement == end_statement_::error)
-          throw wrong_mnemonics_error(columns);
-        else if (statement == end_statement_::measurement)
-          data_.push_back(boost::movelib::make_unique< ::bra::gate::measurement >(root_));
-        else if (statement == end_statement_::learning_machine)
-          throw unsupported_mnemonic_error(first_mnemonic);
-#endif // BOOST_NO_CXX11_SCOPED_ENUMS
 */
         throw unsupported_mnemonic_error(first_mnemonic);
       }
@@ -676,15 +645,15 @@ namespace bra
       ket::make_qubit<state_integer_type>(target));
   }
 
-#ifndef BOOST_NO_CXX11_SCOPED_ENUMS
-  begin_statement gates::read_begin_statement(gates::columns_type& columns) const
+  BRA_BEGIN_STATEMENT_TYPE gates::read_begin_statement(gates::columns_type& columns) const
   {
     if (boost::size(columns) == 2u)
     {
       boost::range_iterator<columns_type>::type iter = ++boost::begin(columns);
       boost::algorithm::to_upper(*iter);
+
       if (*iter == "MEASUREMENT")
-        return begin_statement::measurement;
+        return BRA_BEGIN_STATEMENT_VALUE(measurement);
     }
     else if (boost::size(columns) == 3u)
     {
@@ -693,68 +662,28 @@ namespace bra
       if (*iter == "LEARNING")
       {
         boost::algorithm::to_upper(*++iter);
+
         if (*iter == "MACHINE")
-          return begin_statement::learning_machine;
+          return BRA_BEGIN_STATEMENT_VALUE(learning_machine);
       }
     }
     else
       throw wrong_mnemonics_error(columns);
 
-    return begin_statement::error;
+    return BRA_BEGIN_STATEMENT_VALUE(error);
   }
-#else // BOOST_NO_CXX11_SCOPED_ENUMS
-  begin_statement_::begin_statement gates::read_begin_statement(gates::columns_type& columns) const
-  {
-    if (boost::size(columns) == 2u)
-    {
-      boost::range_iterator<columns_type>::type iter = ++boost::begin(columns);
-      boost::algorithm::to_upper(*iter);
-      if (*iter == "MEASUREMENT")
-        return begin_statement_::measurement;
-    }
-    else if (boost::size(columns) == 3u)
-    {
-      boost::range_iterator<columns_type>::type iter = ++boost::begin(columns);
-      boost::algorithm::to_upper(*iter);
-      if (*iter == "LEARNING")
-      {
-        boost::algorithm::to_upper(*++iter);
-        if (*iter == "MACHINE")
-          return begin_statement_::learning_machine;
-      }
-    }
-    else
-      throw wrong_mnemonics_error(columns);
 
-    return begin_statement_::error;
-  }
-#endif // BOOST_NO_CXX11_SCOPED_ENUMS
-
-#ifndef BOOST_NO_CXX11_SCOPED_ENUMS
-  bit_statement gates::read_bit_statement(gates::columns_type& columns) const
+  BRA_BIT_STATEMENT_TYPE gates::read_bit_statement(gates::columns_type& columns) const
   {
     if (boost::size(columns) <= 1u)
       throw wrong_mnemonics_error(columns);
 
     boost::range_iterator<columns_type>::type iter = ++boost::begin(columns);
     boost::algorithm::to_upper(*iter);
+
     if (*iter == "ASSIGNMENT")
-      return bit_statement::assignment;
+      return BRA_BIT_STATEMENT_VALUE(assignment);
 
-    return bit_statement::error;
+    return BRA_BIT_STATEMENT_VALUE(error);
   }
-#else // BOOST_NO_CXX11_SCOPED_ENUMS
-  bit_statement_::bit_statement gates::read_bit_statement(gates::columns_type& columns) const
-  {
-    if (boost::size(columns) <= 1u)
-      throw wrong_mnemonics_error(columns);
-
-    boost::range_iterator<columns_type>::type iter = ++boost::begin(columns);
-    boost::algorithm::to_upper(*iter);
-    if (*iter == "ASSIGNMENT")
-      return bit_statement_::assignment;
-
-    return bit_statement_::error;
-  }
-#endif // BOOST_NO_CXX11_SCOPED_ENUMS
 }

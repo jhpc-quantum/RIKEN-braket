@@ -23,6 +23,7 @@
 
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
+# include <ket/gate/projective_measurement.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 
 # include <yampi/allocator.hpp>
@@ -75,6 +76,8 @@ namespace bra
     boost::optional<spins_type> maybe_expectation_values_;
     state_integer_type measured_value_;
     random_number_generator_type random_number_generator_;
+
+    std::vector<KET_GATE_OUTCOME_TYPE> last_outcomes_;
 
     permutation_type permutation_;
     std::vector<complex_type, yampi::allocator<complex_type> > buffer_;
@@ -279,6 +282,8 @@ namespace bra
       return *this;
     }
 
+    ::bra::state& projective_measurement(qubit_type const qubit);
+
     ::bra::state& measurement(yampi::rank const root);
 
    private:
@@ -347,6 +352,7 @@ namespace bra
       control_qubit_type const control_qubit1,
       control_qubit_type const control_qubit2)
       = 0;
+    virtual KET_GATE_OUTCOME_TYPE do_projective_measurement(qubit_type const qubit) = 0;
     virtual void do_expectation_values(yampi::rank const root) = 0;
     virtual void do_measure(yampi::rank const root) = 0;
   };

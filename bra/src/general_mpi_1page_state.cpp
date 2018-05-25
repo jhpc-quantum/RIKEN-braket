@@ -14,6 +14,7 @@
 #include <ket/mpi/gate/controlled_phase_shift.hpp>
 #include <ket/mpi/gate/controlled_v.hpp>
 #include <ket/mpi/gate/toffoli.hpp>
+#include <ket/mpi/gate/projective_measurement.hpp>
 #include <ket/mpi/all_spin_expectation_values.hpp>
 #include <ket/mpi/measure.hpp>
 
@@ -317,6 +318,14 @@ namespace bra
       mpi_policy_, parallel_policy_,
       data_, target_qubit, control_qubit1, control_qubit2,
       permutation_, buffer_, complex_datatype_, communicator_, environment_);
+  }
+
+  KET_GATE_OUTCOME_TYPE general_mpi_1page_state::do_projective_measurement(qubit_type const qubit)
+  {
+    return ket::mpi::gate::projective_measurement(
+      mpi_policy_, parallel_policy_,
+      data_, qubit, random_number_generator_, permutation_,
+      buffer_, real_datatype_, complex_datatype_, communicator_, environment_);
   }
 
   void general_mpi_1page_state::do_expectation_values(yampi::rank const root)

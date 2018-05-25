@@ -21,6 +21,7 @@
 #     include <type_traits>
 #   else
 #     include <boost/type_traits/is_unsigned.hpp>
+#     include <boost/type_traits/is_same.hpp>
 #   endif
 # endif
 # ifdef BOOST_NO_CXX11_STATIC_ASSERT
@@ -48,8 +49,10 @@
 
 # ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
 #   define KET_is_unsigned std::is_unsigned
+#   define KET_is_same std::is_same
 # else
 #   define KET_is_unsigned boost::is_unsigned
+#   define KET_is_same boost::is_same
 # endif
 
 # ifdef BOOST_NO_CXX11_STATIC_ASSERT
@@ -300,10 +303,10 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const qubit, Real const zero_probability)
       {
         static_assert(
-          KET_is_same<
-            typename ::ket::utility::meta::real_of<
-              typename std::iterator_traits<RandomAccesIterator>::value_type>::type,
-            Real>::value,
+          (KET_is_same<
+             typename ::ket::utility::meta::real_of<
+               typename std::iterator_traits<RandomAccessIterator>::value_type>::type,
+             Real>::value),
           "Real must be the same as real number type corresponding to value type of iterator");
 
         StateInteger const qubit_mask
@@ -314,8 +317,9 @@ namespace ket
 
         using std::pow;
         using boost::math::constants::half;
-        Real const multiplier = pow(zero_probability, -half<real_type>());
+        Real const multiplier = pow(zero_probability, -half<Real>());
 
+        using ::ket::utility::loop_n;
 # ifndef BOOST_NO_CXX11_LAMBDAS
         loop_n(
           parallel_policy,
@@ -355,10 +359,10 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const qubit, Real const one_probability)
       {
         static_assert(
-          KET_is_same<
-            typename ::ket::utility::meta::real_of<
-              typename std::iterator_traits<RandomAccesIterator>::value_type>::type,
-            Real>::value,
+          (KET_is_same<
+             typename ::ket::utility::meta::real_of<
+               typename std::iterator_traits<RandomAccessIterator>::value_type>::type,
+             Real>::value),
           "Real must be the same as real number type corresponding to value type of iterator");
 
         StateInteger const qubit_mask
@@ -369,8 +373,9 @@ namespace ket
 
         using std::pow;
         using boost::math::constants::half;
-        real_type const multiplier = pow(one_probability, -half<Real>());
+        Real const multiplier = pow(one_probability, -half<Real>());
 
+        using ::ket::utility::loop_n;
 # ifndef BOOST_NO_CXX11_LAMBDAS
         loop_n(
           parallel_policy,
