@@ -58,19 +58,25 @@ namespace bra
 # ifndef BOOST_NO_CXX11_SCOPED_ENUMS
   enum class begin_statement : int { error, measurement, learning_machine };
   enum class bit_statement : int { error, assignment };
+  enum class generate_statement : int { error, events };
 
 #  define BRA_BEGIN_STATEMENT_TYPE bra::begin_statement
 #  define BRA_BEGIN_STATEMENT_VALUE(value) bra::begin_statement::value
 #  define BRA_BIT_STATEMENT_TYPE bra::bit_statement
 #  define BRA_BIT_STATEMENT_VALUE(value) bra::bit_statement::value
+#  define BRA_GENERATE_STATEMENT_TYPE bra::generate_statement
+#  define BRA_GENERATE_STATEMENT_VALUE(value) bra::generate_statement::value
 # else // BOOST_NO_CXX11_SCOPED_ENUMS
   namespace begin_statement_ { enum begin_statement { error, measurement, learning_machine }; }
   namespace bit_statement_ { enum bit_statement { error, assignment }; }
+  namespace generate_statement_ { enum generate_statement { error, events }; }
 
 #  define BRA_BEGIN_STATEMENT_TYPE bra::begin_statement_::begin_statement
 #  define BRA_BEGIN_STATEMENT_VALUE(value) bra::begin_statement_::value
 #  define BRA_BIT_STATEMENT_TYPE bra::bit_statement_::bit_statement
 #  define BRA_BIT_STATEMENT_VALUE(value) bra::bit_statement_::value
+#  define BRA_GENERATE_STATEMENT_TYPE bra::generate_statement_::generate_statement
+#  define BRA_GENERATE_STATEMENT_VALUE(value) bra::generate_statement_::value
 # endif // BOOST_NO_CXX11_SCOPED_ENUMS
 
 
@@ -258,6 +264,7 @@ namespace bra
 
     BRA_BEGIN_STATEMENT_TYPE read_begin_statement(columns_type& columns) const;
     BRA_BIT_STATEMENT_TYPE read_bit_statement(columns_type& columns) const;
+    boost::tuple<BRA_GENERATE_STATEMENT_TYPE, int, int> read_generate_statement(columns_type& columns) const;
   };
 
   inline bool operator!=(::bra::gates const& lhs, ::bra::gates const& rhs)

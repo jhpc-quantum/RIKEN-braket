@@ -52,12 +52,12 @@
 namespace bra
 {
 # ifndef BOOST_NO_CXX11_SCOPED_ENUMS
-  enum class finished_process : int { operations, begin_measurement, ket_measure };
+  enum class finished_process : int { operations, begin_measurement, generate_events, ket_measure };
 
 #  define BRA_FINISHED_PROCESS_TYPE bra::finished_process
 #  define BRA_FINISHED_PROCESS_VALUE(value) bra::finished_process::value
 # else // BOOST_NO_CXX11_SCOPED_ENUMS
-  namespace finished_process_ { enum finished_process { operations, begin_measurement, ket_measure }; }
+  namespace finished_process_ { enum finished_process { operations, begin_measurement, generate_events, ket_measure }; }
 
 #  define BRA_FINISHED_PROCESS_TYPE bra::finished_process_::finished_process
 #  define BRA_FINISHED_PROCESS_VALUE(value) bra::finished_process_::value
@@ -94,6 +94,7 @@ namespace bra
     std::vector<KET_GATE_OUTCOME_TYPE> last_outcomes_; // return values of ket::mpi::gate::projective_measurement
     boost::optional<spins_type> maybe_expectation_values_; // return value of ket::mpi::all_spin_expectation_values
     state_integer_type measured_value_; // return value of ket::mpi::measure
+    std::vector<state_integer_type> generated_events_; // results of ket::mpi::generate_events
     random_number_generator_type random_number_generator_;
 
     permutation_type permutation_;
@@ -158,6 +159,7 @@ namespace bra
     boost::optional<spins_type> const& maybe_expectation_values() const
     { return maybe_expectation_values_; }
     state_integer_type const& measured_value() const { return measured_value_; }
+    std::vector<state_integer_type> const& generated_events() const { return generated_events_; }
     random_number_generator_type& random_number_generator() { return random_number_generator_; }
 
     permutation_type const& permutation() const { return permutation_; }
@@ -306,6 +308,8 @@ namespace bra
 
     ::bra::state& measurement(yampi::rank const root);
 
+    ::bra::state& generate_events(yampi::rank const root, int const num_events, int const seed);
+
    private:
     virtual unsigned int do_num_page_qubits() const = 0;
     virtual unsigned int do_num_pages() const = 0;
@@ -376,6 +380,7 @@ namespace bra
       qubit_type const qubit, yampi::rank const root) = 0;
     virtual void do_expectation_values(yampi::rank const root) = 0;
     virtual void do_measure(yampi::rank const root) = 0;
+    virtual void do_generate_events(yampi::rank const root, int const num_events, int const seed) = 0;
   };
 }
 

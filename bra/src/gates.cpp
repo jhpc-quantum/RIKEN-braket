@@ -57,6 +57,7 @@
 #include <bra/gate/toffoli.hpp>
 #include <bra/gate/projective_measurement.hpp>
 #include <bra/gate/measurement.hpp>
+#include <bra/gate/generate_events.hpp>
 
 
 namespace bra
@@ -458,7 +459,19 @@ namespace bra
       }
       else if (first_mnemonic == "GENERATE") // GENERATE EVENTS
       {
-        //throw unsupported_mnemonic_error(first_mnemonic);
+        BRA_GENERATE_STATEMENT_TYPE statement;
+        int num_events, seed;
+        boost::tie(statement, num_events, seed) = read_generate_statement(columns);
+
+        if (statement == BRA_GENERATE_STATEMENT_VALUE(error))
+          throw wrong_mnemonics_error(columns);
+        else if (statement == BRA_GENERATE_STATEMENT_VALUE(events))
+        {
+          data_.push_back(
+            boost::movelib::unique_ptr< ::bra::gate::gate >(
+              new ::bra::gate::generate_events(root_, num_events, seed)));
+          break;
+        }
       }
       else
         throw unsupported_mnemonic_error(first_mnemonic);
@@ -685,5 +698,23 @@ namespace bra
       return BRA_BIT_STATEMENT_VALUE(assignment);
 
     return BRA_BIT_STATEMENT_VALUE(error);
+  }
+
+  boost::tuple<BRA_GENERATE_STATEMENT_TYPE, int, int> gates::read_generate_statement(gates::columns_type& columns) const
+  {
+    if (boost::size(columns) != 4u)
+      throw wrong_mnemonics_error(columns);
+
+    boost::range_iterator<columns_type>::type iter = ++boost::begin(columns);
+    boost::algorithm::to_upper(*iter);
+
+    if (*iter == "EVENTS")
+    {
+      int const num_events = boost::lexical_cast<int>(*++iter);
+      int const seed = boost::lexical_cast<int>(*++iter);
+      return boost::make_tuple(BRA_GENERATE_STATEMENT_VALUE(events), num_events, seed);
+    }
+
+    return boost::make_tuple(BRA_GENERATE_STATEMENT_VALUE(error), -1, -1);
   }
 }

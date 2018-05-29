@@ -35,6 +35,22 @@
 #endif
 
 
+template <typename StateInteger, typename BitInteger>
+std::string integer_to_bits_string(StateInteger const integer, BitInteger const total_num_qubits)
+{
+  std::string result;
+  for (BitInteger left_bit = total_num_qubits; left_bit > static_cast<BitInteger>(0u); --left_bit)
+  {
+    StateInteger const zero_or_one = (integer bitand (static_cast<StateInteger>(1u) << (left_bit-1u))) >> (left_bit-1u);
+    if (zero_or_one == static_cast<StateInteger>(0u))
+      result += '0';
+    else
+      result += '1';
+  }
+  return result;
+}
+
+
 int main(int argc, char* argv[])
 {
   std::ios::sync_with_stdio(false);
@@ -152,6 +168,21 @@ int main(int argc, char* argv[])
       std::cout
         << "Measurement result: " << state_ptr->measured_value()
         << "\nMeasurement finished: "
+        << (finish_time_and_process.first - start_time).count()
+        << " ("
+        << (finish_time_and_process.first - last_processed_time).count()
+        << ')'
+        << std::endl;
+      break;
+    }
+    else if (finish_time_and_process.second == BRA_FINISHED_PROCESS_VALUE(generate_events))
+    {
+      std::cout << "Events:\n";
+      std::size_t const num_events = state_ptr->generated_events().size();
+      for (std::size_t index = 0u; index < num_events; ++index)
+        std::cout << index << ' ' << integer_to_bits_string(state_ptr->generated_events()[index], state_ptr->total_num_qubits()) << '\n';
+      std::cout
+        << "Events finished: "
         << (finish_time_and_process.first - start_time).count()
         << " ("
         << (finish_time_and_process.first - last_processed_time).count()

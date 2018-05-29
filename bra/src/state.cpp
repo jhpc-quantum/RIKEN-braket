@@ -26,6 +26,7 @@ namespace bra
       last_outcomes_(total_num_qubits, KET_GATE_OUTCOME_VALUE(unspecified)),
       maybe_expectation_values_(),
       measured_value_(),
+      generated_events_(),
       random_number_generator_(seed),
       permutation_(static_cast<permutation_type::size_type>(total_num_qubits)),
       buffer_(),
@@ -52,6 +53,7 @@ namespace bra
       last_outcomes_(total_num_qubits_, KET_GATE_OUTCOME_VALUE(unspecified)),
       maybe_expectation_values_(),
       measured_value_(),
+      generated_events_(),
       random_number_generator_(seed),
       permutation_(
         boost::begin(initial_permutation), boost::end(initial_permutation)),
@@ -94,6 +96,20 @@ namespace bra
       std::make_pair(
         yampi::wall_clock::now(environment_), BRA_FINISHED_PROCESS_VALUE(ket_measure)));
         */
+
+    return *this;
+  }
+
+  ::bra::state& state::generate_events(yampi::rank const root, int const num_events, int const seed)
+  {
+    finish_times_and_processes_.push_back(
+      std::make_pair(
+        yampi::wall_clock::now(environment_), BRA_FINISHED_PROCESS_VALUE(operations)));
+
+    do_generate_events(root, num_events, seed);
+    finish_times_and_processes_.push_back(
+      std::make_pair(
+        yampi::wall_clock::now(environment_), BRA_FINISHED_PROCESS_VALUE(generate_events)));
 
     return *this;
   }

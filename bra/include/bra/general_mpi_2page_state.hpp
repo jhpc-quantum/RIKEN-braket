@@ -144,6 +144,7 @@ namespace bra
       qubit_type const qubit, yampi::rank const root) override;
     void do_expectation_values(yampi::rank const root) override;
     void do_measure(yampi::rank const root) override;
+    void do_generate_events(yampi::rank const root, int const num_events, int const seed) override;
   };
 }
 
