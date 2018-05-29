@@ -11,11 +11,6 @@
 # endif
 # include <iterator>
 # include <utility>
-# ifndef BOOST_NO_CXX11_HDR_RANDOM
-#   include <random>
-# else
-#   include <boost/random/uniform_real_distribution.hpp>
-# endif
 # ifndef NDEBUG
 #   ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
 #     include <type_traits>
@@ -45,6 +40,7 @@
 # ifndef NDEBUG
 #   include <ket/utility/integer_log2.hpp>
 # endif
+# include <ket/utility/positive_random_value_upto.hpp>
 # include <ket/utility/meta/real_of.hpp>
 
 # ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
@@ -57,12 +53,6 @@
 
 # ifdef BOOST_NO_CXX11_STATIC_ASSERT
 #   define static_assert(exp, msg) BOOST_STATIC_ASSERT_MSG(exp, msg)
-# endif
-
-# ifndef BOOST_NO_CXX11_HDR_RANDOM
-#   define KET_uniform_real_distribution std::uniform_real_distribution
-# else
-#   define KET_uniform_real_distribution boost::random::uniform_real_distribution
 # endif
 
 # ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
@@ -94,20 +84,26 @@ namespace ket
     {
 # ifdef BOOST_NO_CXX11_LAMBDAS
       template <typename Real, typename RandomAccessIterator, typename StateInteger>
-      struct zero_probability_loop_inside
+      struct zero_one_probabilities_loop_inside
       {
         Real& zero_probability_;
+        Real& one_probability_;
         RandomAccessIterator first_;
+        StateInteger qubit_mask_;
         StateInteger lower_bits_mask_;
         StateInteger upper_bits_mask_;
 
-        zero_probability_loop_inside(
+        zero_one_probabilities_loop_inside(
           Real& zero_probability,
+          Real& one_probability,
           RandomAccessIterator const first,
+          StateInteger const qubit_mask,
           StateInteger const lower_bits_mask,
           StateInteger const upper_bits_mask)
           : zero_probability_(zero_probability),
+            one_probability_(one_probability),
             first_(first),
+            qubit_mask_(qubit_mask),
             lower_bits_mask_(lower_bits_mask),
             upper_bits_mask_(upper_bits_mask)
         { }
@@ -118,21 +114,28 @@ namespace ket
           StateInteger const zero_index
             = ((value_wo_qubit bitand upper_bits_mask_) << 1u)
               bitor (value_wo_qubit bitand lower_bits_mask_);
+          // xxxxx1xxxxxx
+          StateInteger const one_index = zero_index bitor qubit_mask_;
+
           using std::norm;
           zero_probability_ += norm(*(first_+zero_index));
+          one_probability_ += norm(*(first_+one_index));
         }
       };
 
       template <typename Real, typename RandomAccessIterator, typename StateInteger>
-      inline zero_probability_loop_inside<Real, RandomAccessIterator, StateInteger>
-      make_zero_probability_loop_inside(
+      inline zero_one_probabilities_loop_inside<Real, RandomAccessIterator, StateInteger>
+      make_zero_one_probabilities_loop_inside(
         Real& zero_probability,
+        Real& one_probability,
         RandomAccessIterator const first,
+        StateInteger const qubit_mask,
         StateInteger const lower_bits_mask,
         StateInteger const upper_bits_mask)
       {
-        return zero_probability_loop_inside<Real, RandomAccessIterator, StateInteger>(
-          zero_probability, first, lower_bits_mask, upper_bits_mask);
+        return zero_one_probabilities_loop_inside<Real, RandomAccessIterator, StateInteger>(
+          zero_probability, one_probability, first,
+          qubit_mask, lower_bits_mask, upper_bits_mask);
       }
 
 
@@ -247,9 +250,12 @@ namespace ket
         typename ParallelPolicy, typename RandomAccessIterator,
         typename StateInteger, typename BitInteger>
       inline
-      typename ::ket::utility::meta::real_of<
-        typename std::iterator_traits<RandomAccessIterator>::value_type>::type
-      zero_probability(
+      std::pair<
+        typename ::ket::utility::meta::real_of<
+          typename std::iterator_traits<RandomAccessIterator>::value_type>::type,
+        typename ::ket::utility::meta::real_of<
+          typename std::iterator_traits<RandomAccessIterator>::value_type>::type>
+      zero_one_probabilities(
         ParallelPolicy const parallel_policy,
         RandomAccessIterator const first, RandomAccessIterator const last,
         ::ket::qubit<StateInteger, BitInteger> const qubit)
@@ -265,32 +271,39 @@ namespace ket
           complex_type;
         typedef
           typename ::ket::utility::meta::real_of<complex_type>::type real_type;
-        real_type result = static_cast<real_type>(0);
+        real_type zero_probability = static_cast<real_type>(0);
+        real_type one_probability = static_cast<real_type>(0);
 
         using ::ket::utility::loop_n;
 # ifndef BOOST_NO_CXX11_LAMBDAS
         loop_n(
           parallel_policy,
           static_cast<StateInteger>(last-first)/2u,
-          [&result, first, lower_bits_mask, upper_bits_mask](
+          [&zero_probability, &one_probability, first,
+           qubit_mask, lower_bits_mask, upper_bits_mask](
             StateInteger const value_wo_qubit, int const)
           {
             // xxxxx0xxxxxx
             StateInteger const zero_index
               = ((value_wo_qubit bitand upper_bits_mask) << 1u)
                 bitor (value_wo_qubit bitand lower_bits_mask);
+            // xxxxx1xxxxxx
+            StateInteger const one_index = zero_index bitor qubit_mask;
+
             using std::norm;
-            result += norm(*(first+zero_index));
+            zero_probability += norm(*(first+zero_index));
+            one_probability += norm(*(first+one_index));
           });
 # else // BOOST_NO_CXX11_LAMBDAS
         loop_n(
           parallel_policy,
           static_cast<StateInteger>(last-first)/2u,
-          ::ket::gate::projective_measurement_detail::make_zero_probability_loop_inside(
-            result, first, lower_bits_mask, upper_bits_mask));
+          ::ket::gate::projective_measurement_detail::make_zero_one_probabilities_loop_inside(
+            zero_probability, one_probability, first,
+            qubit_mask, lower_bits_mask, upper_bits_mask));
 # endif // BOOST_NO_CXX11_LAMBDAS
 
-        return result;
+        return std::make_pair(zero_probability, one_probability);
       }
 
 
@@ -315,6 +328,8 @@ namespace ket
           = qubit_mask-static_cast<StateInteger>(1u);
         StateInteger const upper_bits_mask = compl lower_bits_mask;
 
+        // a' = a/sqrt(p_0)
+        // If p = p_0 + p_1 != 1 because of numerical error, a' = (a / sqrt(p)) / sqrt(p_0/p) = a/sqrt(p_0)
         using std::pow;
         using boost::math::constants::half;
         Real const multiplier = pow(zero_probability, -half<Real>());
@@ -371,6 +386,8 @@ namespace ket
           = qubit_mask-static_cast<StateInteger>(1u);
         StateInteger const upper_bits_mask = compl lower_bits_mask;
 
+        // a' = a/sqrt(p_1)
+        // If p = p_0 + p_1 != 1 because of numerical error, a' = (a / sqrt(p)) / sqrt(p_1/p) = a/sqrt(p_1)
         using std::pow;
         using boost::math::constants::half;
         Real const multiplier = pow(one_probability, -half<Real>());
@@ -440,20 +457,21 @@ namespace ket
           complex_type;
         typedef
           typename ::ket::utility::meta::real_of<complex_type>::type real_type;
-        real_type const zero_probability
-          = ::ket::gate::projective_measurement_detail::zero_probability(
+        std::pair<real_type, real_type> const zero_one_probabilities
+          = ::ket::gate::projective_measurement_detail::zero_one_probabilities(
               parallel_policy, first, last, qubit);
+        real_type const total_probability = zero_one_probabilities.first + zero_one_probabilities.second;
 
-        KET_uniform_real_distribution<double> distribution(0.0, 1.0);
-        if (distribution(random_number_generator) < static_cast<double>(zero_probability))
+        if (::ket::utility::positive_random_value_upto(total_probability, random_number_generator)
+            < zero_one_probabilities.first)
         {
           ::ket::gate::projective_measurement_detail::change_state_after_measuring_zero(
-            parallel_policy, first, last, qubit, zero_probability);
+            parallel_policy, first, last, qubit, zero_one_probabilities.first);
           return KET_GATE_OUTCOME_VALUE(zero);
         }
 
         ::ket::gate::projective_measurement_detail::change_state_after_measuring_one(
-          parallel_policy, first, last, qubit, static_cast<real_type>(1)-zero_probability);
+          parallel_policy, first, last, qubit, zero_one_probabilities.second);
         return KET_GATE_OUTCOME_VALUE(one);
       }
     } // namespace projective_measurement_detail
@@ -551,7 +569,6 @@ namespace ket
 # ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
 #   undef KET_addressof
 # endif
-# undef KET_uniform_real_distribution
 # undef KET_is_unsigned
 # ifdef BOOST_NO_CXX11_STATIC_ASSERT
 #   undef static_assert

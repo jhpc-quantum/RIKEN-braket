@@ -100,9 +100,8 @@ namespace bra
     std::vector<complex_type, yampi::allocator<complex_type> > buffer_;
     yampi::datatype state_integer_datatype_;
     yampi::datatype real_datatype_;
-# if MPI_VERSION < 3
-    yampi::derived_datatype derived_complex_datatype_;
-# endif
+    yampi::derived_datatype derived_real_pair_datatype_;
+    yampi::datatype real_pair_datatype_;
     yampi::datatype complex_datatype_;
     yampi::communicator communicator_;
     yampi::environment const& environment_;

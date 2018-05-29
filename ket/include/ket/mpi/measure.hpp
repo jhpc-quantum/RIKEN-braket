@@ -5,11 +5,6 @@
 
 # include <cmath>
 # include <vector>
-# ifndef BOOST_NO_CXX11_HDR_RANDOM
-#   include <random>
-# else
-#   include <boost/random/uniform_real_distribution.hpp>
-# endif
 
 # include <boost/utility.hpp> // boost::prior
 
@@ -33,17 +28,12 @@
 # include <yampi/algorithm/transform.hpp>
 
 # include <ket/utility/loop_n.hpp>
+# include <ket/utility/positive_random_value_upto.hpp>
 # include <ket/utility/meta/real_of.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
 # include <ket/mpi/utility/logger.hpp>
 # include <ket/mpi/utility/fill.hpp>
-
-# ifndef BOOST_NO_CXX11_HDR_RANDOM
-#   define KET_uniform_real_distribution std::uniform_real_distribution
-# else
-#   define KET_uniform_real_distribution boost::random::uniform_real_distribution
-# endif
 
 
 namespace ket
@@ -147,10 +137,9 @@ namespace ket
       {
         boost::partial_sum(total_probabilities, total_probabilities.begin());
 
-        KET_uniform_real_distribution<double> distribution(0.0, 1.0);
         random_value
-          = total_probabilities.back()
-            * static_cast<real_type>(distribution(random_number_generator));
+          = ::ket::utility::positive_random_value_upto(
+              total_probabilities.back(), random_number_generator);
         result_rank
           = static_cast<yampi::rank>(static_cast<StateInteger>(
               boost::size(boost::upper_bound<boost::return_begin_found>(
@@ -333,10 +322,9 @@ namespace ket
       {
         boost::partial_sum(total_probabilities, total_probabilities.begin());
 
-        KET_uniform_real_distribution<double> distribution(0.0, 1.0);
         random_value
-          = total_probabilities.back()
-            * static_cast<real_type>(distribution(random_number_generator));
+          = ::ket::utility::positive_random_value_upto(
+              total_probabilities.back(), random_number_generator);
         result_rank
           = static_cast<yampi::rank>(static_cast<StateInteger>(
               boost::size(boost::upper_bound<boost::return_begin_found>(
@@ -451,8 +439,6 @@ namespace ket
   } // namespace mpi
 } // namespace ket
 
-
-# undef KET_uniform_real_distribution
 
 #endif
 

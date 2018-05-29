@@ -105,60 +105,59 @@ int main(int argc, char* argv[])
     typedef bra::state::time_and_process_type time_and_process_type;
     time_and_process_type finish_time_and_process = state_ptr->finish_time_and_process(index);
 
-    switch (finish_time_and_process.second)
+    if (finish_time_and_process.second == BRA_FINISHED_PROCESS_VALUE(operations))
     {
-      case BRA_FINISHED_PROCESS_VALUE(operations):
-        std::cout
-          << "Operations finished: "
-          << (finish_time_and_process.first - start_time).count()
-          << " ("
-          << (finish_time_and_process.first - last_processed_time).count()
-          << ')'
-          << std::endl;
-        last_processed_time = finish_time_and_process.first;
-        break;
-
-      case BRA_FINISHED_PROCESS_VALUE(begin_measurement):
-        std::cout
-          << boost::format("Expectation values of spins:\n%|=8s| %|=8s| %|=8s|\n")
-             % "<Qx>" % "<Qy>" % "<Qz>";
+      std::cout
+        << "Operations finished: "
+        << (finish_time_and_process.first - start_time).count()
+        << " ("
+        << (finish_time_and_process.first - last_processed_time).count()
+        << ')'
+        << std::endl;
+      last_processed_time = finish_time_and_process.first;
+    }
+    else if (finish_time_and_process.second == BRA_FINISHED_PROCESS_VALUE(begin_measurement))
+    {
+      std::cout
+        << boost::format("Expectation values of spins:\n%|=8s| %|=8s| %|=8s|\n")
+           % "<Qx>" % "<Qy>" % "<Qz>";
 # ifndef BOOST_NO_CXX11_RANGE_BASED_FOR
-        typedef bra::state::spin_type spin_type;
-        for (spin_type const& spin: *(state_ptr->maybe_expectation_values()))
-          std::cout
-            << boost::format("%|=8.3f| %|=8.3f| %|=8.3f|\n")
-               % (0.5-spin[0u]) % (0.5-spin[1u]) % (0.5-spin[2u]);
+      typedef bra::state::spin_type spin_type;
+      for (spin_type const& spin: *(state_ptr->maybe_expectation_values()))
+        std::cout
+          << boost::format("%|=8.3f| %|=8.3f| %|=8.3f|\n")
+             % (0.5-spin[0u]) % (0.5-spin[1u]) % (0.5-spin[2u]);
 # else // BOOST_NO_CXX11_RANGE_BASED_FOR
-        typedef bra::state::spins_type::const_iterator const_iterator;
-        const_iterator const last = state_ptr->maybe_expectation_values()->end();
-        for (const_iterator iter = state_ptr->maybe_expectation_values()->begin();
-             iter != last; ++iter)
-          std::cout
-            << boost::format("%|=8.3f| %|=8.3f| %|=8.3f|\n")
-               % (0.5-(*iter)[0u]) % (0.5-(*iter)[1u]) % (0.5-(*iter)[2u]);
+      typedef bra::state::spins_type::const_iterator const_iterator;
+      const_iterator const last = state_ptr->maybe_expectation_values()->end();
+      for (const_iterator iter = state_ptr->maybe_expectation_values()->begin();
+           iter != last; ++iter)
+        std::cout
+          << boost::format("%|=8.3f| %|=8.3f| %|=8.3f|\n")
+             % (0.5-(*iter)[0u]) % (0.5-(*iter)[1u]) % (0.5-(*iter)[2u]);
 # endif // BOOST_NO_CXX11_RANGE_BASED_FOR
-        std::cout << std::flush;
+      std::cout << std::flush;
 
-        std::cout
-          << "Expectation values finished: "
-          << (finish_time_and_process.first - start_time).count()
-          << " ("
-          << (finish_time_and_process.first - last_processed_time).count()
-          << ')'
-          << std::endl;
-        last_processed_time = finish_time_and_process.first;
-        break;
-
-      case BRA_FINISHED_PROCESS_VALUE(ket_measure):
-        std::cout
-          << "Measurement result: " << state_ptr->measured_value()
-          << "\nMeasurement finished: "
-          << (finish_time_and_process.first - start_time).count()
-          << " ("
-          << (finish_time_and_process.first - last_processed_time).count()
-          << ')'
-          << std::endl;
-        return EXIT_SUCCESS;
+      std::cout
+        << "Expectation values finished: "
+        << (finish_time_and_process.first - start_time).count()
+        << " ("
+        << (finish_time_and_process.first - last_processed_time).count()
+        << ')'
+        << std::endl;
+      last_processed_time = finish_time_and_process.first;
+    }
+    else if (finish_time_and_process.second == BRA_FINISHED_PROCESS_VALUE(ket_measure))
+    {
+      std::cout
+        << "Measurement result: " << state_ptr->measured_value()
+        << "\nMeasurement finished: "
+        << (finish_time_and_process.first - start_time).count()
+        << " ("
+        << (finish_time_and_process.first - last_processed_time).count()
+        << ')'
+        << std::endl;
+      break;
     }
   }
 

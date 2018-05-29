@@ -14,11 +14,6 @@
 #   include <boost/array.hpp>
 # endif
 # include <utility>
-# ifndef BOOST_NO_CXX11_HDR_RANDOM
-#   include <random>
-# else
-#   include <boost/random/uniform_real_distribution.hpp>
-# endif
 # ifndef BOOST_NO_CXX11_ADDRESSOF
 #   include <memory>
 # else // BOOST_NO_CXX11_ADDRESSOF
@@ -51,12 +46,6 @@
 #   define KET_array boost::array
 # endif
 
-# ifndef BOOST_NO_CXX11_HDR_RANDOM
-#   define KET_uniform_real_distribution std::uniform_real_distribution
-# else
-#   define KET_uniform_real_distribution boost::random::uniform_real_distribution
-# endif
-
 # ifndef BOOST_NO_CXX11_ADDRESSOF
 #   define KET_addressof std::addressof
 # else
@@ -81,8 +70,8 @@ namespace ket
         RandomNumberGenerator& random_number_generator,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::datatype const real_datatype,
         yampi::datatype const complex_datatype,
+        yampi::datatype const real_pair_datatype,
         yampi::rank const root,
         yampi::communicator const communicator,
         yampi::environment const& environment)
@@ -103,37 +92,35 @@ namespace ket
 
         typedef typename boost::range_value<RandomAccessRange>::type complex_type;
         typedef typename ::ket::utility::meta::real_of<complex_type>::type real_type;
-        real_type zero_probability
+        std::pair<real_type, real_type> zero_one_probabilities
           = is_qubit_on_page
-            ? ::ket::mpi::gate::page::zero_probability(
+            ? ::ket::mpi::gate::page::zero_one_probabilities(
                 mpi_policy, parallel_policy, local_state, qubit, permutation)
-            : ::ket::gate::projective_measurement_detail::zero_probability(
+            : ::ket::gate::projective_measurement_detail::zero_one_probabilities(
                 parallel_policy, boost::begin(local_state), boost::end(local_state), qubit);
 
         yampi::all_reduce(
           communicator, environment,
-          yampi::make_buffer(zero_probability, real_datatype),
-          KET_addressof(zero_probability), yampi::operations::plus());
+          yampi::make_buffer(zero_one_probabilities, real_pair_datatype),
+          KET_addressof(zero_one_probabilities), yampi::operations::plus());
+        real_type const total_probability = zero_one_probabilities.first + zero_one_probabilities.second;
 
-        KET_uniform_real_distribution<double> distribution(0.0, 1.0);
-        double const probability = distribution(random_number_generator);
         int zero_or_one
-          = probability < static_cast<double>(zero_probability)
+          = ::ket::utility::positive_random_value_upto(total_probability, random_number_generator)
+              < zero_one_probabilities.first
             ? 0 : 1;
 
-        yampi::broadcast(communicator, root).call(
-          environment, yampi::make_buffer(zero_or_one));
+        yampi::broadcast(communicator, root).call(environment, yampi::make_buffer(zero_or_one));
 
         if (zero_or_one == 0)
         {
           if (is_qubit_on_page)
             ::ket::mpi::gate::page::change_state_after_measuring_zero(
-              mpi_policy, parallel_policy, local_state, qubit, zero_probability, permutation);
+              mpi_policy, parallel_policy, local_state, qubit, zero_one_probabilities.first, permutation);
           else
             ::ket::gate::projective_measurement_detail::change_state_after_measuring_zero(
               parallel_policy,
-              boost::begin(local_state), boost::end(local_state), qubit,
-              zero_probability);
+              boost::begin(local_state), boost::end(local_state), qubit, zero_one_probabilities.first);
 
           return KET_GATE_OUTCOME_VALUE(zero);
         }
@@ -141,12 +128,11 @@ namespace ket
         if (is_qubit_on_page)
           ::ket::mpi::gate::page::change_state_after_measuring_one(
             mpi_policy, parallel_policy,
-            local_state, qubit, static_cast<real_type>(1)-zero_probability, permutation);
+            local_state, qubit, zero_one_probabilities.second, permutation);
         else
           ::ket::gate::projective_measurement_detail::change_state_after_measuring_one(
             parallel_policy,
-            boost::begin(local_state), boost::end(local_state), qubit,
-            static_cast<real_type>(1)-zero_probability);
+            boost::begin(local_state), boost::end(local_state), qubit, zero_one_probabilities.second);
 
         return KET_GATE_OUTCOME_VALUE(one);
       }
@@ -161,8 +147,8 @@ namespace ket
         RandomNumberGenerator& random_number_generator,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::datatype const real_datatype,
         yampi::datatype const complex_datatype,
+        yampi::datatype const real_pair_datatype,
         yampi::rank const root,
         yampi::communicator const communicator,
         yampi::environment const& environment)
@@ -171,7 +157,7 @@ namespace ket
           ::ket::mpi::utility::policy::make_general_mpi(),
           ::ket::utility::policy::make_sequential(),
           local_state, qubit, random_number_generator, permutation,
-          buffer, real_datatype, complex_datatype, root, communicator, environment);
+          buffer, complex_datatype, real_pair_datatype, root, communicator, environment);
       }
 
       template <
@@ -185,8 +171,8 @@ namespace ket
         RandomNumberGenerator& random_number_generator,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::datatype const real_datatype,
         yampi::datatype const complex_datatype,
+        yampi::datatype const real_pair_datatype,
         yampi::rank const root,
         yampi::communicator const communicator,
         yampi::environment const& environment)
@@ -194,7 +180,7 @@ namespace ket
         return ::ket::mpi::gate::projective_measurement(
           ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
           local_state, qubit, random_number_generator, permutation,
-          buffer, real_datatype, complex_datatype, root, communicator, environment);
+          buffer, complex_datatype, real_pair_datatype, root, communicator, environment);
       }
     } // namespace gate
   } // namespace mpi
@@ -202,7 +188,6 @@ namespace ket
 
 
 # undef KET_addressof
-# undef KET_uniform_real_distribution
 # undef KET_array
 
 #endif

@@ -6,6 +6,7 @@
 # include <cassert>
 # include <cmath>
 # include <iterator>
+# include <utility>
 
 # include <boost/math/constants/constants.hpp>
 # include <boost/range/begin.hpp>
@@ -33,9 +34,12 @@ namespace ket
           typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename Allocator>
         inline
-        typename ::ket::utility::meta::real_of<
-          typename boost::range_iterator<RandomAccessRange>::type>::type
-        zero_probability(
+        std::pair<
+          typename ::ket::utility::meta::real_of<
+            typename boost::range_iterator<RandomAccessRange>::type>::type,
+          typename ::ket::utility::meta::real_of<
+            typename boost::range_iterator<RandomAccessRange>::type>::type>
+        zero_one_probabilities(
           MpiPolicy const, ParallelPolicy const,
           RandomAccessRange const& local_state,
           ::ket::qubit<StateInteger, BitInteger> const,
@@ -46,15 +50,18 @@ namespace ket
             typename ::ket::utility::meta::real_of<
               typename boost::range_iterator<RandomAccessRange>::type>::type
             result_type;
-          return result_type(0);
+          return std::make_pair(result_type(0), result_type(0));
         }
 
         template <
           typename ParallelPolicy,
           typename Complex, typename StateAllocator,
           typename StateInteger, typename BitInteger, typename PermutationAllocator>
-        inline typename ::ket::utility::meta::real_of<Complex>::type
-        zero_probability(
+        inline
+        std::pair<
+          typename ::ket::utility::meta::real_of<Complex>::type,
+          typename ::ket::utility::meta::real_of<Complex>::type>
+        zero_one_probabilities(
           ::ket::mpi::utility::policy::general_mpi const, ParallelPolicy const,
           ::ket::mpi::state<Complex, 0, StateAllocator> const& local_state,
           ::ket::qubit<StateInteger, BitInteger> const,
@@ -64,7 +71,7 @@ namespace ket
           typedef
             typename ::ket::utility::meta::real_of<Complex>::type
             result_type;
-          return result_type(0);
+          return std::make_pair(result_type(0), result_type(0));
         }
 
 
@@ -72,30 +79,42 @@ namespace ket
         {
 # ifdef BOOST_NO_CXX11_LAMBDAS
           template <typename Real, typename RandomAccessIterator>
-          struct zero_probability_loop_inside
+          struct zero_one_probabilities_loop_inside
           {
             Real& zero_probability_;
+            Real& one_probability_;
             RandomAccessIterator zero_first_;
+            RandomAccessIterator one_first_;
 
-            zero_probability_loop_inside(
+            zero_one_probabilities_loop_inside(
               Real& zero_probability,
-              RandomAccessIterator const zero_first)
-              : zero_probability_(zero_probability), zero_first_(zero_first)
+              Real& one_probability,
+              RandomAccessIterator const zero_first,
+              RandomAccessIterator const one_first)
+              : zero_probability_(zero_probability),
+                one_probability_(one_probability),
+                zero_first_(zero_first),
+                one_first_(one_first)
             { }
 
             template <typename StateInteger>
             void operator()(StateInteger const index, int const) const
-            { using std::norm; zero_probability_ += norm(*(zero_first_+index)); }
+            {
+              using std::norm;
+              zero_probability_ += norm(*(zero_first_+index));
+              one_probability_ += norm(*(one_first_+index));
+            }
           };
 
           template <typename Real, typename RandomAccessIterator>
-          inline zero_probability_loop_inside<Real, RandomAccessIterator> make_zero_probability_loop_inside(
-            Real& zero_probability, RandomAccessIterator const zero_first)
+          inline zero_one_probabilities_loop_inside<Real, RandomAccessIterator> make_zero_one_probabilities_loop_inside(
+            Real& zero_probability, Real& one_probability,
+            RandomAccessIterator const zero_first, RandomAccessIterator const one_first)
           {
             typedef
-              ::ket::mpi::gate::page::projective_measurement_detail::zero_probability_loop_inside<Real, RandomAccessIterator>
+              ::ket::mpi::gate::page::projective_measurement_detail::zero_one_probabilities_loop_inside<Real, RandomAccessIterator>
               result_type;
-            return result_type(zero_probability, zero_first);
+            return result_type(zero_probability, one_probability, zero_first, one_first);
           }
 # endif // BOOST_NO_CXX11_LAMBDAS
         }
@@ -104,8 +123,11 @@ namespace ket
           typename ParallelPolicy,
           typename Complex, int num_page_qubits_, typename StateAllocator,
           typename StateInteger, typename BitInteger, typename PermutationAllocator>
-        inline typename ::ket::utility::meta::real_of<Complex>::type
-        zero_probability(
+        inline
+        std::pair<
+          typename ::ket::utility::meta::real_of<Complex>::type,
+          typename ::ket::utility::meta::real_of<Complex>::type>
+        zero_one_probabilities(
           ::ket::mpi::utility::policy::general_mpi const,
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator> const& local_state,
@@ -127,7 +149,8 @@ namespace ket
           StateInteger const upper_bits_mask = compl lower_bits_mask;
 
           typedef typename ::ket::utility::meta::real_of<Complex>::type real_type;
-          real_type result = static_cast<real_type>(0);
+          real_type zero_probability = static_cast<real_type>(0);
+          real_type one_probability = static_cast<real_type>(0);
 
           typedef ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator> local_state_type;
           for (std::size_t base_page_id = 0u;
@@ -137,32 +160,44 @@ namespace ket
             StateInteger const zero_page_id
               = ((base_page_id bitand upper_bits_mask) << 1u)
                 bitor (base_page_id bitand lower_bits_mask);
+            // x1x
+            StateInteger const one_page_id = zero_page_id bitor qubit_mask;
 
             typedef typename local_state_type::page_range_type page_range_type;
             page_range_type zero_page_range
               = local_state.page_range(zero_page_id);
+            page_range_type one_page_range
+              = local_state.page_range(one_page_id);
 
 # ifndef BOOST_NO_CXX11_LAMBDAS
             typedef typename boost::range_iterator<page_range_type>::type iterator;
             iterator const zero_first = boost::begin(zero_page_range);
+            iterator const one_first = boost::begin(one_page_range);
 
             using ::ket::utility::loop_n;
             loop_n(
               parallel_policy,
               boost::size(zero_page_range),
-              [&result, zero_first](StateInteger const index, int const)
-              { using std::norm; result += norm(*(zero_first+index)); });
+              [&zero_probability, &one_probability, zero_first, one_first](
+                StateInteger const index, int const)
+              {
+                using std::norm;
+                zero_probability += norm(*(zero_first+index));
+                one_probability += norm(*(one_first+index));
+              });
 # else // BOOST_NO_CXX11_LAMBDAS
             using ::ket::utility::loop_n;
             loop_n(
               parallel_policy,
               boost::size(zero_page_range),
-              ::ket::mpi::gate::page::projective_measurement_detail::make_zero_probability_loop_inside(
-                result, boost::begin(zero_page_range)));
+              ::ket::mpi::gate::page::projective_measurement_detail::make_zero_one_probabilities_loop_inside(
+                zero_probability, one_probability,
+                boost::begin(zero_page_range),
+                boost::begin(one_page_range)));
 # endif // BOOST_NO_CXX11_LAMBDAS
           }
 
-          return result;
+          return std::make_pair(zero_probability, one_probability);
         }
 
 

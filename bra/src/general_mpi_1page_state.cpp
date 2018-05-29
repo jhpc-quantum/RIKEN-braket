@@ -326,7 +326,7 @@ namespace bra
     return ket::mpi::gate::projective_measurement(
       mpi_policy_, parallel_policy_,
       data_, qubit, random_number_generator_, permutation_,
-      buffer_, real_datatype_, complex_datatype_, root, communicator_, environment_);
+      buffer_, complex_datatype_, real_pair_datatype_, root, communicator_, environment_);
   }
 
   void general_mpi_1page_state::do_expectation_values(yampi::rank const root)
