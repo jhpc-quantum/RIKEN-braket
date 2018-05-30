@@ -4,6 +4,9 @@
 #include <yampi/environment.hpp>
 
 #include <ket/mpi/gate/hadamard.hpp>
+#include <ket/mpi/gate/pauli_x.hpp>
+#include <ket/mpi/gate/pauli_y.hpp>
+#include <ket/mpi/gate/pauli_z.hpp>
 #include <ket/mpi/gate/phase_shift.hpp>
 #include <ket/mpi/gate/x_rotation_half_pi.hpp>
 #include <ket/mpi/gate/y_rotation_half_pi.hpp>
@@ -11,8 +14,12 @@
 #include <ket/mpi/gate/controlled_phase_shift.hpp>
 #include <ket/mpi/gate/controlled_v.hpp>
 #include <ket/mpi/gate/toffoli.hpp>
+#include <ket/mpi/gate/projective_measurement.hpp>
+#include <ket/mpi/gate/clear.hpp>
+#include <ket/mpi/gate/set.hpp>
 #include <ket/mpi/all_spin_expectation_values.hpp>
 #include <ket/mpi/measure.hpp>
+#include <ket/mpi/generate_events.hpp>
 
 #include <bra/general_mpi_3page_state.hpp>
 #include <bra/state.hpp>
@@ -71,6 +78,114 @@ namespace bra
     ket::mpi::gate::adj_hadamard(
       mpi_policy_, parallel_policy_,
       data_, qubit,
+      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+  }
+
+  void general_mpi_3page_state::do_pauli_x(
+    qubit_type const qubit)
+  {
+    ket::mpi::gate::pauli_x(
+      mpi_policy_, parallel_policy_,
+      data_, qubit,
+      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+  }
+
+  void general_mpi_3page_state::do_adj_pauli_x(
+    qubit_type const qubit)
+  {
+    ket::mpi::gate::adj_pauli_x(
+      mpi_policy_, parallel_policy_,
+      data_, qubit,
+      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+  }
+
+  void general_mpi_3page_state::do_pauli_y(
+    qubit_type const qubit)
+  {
+    ket::mpi::gate::pauli_y(
+      mpi_policy_, parallel_policy_,
+      data_, qubit,
+      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+  }
+
+  void general_mpi_3page_state::do_adj_pauli_y(
+    qubit_type const qubit)
+  {
+    ket::mpi::gate::adj_pauli_y(
+      mpi_policy_, parallel_policy_,
+      data_, qubit,
+      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+  }
+
+  void general_mpi_3page_state::do_pauli_z(
+    qubit_type const qubit)
+  {
+    ket::mpi::gate::pauli_z(
+      mpi_policy_, parallel_policy_,
+      data_, qubit,
+      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+  }
+
+  void general_mpi_3page_state::do_adj_pauli_z(
+    qubit_type const qubit)
+  {
+    ket::mpi::gate::adj_pauli_z(
+      mpi_policy_, parallel_policy_,
+      data_, qubit,
+      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+  }
+
+  void general_mpi_3page_state::do_u1(real_type const phase, qubit_type const qubit)
+  {
+    ket::mpi::gate::phase_shift(
+      mpi_policy_, parallel_policy_,
+      data_, phase, qubit,
+      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+  }
+
+  void general_mpi_3page_state::do_adj_u1(real_type const phase, qubit_type const qubit)
+  {
+    ket::mpi::gate::adj_phase_shift(
+      mpi_policy_, parallel_policy_,
+      data_, phase, qubit,
+      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+  }
+
+  void general_mpi_3page_state::do_u2(
+    real_type const phase1, real_type const phase2, qubit_type const qubit)
+  {
+    ket::mpi::gate::phase_shift2(
+      mpi_policy_, parallel_policy_,
+      data_, phase1, phase2, qubit,
+      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+  }
+
+  void general_mpi_3page_state::do_adj_u2(
+    real_type const phase1, real_type const phase2, qubit_type const qubit)
+  {
+    ket::mpi::gate::adj_phase_shift2(
+      mpi_policy_, parallel_policy_,
+      data_, phase1, phase2, qubit,
+      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+  }
+
+  void general_mpi_3page_state::do_u3(
+    real_type const phase1, real_type const phase2, real_type const phase3,
+    qubit_type const qubit)
+  {
+    ket::mpi::gate::phase_shift3(
+      mpi_policy_, parallel_policy_,
+      data_, phase1, phase2, phase3, qubit,
+      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+  }
+
+  void general_mpi_3page_state::do_adj_u3(
+    real_type const phase1, real_type const phase2, real_type const phase3,
+    qubit_type const qubit)
+  {
+    ket::mpi::gate::adj_phase_shift3(
+      mpi_policy_, parallel_policy_,
+      data_, phase1, phase2, phase3, qubit,
       permutation_, buffer_, complex_datatype_, communicator_, environment_);
   }
 
@@ -208,6 +323,15 @@ namespace bra
       permutation_, buffer_, complex_datatype_, communicator_, environment_);
   }
 
+  KET_GATE_OUTCOME_TYPE general_mpi_3page_state::do_projective_measurement(
+    qubit_type const qubit, yampi::rank const root)
+  {
+    return ket::mpi::gate::projective_measurement(
+      mpi_policy_, parallel_policy_,
+      data_, qubit, random_number_generator_, permutation_,
+      buffer_, complex_datatype_, real_pair_datatype_, root, communicator_, environment_);
+  }
+
   void general_mpi_3page_state::do_expectation_values(yampi::rank const root)
   {
     maybe_expectation_values_
@@ -224,6 +348,36 @@ namespace bra
           mpi_policy_, ket::utility::policy::make_sequential(), // parallel_policy_,
           data_, random_number_generator_, permutation_,
           state_integer_datatype_, real_datatype_, communicator_, environment_);
+  }
+
+  void general_mpi_3page_state::do_generate_events(yampi::rank const root, int const num_events, int const seed)
+  {
+    if (seed < 0)
+      ket::mpi::generate_events(
+        mpi_policy_, ket::utility::policy::make_sequential(), // parallel_policy_,
+        generated_events_, data_, num_events, random_number_generator_, permutation_,
+        state_integer_datatype_, real_datatype_, communicator_, environment_);
+    else
+      ket::mpi::generate_events(
+        mpi_policy_, ket::utility::policy::make_sequential(), // parallel_policy_,
+        generated_events_, data_, num_events, random_number_generator_, static_cast<seed_type>(seed), permutation_,
+        state_integer_datatype_, real_datatype_, communicator_, environment_);
+  }
+
+  void general_mpi_3page_state::do_clear(qubit_type const qubit)
+  {
+    ket::mpi::gate::clear(
+      mpi_policy_, parallel_policy_,
+      data_, qubit,
+      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+  }
+
+  void general_mpi_3page_state::do_set(qubit_type const qubit)
+  {
+    ket::mpi::gate::set(
+      mpi_policy_, parallel_policy_,
+      data_, qubit,
+      permutation_, buffer_, complex_datatype_, communicator_, environment_);
   }
 }
 

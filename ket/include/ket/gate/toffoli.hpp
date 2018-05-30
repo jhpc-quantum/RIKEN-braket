@@ -100,6 +100,8 @@ namespace ket
 
         void operator()(StateInteger const value_wo_qubits, int const) const
         {
+          // xxx0_cxxx0_txxxx0_cxxx
+          StateInteger const base_index
             = ((value_wo_qubits bitand bits_mask_[3u]) << 3u)
               bitor ((value_wo_qubits bitand bits_mask_[2u]) << 2u)
               bitor ((value_wo_qubits bitand bits_mask_[1u]) << 1u)

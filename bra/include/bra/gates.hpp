@@ -58,9 +58,25 @@ namespace bra
 # ifndef BOOST_NO_CXX11_SCOPED_ENUMS
   enum class begin_statement : int { error, measurement, learning_machine };
   enum class bit_statement : int { error, assignment };
+  enum class generate_statement : int { error, events };
+
+#  define BRA_BEGIN_STATEMENT_TYPE bra::begin_statement
+#  define BRA_BEGIN_STATEMENT_VALUE(value) bra::begin_statement::value
+#  define BRA_BIT_STATEMENT_TYPE bra::bit_statement
+#  define BRA_BIT_STATEMENT_VALUE(value) bra::bit_statement::value
+#  define BRA_GENERATE_STATEMENT_TYPE bra::generate_statement
+#  define BRA_GENERATE_STATEMENT_VALUE(value) bra::generate_statement::value
 # else // BOOST_NO_CXX11_SCOPED_ENUMS
   namespace begin_statement_ { enum begin_statement { error, measurement, learning_machine }; }
   namespace bit_statement_ { enum bit_statement { error, assignment }; }
+  namespace generate_statement_ { enum generate_statement { error, events }; }
+
+#  define BRA_BEGIN_STATEMENT_TYPE bra::begin_statement_::begin_statement
+#  define BRA_BEGIN_STATEMENT_VALUE(value) bra::begin_statement_::value
+#  define BRA_BIT_STATEMENT_TYPE bra::bit_statement_::bit_statement
+#  define BRA_BIT_STATEMENT_VALUE(value) bra::bit_statement_::value
+#  define BRA_GENERATE_STATEMENT_TYPE bra::generate_statement_::generate_statement
+#  define BRA_GENERATE_STATEMENT_VALUE(value) bra::generate_statement_::value
 # endif // BOOST_NO_CXX11_SCOPED_ENUMS
 
 
@@ -76,6 +92,8 @@ namespace bra
     typedef ::bra::state::state_integer_type state_integer_type;
     typedef ::bra::state::qubit_type qubit_type;
     typedef ::bra::state::control_qubit_type control_qubit_type;
+
+    typedef ::bra::state::real_type real_type;
 
     typedef wrong_mnemonics_error::columns_type columns_type;
 
@@ -214,12 +232,25 @@ namespace bra
     std::vector<qubit_type> read_initial_permutation(columns_type const& columns) const;
 
     qubit_type read_target(columns_type const& columns) const;
+    boost::tuple<qubit_type, real_type> read_target_phase(columns_type const& columns) const;
+    boost::tuple<qubit_type, real_type, real_type> read_target_2phases(columns_type const& columns) const;
+    boost::tuple<qubit_type, real_type, real_type, real_type> read_target_3phases(columns_type const& columns) const;
     boost::tuple<qubit_type, int> read_target_phaseexp(columns_type const& columns) const;
     boost::tuple<control_qubit_type, qubit_type> read_control_target(columns_type const& columns) const;
     boost::tuple<control_qubit_type, qubit_type, int> read_control_target_phaseexp(columns_type const& columns) const;
     boost::tuple<control_qubit_type, control_qubit_type, qubit_type> read_2controls_target(columns_type const& columns) const;
 
     qubit_type read_hadamard(columns_type const& columns) const { return read_target(columns); }
+    qubit_type read_pauli_x(columns_type const& columns) const { return read_target(columns); }
+    qubit_type read_pauli_y(columns_type const& columns) const { return read_target(columns); }
+    qubit_type read_pauli_z(columns_type const& columns) const { return read_target(columns); }
+    qubit_type read_s_gate(columns_type const& columns) const { return read_target(columns); }
+    qubit_type read_adj_s_gate(columns_type const& columns) const { return read_target(columns); }
+    qubit_type read_t_gate(columns_type const& columns) const { return read_target(columns); }
+    qubit_type read_adj_t_gate(columns_type const& columns) const { return read_target(columns); }
+    boost::tuple<qubit_type, real_type> read_u1(columns_type const& columns) const { return read_target_phase(columns); }
+    boost::tuple<qubit_type, real_type, real_type> read_u2(columns_type const& columns) const { return read_target_2phases(columns); }
+    boost::tuple<qubit_type, real_type, real_type, real_type> read_u3(columns_type const& columns) const { return read_target_3phases(columns); }
     boost::tuple<qubit_type, int> read_phase_shift(columns_type const& columns) const { return read_target_phaseexp(columns); }
     qubit_type read_x_rotation_half_pi(columns_type const& columns) const { return read_target(columns); }
     qubit_type read_adj_x_rotation_half_pi(columns_type const& columns) const { return read_target(columns); }
@@ -229,14 +260,13 @@ namespace bra
     boost::tuple<control_qubit_type, qubit_type, int> read_controlled_phase_shift(columns_type const& columns) const { return read_control_target_phaseexp(columns); }
     boost::tuple<control_qubit_type, qubit_type, int> read_controlled_v(columns_type const& columns) const { return read_control_target_phaseexp(columns); }
     boost::tuple<control_qubit_type, control_qubit_type, qubit_type> read_toffoli(columns_type const& columns) const { return read_2controls_target(columns); }
+    qubit_type read_projective_measurement(columns_type const& columns) const { return read_target(columns); }
 
-# ifndef BOOST_NO_CXX11_SCOPED_ENUMS
-    begin_statement read_begin_statement(columns_type& columns) const;
-    bit_statement read_bit_statement(columns_type& columns) const;
-# else
-    begin_statement_::begin_statement read_begin_statement(columns_type& columns) const;
-    bit_statement_::bit_statement read_bit_statement(columns_type& columns) const;
-# endif
+    BRA_BEGIN_STATEMENT_TYPE read_begin_statement(columns_type& columns) const;
+    BRA_BIT_STATEMENT_TYPE read_bit_statement(columns_type& columns) const;
+    boost::tuple<BRA_GENERATE_STATEMENT_TYPE, int, int> read_generate_statement(columns_type& columns) const;
+    qubit_type read_clear(columns_type const& columns) const { return read_target(columns); }
+    qubit_type read_set(columns_type const& columns) const { return read_target(columns); }
   };
 
   inline bool operator!=(::bra::gates const& lhs, ::bra::gates const& rhs)

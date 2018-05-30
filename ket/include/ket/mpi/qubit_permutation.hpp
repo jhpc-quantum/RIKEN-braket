@@ -370,12 +370,17 @@ namespace ket
     {
 # ifndef BOOST_NO_CXX11_SCOPED_ENUMS
       enum class boolean { true_ = true, false_ = false };
+
+#   define BOOLEAN_TYPE ::ket::mpi::permutate_bits_detail::boolean
+#   define BOOLEAN_VALUE(value) ::ket::mpi::permutate_bits_detail::boolean::value
 # else
-      enum boolean { boolean_true_ = true, boolean_false_ = false };
+      namespace boolean_ { enum boolean { true_ = true, false_ = false }; }
+
+#   define BOOLEAN_TYPE ::ket::mpi::permutate_bits_detail::boolean_::boolean
+#   define BOOLEAN_VALUE(value) ::ket::mpi::permutate_bits_detail::boolean_::value
 # endif
 
-      inline bool to_bool(
-        ::ket::mpi::permutate_bits_detail::boolean const b)
+      inline bool to_bool(BOOLEAN_TYPE const b)
       { return static_cast<bool>(b); }
 
 
@@ -394,18 +399,9 @@ namespace ket
             KET_is_unsigned<UnsignedInteger>::value,
             "UnsignedInteger should be unsigned");
 
-          typedef
-            std::vector< ::ket::mpi::permutate_bits_detail::boolean>
-            is_permutated_type;
+          typedef std::vector< BOOLEAN_TYPE > is_permutated_type;
           static is_permutated_type is_permutated;
-
-# ifndef BOOST_NO_CXX11_SCOPED_ENUMS
-          is_permutated.assign(
-            permutation.size(),
-            ::ket::mpi::permutate_bits_detail::boolean::false_);
-# else
-          is_permutated.assign(permutation.size(), boolean_false_);
-# endif
+          is_permutated.assign(permutation.size(), BOOLEAN_VALUE(false_));
 
           typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
           BOOST_CONSTEXPR_OR_CONST qubit_type first_bit(0u);
@@ -444,13 +440,8 @@ namespace ket
                   // 00b00000000
                   ((previous_bit_value >> previous_bit) << present_bit);
 
-# ifndef BOOST_NO_CXX11_SCOPED_ENUMS
               is_permutated[static_cast<BitInteger>(present_bit)]
-                = ::ket::mpi::permutate_bits_detail::boolean::true_;
-# else
-              is_permutated[static_cast<BitInteger>(present_bit)]
-                = boolean_true_;
-# endif
+                = BOOLEAN_VALUE(true_);
             }
             while (present_bit != bit);
           }
@@ -475,18 +466,9 @@ namespace ket
             KET_is_unsigned<UnsignedInteger>::value,
             "UnsignedInteger should be unsigned");
 
-          typedef
-            std::vector< ::ket::mpi::permutate_bits_detail::boolean>
-            is_permutated_type;
+          typedef std::vector< BOOLEAN_TYPE > is_permutated_type;
           static is_permutated_type is_permutated;
-
-# ifndef BOOST_NO_CXX11_SCOPED_ENUMS
-          is_permutated.assign(
-            permutation.size(),
-            ::ket::mpi::permutate_bits_detail::boolean::false_);
-# else
-          is_permutated.assign(permutation.size(), boolean_false_);
-# endif
+          is_permutated.assign(permutation.size(), BOOLEAN_VALUE(false_));
 
           typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
           BOOST_CONSTEXPR_OR_CONST qubit_type first_bit(0u);
@@ -526,13 +508,8 @@ namespace ket
                   // 00b00000000
                   ((previous_bit_value >> previous_bit) << present_bit);
 
-# ifndef BOOST_NO_CXX11_SCOPED_ENUMS
               is_permutated[static_cast<BitInteger>(present_bit)]
-                = ::ket::mpi::permutate_bits_detail::boolean::true_;
-# else
-              is_permutated[static_cast<BitInteger>(present_bit)]
-                = boolean_true_;
-# endif
+                = BOOLEAN_VALUE(true_);
             }
             while (present_bit != bit);
           }
@@ -540,6 +517,9 @@ namespace ket
           return unsigned_integer;
         }
       };
+
+# undef BOOLEAN_TYPE
+# undef BOOLEAN_VALUE
     }
 
 

@@ -3,6 +3,7 @@
 
 # include <boost/config.hpp>
 
+# include <vector>
 # ifndef BOOST_NO_CXX11_HDR_ARRAY
 #   include <array>
 # else
