@@ -265,6 +265,8 @@ namespace bra
     BRA_BEGIN_STATEMENT_TYPE read_begin_statement(columns_type& columns) const;
     BRA_BIT_STATEMENT_TYPE read_bit_statement(columns_type& columns) const;
     boost::tuple<BRA_GENERATE_STATEMENT_TYPE, int, int> read_generate_statement(columns_type& columns) const;
+    qubit_type read_clear(columns_type const& columns) const { return read_target(columns); }
+    qubit_type read_set(columns_type const& columns) const { return read_target(columns); }
   };
 
   inline bool operator!=(::bra::gates const& lhs, ::bra::gates const& rhs)

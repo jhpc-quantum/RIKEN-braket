@@ -15,6 +15,8 @@
 #include <ket/mpi/gate/controlled_v.hpp>
 #include <ket/mpi/gate/toffoli.hpp>
 #include <ket/mpi/gate/projective_measurement.hpp>
+#include <ket/mpi/gate/clear.hpp>
+#include <ket/mpi/gate/set.hpp>
 #include <ket/mpi/all_spin_expectation_values.hpp>
 #include <ket/mpi/measure.hpp>
 #include <ket/mpi/generate_events.hpp>
@@ -360,6 +362,22 @@ namespace bra
         mpi_policy_, ket::utility::policy::make_sequential(), // parallel_policy_,
         generated_events_, data_, num_events, random_number_generator_, static_cast<seed_type>(seed), permutation_,
         state_integer_datatype_, real_datatype_, communicator_, environment_);
+  }
+
+  void general_mpi_state::do_clear(qubit_type const qubit)
+  {
+    ket::mpi::gate::clear(
+      mpi_policy_, parallel_policy_,
+      data_, qubit,
+      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+  }
+
+  void general_mpi_state::do_set(qubit_type const qubit)
+  {
+    ket::mpi::gate::set(
+      mpi_policy_, parallel_policy_,
+      data_, qubit,
+      permutation_, buffer_, complex_datatype_, communicator_, environment_);
   }
 }
 

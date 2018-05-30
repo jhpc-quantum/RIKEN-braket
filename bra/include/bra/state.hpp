@@ -312,6 +312,12 @@ namespace bra
 
     ::bra::state& exit(yampi::rank const root);
 
+    ::bra::state& clear(qubit_type const qubit)
+    { do_clear(qubit); return *this; }
+
+    ::bra::state& set(qubit_type const qubit)
+    { do_set(qubit); return *this; }
+
    private:
     virtual unsigned int do_num_page_qubits() const = 0;
     virtual unsigned int do_num_pages() const = 0;
@@ -383,6 +389,8 @@ namespace bra
     virtual void do_expectation_values(yampi::rank const root) = 0;
     virtual void do_measure(yampi::rank const root) = 0;
     virtual void do_generate_events(yampi::rank const root, int const num_events, int const seed) = 0;
+    virtual void do_clear(qubit_type const qubit) = 0;
+    virtual void do_set(qubit_type const qubit) = 0;
   };
 }
 

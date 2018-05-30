@@ -59,6 +59,8 @@
 #include <bra/gate/measurement.hpp>
 #include <bra/gate/generate_events.hpp>
 #include <bra/gate/exit.hpp>
+#include <bra/gate/clear.hpp>
+#include <bra/gate/set.hpp>
 
 
 namespace bra
@@ -483,6 +485,14 @@ namespace bra
           boost::movelib::unique_ptr< ::bra::gate::gate >(new ::bra::gate::exit(root_)));
         break;
       }
+      else if (first_mnemonic == "CLEAR")
+        data_.push_back(
+          boost::movelib::unique_ptr< ::bra::gate::gate >(
+            new ::bra::gate::clear(read_clear(columns))));
+      else if (first_mnemonic == "SET")
+        data_.push_back(
+          boost::movelib::unique_ptr< ::bra::gate::gate >(
+            new ::bra::gate::set(read_set(columns))));
       else
         throw unsupported_mnemonic_error(first_mnemonic);
     }
