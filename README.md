@@ -1,19 +1,19 @@
-# bracket
+# braket
 
 ## Introduction
 
-**bracket** is a tool for simulations of quantum gates on (classical) computers.
+**braket** is a tool for simulations of quantum gates on (classical) computers.
 It contains an interpreter of "quantum assembler" *bra* and a C++ template library *ket*.
 
 ## Getting Started
 
-**bracket** requires a MPI2-supported C++03 compliant compiler.
+**braket** requires a MPI2-supported C++03 compliant compiler.
 If you do not have any MPI libraries, get it by using a package manager of your \*nix environment.
 
-You can retrieve the current status of **bracket** by cloning the repository:
+You can retrieve the current status of **braket** by cloning the repository:
 
 ```bash
-git clone --recursive https://github.com/naoki-yoshioka/bracket.git
+git clone --recursive https://github.com/naoki-yoshioka/braket.git
 ```
 
 ## Using *bra*
