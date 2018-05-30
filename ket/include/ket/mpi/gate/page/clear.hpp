@@ -212,8 +212,6 @@ namespace ket
             StateInteger const zero_page_id
               = ((base_page_id bitand upper_bits_mask) << 1u)
                 bitor (base_page_id bitand lower_bits_mask);
-            // x1x
-            StateInteger const one_page_id = zero_page_id bitor qubit_mask;
 
             typedef typename local_state_type::page_range_type page_range_type;
             page_range_type zero_page_range
