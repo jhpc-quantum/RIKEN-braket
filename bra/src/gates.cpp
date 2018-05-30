@@ -58,6 +58,7 @@
 #include <bra/gate/projective_measurement.hpp>
 #include <bra/gate/measurement.hpp>
 #include <bra/gate/generate_events.hpp>
+#include <bra/gate/exit.hpp>
 
 
 namespace bra
@@ -472,6 +473,15 @@ namespace bra
               new ::bra::gate::generate_events(root_, num_events, seed)));
           break;
         }
+      }
+      else if (first_mnemonic == "EXIT")
+      {
+        if (boost::size(columns) != 1u)
+          throw wrong_mnemonics_error(columns);
+
+        data_.push_back(
+          boost::movelib::unique_ptr< ::bra::gate::gate >(new ::bra::gate::exit(root_)));
+        break;
       }
       else
         throw unsupported_mnemonic_error(first_mnemonic);

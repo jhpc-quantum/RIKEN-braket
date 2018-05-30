@@ -310,6 +310,8 @@ namespace bra
 
     ::bra::state& generate_events(yampi::rank const root, int const num_events, int const seed);
 
+    ::bra::state& exit(yampi::rank const root);
+
    private:
     virtual unsigned int do_num_page_qubits() const = 0;
     virtual unsigned int do_num_pages() const = 0;

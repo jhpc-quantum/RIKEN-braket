@@ -90,13 +90,6 @@ namespace bra
       std::make_pair(
         yampi::wall_clock::now(environment_), BRA_FINISHED_PROCESS_VALUE(begin_measurement)));
 
-    /*
-    do_measure(root);
-    finish_times_and_processes_.push_back(
-      std::make_pair(
-        yampi::wall_clock::now(environment_), BRA_FINISHED_PROCESS_VALUE(ket_measure)));
-        */
-
     return *this;
   }
 
@@ -110,6 +103,20 @@ namespace bra
     finish_times_and_processes_.push_back(
       std::make_pair(
         yampi::wall_clock::now(environment_), BRA_FINISHED_PROCESS_VALUE(generate_events)));
+
+    return *this;
+  }
+
+  ::bra::state& state::exit(yampi::rank const root)
+  {
+    finish_times_and_processes_.push_back(
+      std::make_pair(
+        yampi::wall_clock::now(environment_), BRA_FINISHED_PROCESS_VALUE(operations)));
+
+    do_measure(root);
+    finish_times_and_processes_.push_back(
+      std::make_pair(
+        yampi::wall_clock::now(environment_), BRA_FINISHED_PROCESS_VALUE(ket_measure)));
 
     return *this;
   }
