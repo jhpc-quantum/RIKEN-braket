@@ -39,13 +39,15 @@ template <typename StateInteger, typename BitInteger>
 std::string integer_to_bits_string(StateInteger const integer, BitInteger const total_num_qubits)
 {
   std::string result;
+  result.reserve(total_num_qubits);
+
   for (BitInteger left_bit = total_num_qubits; left_bit > static_cast<BitInteger>(0u); --left_bit)
   {
     StateInteger const zero_or_one = (integer bitand (static_cast<StateInteger>(1u) << (left_bit-1u))) >> (left_bit-1u);
     if (zero_or_one == static_cast<StateInteger>(0u))
-      result += '0';
+      result.push_back('0');
     else
-      result += '1';
+      result.push_back('1');
   }
   return result;
 }
