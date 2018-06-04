@@ -83,7 +83,8 @@ namespace bra
   class gates
   {
     typedef boost::movelib::unique_ptr< ::bra::gate::gate > value_type_;
-    typedef boost::container::vector<value_type_> data_type;
+    //typedef boost::container::vector<value_type_> data_type;
+    typedef boost::container::vector<value_type_, yampi::allocator<value_type_> > data_type;
     data_type data_;
 
    public:
