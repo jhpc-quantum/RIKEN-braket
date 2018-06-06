@@ -45,7 +45,7 @@
 # ifndef BOOST_NO_CXX11_HDR_RANDOM
 #   define BRA_mt19937_64 std::mt19937_64
 # else
-#   define BRA_mt19937_64 boost::mt19937_64
+#   define BRA_mt19937_64 boost::random::mt19937_64
 # endif
 
 
