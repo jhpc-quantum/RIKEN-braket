@@ -1,8 +1,15 @@
 #include <boost/config.hpp>
 
+#ifndef BOOST_NO_CXX11_HDR_RANDOM
+# include <random>
+#else
+# include <boost/random/uniform_real_distribution.hpp>
+#endif
+
 #include <yampi/communicator.hpp>
 #include <yampi/environment.hpp>
 
+#include <ket/qubit.hpp>
 #include <ket/mpi/gate/hadamard.hpp>
 #include <ket/mpi/gate/pauli_x.hpp>
 #include <ket/mpi/gate/pauli_y.hpp>
@@ -23,6 +30,12 @@
 
 #include <bra/general_mpi_3page_state.hpp>
 #include <bra/state.hpp>
+
+#ifndef BOOST_NO_CXX11_HDR_RANDOM
+# define BRA_uniform_real_distribution std::uniform_real_distribution
+#else
+# define BRA_uniform_real_distribution boost::random::uniform_real_distribution
+#endif
 
 
 namespace bra
@@ -379,5 +392,39 @@ namespace bra
       data_, qubit,
       permutation_, buffer_, complex_datatype_, communicator_, environment_);
   }
+
+  void general_mpi_3page_state::do_depolarizing_channel(double const px, double const py, double const pz, int const seed)
+  {
+    BRA_uniform_real_distribution<double> distribution(0.0, px + py + pz);
+    qubit_type const last_qubit = ket::make_qubit(total_num_qubits_);
+    if (seed < 0)
+      for (qubit_type qubit = ket::make_qubit(static_cast<bit_integer_type>(0u)); qubit < last_qubit; ++qubit)
+      {
+        double const probability = distribution(random_number_generator_);
+        if (probability < px)
+          do_pauli_x(qubit);
+        else if (probability < px + py)
+          do_pauli_y(qubit);
+        else
+          do_pauli_z(qubit);
+      }
+    else
+    {
+      random_number_generator_type temporal_random_number_generator(static_cast<seed_type>(seed));
+      for (qubit_type qubit = ket::make_qubit(static_cast<bit_integer_type>(0u)); qubit < last_qubit; ++qubit)
+      {
+        double const probability = distribution(temporal_random_number_generator);
+        if (probability < px)
+          do_pauli_x(qubit);
+        else if (probability < px + py)
+          do_pauli_y(qubit);
+        else
+          do_pauli_z(qubit);
+      }
+    }
+  }
 }
+
+
+#undef BRA_uniform_real_distribution
 

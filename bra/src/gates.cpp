@@ -58,9 +58,10 @@
 #include <bra/gate/projective_measurement.hpp>
 #include <bra/gate/measurement.hpp>
 #include <bra/gate/generate_events.hpp>
-#include <bra/gate/exit.hpp>
 #include <bra/gate/clear.hpp>
 #include <bra/gate/set.hpp>
+#include <bra/gate/depolarizing_channel.hpp>
+#include <bra/gate/exit.hpp>
 
 
 namespace bra
@@ -476,6 +477,32 @@ namespace bra
           break;
         }
       }
+      else if (first_mnemonic == "CLEAR")
+        data_.push_back(
+          boost::movelib::unique_ptr< ::bra::gate::gate >(
+            new ::bra::gate::clear(read_clear(columns))));
+      else if (first_mnemonic == "SET")
+        data_.push_back(
+          boost::movelib::unique_ptr< ::bra::gate::gate >(
+            new ::bra::gate::set(read_set(columns))));
+      else if (first_mnemonic == "DEPOLARIZING")
+      {
+        BRA_DEPOLARIZING_STATEMENT_TYPE statement;
+        double px, py, pz;
+        int seed;
+        boost::tie(statement, px, py, pz, seed) = read_depolarizing_statement(columns);
+
+        if (statement == BRA_DEPOLARIZING_STATEMENT_VALUE(error))
+          throw wrong_mnemonics_error(columns);
+        else if (statement == BRA_DEPOLARIZING_STATEMENT_VALUE(channel))
+        {
+          data_.push_back(
+            boost::movelib::unique_ptr< ::bra::gate::gate >(
+              new ::bra::gate::depolarizing_channel(px, py, pz, seed)));
+        }
+        else
+          throw unsupported_mnemonic_error(first_mnemonic);
+      }
       else if (first_mnemonic == "EXIT")
       {
         if (boost::size(columns) != 1u)
@@ -485,14 +512,6 @@ namespace bra
           boost::movelib::unique_ptr< ::bra::gate::gate >(new ::bra::gate::exit(root_)));
         break;
       }
-      else if (first_mnemonic == "CLEAR")
-        data_.push_back(
-          boost::movelib::unique_ptr< ::bra::gate::gate >(
-            new ::bra::gate::clear(read_clear(columns))));
-      else if (first_mnemonic == "SET")
-        data_.push_back(
-          boost::movelib::unique_ptr< ::bra::gate::gate >(
-            new ::bra::gate::set(read_set(columns))));
       else
         throw unsupported_mnemonic_error(first_mnemonic);
     }
@@ -741,5 +760,105 @@ namespace bra
     }
 
     return boost::make_tuple(BRA_GENERATE_STATEMENT_VALUE(error), -1, -1);
+  }
+
+  boost::tuple<BRA_DEPOLARIZING_STATEMENT_TYPE, double, double, double, int>
+  gates::read_depolarizing_statement(gates::columns_type& columns) const
+  {
+    if (boost::size(columns) <= 2u)
+      throw wrong_mnemonics_error(columns);
+
+    typedef boost::range_iterator<columns_type const>::type column_const_iterator;
+    column_const_iterator iter = boost::begin(columns);
+    std::string present_string = *++iter; // present_string == "CHANNEL"
+    boost::algorithm::to_upper(present_string);
+
+    if (present_string != "CHANNEL")
+      return boost::make_tuple(BRA_DEPOLARIZING_STATEMENT_VALUE(error), 0.0, 0.0, 0.0, -1);
+
+    double px, py, pz;
+    int seed = -1;
+    bool is_px_checked = false;
+    bool is_py_checked = false;
+    bool is_pz_checked = false;
+    bool is_seed_checked = false;
+
+    present_string = *++iter; // present_string == "P_*" or "P_*=" or "P_*=0.xxx" or "P_*=0.xxx," or "P_*=0.xxx,..."
+    std::string probability_string = "    ";
+    column_const_iterator const last = boost::begin(columns);
+    while (iter < last)
+    {
+      std::string::iterator string_found = boost::find(present_string, '=');
+      probability_string.assign(boost::begin(present_string), string_found);
+      boost::algorithm::to_upper(probability_string);
+      if (probability_string == "P_X")
+      {
+        if (is_px_checked)
+          return boost::make_tuple(BRA_DEPOLARIZING_STATEMENT_VALUE(error), 0.0, 0.0, 0.0, -1);
+
+        if (::bra::gates_detail::read_depolarizing_statement(px, present_string, iter, string_found)
+            == BRA_DEPOLARIZING_STATEMENT_VALUE(error))
+          return boost::make_tuple(BRA_DEPOLARIZING_STATEMENT_VALUE(error), 0.0, 0.0, 0.0, -1);
+
+        if (px < 0.0 or px > 1.0)
+          return boost::make_tuple(BRA_DEPOLARIZING_STATEMENT_VALUE(error), 0.0, 0.0, 0.0, -1);
+
+        is_px_checked = true;
+      }
+      else if (probability_string == "P_Y")
+      {
+        if (is_py_checked)
+          return boost::make_tuple(BRA_DEPOLARIZING_STATEMENT_VALUE(error), 0.0, 0.0, 0.0, -1);
+
+        if (::bra::gates_detail::read_depolarizing_statement(py, present_string, iter, string_found)
+            == BRA_DEPOLARIZING_STATEMENT_VALUE(error))
+          return boost::make_tuple(BRA_DEPOLARIZING_STATEMENT_VALUE(error), 0.0, 0.0, 0.0, -1);
+
+        if (py < 0.0 or py > 1.0)
+          return boost::make_tuple(BRA_DEPOLARIZING_STATEMENT_VALUE(error), 0.0, 0.0, 0.0, -1);
+
+        is_py_checked = true;
+      }
+      else if (probability_string == "P_Z")
+      {
+        if (is_pz_checked)
+          return boost::make_tuple(BRA_DEPOLARIZING_STATEMENT_VALUE(error), 0.0, 0.0, 0.0, -1);
+
+        if (::bra::gates_detail::read_depolarizing_statement(pz, present_string, iter, string_found)
+            == BRA_DEPOLARIZING_STATEMENT_VALUE(error))
+          return boost::make_tuple(BRA_DEPOLARIZING_STATEMENT_VALUE(error), 0.0, 0.0, 0.0, -1);
+
+        if (pz < 0.0 or pz > 1.0)
+          return boost::make_tuple(BRA_DEPOLARIZING_STATEMENT_VALUE(error), 0.0, 0.0, 0.0, -1);
+
+        is_pz_checked = true;
+      }
+      else if (probability_string == "SEED")
+      {
+        if (is_seed_checked)
+          return boost::make_tuple(BRA_DEPOLARIZING_STATEMENT_VALUE(error), 0.0, 0.0, 0.0, -1);
+
+        if (::bra::gates_detail::read_depolarizing_statement(seed, present_string, iter, string_found)
+            == BRA_DEPOLARIZING_STATEMENT_VALUE(error))
+          return boost::make_tuple(BRA_DEPOLARIZING_STATEMENT_VALUE(error), 0.0, 0.0, 0.0, -1);
+
+        is_seed_checked = true;
+      }
+      else
+        return boost::make_tuple(BRA_DEPOLARIZING_STATEMENT_VALUE(error), 0.0, 0.0, 0.0, -1);
+    }
+
+    if (is_px_checked and is_py_checked and is_pz_checked and px + py + pz > 1.0)
+      return boost::make_tuple(BRA_DEPOLARIZING_STATEMENT_VALUE(error), 0.0, 0.0, 0.0, -1);
+    else if (is_px_checked and is_py_checked and not is_pz_checked and px + py < 1.0)
+      pz = 1.0 - px - py;
+    else if (is_px_checked and not is_py_checked and is_pz_checked and px + pz < 1.0)
+      py = 1.0 - px - pz;
+    else if (not is_px_checked and is_py_checked and is_pz_checked and py + pz < 1.0)
+      px = 1.0 - py - pz;
+    else
+      return boost::make_tuple(BRA_DEPOLARIZING_STATEMENT_VALUE(error), 0.0, 0.0, 0.0, -1);
+
+    return boost::make_tuple(BRA_DEPOLARIZING_STATEMENT_VALUE(channel), px, py, pz, seed);
   }
 }
