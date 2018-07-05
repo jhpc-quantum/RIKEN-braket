@@ -58,6 +58,7 @@
 #include <bra/gate/projective_measurement.hpp>
 #include <bra/gate/measurement.hpp>
 #include <bra/gate/generate_events.hpp>
+#include <bra/gate/shor_box.hpp>
 #include <bra/gate/clear.hpp>
 #include <bra/gate/set.hpp>
 #include <bra/gate/depolarizing_channel.hpp>
@@ -477,6 +478,17 @@ namespace bra
           break;
         }
       }
+      else if (first_mnemonic == "SHORBOX")
+      {
+        bit_integer_type num_exponent_qubits;
+        state_integer_type divisor, base;
+        boost::tie(num_exponent_qubits, divisor, base) = read_shor_box(columns);
+
+        data_.push_back(
+          boost::movelib::unique_ptr< ::bra::gate::gate >(
+            new ::bra::gate::shor_box(
+              num_exponent_qubits, divisor, base)));
+      }
       else if (first_mnemonic == "CLEAR")
         data_.push_back(
           boost::movelib::unique_ptr< ::bra::gate::gate >(
@@ -742,6 +754,20 @@ namespace bra
       return BRA_BIT_STATEMENT_VALUE(assignment);
 
     return BRA_BIT_STATEMENT_VALUE(error);
+  }
+
+  boost::tuple<gates::bit_integer_type, gates::state_integer_type, gates::state_integer_type>
+  gates::read_shor_box(gates::columns_type const& columns) const
+  {
+    if (boost::size(columns) != 4u)
+      throw wrong_mnemonics_error(columns);
+
+    boost::range_iterator<columns_type const>::type iter = boost::begin(columns);
+    bit_integer_type const num_exponent_qubits = boost::lexical_cast<bit_integer_type>(*++iter);
+    state_integer_type const divisor = boost::lexical_cast<state_integer_type>(*++iter);
+    state_integer_type const base = boost::lexical_cast<state_integer_type>(*++iter);
+
+    return boost::make_tuple(num_exponent_qubits, divisor, base);
   }
 
   boost::tuple<BRA_GENERATE_STATEMENT_TYPE, int, int> gates::read_generate_statement(gates::columns_type& columns) const

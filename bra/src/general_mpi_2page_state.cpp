@@ -1,10 +1,13 @@
 #include <boost/config.hpp>
 
+#include <vector>
 #ifndef BOOST_NO_CXX11_HDR_RANDOM
 # include <random>
 #else
 # include <boost/random/uniform_real_distribution.hpp>
 #endif
+
+#include <boost/range/algorithm_ext/iota.hpp>
 
 #include <yampi/communicator.hpp>
 #include <yampi/environment.hpp>
@@ -27,6 +30,7 @@
 #include <ket/mpi/all_spin_expectation_values.hpp>
 #include <ket/mpi/measure.hpp>
 #include <ket/mpi/generate_events.hpp>
+#include <ket/mpi/shor_box.hpp>
 
 #include <bra/general_mpi_2page_state.hpp>
 #include <bra/state.hpp>
@@ -375,6 +379,21 @@ namespace bra
         mpi_policy_, ket::utility::policy::make_sequential(), // parallel_policy_,
         generated_events_, data_, num_events, random_number_generator_, static_cast<seed_type>(seed), permutation_,
         state_integer_datatype_, real_datatype_, communicator_, environment_);
+  }
+
+  void general_mpi_2page_state::do_shor_box(
+    bit_integer_type const num_exponent_qubits,
+    state_integer_type const divisor, state_integer_type const base)
+  {
+    std::vector<qubit_type> exponent_qubits(num_exponent_qubits);
+    boost::iota(exponent_qubits, static_cast<qubit_type>(total_num_qubits_-num_exponent_qubits));
+    std::vector<qubit_type> modular_exponentiation_qubits(total_num_qubits_-num_exponent_qubits);
+    boost::iota(modular_exponentiation_qubits, static_cast<qubit_type>(0u));
+
+    ket::mpi::shor_box(
+      mpi_policy_, parallel_policy_,
+      data_, base, divisor, exponent_qubits, modular_exponentiation_qubits,
+      permutation_, communicator_, environment_);
   }
 
   void general_mpi_2page_state::do_clear(qubit_type const qubit)
