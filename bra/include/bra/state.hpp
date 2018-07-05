@@ -312,6 +312,9 @@ namespace bra
 
     ::bra::state& exit(yampi::rank const root);
 
+    ::bra::state& shor_box(bit_integer_type const num_exponent_qubits, state_integer_type const divisor, state_integer_type const base)
+    { do_shor_box(num_exponent_qubits, divisor, base); return *this; }
+
     ::bra::state& clear(qubit_type const qubit)
     { do_clear(qubit); return *this; }
 
@@ -392,6 +395,9 @@ namespace bra
     virtual void do_expectation_values(yampi::rank const root) = 0;
     virtual void do_measure(yampi::rank const root) = 0;
     virtual void do_generate_events(yampi::rank const root, int const num_events, int const seed) = 0;
+    virtual void do_shor_box(
+      bit_integer_type const num_exponent_qubits,
+      state_integer_type const divisor, state_integer_type const base) = 0;
     virtual void do_clear(qubit_type const qubit) = 0;
     virtual void do_set(qubit_type const qubit) = 0;
     virtual void do_depolarizing_channel(double const px, double const py, double const pz, int const seed) = 0;

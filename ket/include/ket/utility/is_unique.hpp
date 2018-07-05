@@ -4,17 +4,19 @@
 # include <boost/config.hpp>
 
 # include <iterator>
+# include <algorithm>
 
 # include <boost/utility.hpp>
 # include <boost/range/begin.hpp>
 # include <boost/range/end.hpp>
-# include <boost/algorithm/cxx11/any_of.hpp>
+//# include <boost/algorithm/cxx11/any_of.hpp>
 
 
 namespace ket
 {
   namespace utility
   {
+    /*
     namespace is_unique_detail
     {
 # ifdef BOOST_NO_CXX11_LAMBDAS
@@ -55,12 +57,24 @@ namespace ket
         ::ket::utility::is_unique_detail::make_is_unique_loop_inside(first));
 # endif
     }
+    */
+    template <typename ForwardIterator>
+    inline bool is_unique(
+      ForwardIterator const first, ForwardIterator const last)
+    {
+      typedef
+        typename std::iterator_traits<ForwardIterator>::value_type
+        value_type;
+      std::vector<value_type> sorted_values(first, last);
+      std::sort(boost::begin(sorted_values), boost::end(sorted_values));
+      return std::unique(boost::begin(sorted_values), boost::end(sorted_values)) == boost::end(sorted_values);
+    }
 
     namespace range
     {
       template <typename ForwardRange>
       inline bool is_unique(ForwardRange const& range)
-      { return is_unique(boost::begin(range), boost::end(range)); }
+      { return ::ket::utility::is_unique(boost::begin(range), boost::end(range)); }
     }
   }
 }
