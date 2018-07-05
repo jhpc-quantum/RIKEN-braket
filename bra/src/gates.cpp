@@ -423,7 +423,16 @@ namespace bra
           boost::movelib::unique_ptr< ::bra::gate::gate >(
             new ::bra::gate::projective_measurement(read_projective_measurement(columns), root_)));
       else if (first_mnemonic == "SHORBOX")
-        throw unsupported_mnemonic_error(first_mnemonic);
+      {
+        bit_integer_type num_exponent_qubits;
+        state_integer_type divisor, base;
+        boost::tie(num_exponent_qubits, divisor, base) = read_shor_box(columns);
+
+        data_.push_back(
+          boost::movelib::unique_ptr< ::bra::gate::gate >(
+            new ::bra::gate::shor_box(
+              num_exponent_qubits, divisor, base)));
+      }
       else if (first_mnemonic == "BEGIN") // BEGIN MEASUREMENT/LEARNING MACHINE
       {
         BRA_BEGIN_STATEMENT_TYPE const statement = read_begin_statement(columns);
@@ -477,17 +486,6 @@ namespace bra
               new ::bra::gate::generate_events(root_, num_events, seed)));
           break;
         }
-      }
-      else if (first_mnemonic == "SHORBOX")
-      {
-        bit_integer_type num_exponent_qubits;
-        state_integer_type divisor, base;
-        boost::tie(num_exponent_qubits, divisor, base) = read_shor_box(columns);
-
-        data_.push_back(
-          boost::movelib::unique_ptr< ::bra::gate::gate >(
-            new ::bra::gate::shor_box(
-              num_exponent_qubits, divisor, base)));
       }
       else if (first_mnemonic == "CLEAR")
         data_.push_back(
