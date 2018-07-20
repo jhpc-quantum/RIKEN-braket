@@ -1,20 +1,21 @@
-#include <boost/config.hpp>
+#ifndef BRA_NO_MPI
+# include <boost/config.hpp>
 
-#include <string>
-#include <sstream>
-#include <vector>
+# include <string>
+# include <sstream>
+# include <vector>
 
-#include <boost/move/unique_ptr.hpp>
+# include <boost/move/unique_ptr.hpp>
 
-#include <yampi/communicator.hpp>
-#include <yampi/environment.hpp>
+# include <yampi/communicator.hpp>
+# include <yampi/environment.hpp>
 
-#include <bra/make_general_mpi_state.hpp>
-#include <bra/state.hpp>
-#include <bra/general_mpi_state.hpp>
-#include <bra/general_mpi_1page_state.hpp>
-#include <bra/general_mpi_2page_state.hpp>
-#include <bra/general_mpi_3page_state.hpp>
+# include <bra/make_general_mpi_state.hpp>
+# include <bra/state.hpp>
+# include <bra/general_mpi_state.hpp>
+# include <bra/general_mpi_1page_state.hpp>
+# include <bra/general_mpi_2page_state.hpp>
+# include <bra/general_mpi_3page_state.hpp>
 
 
 namespace bra
@@ -106,4 +107,7 @@ namespace bra
         initial_integer, num_local_qubits, initial_permutation, seed, communicator, environment));
   }
 }
+
+
+#endif // BRA_NO_MPI
 

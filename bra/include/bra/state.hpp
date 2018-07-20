@@ -12,6 +12,14 @@
 #   include <boost/array.hpp>
 # endif
 # include <utility>
+# ifdef BRA_NO_MPI
+#   ifndef BOOST_NO_CXX11_HDR_CHRONO
+#     include <chrono>
+#   else
+#     include <boost/chrono/chrono.hpp>
+#   endif
+#   include <memory>
+# endif
 
 # include <boost/cstdint.hpp>
 
@@ -26,15 +34,17 @@
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
 # include <ket/gate/projective_measurement.hpp>
-# include <ket/mpi/qubit_permutation.hpp>
+# ifndef BRA_NO_MPI
+#   include <ket/mpi/qubit_permutation.hpp>
 
-# include <yampi/allocator.hpp>
-# include <yampi/datatype.hpp>
-# include <yampi/derived_datatype.hpp>
-# include <yampi/rank.hpp>
-# include <yampi/communicator.hpp>
-# include <yampi/environment.hpp>
-# include <yampi/wall_clock.hpp>
+#   include <yampi/allocator.hpp>
+#   include <yampi/datatype.hpp>
+#   include <yampi/derived_datatype.hpp>
+#   include <yampi/rank.hpp>
+#   include <yampi/communicator.hpp>
+#   include <yampi/environment.hpp>
+#   include <yampi/wall_clock.hpp>
+# endif // BRA_NO_MPI
 
 # ifndef BOOST_NO_CXX11_HDR_ARRAY
 #   define BRA_array std::array
@@ -46,6 +56,16 @@
 #   define BRA_mt19937_64 std::mt19937_64
 # else
 #   define BRA_mt19937_64 boost::random::mt19937_64
+# endif
+
+# ifndef BRA_NO_MPI
+#   define BRA_clock yampi::wall_clock
+# else
+#   ifndef BOOST_NO_CXX11_HDR_CHRONO
+#     define BRA_clock std::chrono::system_clock
+#   else
+#     define BRA_clock boost::chrono::system_clock
+#   endif
 # endif
 
 
@@ -75,27 +95,34 @@ namespace bra
     typedef std::complex<real_type> complex_type;
 
     typedef BRA_array<real_type, 3u> spin_type;
+# ifndef BRA_NO_MPI
     typedef yampi::allocator<spin_type> spins_allocator_type;
+# else
+    typedef std::allocator<spin_type> spins_allocator_type;
+# endif
     typedef std::vector<spin_type, spins_allocator_type> spins_type;
     typedef BRA_mt19937_64 random_number_generator_type;
     typedef random_number_generator_type::result_type seed_type;
 
+# ifndef BRA_NO_MPI
     typedef
       ket::mpi::qubit_permutation<
         state_integer_type, bit_integer_type, yampi::allocator<qubit_type> >
       permutation_type;
+# endif
 
     typedef
-      std::pair<yampi::wall_clock::time_point, BRA_FINISHED_PROCESS_TYPE>
+      std::pair<BRA_clock::time_point, BRA_FINISHED_PROCESS_TYPE>
       time_and_process_type;
 
    protected:
     bit_integer_type total_num_qubits_;
-    std::vector<KET_GATE_OUTCOME_TYPE> last_outcomes_; // return values of ket::mpi::gate::projective_measurement
-    boost::optional<spins_type> maybe_expectation_values_; // return value of ket::mpi::all_spin_expectation_values
-    state_integer_type measured_value_; // return value of ket::mpi::measure
-    std::vector<state_integer_type> generated_events_; // results of ket::mpi::generate_events
+    std::vector<KET_GATE_OUTCOME_TYPE> last_outcomes_; // return values of ket(::mpi)::gate::projective_measurement
+    boost::optional<spins_type> maybe_expectation_values_; // return value of ket(::mpi)::all_spin_expectation_values
+    state_integer_type measured_value_; // return value of ket(::mpi)::measure
+    std::vector<state_integer_type> generated_events_; // results of ket(::mpi)::generate_events
     random_number_generator_type random_number_generator_;
+# ifndef BRA_NO_MPI
 
     permutation_type permutation_;
     std::vector<complex_type, yampi::allocator<complex_type> > buffer_;
@@ -106,10 +133,12 @@ namespace bra
     yampi::datatype complex_datatype_;
     yampi::communicator communicator_;
     yampi::environment const& environment_;
+# endif
 
     std::vector<time_and_process_type> finish_times_and_processes_;
 
    public:
+# ifndef BRA_NO_MPI
     state(
       bit_integer_type const total_num_qubits,
       seed_type const seed,
@@ -121,6 +150,9 @@ namespace bra
       seed_type const seed,
       yampi::communicator const communicator,
       yampi::environment const& environment);
+# else // BRA_NO_MPI
+    state(bit_integer_type const total_num_qubits, seed_type const seed);
+# endif // BRA_NO_MPI
 
 # ifndef BOOST_NO_CXX11_DEFAULTED_FUNCTIONS
     virtual ~state() = default;
@@ -162,6 +194,7 @@ namespace bra
     std::vector<state_integer_type> const& generated_events() const { return generated_events_; }
     random_number_generator_type& random_number_generator() { return random_number_generator_; }
 
+# ifndef BRA_NO_MPI
     permutation_type const& permutation() const { return permutation_; }
 
     yampi::datatype const& state_integer_datatype() const { return state_integer_datatype_; }
@@ -169,14 +202,17 @@ namespace bra
     yampi::datatype const& complex_datatype() const { return complex_datatype_; }
     yampi::communicator const& communicator() const { return communicator_; }
     yampi::environment const& environment() const { return environment_; }
+# endif
 
     std::size_t num_finish_processes() const { return finish_times_and_processes_.size(); }
     time_and_process_type const& finish_time_and_process(std::size_t const n) const
     { return finish_times_and_processes_[n]; }
 
 
+# ifndef BRA_NO_MPI
     unsigned int num_page_qubits() const { return do_num_page_qubits(); }
     unsigned int num_pages() const { return do_num_pages(); }
+# endif
 
     ::bra::state& hadamard(qubit_type const qubit)
     { do_hadamard(qubit); return *this; }
@@ -304,6 +340,7 @@ namespace bra
       return *this;
     }
 
+# ifndef BRA_NO_MPI
     ::bra::state& projective_measurement(qubit_type const qubit, yampi::rank const root);
 
     ::bra::state& measurement(yampi::rank const root);
@@ -311,6 +348,15 @@ namespace bra
     ::bra::state& generate_events(yampi::rank const root, int const num_events, int const seed);
 
     ::bra::state& exit(yampi::rank const root);
+# else // BRA_NO_MPI
+    ::bra::state& projective_measurement(qubit_type const qubit);
+
+    ::bra::state& measurement();
+
+    ::bra::state& generate_events(int const num_events, int const seed);
+
+    ::bra::state& exit();
+# endif // BRA_NO_MPI
 
     ::bra::state& shor_box(bit_integer_type const num_exponent_qubits, state_integer_type const divisor, state_integer_type const base)
     { do_shor_box(num_exponent_qubits, divisor, base); return *this; }
@@ -325,9 +371,11 @@ namespace bra
     { do_depolarizing_channel(px, py, pz, seed); return *this; }
 
    private:
+# ifndef BRA_NO_MPI
     virtual unsigned int do_num_page_qubits() const = 0;
     virtual unsigned int do_num_pages() const = 0;
 
+# endif
     virtual void do_hadamard(qubit_type const qubit) = 0;
     virtual void do_adj_hadamard(qubit_type const qubit) = 0;
     virtual void do_pauli_x(qubit_type const qubit) = 0;
@@ -390,11 +438,18 @@ namespace bra
       control_qubit_type const control_qubit1,
       control_qubit_type const control_qubit2)
       = 0;
+# ifndef BRA_NO_MPI
     virtual KET_GATE_OUTCOME_TYPE do_projective_measurement(
       qubit_type const qubit, yampi::rank const root) = 0;
     virtual void do_expectation_values(yampi::rank const root) = 0;
     virtual void do_measure(yampi::rank const root) = 0;
     virtual void do_generate_events(yampi::rank const root, int const num_events, int const seed) = 0;
+# else // BRA_NO_MPI
+    virtual KET_GATE_OUTCOME_TYPE do_projective_measurement(qubit_type const qubit) = 0;
+    virtual void do_expectation_values() = 0;
+    virtual void do_measure() = 0;
+    virtual void do_generate_events(int const num_events, int const seed) = 0;
+# endif // BRA_NO_MPI
     virtual void do_shor_box(
       bit_integer_type const num_exponent_qubits,
       state_integer_type const divisor, state_integer_type const base) = 0;
@@ -405,6 +460,7 @@ namespace bra
 }
 
 
+# undef BRA_clock
 # undef BRA_mt19937_64
 # undef BRA_array
 

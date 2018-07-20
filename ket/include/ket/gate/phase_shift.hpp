@@ -405,7 +405,7 @@ namespace ket
         RandomAccessRange& state, Real const phase,
         ::ket::qubit<StateInteger, BitInteger> const qubit)
       {
-        typedef typename boost::range_iterator<RandomAccessRange>::type complex_type;
+        typedef typename boost::range_value<RandomAccessRange>::type complex_type;
         return ::ket::gate::ranges::phase_shift_coeff(state, ::ket::utility::exp_i<complex_type>(phase), qubit);
       }
 
@@ -417,7 +417,7 @@ namespace ket
         RandomAccessRange& state, Real const phase,
         ::ket::qubit<StateInteger, BitInteger> const qubit)
       {
-        typedef typename boost::range_iterator<RandomAccessRange>::type complex_type;
+        typedef typename boost::range_value<RandomAccessRange>::type complex_type;
         return ::ket::gate::ranges::phase_shift_coeff(
           parallel_policy,
           state, ::ket::utility::exp_i<complex_type>(phase), qubit);

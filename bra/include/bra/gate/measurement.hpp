@@ -6,7 +6,9 @@
 # include <string>
 # include <iosfwd>
 
-# include <yampi/rank.hpp>
+# ifndef BRA_NO_MPI
+#   include <yampi/rank.hpp>
+# endif
 
 # include <bra/gate/gate.hpp>
 # include <bra/state.hpp>
@@ -28,12 +30,19 @@ namespace bra
       typedef ::bra::state::qubit_type qubit_type;
 
      private:
+# ifndef BRA_NO_MPI
       yampi::rank root_;
+# endif
 
       static std::string const name_;
 
      public:
+# ifndef BRA_NO_MPI
       explicit measurement(yampi::rank const root);
+# else
+      measurement();
+# endif
+
 # ifndef BOOST_NO_CXX11_DEFAULTED_FUNCTIONS
       ~measurement() = default;
 # else

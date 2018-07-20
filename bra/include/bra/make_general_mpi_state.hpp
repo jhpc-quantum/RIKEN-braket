@@ -1,19 +1,20 @@
 #ifndef BRA_MAKE_GENERAL_MPI_STATE_HPP
 # define BRA_MAKE_GENERAL_MPI_STATE_HPP
 
-# include <boost/config.hpp>
+# ifndef BRA_NO_MPI
+#   include <boost/config.hpp>
 
-# include <string>
-# include <stdexcept>
-# include <vector>
+#   include <string>
+#   include <stdexcept>
+#   include <vector>
 
-# include <boost/move/unique_ptr.hpp>
+#   include <boost/move/unique_ptr.hpp>
 
-# include <yampi/communicator.hpp>
-# include <yampi/environment.hpp>
+#   include <yampi/communicator.hpp>
+#   include <yampi/environment.hpp>
 
-# include <bra/state.hpp>
-
+#   include <bra/state.hpp>
+#   include <bra/gates.hpp>
 
 
 namespace bra
@@ -49,6 +50,8 @@ namespace bra
     yampi::environment const& environment);
 }
 
+
+# endif // BRA_NO_MPI
 
 #endif
 

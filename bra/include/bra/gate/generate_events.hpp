@@ -6,7 +6,9 @@
 # include <string>
 # include <iosfwd>
 
-# include <yampi/rank.hpp>
+# ifndef BRA_NO_MPI
+#   include <yampi/rank.hpp>
+# endif
 
 # include <bra/gate/gate.hpp>
 # include <bra/state.hpp>
@@ -28,14 +30,21 @@ namespace bra
       typedef ::bra::state::qubit_type qubit_type;
 
      private:
+# ifndef BRA_NO_MPI
       yampi::rank root_;
+# endif
       int num_events_;
       int seed_;
 
       static std::string const name_;
 
      public:
+# ifndef BRA_NO_MPI
       generate_events(yampi::rank const root, int num_events, int seed);
+# else
+      generate_events(int num_events, int seed);
+# endif
+
 # ifndef BOOST_NO_CXX11_DEFAULTED_FUNCTIONS
       ~generate_events() = default;
 # else

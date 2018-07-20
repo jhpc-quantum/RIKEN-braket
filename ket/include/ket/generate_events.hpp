@@ -117,7 +117,7 @@ namespace ket
     typename RandomNumberGenerator::result_type const seed)
   {
     RandomNumberGenerator random_number_generator(seed);
-    ::ket::generate_events(parallel_policy, result, num_events, random_number_generator);
+    ::ket::generate_events(parallel_policy, result, state, num_events, random_number_generator);
   }
 
   template <typename StateInteger, typename Allocator, typename State, typename RandomNumberGenerator>
@@ -141,7 +141,9 @@ namespace ket
     typename RandomNumberGenerator::result_type const seed)
   {
     RandomNumberGenerator random_number_generator(seed);
-    ::ket::generate_events(result, num_events, random_number_generator);
+    ::ket::generate_events(
+      ::ket::utility::policy::make_sequential(),
+      result, state, num_events, random_number_generator);
   }
 
 # ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
