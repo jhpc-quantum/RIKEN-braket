@@ -275,7 +275,10 @@ namespace ket
       inline RandomAccessRange& conj_pauli_x(
         RandomAccessRange& state,
         ::ket::qubit<StateInteger, BitInteger> const qubit)
-      { return ::ket::gate::pauli_x(state, qubit); }
+      {
+        ::ket::gate::pauli_x(boost::begin(state), boost::end(state), qubit);
+        return state;
+      }
 
       template <
         typename ParallelPolicy, typename RandomAccessRange,
@@ -283,7 +286,10 @@ namespace ket
       inline RandomAccessRange& conj_pauli_x(
         ParallelPolicy const parallel_policy, RandomAccessRange& state,
         ::ket::qubit<StateInteger, BitInteger> const qubit)
-      { return ::ket::gate::pauli_x(parallel_policy, state, qubit); }
+      {
+        ::ket::gate::pauli_x(parallel_policy, boost::begin(state), boost::end(state), qubit);
+        return state;
+      }
     } // namespace ranges
 
 

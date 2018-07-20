@@ -61,7 +61,7 @@ namespace ket
          qubit < last_qubit; ++qubit)
       result.push_back(
         ::ket::spin_expectation_value(
-          parallel_policy, first, last, qubit, permutation);
+          parallel_policy, first, last, qubit));
 
     return result;
   }
