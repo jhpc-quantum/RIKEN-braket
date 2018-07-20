@@ -6,7 +6,9 @@
 # include <string>
 # include <iosfwd>
 
-# include <yampi/rank.hpp>
+# ifndef BRA_NO_MPI
+#  include <yampi/rank.hpp>
+# endif
 
 # include <bra/gate/gate.hpp>
 # include <bra/state.hpp>
@@ -28,12 +30,19 @@ namespace bra
       typedef ::bra::state::qubit_type qubit_type;
 
      private:
+# ifndef BRA_NO_MPI
       yampi::rank root_;
+# endif // BRA_NO_MPI
 
       static std::string const name_;
 
      public:
+# ifndef BRA_NO_MPI
       explicit exit(yampi::rank const root);
+# else // BRA_NO_MPI
+      exit();
+# endif // BRA_NO_MPI
+
 # ifndef BOOST_NO_CXX11_DEFAULTED_FUNCTIONS
       ~exit() = default;
 # else

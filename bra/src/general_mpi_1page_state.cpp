@@ -1,45 +1,46 @@
-#include <boost/config.hpp>
+#ifndef BRA_NO_MPI
+# include <boost/config.hpp>
 
-#include <vector>
-#ifndef BOOST_NO_CXX11_HDR_RANDOM
-# include <random>
-#else
-# include <boost/random/uniform_real_distribution.hpp>
-#endif
+# include <vector>
+# ifndef BOOST_NO_CXX11_HDR_RANDOM
+#   include <random>
+# else
+#   include <boost/random/uniform_real_distribution.hpp>
+# endif
 
-#include <boost/range/algorithm_ext/iota.hpp>
+# include <boost/range/algorithm_ext/iota.hpp>
 
-#include <yampi/communicator.hpp>
-#include <yampi/environment.hpp>
+# include <yampi/communicator.hpp>
+# include <yampi/environment.hpp>
 
-#include <ket/qubit.hpp>
-#include <ket/mpi/gate/hadamard.hpp>
-#include <ket/mpi/gate/pauli_x.hpp>
-#include <ket/mpi/gate/pauli_y.hpp>
-#include <ket/mpi/gate/pauli_z.hpp>
-#include <ket/mpi/gate/phase_shift.hpp>
-#include <ket/mpi/gate/x_rotation_half_pi.hpp>
-#include <ket/mpi/gate/y_rotation_half_pi.hpp>
-#include <ket/mpi/gate/controlled_not.hpp>
-#include <ket/mpi/gate/controlled_phase_shift.hpp>
-#include <ket/mpi/gate/controlled_v.hpp>
-#include <ket/mpi/gate/toffoli.hpp>
-#include <ket/mpi/gate/projective_measurement.hpp>
-#include <ket/mpi/gate/clear.hpp>
-#include <ket/mpi/gate/set.hpp>
-#include <ket/mpi/all_spin_expectation_values.hpp>
-#include <ket/mpi/measure.hpp>
-#include <ket/mpi/generate_events.hpp>
-#include <ket/mpi/shor_box.hpp>
+# include <ket/qubit.hpp>
+# include <ket/mpi/gate/hadamard.hpp>
+# include <ket/mpi/gate/pauli_x.hpp>
+# include <ket/mpi/gate/pauli_y.hpp>
+# include <ket/mpi/gate/pauli_z.hpp>
+# include <ket/mpi/gate/phase_shift.hpp>
+# include <ket/mpi/gate/x_rotation_half_pi.hpp>
+# include <ket/mpi/gate/y_rotation_half_pi.hpp>
+# include <ket/mpi/gate/controlled_not.hpp>
+# include <ket/mpi/gate/controlled_phase_shift.hpp>
+# include <ket/mpi/gate/controlled_v.hpp>
+# include <ket/mpi/gate/toffoli.hpp>
+# include <ket/mpi/gate/projective_measurement.hpp>
+# include <ket/mpi/gate/clear.hpp>
+# include <ket/mpi/gate/set.hpp>
+# include <ket/mpi/all_spin_expectation_values.hpp>
+# include <ket/mpi/measure.hpp>
+# include <ket/mpi/generate_events.hpp>
+# include <ket/mpi/shor_box.hpp>
 
-#include <bra/general_mpi_1page_state.hpp>
-#include <bra/state.hpp>
+# include <bra/general_mpi_1page_state.hpp>
+# include <bra/state.hpp>
 
-#ifndef BOOST_NO_CXX11_HDR_RANDOM
-# define BRA_uniform_real_distribution std::uniform_real_distribution
-#else
-# define BRA_uniform_real_distribution boost::random::uniform_real_distribution
-#endif
+# ifndef BOOST_NO_CXX11_HDR_RANDOM
+#   define BRA_uniform_real_distribution std::uniform_real_distribution
+# else
+#   define BRA_uniform_real_distribution boost::random::uniform_real_distribution
+# endif
 
 
 namespace bra
@@ -445,5 +446,7 @@ namespace bra
 }
 
 
-#undef BRA_uniform_real_distribution
+# undef BRA_uniform_real_distribution
+
+#endif // BRA_NO_MPI
 

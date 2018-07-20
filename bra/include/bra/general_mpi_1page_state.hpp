@@ -1,26 +1,27 @@
 #ifndef BRA_GENERAL_MPI_1PAGE_STATE_HPP
 # define BRA_GENERAL_MPI_1PAGE_STATE_HPP
 
-# include <boost/config.hpp>
+# ifndef BRA_NO_MPI
+#   include <boost/config.hpp>
 
-# include <vector>
+#   include <vector>
 
-# include <ket/gate/projective_measurement.hpp>
-# include <ket/utility/parallel/loop_n.hpp>
-# include <ket/mpi/utility/general_mpi.hpp>
-# include <ket/mpi/state.hpp>
+#   include <ket/gate/projective_measurement.hpp>
+#   include <ket/utility/parallel/loop_n.hpp>
+#   include <ket/mpi/utility/general_mpi.hpp>
+#   include <ket/mpi/state.hpp>
 
-# include <yampi/allocator.hpp>
-# include <yampi/rank.hpp>
-# include <yampi/communicator.hpp>
-# include <yampi/environment.hpp>
+#   include <yampi/allocator.hpp>
+#   include <yampi/rank.hpp>
+#   include <yampi/communicator.hpp>
+#   include <yampi/environment.hpp>
 
-# include <bra/state.hpp>
+#   include <bra/state.hpp>
 
-# ifdef BOOST_NO_CXX11_FINAL
-#   define final 
-#   define override 
-# endif // BOOST_NO_CXX11_FINAL
+#   ifdef BOOST_NO_CXX11_FINAL
+#     define final 
+#     define override 
+#   endif // BOOST_NO_CXX11_FINAL
 
 
 namespace bra
@@ -53,28 +54,28 @@ namespace bra
       yampi::communicator const communicator,
       yampi::environment const& environment);
 
-# ifndef BOOST_NO_CXX11_DEFAULTED_FUNCTIONS
+#   ifndef BOOST_NO_CXX11_DEFAULTED_FUNCTIONS
     ~general_mpi_1page_state() = default;
-# else
+#   else
     ~general_mpi_1page_state() { }
-# endif
+#   endif
 
    private:
-# ifndef BOOST_NO_CXX11_DELETED_FUNCTIONS
+#   ifndef BOOST_NO_CXX11_DELETED_FUNCTIONS
     general_mpi_1page_state(general_mpi_1page_state const&) = delete;
     general_mpi_1page_state& operator=(general_mpi_1page_state const&) = delete;
-#   ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
+#     ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
     general_mpi_1page_state(general_mpi_1page_state&&) = delete;
     general_mpi_1page_state& operator=(general_mpi_1page_state&&) = delete;
-#   endif // BOOST_NO_CXX11_RVALUE_REFERENCES
-# else // BOOST_NO_CXX11_DELETED_FUNCTIONS
+#     endif // BOOST_NO_CXX11_RVALUE_REFERENCES
+#   else // BOOST_NO_CXX11_DELETED_FUNCTIONS
     general_mpi_1page_state(general_mpi_1page_state const&);
     general_mpi_1page_state& operator=(general_mpi_1page_state const&);
-#   ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
+#     ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
     general_mpi_1page_state(general_mpi_1page_state&&);
     general_mpi_1page_state& operator=(general_mpi_1page_state&&);
-#   endif // BOOST_NO_CXX11_RVALUE_REFERENCES
-# endif // BOOST_NO_CXX11_DELETED_FUNCTIONS
+#     endif // BOOST_NO_CXX11_RVALUE_REFERENCES
+#   endif // BOOST_NO_CXX11_DELETED_FUNCTIONS
 
    private:
     unsigned int do_num_page_qubits() const override;
@@ -155,10 +156,11 @@ namespace bra
 }
 
 
-# ifdef BOOST_NO_CXX11_FINAL
-#   undef final 
-#   undef override 
-# endif // BOOST_NO_CXX11_FINAL
+#   ifdef BOOST_NO_CXX11_FINAL
+#     undef final 
+#     undef override 
+#   endif // BOOST_NO_CXX11_FINAL
+# endif // BRA_NO_MPI
 
 #endif
 

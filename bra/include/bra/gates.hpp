@@ -22,9 +22,11 @@
 # include <boost/range/end.hpp>
 # include <boost/range/algorithm/find.hpp>
 
-# include <yampi/allocator.hpp>
-# include <yampi/communicator.hpp>
-# include <yampi/environment.hpp>
+# ifndef BRA_NO_MPI
+#   include <yampi/allocator.hpp>
+#   include <yampi/communicator.hpp>
+#   include <yampi/environment.hpp>
+# endif // BRA_NO_MPI
 
 # include <ket/utility/is_nothrow_swappable.hpp>
 
@@ -52,12 +54,14 @@ namespace bra
     std::string generate_what_string(columns_type const& columns);
   };
 
+# ifndef BRA_NO_MPI
   class wrong_mpi_communicator_size_error
     : public std::runtime_error
   {
    public:
     wrong_mpi_communicator_size_error();
   };
+# endif // BRA_NO_MPI
 
 
 # ifndef BOOST_NO_CXX11_SCOPED_ENUMS
@@ -94,8 +98,11 @@ namespace bra
   class gates
   {
     typedef boost::movelib::unique_ptr< ::bra::gate::gate > value_type_;
-    //typedef boost::container::vector<value_type_> data_type;
+# ifndef BRA_NO_MPI
     typedef boost::container::vector<value_type_, yampi::allocator<value_type_> > data_type;
+# else
+    typedef boost::container::vector<value_type_> data_type;
+# endif
     data_type data_;
 
    public:
@@ -110,15 +117,25 @@ namespace bra
 
    private:
     bit_integer_type num_qubits_;
+# ifndef BRA_NO_MPI
     bit_integer_type num_lqubits_;
+# endif
     state_integer_type initial_state_value_;
+# ifndef BRA_NO_MPI
     std::vector<qubit_type> initial_permutation_;
+# endif
 
     typedef ::bra::state::complex_type complex_type;
+# ifndef BRA_NO_MPI
     typedef std::vector<complex_type, yampi::allocator<complex_type> > phase_coefficients_type;
+# else
+    typedef std::vector<complex_type> phase_coefficients_type;
+# endif
     phase_coefficients_type phase_coefficients_;
 
+# ifndef BRA_NO_MPI
     yampi::rank root_;
+# endif
 
    public:
     typedef data_type::value_type value_type;
@@ -141,36 +158,59 @@ namespace bra
     gates(gates&& other, allocator_type const& allocator);
 # endif
 
+# ifndef BRA_NO_MPI
     gates(
       std::istream& input_stream, yampi::environment const& environment,
       yampi::rank const root = yampi::rank(),
       yampi::communicator const communicator = yampi::world_communicator(),
       size_type const num_reserved_gates = static_cast<size_type>(0u));
+# else // BRA_NO_MPI
+    explicit gates(std::istream& input_stream);
+    gates(std::istream& input_stream, size_type const num_reserved_gates);
+# endif // BRA_NO_MPI
 
     bool operator==(gates const& other) const;
 
     bit_integer_type const& num_qubits() const { return num_qubits_; }
+# ifndef BRA_NO_MPI
     bit_integer_type const& num_lqubits() const { return num_lqubits_; }
+# endif
     state_integer_type const& initial_state_value() const { return initial_state_value_; }
+# ifndef BRA_NO_MPI
     std::vector<qubit_type> const& initial_permutation() const { return initial_permutation_; }
+# endif
 
+# ifndef BRA_NO_MPI
     void num_qubits(
       bit_integer_type const new_num_qubits,
       yampi::communicator const communicator, yampi::environment const& environment);
     void num_lqubits(
       bit_integer_type const new_num_lqubits,
       yampi::communicator const communicator, yampi::environment const& environment);
+# else // BRA_NO_MPI
+    void num_qubits(bit_integer_type const new_num_qubits);
+# endif // BRA_NO_MPI
 
    private:
+# ifndef BRA_NO_MPI
     void set_num_qubits_params(
       bit_integer_type const new_num_lqubits, bit_integer_type const num_gqubits,
       yampi::communicator const communicator, yampi::environment const& environment);
+# else // BRA_NO_MPI
+    void set_num_qubits_params(bit_integer_type const new_num_qubits);
+# endif // BRA_NO_MPI
 
    public:
+# ifndef BRA_NO_MPI
     void assign(
       std::istream& input_stream, yampi::environment const& environment,
       yampi::communicator const communicator = yampi::world_communicator(),
       size_type const num_reserved_gates = static_cast<size_type>(0u));
+# else // BRA_NO_MPI
+    void assign(
+      std::istream& input_stream,
+      size_type const num_reserved_gates = static_cast<size_type>(0u));
+# endif // BRA_NO_MPI
     allocator_type get_allocator() const { return data_.get_allocator(); }
 
     // Element access
@@ -233,14 +273,17 @@ namespace bra
       BOOST_NOEXCEPT_IF(
         ket::utility::is_nothrow_swappable<data_type>::value
         and ket::utility::is_nothrow_swappable<bit_integer_type>::value
-        and ket::utility::is_nothrow_swappable<state_integer_type>::value);
+        and ket::utility::is_nothrow_swappable<state_integer_type>::value
+        and ket::utility::is_nothrow_swappable<qubit_type>::value);
 
    private:
     bit_integer_type read_num_qubits(columns_type const& columns) const;
     state_integer_type read_initial_state_value(columns_type& columns) const;
     bit_integer_type read_num_mpi_processes(columns_type const& columns) const;
     state_integer_type read_mpi_buffer_size(columns_type const& columns) const;
+# ifndef BRA_NO_MPI
     std::vector<qubit_type> read_initial_permutation(columns_type const& columns) const;
+# endif
 
     qubit_type read_target(columns_type const& columns) const;
     boost::tuple<qubit_type, real_type> read_target_phase(columns_type const& columns) const;

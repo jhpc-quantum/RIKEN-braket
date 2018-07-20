@@ -10,29 +10,53 @@
 #else
 # include <boost/random/mersenne_twister.hpp>
 #endif
+#ifndef BOOST_NO_CXX11_HDR_CHRONO
+#  include <chrono>
+#else
+#  define BOOST_CHRONO_HEADER_ONLY
+#  include <boost/chrono/chrono.hpp>
+#endif
 
 #include <boost/lexical_cast.hpp>
 #include <boost/format.hpp>
 
 #include <boost/move/unique_ptr.hpp>
 
-#include <yampi/environment.hpp>
-#include <yampi/communicator.hpp>
-#include <yampi/rank.hpp>
-#include <yampi/wall_clock.hpp>
+#ifndef BRA_NO_MPI
+# include <yampi/environment.hpp>
+# include <yampi/communicator.hpp>
+# include <yampi/rank.hpp>
+# include <yampi/wall_clock.hpp>
+#endif
 
 #include <ket/utility/integer_exp2.hpp>
 #include <ket/utility/integer_log2.hpp>
 
 #include <bra/gates.hpp>
 #include <bra/state.hpp>
-#include <bra/make_general_mpi_state.hpp>
+#ifndef BRA_NO_MPI
+# include <bra/make_general_mpi_state.hpp>
+#else
+# include <bra/nompi_state.hpp>
+#endif
 
 #ifndef BOOST_NO_CXX11_HDR_RANDOM
 # define BRA_mt19937_64 std::mt19937_64
 #else
 # define BRA_mt19937_64 boost::random::mt19937_64
 #endif
+
+#ifndef BOOST_NO_CXX11_HDR_CHRONO
+# define BRA_chrono std::chrono
+#else // BOOST_NO_CXX11_HDR_CHRONO
+# define BRA_chrono boost::chrono
+#endif // BOOST_NO_CXX11_HDR_CHRONO
+
+#ifndef BRA_NO_MPI
+# define BRA_clock yampi::wall_clock
+#else // BRA_NO_MPI
+# define BRA_clock BRA_chrono::system_clock
+#endif // BRA_NO_MPI
 
 
 template <typename StateInteger, typename BitInteger>
@@ -52,6 +76,12 @@ std::string integer_to_bits_string(StateInteger const integer, BitInteger const 
   return result;
 }
 
+template <typename Clock, typename Duration>
+double duration_to_second(
+  BRA_chrono::time_point<Clock, Duration> const& from,
+  BRA_chrono::time_point<Clock, Duration> const& to)
+{ return 0.000001 * BRA_chrono::duration_cast<BRA_chrono::microseconds>(to - from).count(); }
+
 
 int main(int argc, char* argv[])
 {
@@ -61,6 +91,7 @@ int main(int argc, char* argv[])
   typedef BRA_mt19937_64 rng_type;
   typedef rng_type::result_type seed_type;
 
+#ifndef BRA_NO_MPI
   yampi::environment environment(argc, argv);
   yampi::communicator world_communicator(yampi::world_communicator());
   yampi::rank const rank = world_communicator.rank(environment);
@@ -77,14 +108,24 @@ int main(int argc, char* argv[])
       std::cerr << "wrong number of MPI processes" << std::endl;
     return EXIT_FAILURE;
   }
+#endif // BRA_NO_MPI
 
+#ifndef BRA_NO_MPI
   if (argc < 2 or argc > 4)
   {
     if (is_io_root_rank)
       std::cerr << "wrong number of arguments: bra qcxfile [num_page_qubits [seed]]" << std::endl;
     return EXIT_FAILURE;
   }
+#else // BRA_NO_MPI
+  if (argc < 2 or argc > 3)
+  {
+    std::cerr << "wrong number of arguments: bra qcxfile [seed]" << std::endl;
+    return EXIT_FAILURE;
+  }
+#endif // BRA_NO_MPI
 
+#ifndef BRA_NO_MPI
   std::string const filename(argv[1]);
   unsigned int const num_page_qubits
     = argc >= 3
@@ -94,28 +135,51 @@ int main(int argc, char* argv[])
     = argc == 4
       ? boost::lexical_cast<seed_type>(argv[3])
       : static_cast<seed_type>(1);
+#else // BRA_NO_MPI
+  std::string const filename(argv[1]);
+  seed_type const seed
+    = argc == 3
+      ? boost::lexical_cast<seed_type>(argv[2])
+      : static_cast<seed_type>(1);
+#endif // BRA_NO_MPI
 
   std::ifstream file_stream(filename.c_str());
   if (!file_stream)
   {
+#ifndef BRA_NO_MPI
     if (is_io_root_rank)
       std::cerr << "cannot open an input file " << filename << std::endl;
+#else // BRA_NO_MPI
+    std::cerr << "cannot open an input file " << filename << std::endl;
+#endif // BRA_NO_MPI
     return EXIT_FAILURE;
   }
 
+#ifndef BRA_NO_MPI
   bra::gates gates(file_stream, environment, root_rank, yampi::world_communicator());
   boost::movelib::unique_ptr<bra::state> state_ptr
     = bra::make_general_mpi_state(
         num_page_qubits, gates.initial_state_value(), gates.num_lqubits(), gates.initial_permutation(),
         seed, yampi::world_communicator(), environment);
+#else // BRA_NO_MPI
+  bra::gates gates(file_stream);
+  boost::movelib::unique_ptr<bra::state> state_ptr
+    = bra::make_nompi_state(gates.initial_state_value(), gates.num_qubits(), seed);
+#endif // BRA_NO_MPI
 
-  yampi::wall_clock::time_point const start_time = yampi::wall_clock::now(environment);
-  yampi::wall_clock::time_point last_processed_time = start_time;
+#ifndef BRA_NO_MPI
+  BRA_clock::time_point const start_time = BRA_clock::now(environment);
+#else
+  BRA_clock::time_point const start_time = BRA_clock::now();
+#endif
+  BRA_clock::time_point last_processed_time = start_time;
 
   *state_ptr << gates;
 
+#ifndef BRA_NO_MPI
   if (not is_io_root_rank)
     return EXIT_SUCCESS;
+#endif
 
   std::size_t const num_finish_processes = state_ptr->num_finish_processes();
   for (std::size_t index = 0u; index < num_finish_processes; ++index)
@@ -127,9 +191,9 @@ int main(int argc, char* argv[])
     {
       std::cout
         << "Operations finished: "
-        << (finish_time_and_process.first - start_time).count()
+        << duration_to_second(start_time, finish_time_and_process.first)
         << " ("
-        << (finish_time_and_process.first - last_processed_time).count()
+        << duration_to_second(last_processed_time, finish_time_and_process.first)
         << ')'
         << std::endl;
       last_processed_time = finish_time_and_process.first;
@@ -158,9 +222,9 @@ int main(int argc, char* argv[])
 
       std::cout
         << "Expectation values finished: "
-        << (finish_time_and_process.first - start_time).count()
+        << duration_to_second(start_time, finish_time_and_process.first)
         << " ("
-        << (finish_time_and_process.first - last_processed_time).count()
+        << duration_to_second(last_processed_time, finish_time_and_process.first)
         << ')'
         << std::endl;
       last_processed_time = finish_time_and_process.first;
@@ -170,9 +234,9 @@ int main(int argc, char* argv[])
       std::cout
         << "Measurement result: " << state_ptr->measured_value()
         << "\nMeasurement finished: "
-        << (finish_time_and_process.first - start_time).count()
+        << duration_to_second(start_time, finish_time_and_process.first)
         << " ("
-        << (finish_time_and_process.first - last_processed_time).count()
+        << duration_to_second(last_processed_time, finish_time_and_process.first)
         << ')'
         << std::endl;
       break;
@@ -185,9 +249,9 @@ int main(int argc, char* argv[])
         std::cout << index << ' ' << integer_to_bits_string(state_ptr->generated_events()[index], state_ptr->total_num_qubits()) << '\n';
       std::cout
         << "Events finished: "
-        << (finish_time_and_process.first - start_time).count()
+        << duration_to_second(start_time, finish_time_and_process.first)
         << " ("
-        << (finish_time_and_process.first - last_processed_time).count()
+        << duration_to_second(last_processed_time, finish_time_and_process.first)
         << ')'
         << std::endl;
       break;
@@ -196,3 +260,9 @@ int main(int argc, char* argv[])
 
   return EXIT_SUCCESS;
 }
+
+
+#undef BRA_clock
+#undef BRA_chrono
+#undef BRA_mt19937_64
+

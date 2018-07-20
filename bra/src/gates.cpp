@@ -19,8 +19,10 @@
 #include <boost/algorithm/string/split.hpp>
 #include <boost/algorithm/string/classification.hpp>
 
-#include <yampi/communicator.hpp>
-#include <yampi/environment.hpp>
+#ifndef BRA_NO_MPI
+# include <yampi/communicator.hpp>
+# include <yampi/environment.hpp>
+#endif // BRA_NO_MPI
 
 #include <ket/qubit.hpp>
 #include <ket/control.hpp>
@@ -90,50 +92,96 @@ namespace bra
     return result;
   }
 
+#ifndef BRA_NO_MPI
   wrong_mpi_communicator_size_error::wrong_mpi_communicator_size_error()
     : std::runtime_error("communicator size is wrong")
   { }
+#endif // BRA_NO_MPI
 
 
+#ifndef BRA_NO_MPI
   gates::gates()
     : data_(), num_qubits_(), num_lqubits_(),
-      initial_state_value_(), phase_coefficients_(), root_()
+      initial_state_value_(), initial_permutation_(), phase_coefficients_(), root_()
   { }
 
   gates::gates(gates::allocator_type const& allocator)
     : data_(allocator), num_qubits_(), num_lqubits_(),
-      initial_state_value_(), phase_coefficients_(), root_()
+      initial_state_value_(), initial_permutation_(), phase_coefficients_(), root_()
   { }
 
-#ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
+# ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
   gates::gates(gates&& other, gates::allocator_type const& allocator)
       : data_(std::move(other.data_), allocator),
         num_qubits_(std::move(other.num_qubits_)),
         num_lqubits_(std::move(other.num_lqubits_)),
         initial_state_value_(std::move(other.initial_state_value_)),
+        initial_permutation_(std::move(other.initial_permutation_)),
         phase_coefficients_(std::move(other.phase_coefficients_)),
         root_(std::move(other.root_))
-    { }
-#endif
+  { }
+# endif // BOOST_NO_CXX11_RVALUE_REFERENCES
+#else // BRA_NO_MPI
+  gates::gates()
+    : data_(), num_qubits_(),
+      initial_state_value_(), phase_coefficients_()
+  { }
+
+  gates::gates(gates::allocator_type const& allocator)
+    : data_(allocator), num_qubits_(),
+      initial_state_value_(), phase_coefficients_()
+  { }
+
+# ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
+  gates::gates(gates&& other, gates::allocator_type const& allocator)
+      : data_(std::move(other.data_), allocator),
+        num_qubits_(std::move(other.num_qubits_)),
+        initial_state_value_(std::move(other.initial_state_value_)),
+        phase_coefficients_(std::move(other.phase_coefficients_))
+  { }
+# endif // BOOST_NO_CXX11_RVALUE_REFERENCES
+#endif // BRA_NO_MPI
 
 
+#ifndef BRA_NO_MPI
   gates::gates(
     std::istream& input_stream, yampi::environment const& environment,
     yampi::rank const root, yampi::communicator const communicator,
     size_type const num_reserved_gates)
     : data_(), num_qubits_(), num_lqubits_(),
-      initial_state_value_(), phase_coefficients_(), root_(root)
+      initial_state_value_(), initial_permutation_(), phase_coefficients_(), root_(root)
   { assign(input_stream, environment, communicator, num_reserved_gates); }
+#else // BRA_NO_MPI
+  gates::gates(std::istream& input_stream)
+    : data_(), num_qubits_(),
+      initial_state_value_(), phase_coefficients_()
+  { assign(input_stream, static_cast<size_type>(0u)); }
+
+  gates::gates(std::istream& input_stream, size_type const num_reserved_gates)
+    : data_(), num_qubits_(),
+      initial_state_value_(), phase_coefficients_()
+  { assign(input_stream, num_reserved_gates); }
+#endif // BRA_NO_MPI
 
   bool gates::operator==(gates const& other) const
   {
+#ifndef BRA_NO_MPI
     return data_ == other.data_
       and num_qubits_ == other.num_qubits_
       and num_lqubits_ == other.num_lqubits_
       and initial_state_value_ == other.initial_state_value_
+      and initial_permutation_ == other.initial_permutation_
+      and phase_coefficients_ == other.phase_coefficients_
+      and root_ == other.root_;
+#else // BRA_NO_MPI
+    return data_ == other.data_
+      and num_qubits_ == other.num_qubits_
+      and initial_state_value_ == other.initial_state_value_
       and phase_coefficients_ == other.phase_coefficients_;
+#endif // BRA_NO_MPI
   }
 
+#ifndef BRA_NO_MPI
   void gates::num_qubits(
     bit_integer_type const new_num_qubits,
     yampi::communicator const communicator, yampi::environment const& environment)
@@ -152,7 +200,12 @@ namespace bra
       ket::utility::integer_log2<bit_integer_type>(communicator.size(environment)),
       communicator, environment);
   }
+#else // BRA_NO_MPI
+  void gates::num_qubits(bit_integer_type const new_num_qubits)
+  { set_num_qubits_params(new_num_qubits); }
+#endif // BRA_NO_MPI
 
+#ifndef BRA_NO_MPI
   void gates::set_num_qubits_params(
     bit_integer_type const new_num_lqubits, bit_integer_type const num_gqubits,
     yampi::communicator const communicator, yampi::environment const& environment)
@@ -170,17 +223,30 @@ namespace bra
     for (bit_integer_type bit = 0u; bit < num_qubits_; ++bit)
       initial_permutation_.push_back(static_cast<qubit_type>(bit));
   }
+#else // BRA_NO_MPI
+  void gates::set_num_qubits_params(bit_integer_type const new_num_qubits)
+  {
+    num_qubits_ = new_num_qubits;
+    ket::utility::generate_phase_coefficients(phase_coefficients_, num_qubits_);
+  }
+#endif // BRA_NO_MPI
 
+#ifndef BRA_NO_MPI
   void gates::assign(
     std::istream& input_stream, yampi::environment const& environment,
     yampi::communicator const communicator, size_type const num_reserved_gates)
+#else // BRA_NO_MPI
+  void gates::assign(std::istream& input_stream, size_type const num_reserved_gates)
+#endif // BRA_NO_MPI
   {
+#ifndef BRA_NO_MPI
     bit_integer_type const num_gqubits
       = ket::utility::integer_log2<bit_integer_type>(communicator.size(environment));
     if (ket::utility::integer_exp2<bit_integer_type>(num_gqubits)
         != static_cast<bit_integer_type>(communicator.size(environment)))
       throw wrong_mpi_communicator_size_error();
 
+#endif // BRA_NO_MPI
     data_.clear();
     data_.reserve(num_reserved_gates);
 
@@ -208,9 +274,16 @@ namespace bra
       boost::algorithm::to_upper(columns.front());
       std::string const& first_mnemonic = columns.front();
       if (first_mnemonic == "QUBITS")
+      {
+#ifndef BRA_NO_MPI
         num_qubits(
           static_cast< ::bra::state::bit_integer_type >(read_num_qubits(columns)),
           communicator, environment);
+#else // BRA_NO_MPI
+        num_qubits(
+          static_cast< ::bra::state::bit_integer_type >(read_num_qubits(columns)));
+#endif // BRA_NO_MPI
+      }
       else if (first_mnemonic == "INITIAL") // INITIAL STATE
         initial_state_value_
           = static_cast< ::bra::state::state_integer_type >(read_initial_state_value(columns));
@@ -231,7 +304,11 @@ namespace bra
         if (statement == BRA_BIT_STATEMENT_VALUE(error))
           throw wrong_mnemonics_error(columns);
         else if (statement == BRA_BIT_STATEMENT_VALUE(assignment))
+        {
+#ifndef BRA_NO_MPI
           initial_permutation_ = read_initial_permutation(columns);
+#endif
+        }
       }
       else if (first_mnemonic == "PERMUTATION")
         throw unsupported_mnemonic_error(first_mnemonic);
@@ -419,9 +496,17 @@ namespace bra
             new ::bra::gate::toffoli(target, control1, control2)));
       }
       else if (first_mnemonic == "M")
+      {
+#ifndef BRA_NO_MPI
         data_.push_back(
           boost::movelib::unique_ptr< ::bra::gate::gate >(
             new ::bra::gate::projective_measurement(read_projective_measurement(columns), root_)));
+#else // BRA_NO_MPI
+        data_.push_back(
+          boost::movelib::unique_ptr< ::bra::gate::gate >(
+            new ::bra::gate::projective_measurement(read_projective_measurement(columns))));
+#endif // BRA_NO_MPI
+      }
       else if (first_mnemonic == "SHORBOX")
       {
         bit_integer_type num_exponent_qubits;
@@ -440,8 +525,15 @@ namespace bra
         if (statement == BRA_BEGIN_STATEMENT_VALUE(error))
           throw wrong_mnemonics_error(columns);
         else if (statement == BRA_BEGIN_STATEMENT_VALUE(measurement))
+        {
+#ifndef BRA_NO_MPI
           data_.push_back(
             boost::movelib::unique_ptr< ::bra::gate::gate >(new ::bra::gate::measurement(root_)));
+#else // BRA_NO_MPI
+          data_.push_back(
+            boost::movelib::unique_ptr< ::bra::gate::gate >(new ::bra::gate::measurement()));
+#endif // BRA_NO_MPI
+        }
         else if (statement == BRA_BEGIN_STATEMENT_VALUE(learning_machine))
           throw unsupported_mnemonic_error(first_mnemonic);
       }
@@ -465,7 +557,13 @@ namespace bra
         if (statement == BRA_END_STATEMENT_VALUE(error))
           throw wrong_mnemonics_error(columns);
         else if (statement == BRA_END_STATEMENT_VALUE(measurement))
+        {
+#ifndef BRA_NO_MPI
           data_.push_back(boost::movelib::make_unique< ::bra::gate::measurement >(root_));
+#else // BRA_NO_MPI
+          data_.push_back(boost::movelib::make_unique< ::bra::gate::measurement >());
+#endif // BRA_NO_MPI
+        }
         else if (statement == BRA_END_STATEMENT_VALUE(learning_machine))
           throw unsupported_mnemonic_error(first_mnemonic);
 */
@@ -481,9 +579,15 @@ namespace bra
           throw wrong_mnemonics_error(columns);
         else if (statement == BRA_GENERATE_STATEMENT_VALUE(events))
         {
+#ifndef BRA_NO_MPI
           data_.push_back(
             boost::movelib::unique_ptr< ::bra::gate::gate >(
               new ::bra::gate::generate_events(root_, num_events, seed)));
+#else // BRA_NO_MPI
+          data_.push_back(
+            boost::movelib::unique_ptr< ::bra::gate::gate >(
+              new ::bra::gate::generate_events(num_events, seed)));
+#endif // BRA_NO_MPI
           break;
         }
       }
@@ -518,8 +622,13 @@ namespace bra
         if (boost::size(columns) != 1u)
           throw wrong_mnemonics_error(columns);
 
+#ifndef BRA_NO_MPI
         data_.push_back(
           boost::movelib::unique_ptr< ::bra::gate::gate >(new ::bra::gate::exit(root_)));
+#else // BRA_NO_MPI
+        data_.push_back(
+          boost::movelib::unique_ptr< ::bra::gate::gate >(new ::bra::gate::exit()));
+#endif // BRA_NO_MPI
         break;
       }
       else
@@ -531,14 +640,24 @@ namespace bra
     BOOST_NOEXCEPT_IF(
       ket::utility::is_nothrow_swappable<data_type>::value
       and ket::utility::is_nothrow_swappable<bit_integer_type>::value
-      and ket::utility::is_nothrow_swappable<state_integer_type>::value)
+      and ket::utility::is_nothrow_swappable<state_integer_type>::value
+      and ket::utility::is_nothrow_swappable<qubit_type>::value)
   {
     using std::swap;
+#ifndef BRA_NO_MPI
     swap(data_, other.data_);
     swap(num_qubits_, other.num_qubits_);
     swap(num_lqubits_, other.num_lqubits_);
     swap(initial_state_value_, other.initial_state_value_);
+    swap(initial_permutation_, other.initial_permutation_);
     swap(phase_coefficients_, other.phase_coefficients_);
+    swap(root_, other.root_);
+#else // BRA_NO_MPI
+    swap(data_, other.data_);
+    swap(num_qubits_, other.num_qubits_);
+    swap(initial_state_value_, other.initial_state_value_);
+    swap(phase_coefficients_, other.phase_coefficients_);
+#endif // BRA_NO_MPI
   }
 
   gates::bit_integer_type gates::read_num_qubits(gates::columns_type const& columns) const
@@ -581,6 +700,7 @@ namespace bra
     return boost::lexical_cast<state_integer_type>(*++iter);
   }
 
+#ifndef BRA_NO_MPI
   std::vector<gates::qubit_type>
   gates::read_initial_permutation(gates::columns_type const& columns) const
   {
@@ -597,6 +717,7 @@ namespace bra
 
     return result;
   }
+#endif
 
   gates::qubit_type gates::read_target(gates::columns_type const& columns) const
   {

@@ -26,6 +26,7 @@ sources := $(shell find $(src_dir) -name *.cpp)
 objects = $(sources:$(src_dir)/%.cpp=$(build_dir)/%.o)
 
 macros = KET_USE_OPENMP KET_DONT_USE_BOOST_LOCK_GUARD_IN_OPENMP_BLOCKS KET_PRINT_LOG
+#macros += BRA_NO_MPI
 #macros += KET_PREFER_POINTER_TO_VECTOR_ITERATOR
 #macros += KET_USE_DIAGONAL_LOOP
 libraries =
