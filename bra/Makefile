@@ -26,7 +26,6 @@ sources := $(shell find $(src_dir) -name *.cpp)
 objects = $(sources:$(src_dir)/%.cpp=$(build_dir)/%.o)
 
 macros = KET_USE_OPENMP KET_DONT_USE_BOOST_LOCK_GUARD_IN_OPENMP_BLOCKS KET_PRINT_LOG
-#macros += BRA_NO_MPI
 #macros += KET_PREFER_POINTER_TO_VECTOR_ITERATOR
 #macros += KET_USE_DIAGONAL_LOOP
 libraries =
@@ -137,6 +136,110 @@ debug14: common_flags += -O0 -std=c++14
   endif
 endif
 debug14: $(bin_dir)/$(target)
+
+
+.PHONY: nompi
+nompi: nompi-release
+
+.PHONY: nompi-release
+ifneq ($(findstring juqueen,$(nodename)),)
+nompi-release: nompi-release03
+else
+  ifneq ($(findstring fe01p,$(nodename)),)
+nompi-release: nompi-release11
+  else
+nompi-release: nompi-release14
+  endif
+endif
+
+.PHONY: nompi-debug
+ifneq ($(findstring juqueen,$(nodename)),)
+nompi-debug: nompi-debug03
+else
+  ifneq ($(findstring fe01p,$(nodename)),)
+nompi-debug: nompi-debug11
+  else
+nompi-debug: nompi-debug14
+  endif
+endif
+
+.PHONY: nompi-release03
+ifneq ($(findstring juqueen,$(nodename)),)
+nompi-release03: common_flags += -O4 -qarch=qp -qtune=qp
+else
+  ifneq ($(findstring fe01p,$(nodename)),)
+nompi-release03: common_flags += -Kfast -std=c++03
+  else
+nompi-release03: common_flags += -O3 -std=c++03
+  endif
+endif
+nompi-release03: macros += NDEBUG BRA_NO_MPI
+nompi-release03: $(bin_dir)/$(target)
+
+.PHONY: nompi-debug03
+ifneq ($(findstring juqueen,$(nodename)),)
+nompi-debug03: common_flags += -O0
+else
+  ifneq ($(findstring fe01p,$(nodename)),)
+nompi-debug03: common_flags += -O2 -std=c++03
+  else
+nompi-debug03: common_flags += -O0 -std=c++03
+  endif
+endif
+nompi-debug03: macros += BRA_NO_MPI
+nompi-debug03: $(bin_dir)/$(target)
+
+.PHONY: release11
+ifneq ($(findstring juqueen,$(nodename)),)
+nompi-release11: release03
+else
+  ifneq ($(findstring fe01p,$(nodename)),)
+nompi-release11: common_flags += -Kfast -Xg -std=c++11
+  else
+nompi-release11: common_flags += -O3 -std=c++11
+  endif
+endif
+nompi-release11: macros += NDEBUG BRA_NO_MPI
+nompi-release11: $(bin_dir)/$(target)
+
+.PHONY: nompi-debug11
+ifneq ($(findstring juqueen,$(nodename)),)
+nompi-debug11: debug03
+else
+  ifneq ($(findstring fe01p,$(nodename)),)
+nompi-debug11: common_flags += -O2 -Xg -std=c++11
+  else
+nompi-debug11: common_flags += -O0 -std=c++11
+  endif
+endif
+nompi-debug11: macros += BRA_NO_MPI
+nompi-debug11: $(bin_dir)/$(target)
+
+.PHONY: nompi-release14
+ifneq ($(findstring juqueen,$(nodename)),)
+nompi-release14: release11
+else
+  ifneq ($(findstring fe01p,$(nodename)),)
+nompi-release14: release11
+  else
+nompi-release14: common_flags += -O3 -std=c++14
+  endif
+endif
+nompi-release14: macros += NDEBUG BRA_NO_MPI
+nompi-release14: $(bin_dir)/$(target)
+
+.PHONY: nompi-debug14
+ifneq ($(findstring juqueen,$(nodename)),)
+nompi-debug14: debug11
+else
+  ifneq ($(findstring fe01p,$(nodename)),)
+nompi-debug14: debug11
+  else
+nompi-debug14: common_flags += -O0 -std=c++14
+  endif
+endif
+nompi-debug14: macros += BRA_NO_MPI
+nompi-debug14: $(bin_dir)/$(target)
 
 
 ifneq ($(findstring juqueen,$(nodename)),)
