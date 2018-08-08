@@ -189,9 +189,9 @@ endif
 nompi-debug03: macros += BRA_NO_MPI
 nompi-debug03: $(bin_dir)/$(target)
 
-.PHONY: release11
+.PHONY: nompi-release11
 ifneq ($(findstring juqueen,$(nodename)),)
-nompi-release11: release03
+nompi-release11: nompi-release03
 else
   ifneq ($(findstring fe01p,$(nodename)),)
 nompi-release11: common_flags += -Kfast -Xg -std=c++11
@@ -204,7 +204,7 @@ nompi-release11: $(bin_dir)/$(target)
 
 .PHONY: nompi-debug11
 ifneq ($(findstring juqueen,$(nodename)),)
-nompi-debug11: debug03
+nompi-debug11: nompi-debug03
 else
   ifneq ($(findstring fe01p,$(nodename)),)
 nompi-debug11: common_flags += -O2 -Xg -std=c++11
@@ -217,10 +217,10 @@ nompi-debug11: $(bin_dir)/$(target)
 
 .PHONY: nompi-release14
 ifneq ($(findstring juqueen,$(nodename)),)
-nompi-release14: release11
+nompi-release14: nompi-release11
 else
   ifneq ($(findstring fe01p,$(nodename)),)
-nompi-release14: release11
+nompi-release14: nompi-release11
   else
 nompi-release14: common_flags += -O3 -std=c++14
   endif
@@ -230,10 +230,10 @@ nompi-release14: $(bin_dir)/$(target)
 
 .PHONY: nompi-debug14
 ifneq ($(findstring juqueen,$(nodename)),)
-nompi-debug14: debug11
+nompi-debug14: nompi-debug11
 else
   ifneq ($(findstring fe01p,$(nodename)),)
-nompi-debug14: debug11
+nompi-debug14: nompi-debug11
   else
 nompi-debug14: common_flags += -O0 -std=c++14
   endif
