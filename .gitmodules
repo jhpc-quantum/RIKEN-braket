@@ -106,3 +106,6 @@
 [submodule "boost/detail"]
 	path = boost/detail
 	url = https://github.com/boostorg/detail.git
+[submodule "boost/system"]
+	path = boost/system
+	url = https://github.com/boostorg/system.git
