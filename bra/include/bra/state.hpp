@@ -91,7 +91,19 @@ namespace bra
     typedef ket::qubit<state_integer_type, bit_integer_type> qubit_type;
     typedef ket::control<qubit_type> control_qubit_type;
 
+# ifdef BRA_REAL_TYPE
+#   if BRA_REAL_TYPE == 0
+    typedef long double real_type;
+#   elif BRA_REAL_TYPE == 1
     typedef double real_type;
+#   elif BRA_REAL_TYPE == 2
+    typedef float real_type;
+#   else
+    typedef double real_type;
+#   endif
+# else // BRA_REAL_TYPE
+    typedef double real_type;
+# endif
     typedef std::complex<real_type> complex_type;
 
     typedef BRA_array<real_type, 3u> spin_type;
@@ -367,7 +379,7 @@ namespace bra
     ::bra::state& set(qubit_type const qubit)
     { do_set(qubit); return *this; }
 
-    ::bra::state& depolarizing_channel(double const px, double const py, double const pz, int const seed)
+    ::bra::state& depolarizing_channel(real_type const px, real_type const py, real_type const pz, int const seed)
     { do_depolarizing_channel(px, py, pz, seed); return *this; }
 
    private:
@@ -455,7 +467,7 @@ namespace bra
       state_integer_type const divisor, state_integer_type const base) = 0;
     virtual void do_clear(qubit_type const qubit) = 0;
     virtual void do_set(qubit_type const qubit) = 0;
-    virtual void do_depolarizing_channel(double const px, double const py, double const pz, int const seed) = 0;
+    virtual void do_depolarizing_channel(real_type const px, real_type const py, real_type const pz, int const seed) = 0;
   };
 }
 
