@@ -24,17 +24,18 @@ namespace bra
     {
      public:
       typedef ::bra::state::qubit_type qubit_type;
+      typedef ::bra::state::real_type real_type;
 
      private:
-      double px_;
-      double py_;
-      double pz_;
+      real_type px_;
+      real_type py_;
+      real_type pz_;
       int seed_;
 
       static std::string const name_;
 
      public:
-      depolarizing_channel(double const px, double const py, double const pz, int seed);
+      depolarizing_channel(real_type const px, real_type const py, real_type const pz, int seed);
 # ifndef BOOST_NO_CXX11_DEFAULTED_FUNCTIONS
       ~depolarizing_channel() = default;
 # else

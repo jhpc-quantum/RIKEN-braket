@@ -35,6 +35,7 @@
 
 # include <bra/general_mpi_2page_state.hpp>
 # include <bra/state.hpp>
+# include <bra/utility/closest_floating_point_of.hpp>
 
 # ifndef BOOST_NO_CXX11_HDR_RANDOM
 #   define BRA_uniform_real_distribution std::uniform_real_distribution
@@ -413,14 +414,15 @@ namespace bra
       permutation_, buffer_, complex_datatype_, communicator_, environment_);
   }
 
-  void general_mpi_2page_state::do_depolarizing_channel(double const px, double const py, double const pz, int const seed)
+  void general_mpi_2page_state::do_depolarizing_channel(real_type const px, real_type const py, real_type const pz, int const seed)
   {
-    BRA_uniform_real_distribution<double> distribution(0.0, px + py + pz);
+    typedef typename ::bra::utility::closest_floating_point_of<real_type>::type floating_point;
+    BRA_uniform_real_distribution<floating_point> distribution(0.0, px + py + pz);
     qubit_type const last_qubit = ket::make_qubit(total_num_qubits_);
     if (seed < 0)
       for (qubit_type qubit = ket::make_qubit(static_cast<bit_integer_type>(0u)); qubit < last_qubit; ++qubit)
       {
-        double const probability = distribution(random_number_generator_);
+        real_type const probability = static_cast<real_type>(distribution(random_number_generator_));
         if (probability < px)
           do_pauli_x(qubit);
         else if (probability < px + py)
@@ -433,7 +435,7 @@ namespace bra
       random_number_generator_type temporal_random_number_generator(static_cast<seed_type>(seed));
       for (qubit_type qubit = ket::make_qubit(static_cast<bit_integer_type>(0u)); qubit < last_qubit; ++qubit)
       {
-        double const probability = distribution(temporal_random_number_generator);
+        real_type const probability = static_cast<real_type>(distribution(temporal_random_number_generator));
         if (probability < px)
           do_pauli_x(qubit);
         else if (probability < px + py)

@@ -151,7 +151,7 @@ namespace bra
       state_integer_type const divisor, state_integer_type const base) override;
     void do_clear(qubit_type const qubit) override;
     void do_set(qubit_type const qubit) override;
-    void do_depolarizing_channel(double const px, double const py, double const pz, int const seed) override;
+    void do_depolarizing_channel(real_type const px, real_type const py, real_type const pz, int const seed) override;
   };
 }
 

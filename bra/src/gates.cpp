@@ -602,7 +602,7 @@ namespace bra
       else if (first_mnemonic == "DEPOLARIZING")
       {
         BRA_DEPOLARIZING_STATEMENT_TYPE statement;
-        double px, py, pz;
+        real_type px, py, pz;
         int seed;
         boost::tie(statement, px, py, pz, seed) = read_depolarizing_statement(columns);
 
@@ -907,7 +907,7 @@ namespace bra
     return boost::make_tuple(BRA_GENERATE_STATEMENT_VALUE(error), -1, -1);
   }
 
-  boost::tuple<BRA_DEPOLARIZING_STATEMENT_TYPE, double, double, double, int>
+  boost::tuple<BRA_DEPOLARIZING_STATEMENT_TYPE, gates::real_type, gates::real_type, gates::real_type, int>
   gates::read_depolarizing_statement(gates::columns_type& columns) const
   {
     if (boost::size(columns) <= 2u)
@@ -921,7 +921,7 @@ namespace bra
     if (present_string != "CHANNEL")
       return boost::make_tuple(BRA_DEPOLARIZING_STATEMENT_VALUE(error), 0.0, 0.0, 0.0, -1);
 
-    double px, py, pz;
+    real_type px, py, pz;
     int seed = -1;
     bool is_px_checked = false;
     bool is_py_checked = false;

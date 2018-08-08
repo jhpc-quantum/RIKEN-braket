@@ -322,7 +322,7 @@ namespace bra
     boost::tuple<BRA_GENERATE_STATEMENT_TYPE, int, int> read_generate_statement(columns_type& columns) const;
     qubit_type read_clear(columns_type const& columns) const { return read_target(columns); }
     qubit_type read_set(columns_type const& columns) const { return read_target(columns); }
-    boost::tuple<BRA_DEPOLARIZING_STATEMENT_TYPE, double, double, double, int> read_depolarizing_statement(columns_type& columns) const;
+    boost::tuple<BRA_DEPOLARIZING_STATEMENT_TYPE, real_type, real_type, real_type, int> read_depolarizing_statement(columns_type& columns) const;
   };
 
   inline bool operator!=(::bra::gates const& lhs, ::bra::gates const& rhs)

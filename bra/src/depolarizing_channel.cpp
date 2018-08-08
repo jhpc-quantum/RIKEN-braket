@@ -16,7 +16,7 @@ namespace bra
   {
     std::string const depolarizing_channel::name_ = "DEPOLARIZING CHANNEL";
 
-    depolarizing_channel::depolarizing_channel(double const px, double const py, double const pz, int seed)
+    depolarizing_channel::depolarizing_channel(real_type const px, real_type const py, real_type const pz, int seed)
       : ::bra::gate::gate(), px_(px), py_(py), pz_(pz), seed_(seed)
     { }
 
