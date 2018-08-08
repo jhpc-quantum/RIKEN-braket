@@ -91,7 +91,19 @@ namespace bra
     typedef ket::qubit<state_integer_type, bit_integer_type> qubit_type;
     typedef ket::control<qubit_type> control_qubit_type;
 
+# ifdef BRA_REAL_TYPE
+#   if BRA_REAL_TYPE == 0
+    typedef long double real_type;
+#   elif BRA_REAL_TYPE == 1
     typedef double real_type;
+#   elif BRA_REAL_TYPE == 2
+    typedef float real_type;
+#   else
+    typedef double real_type;
+#   endif
+# else // BRA_REAL_TYPE
+    typedef double real_type;
+# endif
     typedef std::complex<real_type> complex_type;
 
     typedef BRA_array<real_type, 3u> spin_type;
