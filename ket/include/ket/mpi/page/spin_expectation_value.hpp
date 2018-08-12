@@ -204,6 +204,18 @@ namespace ket
             */
           }
         };
+
+        template <typename Spin>
+        inline spin_expectation_value_accumulate_inside<Spin>
+        make_spin_expectation_value_accumulate_inside(Spin& residual)
+        {
+          typedef
+            ::ket::mpi::page::spin_expectation_value_detail
+              ::spin_expectation_value_accumulate_inside<RandomAccessIterator>
+            result_type;
+
+          return result_type(residual);
+        }
 # endif // BOOST_NO_CXX11_LAMBDAS
       } // namespace spin_expectation_value_detail
 
