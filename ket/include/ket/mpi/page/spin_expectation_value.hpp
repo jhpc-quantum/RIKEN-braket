@@ -211,7 +211,7 @@ namespace ket
         {
           typedef
             ::ket::mpi::page::spin_expectation_value_detail
-              ::spin_expectation_value_accumulate_inside<RandomAccessIterator>
+              ::spin_expectation_value_accumulate_inside<Spin>
             result_type;
 
           return result_type(residual);
