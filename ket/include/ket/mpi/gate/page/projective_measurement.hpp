@@ -78,17 +78,17 @@ namespace ket
         namespace projective_measurement_detail
         {
 # ifdef BOOST_NO_CXX11_LAMBDAS
-          template <typename Real, typename RandomAccessIterator>
+          template <typename RandomAccessIterator>
           struct zero_one_probabilities_loop_inside
           {
-            Real& zero_probability_;
-            Real& one_probability_;
+            long double& zero_probability_;
+            long double& one_probability_;
             RandomAccessIterator zero_first_;
             RandomAccessIterator one_first_;
 
             zero_one_probabilities_loop_inside(
-              Real& zero_probability,
-              Real& one_probability,
+              long double& zero_probability,
+              long double& one_probability,
               RandomAccessIterator const zero_first,
               RandomAccessIterator const one_first)
               : zero_probability_(zero_probability),
@@ -101,18 +101,18 @@ namespace ket
             void operator()(StateInteger const index, int const) const
             {
               using std::norm;
-              zero_probability_ += norm(*(zero_first_+index));
-              one_probability_ += norm(*(one_first_+index));
+              zero_probability_ += static_cast<long double>(norm(*(zero_first_+index)));
+              one_probability_ += static_cast<long double>(norm(*(one_first_+index)));
             }
           };
 
-          template <typename Real, typename RandomAccessIterator>
-          inline zero_one_probabilities_loop_inside<Real, RandomAccessIterator> make_zero_one_probabilities_loop_inside(
-            Real& zero_probability, Real& one_probability,
+          template <typename RandomAccessIterator>
+          inline zero_one_probabilities_loop_inside<RandomAccessIterator> make_zero_one_probabilities_loop_inside(
+            long double& zero_probability, long double& one_probability,
             RandomAccessIterator const zero_first, RandomAccessIterator const one_first)
           {
             typedef
-              ::ket::mpi::gate::page::projective_measurement_detail::zero_one_probabilities_loop_inside<Real, RandomAccessIterator>
+              ::ket::mpi::gate::page::projective_measurement_detail::zero_one_probabilities_loop_inside<RandomAccessIterator>
               result_type;
             return result_type(zero_probability, one_probability, zero_first, one_first);
           }
@@ -148,9 +148,8 @@ namespace ket
           StateInteger const lower_bits_mask = qubit_mask-static_cast<StateInteger>(1u);
           StateInteger const upper_bits_mask = compl lower_bits_mask;
 
-          typedef typename ::ket::utility::meta::real_of<Complex>::type real_type;
-          real_type zero_probability = static_cast<real_type>(0);
-          real_type one_probability = static_cast<real_type>(0);
+          long double zero_probability = 0.0l;
+          long double one_probability = 0.0l;
 
           typedef ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator> local_state_type;
           for (std::size_t base_page_id = 0u;
@@ -182,8 +181,8 @@ namespace ket
                 StateInteger const index, int const)
               {
                 using std::norm;
-                zero_probability += norm(*(zero_first+index));
-                one_probability += norm(*(one_first+index));
+                zero_probability += static_cast<long double>(norm(*(zero_first+index)));
+                one_probability += static_cast<long double>(norm(*(one_first+index)));
               });
 # else // BOOST_NO_CXX11_LAMBDAS
             using ::ket::utility::loop_n;
@@ -197,7 +196,9 @@ namespace ket
 # endif // BOOST_NO_CXX11_LAMBDAS
           }
 
-          return std::make_pair(zero_probability, one_probability);
+          typedef typename ::ket::utility::meta::real_of<Complex>::type real_type;
+          return std::make_pair(
+            static_cast<real_type>(zero_probability), static_cast<real_type>(one_probability));
         }
 
 

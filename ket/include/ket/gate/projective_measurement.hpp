@@ -83,19 +83,19 @@ namespace ket
     namespace projective_measurement_detail
     {
 # ifdef BOOST_NO_CXX11_LAMBDAS
-      template <typename Real, typename RandomAccessIterator, typename StateInteger>
+      template <typename RandomAccessIterator, typename StateInteger>
       struct zero_one_probabilities_loop_inside
       {
-        Real& zero_probability_;
-        Real& one_probability_;
+        long double& zero_probability_;
+        long double& one_probability_;
         RandomAccessIterator first_;
         StateInteger qubit_mask_;
         StateInteger lower_bits_mask_;
         StateInteger upper_bits_mask_;
 
         zero_one_probabilities_loop_inside(
-          Real& zero_probability,
-          Real& one_probability,
+          long double& zero_probability,
+          long double& one_probability,
           RandomAccessIterator const first,
           StateInteger const qubit_mask,
           StateInteger const lower_bits_mask,
@@ -118,22 +118,22 @@ namespace ket
           StateInteger const one_index = zero_index bitor qubit_mask_;
 
           using std::norm;
-          zero_probability_ += norm(*(first_+zero_index));
-          one_probability_ += norm(*(first_+one_index));
+          zero_probability_ += static_cast<long double>(norm(*(first_+zero_index)));
+          one_probability_ += static_cast<long double>(norm(*(first_+one_index)));
         }
       };
 
-      template <typename Real, typename RandomAccessIterator, typename StateInteger>
-      inline zero_one_probabilities_loop_inside<Real, RandomAccessIterator, StateInteger>
+      template <typename RandomAccessIterator, typename StateInteger>
+      inline zero_one_probabilities_loop_inside<RandomAccessIterator, StateInteger>
       make_zero_one_probabilities_loop_inside(
-        Real& zero_probability,
-        Real& one_probability,
+        long double& zero_probability,
+        long double& one_probability,
         RandomAccessIterator const first,
         StateInteger const qubit_mask,
         StateInteger const lower_bits_mask,
         StateInteger const upper_bits_mask)
       {
-        return zero_one_probabilities_loop_inside<Real, RandomAccessIterator, StateInteger>(
+        return zero_one_probabilities_loop_inside<RandomAccessIterator, StateInteger>(
           zero_probability, one_probability, first,
           qubit_mask, lower_bits_mask, upper_bits_mask);
       }
@@ -266,13 +266,8 @@ namespace ket
           = qubit_mask-static_cast<StateInteger>(1u);
         StateInteger const upper_bits_mask = compl lower_bits_mask;
 
-        typedef
-          typename std::iterator_traits<RandomAccessIterator>::value_type
-          complex_type;
-        typedef
-          typename ::ket::utility::meta::real_of<complex_type>::type real_type;
-        real_type zero_probability = static_cast<real_type>(0);
-        real_type one_probability = static_cast<real_type>(0);
+        long double zero_probability = 0.0l;
+        long double one_probability = 0.0l;
 
         using ::ket::utility::loop_n;
 # ifndef BOOST_NO_CXX11_LAMBDAS
@@ -291,8 +286,8 @@ namespace ket
             StateInteger const one_index = zero_index bitor qubit_mask;
 
             using std::norm;
-            zero_probability += norm(*(first+zero_index));
-            one_probability += norm(*(first+one_index));
+            zero_probability += static_cast<long double>(norm(*(first+zero_index)));
+            one_probability += static_cast<long double>(norm(*(first+one_index)));
           });
 # else // BOOST_NO_CXX11_LAMBDAS
         loop_n(
@@ -303,7 +298,13 @@ namespace ket
             qubit_mask, lower_bits_mask, upper_bits_mask));
 # endif // BOOST_NO_CXX11_LAMBDAS
 
-        return std::make_pair(zero_probability, one_probability);
+        typedef
+          typename std::iterator_traits<RandomAccessIterator>::value_type
+          complex_type;
+        typedef
+          typename ::ket::utility::meta::real_of<complex_type>::type real_type;
+        return std::make_pair(
+          static_cast<real_type>(zero_probability), static_cast<real_type>(one_probability));
       }
 
 
