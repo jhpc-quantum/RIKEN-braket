@@ -89,24 +89,20 @@ namespace ket
 
         typedef typename std::iterator_traits<RandomAccessIterator>::value_type complex_type;
         typedef typename ::ket::utility::meta::real_of<complex_type>::type real_type;
-        //typedef KET_array<real_type, 3u> spin_type;
         typedef KET_array<long double, 3u> spin_type;
         std::vector<spin_type>& spins_in_threads_;
-        //std::vector<spin_type>& residuals_in_threads_;
 
         spin_expectation_value_loop_inside(
           RandomAccessIterator const first,
           StateInteger const qubit_mask,
           StateInteger const lower_bits_mask,
           StateInteger const upper_bits_mask,
-          std::vector<spin_type>& spins_in_threads/*,
-          std::vector<spin_type>& residuals_in_threads*/)
+          std::vector<spin_type>& spins_in_threads)
           : first_(first),
             qubit_mask_(qubit_mask),
             lower_bits_mask_(lower_bits_mask),
             upper_bits_mask_(upper_bits_mask),
-            spins_in_threads_(spins_in_threads)/*,
-            residuals_in_threads_(residuals_in_threads)*/
+            spins_in_threads_(spins_in_threads)
         { }
 
         void operator()(StateInteger const value_wo_qubit, int const thread_index) const
@@ -122,39 +118,13 @@ namespace ket
           complex_type const one_value = *(first_+one_index);
           complex_type const zero_times_one = zero_value*one_value;
 
-          /*
           using std::real;
-          real_type const real_zero_times_one
-            = real(zero_times_one) + residuals_in_threads_[thread_index][0u];
+          spins_in_threads_[thread_index][0u] += static_cast<long double>(real(zero_times_one));
           using std::imag;
-          real_type const imag_zero_times_one
-            = imag(zero_times_one) + residuals_in_threads_[thread_index][1u];
+          spins_in_threads_[thread_index][1u] += static_cast<long double>(imag(zero_times_one));
           using std::norm;
-          real_type const norm_difference
-            = (norm(zero_value) - norm(one_value)) + residuals_in_threads_[thread_index][2u];
-
-          real_type const tmp_x = spins_in_threads_[thread_index][0u] + real_zero_times_one;
-          real_type const tmp_y = spins_in_threads_[thread_index][1u] + imag_zero_times_one;
-          real_type const tmp_z = spins_in_threads_[thread_index][2u] + norm_difference;
-
-          residuals_in_threads_[thread_index][0u]
-            = real_zero_times_one - (tmp_x - spins_in_threads_[thread_index][0u]);
-          residuals_in_threads_[thread_index][1u]
-            = imag_zero_times_one - (tmp_y - spins_in_threads_[thread_index][1u]);
-          residuals_in_threads_[thread_index][2u]
-            = norm_difference - (tmp_z - spins_in_threads_[thread_index][2u]);
-
-          spins_in_threads_[thread_index][0u] = tmp_x;
-          spins_in_threads_[thread_index][1u] = tmp_y;
-          spins_in_threads_[thread_index][2u] = tmp_z;
-          */
-
-          using std::real;
-          spins_in_threads_[thread_index][0u] += real(zero_times_one);
-          using std::imag;
-          spins_in_threads_[thread_index][1u] += imag(zero_times_one);
-          using std::norm;
-          spins_in_threads_[thread_index][2u] += norm(zero_value) - norm(one_value);
+          spins_in_threads_[thread_index][2u]
+            += static_cast<long double>(norm(zero_value)) - static_cast<long double>(norm(one_value));
         }
       };
 
@@ -165,43 +135,13 @@ namespace ket
         StateInteger const qubit_mask,
         StateInteger const lower_bits_mask,
         StateInteger const upper_bits_mask,
-        std::vector<Spin>& spins_in_threads/*,
-        std::vector<Spin>& residuals_in_threads*/)
+        std::vector<Spin>& spins_in_threads)
       {
         return spin_expectation_value_loop_inside<RandomAccessIterator, StateInteger>(
-          first, qubit_mask, lower_bits_mask, upper_bits_mask, spins_in_threads/*, residuals_in_threads*/);
+          first, qubit_mask, lower_bits_mask, upper_bits_mask, spins_in_threads);
       }
 
 
-      /*
-      template <typename Spin>
-      struct spin_expectation_value_accumulate_inside
-      {
-        Spin& residual_;
-
-        explicit spin_expectation_value_accumulate_inside(Spin& residual)
-          : residual_(residual)
-        { }
-
-        Spin operator()(Spin const& accumulated_spin, Spin spin) const
-        {
-          spin[0u] += residual_[0u];
-          spin[1u] += residual_[1u];
-          spin[2u] += residual_[2u];
-
-          Spin result = accumulated_spin;
-          result[0u] += spin[0u];
-          result[1u] += spin[1u];
-          result[2u] += spin[2u];
-
-          residual_[0u] = spin[0u] - (result[0u] - accumulated_spin[0u]);
-          residual_[1u] = spin[1u] - (result[1u] - accumulated_spin[1u]);
-          residual_[2u] = spin[2u] - (result[2u] - accumulated_spin[2u]);
-
-          return result;
-        }
-      };
-      */
       struct spin_expectation_value_accumulate_inside
       {
         template <typename Spin>
@@ -214,12 +154,6 @@ namespace ket
         }
       };
 
-      /*
-      template <typename Spin>
-      inline spin_expectation_value_accumulate_inside<Spin>
-      make_spin_expectation_value_accumulate_inside(Spin& residual)
-      { return spin_expectation_value_accumulate_inside<Spin>(residual); }
-      */
       inline spin_expectation_value_accumulate_inside
       make_spin_expectation_value_accumulate_inside()
       { return spin_expectation_value_accumulate_inside(); }
@@ -256,15 +190,9 @@ namespace ket
     StateInteger const upper_bits_mask = compl lower_bits_mask;
 
     typedef typename std::iterator_traits<RandomAccessIterator>::value_type complex_type;
-    typedef typename ::ket::utility::meta::real_of<complex_type>::type real_type;
-    typedef KET_array<real_type, 3u> spin_type;
-    //spin_type BOOST_CONSTEXPR_OR_CONST zero_spin = { };
-    //std::vector<spin_type> spins_in_threads(
-    //  ::ket::utility::num_threads(parallel_policy), zero_spin);
-    //std::vector<spin_type> residuals_in_threads(spins_in_threads.size(), zero_spin);
-    typedef KET_array<long double, 3u> spin_high_type;
-    spin_high_type BOOST_CONSTEXPR_OR_CONST zero_spin = { };
-    std::vector<spin_high_type> spins_in_threads(
+    typedef KET_array<long double, 3u> hd_spin_type;
+    hd_spin_type BOOST_CONSTEXPR_OR_CONST zero_spin = { };
+    std::vector<hd_spin_type> spins_in_threads(
       ::ket::utility::num_threads(parallel_policy), zero_spin);
 
     using ::ket::utility::loop_n;
@@ -273,7 +201,7 @@ namespace ket
       parallel_policy,
       static_cast<StateInteger>(last-first)/2u,
       [first, qubit_mask, lower_bits_mask, upper_bits_mask,
-       &spins_in_threads/*, &residuals_in_threads*/](
+       &spins_in_threads](
         StateInteger const value_wo_qubit, int const thread_index)
       {
         // xxxxx0xxxxxx
@@ -287,92 +215,46 @@ namespace ket
         complex_type const one_value = *(first+one_index);
         complex_type const zero_times_one = zero_value*one_value;
 
-        /*
         using std::real;
-        real_type const real_zero_times_one
-          = real(zero_times_one) + residuals_in_threads[thread_index][0u];
+        spins_in_threads[thread_index][0u] += static_cast<long double>(real(zero_times_one));
         using std::imag;
-        real_type const imag_zero_times_one
-          = imag(zero_times_one) + residuals_in_threads[thread_index][1u];
+        spins_in_threads[thread_index][1u] += static_cast<long double>(imag(zero_times_one));
         using std::norm;
-        real_type const norm_difference
-          = (norm(zero_value) - norm(one_value)) + residuals_in_threads[thread_index][2u];
-
-        real_type const tmp_x = spins_in_threads[thread_index][0u] + real_zero_times_one;
-        real_type const tmp_y = spins_in_threads[thread_index][1u] + imag_zero_times_one;
-        real_type const tmp_z = spins_in_threads[thread_index][2u] + norm_difference;
-
-        residuals_in_threads[thread_index][0u]
-          = real_zero_times_one - (tmp_x - spins_in_threads[thread_index][0u]);
-        residuals_in_threads[thread_index][1u]
-          = imag_zero_times_one - (tmp_y - spins_in_threads[thread_index][1u]);
-        residuals_in_threads[thread_index][2u]
-          = norm_difference - (tmp_z - spins_in_threads[thread_index][2u]);
-
-        spins_in_threads[thread_index][0u] = tmp_x;
-        spins_in_threads[thread_index][1u] = tmp_y;
-        spins_in_threads[thread_index][2u] = tmp_z;
-        */
-
-        using std::real;
-        spins_in_threads[thread_index][0u] += real(zero_times_one);
-        using std::imag;
-        spins_in_threads[thread_index][1u] += imag(zero_times_one);
-        using std::norm;
-        spins_in_threads[thread_index][2u] += norm(zero_value) - norm(one_value);
+        spins_in_threads[thread_index][2u]
+          += static_cast<long double>(norm(zero_value)) - static_cast<long double>(norm(one_value));
       });
 # else // BOOST_NO_CXX11_LAMBDAS
     loop_n(
       parallel_policy,
       static_cast<StateInteger>(last-first)/2u,
       ::ket::spin_expectation_value_detail::make_spin_expectation_value_loop_inside(
-        first, qubit_mask, lower_bits_mask, upper_bits_mask, spins_in_threads/*, residuals_in_threads*/));
+        first, qubit_mask, lower_bits_mask, upper_bits_mask, spins_in_threads));
 # endif // BOOST_NO_CXX11_LAMBDAS
 
-    //spin_type residual = zero_spin;
 # ifndef BOOST_NO_CXX11_LAMBDAS
-    //spin_type spin
-    spin_high_type spin_
+    hd_spin_type hd_spin
       = boost::accumulate(
           spins_in_threads, zero_spin,
-          [](spin_high_type accumulated_spin, spin_high_type const& spin)//[&residual](spin_type const& accumulated_spin, spin_type spin)
+          [](hd_spin_type accumulated_spin, hd_spin_type const& spin)
           {
-            /*
-            spin[0u] += residual[0u];
-            spin[1u] += residual[1u];
-            spin[2u] += residual[2u];
-
-            spin_type result = accumulated_spin;
-            result[0u] += spin[0u];
-            result[1u] += spin[1u];
-            result[2u] += spin[2u];
-
-            residual[0u] = spin[0u] - (result[0u] - accumulated_spin[0u]);
-            residual[1u] = spin[1u] - (result[1u] - accumulated_spin[1u]);
-            residual[2u] = spin[2u] - (result[2u] - accumulated_spin[2u]);
-
-            return result;
-            */
-
             accumulated_spin[0u] += spin[0u];
             accumulated_spin[1u] += spin[1u];
             accumulated_spin[2u] += spin[2u];
             return accumulated_spin;
           });
 # else // BOOST_NO_CXX11_LAMBDAS
-    //spin_type spin
-    spin_high_type spin_
+    hd_spin_type hd_spin
       = boost::accumulate(
           spins_in_threads, zero_spin,
-          ::ket::spin_expectation_value_detail::make_spin_expectation_value_accumulate_inside(/*residual*/));
+          ::ket::spin_expectation_value_detail::make_spin_expectation_value_accumulate_inside());
 # endif // BOOST_NO_CXX11_LAMBDAS
 
-    //
+    typedef typename ::ket::utility::meta::real_of<complex_type>::type real_type;
+    typedef KET_array<real_type, 3u> spin_type;
     spin_type spin;
-    spin[0u] = static_cast<real_type>(spin_[0u]);
-    spin[1u] = static_cast<real_type>(spin_[1u]);
-    spin[2u] = static_cast<real_type>(spin_[2u]);
-    //
+    spin[0u] = static_cast<real_type>(hd_spin[0u]);
+    spin[1u] = static_cast<real_type>(hd_spin[1u]);
+    spin[2u] = static_cast<real_type>(hd_spin[2u]);
 
     using boost::math::constants::half;
     spin[2u] *= half<real_type>();
