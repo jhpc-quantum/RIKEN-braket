@@ -314,7 +314,7 @@ namespace ket
     template <
       typename RandomAccessIterator,
       typename StateInteger, typename BitInteger>
-    inline void conj_controlled_not(
+    inline void adj_controlled_not(
       RandomAccessIterator const first, RandomAccessIterator const last,
       ::ket::qubit<StateInteger, BitInteger> const target_qubit,
       ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const
@@ -324,7 +324,7 @@ namespace ket
     template <
       typename ParallelPolicy, typename RandomAccessIterator,
       typename StateInteger, typename BitInteger>
-    inline void conj_controlled_not(
+    inline void adj_controlled_not(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       ::ket::qubit<StateInteger, BitInteger> const target_qubit,
@@ -340,7 +340,7 @@ namespace ket
       template <
         typename RandomAccessRange,
         typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& conj_controlled_not(
+      inline RandomAccessRange& adj_controlled_not(
         RandomAccessRange& state,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const
@@ -350,64 +350,13 @@ namespace ket
       template <
         typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& conj_controlled_not(
+      inline RandomAccessRange& adj_controlled_not(
         ParallelPolicy const parallel_policy, RandomAccessRange& state,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const
           control_qubit)
       {
         return ::ket::gate::ranges::controlled_not(
-          parallel_policy, state, target_qubit, control_qubit);
-      }
-    } // namespace ranges
-
-
-    template <
-      typename RandomAccessIterator,
-      typename StateInteger, typename BitInteger>
-    inline void adj_controlled_not(
-      RandomAccessIterator const first, RandomAccessIterator const last,
-      ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const
-        control_qubit)
-    { ::ket::gate::conj_controlled_not(first, last, target_qubit, control_qubit); }
-
-    template <
-      typename ParallelPolicy, typename RandomAccessIterator,
-      typename StateInteger, typename BitInteger>
-    inline void adj_controlled_not(
-      ParallelPolicy const parallel_policy,
-      RandomAccessIterator const first, RandomAccessIterator const last,
-      ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const
-        control_qubit)
-    {
-      ::ket::gate::conj_controlled_not(
-        parallel_policy, first, last, target_qubit, control_qubit);
-    }
-
-    namespace ranges
-    {
-      template <
-        typename RandomAccessRange,
-        typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& adj_controlled_not(
-        RandomAccessRange& state,
-        ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const
-          control_qubit)
-      { return ::ket::gate::ranges::conj_controlled_not(state, target_qubit, control_qubit); }
-
-      template <
-        typename ParallelPolicy, typename RandomAccessRange,
-        typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& adj_controlled_not(
-        ParallelPolicy const parallel_policy, RandomAccessRange& state,
-        ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const
-          control_qubit)
-      {
-        return ::ket::gate::ranges::conj_controlled_not(
           parallel_policy, state, target_qubit, control_qubit);
       }
     } // namespace ranges

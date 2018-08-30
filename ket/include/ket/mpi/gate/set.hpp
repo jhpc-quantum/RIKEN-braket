@@ -98,10 +98,11 @@ namespace ket
             mpi_policy, parallel_policy, local_state, qubit, permutation);
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
+        qubit_type const permutated_qubit = permutation[qubit];
         return ::ket::mpi::utility::for_each_local_range(
           mpi_policy, local_state,
-          [parallel_policy, qubit, &permutation](auto const first, auto const last)
-          { ::ket::gate::set(parallel_policy, first, last, permutation[qubit]); });
+          [parallel_policy, permutated_qubit](auto const first, auto const last)
+          { ::ket::gate::set(parallel_policy, first, last, permutated_qubit); });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
         return ::ket::mpi::utility::for_each_local_range(
           mpi_policy, local_state,

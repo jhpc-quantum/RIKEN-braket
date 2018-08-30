@@ -147,16 +147,19 @@ namespace ket
               = local_state.page_range(one_page_id);
             assert(boost::size(zero_page_range) == boost::size(one_page_range));
 
-            using ::ket::utility::loop_n;
 # ifndef BOOST_NO_CXX11_LAMBDAS
+            typedef typename boost::range_iterator<page_range_type>::type page_iterator;
+            page_iterator const zero_first = boost::begin(zero_page_range);
+            page_iterator const one_first = boost::begin(one_page_range);
+
+            using ::ket::utility::loop_n;
             loop_n(
               parallel_policy,
               boost::size(zero_page_range),
-              [&zero_page_range, &one_page_range](StateInteger const index, int const)
+              [zero_first, one_first](StateInteger const index, int const)
               {
-                typedef typename boost::range_iterator<page_range_type>::type page_iterator;
-                page_iterator const zero_iter = boost::begin(zero_page_range)+index;
-                page_iterator const one_iter = boost::begin(one_page_range)+index;
+                page_iterator const zero_iter = zero_first+index;
+                page_iterator const one_iter = one_first+index;
                 Complex const zero_iter_value = *zero_iter;
 
                 typedef
@@ -168,6 +171,7 @@ namespace ket
                 *one_iter *= one_div_root_two<real_type>();
               });
 # else // BOOST_NO_CXX11_LAMBDAS
+            using ::ket::utility::loop_n;
             loop_n(
               parallel_policy,
               boost::size(zero_page_range),
@@ -184,7 +188,7 @@ namespace ket
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename Allocator>
-        inline RandomAccessRange& conj_x_rotation_half_pi(
+        inline RandomAccessRange& adj_x_rotation_half_pi(
           MpiPolicy const, ParallelPolicy const,
           RandomAccessRange& local_state,
           ::ket::qubit<StateInteger, BitInteger> const,
@@ -196,7 +200,7 @@ namespace ket
           typename ParallelPolicy,
           typename Complex, typename StateAllocator,
           typename StateInteger, typename BitInteger, typename PermutationAllocator>
-        inline ::ket::mpi::state<Complex, 0, StateAllocator>& conj_x_rotation_half_pi(
+        inline ::ket::mpi::state<Complex, 0, StateAllocator>& adj_x_rotation_half_pi(
           ::ket::mpi::utility::policy::general_mpi const, ParallelPolicy const,
           ::ket::mpi::state<Complex, 0, StateAllocator>& local_state,
           ::ket::qubit<StateInteger, BitInteger> const,
@@ -209,12 +213,12 @@ namespace ket
         {
 # ifdef BOOST_NO_CXX11_LAMBDAS
           template <typename RandomAccessIterator>
-          struct conj_x_rotation_half_pi_loop_inside
+          struct adj_x_rotation_half_pi_loop_inside
           {
             RandomAccessIterator zero_first_;
             RandomAccessIterator one_first_;
 
-            conj_x_rotation_half_pi_loop_inside(
+            adj_x_rotation_half_pi_loop_inside(
               RandomAccessIterator const zero_first,
               RandomAccessIterator const one_first)
               : zero_first_(zero_first), one_first_(one_first)
@@ -242,13 +246,13 @@ namespace ket
           };
 
           template <typename RandomAccessIterator>
-          inline conj_x_rotation_half_pi_loop_inside<RandomAccessIterator>
-          make_conj_x_rotation_half_pi_loop_inside(
+          inline adj_x_rotation_half_pi_loop_inside<RandomAccessIterator>
+          make_adj_x_rotation_half_pi_loop_inside(
             RandomAccessIterator const zero_first,
             RandomAccessIterator const one_first)
           {
             typedef
-              ::ket::mpi::gate::page::x_rotation_half_pi_detail::conj_x_rotation_half_pi_loop_inside<RandomAccessIterator>
+              ::ket::mpi::gate::page::x_rotation_half_pi_detail::adj_x_rotation_half_pi_loop_inside<RandomAccessIterator>
               result_type;
 
             return result_type(zero_first, one_first);
@@ -260,7 +264,7 @@ namespace ket
           typename ParallelPolicy,
           typename Complex, int num_page_qubits_, typename StateAllocator,
           typename StateInteger, typename BitInteger, typename PermutationAllocator>
-        inline ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>& conj_x_rotation_half_pi(
+        inline ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>& adj_x_rotation_half_pi(
           ::ket::mpi::utility::policy::general_mpi const,
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>& local_state,
@@ -299,16 +303,19 @@ namespace ket
               = local_state.page_range(one_page_id);
             assert(boost::size(zero_page_range) == boost::size(one_page_range));
 
-            using ::ket::utility::loop_n;
 # ifndef BOOST_NO_CXX11_LAMBDAS
+            typedef typename boost::range_iterator<page_range_type>::type page_iterator;
+            page_iterator const zero_first = boost::begin(zero_page_range);
+            page_iterator const one_first = boost::begin(one_page_range);
+
+            using ::ket::utility::loop_n;
             loop_n(
               parallel_policy,
               boost::size(zero_page_range),
-              [&zero_page_range, &one_page_range](StateInteger const index, int const)
+              [zero_first, one_first](StateInteger const index, int const)
               {
-                typedef typename boost::range_iterator<page_range_type>::type page_iterator;
-                page_iterator const zero_iter = boost::begin(zero_page_range)+index;
-                page_iterator const one_iter = boost::begin(one_page_range)+index;
+                page_iterator const zero_iter = zero_first+index;
+                page_iterator const one_iter = one_first+index;
                 Complex const zero_iter_value = *zero_iter;
 
                 typedef
@@ -320,31 +327,16 @@ namespace ket
                 *one_iter *= one_div_root_two<real_type>();
               });
 # else // BOOST_NO_CXX11_LAMBDAS
+            using ::ket::utility::loop_n;
             loop_n(
               parallel_policy,
               boost::size(zero_page_range),
-              ::ket::mpi::gate::page::x_rotation_half_pi_detail::make_conj_x_rotation_half_pi_loop_inside(
+              ::ket::mpi::gate::page::x_rotation_half_pi_detail::make_adj_x_rotation_half_pi_loop_inside(
                 boost::begin(zero_page_range), boost::begin(one_page_range)));
 # endif // BOOST_NO_CXX11_LAMBDAS
           }
 
           return local_state;
-        }
-
-
-        template <
-          typename MpiPolicy, typename ParallelPolicy,
-          typename RandomAccessRange,
-          typename StateInteger, typename BitInteger, typename Allocator>
-        inline RandomAccessRange& adj_x_rotation_half_pi(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
-          RandomAccessRange& local_state,
-          ::ket::qubit<StateInteger, BitInteger> const qubit,
-          ::ket::mpi::qubit_permutation<
-            StateInteger, BitInteger, Allocator> const& permutation)
-        {
-          return ::ket::mpi::gate::page::conj_x_rotation_half_pi(
-            mpi_policy, parallel_policy, local_state, qubit, permutation);
         }
       }
     }

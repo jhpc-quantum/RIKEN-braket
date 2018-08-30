@@ -278,7 +278,7 @@ namespace ket
     template <
       typename RandomAccessIterator,
       typename StateInteger, typename BitInteger>
-    inline void conj_hadamard(
+    inline void adj_hadamard(
       RandomAccessIterator const first, RandomAccessIterator const last,
       ::ket::qubit<StateInteger, BitInteger> const qubit)
     { ::ket::gate::hadamard(first, last, qubit); }
@@ -286,7 +286,7 @@ namespace ket
     template <
       typename ParallelPolicy, typename RandomAccessIterator,
       typename StateInteger, typename BitInteger>
-    inline void conj_hadamard(
+    inline void adj_hadamard(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       ::ket::qubit<StateInteger, BitInteger> const qubit)
@@ -297,7 +297,7 @@ namespace ket
       template <
         typename RandomAccessRange,
         typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& conj_hadamard(
+      inline RandomAccessRange& adj_hadamard(
         RandomAccessRange& state,
         ::ket::qubit<StateInteger, BitInteger> const qubit)
       { return ::ket::gate::ranges::hadamard(state, qubit); }
@@ -305,47 +305,10 @@ namespace ket
       template <
         typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& conj_hadamard(
+      inline RandomAccessRange& adj_hadamard(
         ParallelPolicy const parallel_policy, RandomAccessRange& state,
         ::ket::qubit<StateInteger, BitInteger> const qubit)
       { return ::ket::gate::ranges::hadamard(parallel_policy, state, qubit); }
-    } // namespace ranges
-
-
-    template <
-      typename RandomAccessIterator,
-      typename StateInteger, typename BitInteger>
-    inline void adj_hadamard(
-      RandomAccessIterator const first, RandomAccessIterator const last,
-      ::ket::qubit<StateInteger, BitInteger> const qubit)
-    { ::ket::gate::conj_hadamard(first, last, qubit); }
-
-    template <
-      typename ParallelPolicy, typename RandomAccessIterator,
-      typename StateInteger, typename BitInteger>
-    inline void adj_hadamard(
-      ParallelPolicy const parallel_policy,
-      RandomAccessIterator const first, RandomAccessIterator const last,
-      ::ket::qubit<StateInteger, BitInteger> const qubit)
-    { ::ket::gate::conj_hadamard(parallel_policy, first, last, qubit); }
-
-    namespace ranges
-    {
-      template <
-        typename RandomAccessRange,
-        typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& adj_hadamard(
-        RandomAccessRange& state,
-        ::ket::qubit<StateInteger, BitInteger> const qubit)
-      { return ::ket::gate::ranges::conj_hadamard(state, qubit); }
-
-      template <
-        typename ParallelPolicy, typename RandomAccessRange,
-        typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& adj_hadamard(
-        ParallelPolicy const parallel_policy, RandomAccessRange& state,
-        ::ket::qubit<StateInteger, BitInteger> const qubit)
-      { return ::ket::gate::ranges::conj_hadamard(parallel_policy, state, qubit); }
     } // namespace ranges
   } // namespace gate
 } // namespace ket

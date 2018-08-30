@@ -253,7 +253,7 @@ namespace ket
     template <
       typename RandomAccessIterator,
       typename StateInteger, typename BitInteger>
-    inline void conj_pauli_x(
+    inline void adj_pauli_x(
       RandomAccessIterator const first, RandomAccessIterator const last,
       ::ket::qubit<StateInteger, BitInteger> const qubit)
     { ::ket::gate::pauli_x(first, last, qubit); }
@@ -261,7 +261,7 @@ namespace ket
     template <
       typename ParallelPolicy, typename RandomAccessIterator,
       typename StateInteger, typename BitInteger>
-    inline void conj_pauli_x(
+    inline void adj_pauli_x(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       ::ket::qubit<StateInteger, BitInteger> const qubit)
@@ -272,53 +272,10 @@ namespace ket
       template <
         typename RandomAccessRange,
         typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& conj_pauli_x(
-        RandomAccessRange& state,
-        ::ket::qubit<StateInteger, BitInteger> const qubit)
-      {
-        ::ket::gate::pauli_x(boost::begin(state), boost::end(state), qubit);
-        return state;
-      }
-
-      template <
-        typename ParallelPolicy, typename RandomAccessRange,
-        typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& conj_pauli_x(
-        ParallelPolicy const parallel_policy, RandomAccessRange& state,
-        ::ket::qubit<StateInteger, BitInteger> const qubit)
-      {
-        ::ket::gate::pauli_x(parallel_policy, boost::begin(state), boost::end(state), qubit);
-        return state;
-      }
-    } // namespace ranges
-
-
-    template <
-      typename RandomAccessIterator,
-      typename StateInteger, typename BitInteger>
-    inline void adj_pauli_x(
-      RandomAccessIterator const first, RandomAccessIterator const last,
-      ::ket::qubit<StateInteger, BitInteger> const qubit)
-    { ::ket::gate::conj_pauli_x(first, last, qubit); }
-
-    template <
-      typename ParallelPolicy, typename RandomAccessIterator,
-      typename StateInteger, typename BitInteger>
-    inline void adj_pauli_x(
-      ParallelPolicy const parallel_policy,
-      RandomAccessIterator const first, RandomAccessIterator const last,
-      ::ket::qubit<StateInteger, BitInteger> const qubit)
-    { ::ket::gate::conj_pauli_x(parallel_policy, first, last, qubit); }
-
-    namespace ranges
-    {
-      template <
-        typename RandomAccessRange,
-        typename StateInteger, typename BitInteger>
       inline RandomAccessRange& adj_pauli_x(
         RandomAccessRange& state,
         ::ket::qubit<StateInteger, BitInteger> const qubit)
-      { return ::ket::gate::ranges::conj_pauli_x(state, qubit); }
+      { return ::ket::gate::ranges::pauli_x(state, qubit); }
 
       template <
         typename ParallelPolicy, typename RandomAccessRange,
@@ -326,7 +283,7 @@ namespace ket
       inline RandomAccessRange& adj_pauli_x(
         ParallelPolicy const parallel_policy, RandomAccessRange& state,
         ::ket::qubit<StateInteger, BitInteger> const qubit)
-      { return ::ket::gate::ranges::conj_pauli_x(parallel_policy, state, qubit); }
+      { return ::ket::gate::ranges::pauli_x(parallel_policy, state, qubit); }
     } // namespace ranges
   } // namespace gate
 } // namespace ket
