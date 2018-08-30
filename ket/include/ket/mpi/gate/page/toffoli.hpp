@@ -118,27 +118,30 @@ namespace ket
             StateInteger, BitInteger, PermutationAllocator> const& permutation)
         {
           static_assert(num_page_qubits_ >= 3, "num_page_qubits_ should be greater than or equal to 3");
-          assert(local_state.is_page_qubit(permutation[target_qubit]));
-          assert(local_state.is_page_qubit(permutation[control_qubit1.qubit()]));
-          assert(local_state.is_page_qubit(permutation[control_qubit2.qubit()]));
 
           typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
+          qubit_type const permutated_target_qubit = permutation[target_qubit];
+          qubit_type const permutated_cqubit1 = permutation[control_qubit1.qubit()];
+          qubit_type const permutated_cqubit2 = permutation[control_qubit2.qubit()];
+          assert(local_state.is_page_qubit(permutated_target_qubit));
+          assert(local_state.is_page_qubit(permutated_cqubit1));
+          assert(local_state.is_page_qubit(permutated_cqubit2));
 
           BitInteger const num_nonpage_qubits
             = static_cast<BitInteger>(local_state.num_local_qubits()-num_page_qubits_);
 
           KET_array<qubit_type, 3u> sorted_permutated_qubits
-            = {permutation[target_qubit], permutation[control_qubit1.qubit()], permutation[control_qubit2.qubit()]};
+            = {permutated_target_qubit, permutated_cqubit1, permutated_cqubit2};
           boost::sort(sorted_permutated_qubits);
 
           StateInteger const target_qubit_mask
             = ::ket::utility::integer_exp2<StateInteger>(
-                permutation[target_qubit] - static_cast<qubit_type>(num_nonpage_qubits));
+                permutated_target_qubit - static_cast<qubit_type>(num_nonpage_qubits));
           StateInteger const control_qubits_mask
             = ::ket::utility::integer_exp2<StateInteger>(
-                permutation[control_qubit1.qubit()] - static_cast<qubit_type>(num_nonpage_qubits))
+                permutated_cqubit1 - static_cast<qubit_type>(num_nonpage_qubits))
               bitor ::ket::utility::integer_exp2<StateInteger>(
-                      permutation[control_qubit2.qubit()] - static_cast<qubit_type>(num_nonpage_qubits));
+                      permutated_cqubit2 - static_cast<qubit_type>(num_nonpage_qubits));
 
           KET_array<StateInteger, 4u> bits_mask;
           bits_mask[0u]
@@ -305,24 +308,26 @@ namespace ket
             StateInteger, BitInteger, PermutationAllocator> const& permutation)
         {
           static_assert(num_page_qubits_ >= 3, "num_page_qubits_ should be greater than or equal to 3");
-          assert(local_state.is_page_qubit(permutation[target_qubit]));
-          assert(local_state.is_page_qubit(permutation[page_control_qubit.qubit()]));
-          assert(not local_state.is_page_qubit(permutation[nonpage_control_qubit.qubit()]));
 
           typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
+          qubit_type const permutated_target_qubit = permutation[target_qubit];
+          qubit_type const permutated_page_cqubit = permutation[page_control_qubit.qubit()];
+          assert(local_state.is_page_qubit(permutated_target_qubit));
+          assert(local_state.is_page_qubit(permutated_page_cqubit));
+          assert(not local_state.is_page_qubit(permutation[nonpage_control_qubit.qubit()]));
 
           BitInteger const num_nonpage_qubits
             = static_cast<BitInteger>(local_state.num_local_qubits()-num_page_qubits_);
 
           boost::tuple<qubit_type, qubit_type> const minmax_page_permutated_qubits
-            = boost::minmax(permutation[target_qubit], permutation[page_control_qubit.qubit()]);
+            = boost::minmax(permutated_target_qubit, permutated_page_cqubit);
 
           StateInteger const target_qubit_mask
             = ::ket::utility::integer_exp2<StateInteger>(
-                permutation[target_qubit] - static_cast<qubit_type>(num_nonpage_qubits));
+                permutated_target_qubit - static_cast<qubit_type>(num_nonpage_qubits));
           StateInteger const page_control_qubit_mask
             = ::ket::utility::integer_exp2<StateInteger>(
-                permutation[page_control_qubit.qubit()] - static_cast<qubit_type>(num_nonpage_qubits));
+                permutated_page_cqubit - static_cast<qubit_type>(num_nonpage_qubits));
           StateInteger const nonpage_control_qubit_mask
             = ::ket::utility::integer_exp2<StateInteger>(permutation[nonpage_control_qubit.qubit()]);
 
@@ -361,12 +366,16 @@ namespace ket
             page_range_type zero_page_range = local_state.page_range(control_on_page_id);
             page_range_type one_page_range = local_state.page_range(target_control_on_page_id);
 
-            using ::ket::utility::loop_n;
 # ifndef BOOST_NO_CXX11_LAMBDAS
+            typedef typename boost::range_iterator<page_range_type>::type page_iterator;
+            page_iterator const zero_first = boost::begin(zero_page_range);
+            page_iterator const one_first = boost::begin(one_page_range);
+
+            using ::ket::utility::loop_n;
             loop_n(
               parallel_policy,
               boost::size(zero_page_range)/2u,
-              [&zero_page_range, &one_page_range,
+              [zero_first, one_first,
                nonpage_control_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask](
                 StateInteger const index_wo_qubit, int const)
               {
@@ -374,11 +383,10 @@ namespace ket
                   = ((index_wo_qubit bitand nonpage_upper_bits_mask) << 1u)
                     bitor (index_wo_qubit bitand nonpage_lower_bits_mask);
                 StateInteger const one_index = zero_index bitor nonpage_control_qubit_mask;
-                std::iter_swap(
-                  boost::begin(zero_page_range)+one_index,
-                  boost::begin(one_page_range)+one_index);
+                std::iter_swap(zero_first+one_index, one_first+one_index);
               });
 # else // BOOST_NO_CXX11_LAMBDAS
+            using ::ket::utility::loop_n;
             loop_n(
               parallel_policy,
               boost::size(zero_page_range)/2u,
@@ -514,23 +522,25 @@ namespace ket
             StateInteger, BitInteger, PermutationAllocator> const& permutation)
         {
           static_assert(num_page_qubits_ >= 3, "num_page_qubits_ should be greater than or equal to 3");
-          assert(not local_state.is_page_qubit(permutation[target_qubit]));
-          assert(local_state.is_page_qubit(permutation[control_qubit1.qubit()]));
-          assert(local_state.is_page_qubit(permutation[control_qubit2.qubit()]));
 
           typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
+          qubit_type const permutated_cqubit1 = permutation[control_qubit1.qubit()];
+          qubit_type const permutated_cqubit2 = permutation[control_qubit2.qubit()];
+          assert(not local_state.is_page_qubit(permutation[target_qubit]));
+          assert(local_state.is_page_qubit(permutated_cqubit1));
+          assert(local_state.is_page_qubit(permutated_cqubit2));
 
           BitInteger const num_nonpage_qubits
             = static_cast<BitInteger>(local_state.num_local_qubits()-num_page_qubits_);
 
           boost::tuple<qubit_type, qubit_type> const minmax_page_permutated_qubits
-            = boost::minmax(permutation[control_qubit1.qubit()], permutation[control_qubit2.qubit()]);
+            = boost::minmax(permutated_cqubit1, permutated_cqubit2);
 
           StateInteger const page_control_qubits_mask
             = ::ket::utility::integer_exp2<StateInteger>(
-                permutation[control_qubit1.qubit()] - static_cast<qubit_type>(num_nonpage_qubits))
+                permutated_cqubit1 - static_cast<qubit_type>(num_nonpage_qubits))
               bitor ::ket::utility::integer_exp2<StateInteger>(
-                      permutation[control_qubit2.qubit()] - static_cast<qubit_type>(num_nonpage_qubits));
+                      permutated_cqubit2 - static_cast<qubit_type>(num_nonpage_qubits));
           StateInteger const nonpage_target_qubit_mask
             = ::ket::utility::integer_exp2<StateInteger>(permutation[target_qubit]);
 
@@ -565,12 +575,15 @@ namespace ket
             typedef typename local_state_type::page_range_type page_range_type;
             page_range_type one_page_range = local_state.page_range(control_on_page_id);
 
-            using ::ket::utility::loop_n;
 # ifndef BOOST_NO_CXX11_LAMBDAS
+            typedef typename boost::range_iterator<page_range_type>::type page_iterator;
+            page_iterator const one_first = boost::begin(one_page_range);
+
+            using ::ket::utility::loop_n;
             loop_n(
               parallel_policy,
               boost::size(one_page_range)/2u,
-              [&one_page_range,
+              [one_first,
                nonpage_target_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask](
                 StateInteger const index_wo_qubit, int const)
               {
@@ -578,11 +591,10 @@ namespace ket
                   = ((index_wo_qubit bitand nonpage_upper_bits_mask) << 1u)
                     bitor (index_wo_qubit bitand nonpage_lower_bits_mask);
                 StateInteger const one_index = zero_index bitor nonpage_target_qubit_mask;
-                std::iter_swap(
-                  boost::begin(one_page_range)+zero_index,
-                  boost::begin(one_page_range)+one_index);
+                std::iter_swap(one_first+zero_index, one_first+one_index);
               });
 # else // BOOST_NO_CXX11_LAMBDAS
+            using ::ket::utility::loop_n;
             loop_n(
               parallel_policy,
               boost::size(one_page_range)/2u,
@@ -723,24 +735,26 @@ namespace ket
             StateInteger, BitInteger, PermutationAllocator> const& permutation)
         {
           static_assert(num_page_qubits_ >= 3, "num_page_qubits_ should be greater than or equal to 3");
-          assert(local_state.is_page_qubit(permutation[target_qubit]));
-          assert(not local_state.is_page_qubit(permutation[control_qubit1.qubit()]));
-          assert(not local_state.is_page_qubit(permutation[control_qubit2.qubit()]));
 
           typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
+          qubit_type const permutated_cqubit1 = permutation[control_qubit1.qubit()];
+          qubit_type const permutated_cqubit2 = permutation[control_qubit2.qubit()];
+          assert(local_state.is_page_qubit(permutation[target_qubit]));
+          assert(not local_state.is_page_qubit(permutated_cqubit1));
+          assert(not local_state.is_page_qubit(permutated_cqubit2));
 
           BitInteger const num_nonpage_qubits
             = static_cast<BitInteger>(local_state.num_local_qubits()-num_page_qubits_);
 
           boost::tuple<qubit_type, qubit_type> const minmax_nonpage_permutated_qubits
-            = boost::minmax(permutation[control_qubit1.qubit()], permutation[control_qubit2.qubit()]);
+            = boost::minmax(permutated_cqubit1, permutated_cqubit2);
 
           StateInteger const target_qubit_mask
             = ::ket::utility::integer_exp2<StateInteger>(
                 permutation[target_qubit] - static_cast<qubit_type>(num_nonpage_qubits));
           StateInteger const control_qubits_mask
-            = ::ket::utility::integer_exp2<StateInteger>(permutation[control_qubit1.qubit()])
-              bitor ::ket::utility::integer_exp2<StateInteger>(permutation[control_qubit2.qubit()]);
+            = ::ket::utility::integer_exp2<StateInteger>(permutated_cqubit1)
+              bitor ::ket::utility::integer_exp2<StateInteger>(permutated_cqubit2);
 
           StateInteger const page_lower_bits_mask = target_qubit_mask-static_cast<StateInteger>(1u);
           StateInteger const page_upper_bits_mask = compl page_lower_bits_mask;
@@ -771,12 +785,16 @@ namespace ket
             page_range_type zero_page_range = local_state.page_range(base_page_id);
             page_range_type one_page_range = local_state.page_range(target_on_page_id);
 
-            using ::ket::utility::loop_n;
 # ifndef BOOST_NO_CXX11_LAMBDAS
+            typedef typename boost::range_iterator<page_range_type>::type page_iterator;
+            page_iterator const zero_first = boost::begin(zero_page_range);
+            page_iterator const one_first = boost::begin(one_page_range);
+
+            using ::ket::utility::loop_n;
             loop_n(
               parallel_policy,
               boost::size(zero_page_range)/4u,
-              [&zero_page_range, &one_page_range,
+              [zero_first, one_first,
                control_qubits_mask, nonpage_lower_bits_mask, nonpage_middle_bits_mask, nonpage_upper_bits_mask](
                 StateInteger const index_wo_qubit, int const)
               {
@@ -785,11 +803,10 @@ namespace ket
                     bitor ((index_wo_qubit bitand nonpage_middle_bits_mask) << 1u)
                     bitor (index_wo_qubit bitand nonpage_lower_bits_mask);
                 StateInteger const one_index = zero_index bitor control_qubits_mask;
-                std::iter_swap(
-                  boost::begin(zero_page_range)+one_index,
-                  boost::begin(one_page_range)+one_index);
+                std::iter_swap(zero_first+one_index, one_first+one_index);
               });
 # else // BOOST_NO_CXX11_LAMBDAS
+            using ::ket::utility::loop_n;
             loop_n(
               parallel_policy,
               boost::size(zero_page_range)/4u,
@@ -934,25 +951,27 @@ namespace ket
             StateInteger, BitInteger, PermutationAllocator> const& permutation)
         {
           static_assert(num_page_qubits_ >= 3, "num_page_qubits_ should be greater than or equal to 3");
-          assert(not local_state.is_page_qubit(permutation[target_qubit]));
-          assert(local_state.is_page_qubit(permutation[page_control_qubit.qubit()]));
-          assert(not local_state.is_page_qubit(permutation[nonpage_control_qubit.qubit()]));
 
           typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
+          qubit_type const permutated_target_qubit = permutation[target_qubit];
+          qubit_type const permutated_nonpage_cqubit = permutation[nonpage_control_qubit.qubit()];
+          assert(not local_state.is_page_qubit(permutated_target_qubit));
+          assert(local_state.is_page_qubit(permutation[page_control_qubit.qubit()]));
+          assert(not local_state.is_page_qubit(permutated_nonpage_cqubit));
 
           BitInteger const num_nonpage_qubits
             = static_cast<BitInteger>(local_state.num_local_qubits()-num_page_qubits_);
 
           boost::tuple<qubit_type, qubit_type> const minmax_nonpage_permutated_qubits
-            = boost::minmax(permutation[target_qubit], permutation[nonpage_control_qubit.qubit()]);
+            = boost::minmax(permutated_target_qubit, permutated_nonpage_cqubit);
 
           StateInteger const target_qubit_mask
-            = ::ket::utility::integer_exp2<StateInteger>(permutation[target_qubit]);
+            = ::ket::utility::integer_exp2<StateInteger>(permutated_target_qubit);
           StateInteger const page_control_qubit_mask
             = ::ket::utility::integer_exp2<StateInteger>(
                 permutation[page_control_qubit.qubit()] - static_cast<qubit_type>(num_nonpage_qubits));
           StateInteger const nonpage_control_qubit_mask
-            = ::ket::utility::integer_exp2<StateInteger>(permutation[nonpage_control_qubit.qubit()]);
+            = ::ket::utility::integer_exp2<StateInteger>(permutated_nonpage_cqubit);
 
           StateInteger const page_lower_bits_mask = page_control_qubit_mask-static_cast<StateInteger>(1u);
           StateInteger const page_upper_bits_mask = compl page_lower_bits_mask;
@@ -982,12 +1001,15 @@ namespace ket
             typedef typename local_state_type::page_range_type page_range_type;
             page_range_type one_page_range = local_state.page_range(control_on_page_id);
 
-            using ::ket::utility::loop_n;
 # ifndef BOOST_NO_CXX11_LAMBDAS
+            typedef typename boost::range_iterator<page_range_type>::type page_iterator;
+            page_iterator const one_first = boost::begin(one_page_range);
+
+            using ::ket::utility::loop_n;
             loop_n(
               parallel_policy,
               boost::size(one_page_range)/4u,
-              [&one_page_range,
+              [one_first,
                target_qubit_mask, nonpage_control_qubit_mask,
                nonpage_lower_bits_mask, nonpage_middle_bits_mask, nonpage_upper_bits_mask](
                 StateInteger const index_wo_qubit, int const)
@@ -998,11 +1020,10 @@ namespace ket
                     bitor (index_wo_qubit bitand nonpage_lower_bits_mask);
                 StateInteger const zero_index = base_index bitor nonpage_control_qubit_mask;
                 StateInteger const one_index = zero_index bitor target_qubit_mask;
-                std::iter_swap(
-                  boost::begin(one_page_range)+zero_index,
-                  boost::begin(one_page_range)+one_index);
+                std::iter_swap(one_first+zero_index, one_first+one_index);
               });
 # else // BOOST_NO_CXX11_LAMBDAS
+            using ::ket::utility::loop_n;
             loop_n(
               parallel_policy,
               boost::size(one_page_range)/4u,
@@ -1023,7 +1044,7 @@ namespace ket
           typename Complex, int num_page_qubits_, typename StateAllocator,
           typename StateInteger, typename BitInteger, typename PermutationAllocator>
         inline ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>&
-        conj_toffoli_tccp(
+        adj_toffoli_tccp(
           MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>& local_state,
           ::ket::qubit<StateInteger, BitInteger> const target_qubit,
@@ -1042,7 +1063,7 @@ namespace ket
           typename Complex, int num_page_qubits_, typename StateAllocator,
           typename StateInteger, typename BitInteger, typename PermutationAllocator>
         inline ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>&
-        conj_toffoli_tcp(
+        adj_toffoli_tcp(
           MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>& local_state,
           ::ket::qubit<StateInteger, BitInteger> const target_qubit,
@@ -1061,7 +1082,7 @@ namespace ket
           typename Complex, int num_page_qubits_, typename StateAllocator,
           typename StateInteger, typename BitInteger, typename PermutationAllocator>
         inline ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>&
-        conj_toffoli_ccp(
+        adj_toffoli_ccp(
           MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>& local_state,
           ::ket::qubit<StateInteger, BitInteger> const target_qubit,
@@ -1080,7 +1101,7 @@ namespace ket
           typename Complex, int num_page_qubits_, typename StateAllocator,
           typename StateInteger, typename BitInteger, typename PermutationAllocator>
         inline ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>&
-        conj_toffoli_tp(
+        adj_toffoli_tp(
           MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>& local_state,
           ::ket::qubit<StateInteger, BitInteger> const target_qubit,
@@ -1099,103 +1120,6 @@ namespace ket
           typename Complex, int num_page_qubits_, typename StateAllocator,
           typename StateInteger, typename BitInteger, typename PermutationAllocator>
         inline ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>&
-        conj_toffoli_cp(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
-          ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>& local_state,
-          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-          ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const& page_control_qubit,
-          ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const& nonpage_control_qubit,
-          ::ket::mpi::qubit_permutation<
-            StateInteger, BitInteger, PermutationAllocator> const& permutation)
-        {
-          return ::ket::mpi::gate::page::toffoli_cp(
-            mpi_policy, parallel_policy, local_state,
-            target_qubit, page_control_qubit, nonpage_control_qubit, permutation);
-        }
-
-
-
-        template <
-          typename MpiPolicy, typename ParallelPolicy,
-          typename Complex, int num_page_qubits_, typename StateAllocator,
-          typename StateInteger, typename BitInteger, typename PermutationAllocator>
-        inline ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>&
-        adj_toffoli_tccp(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
-          ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>& local_state,
-          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-          ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
-          ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
-          ::ket::mpi::qubit_permutation<
-            StateInteger, BitInteger, PermutationAllocator> const& permutation)
-        {
-          return ::ket::mpi::gate::page::conj_toffoli_tccp(
-            mpi_policy, parallel_policy, local_state,
-            target_qubit, control_qubit1, control_qubit2, permutation);
-        }
-
-        template <
-          typename MpiPolicy, typename ParallelPolicy,
-          typename Complex, int num_page_qubits_, typename StateAllocator,
-          typename StateInteger, typename BitInteger, typename PermutationAllocator>
-        inline ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>&
-        adj_toffoli_tcp(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
-          ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>& local_state,
-          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-          ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const& page_control_qubit,
-          ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const& nonpage_control_qubit,
-          ::ket::mpi::qubit_permutation<
-            StateInteger, BitInteger, PermutationAllocator> const& permutation)
-        {
-          return ::ket::mpi::gate::page::conj_toffoli_tcp(
-            mpi_policy, parallel_policy, local_state,
-            target_qubit, page_control_qubit, nonpage_control_qubit, permutation);
-        }
-
-        template <
-          typename MpiPolicy, typename ParallelPolicy,
-          typename Complex, int num_page_qubits_, typename StateAllocator,
-          typename StateInteger, typename BitInteger, typename PermutationAllocator>
-        inline ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>&
-        adj_toffoli_ccp(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
-          ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>& local_state,
-          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-          ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
-          ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
-          ::ket::mpi::qubit_permutation<
-            StateInteger, BitInteger, PermutationAllocator> const& permutation)
-        {
-          return ::ket::mpi::gate::page::conj_toffoli_ccp(
-            mpi_policy, parallel_policy, local_state,
-            target_qubit, control_qubit1, control_qubit2, permutation);
-        }
-
-        template <
-          typename MpiPolicy, typename ParallelPolicy,
-          typename Complex, int num_page_qubits_, typename StateAllocator,
-          typename StateInteger, typename BitInteger, typename PermutationAllocator>
-        inline ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>&
-        adj_toffoli_tp(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
-          ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>& local_state,
-          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-          ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
-          ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
-          ::ket::mpi::qubit_permutation<
-            StateInteger, BitInteger, PermutationAllocator> const& permutation)
-        {
-          return ::ket::mpi::gate::page::conj_toffoli_tp(
-            mpi_policy, parallel_policy, local_state,
-            target_qubit, control_qubit1, control_qubit2, permutation);
-        }
-
-        template <
-          typename MpiPolicy, typename ParallelPolicy,
-          typename Complex, int num_page_qubits_, typename StateAllocator,
-          typename StateInteger, typename BitInteger, typename PermutationAllocator>
-        inline ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>&
         adj_toffoli_cp(
           MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>& local_state,
@@ -1205,7 +1129,7 @@ namespace ket
           ::ket::mpi::qubit_permutation<
             StateInteger, BitInteger, PermutationAllocator> const& permutation)
         {
-          return ::ket::mpi::gate::page::conj_toffoli_cp(
+          return ::ket::mpi::gate::page::toffoli_cp(
             mpi_policy, parallel_policy, local_state,
             target_qubit, page_control_qubit, nonpage_control_qubit, permutation);
         }

@@ -282,14 +282,14 @@ namespace ket
     {
 # ifdef BOOST_NO_CXX11_LAMBDAS
       template <typename RandomAccessIterator, typename StateInteger>
-      struct conj_x_rotation_half_pi_loop_inside
+      struct adj_x_rotation_half_pi_loop_inside
       {
         RandomAccessIterator first_;
         StateInteger qubit_mask_;
         StateInteger lower_bits_mask_;
         StateInteger upper_bits_mask_;
 
-        conj_x_rotation_half_pi_loop_inside(
+        adj_x_rotation_half_pi_loop_inside(
           RandomAccessIterator const first,
           StateInteger const qubit_mask,
           StateInteger const lower_bits_mask,
@@ -329,14 +329,14 @@ namespace ket
 
       template <typename RandomAccessIterator, typename StateInteger>
       inline
-      conj_x_rotation_half_pi_loop_inside<RandomAccessIterator, StateInteger>
-      make_conj_x_rotation_half_pi_loop_inside(
+      adj_x_rotation_half_pi_loop_inside<RandomAccessIterator, StateInteger>
+      make_adj_x_rotation_half_pi_loop_inside(
         RandomAccessIterator const first,
         StateInteger const qubit_mask,
         StateInteger const lower_bits_mask,
         StateInteger const upper_bits_mask)
       {
-        return conj_x_rotation_half_pi_loop_inside<
+        return adj_x_rotation_half_pi_loop_inside<
           RandomAccessIterator, StateInteger>(
             first, qubit_mask, lower_bits_mask, upper_bits_mask);
       }
@@ -345,7 +345,7 @@ namespace ket
       template <
         typename ParallelPolicy, typename RandomAccessIterator,
         typename StateInteger, typename BitInteger>
-      void conj_x_rotation_half_pi_impl(
+      void adj_x_rotation_half_pi_impl(
         ParallelPolicy const parallel_policy,
         RandomAccessIterator const first, RandomAccessIterator const last,
         ::ket::qubit<StateInteger, BitInteger> const qubit)
@@ -403,7 +403,7 @@ namespace ket
         loop_n(
           parallel_policy,
           static_cast<StateInteger>(last-first)/2u,
-          ::ket::gate::x_rotation_half_pi_detail::make_conj_x_rotation_half_pi_loop_inside(
+          ::ket::gate::x_rotation_half_pi_detail::make_adj_x_rotation_half_pi_loop_inside(
             first, qubit_mask, lower_bits_mask, upper_bits_mask));
 # endif // BOOST_NO_CXX11_LAMBDAS
       }
@@ -412,23 +412,23 @@ namespace ket
     template <
       typename RandomAccessIterator,
       typename StateInteger, typename BitInteger>
-    inline void conj_x_rotation_half_pi(
+    inline void adj_x_rotation_half_pi(
       RandomAccessIterator const first, RandomAccessIterator const last,
       ::ket::qubit<StateInteger, BitInteger> const qubit)
     {
-      ::ket::gate::x_rotation_half_pi_detail::conj_x_rotation_half_pi_impl(
+      ::ket::gate::x_rotation_half_pi_detail::adj_x_rotation_half_pi_impl(
         ::ket::utility::policy::make_sequential(), first, last, qubit);
     }
 
     template <
       typename ParallelPolicy, typename RandomAccessIterator,
       typename StateInteger, typename BitInteger>
-    inline void conj_x_rotation_half_pi(
+    inline void adj_x_rotation_half_pi(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       ::ket::qubit<StateInteger, BitInteger> const qubit)
     {
-      ::ket::gate::x_rotation_half_pi_detail::conj_x_rotation_half_pi_impl(
+      ::ket::gate::x_rotation_half_pi_detail::adj_x_rotation_half_pi_impl(
         parallel_policy, first, last, qubit);
     }
 
@@ -437,11 +437,11 @@ namespace ket
       template <
         typename RandomAccessRange,
         typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& conj_x_rotation_half_pi(
+      inline RandomAccessRange& adj_x_rotation_half_pi(
         RandomAccessRange& state,
         ::ket::qubit<StateInteger, BitInteger> const qubit)
       {
-        ::ket::gate::x_rotation_half_pi_detail::conj_x_rotation_half_pi_impl(
+        ::ket::gate::x_rotation_half_pi_detail::adj_x_rotation_half_pi_impl(
           ::ket::utility::policy::make_sequential(),
           boost::begin(state), boost::end(state), qubit);
         return state;
@@ -450,11 +450,11 @@ namespace ket
       template <
         typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& conj_x_rotation_half_pi(
+      inline RandomAccessRange& adj_x_rotation_half_pi(
         ParallelPolicy const parallel_policy, RandomAccessRange& state,
         ::ket::qubit<StateInteger, BitInteger> const qubit)
       {
-        ::ket::gate::x_rotation_half_pi_detail::conj_x_rotation_half_pi_impl(
+        ::ket::gate::x_rotation_half_pi_detail::adj_x_rotation_half_pi_impl(
           parallel_policy, boost::begin(state), boost::end(state), qubit);
         return state;
       }
@@ -463,11 +463,11 @@ namespace ket
       template <
         typename Complex, typename Allocator,
         typename StateInteger, typename BitInteger>
-      inline std::vector<Complex, Allocator>& conj_x_rotation_half_pi(
+      inline std::vector<Complex, Allocator>& adj_x_rotation_half_pi(
         std::vector<Complex, Allocator>& state,
         ::ket::qubit<StateInteger, BitInteger> const qubit)
       {
-        ::ket::gate::x_rotation_half_pi_detail::conj_x_rotation_half_pi_impl(
+        ::ket::gate::x_rotation_half_pi_detail::adj_x_rotation_half_pi_impl(
           ::ket::utility::policy::make_sequential(),
           KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
           qubit);
@@ -478,55 +478,18 @@ namespace ket
         typename ParallelPolicy,
         typename Complex, typename Allocator,
         typename StateInteger, typename BitInteger>
-      inline std::vector<Complex, Allocator>& conj_x_rotation_half_pi(
+      inline std::vector<Complex, Allocator>& adj_x_rotation_half_pi(
         ParallelPolicy const parallel_policy,
         std::vector<Complex, Allocator>& state,
         ::ket::qubit<StateInteger, BitInteger> const qubit)
       {
-        ::ket::gate::x_rotation_half_pi_detail::conj_x_rotation_half_pi_impl(
+        ::ket::gate::x_rotation_half_pi_detail::adj_x_rotation_half_pi_impl(
           parallel_policy,
           KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
           qubit);
         return state;
       }
 # endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-    } // namespace ranges
-
-
-    template <
-      typename RandomAccessIterator,
-      typename StateInteger, typename BitInteger>
-    inline void adj_x_rotation_half_pi(
-      RandomAccessIterator const first, RandomAccessIterator const last,
-      ::ket::qubit<StateInteger, BitInteger> const qubit)
-    { ::ket::gate::conj_x_rotation_half_pi(first, last, qubit); }
-
-    template <
-      typename ParallelPolicy, typename RandomAccessIterator,
-      typename StateInteger, typename BitInteger>
-    inline void adj_x_rotation_half_pi(
-      ParallelPolicy const parallel_policy,
-      RandomAccessIterator const first, RandomAccessIterator const last,
-      ::ket::qubit<StateInteger, BitInteger> const qubit)
-    { ::ket::gate::conj_x_rotation_half_pi(parallel_policy, first, last, qubit); }
-
-    namespace ranges
-    {
-      template <
-        typename RandomAccessRange,
-        typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& adj_x_rotation_half_pi(
-        RandomAccessRange& state,
-        ::ket::qubit<StateInteger, BitInteger> const qubit)
-      { return ::ket::gate::ranges::conj_x_rotation_half_pi(state, qubit); }
-
-      template <
-        typename ParallelPolicy, typename RandomAccessRange,
-        typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& adj_x_rotation_half_pi(
-        ParallelPolicy const parallel_policy, RandomAccessRange& state,
-        ::ket::qubit<StateInteger, BitInteger> const qubit)
-      { return ::ket::gate::ranges::conj_x_rotation_half_pi(parallel_policy, state, qubit); }
     } // namespace ranges
   } // namespace gate
 } // namespace ket

@@ -17,6 +17,7 @@
 
 # include <boost/range/begin.hpp>
 # include <boost/range/size.hpp>
+# include <boost/range/iterator.hpp>
 
 # include <ket/qubit.hpp>
 # include <ket/utility/loop_n.hpp>
@@ -135,22 +136,24 @@ namespace ket
           static_assert(
             num_page_qubits_ >= 2,
             "num_page_qubits_ should be greater than or equal to 2");
-          assert(local_state.is_page_qubit(permutation[target_qubit]));
-          assert(local_state.is_page_qubit(permutation[control_qubit.qubit()]));
 
           typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
+          qubit_type const permutated_target_qubit = permutation[target_qubit];
+          qubit_type const permutated_cqubit = permutation[control_qubit.qubit()];
+          assert(local_state.is_page_qubit(permutated_target_qubit));
+          assert(local_state.is_page_qubit(permutated_cqubit));
 
           BitInteger const num_nonpage_qubits
             = static_cast<BitInteger>(local_state.num_local_qubits()-num_page_qubits_);
 
           boost::tuple<qubit_type, qubit_type> const minmax_qubits
-            = boost::minmax(permutation[target_qubit], permutation[control_qubit.qubit()]);
+            = boost::minmax(permutated_target_qubit, permutated_cqubit);
           StateInteger const target_qubit_mask
             = ::ket::utility::integer_exp2<StateInteger>(
-                permutation[target_qubit] - static_cast<qubit_type>(num_nonpage_qubits));
+                permutated_target_qubit - static_cast<qubit_type>(num_nonpage_qubits));
           StateInteger const control_qubit_mask
             = ::ket::utility::integer_exp2<StateInteger>(
-                permutation[control_qubit.qubit()] - static_cast<qubit_type>(num_nonpage_qubits));
+                permutated_cqubit - static_cast<qubit_type>(num_nonpage_qubits));
           using boost::get;
           StateInteger const lower_bits_mask
             = ::ket::utility::integer_exp2<StateInteger>(
@@ -180,14 +183,18 @@ namespace ket
             typedef typename local_state_type::page_range_type page_range_type;
             page_range_type page_range_11 = local_state.page_range(page_id_11);
 
-            using ::ket::utility::loop_n;
 # ifndef BOOST_NO_CXX11_LAMBDAS
+            typedef typename boost::range_iterator<page_range_type>::type page_iterator;
+            page_iterator const first_11 = boost::begin(page_range_11);
+
+            using ::ket::utility::loop_n;
             loop_n(
               parallel_policy,
               boost::size(page_range_11),
-              [&page_range_11, &phase_coefficient](StateInteger const index, int const)
-              { *(boost::begin(page_range_11)+index) *= phase_coefficient; });
+              [first_11, &phase_coefficient](StateInteger const index, int const)
+              { *(first_11+index) *= phase_coefficient; });
 # else // BOOST_NO_CXX11_LAMBDAS
+            using ::ket::utility::loop_n;
             loop_n(
               parallel_policy,
               boost::size(page_range_11),
@@ -367,12 +374,15 @@ namespace ket
               typedef typename local_state_type::page_range_type page_range_type;
               page_range_type one_page_range = local_state.page_range(one_page_id);
 
-              using ::ket::utility::loop_n;
 # ifndef BOOST_NO_CXX11_LAMBDAS
+              typedef typename boost::range_iterator<page_range_type>::type page_iterator;
+              page_iterator const one_first = boost::begin(one_page_range);
+
+              using ::ket::utility::loop_n;
               loop_n(
                 parallel_policy,
                 boost::size(one_page_range)/2u,
-                [&one_page_range, &phase_coefficient,
+                [one_first, &phase_coefficient,
                  control_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask](
                   StateInteger const index_wo_qubit, int const)
                 {
@@ -380,9 +390,10 @@ namespace ket
                     = ((index_wo_qubit bitand nonpage_upper_bits_mask) << 1u)
                       bitor (index_wo_qubit bitand nonpage_lower_bits_mask);
                   StateInteger const one_index = zero_index bitor control_qubit_mask;
-                  *(boost::begin(one_page_range)+one_index) *= phase_coefficient;
+                  *(one_first+one_index) *= phase_coefficient;
                 });
 # else // BOOST_NO_CXX11_LAMBDAS
+              using ::ket::utility::loop_n;
               loop_n(
                 parallel_policy,
                 boost::size(one_page_range)/2u,
@@ -453,14 +464,18 @@ namespace ket
               typedef typename local_state_type::page_range_type page_range_type;
               page_range_type one_page_range = local_state.page_range(one_page_id);
 
-              using ::ket::utility::loop_n;
 # ifndef BOOST_NO_CXX11_LAMBDAS
+              typedef typename boost::range_iterator<page_range_type>::type page_iterator;
+              page_iterator const one_first = boost::begin(one_page_range);
+
+              using ::ket::utility::loop_n;
               loop_n(
                 parallel_policy,
                 boost::size(one_page_range),
-                [&one_page_range, &phase_coefficient](StateInteger const index, int const)
-                { *(boost::begin(one_page_range)+index) *= phase_coefficient; });
+                [one_first, &phase_coefficient](StateInteger const index, int const)
+                { *(one_first+index) *= phase_coefficient; });
 # else // BOOST_NO_CXX11_LAMBDAS
+              using ::ket::utility::loop_n;
               loop_n(
                 parallel_policy,
                 boost::size(one_page_range)/2u,
@@ -683,12 +698,15 @@ namespace ket
               typedef typename local_state_type::page_range_type page_range_type;
               page_range_type one_page_range = local_state.page_range(one_page_id);
 
-              using ::ket::utility::loop_n;
 # ifndef BOOST_NO_CXX11_LAMBDAS
+              typedef typename boost::range_iterator<page_range_type>::type page_iterator;
+              page_iterator const one_first = boost::begin(one_page_range);
+
+              using ::ket::utility::loop_n;
               loop_n(
                 parallel_policy,
                 boost::size(one_page_range)/2u,
-                [&one_page_range, &phase_coefficient,
+                [one_first, &phase_coefficient,
                  target_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask](
                   StateInteger const index_wo_qubit, int const)
                 {
@@ -696,9 +714,10 @@ namespace ket
                     = ((index_wo_qubit bitand nonpage_upper_bits_mask) << 1u)
                       bitor (index_wo_qubit bitand nonpage_lower_bits_mask);
                   StateInteger const one_index = zero_index bitor target_qubit_mask;
-                  *(boost::begin(one_page_range)+one_index) *= phase_coefficient;
+                  *(one_first+one_index) *= phase_coefficient;
                 });
 # else // BOOST_NO_CXX11_LAMBDAS
+              using ::ket::utility::loop_n;
               loop_n(
                 parallel_policy,
                 boost::size(one_page_range)/2u,
@@ -769,14 +788,18 @@ namespace ket
               typedef typename local_state_type::page_range_type page_range_type;
               page_range_type one_page_range = local_state.page_range(one_page_id);
 
-              using ::ket::utility::loop_n;
 # ifndef BOOST_NO_CXX11_LAMBDAS
+              typedef typename boost::range_iterator<page_range_type>::type page_iterator;
+              page_iterator const one_first = boost::begin(one_page_range);
+
+              using ::ket::utility::loop_n;
               loop_n(
                 parallel_policy,
                 boost::size(one_page_range),
-                [&one_page_range, &phase_coefficient](StateInteger const index, int const)
-                { *(boost::begin(one_page_range)+index) *= phase_coefficient; });
+                [one_first, &phase_coefficient](StateInteger const index, int const)
+                { *(one_first+index) *= phase_coefficient; });
 # else // BOOST_NO_CXX11_LAMBDAS
+              using ::ket::utility::loop_n;
               loop_n(
                 parallel_policy,
                 boost::size(one_page_range),

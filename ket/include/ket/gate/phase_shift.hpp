@@ -279,23 +279,24 @@ namespace ket
     template <
       typename RandomAccessIterator, typename Complex,
       typename StateInteger, typename BitInteger>
-    inline void conj_phase_shift_coeff(
+    inline void adj_phase_shift_coeff(
       RandomAccessIterator const first, RandomAccessIterator const last,
       Complex const& phase_coefficient,
       ::ket::qubit<StateInteger, BitInteger> const qubit)
-    { ::ket::gate::phase_shift_coeff(first, last, static_cast<Complex>(1)/phase_coefficient, qubit); }
+    { using std::conj; ::ket::gate::phase_shift_coeff(first, last, conj(phase_coefficient), qubit); }
 
     template <
       typename ParallelPolicy, typename RandomAccessIterator, typename Complex,
       typename StateInteger, typename BitInteger>
-    inline void conj_phase_shift_coeff(
+    inline void adj_phase_shift_coeff(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Complex const& phase_coefficient,
       ::ket::qubit<StateInteger, BitInteger> const qubit)
     {
+      using std::conj;
       ::ket::gate::phase_shift_coeff(
-        parallel_policy, first, last, static_cast<Complex>(1)/phase_coefficient, qubit);
+        parallel_policy, first, last, conj(phase_coefficient), qubit);
     }
 
     namespace ranges
@@ -303,67 +304,22 @@ namespace ket
       template <
         typename RandomAccessRange, typename Complex,
         typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& conj_phase_shift_coeff(
+      inline RandomAccessRange& adj_phase_shift_coeff(
         RandomAccessRange& state, Complex const& phase_coefficient,
         ::ket::qubit<StateInteger, BitInteger> const qubit)
-      { return ::ket::gate::ranges::phase_shift_coeff(state, static_cast<Complex>(1)/phase_coefficient, qubit); }
+      { using std::conj; return ::ket::gate::ranges::phase_shift_coeff(state, conj(phase_coefficient), qubit); }
 
       template <
         typename ParallelPolicy, typename RandomAccessRange, typename Complex,
         typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& conj_phase_shift_coeff(
+      inline RandomAccessRange& adj_phase_shift_coeff(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& state, Complex const& phase_coefficient,
         ::ket::qubit<StateInteger, BitInteger> const qubit)
       {
+        using std::conj;
         return ::ket::gate::ranges::phase_shift_coeff(
-          parallel_policy, state, static_cast<Complex>(1)/phase_coefficient, qubit);
-      }
-    } // namespace ranges
-
-
-    template <
-      typename RandomAccessIterator, typename Complex,
-      typename StateInteger, typename BitInteger>
-    inline void adj_phase_shift_coeff(
-      RandomAccessIterator const first, RandomAccessIterator const last,
-      Complex const& phase_coefficient,
-      ::ket::qubit<StateInteger, BitInteger> const qubit)
-    { ::ket::gate::conj_phase_shift_coeff(first, last, phase_coefficient, qubit); }
-
-    template <
-      typename ParallelPolicy, typename RandomAccessIterator, typename Complex,
-      typename StateInteger, typename BitInteger>
-    inline void adj_phase_shift_coeff(
-      ParallelPolicy const parallel_policy,
-      RandomAccessIterator const first, RandomAccessIterator const last,
-      Complex const& phase_coefficient,
-      ::ket::qubit<StateInteger, BitInteger> const qubit)
-    {
-      ::ket::gate::conj_phase_shift_coeff(
-        parallel_policy, first, last, phase_coefficient, qubit);
-    }
-
-    namespace ranges
-    {
-      template <
-        typename RandomAccessRange, typename Complex,
-        typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& adj_phase_shift_coeff(
-        RandomAccessRange& state, Complex const& phase_coefficient,
-        ::ket::qubit<StateInteger, BitInteger> const qubit)
-      { return ::ket::gate::ranges::conj_phase_shift_coeff(state, phase_coefficient, qubit); }
-
-      template <
-        typename ParallelPolicy, typename RandomAccessRange, typename Complex,
-        typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& adj_phase_shift_coeff(
-        ParallelPolicy const parallel_policy,
-        RandomAccessRange& state, Complex const& phase_coefficient,
-        ::ket::qubit<StateInteger, BitInteger> const qubit)
-      {
-        return ::ket::gate::ranges::conj_phase_shift_coeff(
-          parallel_policy, state, phase_coefficient, qubit);
+          parallel_policy, state, conj(phase_coefficient), qubit);
       }
     } // namespace ranges
 
@@ -428,7 +384,7 @@ namespace ket
     template <
       typename RandomAccessIterator, typename Real,
       typename StateInteger, typename BitInteger>
-    inline void conj_phase_shift(
+    inline void adj_phase_shift(
       RandomAccessIterator const first, RandomAccessIterator const last,
       Real const phase,
       ::ket::qubit<StateInteger, BitInteger> const qubit)
@@ -437,7 +393,7 @@ namespace ket
     template <
       typename ParallelPolicy, typename RandomAccessIterator, typename Real,
       typename StateInteger, typename BitInteger>
-    inline void conj_phase_shift(
+    inline void adj_phase_shift(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Real const phase,
@@ -449,7 +405,7 @@ namespace ket
       template <
         typename RandomAccessRange, typename Real,
         typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& conj_phase_shift(
+      inline RandomAccessRange& adj_phase_shift(
         RandomAccessRange& state, Real const phase,
         ::ket::qubit<StateInteger, BitInteger> const qubit)
       { return ::ket::gate::ranges::phase_shift(state, -phase, qubit); }
@@ -457,51 +413,11 @@ namespace ket
       template <
         typename ParallelPolicy, typename RandomAccessRange, typename Real,
         typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& conj_phase_shift(
+      inline RandomAccessRange& adj_phase_shift(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& state, Real const phase,
         ::ket::qubit<StateInteger, BitInteger> const qubit)
       { return ::ket::gate::ranges::phase_shift(parallel_policy, state, -phase, qubit); }
-    } // namespace ranges
-
-
-    template <
-      typename RandomAccessIterator, typename Real,
-      typename StateInteger, typename BitInteger>
-    inline void adj_phase_shift(
-      RandomAccessIterator const first, RandomAccessIterator const last,
-      Real const phase,
-      ::ket::qubit<StateInteger, BitInteger> const qubit)
-    { ::ket::gate::conj_phase_shift(first, last, phase, qubit); }
-
-    template <
-      typename ParallelPolicy, typename RandomAccessIterator, typename Real,
-      typename StateInteger, typename BitInteger>
-    inline void adj_phase_shift(
-      ParallelPolicy const parallel_policy,
-      RandomAccessIterator const first, RandomAccessIterator const last,
-      Real const phase,
-      ::ket::qubit<StateInteger, BitInteger> const qubit)
-    { ::ket::gate::conj_phase_shift(parallel_policy, first, last, phase, qubit); }
-
-    namespace ranges
-    {
-      template <
-        typename RandomAccessRange, typename Real,
-        typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& adj_phase_shift(
-        RandomAccessRange& state, Real const phase,
-        ::ket::qubit<StateInteger, BitInteger> const qubit)
-      { return ::ket::gate::ranges::conj_phase_shift(state, phase, qubit); }
-
-      template <
-        typename ParallelPolicy, typename RandomAccessRange, typename Real,
-        typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& adj_phase_shift(
-        ParallelPolicy const parallel_policy,
-        RandomAccessRange& state, Real const phase,
-        ::ket::qubit<StateInteger, BitInteger> const qubit)
-      { return ::ket::gate::ranges::conj_phase_shift(parallel_policy, state, phase, qubit); }
     } // namespace ranges
 
 
@@ -712,46 +628,6 @@ namespace ket
           boost::begin(state), boost::end(state), phase1, phase2, qubit);
         return state;
       }
-    } // namespace ranges
-
-
-    template <
-      typename RandomAccessIterator, typename Real,
-      typename StateInteger, typename BitInteger>
-    inline void conj_phase_shift2(
-      RandomAccessIterator const first, RandomAccessIterator const last,
-      Real const phase1, Real const phase2,
-      ::ket::qubit<StateInteger, BitInteger> const qubit)
-    { ::ket::gate::phase_shift2(first, last, -phase1, -phase2, qubit); }
-
-    template <
-      typename ParallelPolicy, typename RandomAccessIterator, typename Real,
-      typename StateInteger, typename BitInteger>
-    inline void conj_phase_shift2(
-      ParallelPolicy const parallel_policy,
-      RandomAccessIterator const first, RandomAccessIterator const last,
-      Real const phase1, Real const phase2,
-      ::ket::qubit<StateInteger, BitInteger> const qubit)
-    { ::ket::gate::phase_shift(parallel_policy, first, last, -phase1, -phase2, qubit); }
-
-    namespace ranges
-    {
-      template <
-        typename RandomAccessRange, typename Real,
-        typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& conj_phase_shift2(
-        RandomAccessRange& state, Real const phase1, Real const phase2,
-        ::ket::qubit<StateInteger, BitInteger> const qubit)
-      { return ::ket::gate::ranges::phase_shift2(state, -phase1, -phase2, qubit); }
-
-      template <
-        typename ParallelPolicy, typename RandomAccessRange, typename Real,
-        typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& conj_phase_shift2(
-        ParallelPolicy const parallel_policy,
-        RandomAccessRange& state, Real const phase1, Real const phase2,
-        ::ket::qubit<StateInteger, BitInteger> const qubit)
-      { return ::ket::gate::ranges::phase_shift2(parallel_policy, state, -phase1, -phase2, qubit); }
     } // namespace ranges
 
 
@@ -1186,46 +1062,6 @@ namespace ket
           boost::begin(state), boost::end(state), phase1, phase2, phase3, qubit);
         return state;
       }
-    } // namespace ranges
-
-
-    template <
-      typename RandomAccessIterator, typename Real,
-      typename StateInteger, typename BitInteger>
-    inline void conj_phase_shift3(
-      RandomAccessIterator const first, RandomAccessIterator const last,
-      Real const phase1, Real const phase2, Real const phase3,
-      ::ket::qubit<StateInteger, BitInteger> const qubit)
-    { ::ket::gate::phase_shift3(first, last, phase1, -phase2, -phase3, qubit); }
-
-    template <
-      typename ParallelPolicy, typename RandomAccessIterator, typename Real,
-      typename StateInteger, typename BitInteger>
-    inline void conj_phase_shift3(
-      ParallelPolicy const parallel_policy,
-      RandomAccessIterator const first, RandomAccessIterator const last,
-      Real const phase1, Real const phase2, Real const phase3,
-      ::ket::qubit<StateInteger, BitInteger> const qubit)
-    { ::ket::gate::phase_shift(parallel_policy, first, last, phase1, -phase2, -phase3, qubit); }
-
-    namespace ranges
-    {
-      template <
-        typename RandomAccessRange, typename Real,
-        typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& conj_phase_shift3(
-        RandomAccessRange& state, Real const phase1, Real const phase2, Real const phase3,
-        ::ket::qubit<StateInteger, BitInteger> const qubit)
-      { return ::ket::gate::ranges::phase_shift3(state, phase1, -phase2, -phase3, qubit); }
-
-      template <
-        typename ParallelPolicy, typename RandomAccessRange, typename Real,
-        typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& conj_phase_shift3(
-        ParallelPolicy const parallel_policy,
-        RandomAccessRange& state, Real const phase1, Real const phase2, Real const phase3,
-        ::ket::qubit<StateInteger, BitInteger> const qubit)
-      { return ::ket::gate::ranges::phase_shift3(parallel_policy, state, phase1, -phase2, -phase3, qubit); }
     } // namespace ranges
 
 

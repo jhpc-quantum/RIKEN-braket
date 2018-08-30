@@ -277,43 +277,6 @@ namespace ket
     } // namespace ranges
 
 
-    template <
-      typename RandomAccessIterator,
-      typename StateInteger, typename BitInteger>
-    inline void conj_y_rotation_half_pi(
-      RandomAccessIterator const first, RandomAccessIterator const last,
-      ::ket::qubit<StateInteger, BitInteger> const qubit)
-    { ::ket::gate::y_rotation_half_pi(first, last, qubit); }
-
-    template <
-      typename ParallelPolicy, typename RandomAccessIterator,
-      typename StateInteger, typename BitInteger>
-    inline void conj_y_rotation_half_pi(
-      ParallelPolicy const parallel_policy,
-      RandomAccessIterator const first, RandomAccessIterator const last,
-      ::ket::qubit<StateInteger, BitInteger> const qubit)
-    { ::ket::gate::y_rotation_half_pi(parallel_policy, first, last, qubit); }
-
-    namespace ranges
-    {
-      template <
-        typename RandomAccessRange,
-        typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& conj_y_rotation_half_pi(
-        RandomAccessRange& state,
-        ::ket::qubit<StateInteger, BitInteger> const qubit)
-      { return ::ket::gate::ranges::y_rotation_half_pi(state, qubit); }
-
-      template <
-        typename ParallelPolicy, typename RandomAccessRange,
-        typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& conj_y_rotation_half_pi(
-        ParallelPolicy const parallel_policy, RandomAccessRange& state,
-        ::ket::qubit<StateInteger, BitInteger> const qubit)
-      { return ::ket::gate::ranges::y_rotation_half_pi(parallel_policy, state, qubit); }
-    } // namespace ranges
-
-
     namespace y_rotation_half_pi_detail
     {
 # ifdef BOOST_NO_CXX11_LAMBDAS

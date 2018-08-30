@@ -131,14 +131,18 @@ namespace ket
             page_range_type one_page_range
               = local_state.page_range(one_page_id);
 
-            using ::ket::utility::loop_n;
 # ifndef BOOST_NO_CXX11_LAMBDAS
+            typedef typename boost::range_iterator<page_range_type>::type page_iterator;
+            page_iterator const one_first = boost::begin(one_page_range);
+
+            using ::ket::utility::loop_n;
             loop_n(
               parallel_policy,
               boost::size(one_page_range),
-              [&one_page_range, phase_coefficient](StateInteger const index, int const)
-              { *(boost::begin(one_page_range)+index) *= phase_coefficient; });
+              [one_first, phase_coefficient](StateInteger const index, int const)
+              { *(one_first+index) *= phase_coefficient; });
 # else // BOOST_NO_CXX11_LAMBDAS
+            using ::ket::utility::loop_n;
             loop_n(
               parallel_policy,
               boost::size(one_page_range),
