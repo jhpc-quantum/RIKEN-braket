@@ -31,7 +31,7 @@
 
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
-# include <ket/unswapped_fourier_transform.hpp>
+# include <ket/swapped_fourier_transform.hpp>
 # include <ket/gate/controlled_phase_shift.hpp>
 # include <ket/meta/state_integer_of.hpp>
 # include <ket/meta/bit_integer_of.hpp>
@@ -123,8 +123,8 @@ namespace ket
       KET_is_unsigned<typename ::ket::meta::bit_integer_of<qubit_type>::type>::value,
       "BitInteger should be unsigned");
 
-    using ::ket::unswapped_fourier_transform;
-    unswapped_fourier_transform(parallel_policy, state, lhs_qubits, phase_coefficients);
+    using ::ket::swapped_fourier_transform;
+    swapped_fourier_transform(parallel_policy, state, lhs_qubits, phase_coefficients);
 
 # ifndef BOOST_NO_CXX11_RANGE_BASED_FOR
     typedef typename boost::range_value<QubitsRange const>::type qubits_type;
@@ -145,8 +145,8 @@ namespace ket
     }
 # endif // BOOST_NO_CXX11_RANGE_BASED_FOR
 
-    using ::ket::adj_unswapped_fourier_transform;
-    adj_unswapped_fourier_transform(parallel_policy, state, lhs_qubits, phase_coefficients);
+    using ::ket::adj_swapped_fourier_transform;
+    adj_swapped_fourier_transform(parallel_policy, state, lhs_qubits, phase_coefficients);
 
     return state;
   }
@@ -273,8 +273,8 @@ namespace ket
       KET_is_unsigned<typename ::ket::meta::bit_integer_of<qubit_type>::type>::value,
       "BitInteger should be unsigned");
 
-    using ::ket::unswapped_fourier_transform;
-    unswapped_fourier_transform(parallel_policy, state, lhs_qubits, phase_coefficients);
+    using ::ket::swapped_fourier_transform;
+    swapped_fourier_transform(parallel_policy, state, lhs_qubits, phase_coefficients);
 
 # ifndef BOOST_NO_CXX11_RANGE_BASED_FOR
     typedef typename boost::range_value<QubitsRange const>::type qubits_type;
@@ -295,8 +295,8 @@ namespace ket
     }
 # endif // BOOST_NO_CXX11_RANGE_BASED_FOR
 
-    using ::ket::adj_unswapped_fourier_transform;
-    adj_unswapped_fourier_transform(parallel_policy, state, lhs_qubits, phase_coefficients);
+    using ::ket::adj_swapped_fourier_transform;
+    adj_swapped_fourier_transform(parallel_policy, state, lhs_qubits, phase_coefficients);
 
     return state;
   }

@@ -31,7 +31,7 @@
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/generate_phase_coefficients.hpp>
 # include <ket/utility/meta/real_of.hpp>
-# include <ket/mpi/unswapped_fourier_transform.hpp>
+# include <ket/mpi/swapped_fourier_transform.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/gate/controlled_phase_shift.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
@@ -137,8 +137,8 @@ namespace ket
         = boost::size(lhs_qubits);
       ::ket::utility::generate_phase_coefficients(phase_coefficients, num_qubits);
 
-      using ::ket::mpi::unswapped_fourier_transform;
-      unswapped_fourier_transform(
+      using ::ket::mpi::swapped_fourier_transform;
+      swapped_fourier_transform(
         mpi_policy, parallel_policy,
         local_state, lhs_qubits, phase_coefficients, permutation,
         buffer, datatype, communicator, environment);
@@ -161,8 +161,8 @@ namespace ket
           permutation, buffer, datatype, communicator, environment);
 # endif // BOOST_NO_CXX11_RANGE_BASED_FOR
 
-      using ::ket::mpi::adj_unswapped_fourier_transform;
-      adj_unswapped_fourier_transform(
+      using ::ket::mpi::adj_swapped_fourier_transform;
+      adj_swapped_fourier_transform(
         mpi_policy, parallel_policy,
         local_state, lhs_qubits, phase_coefficients, permutation,
         buffer, datatype, communicator, environment);
@@ -400,8 +400,8 @@ namespace ket
         = boost::size(lhs_qubits);
       ::ket::utility::generate_phase_coefficients(phase_coefficients, num_qubits);
 
-      using ::ket::mpi::unswapped_fourier_transform;
-      unswapped_fourier_transform(
+      using ::ket::mpi::swapped_fourier_transform;
+      swapped_fourier_transform(
         mpi_policy, parallel_policy,
         local_state, lhs_qubits, phase_coefficients, permutation,
         buffer, datatype, communicator, environment);
@@ -424,8 +424,8 @@ namespace ket
           permutation, buffer, datatype, communicator, environment);
 # endif // BOOST_NO_CXX11_RANGE_BASED_FOR
 
-      using ::ket::mpi::adj_unswapped_fourier_transform;
-      adj_unswapped_fourier_transform(
+      using ::ket::mpi::adj_swapped_fourier_transform;
+      adj_swapped_fourier_transform(
         mpi_policy, parallel_policy,
         local_state, lhs_qubits, phase_coefficients, permutation,
         buffer, datatype, communicator, environment);

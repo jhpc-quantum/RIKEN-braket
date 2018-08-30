@@ -1,5 +1,5 @@
-#ifndef KET_MPI_UNSWAPPED_FOURIER_TRANSFORM_HPP
-# define KET_MPI_UNSWAPPED_FOURIER_TRANSFORM_HPP
+#ifndef KET_MPI_SWAPPED_FOURIER_TRANSFORM_HPP
+# define KET_MPI_SWAPPED_FOURIER_TRANSFORM_HPP
 
 # include <boost/config.hpp>
 
@@ -68,7 +68,7 @@ namespace ket
     inline typename KET_enable_if<
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
-    unswapped_fourier_transform(
+    swapped_fourier_transform(
       MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
       RandomAccessRange& local_state,
       Qubits const& qubits,
@@ -131,7 +131,7 @@ namespace ket
       (not ::ket::mpi::utility::policy::meta::is_mpi_policy<RandomAccessRange>::value)
         and (not ::ket::utility::policy::meta::is_loop_n_policy<RandomAccessRange>::value),
       RandomAccessRange&>::type
-    unswapped_fourier_transform(
+    swapped_fourier_transform(
       RandomAccessRange& local_state,
       Qubits const& qubits,
       std::vector<
@@ -145,7 +145,7 @@ namespace ket
       yampi::communicator const communicator,
       yampi::environment const& environment)
     {
-      return unswapped_fourier_transform(
+      return swapped_fourier_transform(
         ::ket::mpi::utility::policy::make_general_mpi(),
         ::ket::utility::policy::make_sequential(),
         local_state, qubits, phase_coefficients, permutation,
@@ -159,7 +159,7 @@ namespace ket
     inline typename KET_enable_if<
       ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
       RandomAccessRange&>::type
-    unswapped_fourier_transform(
+    swapped_fourier_transform(
       ParallelPolicy const parallel_policy, RandomAccessRange& local_state,
       Qubits const& qubits,
       std::vector<
@@ -173,7 +173,7 @@ namespace ket
       yampi::communicator const communicator,
       yampi::environment const& environment)
     {
-      return unswapped_fourier_transform(
+      return swapped_fourier_transform(
         ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
         local_state, qubits, phase_coefficients, permutation,
         buffer, datatype, communicator, environment);
@@ -187,7 +187,7 @@ namespace ket
     inline typename KET_enable_if<
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
-    unswapped_fourier_transform(
+    swapped_fourier_transform(
       MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
       RandomAccessRange& local_state,
       Qubits const& qubits,
@@ -203,7 +203,7 @@ namespace ket
       std::vector<complex_type> phase_coefficients
         = ::ket::utility::generate_phase_coefficients<complex_type>(boost::size(qubits));
 
-      return unswapped_fourier_transform(
+      return swapped_fourier_transform(
         mpi_policy, parallel_policy,
         local_state, qubits, phase_coefficients, permutation,
         buffer, datatype, communicator, environment);
@@ -216,7 +216,7 @@ namespace ket
       (not ::ket::mpi::utility::policy::meta::is_mpi_policy<RandomAccessRange>::value)
         and (not ::ket::utility::policy::meta::is_loop_n_policy<RandomAccessRange>::value),
       RandomAccessRange&>::type
-    unswapped_fourier_transform(
+    swapped_fourier_transform(
       RandomAccessRange& local_state,
       Qubits const& qubits,
       ::ket::mpi::qubit_permutation<
@@ -231,7 +231,7 @@ namespace ket
       std::vector<complex_type> phase_coefficients
         = ::ket::utility::generate_phase_coefficients<complex_type>(boost::size(qubits));
 
-      return unswapped_fourier_transform(
+      return swapped_fourier_transform(
         local_state, qubits, phase_coefficients, permutation,
         buffer, datatype, communicator, environment);
     }
@@ -243,7 +243,7 @@ namespace ket
     inline typename KET_enable_if<
       ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
       RandomAccessRange&>::type
-    unswapped_fourier_transform(
+    swapped_fourier_transform(
       ParallelPolicy const parallel_policy, RandomAccessRange& local_state,
       Qubits const& qubits,
       ::ket::mpi::qubit_permutation<
@@ -258,7 +258,7 @@ namespace ket
       std::vector<complex_type> phase_coefficients
         = ::ket::utility::generate_phase_coefficients<complex_type>(boost::size(qubits));
 
-      return unswapped_fourier_transform(
+      return swapped_fourier_transform(
         parallel_policy,
         local_state, qubits, phase_coefficients, permutation,
         buffer, datatype, communicator, environment);
@@ -273,7 +273,7 @@ namespace ket
     inline typename KET_enable_if<
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
-    adj_unswapped_fourier_transform(
+    adj_swapped_fourier_transform(
       MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
       RandomAccessRange& local_state,
       Qubits const& qubits,
@@ -334,7 +334,7 @@ namespace ket
       (not ::ket::mpi::utility::policy::meta::is_mpi_policy<RandomAccessRange>::value)
         and (not ::ket::utility::policy::meta::is_loop_n_policy<RandomAccessRange>::value),
       RandomAccessRange&>::type
-    adj_unswapped_fourier_transform(
+    adj_swapped_fourier_transform(
       RandomAccessRange& local_state,
       Qubits const& qubits,
       std::vector<
@@ -348,7 +348,7 @@ namespace ket
       yampi::communicator const communicator,
       yampi::environment const& environment)
     {
-      return adj_unswapped_fourier_transform(
+      return adj_swapped_fourier_transform(
         ::ket::mpi::utility::policy::make_general_mpi(),
         ::ket::utility::policy::make_sequential(),
         local_state, qubits, phase_coefficients, permutation,
@@ -362,7 +362,7 @@ namespace ket
     inline typename KET_enable_if<
       ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
       RandomAccessRange&>::type
-    adj_unswapped_fourier_transform(
+    adj_swapped_fourier_transform(
       ParallelPolicy const parallel_policy, RandomAccessRange& local_state,
       Qubits const& qubits,
       std::vector<
@@ -376,7 +376,7 @@ namespace ket
       yampi::communicator const communicator,
       yampi::environment const& environment)
     {
-      return adj_unswapped_fourier_transform(
+      return adj_swapped_fourier_transform(
         ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
         local_state, qubits, phase_coefficients, permutation,
         buffer, datatype, communicator, environment);
@@ -390,7 +390,7 @@ namespace ket
     inline typename KET_enable_if<
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
-    adj_unswapped_fourier_transform(
+    adj_swapped_fourier_transform(
       MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
       RandomAccessRange& local_state,
       Qubits const& qubits,
@@ -406,7 +406,7 @@ namespace ket
       std::vector<complex_type> phase_coefficients
         = ::ket::utility::generate_phase_coefficients<complex_type>(boost::size(qubits));
 
-      return adj_unswapped_fourier_transform(
+      return adj_swapped_fourier_transform(
         mpi_policy, parallel_policy,
         local_state, qubits, phase_coefficients, permutation,
         buffer, datatype, communicator, environment);
@@ -419,7 +419,7 @@ namespace ket
       (not ::ket::mpi::utility::policy::meta::is_mpi_policy<RandomAccessRange>::value)
         and (not ::ket::utility::policy::meta::is_loop_n_policy<RandomAccessRange>::value),
       RandomAccessRange&>::type
-    adj_unswapped_fourier_transform(
+    adj_swapped_fourier_transform(
       RandomAccessRange& local_state,
       Qubits const& qubits,
       ::ket::mpi::qubit_permutation<
@@ -434,7 +434,7 @@ namespace ket
       std::vector<complex_type> phase_coefficients
         = ::ket::utility::generate_phase_coefficients<complex_type>(boost::size(qubits));
 
-      return adj_unswapped_fourier_transform(
+      return adj_swapped_fourier_transform(
         local_state, qubits, phase_coefficients, permutation,
         buffer, datatype, communicator, environment);
     }
@@ -446,7 +446,7 @@ namespace ket
     inline typename KET_enable_if<
       ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
       RandomAccessRange&>::type
-    adj_unswapped_fourier_transform(
+    adj_swapped_fourier_transform(
       ParallelPolicy const parallel_policy, RandomAccessRange& local_state,
       Qubits const& qubits,
       ::ket::mpi::qubit_permutation<
@@ -461,7 +461,7 @@ namespace ket
       std::vector<complex_type> phase_coefficients
         = ::ket::utility::generate_phase_coefficients<complex_type>(boost::size(qubits));
 
-      return adj_unswapped_fourier_transform(
+      return adj_swapped_fourier_transform(
         parallel_policy,
         local_state, qubits, phase_coefficients, permutation,
         buffer, datatype, communicator, environment);
