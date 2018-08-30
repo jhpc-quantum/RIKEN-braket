@@ -1,5 +1,5 @@
-#ifndef KET_UNSWAPPED_FOURIER_TRANSFORM_HPP
-# define KET_UNSWAPPED_FOURIER_TRANSFORM_HPP
+#ifndef KET_SWAPPED_FOURIER_TRANSFORM_HPP
+# define KET_SWAPPED_FOURIER_TRANSFORM_HPP
 
 # include <boost/config.hpp>
 
@@ -52,7 +52,7 @@ namespace ket
   template <
     typename ParallelPolicy, typename RandomAccessRange, typename Qubits,
     typename PhaseCoefficientsAllocator>>
-  inline RandomAccessRange& unswapped_fourier_transform(
+  inline RandomAccessRange& swapped_fourier_transform(
     ParallelPolicy const parallel_policy, RandomAccessRange& state,
     Qubits const& qubits,
     std::vector<
@@ -109,13 +109,13 @@ namespace ket
   inline typename KET_enable_if<
     not ::ket::utility::policy::is_loop_n_policy<RandomAccessRange>::value,
     RandomAccessRange&>::type
-  unswapped_fourier_transform(
+  swapped_fourier_transform(
     RandomAccessRange& state, Qubits const& qubits,
     std::vector<
       typename boost::range_value<RandomAccessRange>::type,
       PhaseCoefficientsAllocator>& phase_coefficients)
   {
-    return ::ket::unswapped_fourier_transform(
+    return ::ket::swapped_fourier_transform(
       ::ket::utility::policy::make_sequential(), state, qubits, phase_coefficients);
   }
 
@@ -125,7 +125,7 @@ namespace ket
   inline typename KET_enable_if<
     ::ket::utility::policy::is_loop_n_policy<ParallelPolicy>::value,
     RandomAccessRange&>::type
-  unswapped_fourier_transform(
+  swapped_fourier_transform(
     ParallelPolicy const parallel_policy, RandomAccessRange& state,
     Qubits const& qubits)
   {
@@ -133,26 +133,26 @@ namespace ket
     std::vector<complex_type> phase_coefficients
       = ::ket::utility::generate_phase_coefficients<complex_type>(boost::size(lhs_qubits));
 
-    return ::ket::unswapped_fourier_transform(
+    return ::ket::swapped_fourier_transform(
       parallel_policy, state, qubits, phase_coefficients);
   }
 
   template <typename RandomAccessRange, typename Qubits, typename PhaseCoefficientsAllocator>
-  inline RandomAccessRange& unswapped_fourier_transform(
+  inline RandomAccessRange& swapped_fourier_transform(
     RandomAccessRange& state, Qubits const& qubits)
   {
     typedef typename boost::range_value<RandomAccessRange>::type complex_type;
     std::vector<complex_type> phase_coefficients
       = ::ket::utility::generate_phase_coefficients<complex_type>(boost::size(lhs_qubits));
 
-    return ::ket::unswapped_fourier_transform(state, qubits, phase_coefficients);
+    return ::ket::swapped_fourier_transform(state, qubits, phase_coefficients);
   }
 
 
   template <
     typename ParallelPolicy, typename RandomAccessRange, typename Qubits,
     typename PhaseCoefficientsAllocator>
-  inline RandomAccessRange& adj_unswapped_fourier_transform(
+  inline RandomAccessRange& adj_swapped_fourier_transform(
     ParallelPolicy const parallel_policy, RandomAccessRange& state,
     Qubits const& qubits,
     std::vector<
@@ -207,13 +207,13 @@ namespace ket
   inline typename KET_enable_if<
     not ::ket::utility::policy::is_loop_n_policy<RandomAccessRange>::value,
     RandomAccessRange&>::type
-  adj_unswapped_fourier_transform(
+  adj_swapped_fourier_transform(
     RandomAccessRange& state, Qubits const& qubits,
     std::vector<
       typename boost::range_value<RandomAccessRange>::type,
       PhaseCoefficientsAllocator>& phase_coefficients)
   {
-    return adj_unswapped_fourier_transform(
+    return adj_swapped_fourier_transform(
       ::ket::utility::policy::make_sequential(), state, qubits, phase_coefficients);
   }
 
@@ -223,7 +223,7 @@ namespace ket
   inline typename KET_enable_if<
     ::ket::utility::policy::is_loop_n_policy<ParallelPolicy>::value,
     RandomAccessRange&>::type
-  adj_unswapped_fourier_transform(
+  adj_swapped_fourier_transform(
     ParallelPolicy const parallel_policy, RandomAccessRange& state,
     Qubits const& qubits)
   {
@@ -231,19 +231,19 @@ namespace ket
     std::vector<complex_type> phase_coefficients
       = ::ket::utility::generate_phase_coefficients<complex_type>(boost::size(lhs_qubits));
 
-    return adj_unswapped_fourier_transform(
+    return adj_swapped_fourier_transform(
       parallel_policy, state, qubits, phase_coefficients);
   }
 
   template <typename RandomAccessRange, typename Qubits, typename PhaseCoefficientsAllocator>
-  inline RandomAccessRange& adj_unswapped_fourier_transform(
+  inline RandomAccessRange& adj_swapped_fourier_transform(
     RandomAccessRange& state, Qubits const& qubits)
   {
     typedef typename boost::range_value<RandomAccessRange>::type complex_type;
     std::vector<complex_type> phase_coefficients
       = ::ket::utility::generate_phase_coefficients<complex_type>(boost::size(lhs_qubits));
 
-    return adj_unswapped_fourier_transform(state, qubits, phase_coefficients);
+    return adj_swapped_fourier_transform(state, qubits, phase_coefficients);
   }
 } // namespace ket
 
