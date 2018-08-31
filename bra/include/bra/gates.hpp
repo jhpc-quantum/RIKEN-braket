@@ -65,10 +65,10 @@ namespace bra
 
 
 # ifndef BOOST_NO_CXX11_SCOPED_ENUMS
-  enum class begin_statement : int { error, measurement, learning_machine };
-  enum class bit_statement : int { error, assignment };
-  enum class generate_statement : int { error, events };
-  enum class depolarizing_statement : int { error, channel };
+  enum class begin_statement : int { measurement, learning_machine };
+  enum class bit_statement : int { assignment };
+  enum class generate_statement : int { events };
+  enum class depolarizing_statement : int { channel };
 
 #  define BRA_BEGIN_STATEMENT_TYPE bra::begin_statement
 #  define BRA_BEGIN_STATEMENT_VALUE(value) bra::begin_statement::value
@@ -79,10 +79,10 @@ namespace bra
 #  define BRA_DEPOLARIZING_STATEMENT_TYPE bra::depolarizing_statement
 #  define BRA_DEPOLARIZING_STATEMENT_VALUE(value) bra::depolarizing_statement::value
 # else // BOOST_NO_CXX11_SCOPED_ENUMS
-  namespace begin_statement_ { enum begin_statement { error, measurement, learning_machine }; }
-  namespace bit_statement_ { enum bit_statement { error, assignment }; }
-  namespace generate_statement_ { enum generate_statement { error, events }; }
-  namespace depolarizing_statement_ { enum depolarizing_statement { error, channel }; }
+  namespace begin_statement_ { enum begin_statement { measurement, learning_machine }; }
+  namespace bit_statement_ { enum bit_statement { assignment }; }
+  namespace generate_statement_ { enum generate_statement { events }; }
+  namespace depolarizing_statement_ { enum depolarizing_statement { channel }; }
 
 #  define BRA_BEGIN_STATEMENT_TYPE bra::begin_statement_::begin_statement
 #  define BRA_BEGIN_STATEMENT_VALUE(value) bra::begin_statement_::value
@@ -345,7 +345,8 @@ namespace bra
   {
     template <typename Value>
     BRA_DEPOLARIZING_STATEMENT_TYPE read_value_in_depolarizing_statement(
-      Value& value, std::string& present_string, ::bra::gates::columns_type::const_iterator& column_iter)
+      Value& value, std::string& present_string, ::bra::gates::columns_type::const_iterator& column_iter,
+      ::bra::gates::columns_type const& columns)
     {
       std::string::const_iterator string_found = boost::find(present_string, ',');
       value = boost::lexical_cast<Value>(std::string(boost::const_begin(present_string), string_found));
@@ -354,7 +355,7 @@ namespace bra
       {
         present_string = *++column_iter; // present_string == "," or ",..."
         if (present_string[0] != ',')
-          return BRA_DEPOLARIZING_STATEMENT_VALUE(error);
+          throw wrong_mnemonics_error(columns);
 
         if (present_string.size() == 1u) // present_string == ","
           present_string = *++column_iter; // present_string == "..."
@@ -374,13 +375,13 @@ namespace bra
     template <typename Value>
     BRA_DEPOLARIZING_STATEMENT_TYPE read_depolarizing_statement(
       Value& value, std::string& present_string, ::bra::gates::columns_type::const_iterator& column_iter,
-      std::string::const_iterator string_found)
+      std::string::const_iterator string_found, ::bra::gates::columns_type const& columns)
     {
       if (string_found == boost::end(present_string)) // present_string == "XXX"
       {
         present_string = *++column_iter; // present_string == "=" or "=xxx" or "=xxx," or "=xxx,..."
         if (present_string[0] != '=')
-          return BRA_DEPOLARIZING_STATEMENT_VALUE(error);
+          throw wrong_mnemonics_error(columns);
 
         if (present_string.size() == 1u) // present_string == "="
           present_string = *++column_iter; // present_string == "xxx" or "xxx," or "xxx,..."
@@ -394,7 +395,7 @@ namespace bra
           present_string = *++column_iter; // present_string == "xxx" or "xxx," or "xxx,..."
       }
 
-      return read_value_in_depolarizing_statement(value, present_string, column_iter);
+      return read_value_in_depolarizing_statement(value, present_string, column_iter, columns);
     }
   } // namespace gates_detail
 }

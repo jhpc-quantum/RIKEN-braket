@@ -301,9 +301,7 @@ namespace bra
       {
         BRA_BIT_STATEMENT_TYPE const statement = read_bit_statement(columns);
 
-        if (statement == BRA_BIT_STATEMENT_VALUE(error))
-          throw wrong_mnemonics_error(columns);
-        else if (statement == BRA_BIT_STATEMENT_VALUE(assignment))
+        if (statement == BRA_BIT_STATEMENT_VALUE(assignment))
         {
 #ifndef BRA_NO_MPI
           initial_permutation_ = read_initial_permutation(columns);
@@ -522,9 +520,7 @@ namespace bra
       {
         BRA_BEGIN_STATEMENT_TYPE const statement = read_begin_statement(columns);
 
-        if (statement == BRA_BEGIN_STATEMENT_VALUE(error))
-          throw wrong_mnemonics_error(columns);
-        else if (statement == BRA_BEGIN_STATEMENT_VALUE(measurement))
+        if (statement == BRA_BEGIN_STATEMENT_VALUE(measurement))
         {
 #ifndef BRA_NO_MPI
           data_.push_back(
@@ -554,9 +550,7 @@ namespace bra
         /*
         BRA_END_STATEMENT_TYPE const statement = read_end_statement(columns);
 
-        if (statement == BRA_END_STATEMENT_VALUE(error))
-          throw wrong_mnemonics_error(columns);
-        else if (statement == BRA_END_STATEMENT_VALUE(measurement))
+        if (statement == BRA_END_STATEMENT_VALUE(measurement))
         {
 #ifndef BRA_NO_MPI
           data_.push_back(boost::movelib::make_unique< ::bra::gate::measurement >(root_));
@@ -575,9 +569,7 @@ namespace bra
         int num_events, seed;
         boost::tie(statement, num_events, seed) = read_generate_statement(columns);
 
-        if (statement == BRA_GENERATE_STATEMENT_VALUE(error))
-          throw wrong_mnemonics_error(columns);
-        else if (statement == BRA_GENERATE_STATEMENT_VALUE(events))
+        if (statement == BRA_GENERATE_STATEMENT_VALUE(events))
         {
 #ifndef BRA_NO_MPI
           data_.push_back(
@@ -606,14 +598,10 @@ namespace bra
         int seed;
         boost::tie(statement, px, py, pz, seed) = read_depolarizing_statement(columns);
 
-        if (statement == BRA_DEPOLARIZING_STATEMENT_VALUE(error))
-          throw wrong_mnemonics_error(columns);
-        else if (statement == BRA_DEPOLARIZING_STATEMENT_VALUE(channel))
-        {
+        if (statement == BRA_DEPOLARIZING_STATEMENT_VALUE(channel))
           data_.push_back(
             boost::movelib::unique_ptr< ::bra::gate::gate >(
               new ::bra::gate::depolarizing_channel(px, py, pz, seed)));
-        }
         else
           throw unsupported_mnemonic_error(first_mnemonic);
       }
@@ -835,15 +823,12 @@ namespace bra
 
   BRA_BEGIN_STATEMENT_TYPE gates::read_begin_statement(gates::columns_type& columns) const
   {
-    if (boost::size(columns) == 2u)
-    {
-      boost::range_iterator<columns_type>::type iter = boost::begin(columns);
-      boost::algorithm::to_upper(*++iter);
+    std::size_t const column_size = boost::size(columns);
 
-      if (*iter == "MEASUREMENT")
-        return BRA_BEGIN_STATEMENT_VALUE(measurement);
-    }
-    else if (boost::size(columns) == 3u)
+    if (column_size <= 1u or column_size >= 4u)
+      throw wrong_mnemonics_error(columns);
+
+    if (column_size == 3u)
     {
       boost::range_iterator<columns_type>::type iter = boost::begin(columns);
       boost::algorithm::to_upper(*++iter);
@@ -853,12 +838,21 @@ namespace bra
 
         if (*iter == "MACHINE")
           return BRA_BEGIN_STATEMENT_VALUE(learning_machine);
+        else
+          throw wrong_mnemonics_error(columns);
       }
+      else
+        throw wrong_mnemonics_error(columns);
     }
-    else
+
+    // if (column_size == 2u)
+    boost::range_iterator<columns_type>::type iter = boost::begin(columns);
+    boost::algorithm::to_upper(*++iter);
+
+    if (*iter != "MEASUREMENT")
       throw wrong_mnemonics_error(columns);
 
-    return BRA_BEGIN_STATEMENT_VALUE(error);
+    return BRA_BEGIN_STATEMENT_VALUE(measurement);
   }
 
   BRA_BIT_STATEMENT_TYPE gates::read_bit_statement(gates::columns_type& columns) const
@@ -869,10 +863,10 @@ namespace bra
     boost::range_iterator<columns_type>::type iter = boost::begin(columns);
     boost::algorithm::to_upper(*++iter);
 
-    if (*iter == "ASSIGNMENT")
-      return BRA_BIT_STATEMENT_VALUE(assignment);
+    if (*iter != "ASSIGNMENT")
+      throw wrong_mnemonics_error(columns);
 
-    return BRA_BIT_STATEMENT_VALUE(error);
+    return BRA_BIT_STATEMENT_VALUE(assignment);
   }
 
   boost::tuple<gates::bit_integer_type, gates::state_integer_type, gates::state_integer_type>
@@ -897,14 +891,12 @@ namespace bra
     boost::range_iterator<columns_type>::type iter = boost::begin(columns);
     boost::algorithm::to_upper(*++iter);
 
-    if (*iter == "EVENTS")
-    {
-      int const num_events = boost::lexical_cast<int>(*++iter);
-      int const seed = boost::lexical_cast<int>(*++iter);
-      return boost::make_tuple(BRA_GENERATE_STATEMENT_VALUE(events), num_events, seed);
-    }
+    if (*iter != "EVENTS")
+      throw wrong_mnemonics_error(columns);
 
-    return boost::make_tuple(BRA_GENERATE_STATEMENT_VALUE(error), -1, -1);
+    int const num_events = boost::lexical_cast<int>(*++iter);
+    int const seed = boost::lexical_cast<int>(*++iter);
+    return boost::make_tuple(BRA_GENERATE_STATEMENT_VALUE(events), num_events, seed);
   }
 
   boost::tuple<BRA_DEPOLARIZING_STATEMENT_TYPE, gates::real_type, gates::real_type, gates::real_type, int>
@@ -919,7 +911,7 @@ namespace bra
     boost::algorithm::to_upper(present_string);
 
     if (present_string != "CHANNEL")
-      return boost::make_tuple(BRA_DEPOLARIZING_STATEMENT_VALUE(error), 0.0, 0.0, 0.0, -1);
+      throw wrong_mnemonics_error(columns);
 
     real_type px, py, pz;
     int seed = -1;
@@ -939,62 +931,50 @@ namespace bra
       if (probability_string == "P_X")
       {
         if (is_px_checked)
-          return boost::make_tuple(BRA_DEPOLARIZING_STATEMENT_VALUE(error), 0.0, 0.0, 0.0, -1);
+          throw wrong_mnemonics_error(columns);
 
-        if (::bra::gates_detail::read_depolarizing_statement(px, present_string, iter, string_found)
-            == BRA_DEPOLARIZING_STATEMENT_VALUE(error))
-          return boost::make_tuple(BRA_DEPOLARIZING_STATEMENT_VALUE(error), 0.0, 0.0, 0.0, -1);
-
+        ::bra::gates_detail::read_depolarizing_statement(px, present_string, iter, string_found, columns);
         if (px < 0.0 or px > 1.0)
-          return boost::make_tuple(BRA_DEPOLARIZING_STATEMENT_VALUE(error), 0.0, 0.0, 0.0, -1);
+          throw wrong_mnemonics_error(columns);
 
         is_px_checked = true;
       }
       else if (probability_string == "P_Y")
       {
         if (is_py_checked)
-          return boost::make_tuple(BRA_DEPOLARIZING_STATEMENT_VALUE(error), 0.0, 0.0, 0.0, -1);
+          throw wrong_mnemonics_error(columns);
 
-        if (::bra::gates_detail::read_depolarizing_statement(py, present_string, iter, string_found)
-            == BRA_DEPOLARIZING_STATEMENT_VALUE(error))
-          return boost::make_tuple(BRA_DEPOLARIZING_STATEMENT_VALUE(error), 0.0, 0.0, 0.0, -1);
-
+        ::bra::gates_detail::read_depolarizing_statement(py, present_string, iter, string_found, columns);
         if (py < 0.0 or py > 1.0)
-          return boost::make_tuple(BRA_DEPOLARIZING_STATEMENT_VALUE(error), 0.0, 0.0, 0.0, -1);
+          throw wrong_mnemonics_error(columns);
 
         is_py_checked = true;
       }
       else if (probability_string == "P_Z")
       {
         if (is_pz_checked)
-          return boost::make_tuple(BRA_DEPOLARIZING_STATEMENT_VALUE(error), 0.0, 0.0, 0.0, -1);
+          throw wrong_mnemonics_error(columns);
 
-        if (::bra::gates_detail::read_depolarizing_statement(pz, present_string, iter, string_found)
-            == BRA_DEPOLARIZING_STATEMENT_VALUE(error))
-          return boost::make_tuple(BRA_DEPOLARIZING_STATEMENT_VALUE(error), 0.0, 0.0, 0.0, -1);
-
+        ::bra::gates_detail::read_depolarizing_statement(pz, present_string, iter, string_found, columns);
         if (pz < 0.0 or pz > 1.0)
-          return boost::make_tuple(BRA_DEPOLARIZING_STATEMENT_VALUE(error), 0.0, 0.0, 0.0, -1);
+          throw wrong_mnemonics_error(columns);
 
         is_pz_checked = true;
       }
       else if (probability_string == "SEED")
       {
         if (is_seed_checked)
-          return boost::make_tuple(BRA_DEPOLARIZING_STATEMENT_VALUE(error), 0.0, 0.0, 0.0, -1);
+          throw wrong_mnemonics_error(columns);
 
-        if (::bra::gates_detail::read_depolarizing_statement(seed, present_string, iter, string_found)
-            == BRA_DEPOLARIZING_STATEMENT_VALUE(error))
-          return boost::make_tuple(BRA_DEPOLARIZING_STATEMENT_VALUE(error), 0.0, 0.0, 0.0, -1);
-
+        ::bra::gates_detail::read_depolarizing_statement(seed, present_string, iter, string_found, columns);
         is_seed_checked = true;
       }
       else
-        return boost::make_tuple(BRA_DEPOLARIZING_STATEMENT_VALUE(error), 0.0, 0.0, 0.0, -1);
+        throw wrong_mnemonics_error(columns);
     }
 
     if (is_px_checked and is_py_checked and is_pz_checked and px + py + pz > 1.0)
-      return boost::make_tuple(BRA_DEPOLARIZING_STATEMENT_VALUE(error), 0.0, 0.0, 0.0, -1);
+      throw wrong_mnemonics_error(columns);
     else if (is_px_checked and is_py_checked and not is_pz_checked and px + py < 1.0)
       pz = 1.0 - px - py;
     else if (is_px_checked and not is_py_checked and is_pz_checked and px + pz < 1.0)
@@ -1002,7 +982,7 @@ namespace bra
     else if (not is_px_checked and is_py_checked and is_pz_checked and py + pz < 1.0)
       px = 1.0 - py - pz;
     else
-      return boost::make_tuple(BRA_DEPOLARIZING_STATEMENT_VALUE(error), 0.0, 0.0, 0.0, -1);
+      throw wrong_mnemonics_error(columns);
 
     return boost::make_tuple(BRA_DEPOLARIZING_STATEMENT_VALUE(channel), px, py, pz, seed);
   }
