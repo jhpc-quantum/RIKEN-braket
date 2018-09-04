@@ -117,7 +117,7 @@ namespace ket
       std::vector<typename boost::range_value<LocalState>::type, BufferAllocator>& buffer,
       yampi::datatype const real_datatype,
       yampi::datatype const complex_datatype,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       std::ostringstream output_string_stream("Spin ", std::ios_base::ate);
@@ -187,7 +187,7 @@ namespace ket
       std::vector<typename boost::range_value<LocalState>::type, BufferAllocator>& buffer,
       yampi::datatype const real_datatype,
       yampi::datatype const complex_datatype,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       return ::ket::mpi::spin_expectation_value(
@@ -215,7 +215,7 @@ namespace ket
       std::vector<typename boost::range_value<LocalState>::type, BufferAllocator>& buffer,
       yampi::datatype const real_datatype,
       yampi::datatype const complex_datatype,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       return ::ket::mpi::spin_expectation_value(
@@ -246,7 +246,7 @@ namespace ket
       yampi::datatype const real_datatype,
       yampi::datatype const complex_datatype,
       yampi::rank const root,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       std::ostringstream output_string_stream("Spin ", std::ios_base::ate);
@@ -321,7 +321,7 @@ namespace ket
       yampi::datatype const real_datatype,
       yampi::datatype const complex_datatype,
       yampi::rank const root,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       return ::ket::mpi::spin_expectation_value(
@@ -351,7 +351,7 @@ namespace ket
       yampi::datatype const real_datatype,
       yampi::datatype const complex_datatype,
       yampi::rank const root,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       return ::ket::mpi::spin_expectation_value(

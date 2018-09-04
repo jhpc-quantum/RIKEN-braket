@@ -80,7 +80,7 @@ namespace ket
       std::vector<
         typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
       yampi::datatype const datatype,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       static_assert(
@@ -142,7 +142,7 @@ namespace ket
       std::vector<
         typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
       yampi::datatype const datatype,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       return swapped_fourier_transform(
@@ -170,7 +170,7 @@ namespace ket
       std::vector<
         typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
       yampi::datatype const datatype,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       return swapped_fourier_transform(
@@ -196,7 +196,7 @@ namespace ket
       std::vector<
         typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
       yampi::datatype const datatype,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       typedef typename boost::range_value<RandomAccessRange>::type complex_type;
@@ -224,7 +224,7 @@ namespace ket
       std::vector<
         typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
       yampi::datatype const datatype,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       typedef typename boost::range_value<RandomAccessRange>::type complex_type;
@@ -251,7 +251,7 @@ namespace ket
       std::vector<
         typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
       yampi::datatype const datatype,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       typedef typename boost::range_value<RandomAccessRange>::type complex_type;
@@ -285,7 +285,7 @@ namespace ket
       std::vector<
         typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
       yampi::datatype const datatype,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       static_assert(
@@ -345,7 +345,7 @@ namespace ket
       std::vector<
         typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
       yampi::datatype const datatype,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       return adj_swapped_fourier_transform(
@@ -373,7 +373,7 @@ namespace ket
       std::vector<
         typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
       yampi::datatype const datatype,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       return adj_swapped_fourier_transform(
@@ -399,7 +399,7 @@ namespace ket
       std::vector<
         typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
       yampi::datatype const datatype,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       typedef typename boost::range_value<RandomAccessRange>::type complex_type;
@@ -427,7 +427,7 @@ namespace ket
       std::vector<
         typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
       yampi::datatype const datatype,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       typedef typename boost::range_value<RandomAccessRange>::type complex_type;
@@ -454,7 +454,7 @@ namespace ket
       std::vector<
         typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
       yampi::datatype const datatype,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       typedef typename boost::range_value<RandomAccessRange>::type complex_type;

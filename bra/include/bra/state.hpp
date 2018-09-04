@@ -143,7 +143,7 @@ namespace bra
     yampi::derived_datatype derived_real_pair_datatype_;
     yampi::datatype real_pair_datatype_;
     yampi::datatype complex_datatype_;
-    yampi::communicator communicator_;
+    yampi::communicator const& communicator_;
     yampi::environment const& environment_;
 # endif
 
@@ -154,13 +154,13 @@ namespace bra
     state(
       bit_integer_type const total_num_qubits,
       seed_type const seed,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment);
 
     state(
       std::vector<qubit_type> const& initial_permutation,
       seed_type const seed,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment);
 # else // BRA_NO_MPI
     state(bit_integer_type const total_num_qubits, seed_type const seed);

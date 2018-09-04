@@ -73,7 +73,7 @@ namespace ket
         yampi::datatype const complex_datatype,
         yampi::datatype const real_pair_datatype,
         yampi::rank const root,
-        yampi::communicator const communicator,
+        yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
         std::ostringstream output_string_stream("Measurement ", std::ios_base::ate);
@@ -150,7 +150,7 @@ namespace ket
         yampi::datatype const complex_datatype,
         yampi::datatype const real_pair_datatype,
         yampi::rank const root,
-        yampi::communicator const communicator,
+        yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::projective_measurement(
@@ -174,7 +174,7 @@ namespace ket
         yampi::datatype const complex_datatype,
         yampi::datatype const real_pair_datatype,
         yampi::rank const root,
-        yampi::communicator const communicator,
+        yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::projective_measurement(

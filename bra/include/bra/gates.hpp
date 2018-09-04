@@ -162,7 +162,7 @@ namespace bra
     gates(
       std::istream& input_stream, yampi::environment const& environment,
       yampi::rank const root = yampi::rank(),
-      yampi::communicator const communicator = yampi::world_communicator(),
+      yampi::communicator const& communicator = yampi::communicator(::yampi::world_communicator_t()),
       size_type const num_reserved_gates = static_cast<size_type>(0u));
 # else // BRA_NO_MPI
     explicit gates(std::istream& input_stream);
@@ -183,10 +183,10 @@ namespace bra
 # ifndef BRA_NO_MPI
     void num_qubits(
       bit_integer_type const new_num_qubits,
-      yampi::communicator const communicator, yampi::environment const& environment);
+      yampi::communicator const& communicator, yampi::environment const& environment);
     void num_lqubits(
       bit_integer_type const new_num_lqubits,
-      yampi::communicator const communicator, yampi::environment const& environment);
+      yampi::communicator const& communicator, yampi::environment const& environment);
 # else // BRA_NO_MPI
     void num_qubits(bit_integer_type const new_num_qubits);
 # endif // BRA_NO_MPI
@@ -195,7 +195,7 @@ namespace bra
 # ifndef BRA_NO_MPI
     void set_num_qubits_params(
       bit_integer_type const new_num_lqubits, bit_integer_type const num_gqubits,
-      yampi::communicator const communicator, yampi::environment const& environment);
+      yampi::communicator const& communicator, yampi::environment const& environment);
 # else // BRA_NO_MPI
     void set_num_qubits_params(bit_integer_type const new_num_qubits);
 # endif // BRA_NO_MPI
@@ -204,7 +204,7 @@ namespace bra
 # ifndef BRA_NO_MPI
     void assign(
       std::istream& input_stream, yampi::environment const& environment,
-      yampi::communicator const communicator = yampi::world_communicator(),
+      yampi::communicator const& communicator = yampi::communicator(yampi::world_communicator_t()),
       size_type const num_reserved_gates = static_cast<size_type>(0u));
 # else // BRA_NO_MPI
     void assign(

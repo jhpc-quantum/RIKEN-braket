@@ -34,7 +34,7 @@ namespace bra
     ::bra::state::bit_integer_type const num_local_qubits,
     ::bra::state::bit_integer_type const total_num_qubits,
     ::bra::state::seed_type const seed,
-    yampi::communicator const communicator,
+    yampi::communicator const& communicator,
     yampi::environment const& environment)
   {
     switch (num_page_qubits)
@@ -72,7 +72,7 @@ namespace bra
     ::bra::state::bit_integer_type const num_local_qubits,
     std::vector< ::bra::state::qubit_type > const& initial_permutation,
     ::bra::state::seed_type const seed,
-    yampi::communicator const communicator,
+    yampi::communicator const& communicator,
     yampi::environment const& environment)
   {
     switch (num_page_qubits)

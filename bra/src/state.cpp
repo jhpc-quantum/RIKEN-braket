@@ -42,7 +42,7 @@ namespace bra
   state::state(
     bit_integer_type const total_num_qubits,
     seed_type const seed,
-    yampi::communicator const communicator,
+    yampi::communicator const& communicator,
     yampi::environment const& environment)
     : total_num_qubits_(total_num_qubits),
       last_outcomes_(total_num_qubits, KET_GATE_OUTCOME_VALUE(unspecified)),
@@ -69,7 +69,7 @@ namespace bra
   state::state(
     std::vector<qubit_type> const& initial_permutation,
     seed_type const seed,
-    yampi::communicator const communicator,
+    yampi::communicator const& communicator,
     yampi::environment const& environment)
     : total_num_qubits_(initial_permutation.size()),
       last_outcomes_(total_num_qubits_, KET_GATE_OUTCOME_VALUE(unspecified)),

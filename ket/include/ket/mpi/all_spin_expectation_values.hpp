@@ -67,7 +67,7 @@ namespace ket
       std::vector<typename boost::range_value<LocalState>::type, BufferAllocator>& buffer,
       yampi::datatype const real_datatype,
       yampi::datatype const complex_datatype,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       typedef typename boost::range_value<LocalState>::type complex_type;
@@ -107,7 +107,7 @@ namespace ket
       std::vector<typename boost::range_value<LocalState>::type, BufferAllocator>& buffer,
       yampi::datatype const real_datatype,
       yampi::datatype const complex_datatype,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       return ::ket::mpi::all_spin_expectation_values<SpinsAllocator>(
@@ -137,7 +137,7 @@ namespace ket
       std::vector<typename boost::range_value<LocalState>::type, BufferAllocator>& buffer,
       yampi::datatype const real_datatype,
       yampi::datatype const complex_datatype,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       return ::ket::mpi::all_spin_expectation_values<SpinsAllocator>(
@@ -167,7 +167,7 @@ namespace ket
       std::vector<typename boost::range_value<LocalState>::type, BufferAllocator>& buffer,
       yampi::datatype const real_datatype,
       yampi::datatype const complex_datatype,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       typedef typename boost::range_value<LocalState>::type complex_type;
@@ -197,7 +197,7 @@ namespace ket
       std::vector<typename boost::range_value<LocalState>::type, BufferAllocator>& buffer,
       yampi::datatype const real_datatype,
       yampi::datatype const complex_datatype,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       return ::ket::mpi::all_spin_expectation_values(
@@ -226,7 +226,7 @@ namespace ket
       std::vector<typename boost::range_value<LocalState>::type, BufferAllocator>& buffer,
       yampi::datatype const real_datatype,
       yampi::datatype const complex_datatype,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       return ::ket::mpi::all_spin_expectation_values(
@@ -260,7 +260,7 @@ namespace ket
       yampi::datatype const real_datatype,
       yampi::datatype const complex_datatype,
       yampi::rank const root,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       bool is_root = communicator.rank(environment) == root;
@@ -313,7 +313,7 @@ namespace ket
       yampi::datatype const real_datatype,
       yampi::datatype const complex_datatype,
       yampi::rank const root,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       return ::ket::mpi::all_spin_expectation_values<SpinsAllocator>(
@@ -345,7 +345,7 @@ namespace ket
       yampi::datatype const real_datatype,
       yampi::datatype const complex_datatype,
       yampi::rank const root,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       return ::ket::mpi::all_spin_expectation_values<SpinsAllocator>(
@@ -377,7 +377,7 @@ namespace ket
       yampi::datatype const real_datatype,
       yampi::datatype const complex_datatype,
       yampi::rank const root,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       typedef typename boost::range_value<LocalState>::type complex_type;
@@ -410,7 +410,7 @@ namespace ket
       yampi::datatype const real_datatype,
       yampi::datatype const complex_datatype,
       yampi::rank const root,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       return ::ket::mpi::all_spin_expectation_values(
@@ -441,7 +441,7 @@ namespace ket
       yampi::datatype const real_datatype,
       yampi::datatype const complex_datatype,
       yampi::rank const root,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       return ::ket::mpi::all_spin_expectation_values(

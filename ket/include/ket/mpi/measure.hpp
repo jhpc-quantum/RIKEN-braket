@@ -104,7 +104,7 @@ namespace ket
         StateInteger, BitInteger, Allocator>& permutation,
       yampi::datatype const state_integer_datatype,
       yampi::datatype const real_datatype,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       ket::mpi::utility::log_with_time_guard<char> print("Measurement", environment);
@@ -212,7 +212,7 @@ namespace ket
         StateInteger, BitInteger, Allocator>& permutation,
       yampi::datatype const state_integer_datatype,
       yampi::datatype const real_datatype,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       return ::ket::mpi::measure(
@@ -232,7 +232,7 @@ namespace ket
       LocalState& local_state, RandomNumberGenerator& random_number_generator,
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       typedef typename boost::range_value<LocalState>::type complex_type;
@@ -252,7 +252,7 @@ namespace ket
       LocalState& local_state, RandomNumberGenerator& random_number_generator,
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       return ::ket::mpi::measure(
@@ -288,7 +288,7 @@ namespace ket
         StateInteger, BitInteger, Allocator>& permutation,
       yampi::datatype const state_integer_datatype,
       yampi::datatype const real_datatype,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       ket::mpi::utility::log_with_time_guard<char> print("Measurement (fast)", environment);
@@ -387,7 +387,7 @@ namespace ket
         StateInteger, BitInteger, Allocator>& permutation,
       yampi::datatype const state_integer_datatype,
       yampi::datatype const real_datatype,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       return ::ket::mpi::fast_measure(
@@ -407,7 +407,7 @@ namespace ket
       LocalState& local_state, RandomNumberGenerator& random_number_generator,
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       typedef typename boost::range_value<LocalState>::type complex_type;
@@ -427,7 +427,7 @@ namespace ket
       LocalState& local_state, RandomNumberGenerator& random_number_generator,
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       return ::ket::mpi::fast_measure(
