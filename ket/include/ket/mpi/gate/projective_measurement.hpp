@@ -102,7 +102,7 @@ namespace ket
         yampi::all_reduce(
           communicator, environment,
           yampi::make_buffer(zero_one_probabilities, real_pair_datatype),
-          KET_addressof(zero_one_probabilities), yampi::operations::plus());
+          KET_addressof(zero_one_probabilities), yampi::binary_operation(yampi::plus_t()));
         real_type const total_probability = zero_one_probabilities.first + zero_one_probabilities.second;
 
         int zero_or_one
