@@ -165,7 +165,7 @@ namespace ket
       yampi::all_reduce(
         communicator, environment,
         yampi::make_buffer(boost::begin(spin), boost::end(spin), real_datatype),
-        boost::begin(result), yampi::operations::plus());
+        boost::begin(result), yampi::binary_operation(::yampi::plus_t()));
 
       return result;
     }
@@ -294,7 +294,7 @@ namespace ket
       yampi::reduce(communicator, root).call(
         environment,
         yampi::make_buffer(boost::begin(spin), boost::end(spin), real_datatype),
-        boost::begin(result), yampi::operations::plus());
+        boost::begin(result), yampi::binary_operation(yampi::plus_t()));
 
       if (communicator.rank(environment) != root)
         return boost::none;
