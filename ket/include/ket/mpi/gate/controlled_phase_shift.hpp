@@ -85,7 +85,7 @@ namespace ket
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
           yampi::datatype const datatype,
-          yampi::communicator const communicator,
+          yampi::communicator const& communicator,
           yampi::environment const& environment)
         {
           if (::ket::mpi::page::is_on_page(target_qubit, local_state, permutation))
@@ -146,7 +146,7 @@ namespace ket
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>&,
         yampi::datatype const datatype,
-        yampi::communicator const communicator,
+        yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
         std::ostringstream output_string_stream("Cphase(coeff) ", std::ios_base::ate);
@@ -170,7 +170,7 @@ namespace ket
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
         yampi::datatype const datatype,
-        yampi::communicator const communicator,
+        yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::controlled_phase_shift_coeff(
@@ -193,7 +193,7 @@ namespace ket
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
         yampi::datatype const datatype,
-        yampi::communicator const communicator,
+        yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::controlled_phase_shift_coeff(
@@ -217,7 +217,7 @@ namespace ket
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
           yampi::datatype const datatype,
-          yampi::communicator const communicator,
+          yampi::communicator const& communicator,
           yampi::environment const& environment)
         {
           using std::conj;
@@ -243,7 +243,7 @@ namespace ket
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>&,
         yampi::datatype const datatype,
-        yampi::communicator const communicator,
+        yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
         std::ostringstream output_string_stream("Adj(Cphase(coeff)) ", std::ios_base::ate);
@@ -267,7 +267,7 @@ namespace ket
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
         yampi::datatype const datatype,
-        yampi::communicator const communicator,
+        yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::adj_controlled_phase_shift_coeff(
@@ -290,7 +290,7 @@ namespace ket
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
         yampi::datatype const datatype,
-        yampi::communicator const communicator,
+        yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::adj_controlled_phase_shift_coeff(
@@ -315,7 +315,7 @@ namespace ket
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
           yampi::datatype const datatype,
-          yampi::communicator const communicator,
+          yampi::communicator const& communicator,
           yampi::environment const& environment)
         {
           typedef typename boost::range_value<RandomAccessRange>::type complex_type;
@@ -341,7 +341,7 @@ namespace ket
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>&,
         yampi::datatype const datatype,
-        yampi::communicator const communicator,
+        yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
         std::ostringstream output_string_stream("Cphase ", std::ios_base::ate);
@@ -365,7 +365,7 @@ namespace ket
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
         yampi::datatype const datatype,
-        yampi::communicator const communicator,
+        yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::controlled_phase_shift(
@@ -388,7 +388,7 @@ namespace ket
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
         yampi::datatype const datatype,
-        yampi::communicator const communicator,
+        yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::controlled_phase_shift(
@@ -412,7 +412,7 @@ namespace ket
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
           yampi::datatype const datatype,
-          yampi::communicator const communicator,
+          yampi::communicator const& communicator,
           yampi::environment const& environment)
         {
           return ::ket::mpi::gate::controlled_phase_shift_detail::controlled_phase_shift(
@@ -436,7 +436,7 @@ namespace ket
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>&,
         yampi::datatype const datatype,
-        yampi::communicator const communicator,
+        yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
         std::ostringstream output_string_stream("Adj(Cphase) ", std::ios_base::ate);
@@ -460,7 +460,7 @@ namespace ket
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
         yampi::datatype const datatype,
-        yampi::communicator const communicator,
+        yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::adj_controlled_phase_shift(
@@ -483,7 +483,7 @@ namespace ket
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
         yampi::datatype const datatype,
-        yampi::communicator const communicator,
+        yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::adj_controlled_phase_shift(

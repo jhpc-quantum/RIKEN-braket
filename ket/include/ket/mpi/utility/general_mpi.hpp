@@ -227,7 +227,7 @@ namespace ket
             ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
             std::vector<typename boost::range_value<LocalState>::type, BufferAllocator>& buffer,
             yampi::datatype const datatype,
-            yampi::communicator const communicator,
+            yampi::communicator const& communicator,
             yampi::environment const& environment)
           {
             static_assert(
@@ -348,7 +348,7 @@ namespace ket
             ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
             std::vector<typename boost::range_value<LocalState>::type, BufferAllocator>& buffer,
             yampi::datatype const datatype,
-            yampi::communicator const communicator,
+            yampi::communicator const& communicator,
             yampi::environment const& environment)
           {
             static_assert(
@@ -532,7 +532,7 @@ namespace ket
             ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
             std::vector<typename boost::range_value<LocalState>::type, BufferAllocator>& buffer,
             yampi::datatype const datatype,
-            yampi::communicator const communicator,
+            yampi::communicator const& communicator,
             yampi::environment const& environment)
           {
             static_assert(
@@ -1028,7 +1028,7 @@ namespace ket
           static void call(
             ParallelPolicy const, LocalState const& local_state,
             ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const& permutation,
-            yampi::communicator const communicator,
+            yampi::communicator const& communicator,
             yampi::environment const& environment,
             ::ket::qubit<StateInteger, BitInteger> const target_qubit,
             KET_RVALUE_REFERENCE_OR_COPY(Function0) function0,
@@ -1043,7 +1043,7 @@ namespace ket
           static void call(\
             ParallelPolicy const, LocalState const& local_state,\
             ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const& permutation,\
-            yampi::communicator const communicator,\
+            yampi::communicator const& communicator,\
             yampi::environment const& environment,\
             ::ket::qubit<StateInteger, BitInteger> const target_qubit,\
             KET_RVALUE_REFERENCE_OR_COPY(Function0) function0,\
@@ -1067,7 +1067,7 @@ namespace ket
           static void call(
             ParallelPolicy const parallel_policy, LocalState const& local_state,
             ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const& permutation,
-            yampi::communicator const communicator,
+            yampi::communicator const& communicator,
             yampi::environment const& environment,
             ::ket::qubit<StateInteger, BitInteger> const target_qubit,
             KET_RVALUE_REFERENCE_OR_COPY(Function0) function0,
@@ -1097,7 +1097,7 @@ namespace ket
           static void call(\
             ParallelPolicy const parallel_policy, LocalState const& local_state,\
             ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const& permutation,\
-            yampi::communicator const communicator,\
+            yampi::communicator const& communicator,\
             yampi::environment const& environment,\
             ::ket::qubit<StateInteger, BitInteger> const target_qubit,\
             KET_RVALUE_REFERENCE_OR_COPY(Function0) function0,\
@@ -1439,7 +1439,7 @@ namespace ket
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<LocalState>::type, BufferAllocator>& buffer,
         yampi::datatype const datatype,
-        yampi::communicator const communicator,
+        yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
         typedef
@@ -1469,7 +1469,7 @@ namespace ket
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<LocalState>::type, BufferAllocator>& buffer,
         yampi::datatype const datatype,
-        yampi::communicator const communicator,
+        yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
         maybe_interchange_qubits(
@@ -1489,7 +1489,7 @@ namespace ket
         ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<LocalState>::type, BufferAllocator>& buffer,
         yampi::datatype const datatype,
-        yampi::communicator const communicator,
+        yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
         maybe_interchange_qubits(
@@ -1551,7 +1551,7 @@ namespace ket
         MpiPolicy const, ParallelPolicy const parallel_policy,
         LocalState& local_state,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const& permutation,
-        yampi::communicator const communicator,
+        yampi::communicator const& communicator,
         yampi::environment const& environment,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
         KET_RVALUE_REFERENCE_OR_COPY(Function0) function0,
@@ -1576,7 +1576,7 @@ namespace ket
         MpiPolicy const, ParallelPolicy const parallel_policy,\
         LocalState& local_state,\
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const& permutation,\
-        yampi::communicator const communicator,\
+        yampi::communicator const& communicator,\
         yampi::environment const& environment,\
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,\
         KET_RVALUE_REFERENCE_OR_COPY(Function0) function0,\

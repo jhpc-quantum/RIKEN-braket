@@ -32,7 +32,7 @@ namespace ket
           RandomAccessRange const& local_state,
           ::ket::mpi::qubit_permutation<
             StateInteger, BitInteger, Allocator> const& permutation,
-          yampi::communicator const communicator,
+          yampi::communicator const& communicator,
           yampi::environment const& environment)
         {
           typedef

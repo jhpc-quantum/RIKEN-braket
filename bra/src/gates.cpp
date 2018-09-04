@@ -146,7 +146,7 @@ namespace bra
 #ifndef BRA_NO_MPI
   gates::gates(
     std::istream& input_stream, yampi::environment const& environment,
-    yampi::rank const root, yampi::communicator const communicator,
+    yampi::rank const root, yampi::communicator const& communicator,
     size_type const num_reserved_gates)
     : data_(), num_qubits_(), num_lqubits_(),
       initial_state_value_(), initial_permutation_(), phase_coefficients_(), root_(root)
@@ -184,7 +184,7 @@ namespace bra
 #ifndef BRA_NO_MPI
   void gates::num_qubits(
     bit_integer_type const new_num_qubits,
-    yampi::communicator const communicator, yampi::environment const& environment)
+    yampi::communicator const& communicator, yampi::environment const& environment)
   {
     bit_integer_type const num_gqubits
       = ket::utility::integer_log2<bit_integer_type>(communicator.size(environment));
@@ -193,7 +193,7 @@ namespace bra
 
   void gates::num_lqubits(
     bit_integer_type const new_num_lqubits,
-    yampi::communicator const communicator, yampi::environment const& environment)
+    yampi::communicator const& communicator, yampi::environment const& environment)
   {
     set_num_qubits_params(
       new_num_lqubits,
@@ -208,7 +208,7 @@ namespace bra
 #ifndef BRA_NO_MPI
   void gates::set_num_qubits_params(
     bit_integer_type const new_num_lqubits, bit_integer_type const num_gqubits,
-    yampi::communicator const communicator, yampi::environment const& environment)
+    yampi::communicator const& communicator, yampi::environment const& environment)
   {
     if (ket::utility::integer_exp2<bit_integer_type>(num_gqubits)
         != static_cast<bit_integer_type>(communicator.size(environment)))
@@ -234,7 +234,7 @@ namespace bra
 #ifndef BRA_NO_MPI
   void gates::assign(
     std::istream& input_stream, yampi::environment const& environment,
-    yampi::communicator const communicator, size_type const num_reserved_gates)
+    yampi::communicator const& communicator, size_type const num_reserved_gates)
 #else // BRA_NO_MPI
   void gates::assign(std::istream& input_stream, size_type const num_reserved_gates)
 #endif // BRA_NO_MPI

@@ -64,7 +64,7 @@ namespace ket
             StateInteger const source_local_first_index,
             StateInteger const source_local_last_index,
             yampi::datatype const datatype, yampi::rank const target_rank,
-            yampi::communicator const communicator, yampi::environment const& environment)
+            yampi::communicator const& communicator, yampi::environment const& environment)
           {
             assert(source_local_last_index >= source_local_first_index);
 
@@ -93,7 +93,7 @@ namespace ket
             StateInteger const source_local_first_index,
             StateInteger const source_local_last_index,
             yampi::datatype const datatype, yampi::rank const target_rank,
-            yampi::communicator const communicator, yampi::environment const& environment)
+            yampi::communicator const& communicator, yampi::environment const& environment)
           {
             assert(source_local_last_index >= source_local_first_index);
 
@@ -128,7 +128,7 @@ namespace ket
           StateInteger const source_local_first_index,
           StateInteger const source_local_last_index,
           yampi::datatype const datatype, yampi::rank const target_rank,
-          yampi::communicator const communicator, yampi::environment const& environment)
+          yampi::communicator const& communicator, yampi::environment const& environment)
         {
           typedef
             ::ket::mpi::utility::dispatch::interchange_qubits<

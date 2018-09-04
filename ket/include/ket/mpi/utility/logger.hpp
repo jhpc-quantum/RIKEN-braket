@@ -97,7 +97,7 @@ namespace ket
           if (!maybe_io_rank_)
             return;
 
-          if (yampi::world_communicator().rank(environment) != *maybe_io_rank_)
+          if (yampi::communicator(yampi::world_communicator_t()).rank(environment) != *maybe_io_rank_)
             return;
 
           output_stream << string << std::endl;
@@ -112,7 +112,7 @@ namespace ket
           if (!maybe_io_rank_)
             return;
 
-          if (yampi::world_communicator().rank(environment) != *maybe_io_rank_)
+          if (yampi::communicator(yampi::world_communicator_t()).rank(environment) != *maybe_io_rank_)
             return;
 
           output_stream

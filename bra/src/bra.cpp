@@ -93,16 +93,17 @@ int main(int argc, char* argv[])
 
 #ifndef BRA_NO_MPI
   yampi::environment environment(argc, argv);
-  yampi::communicator world_communicator(yampi::world_communicator());
-  yampi::rank const rank = world_communicator.rank(environment);
+  yampi::world_communicator_t const world_communicator_tag;
+  yampi::communicator communicator(world_communicator_tag);
+  yampi::rank const rank = communicator.rank(environment);
   BOOST_CONSTEXPR_OR_CONST yampi::rank root_rank(0);
   bool const is_io_root_rank = rank == root_rank and yampi::is_io_process(root_rank, environment);
 
   bit_integer_type const num_gqubits
-    = ket::utility::integer_log2<bit_integer_type>(world_communicator.size(environment));
+    = ket::utility::integer_log2<bit_integer_type>(communicator.size(environment));
 
   if (ket::utility::integer_exp2<bit_integer_type>(num_gqubits)
-      != static_cast<bit_integer_type>(world_communicator.size(environment)))
+      != static_cast<bit_integer_type>(communicator.size(environment)))
   {
     if (is_io_root_rank)
       std::cerr << "wrong number of MPI processes" << std::endl;
@@ -156,11 +157,11 @@ int main(int argc, char* argv[])
   }
 
 #ifndef BRA_NO_MPI
-  bra::gates gates(file_stream, environment, root_rank, yampi::world_communicator());
+  bra::gates gates(file_stream, environment, root_rank, communicator);
   boost::movelib::unique_ptr<bra::state> state_ptr
     = bra::make_general_mpi_state(
         num_page_qubits, gates.initial_state_value(), gates.num_lqubits(), gates.initial_permutation(),
-        seed, yampi::world_communicator(), environment);
+        seed, communicator, environment);
 #else // BRA_NO_MPI
   bra::gates gates(file_stream);
   boost::movelib::unique_ptr<bra::state> state_ptr

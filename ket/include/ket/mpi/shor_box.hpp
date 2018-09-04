@@ -98,7 +98,7 @@ namespace ket
         typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
       yampi::datatype const datatype,
       */
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       typedef typename boost::range_value<Qubits>::type qubit_type;
@@ -173,7 +173,7 @@ namespace ket
         typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
       yampi::datatype const datatype,
       */
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       return shor_box(
@@ -198,7 +198,7 @@ namespace ket
         typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
       yampi::datatype const datatype,
       */
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       return shor_box(

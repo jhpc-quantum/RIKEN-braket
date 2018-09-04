@@ -43,7 +43,7 @@ namespace bra
       unsigned int const num_local_qubits,
       unsigned int const total_num_qubits,
       ::bra::state::seed_type const seed,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment);
 
     general_mpi_state(
@@ -51,7 +51,7 @@ namespace bra
       unsigned int const num_local_qubits,
       std::vector<qubit_type> const& initial_permutation,
       ::bra::state::seed_type const seed,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment);
 
 #   ifndef BOOST_NO_CXX11_DEFAULTED_FUNCTIONS

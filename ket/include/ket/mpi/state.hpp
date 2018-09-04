@@ -242,7 +242,7 @@ namespace ket
         ::ket::mpi::qubit_permutation<
           StateInteger, BitInteger, PermutationAllocator> const&
           permutation,
-        yampi::communicator const communicator,
+        yampi::communicator const& communicator,
         yampi::environment const& environment)
         : data_(generate_initial_data(
             ::ket::mpi::utility::policy::make_general_mpi(),
@@ -258,7 +258,7 @@ namespace ket
         ::ket::mpi::qubit_permutation<
           StateInteger, BitInteger, PermutationAllocator> const&
           permutation,
-        yampi::communicator const communicator,
+        yampi::communicator const& communicator,
         yampi::environment const& environment)
         : data_(generate_initial_data(
             mpi_policy, num_local_qubits, initial_integer, permutation, communicator, environment)),
@@ -433,7 +433,7 @@ namespace ket
         ::ket::mpi::qubit_permutation<
           StateInteger, BitInteger, PermutationAllocator> const&
           permutation,
-        yampi::communicator const communicator,
+        yampi::communicator const& communicator,
         yampi::environment const& environment) const
       {
         data_type result;
@@ -707,7 +707,7 @@ namespace ket
           StateInteger const source_local_first_index,
           StateInteger const source_local_last_index,
           yampi::datatype const datatype, yampi::rank const target_rank,
-          yampi::communicator const communicator, yampi::environment const& environment)
+          yampi::communicator const& communicator, yampi::environment const& environment)
         {
           static_assert(
             num_page_qubits >= 1,
@@ -889,7 +889,7 @@ namespace ket
         ::ket::mpi::qubit_permutation<
           StateInteger, BitInteger, PermutationAllocator> const&
           permutation,
-        yampi::communicator const communicator,
+        yampi::communicator const& communicator,
         yampi::environment const& environment)
         : data_(generate_initial_data(
             ::ket::mpi::utility::policy::make_general_mpi(),
@@ -902,7 +902,7 @@ namespace ket
         ::ket::mpi::qubit_permutation<
           StateInteger, BitInteger, PermutationAllocator> const&
           permutation,
-        yampi::communicator const communicator,
+        yampi::communicator const& communicator,
         yampi::environment const& environment)
         : data_(generate_initial_data(
             mpi_policy, num_local_qubits, initial_integer, permutation, communicator, environment))
@@ -970,7 +970,7 @@ namespace ket
         ::ket::mpi::qubit_permutation<
           StateInteger, BitInteger, PermutationAllocator> const&
           permutation,
-        yampi::communicator const communicator,
+        yampi::communicator const& communicator,
         yampi::environment const& environment) const
       {
         data_type result(::ket::utility::integer_exp2<std::size_t>(num_local_qubits), value_type(0));
@@ -1054,7 +1054,7 @@ namespace ket
           StateInteger const source_local_first_index,
           StateInteger const source_local_last_index,
           yampi::datatype const datatype, yampi::rank const target_rank,
-          yampi::communicator const communicator, yampi::environment const& environment)
+          yampi::communicator const& communicator, yampi::environment const& environment)
         {
           ::ket::mpi::utility::detail::interchange_qubits(
             local_state.data(), buffer, source_local_first_index, source_local_last_index,
@@ -1141,7 +1141,7 @@ namespace ket
             StateInteger const source_local_first_index,
             StateInteger const source_local_last_index,
             yampi::datatype const datatype, yampi::rank const target_rank,
-            yampi::communicator const communicator, yampi::environment const& environment)
+            yampi::communicator const& communicator, yampi::environment const& environment)
           {
             ::ket::mpi::state_detail::interchange_qubits<num_page_qubits>::call(
               local_state, buffer, source_local_first_index, source_local_last_index,

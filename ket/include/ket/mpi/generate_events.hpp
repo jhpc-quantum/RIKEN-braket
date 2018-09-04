@@ -108,7 +108,7 @@ namespace ket
         StateInteger, BitInteger, Allocator>& permutation,
       yampi::datatype const state_integer_datatype,
       yampi::datatype const real_datatype,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       ket::mpi::utility::log_with_time_guard<char> print("Generate Events", environment);
@@ -224,7 +224,7 @@ namespace ket
         StateInteger, BitInteger, Allocator>& permutation,
       yampi::datatype const state_integer_datatype,
       yampi::datatype const real_datatype,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       RandomNumberGenerator random_number_generator(seed);
@@ -247,7 +247,7 @@ namespace ket
         StateInteger, BitInteger, Allocator>& permutation,
       yampi::datatype const state_integer_datatype,
       yampi::datatype const real_datatype,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       ::ket::mpi::generate_events(
@@ -271,7 +271,7 @@ namespace ket
         StateInteger, BitInteger, Allocator>& permutation,
       yampi::datatype const state_integer_datatype,
       yampi::datatype const real_datatype,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       RandomNumberGenerator random_number_generator(seed);
@@ -293,7 +293,7 @@ namespace ket
       RandomNumberGenerator& random_number_generator,
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       typedef typename boost::range_value<LocalState>::type complex_type;
@@ -319,7 +319,7 @@ namespace ket
       typename RandomNumberGenerator::result_type const seed,
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       RandomNumberGenerator random_number_generator(seed);
@@ -344,7 +344,7 @@ namespace ket
       RandomNumberGenerator& random_number_generator,
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       ::ket::mpi::generate_events(
@@ -365,7 +365,7 @@ namespace ket
       typename RandomNumberGenerator::result_type const seed,
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,
-      yampi::communicator const communicator,
+      yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
       RandomNumberGenerator random_number_generator(seed);
