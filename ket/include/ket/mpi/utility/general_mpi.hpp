@@ -259,7 +259,7 @@ namespace ket
 
 # ifndef NDEBUG
             boost::optional<yampi::rank> const maybe_io_rank = yampi::lowest_io_process(environment);
-            yampi::rank const my_rank = yampi::world_communicator().rank(environment);
+            yampi::rank const my_rank = yampi::communicator(yampi::world_communicator_t()).rank(environment);
             if (maybe_io_rank && my_rank == *maybe_io_rank)
               std::clog << "[permutation before changing qubits] " << permutation << std::endl;
 # endif // NDEBUG
@@ -418,7 +418,7 @@ namespace ket
 
 # ifndef NDEBUG
             boost::optional<yampi::rank> const maybe_io_rank = yampi::lowest_io_process(environment);
-            yampi::rank const my_rank = yampi::world_communicator().rank(environment);
+            yampi::rank const my_rank = yampi::communicator(yampi::world_communicator_t()).rank(environment);
             if (maybe_io_rank && my_rank == *maybe_io_rank)
               std::clog << "[permutation before changing qubits] " << permutation << std::endl;
 # endif // NDEBUG
@@ -623,7 +623,7 @@ namespace ket
 
 # ifndef NDEBUG
             boost::optional<yampi::rank> const maybe_io_rank = yampi::lowest_io_process(environment);
-            yampi::rank const my_rank = yampi::world_communicator().rank(environment);
+            yampi::rank const my_rank = yampi::communicator(yampi::world_communicator_t()).rank(environment);
             if (maybe_io_rank && my_rank == *maybe_io_rank)
               std::clog << "[permutation before changing qubits] " << permutation << std::endl;
 # endif // NDEBUG
