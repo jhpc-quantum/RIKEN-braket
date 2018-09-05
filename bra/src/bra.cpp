@@ -24,6 +24,7 @@
 
 #ifndef BRA_NO_MPI
 # include <yampi/environment.hpp>
+# include <yampi/thread_support.hpp>
 # include <yampi/communicator.hpp>
 # include <yampi/rank.hpp>
 # include <yampi/wall_clock.hpp>
@@ -92,12 +93,19 @@ int main(int argc, char* argv[])
   typedef rng_type::result_type seed_type;
 
 #ifndef BRA_NO_MPI
-  yampi::environment environment(argc, argv);
+  yampi::environment environment(argc, argv, yampi::thread_support::funneled);
   yampi::world_communicator_t const world_communicator_tag;
   yampi::communicator communicator(world_communicator_tag);
   yampi::rank const rank = communicator.rank(environment);
   BOOST_CONSTEXPR_OR_CONST yampi::rank root_rank(0);
   bool const is_io_root_rank = rank == root_rank and yampi::is_io_process(root_rank, environment);
+
+  if (environment.thread_support() == yampi::thread_support::single)
+  {
+    if (is_io_root_rank)
+      std::cerr << "multithread environment is required" << std::endl;
+    return EXIT_FAILURE;
+  }
 
   bit_integer_type const num_gqubits
     = ket::utility::integer_log2<bit_integer_type>(communicator.size(environment));
