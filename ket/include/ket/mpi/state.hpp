@@ -755,7 +755,7 @@ namespace ket
             std::copy(the_last, page_last, the_buffer_last);
 
             yampi::algorithm::swap(
-              communicator, yampi::ignore_status(), environment,
+              yampi::ignore_status(), communicator, environment,
               yampi::make_buffer(the_first, the_last, datatype),
               yampi::make_buffer(
                 the_buffer_first, the_buffer_last, datatype),

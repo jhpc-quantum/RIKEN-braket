@@ -164,14 +164,14 @@ namespace ket
 
 # ifndef BOOST_NO_CXX11_LAMBDAS
         yampi::algorithm::transform(
-          communicator, yampi::ignore_status(), environment,
+          yampi::ignore_status(), communicator, environment,
           yampi::algorithm::make_ranked_buffer(random_value, real_datatype, root_rank),
           yampi::algorithm::make_ranked_buffer(random_value, real_datatype, result_rank),
           [&total_probabilities, result_rank](real_type const random_value)
           { return random_value - total_probabilities[result_rank.mpi_rank()-1]; });
 # else
         yampi::algorithm::transform(
-          communicator, yampi::ignore_status(), environment,
+          yampi::ignore_status(), communicator, environment,
           yampi::algorithm::make_ranked_buffer(random_value, real_datatype, root_rank),
           yampi::algorithm::make_ranked_buffer(random_value, real_datatype, result_rank),
           ::ket::mpi::generate_events_detail::make_modify_random_value(total_probabilities, result_rank));
