@@ -72,7 +72,8 @@ int main(int argc, char* argv[])
   typedef std::complex<double> complex_type;
 
   yampi::environment environment(argc, argv);
-  yampi::communicator communicator = yampi::world_communicator();
+  yampi::world_communicator_t const world_communicator_tag;
+  yampi::communicator communicator(world_communicator_tag);
   yampi::rank const rank = communicator.rank(environment);
   bit_integer_type const num_gqubits = ket::utility::integer_log2<bit_integer_type>(communicator.size(environment));
   bit_integer_type const num_qubits = 12u;
