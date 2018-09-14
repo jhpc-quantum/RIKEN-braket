@@ -41,6 +41,7 @@
 #   include <ket/utility/integer_log2.hpp>
 # endif
 # include <ket/utility/exp_i.hpp>
+# include <ket/utility/meta/real_of.hpp>
 
 # ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
 #   define KET_is_unsigned std::is_unsigned
@@ -628,6 +629,41 @@ namespace ket
           boost::begin(state), boost::end(state), phase1, phase2, qubit);
         return state;
       }
+
+# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
+      template <
+        typename Complex, typename Allocator,
+        typename StateInteger, typename BitInteger>
+      inline RandomAccessRange& phase_shift2(
+        std::vector<Complex, Allocator>& state,
+        typename ::ket::utility::meta::real_of<Complex>::type const phase1,
+        typename ::ket::utility::meta::real_of<Complex>::type const phase2,
+        ::ket::qubit<StateInteger, BitInteger> const qubit)
+      {
+        ::ket::gate::phase_shift_detail::phase_shift2_impl(
+          ::ket::utility::policy::make_sequential(),
+          KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
+          phase1, phase2, qubit);
+        return state;
+      }
+
+      template <
+        typename Complex, typename Allocator,
+        typename StateInteger, typename BitInteger>
+      inline RandomAccessRange& phase_shift2(
+        ParallelPolicy const parallel_policy,
+        std::vector<Complex, Allocator>& state,
+        typename ::ket::utility::meta::real_of<Complex>::type const phase1,
+        typename ::ket::utility::meta::real_of<Complex>::type const phase2,
+        ::ket::qubit<StateInteger, BitInteger> const qubit)
+      {
+        ::ket::gate::phase_shift_detail::phase_shift2_impl(
+          parallel_policy,
+          KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
+          phase1, phase2, qubit);
+        return state;
+      }
+# endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
     } // namespace ranges
 
 
@@ -837,6 +873,41 @@ namespace ket
           boost::begin(state), boost::end(state), phase1, phase2, qubit);
         return state;
       }
+
+# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
+      template <
+        typename Complex, typename Allocator,
+        typename StateInteger, typename BitInteger>
+      inline RandomAccessRange& adj_phase_shift2(
+        std::vector<Complex, Allocator>& state,
+        typename ::ket::utility::meta::real_of<Complex>::type const phase1,
+        typename ::ket::utility::meta::real_of<Complex>::type const phase2,
+        ::ket::qubit<StateInteger, BitInteger> const qubit)
+      {
+        ::ket::gate::phase_shift_detail::adj_phase_shift2_impl(
+          ::ket::utility::policy::make_sequential(),
+          KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
+          phase1, phase2, qubit);
+        return state;
+      }
+
+      template <
+        typename Complex, typename Allocator,
+        typename StateInteger, typename BitInteger>
+      inline RandomAccessRange& adj_phase_shift2(
+        ParallelPolicy const parallel_policy,
+        std::vector<Complex, Allocator>& state,
+        typename ::ket::utility::meta::real_of<Complex>::type const phase1,
+        typename ::ket::utility::meta::real_of<Complex>::type const phase2,
+        ::ket::qubit<StateInteger, BitInteger> const qubit)
+      {
+        ::ket::gate::phase_shift_detail::adj_phase_shift2_impl(
+          parallel_policy,
+          KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
+          phase1, phase2, qubit);
+        return state;
+      }
+# endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
     } // namespace ranges
 
 
@@ -1062,6 +1133,43 @@ namespace ket
           boost::begin(state), boost::end(state), phase1, phase2, phase3, qubit);
         return state;
       }
+
+# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
+      template <
+        typename Complex, typename Allocator,
+        typename StateInteger, typename BitInteger>
+      inline RandomAccessRange& phase_shift3(
+        std::vector<Complex, Allocator>& state,
+        typename ::ket::utility::meta::real_of<Complex>::type const phase1,
+        typename ::ket::utility::meta::real_of<Complex>::type const phase2,
+        typename ::ket::utility::meta::real_of<Complex>::type const phase3,
+        ::ket::qubit<StateInteger, BitInteger> const qubit)
+      {
+        ::ket::gate::phase_shift_detail::phase_shift3_impl(
+          ::ket::utility::policy::make_sequential(),
+          KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
+          phase1, phase2, phase3, qubit);
+        return state;
+      }
+
+      template <
+        typename ParallelPolicy, typename Complex, typename Allocator,
+        typename StateInteger, typename BitInteger>
+      inline RandomAccessRange& phase_shift3(
+        ParallelPolicy const parallel_policy,
+        std::vector<Complex, Allocator>& state,
+        typename ::ket::utility::meta::real_of<Complex>::type const phase1,
+        typename ::ket::utility::meta::real_of<Complex>::type const phase2,
+        typename ::ket::utility::meta::real_of<Complex>::type const phase3,
+        ::ket::qubit<StateInteger, BitInteger> const qubit)
+      {
+        ::ket::gate::phase_shift_detail::phase_shift3_impl(
+          parallel_policy,
+          KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
+          phase1, phase2, phase3, qubit);
+        return state;
+      }
+# endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
     } // namespace ranges
 
 
@@ -1287,6 +1395,43 @@ namespace ket
           boost::begin(state), boost::end(state), phase1, phase2, phase3, qubit);
         return state;
       }
+
+# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
+      template <
+        typename Complex, typename Allocator,
+        typename StateInteger, typename BitInteger>
+      inline RandomAccessRange& adj_phase_shift3(
+        std::vector<Complex, Allocator>& state,
+        typename ::ket::utility::meta::real_of<Complex>::type const phase1,
+        typename ::ket::utility::meta::real_of<Complex>::type const phase2,
+        typename ::ket::utility::meta::real_of<Complex>::type const phase3,
+        ::ket::qubit<StateInteger, BitInteger> const qubit)
+      {
+        ::ket::gate::phase_shift_detail::adj_phase_shift3_impl(
+          ::ket::utility::policy::make_sequential(),
+          KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
+          phase1, phase2, phase3, qubit);
+        return state;
+      }
+
+      template <
+        typename ParallelPolicy, typename Complex, typename Allocator,
+        typename StateInteger, typename BitInteger>
+      inline RandomAccessRange& adj_phase_shift3(
+        ParallelPolicy const parallel_policy,
+        std::vector<Complex, Allocator>& state,
+        typename ::ket::utility::meta::real_of<Complex>::type const phase1,
+        typename ::ket::utility::meta::real_of<Complex>::type const phase2,
+        typename ::ket::utility::meta::real_of<Complex>::type const phase3,
+        ::ket::qubit<StateInteger, BitInteger> const qubit)
+      {
+        ::ket::gate::phase_shift_detail::adj_phase_shift3_impl(
+          parallel_policy,
+          KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
+          phase1, phase2, phase3, qubit);
+        return state;
+      }
+# endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
     } // namespace ranges
   } // namespace gate
 } // namespace ket
