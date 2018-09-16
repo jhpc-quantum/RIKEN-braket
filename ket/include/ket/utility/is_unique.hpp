@@ -5,11 +5,26 @@
 
 # include <iterator>
 # include <algorithm>
+# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
+#   ifndef BOOST_NO_CXX11_ADDRESSOF
+#     include <memory>
+#   else
+#     include <boost/core/addressof.hpp>
+#   endif
+# endif
 
 # include <boost/utility.hpp>
 # include <boost/range/begin.hpp>
 # include <boost/range/end.hpp>
 //# include <boost/algorithm/cxx11/any_of.hpp>
+
+# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
+#   ifndef BOOST_NO_CXX11_ADDRESSOF
+#     define KET_addressof std::addressof
+#   else
+#     define KET_addressof boost::addressof
+#   endif
+# endif
 
 
 namespace ket
@@ -70,15 +85,28 @@ namespace ket
       return std::unique(boost::begin(sorted_values), boost::end(sorted_values)) == boost::end(sorted_values);
     }
 
-    namespace range
+    namespace ranges
     {
       template <typename ForwardRange>
       inline bool is_unique(ForwardRange const& range)
       { return ::ket::utility::is_unique(boost::begin(range), boost::end(range)); }
+
+# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
+      template <typename Value, typename Allocator>
+      inline bool is_unique(std::vector<Value, Allocator> const& range)
+      {
+        return ::ket::utility::is_unique(
+          KET_addressof(state.front()), KET_addressof(state.front()) + state.size());
+      }
+# endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
     }
   }
 }
 
+
+# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
+#   undef KET_addressof
+# endif
 
 #endif
 

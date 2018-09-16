@@ -634,7 +634,7 @@ namespace ket
       template <
         typename Complex, typename Allocator,
         typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& phase_shift2(
+      inline std::vector<Complex, Allocator>& phase_shift2(
         std::vector<Complex, Allocator>& state,
         typename ::ket::utility::meta::real_of<Complex>::type const phase1,
         typename ::ket::utility::meta::real_of<Complex>::type const phase2,
@@ -648,9 +648,10 @@ namespace ket
       }
 
       template <
+        typename ParallelPolicy,
         typename Complex, typename Allocator,
         typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& phase_shift2(
+      inline std::vector<Complex, Allocator>& phase_shift2(
         ParallelPolicy const parallel_policy,
         std::vector<Complex, Allocator>& state,
         typename ::ket::utility::meta::real_of<Complex>::type const phase1,
@@ -878,7 +879,7 @@ namespace ket
       template <
         typename Complex, typename Allocator,
         typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& adj_phase_shift2(
+      inline std::vector<Complex, Allocator>& adj_phase_shift2(
         std::vector<Complex, Allocator>& state,
         typename ::ket::utility::meta::real_of<Complex>::type const phase1,
         typename ::ket::utility::meta::real_of<Complex>::type const phase2,
@@ -892,9 +893,10 @@ namespace ket
       }
 
       template <
+        typename ParallelPolicy,
         typename Complex, typename Allocator,
         typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& adj_phase_shift2(
+      inline std::vector<Complex, Allocator>& adj_phase_shift2(
         ParallelPolicy const parallel_policy,
         std::vector<Complex, Allocator>& state,
         typename ::ket::utility::meta::real_of<Complex>::type const phase1,
@@ -1138,7 +1140,7 @@ namespace ket
       template <
         typename Complex, typename Allocator,
         typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& phase_shift3(
+      inline std::vector<Complex, Allocator>& phase_shift3(
         std::vector<Complex, Allocator>& state,
         typename ::ket::utility::meta::real_of<Complex>::type const phase1,
         typename ::ket::utility::meta::real_of<Complex>::type const phase2,
@@ -1155,7 +1157,7 @@ namespace ket
       template <
         typename ParallelPolicy, typename Complex, typename Allocator,
         typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& phase_shift3(
+      inline std::vector<Complex, Allocator>& phase_shift3(
         ParallelPolicy const parallel_policy,
         std::vector<Complex, Allocator>& state,
         typename ::ket::utility::meta::real_of<Complex>::type const phase1,
@@ -1400,7 +1402,7 @@ namespace ket
       template <
         typename Complex, typename Allocator,
         typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& adj_phase_shift3(
+      inline std::vector<Complex, Allocator>& adj_phase_shift3(
         std::vector<Complex, Allocator>& state,
         typename ::ket::utility::meta::real_of<Complex>::type const phase1,
         typename ::ket::utility::meta::real_of<Complex>::type const phase2,
@@ -1417,7 +1419,7 @@ namespace ket
       template <
         typename ParallelPolicy, typename Complex, typename Allocator,
         typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& adj_phase_shift3(
+      inline std::vector<Complex, Allocator>& adj_phase_shift3(
         ParallelPolicy const parallel_policy,
         std::vector<Complex, Allocator>& state,
         typename ::ket::utility::meta::real_of<Complex>::type const phase1,

@@ -6,6 +6,7 @@
 # include <cassert>
 # include <cstddef>
 # include <vector>
+# include <iterator>
 # ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
 #   include <type_traits>
 # else
@@ -15,13 +16,18 @@
 # ifdef BOOST_NO_CXX11_STATIC_ASSERT
 #   include <boost/static_assert.hpp>
 # endif
+# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
+#   ifndef BOOST_NO_CXX11_ADDRESSOF
+#     include <memory>
+#   else
+#     include <boost/core/addressof.hpp>
+#   endif
+# endif
 
 # include <boost/math/constants/constants.hpp>
 
 # include <boost/range/begin.hpp>
-# ifdef BOOST_NO_CXX11_RANGE_BASED_FOR
-#   include <boost/range/end.hpp>
-# endif
+# include <boost/range/end.hpp>
 # include <boost/range/size.hpp>
 # include <boost/range/value_type.hpp>
 # include <boost/range/iterator.hpp>
@@ -51,6 +57,14 @@
 #   define static_assert(exp, msg) BOOST_STATIC_ASSERT_MSG(exp, msg)
 # endif
 
+# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
+#   ifndef BOOST_NO_CXX11_ADDRESSOF
+#     define KET_addressof std::addressof
+#   else
+#     define KET_addressof boost::addressof
+#   endif
+# endif
+
 
 namespace ket
 {
@@ -59,20 +73,21 @@ namespace ket
   {
     template <
       typename ParallelPolicy,
-      typename RandomAccessRange, typename Iterator1, typename Iterator2,
+      typename RandomAccessIterator, typename Iterator1, typename Iterator2,
       typename PhaseCoefficientsAllocator>
-    inline void do_addition_assignment(
-      ParallelPolicy const parallel_policy, RandomAccessRange& state,
+    inline void addition_assignment(
+      ParallelPolicy const parallel_policy,
+      RandomAccessIterator const first, RandomAccessIterator const last,
       Iterator1 const& lhs_qubits_first, Iterator2 const& rhs_qubits_first,
       std::size_t const num_qubits,
       std::vector<
-        typename boost::range_value<RandomAccessRange>::type,
+        typename std::iterator_traits<RandomAccessIterator>::value_type,
         PhaseCoefficientsAllocator>& phase_coefficients)
     {
       for (std::size_t phase_exponent = 1u;
            phase_exponent <= num_qubits; ++phase_exponent)
       {
-        typedef typename boost::range_value<RandomAccessRange>::type complex_type;
+        typedef typename std::iterator_traits<RandomAccessIterator>::value_type complex_type;
         complex_type const phase_coefficient = phase_coefficients[phase_exponent];
 
         for (std::size_t control_bit_index = 0u;
@@ -81,10 +96,9 @@ namespace ket
           std::size_t const target_bit_index
             = control_bit_index+(phase_exponent-1u);
 
-          using ::ket::gate::controlled_phase_shift_coeff;
-          controlled_phase_shift_coeff(
+          ::ket::gate::controlled_phase_shift_coeff(
             parallel_policy,
-            state, phase_coefficient,
+            first, last, phase_coefficient,
             lhs_qubits_first[target_bit_index],
             ::ket::make_control(rhs_qubits_first[control_bit_index]));
         }
@@ -95,13 +109,14 @@ namespace ket
 
   template <
     typename ParallelPolicy,
-    typename RandomAccessRange, typename Qubits, typename QubitsRange,
+    typename RandomAccessIterator, typename Qubits, typename QubitsRange,
     typename PhaseCoefficientsAllocator>
-  inline RandomAccessRange& addition_assignment(
-    ParallelPolicy const parallel_policy, RandomAccessRange& state,
+  inline void addition_assignment(
+    ParallelPolicy const parallel_policy,
+    RandomAccessIterator const first, RandomAccessIterator const last,
     Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range,
     std::vector<
-      typename boost::range_value<RandomAccessRange>::type,
+      typename std::iterator_traits<RandomAccessIterator>::value_type,
       PhaseCoefficientsAllocator>& phase_coefficients)
   {
     typename boost::range_size<Qubits const>::type const num_qubits
@@ -123,95 +138,215 @@ namespace ket
       KET_is_unsigned<typename ::ket::meta::bit_integer_of<qubit_type>::type>::value,
       "BitInteger should be unsigned");
 
-    using ::ket::swapped_fourier_transform;
-    swapped_fourier_transform(parallel_policy, state, lhs_qubits, phase_coefficients);
+    ::ket::swapped_fourier_transform(parallel_policy, first, last, lhs_qubits, phase_coefficients);
 
 # ifndef BOOST_NO_CXX11_RANGE_BASED_FOR
     typedef typename boost::range_value<QubitsRange const>::type qubits_type;
     for (qubits_type const& rhs_qubits: rhs_qubits_range)
-      ::ket::do_addition_assignment(
+      ::ket::addition_assignment_detail::addition_assignment(
         parallel_policy,
-        state, boost::begin(lhs_qubits), boost::begin(rhs_qubits), num_qubits, phase_coefficients);
+        first, last, boost::begin(lhs_qubits), boost::begin(rhs_qubits), num_qubits, phase_coefficients);
 # else // BOOST_NO_CXX11_RANGE_BASED_FOR
     typedef typename boost::range_iterator<QubitsRange const>::type iterator;
-    iterator iter = boost::begin(rhs_qubits_range);
-    iterator const last = boost::end(rhs_qubits_range);
-    for (; iter != last; ++iter)
+    iterator rhs_qubits_iter = boost::begin(rhs_qubits_range);
+    iterator const rhs_qubits_last = boost::end(rhs_qubits_range);
+    for (; rhs_qubits_iter != rhs_qubits_last; ++rhs_qubits_iter)
     {
-      Qubits const rhs_qubits = *iter;
-      ::ket::do_addition_assignment(
+      Qubits const rhs_qubits = *rhs_qubits_iter;
+      ::ket::addition_assignment_detail::addition_assignment(
         parallel_policy,
-        state, boost::begin(lhs_qubits), boost::begin(rhs_qubits), num_qubits, phase_coefficients);
+        first, last, boost::begin(lhs_qubits), boost::begin(rhs_qubits), num_qubits, phase_coefficients);
     }
 # endif // BOOST_NO_CXX11_RANGE_BASED_FOR
 
-    using ::ket::adj_swapped_fourier_transform;
-    adj_swapped_fourier_transform(parallel_policy, state, lhs_qubits, phase_coefficients);
-
-    return state;
+    ::ket::adj_swapped_fourier_transform(parallel_policy, first, last, lhs_qubits, phase_coefficients);
   }
 
   template <
-    typename RandomAccessRange, typename Qubits, typename QubitsRange,
+    typename RandomAccessIterator, typename Qubits, typename QubitsRange,
     typename PhaseCoefficientsAllocator>
   inline typename KET_enable_if<
-    not ::ket::utility::policy::meta::is_loop_n_policy<RandomAccessRange>::value,
-    RandomAccessRange&>::type
+    not ::ket::utility::policy::meta::is_loop_n_policy<RandomAccessIterator>::value,
+    void>::type
   addition_assignment(
-    RandomAccessRange& state,
+    RandomAccessIterator const first, RandomAccessIterator const last,
     Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range,
     std::vector<
-      typename boost::range_value<RandomAccessRange>::type,
+      typename std::iterator_traits<RandomAccessIterator>::value_type,
       PhaseCoefficientsAllocator>& phase_coefficients)
   {
-    return addition_assignment(
+    ::ket::addition_assignment(
       ::ket::utility::policy::make_sequential(),
-      state, lhs_qubits, rhs_qubits_range, phase_coefficients);
+      first, last, lhs_qubits, rhs_qubits_range, phase_coefficients);
   }
-
 
   template <
     typename ParallelPolicy,
-    typename RandomAccessRange, typename Qubits, typename QubitsRange>
+    typename RandomAccessIterator, typename Qubits, typename QubitsRange>
   inline typename KET_enable_if<
     ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
-    RandomAccessRange&>::type
+    void>::type
   addition_assignment(
-    ParallelPolicy const parallel_policy, RandomAccessRange& state,
+    ParallelPolicy const parallel_policy,
+    RandomAccessIterator const first, RandomAccessIterator const last,
     Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range)
   {
-    typedef typename boost::range_value<RandomAccessRange>::type complex_type;
+    typedef typename std::iterator_traits<RandomAccessIterator>::value_type complex_type;
     std::vector<complex_type> phase_coefficients
       = ::ket::utility::generate_phase_coefficients<complex_type>(boost::size(lhs_qubits));
 
-    return addition_assignment(
-      parallel_policy, state, lhs_qubits, rhs_qubits_range, phase_coefficients);
+    ::ket::addition_assignment(
+      parallel_policy,
+      first, last, lhs_qubits, rhs_qubits_range, phase_coefficients);
   }
 
   template <
-    typename RandomAccessRange, typename Qubits, typename QubitsRange>
-  inline RandomAccessRange& addition_assignment(
-    RandomAccessRange& state,
+    typename RandomAccessIterator, typename Qubits, typename QubitsRange>
+  inline void addition_assignment(
+    RandomAccessIterator const first, RandomAccessIterator const last,
     Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range)
   {
-    typedef typename boost::range_value<RandomAccessRange>::type complex_type;
-    std::vector<complex_type> phase_coefficients
-      = ::ket::utility::generate_phase_coefficients<complex_type>(boost::size(lhs_qubits));
-
-    return addition_assignment(
+    ::ket::addition_assignment(
       ::ket::utility::policy::make_sequential(),
-      state, lhs_qubits, rhs_qubits_range, phase_coefficients);
+      first, last, lhs_qubits, rhs_qubits_range);
+  }
+
+
+  namespace ranges
+  {
+    template <
+      typename ParallelPolicy,
+      typename RandomAccessRange, typename Qubits, typename QubitsRange,
+      typename PhaseCoefficientsAllocator>
+    inline RandomAccessRange& addition_assignment(
+      ParallelPolicy const parallel_policy, RandomAccessRange& state,
+      Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range,
+      std::vector<
+        typename boost::range_value<RandomAccessRange>::type,
+        PhaseCoefficientsAllocator>& phase_coefficients)
+    {
+      ::ket::addition_assignment(
+        parallel_policy,
+        boost::begin(state), boost::end(state),
+        lhs_qubits, rhs_qubits_range, phase_coefficients);
+      return state;
+    }
+
+    template <
+      typename RandomAccessRange, typename Qubits, typename QubitsRange,
+      typename PhaseCoefficientsAllocator>
+    inline typename KET_enable_if<
+      not ::ket::utility::policy::meta::is_loop_n_policy<RandomAccessRange>::value,
+      RandomAccessRange&>::type
+    addition_assignment(
+      RandomAccessRange& state,
+      Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range,
+      std::vector<
+        typename boost::range_value<RandomAccessRange>::type,
+        PhaseCoefficientsAllocator>& phase_coefficients)
+    {
+      ::ket::addition_assignment(
+        boost::begin(state), boost::end(state),
+        lhs_qubits, rhs_qubits_range, phase_coefficients);
+      return state;
+    }
+
+    template <
+      typename ParallelPolicy,
+      typename RandomAccessRange, typename Qubits, typename QubitsRange>
+    inline typename KET_enable_if<
+      ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
+      RandomAccessRange&>::type
+    addition_assignment(
+      ParallelPolicy const parallel_policy, RandomAccessRange& state,
+      Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range)
+    {
+      ::ket::addition_assignment(
+        parallel_policy,
+        boost::begin(state), boost::end(state), lhs_qubits, rhs_qubits_range);
+      return state;
+    }
+
+    template <
+      typename RandomAccessRange, typename Qubits, typename QubitsRange>
+    inline RandomAccessRange& addition_assignment(
+      RandomAccessRange& state,
+      Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range)
+    {
+      ::ket::addition_assignment(
+        boost::begin(state), boost::end(state), lhs_qubits, rhs_qubits_range);
+      return state;
+    }
+
+# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
+    template <
+      typename ParallelPolicy,
+      typename Complex, typename Allocator, typename Qubits, typename QubitsRange,
+      typename PhaseCoefficientsAllocator>
+    inline std::vector<Complex, Allocator>& addition_assignment(
+      ParallelPolicy const parallel_policy, std::vector<Complex, Allocator>& state,
+      Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range,
+      std::vector<Complex, PhaseCoefficientsAllocator>& phase_coefficients)
+    {
+      ::ket::addition_assignment(
+        parallel_policy,
+        KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
+        lhs_qubits, rhs_qubits_range, phase_coefficients);
+      return state;
+    }
+
+    template <
+      typename Complex, typename Allocator, typename Qubits, typename QubitsRange,
+      typename PhaseCoefficientsAllocator>
+    inline std::vector<Complex, Allocator>& addition_assignment(
+      std::vector<Complex, Allocator>& state,
+      Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range,
+      std::vector<Complex, PhaseCoefficientsAllocator>& phase_coefficients)
+    {
+      ::ket::addition_assignment(
+        KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
+        lhs_qubits, rhs_qubits_range, phase_coefficients);
+      return state;
+    }
+
+    template <
+      typename ParallelPolicy,
+      typename Complex, typename Allocator, typename Qubits, typename QubitsRange>
+    inline std::vector<Complex, Allocator>& addition_assignment(
+      ParallelPolicy const parallel_policy, std::vector<Complex, Allocator>& state,
+      Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range)
+    {
+      ::ket::addition_assignment(
+        parallel_policy,
+        KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
+        lhs_qubits, rhs_qubits_range);
+      return state;
+    }
+
+    template <
+      typename Complex, typename Allocator, typename Qubits, typename QubitsRange>
+    inline std::vector<Complex, Allocator>& addition_assignment(
+      std::vector<Complex, Allocator>& state,
+      Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range)
+    {
+      ::ket::addition_assignment(
+        KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
+        lhs_qubits, rhs_qubits_range);
+      return state;
+    }
+# endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
   }
 
 
   namespace addition_assignment_detail
   {
     template <
-      typename ParallelPolicy, typename RandomAccessRange,
+      typename ParallelPolicy, typename RandomAccessIterator,
       typename Iterator1, typename Iterator2,
       typename PhaseCoefficientsAllocator>
-    inline RandomAccessRange& do_adj_addition_assignment(
-      ParallelPolicy const parallel_policy, RandomAccessRange& state,
+    inline void adj_addition_assignment(
+      ParallelPolicy const parallel_policy,
+      RandomAccessIterator const first, RandomAccessIterator const last,
       Iterator1 const& lhs_qubits_first, Iterator2 const& rhs_qubits_first,
       std::size_t const num_qubits,
       std::vector<
@@ -222,7 +357,7 @@ namespace ket
       {
         std::size_t const phase_exponent = num_qubits-index;
 
-        typedef typename boost::range_value<RandomAccessRange>::type complex_type;
+        typedef typename std::iterator_traits<RandomAccessIterator>::value_type complex_type;
         complex_type const phase_coefficient = phase_coefficients[phase_exponent];
 
         for (std::size_t control_bit_index = 0u;
@@ -231,10 +366,9 @@ namespace ket
           std::size_t const target_bit_index
             = control_bit_index+(phase_exponent-1u);
 
-          using ::ket::gate::adj_controlled_phase_shift_coeff;
-          adj_controlled_phase_shift_coeff(
+          ::ket::gate::adj_controlled_phase_shift_coeff(
             parallel_policy,
-            state, phase_coefficient,
+            first, last, phase_coefficient,
             lhs_qubits_first[target_bit_index],
             ::ket::make_control(rhs_qubits_first[control_bit_index]));
         }
@@ -244,11 +378,12 @@ namespace ket
 
 
   template <
-    typename ParallelPolicy, typename RandomAccessRange,
+    typename ParallelPolicy, typename RandomAccessIterator,
     typename Qubits, typename QubitsRange,
     typename PhaseCoefficientsAllocator>
-  inline RandomAccessRange& adj_addition_assignment(
-    ParallelPolicy const parallel_policy, RandomAccessRange& state,
+  inline void adj_addition_assignment(
+    ParallelPolicy const parallel_policy,
+    RandomAccessIterator const first, RandomAccessIterator const last,
     Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range,
     std::vector
       typename boost::range_value<RandomAccessRange>::type,
@@ -273,85 +408,214 @@ namespace ket
       KET_is_unsigned<typename ::ket::meta::bit_integer_of<qubit_type>::type>::value,
       "BitInteger should be unsigned");
 
-    using ::ket::swapped_fourier_transform;
-    swapped_fourier_transform(parallel_policy, state, lhs_qubits, phase_coefficients);
+    ::ket::swapped_fourier_transform(parallel_policy, first, last, lhs_qubits, phase_coefficients);
 
 # ifndef BOOST_NO_CXX11_RANGE_BASED_FOR
     typedef typename boost::range_value<QubitsRange const>::type qubits_type;
     for (qubits_type const& rhs_qubits: rhs_qubits_range)
-      ::ket::addition_assignment_detail::do_adj_addition_assignment(
+      ::ket::addition_assignment_detail::adj_addition_assignment(
         parallel_policy,
-        state, boost::begin(lhs_qubits), boost::begin(rhs_qubits), num_qubits, phase_coefficients);
+        first, last, boost::begin(lhs_qubits), boost::begin(rhs_qubits), num_qubits, phase_coefficients);
 # else // BOOST_NO_CXX11_RANGE_BASED_FOR
     typedef typename boost::range_iterator<QubitsRange const>::type iterator;
-    iterator iter = boost::begin(rhs_qubits_range);
-    iterator const last = boost::end(rhs_qubits_range);
-    for (; iter != last; ++iter)
+    iterator rhs_qubits_iter = boost::begin(rhs_qubits_range);
+    iterator const rhs_qubits_last = boost::end(rhs_qubits_range);
+    for (; rhs_qubits_iter != rhs_qubits_last; ++rhs_qubits_iter)
     {
-      Qubits const rhs_qubits = *iter;
+      Qubits const rhs_qubits = *rhs_qubits_iter;
       ::ket::addition_assignment_detail::do_adj_addition_assignment(
         parallel_policy,
-        state, boost::begin(lhs_qubits), boost::begin(rhs_qubits), num_qubits, phase_coefficients);
+        first, last, boost::begin(lhs_qubits), boost::begin(rhs_qubits), num_qubits, phase_coefficients);
     }
 # endif // BOOST_NO_CXX11_RANGE_BASED_FOR
 
-    using ::ket::adj_swapped_fourier_transform;
-    adj_swapped_fourier_transform(parallel_policy, state, lhs_qubits, phase_coefficients);
-
-    return state;
+    ::ket::adj_swapped_fourier_transform(parallel_policy, first, last, lhs_qubits, phase_coefficients);
   }
 
-  template <typename RandomAccessRange, typename Qubits, typename QubitsRange>
+  template <
+    typename RandomAccessIterator,
+    typename Qubits, typename QubitsRange,
+    typename PhaseCoefficientsAllocator>
   inline typename KET_enable_if<
-    not ::ket::utility::policy::meta::is_loop_n_policy<RandomAccessRange>::value,
-    RandomAccessRange&>::type
+    not ::ket::utility::policy::meta::is_loop_n_policy<RandomAccessIterator>::value,
+    void>::type
   adj_addition_assignment(
-    RandomAccessRange& state,
+    RandomAccessIterator const first, RandomAccessIterator const last,
     Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range,
-    std::vector<
+    std::vector
       typename boost::range_value<RandomAccessRange>::type,
       PhaseCoefficientsAllocator>& phase_coefficients)
   {
-    return adj_addition_assignment(
+    ::ket::adj_addition_assignment(
       ::ket::utility::policy::make_sequential(),
-      state, lhs_qubits, rhs_qubits_range, phase_coefficients);
+      first, last, lhs_qubits, rhs_qubits_range, phase_coefficients);
   }
-
 
   template <
-    typename ParallelPolicy, typename RandomAccessRange,
-    typename Qubits, typename QubitsRange>
+    typename ParallelPolicy,
+    typename RandomAccessIterator, typename Qubits, typename QubitsRange>
   inline typename KET_enable_if<
     ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
-    RandomAccessRange&>::type
+    void>::type
   adj_addition_assignment(
-    ParallelPolicy const parallel_policy, RandomAccessRange& state,
+    ParallelPolicy const parallel_policy,
+    RandomAccessIterator const first, RandomAccessIterator const last,
     Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range)
   {
-    typedef typename boost::range_value<RandomAccessRange>::type complex_type;
+    typedef typename std::iterator_traits<RandomAccessIterator>::value_type complex_type;
     std::vector<complex_type> phase_coefficients
       = ::ket::utility::generate_phase_coefficients<complex_type>(boost::size(lhs_qubits));
 
-    return adj_addition_assignment(
-      parallel_policy, state, lhs_qubits, rhs_qubits_range, phase_coefficients);
+    ::ket::adj_addition_assignment(
+      parallel_policy,
+      first, last, lhs_qubits, rhs_qubits_range, phase_coefficients);
   }
 
-  template <typename RandomAccessRange, typename Qubits, typename QubitsRange>
-  inline RandomAccessRange& adj_addition_assignment(
-    RandomAccessRange& state,
+  template <
+    typename RandomAccessIterator, typename Qubits, typename QubitsRange>
+  inline void adj_addition_assignment(
+    RandomAccessIterator const first, RandomAccessIterator const last,
     Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range)
   {
-    typedef typename boost::range_value<RandomAccessRange>::type complex_type;
-    std::vector<complex_type> phase_coefficients
-      = ::ket::utility::generate_phase_coefficients<complex_type>(boost::size(lhs_qubits));
-
-    return adj_addition_assignment(
+    ::ket::adj_addition_assignment(
       ::ket::utility::policy::make_sequential(),
-      state, lhs_qubits, rhs_qubits_range, phase_coefficients);
+      first, last, lhs_qubits, rhs_qubits_range);
+  }
+
+
+  namespace ranges
+  {
+    template <
+      typename ParallelPolicy, typename RandomAccessRange,
+      typename Qubits, typename QubitsRange,
+      typename PhaseCoefficientsAllocator>
+    inline RandomAccessRange& adj_addition_assignment(
+      ParallelPolicy const parallel_policy, RandomAccessRange& state,
+      Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range,
+      std::vector
+        typename boost::range_value<RandomAccessRange>::type,
+        PhaseCoefficientsAllocator>& phase_coefficients)
+    {
+      ::ket::adj_addition_assignment(
+        parallel_policy,
+        boost::begin(state), boost::end(state),
+        lhs_qubits, rhs_qubits_range, phase_coefficients);
+      return state;
+    }
+
+    template <typename RandomAccessRange, typename Qubits, typename QubitsRange>
+    inline typename KET_enable_if<
+      not ::ket::utility::policy::meta::is_loop_n_policy<RandomAccessRange>::value,
+      RandomAccessRange&>::type
+    adj_addition_assignment(
+      RandomAccessRange& state,
+      Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range,
+      std::vector<
+        typename boost::range_value<RandomAccessRange>::type,
+        PhaseCoefficientsAllocator>& phase_coefficients)
+    {
+      ::ket::adj_addition_assignment(
+        boost::begin(state), boost::end(state),
+        lhs_qubits, rhs_qubits_range, phase_coefficients);
+      return state;
+    }
+
+    template <
+      typename ParallelPolicy, typename RandomAccessRange,
+      typename Qubits, typename QubitsRange>
+    inline typename KET_enable_if<
+      ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
+      RandomAccessRange&>::type
+    adj_addition_assignment(
+      ParallelPolicy const parallel_policy, RandomAccessRange& state,
+      Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range)
+    {
+      ::ket::adj_addition_assignment(
+        parallel_policy,
+        boost::begin(state), boost::end(state), lhs_qubits, rhs_qubits_range);
+      return state;
+    }
+
+    template <typename RandomAccessRange, typename Qubits, typename QubitsRange>
+    inline RandomAccessRange& adj_addition_assignment(
+      RandomAccessRange& state,
+      Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range)
+    {
+      ::ket::adj_addition_assignment(
+        boost::begin(state), boost::end(state), lhs_qubits, rhs_qubits_range);
+      return state;
+    }
+
+# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
+    template <
+      typename ParallelPolicy,
+      typename Complex, typename Allocator, typename Qubits, typename QubitsRange,
+      typename PhaseCoefficientsAllocator>
+    inline std::vector<Complex, Allocator>& adj_addition_assignment(
+      ParallelPolicy const parallel_policy, std::vector<Complex, Allocator>& state,
+      Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range,
+      std::vector<Complex, PhaseCoefficientsAllocator>& phase_coefficients)
+    {
+      ::ket::adj_addition_assignment(
+        parallel_policy,
+        KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
+        lhs_qubits, rhs_qubits_range, phase_coefficients);
+      return state;
+    }
+
+    template <
+      typename Complex, typename Allocator, typename Qubits, typename QubitsRange,
+      typename PhaseCoefficientsAllocator>
+    inline typename KET_enable_if<
+      not ::ket::utility::policy::meta::is_loop_n_policy<RandomAccessRange>::value,
+      std::vector<Complex, Allocator>&>::type
+    adj_addition_assignment(
+      std::vector<Complex, Allocator>& state,
+      Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range,
+      std::vector<Complex, PhaseCoefficientsAllocator>& phase_coefficients)
+    {
+      ::ket::adj_addition_assignment(
+        KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
+        lhs_qubits, rhs_qubits_range, phase_coefficients);
+      return state;
+    }
+
+    template <
+      typename ParallelPolicy,
+      typename Complex, typename Allocator, typename Qubits, typename QubitsRange>
+    inline typename KET_enable_if<
+      ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
+      std::vector<Complex, Allocator>&>::type
+    adj_addition_assignment(
+      ParallelPolicy const parallel_policy, std::vector<Complex, Allocator>& state,
+      Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range)
+    {
+      ::ket::adj_addition_assignment(
+        parallel_policy,
+        KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
+        lhs_qubits, rhs_qubits_range);
+      return state;
+    }
+
+    template <
+      typename Complex, typename Allocator, typename Qubits, typename QubitsRange>
+    inline std::vector<Complex, Allocator>& adj_addition_assignment(
+      std::vector<Complex, Allocator>& state,
+      Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range)
+    {
+      ::ket::adj_addition_assignment(
+        KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
+        lhs_qubits, rhs_qubits_range);
+      return state;
+    }
+# endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
   }
 }
 
 
+# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
+#   undef KET_addressof
+# endif
 # undef KET_enable_if
 # undef KET_is_unsigned
 # ifdef BOOST_NO_CXX11_STATIC_ASSERT

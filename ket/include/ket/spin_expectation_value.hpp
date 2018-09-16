@@ -79,84 +79,84 @@ namespace ket
   namespace spin_expectation_value_detail
   {
 # ifdef BOOST_NO_CXX11_LAMBDAS
-      template <typename RandomAccessIterator, typename StateInteger>
-      struct spin_expectation_value_loop_inside
-      {
-        RandomAccessIterator first_;
-        StateInteger qubit_mask_;
-        StateInteger lower_bits_mask_;
-        StateInteger upper_bits_mask_;
+    template <typename RandomAccessIterator, typename StateInteger>
+    struct spin_expectation_value_loop_inside
+    {
+      RandomAccessIterator first_;
+      StateInteger qubit_mask_;
+      StateInteger lower_bits_mask_;
+      StateInteger upper_bits_mask_;
 
-        typedef typename std::iterator_traits<RandomAccessIterator>::value_type complex_type;
-        typedef typename ::ket::utility::meta::real_of<complex_type>::type real_type;
-        typedef KET_array<long double, 3u> spin_type;
-        std::vector<spin_type>& spins_in_threads_;
+      typedef typename std::iterator_traits<RandomAccessIterator>::value_type complex_type;
+      typedef typename ::ket::utility::meta::real_of<complex_type>::type real_type;
+      typedef KET_array<long double, 3u> spin_type;
+      std::vector<spin_type>& spins_in_threads_;
 
-        spin_expectation_value_loop_inside(
-          RandomAccessIterator const first,
-          StateInteger const qubit_mask,
-          StateInteger const lower_bits_mask,
-          StateInteger const upper_bits_mask,
-          std::vector<spin_type>& spins_in_threads)
-          : first_(first),
-            qubit_mask_(qubit_mask),
-            lower_bits_mask_(lower_bits_mask),
-            upper_bits_mask_(upper_bits_mask),
-            spins_in_threads_(spins_in_threads)
-        { }
-
-        void operator()(StateInteger const value_wo_qubit, int const thread_index) const
-        {
-          // xxxxx0xxxxxx
-          StateInteger const zero_index
-            = ((value_wo_qubit bitand upper_bits_mask_) << 1u)
-              bitor (value_wo_qubit bitand lower_bits_mask_);
-          // xxxxx1xxxxxx
-          StateInteger const one_index = zero_index bitor qubit_mask_;
-
-          complex_type const zero_value = *(first_+zero_index);
-          complex_type const one_value = *(first_+one_index);
-          complex_type const zero_times_one = zero_value*one_value;
-
-          using std::real;
-          spins_in_threads_[thread_index][0u] += static_cast<long double>(real(zero_times_one));
-          using std::imag;
-          spins_in_threads_[thread_index][1u] += static_cast<long double>(imag(zero_times_one));
-          using std::norm;
-          spins_in_threads_[thread_index][2u]
-            += static_cast<long double>(norm(zero_value)) - static_cast<long double>(norm(one_value));
-        }
-      };
-
-      template <typename RandomAccessIterator, typename StateInteger, typename Spin>
-      inline spin_expectation_value_loop_inside<RandomAccessIterator, StateInteger>
-      make_spin_expectation_value_loop_inside(
+      spin_expectation_value_loop_inside(
         RandomAccessIterator const first,
         StateInteger const qubit_mask,
         StateInteger const lower_bits_mask,
         StateInteger const upper_bits_mask,
-        std::vector<Spin>& spins_in_threads)
+        std::vector<spin_type>& spins_in_threads)
+        : first_(first),
+          qubit_mask_(qubit_mask),
+          lower_bits_mask_(lower_bits_mask),
+          upper_bits_mask_(upper_bits_mask),
+          spins_in_threads_(spins_in_threads)
+      { }
+
+      void operator()(StateInteger const value_wo_qubit, int const thread_index) const
       {
-        return spin_expectation_value_loop_inside<RandomAccessIterator, StateInteger>(
-          first, qubit_mask, lower_bits_mask, upper_bits_mask, spins_in_threads);
+        // xxxxx0xxxxxx
+        StateInteger const zero_index
+          = ((value_wo_qubit bitand upper_bits_mask_) << 1u)
+            bitor (value_wo_qubit bitand lower_bits_mask_);
+        // xxxxx1xxxxxx
+        StateInteger const one_index = zero_index bitor qubit_mask_;
+
+        complex_type const zero_value = *(first_+zero_index);
+        complex_type const one_value = *(first_+one_index);
+        complex_type const zero_times_one = zero_value*one_value;
+
+        using std::real;
+        spins_in_threads_[thread_index][0u] += static_cast<long double>(real(zero_times_one));
+        using std::imag;
+        spins_in_threads_[thread_index][1u] += static_cast<long double>(imag(zero_times_one));
+        using std::norm;
+        spins_in_threads_[thread_index][2u]
+          += static_cast<long double>(norm(zero_value)) - static_cast<long double>(norm(one_value));
       }
+    };
+
+    template <typename RandomAccessIterator, typename StateInteger, typename Spin>
+    inline spin_expectation_value_loop_inside<RandomAccessIterator, StateInteger>
+    make_spin_expectation_value_loop_inside(
+      RandomAccessIterator const first,
+      StateInteger const qubit_mask,
+      StateInteger const lower_bits_mask,
+      StateInteger const upper_bits_mask,
+      std::vector<Spin>& spins_in_threads)
+    {
+      return spin_expectation_value_loop_inside<RandomAccessIterator, StateInteger>(
+        first, qubit_mask, lower_bits_mask, upper_bits_mask, spins_in_threads);
+    }
 
 
-      struct spin_expectation_value_accumulate_inside
+    struct spin_expectation_value_accumulate_inside
+    {
+      template <typename Spin>
+      Spin operator()(Spin accumulated_spin, Spin const& spin) const
       {
-        template <typename Spin>
-        Spin operator()(Spin accumulated_spin, Spin const& spin) const
-        {
-          accumulated_spin[0u] += spin[0u];
-          accumulated_spin[1u] += spin[1u];
-          accumulated_spin[2u] += spin[2u];
-          return accumulated_spin;
-        }
-      };
+        accumulated_spin[0u] += spin[0u];
+        accumulated_spin[1u] += spin[1u];
+        accumulated_spin[2u] += spin[2u];
+        return accumulated_spin;
+      }
+    };
 
-      inline spin_expectation_value_accumulate_inside
-      make_spin_expectation_value_accumulate_inside()
-      { return spin_expectation_value_accumulate_inside(); }
+    inline spin_expectation_value_accumulate_inside
+    make_spin_expectation_value_accumulate_inside()
+    { return spin_expectation_value_accumulate_inside(); }
 # endif // BOOST_NO_CXX11_LAMBDAS
   } // namespace spin_expectation_value_detail
 
@@ -274,6 +274,7 @@ namespace ket
     ::ket::qubit<StateInteger, BitInteger> const qubit)
   { return ::ket::spin_expectation_value(::ket::utility::policy::make_sequential(), first, last, qubit); }
 
+
   namespace ranges
   {
     template <
@@ -299,10 +300,7 @@ namespace ket
     spin_expectation_value(
       RandomAccessRange const& state,
       ::ket::qubit<StateInteger, BitInteger> const qubit)
-    {
-      return ::ket::spin_expectation_value(
-        ::ket::utility::policy::make_sequential(), boost::begin(state), boost::end(state), qubit);
-    }
+    { return ::ket::spin_expectation_value(boost::begin(state), boost::end(state), qubit); }
 
 # ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
     template <
@@ -328,7 +326,6 @@ namespace ket
       ::ket::qubit<StateInteger, BitInteger> const qubit)
     {
       return ::ket::spin_expectation_value(
-        ::ket::utility::policy::make_sequential(),
         KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
         qubit);
     }

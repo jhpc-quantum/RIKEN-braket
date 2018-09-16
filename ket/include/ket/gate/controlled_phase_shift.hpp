@@ -379,7 +379,7 @@ namespace ket
           parallel_policy, state,
           conj(phase_coefficient), target_qubit, control_qubit);
       }
-    } // namespace range
+    } // namespace ranges
 
 
     // controlled_phase_shift
