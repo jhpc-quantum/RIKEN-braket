@@ -19,9 +19,6 @@
 # include <boost/range/end.hpp>
 # include <boost/utility.hpp>
 
-# include <boost/range/iterator_range.hpp>
-# include <boost/range/adaptor/transformed.hpp>
-
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/positive_random_value_upto.hpp>
 # include <ket/utility/meta/real_of.hpp>
@@ -39,6 +36,16 @@ namespace ket
 {
   namespace generate_events_detail
   {
+# ifdef BOOST_NO_CXX11_LAMBDAS
+    template <typename Complex>
+    struct real_part_plus
+    {
+      typedef Complex result_type;
+
+      Complex operator()(Complex const& lhs, Complex const& rhs) const
+      { using std::real; return static_cast<Complex>(real(lhs) + real(rhs)); }
+    };
+
     template <typename Complex>
     struct complex_norm
     {
@@ -48,12 +55,11 @@ namespace ket
       { using std::norm; return static_cast<Complex>(norm(value)); }
     };
 
-# ifdef BOOST_NO_CXX11_LAMBDAS
+    template <typename Complex>
     struct real_part_less_than
     {
       typedef bool result_type;
 
-      template <typename Complex>
       bool operator()(Complex const& lhs, Complex const& rhs) const
       { using std::real; return real(lhs) < real(rhs); }
     };
@@ -76,12 +82,19 @@ namespace ket
     result.reserve(num_events);
 
     typedef typename std::iterator_traits<RandomAccessIterator>::value_type complex_type;
-    ::ket::utility::ranges::inclusive_scan(
-      parallel_policy,
-      boost::make_iterator_range(first, last)
-        | boost::adaptors::transformed(
-            ::ket::generate_events_detail::complex_norm<complex_type>()),
-      first);
+# ifndef BOOST_NO_CXX11_LAMBDAS
+    ::ket::utility::transform_inclusive_scan(
+      parallel_policy, first, last, first,
+      [](complex_type const& lhs, complex_type const& rhs)
+      { using std::real; return static_cast<complex_type>(real(lhs) + real(rhs)); },
+      [](complex_type const& value)
+      { using std::norm; return static_cast<complex_type>(norm(value)); });
+# else // BOOST_NO_CXX11_LAMBDAS
+    ::ket::utility::transform_inclusive_scan(
+      parallel_policy, first, last, first,
+      ::ket::generate_events_detail::real_part_plus<complex_type>(),
+      ::ket::generate_events_detail::complex_norm<complex_type>());
+# endif // BOOST_NO_CXX11_LAMBDAS
 
     using std::real;
     typedef typename ::ket::utility::meta::real_of<complex_type>::type real_type;
@@ -105,7 +118,7 @@ namespace ket
             static_cast<complex_type>(
               ::ket::utility::positive_random_value_upto(
                 total_probability, random_number_generator)),
-            ::ket::generate_events_detail::real_part_less_than());
+            ::ket::generate_events_detail::real_part_less_than<complex_type>());
 # endif // BOOST_NO_CXX11_LAMBDAS
 
       result.push_back(found - first);
