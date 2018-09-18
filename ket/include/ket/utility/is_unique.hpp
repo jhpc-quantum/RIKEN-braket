@@ -96,7 +96,7 @@ namespace ket
       inline bool is_unique(std::vector<Value, Allocator> const& range)
       {
         return ::ket::utility::is_unique(
-          KET_addressof(state.front()), KET_addressof(state.front()) + state.size());
+          KET_addressof(range.front()), KET_addressof(range.front()) + range.size());
       }
 # endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
     }
