@@ -87,7 +87,7 @@ namespace ket
         KET_is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(
         KET_is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
-      assert(::ket::utility::range::is_unique(qubits));
+      assert(::ket::utility::ranges::is_unique(qubits));
 
       ::ket::mpi::utility::log_with_time_guard<char> print("Fourier", environment);
 
@@ -292,7 +292,7 @@ namespace ket
         KET_is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(
         KET_is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
-      assert(::ket::utility::range::is_unique(qubits));
+      assert(::ket::utility::ranges::is_unique(qubits));
 
       ::ket::mpi::utility::log_with_time_guard<char> print("Adj(Fourier)", environment);
 

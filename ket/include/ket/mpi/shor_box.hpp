@@ -110,7 +110,7 @@ namespace ket
       static_assert(KET_is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(KET_is_unsigned<bit_integer_type>::value, "BitInteger should be unsigned");
 
-      assert(::ket::utility::range::is_unique(boost::join(exponent_qubits, modular_exponentiation_qubits)));
+      assert(::ket::utility::ranges::is_unique(boost::join(exponent_qubits, modular_exponentiation_qubits)));
 
       ::ket::mpi::utility::log_with_time_guard<char> print("Shor", environment);
 

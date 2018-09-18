@@ -96,7 +96,7 @@ namespace ket
     assert(
       ::ket::utility::integer_exp2<typename ::ket::meta::state_integer_of<qubit_type>::type>(num_qubits)
         <= static_cast<typename ::ket::meta::state_integer_of<qubit_type>::type>(boost::size(state))
-      and ::ket::utility::range::is_unique(qubits));
+      and ::ket::utility::ranges::is_unique(qubits));
 
     typedef typename boost::range_iterator<Qubits const>::type qubits_iterator;
     qubits_iterator const qubits_first = boost::begin(qubits);
@@ -301,7 +301,7 @@ namespace ket
     assert(
       ::ket::utility::integer_exp2<typename ::ket::meta::state_integer_of<qubit_type>::type>(num_qubits)
         <= static_cast<typename ::ket::meta::state_integer_of<qubit_type>::type>(boost::size(state))
-      and ::ket::utility::range::is_unique(qubits));
+      and ::ket::utility::ranges::is_unique(qubits));
 
     typedef typename boost::range_iterator<Qubits const>::type qubits_iterator;
     qubits_iterator const qubits_first = boost::begin(qubits);
