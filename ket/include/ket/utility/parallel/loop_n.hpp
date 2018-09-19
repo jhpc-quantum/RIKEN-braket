@@ -569,7 +569,7 @@ namespace ket
         typename ForwardIterator1, typename ForwardIterator2,
         typename IsCalledsPtr, typename ItersPtr, typename OutsPtr,
         typename PartialSumsPtr>
-      struct inclusive_scan1_forward_iterator
+      struct inclusive_scan_forward_iterator
       {
         ForwardIterator1 first_;
         ForwardIterator2 d_first_;
@@ -578,7 +578,7 @@ namespace ket
         OutsPtr outs_ptr_;
         PartialSumsPtr partial_sums_ptr_;
 
-        inclusive_scan1_forward_iterator(
+        inclusive_scan_forward_iterator(
           ForwardIterator1 const first, ForwardIterator2 const d_first,
           IsCalledsPtr is_calleds_ptr, ItersPtr iters_ptr, OutsPtr outs_ptr,
           PartialSumsPtr partial_sums_ptr)
@@ -612,16 +612,16 @@ namespace ket
         typename ForwardIterator1, typename ForwardIterator2,
         typename IsCalledsPtr, typename ItersPtr, typename OutsPtr,
         typename PartialSumsPtr>
-      inline ::ket::utility::parallel_loop_n_detail::inclusive_scan1_forward_iterator<
+      inline ::ket::utility::parallel_loop_n_detail::inclusive_scan_forward_iterator<
         ForwardIterator1, ForwardIterator2,
         IsCalledsPtr, ItersPtr, OutsPtr, PartialSumsPtr>
-      make_inclusive_scan1_forward_iterator(
+      make_inclusive_scan_forward_iterator(
         ForwardIterator1 const first, ForwardIterator2 const d_first,
         IsCalledsPtr is_calleds_ptr, ItersPtr iters_ptr, OutsPtr outs_ptr,
         PartialSumsPtr partial_sums_ptr)
       {
         typedef
-          ::ket::utility::parallel_loop_n_detail::inclusive_scan1_forward_iterator<
+          ::ket::utility::parallel_loop_n_detail::inclusive_scan_forward_iterator<
             ForwardIterator1, ForwardIterator2,
             IsCalledsPtr, ItersPtr, OutsPtr, PartialSumsPtr>
           result_type;
@@ -633,14 +633,14 @@ namespace ket
       template <
         typename ForwardIterator,
         typename IsCalledsPtr, typename OutsPtr, typename PartialSumsPtr>
-      struct inclusive_scan2_forward_iterator
+      struct post_inclusive_scan_forward_iterator
       {
         ForwardIterator d_first_;
         IsCalledsPtr is_calleds_ptr_;
         OutsPtr outs_ptr_;
         PartialSumsPtr partial_sums_ptr_;
 
-        inclusive_scan2_forward_iterator(
+        post_inclusive_scan_forward_iterator(
           ForwardIterator const d_first,
           IsCalledsPtr is_calleds_ptr,
           OutsPtr outs_ptr,
@@ -671,14 +671,14 @@ namespace ket
       template <
         typename ForwardIterator,
         typename IsCalledsPtr, typename OutsPtr, typename PartialSumsPtr>
-      inline ::ket::utility::parallel_loop_n_detail::inclusive_scan2_forward_iterator<
+      inline ::ket::utility::parallel_loop_n_detail::post_inclusive_scan_forward_iterator<
         ForwardIterator, IsCalledsPtr, OutsPtr, PartialSumsPtr>
-      make_inclusive_scan2_forward_iterator(
+      make_post_inclusive_scan_forward_iterator(
         ForwardIterator const d_first,
         IsCalledsPtr is_calleds_ptr, OutsPtr outs_ptr, PartialSumsPtr partial_sums_ptr)
       {
         typedef
-          ::ket::utility::parallel_loop_n_detail::inclusive_scan2_forward_iterator<
+          ::ket::utility::parallel_loop_n_detail::post_inclusive_scan_forward_iterator<
             ForwardIterator, IsCalledsPtr, OutsPtr, PartialSumsPtr>
           result_type;
         return result_type(d_first, is_calleds_ptr, outs_ptr, partial_sums_ptr);
@@ -688,13 +688,13 @@ namespace ket
       template <
         typename RandomAccessIterator1, typename RandomAccessIterator2,
         typename PartialSumsPtr>
-      struct inclusive_scan1_random_access_iterator
+      struct inclusive_scan_random_access_iterator
       {
         RandomAccessIterator1 first_;
         RandomAccessIterator2 d_first_;
         PartialSumsPtr partial_sums_ptr_;
 
-        inclusive_scan1_random_access_iterator(
+        inclusive_scan_random_access_iterator(
           RandomAccessIterator1 const first, RandomAccessIterator2 const d_first,
           PartialSumsPtr partial_sums_ptr)
           : first_(first), d_first_(d_first),
@@ -713,14 +713,14 @@ namespace ket
       template <
         typename RandomAccessIterator1, typename RandomAccessIterator2,
         typename PartialSumsPtr>
-      inline ::ket::utility::parallel_loop_n_detail::inclusive_scan1_random_access_iterator<
+      inline ::ket::utility::parallel_loop_n_detail::inclusive_scan_random_access_iterator<
         RandomAccessIterator1, RandomAccessIterator2, PartialSumsPtr>
-      make_inclusive_scan1_random_access_iterator(
+      make_inclusive_scan_random_access_iterator(
         RandomAccessIterator1 const first, RandomAccessIterator2 const d_first,
         PartialSumsPtr partial_sums_ptr)
       {
         typedef
-          ::ket::utility::parallel_loop_n_detail::inclusive_scan1_random_access_iterator<
+          ::ket::utility::parallel_loop_n_detail::inclusive_scan_random_access_iterator<
             RandomAccessIterator1, RandomAccessIterator2, PartialSumsPtr>
           result_type;
         return result_type(first, d_first, partial_sums_ptr);
@@ -728,12 +728,12 @@ namespace ket
 
 
       template <typename RandomAccessIterator, typename PartialSumsPtr>
-      struct inclusive_scan2_random_access_iterator
+      struct post_inclusive_scan_random_access_iterator
       {
         RandomAccessIterator d_first_;
         PartialSumsPtr partial_sums_ptr_;
 
-        inclusive_scan2_random_access_iterator(
+        post_inclusive_scan_random_access_iterator(
           RandomAccessIterator const d_first, PartialSumsPtr partial_sums_ptr)
           : d_first_(d_first), partial_sums_ptr_(partial_sums_ptr)
         { }
@@ -750,13 +750,13 @@ namespace ket
       };
 
       template <typename RandomAccessIterator, typename PartialSumsPtr>
-      inline ::ket::utility::parallel_loop_n_detail::inclusive_scan2_random_access_iterator<
+      inline ::ket::utility::parallel_loop_n_detail::post_inclusive_scan_random_access_iterator<
         RandomAccessIterator, PartialSumsPtr>
-      make_inclusive_scan2_random_access_iterator(
+      make_post_inclusive_scan_random_access_iterator(
         RandomAccessIterator const d_first, PartialSumsPtr partial_sums_ptr)
       {
         typedef
-          ::ket::utility::parallel_loop_n_detail::inclusive_scan2_random_access_iterator<
+          ::ket::utility::parallel_loop_n_detail::post_inclusive_scan_random_access_iterator<
             RandomAccessIterator, PartialSumsPtr>
           result_type;
         return result_type(d_first, partial_sums_ptr);
@@ -768,7 +768,7 @@ namespace ket
         typename BinaryOperation,
         typename IsCalledsPtr, typename ItersPtr, typename OutsPtr,
         typename PartialSumsPtr>
-      struct inclusive_scan1_forward_iterator_
+      struct inclusive_scan_forward_iterator_
       {
         ForwardIterator1 first_;
         ForwardIterator2 d_first_;
@@ -778,7 +778,7 @@ namespace ket
         OutsPtr outs_ptr_;
         PartialSumsPtr partial_sums_ptr_;
 
-        inclusive_scan1_forward_iterator_(
+        inclusive_scan_forward_iterator_(
           ForwardIterator1 const first, ForwardIterator2 const d_first,
           BinaryOperation binary_operation,
           IsCalledsPtr is_calleds_ptr, ItersPtr iters_ptr, OutsPtr outs_ptr,
@@ -817,17 +817,17 @@ namespace ket
         typename BinaryOperation,
         typename IsCalledsPtr, typename ItersPtr, typename OutsPtr,
         typename PartialSumsPtr>
-      inline ::ket::utility::parallel_loop_n_detail::inclusive_scan1_forward_iterator_<
+      inline ::ket::utility::parallel_loop_n_detail::inclusive_scan_forward_iterator_<
         ForwardIterator1, ForwardIterator2, BinaryOperation,
         IsCalledsPtr, ItersPtr, OutsPtr, PartialSumsPtr>
-      make_inclusive_scan1_forward_iterator_(
+      make_inclusive_scan_forward_iterator_(
         ForwardIterator1 const first, ForwardIterator2 const d_first,
         BinaryOperation binary_operation,
         IsCalledsPtr is_calleds_ptr, ItersPtr iters_ptr, OutsPtr outs_ptr,
         PartialSumsPtr partial_sums_ptr)
       {
         typedef
-          ::ket::utility::parallel_loop_n_detail::inclusive_scan1_forward_iterator_<
+          ::ket::utility::parallel_loop_n_detail::inclusive_scan_forward_iterator_<
             ForwardIterator1, ForwardIterator2, BinaryOperation,
             IsCalledsPtr, ItersPtr, OutsPtr, PartialSumsPtr>
           result_type;
@@ -838,9 +838,88 @@ namespace ket
 
 
       template <
+        typename ForwardIterator1, typename ForwardIterator2,
+        typename BinaryOperation, typename Value,
+        typename IsCalledsPtr, typename ItersPtr, typename OutsPtr,
+        typename PartialSumsPtr>
+      struct inclusive_scan_forward_iterator_init
+      {
+        ForwardIterator1 first_;
+        ForwardIterator2 d_first_;
+        BinaryOperation binary_operation_;
+        Value initial_value_;
+        IsCalledsPtr is_calleds_ptr_;
+        ItersPtr iters_ptr_;
+        OutsPtr outs_ptr_;
+        PartialSumsPtr partial_sums_ptr_;
+
+        inclusive_scan_forward_iterator_init(
+          ForwardIterator1 const first, ForwardIterator2 const d_first,
+          BinaryOperation binary_operation, Value const initial_value,
+          IsCalledsPtr is_calleds_ptr, ItersPtr iters_ptr, OutsPtr outs_ptr,
+          PartialSumsPtr partial_sums_ptr)
+          : first_(first), d_first_(d_first), binary_operation_(binary_operation),
+            initial_value_(initial_value),
+            is_calleds_ptr_(is_calleds_ptr),
+            iters_ptr_(iters_ptr), outs_ptr_(outs_ptr),
+            partial_sums_ptr_(partial_sums_ptr)
+        { }
+
+        typedef void result_type;
+        template <typename Size>
+        void operator()(Size const n, int const thread_index) const
+        {
+          if (not is_calleds_ptr_[thread_index])
+          {
+            iters_ptr_[thread_index] = first_;
+            outs_ptr_[thread_index] = d_first_;
+            std::advance(iters_ptr_[thread_index], n);
+            std::advance(outs_ptr_[thread_index], n);
+
+            partial_sums_ptr_[thread_index]
+              = thread_index == 0
+                ? binary_operation_(initial_value_, *iters_ptr_[0]++)
+                : *iters_ptr_[thread_index]++;
+            is_calleds_ptr_[thread_index] = static_cast<int>(true);
+          }
+          else
+            partial_sums_ptr_[thread_index]
+              = binary_operation_(
+                  partial_sums_ptr_[thread_index], *iters_ptr_[thread_index]++);
+
+          *outs_ptr_[thread_index]++ = partial_sums_ptr_[thread_index];
+        }
+      };
+
+      template <
+        typename ForwardIterator1, typename ForwardIterator2,
+        typename BinaryOperation, typename Value,
+        typename IsCalledsPtr, typename ItersPtr, typename OutsPtr,
+        typename PartialSumsPtr>
+      inline ::ket::utility::parallel_loop_n_detail::inclusive_scan_forward_iterator_init<
+        ForwardIterator1, ForwardIterator2, BinaryOperation, Value,
+        IsCalledsPtr, ItersPtr, OutsPtr, PartialSumsPtr>
+      make_inclusive_scan_forward_iterator_init(
+        ForwardIterator1 const first, ForwardIterator2 const d_first,
+        BinaryOperation binary_operation, Value const initial_value,
+        IsCalledsPtr is_calleds_ptr, ItersPtr iters_ptr, OutsPtr outs_ptr,
+        PartialSumsPtr partial_sums_ptr)
+      {
+        typedef
+          ::ket::utility::parallel_loop_n_detail::inclusive_scan_forward_iterator_init<
+            ForwardIterator1, ForwardIterator2, BinaryOperation, Value,
+            IsCalledsPtr, ItersPtr, OutsPtr, PartialSumsPtr>
+          result_type;
+        return result_type(
+          first, d_first, binary_operation, initial_value,
+          is_calleds_ptr, iters_ptr, outs_ptr, partial_sums_ptr);
+      }
+
+
+      template <
         typename ForwardIterator, typename BinaryOperation,
         typename IsCalledsPtr, typename OutsPtr, typename PartialSumsPtr>
-      struct inclusive_scan2_forward_iterator_
+      struct post_inclusive_scan_forward_iterator_
       {
         ForwardIterator d_first_;
         BinaryOperation binary_operation_;
@@ -848,7 +927,7 @@ namespace ket
         OutsPtr outs_ptr_;
         PartialSumsPtr partial_sums_ptr_;
 
-        inclusive_scan2_forward_iterator_(
+        post_inclusive_scan_forward_iterator_(
           ForwardIterator const d_first, BinaryOperation binary_operation,
           IsCalledsPtr is_calleds_ptr, OutsPtr outs_ptr,
           PartialSumsPtr partial_sums_ptr)
@@ -880,14 +959,14 @@ namespace ket
       template <
         typename ForwardIterator, typename BinaryOperation,
         typename IsCalledsPtr, typename OutsPtr, typename PartialSumsPtr>
-      inline ::ket::utility::parallel_loop_n_detail::inclusive_scan2_forward_iterator_<
+      inline ::ket::utility::parallel_loop_n_detail::post_inclusive_scan_forward_iterator_<
         ForwardIterator, BinaryOperation, IsCalledsPtr, OutsPtr, PartialSumsPtr>
-      make_inclusive_scan2_forward_iterator_(
+      make_post_inclusive_scan_forward_iterator_(
         ForwardIterator const d_first, BinaryOperation binary_operation,
         IsCalledsPtr is_calleds_ptr, OutsPtr outs_ptr, PartialSumsPtr partial_sums_ptr)
       {
         typedef
-          ::ket::utility::parallel_loop_n_detail::inclusive_scan2_forward_iterator_<
+          ::ket::utility::parallel_loop_n_detail::post_inclusive_scan_forward_iterator_<
             ForwardIterator, BinaryOperation, IsCalledsPtr, OutsPtr, PartialSumsPtr>
           result_type;
         return result_type(
@@ -898,14 +977,14 @@ namespace ket
       template <
         typename RandomAccessIterator1, typename RandomAccessIterator2,
         typename BinaryOperation, typename PartialSumsPtr>
-      struct inclusive_scan1_random_access_iterator_
+      struct inclusive_scan_random_access_iterator_
       {
         RandomAccessIterator1 first_;
         RandomAccessIterator2 d_first_;
         BinaryOperation binary_operation_;
         PartialSumsPtr partial_sums_ptr_;
 
-        inclusive_scan1_random_access_iterator_(
+        inclusive_scan_random_access_iterator_(
           RandomAccessIterator1 const first, RandomAccessIterator2 const d_first,
           BinaryOperation binary_operation, PartialSumsPtr partial_sums_ptr)
           : first_(first), d_first_(d_first), binary_operation_(binary_operation),
@@ -925,14 +1004,14 @@ namespace ket
       template <
         typename RandomAccessIterator1, typename RandomAccessIterator2,
         typename BinaryOperation, typename PartialSumsPtr>
-      inline ::ket::utility::parallel_loop_n_detail::inclusive_scan1_random_access_iterator_<
+      inline ::ket::utility::parallel_loop_n_detail::inclusive_scan_random_access_iterator_<
         RandomAccessIterator1, RandomAccessIterator2, BinaryOperation, PartialSumsPtr>
-      make_inclusive_scan1_random_access_iterator_(
+      make_inclusive_scan_random_access_iterator_(
         RandomAccessIterator1 const first, RandomAccessIterator2 const d_first,
         BinaryOperation binary_operation, PartialSumsPtr partial_sums_ptr)
       {
         typedef
-          ::ket::utility::parallel_loop_n_detail::inclusive_scan1_random_access_iterator_<
+          ::ket::utility::parallel_loop_n_detail::inclusive_scan_random_access_iterator_<
             RandomAccessIterator1, RandomAccessIterator2, BinaryOperation,
             PartialSumsPtr>
           result_type;
@@ -943,13 +1022,13 @@ namespace ket
       template <
         typename RandomAccessIterator, typename BinaryOperation,
         typename PartialSumsPtr>
-      struct inclusive_scan2_random_access_iterator_
+      struct post_inclusive_scan_random_access_iterator_
       {
         RandomAccessIterator d_first_;
         BinaryOperation binary_operation_;
         PartialSumsPtr partial_sums_ptr_;
 
-        inclusive_scan2_random_access_iterator_(
+        post_inclusive_scan_random_access_iterator_(
           RandomAccessIterator const d_first, BinaryOperation binary_operation,
           PartialSumsPtr partial_sums_ptr)
           : d_first_(d_first), binary_operation_(binary_operation),
@@ -971,19 +1050,100 @@ namespace ket
       template <
         typename RandomAccessIterator, typename BinaryOperation,
         typename PartialSumsPtr>
-      inline ::ket::utility::parallel_loop_n_detail::inclusive_scan2_random_access_iterator_<
+      inline ::ket::utility::parallel_loop_n_detail::post_inclusive_scan_random_access_iterator_<
         RandomAccessIterator, BinaryOperation, PartialSumsPtr>
-      make_inclusive_scan2_random_access_iterator_(
+      make_post_inclusive_scan_random_access_iterator_(
         RandomAccessIterator const d_first, BinaryOperation binary_operation,
         PartialSumsPtr partial_sums_ptr)
       {
         typedef
-          ::ket::utility::parallel_loop_n_detail::inclusive_scan2_random_access_iterator_<
+          ::ket::utility::parallel_loop_n_detail::post_inclusive_scan_random_access_iterator_<
             RandomAccessIterator, BinaryOperation, PartialSumsPtr>
           result_type;
         return result_type(d_first, binary_operation, partial_sums_ptr);
       }
 # endif // BOOST_NO_CXX11_LAMBDAS
+
+
+      template <
+        typename ParallelPolicy,
+        typename RangeSize, typename ForwardIterator, typename BinaryOperation,
+        typename Value, typename NumThreads>
+      static void post_inclusive_scan(
+        ParallelPolicy const parallel_policy,
+        RangeSize const range_size, ForwardIterator d_first, BinaryOperation binary_operation,
+        int* is_calleds_ptr, Value* partial_sums_ptr, ForwardIterator* outs_ptr, NumThreads const num_threads)
+      {
+        std::partial_sum(
+          partial_sums_ptr, partial_sums_ptr + num_threads,
+          partial_sums_ptr, binary_operation);
+
+        std::fill(
+          is_calleds_ptr, is_calleds_ptr + num_threads,
+          static_cast<int>(false));
+
+        using ::ket::utility::loop_n;
+# ifndef BOOST_NO_CXX11_LAMBDAS
+        loop_n(
+          parallel_policy, range_size,
+          [d_first, binary_operation, is_calleds_ptr, partial_sums_ptr, outs_ptr](
+            RangeSize const n, int const thread_index)
+          {
+            if (thread_index == 0)
+              return;
+
+            if (not is_calleds_ptr[thread_index])
+            {
+              outs_ptr[thread_index] = d_first;
+              std::advance(outs_ptr[thread_index], n);
+              is_calleds_ptr[thread_index] = static_cast<int>(true);
+            }
+
+            *outs_ptr[thread_index]++
+              = binary_operation(
+                  partial_sums_ptr[thread_index-1], *outs_ptr[thread_index]);
+          });
+# else // BOOST_NO_CXX11_LAMBDAS
+        loop_n(
+          parallel_policy, range_size,
+          ::ket::utility::parallel_loop_n_detail::make_post_inclusive_scan_forward_iterator_(
+            d_first, binary_operation, is_calleds_ptr, outs_ptr, partial_sums_ptr));
+# endif // BOOST_NO_CXX11_LAMBDAS
+      }
+
+      template <
+        typename ParallelPolicy,
+        typename RangeSize, typename RandomAccessIterator, typename BinaryOperation,
+        typename Value, typename NumThreads>
+      static void post_inclusive_scan(
+        ParallelPolicy const parallel_policy,
+        RangeSize const range_size, RandomAccessIterator d_first, BinaryOperation binary_operation,
+        Value* partial_sums_ptr, NumThreads const num_threads)
+      {
+        std::partial_sum(
+          partial_sums_ptr, partial_sums_ptr + num_threads,
+          partial_sums_ptr, binary_operation);
+
+        using ::ket::utility::loop_n;
+# ifndef BOOST_NO_CXX11_LAMBDAS
+        loop_n(
+          parallel_policy, range_size,
+          [d_first, binary_operation, partial_sums_ptr](
+            RangeSize const n, int const thread_index)
+          {
+            if (thread_index == 0)
+              return;
+
+            d_first[n]
+              = binary_operation(partial_sums_ptr[thread_index-1], d_first[n]);
+          });
+# else // BOOST_NO_CXX11_LAMBDAS
+        loop_n(
+          parallel_policy, range_size,
+          ::ket::utility::parallel_loop_n_detail::make_post_inclusive_scan_random_access_iterator_(
+            d_first, binary_operation, partial_sums_ptr));
+# endif // BOOST_NO_CXX11_LAMBDAS
+      }
     } // namespace parallel_loop_n_detail
 
     namespace dispatch
@@ -1043,7 +1203,7 @@ namespace ket
 # else // BOOST_NO_CXX11_LAMBDAS
           loop_n(
             parallel_policy, std::distance(first, last),
-            ::ket::utility::parallel_loop_n_detail::make_inclusive_scan1_forward_iterator(
+            ::ket::utility::parallel_loop_n_detail::make_inclusive_scan_forward_iterator(
               first, d_first,
               is_calleds_ptr, iters_ptr, outs_ptr, partial_sums_ptr));
 # endif // BOOST_NO_CXX11_LAMBDAS
@@ -1076,7 +1236,7 @@ namespace ket
 # else // BOOST_NO_CXX11_LAMBDAS
           loop_n(
             parallel_policy, std::distance(first, last),
-            ::ket::utility::parallel_loop_n_detail::make_inclusive_scan2_forward_iterator(
+            ::ket::utility::parallel_loop_n_detail::make_post_inclusive_scan_forward_iterator(
               d_first, is_calleds_ptr, outs_ptr, partial_sums_ptr));
 # endif // BOOST_NO_CXX11_LAMBDAS
 
@@ -1114,7 +1274,7 @@ namespace ket
 # else // BOOST_NO_CXX11_LAMBDAS
           loop_n(
             parallel_policy, last-first,
-            ::ket::utility::parallel_loop_n_detail::make_inclusive_scan1_random_access_iterator(
+            ::ket::utility::parallel_loop_n_detail::make_inclusive_scan_random_access_iterator(
               first, d_first, partial_sums_ptr));
 # endif // BOOST_NO_CXX11_LAMBDAS
 
@@ -1136,7 +1296,7 @@ namespace ket
 # else // BOOST_NO_CXX11_LAMBDAS
           loop_n(
             parallel_policy, last-first,
-            ::ket::utility::parallel_loop_n_detail::make_inclusive_scan2_random_access_iterator(
+            ::ket::utility::parallel_loop_n_detail::make_post_inclusive_scan_random_access_iterator(
               d_first, partial_sums_ptr));
 # endif // BOOST_NO_CXX11_LAMBDAS
 
@@ -1201,44 +1361,14 @@ namespace ket
 # else // BOOST_NO_CXX11_LAMBDAS
           loop_n(
             parallel_policy, std::distance(first, last),
-            ::ket::utility::parallel_loop_n_detail::make_inclusive_scan1_forward_iterator_(
+            ::ket::utility::parallel_loop_n_detail::make_inclusive_scan_forward_iterator_(
               first, d_first, binary_operation,
               is_calleds_ptr, iters_ptr, outs_ptr, partial_sums_ptr));
 # endif // BOOST_NO_CXX11_LAMBDAS
 
-          std::partial_sum(
-            partial_sums_ptr, partial_sums_ptr + partial_sums.size(),
-            partial_sums_ptr);
-
-          std::fill(
-            is_calleds_ptr, is_calleds_ptr + is_calleds.size(),
-            static_cast<int>(false));
-# ifndef BOOST_NO_CXX11_LAMBDAS
-          loop_n(
-            parallel_policy, std::distance(first, last),
-            [d_first, binary_operation, is_calleds_ptr, outs_ptr, partial_sums_ptr](
-              difference_type const n, int const thread_index)
-            {
-              if (thread_index == 0)
-                return;
-
-              if (not is_calleds_ptr[thread_index])
-              {
-                outs_ptr[thread_index] = d_first;
-                std::advance(outs_ptr[thread_index], n);
-                is_calleds_ptr[thread_index] = static_cast<int>(true);
-              }
-
-              *outs_ptr[thread_index]++
-                = binary_operation(
-                    partial_sums_ptr[thread_index-1], *outs_ptr[thread_index]);
-            });
-# else // BOOST_NO_CXX11_LAMBDAS
-          loop_n(
-            parallel_policy, std::distance(first, last),
-            ::ket::utility::parallel_loop_n_detail::make_inclusive_scan2_forward_iterator_(
-              d_first, binary_operation, is_calleds_ptr, outs_ptr, partial_sums_ptr));
-# endif // BOOST_NO_CXX11_LAMBDAS
+          ::ket::utility::parallel_loop_n_detail::post_inclusive_scan(
+            parallel_policy, std::distance(first, last), d_first, binary_operation,
+            is_calleds_ptr, partial_sums_ptr, outs_ptr, partial_sums.size());
 
           return outs.back();
         }
@@ -1278,32 +1408,133 @@ namespace ket
 # else // BOOST_NO_CXX11_LAMBDAS
           loop_n(
             parallel_policy, last-first,
-            ::ket::utility::parallel_loop_n_detail::make_inclusive_scan1_random_access_iterator_(
+            ::ket::utility::parallel_loop_n_detail::make_inclusive_scan_random_access_iterator_(
               first, d_first, binary_operation, partial_sums_ptr));
 # endif // BOOST_NO_CXX11_LAMBDAS
 
-          std::partial_sum(
-            partial_sums_ptr, partial_sums_ptr + partial_sums.size(),
-            partial_sums_ptr);
+          ::ket::utility::parallel_loop_n_detail::post_inclusive_scan(
+            parallel_policy, last-first, d_first, binary_operation,
+            partial_sums_ptr, partial_sums.size());
 
+          return d_first + (last-first);
+        }
+
+        template <
+          typename ForwardIterator1, typename ForwardIterator2,
+          typename BinaryOperation, typename Value>
+        static ForwardIterator2 call(
+          ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
+          ForwardIterator1 const first, ForwardIterator1 const last,
+          ForwardIterator2 const d_first,
+          BinaryOperation binary_operation, Value const initial_value,
+          std::forward_iterator_tag const, std::forward_iterator_tag const)
+        {
+          std::vector<int> is_calleds(
+            ::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
+          std::vector<ForwardIterator1> iters(
+            ::ket::utility::num_threads(parallel_policy));
+          std::vector<ForwardIterator2> outs(
+            ::ket::utility::num_threads(parallel_policy));
+          typedef
+            typename std::iterator_traits<ForwardIterator1>::value_type
+            value_type;
+          std::vector<value_type> partial_sums(
+            ::ket::utility::num_threads(parallel_policy));
+
+          int* is_calleds_ptr = KET_addressof(is_calleds.front());
+          ForwardIterator1* iters_ptr = KET_addressof(iters.front());
+          ForwardIterator2* outs_ptr = KET_addressof(outs.front());
+          value_type* partial_sums_ptr = KET_addressof(partial_sums.front());
+
+          using ::ket::utility::loop_n;
 # ifndef BOOST_NO_CXX11_LAMBDAS
+          typedef
+            typename std::iterator_traits<ForwardIterator1>::difference_type
+            difference_type;
           loop_n(
-            parallel_policy, last-first,
-            [d_first, binary_operation, partial_sums_ptr](
+            parallel_policy, std::distance(first, last),
+            [first, d_first, binary_operation, initial_value,
+             is_calleds_ptr, iters_ptr, outs_ptr, partial_sums_ptr](
               difference_type const n, int const thread_index)
             {
-              if (thread_index == 0)
-                return;
+              if (not is_calleds_ptr[thread_index])
+              {
+                iters_ptr[thread_index] = first;
+                outs_ptr[thread_index] = d_first;
+                std::advance(iters_ptr[thread_index], n);
+                std::advance(outs_ptr[thread_index], n);
 
-              d_first[n]
-                = binary_operation(partial_sums_ptr[thread_index-1], d_first[n]);
+                partial_sums_ptr[thread_index]
+                  = thread_index == 0
+                    ? binary_operation(initial_value, *iters_ptr[0]++)
+                    : *iters_ptr[thread_index]++;
+                is_calleds_ptr[thread_index] = static_cast<int>(true);
+              }
+              else
+                partial_sums_ptr[thread_index]
+                  = binary_operation(
+                      partial_sums_ptr[thread_index], *iters_ptr[thread_index]++);
+
+              *outs_ptr[thread_index]++ = partial_sums_ptr[thread_index];
             });
 # else // BOOST_NO_CXX11_LAMBDAS
           loop_n(
             parallel_policy, std::distance(first, last),
-            ::ket::utility::parallel_loop_n_detail::make_inclusive_scan2_random_access_iterator_(
-              d_first, binary_operation, partial_sums_ptr));
+            ::ket::utility::parallel_loop_n_detail::make_inclusive_scan_forward_iterator_init(
+              first, d_first, binary_operation, initial_value,
+              is_calleds_ptr, iters_ptr, outs_ptr, partial_sums_ptr));
 # endif // BOOST_NO_CXX11_LAMBDAS
+
+          ::ket::utility::parallel_loop_n_detail::post_inclusive_scan(
+            parallel_policy, std::distance(first, last), d_first, binary_operation,
+            is_calleds_ptr, partial_sums_ptr, outs_ptr, partial_sums.size());
+
+          return outs.back();
+        }
+
+        template <
+          typename RandomAccessIterator1, typename RandomAccessIterator2,
+          typename BinaryOperation, typename Value>
+        static RandomAccessIterator2 call(
+          ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
+          RandomAccessIterator1 const first, RandomAccessIterator1 const last,
+          RandomAccessIterator2 const d_first,
+          BinaryOperation binary_operation, Value const initial_value,
+          std::random_access_iterator_tag const, std::random_access_iterator_tag const)
+        {
+          typedef
+            typename std::iterator_traits<RandomAccessIterator1>::value_type
+            value_type;
+          std::vector<value_type> partial_sums(
+            ::ket::utility::num_threads(parallel_policy), static_cast<value_type>(0));
+          partial_sums.front() = initial_value;
+
+          value_type* partial_sums_ptr = KET_addressof(partial_sums.front());
+
+          using ::ket::utility::loop_n;
+# ifndef BOOST_NO_CXX11_LAMBDAS
+          typedef
+            typename std::iterator_traits<RandomAccessIterator1>::difference_type
+            difference_type;
+          loop_n(
+            parallel_policy, last-first,
+            [first, d_first, binary_operation, partial_sums_ptr](
+              difference_type const n, int const thread_index)
+            {
+              partial_sums_ptr[thread_index]
+                = binary_operation(partial_sums_ptr[thread_index], first[n]);
+              d_first[n] = partial_sums_ptr[thread_index];
+            });
+# else // BOOST_NO_CXX11_LAMBDAS
+          loop_n(
+            parallel_policy, last-first,
+            ::ket::utility::parallel_loop_n_detail::make_inclusive_scan_random_access_iterator_(
+              first, d_first, binary_operation, partial_sums_ptr));
+# endif // BOOST_NO_CXX11_LAMBDAS
+
+          ::ket::utility::parallel_loop_n_detail::post_inclusive_scan(
+            parallel_policy, last-first, d_first, binary_operation,
+            partial_sums_ptr, partial_sums.size());
 
           return d_first + (last-first);
         }
@@ -1320,7 +1551,7 @@ namespace ket
         typename BinaryOperation, typename UnaryOperation,
         typename IsCalledsPtr, typename ItersPtr, typename OutsPtr,
         typename PartialSumsPtr>
-      struct transform_inclusive_scan1_forward_iterator_
+      struct transform_inclusive_scan_forward_iterator
       {
         ForwardIterator1 first_;
         ForwardIterator2 d_first_;
@@ -1331,7 +1562,7 @@ namespace ket
         OutsPtr outs_ptr_;
         PartialSumsPtr partial_sums_ptr_;
 
-        transform_inclusive_scan1_forward_iterator_(
+        transform_inclusive_scan_forward_iterator(
           ForwardIterator1 const first, ForwardIterator2 const d_first,
           BinaryOperation binary_operation, UnaryOperation unary_operation,
           IsCalledsPtr is_calleds_ptr, ItersPtr iters_ptr, OutsPtr outs_ptr,
@@ -1374,17 +1605,17 @@ namespace ket
         typename BinaryOperation, typename UnaryOperation,
         typename IsCalledsPtr, typename ItersPtr, typename OutsPtr,
         typename PartialSumsPtr>
-      inline ::ket::utility::parallel_loop_n_detail::transform_inclusive_scan1_forward_iterator_<
+      inline ::ket::utility::parallel_loop_n_detail::transform_inclusive_scan_forward_iterator<
         ForwardIterator1, ForwardIterator2, BinaryOperation, UnaryOperation,
         IsCalledsPtr, ItersPtr, OutsPtr, PartialSumsPtr>
-      make_transform_inclusive_scan1_forward_iterator_(
+      make_transform_inclusive_scan_forward_iterator(
         ForwardIterator1 const first, ForwardIterator2 const d_first,
         BinaryOperation binary_operation, UnaryOperation unary_operation,
         IsCalledsPtr is_calleds_ptr, ItersPtr iters_ptr, OutsPtr outs_ptr,
         PartialSumsPtr partial_sums_ptr)
       {
         typedef
-          ::ket::utility::parallel_loop_n_detail::transform_inclusive_scan1_forward_iterator_<
+          ::ket::utility::parallel_loop_n_detail::transform_inclusive_scan_forward_iterator<
             ForwardIterator1, ForwardIterator2, BinaryOperation, UnaryOperation,
             IsCalledsPtr, ItersPtr, OutsPtr, PartialSumsPtr>
           result_type;
@@ -1395,22 +1626,34 @@ namespace ket
 
 
       template <
-        typename ForwardIterator, typename BinaryOperation,
-        typename IsCalledsPtr, typename OutsPtr, typename PartialSumsPtr>
-      struct transform_inclusive_scan2_forward_iterator_
+        typename ForwardIterator1, typename ForwardIterator2,
+        typename BinaryOperation, typename UnaryOperation, typename Value,
+        typename IsCalledsPtr, typename ItersPtr, typename OutsPtr,
+        typename PartialSumsPtr>
+      struct transform_inclusive_scan_forward_iterator_init
       {
-        ForwardIterator d_first_;
+        ForwardIterator1 first_;
+        ForwardIterator2 d_first_;
         BinaryOperation binary_operation_;
+        UnaryOperation unary_operation_;
+        Value initial_value_;
         IsCalledsPtr is_calleds_ptr_;
+        ItersPtr iters_ptr_;
         OutsPtr outs_ptr_;
         PartialSumsPtr partial_sums_ptr_;
 
-        transform_inclusive_scan2_forward_iterator_(
-          ForwardIterator const d_first, BinaryOperation binary_operation,
-          IsCalledsPtr is_calleds_ptr, OutsPtr outs_ptr,
+        transform_inclusive_scan_forward_iterator_init(
+          ForwardIterator1 const first, ForwardIterator2 const d_first,
+          BinaryOperation binary_operation, UnaryOperation unary_operation,
+          Value const initial_value,
+          IsCalledsPtr is_calleds_ptr, ItersPtr iters_ptr, OutsPtr outs_ptr,
           PartialSumsPtr partial_sums_ptr)
-          : d_first_(d_first), binary_operation_(binary_operation),
-            is_calleds_ptr_(is_calleds_ptr), outs_ptr_(outs_ptr),
+          : first_(first), d_first_(d_first),
+            binary_operation_(binary_operation),
+            unary_operation_(unary_operation),
+            initial_value_(initial_value),
+            is_calleds_ptr_(is_calleds_ptr),
+            iters_ptr_(iters_ptr), outs_ptr_(outs_ptr),
             partial_sums_ptr_(partial_sums_ptr)
         { }
 
@@ -1418,44 +1661,60 @@ namespace ket
         template <typename Size>
         void operator()(Size const n, int const thread_index) const
         {
-          if (thread_index == 0)
-            return;
-
           if (not is_calleds_ptr_[thread_index])
           {
+            iters_ptr_[thread_index] = first_;
             outs_ptr_[thread_index] = d_first_;
+            std::advance(iters_ptr_[thread_index], n);
             std::advance(outs_ptr_[thread_index], n);
+
+            partial_sums_ptr_[thread_index]
+              = thread_index == 0
+                ? binary_operation(
+                    initial_value_, unary_operation_(*iters_ptr_[thread_index]++))
+                : unary_operation_(*iters_ptr_[thread_index]++);
             is_calleds_ptr_[thread_index] = static_cast<int>(true);
           }
+          else
+            partial_sums_ptr_[thread_index]
+              = binary_operation_(
+                  partial_sums_ptr_[thread_index],
+                  unary_operation_(*iters_ptr_[thread_index]++));
 
-          *outs_ptr_[thread_index]++
-            = binary_operation_(
-                partial_sums_ptr_[thread_index-1], *outs_ptr_[thread_index]);
+          *outs_ptr_[thread_index]++ = partial_sums_ptr_[thread_index];
         }
       };
 
       template <
-        typename ForwardIterator, typename BinaryOperation,
-        typename IsCalledsPtr, typename OutsPtr, typename PartialSumsPtr>
-      inline ::ket::utility::parallel_loop_n_detail::transform_inclusive_scan2_forward_iterator_<
-        ForwardIterator, BinaryOperation, IsCalledsPtr, OutsPtr, PartialSumsPtr>
-      make_transform_inclusive_scan2_forward_iterator_(
-        ForwardIterator const d_first, BinaryOperation binary_operation,
-        IsCalledsPtr is_calleds_ptr, OutsPtr outs_ptr, PartialSumsPtr partial_sums_ptr)
+        typename ForwardIterator1, typename ForwardIterator2,
+        typename BinaryOperation, typename UnaryOperation, typename Value,
+        typename IsCalledsPtr, typename ItersPtr, typename OutsPtr,
+        typename PartialSumsPtr>
+      inline ::ket::utility::parallel_loop_n_detail::transform_inclusive_scan_forward_iterator_init<
+        ForwardIterator1, ForwardIterator2, BinaryOperation, UnaryOperation, Value,
+        IsCalledsPtr, ItersPtr, OutsPtr, PartialSumsPtr>
+      make_transform_inclusive_scan_forward_iterator_init(
+        ForwardIterator1 const first, ForwardIterator2 const d_first,
+        BinaryOperation binary_operation, UnaryOperation unary_operation,
+        Value const initial_value,
+        IsCalledsPtr is_calleds_ptr, ItersPtr iters_ptr, OutsPtr outs_ptr,
+        PartialSumsPtr partial_sums_ptr)
       {
         typedef
-          ::ket::utility::parallel_loop_n_detail::transform_inclusive_scan2_forward_iterator_<
-            ForwardIterator, BinaryOperation, IsCalledsPtr, OutsPtr, PartialSumsPtr>
+          ::ket::utility::parallel_loop_n_detail::transform_inclusive_scan_forward_iterator_init<
+            ForwardIterator1, ForwardIterator2, BinaryOperation, UnaryOperation, Value,
+            IsCalledsPtr, ItersPtr, OutsPtr, PartialSumsPtr>
           result_type;
         return result_type(
-          d_first, binary_operation, is_calleds_ptr, outs_ptr, partial_sums_ptr);
+          first, d_first, binary_operation, unary_operation, initial_value,
+          is_calleds_ptr, iters_ptr, outs_ptr, partial_sums_ptr);
       }
 
 
       template <
         typename RandomAccessIterator1, typename RandomAccessIterator2,
         typename BinaryOperation, typename UnaryOperation, typename PartialSumsPtr>
-      struct transform_inclusive_scan1_random_access_iterator_
+      struct transform_inclusive_scan_random_access_iterator
       {
         RandomAccessIterator1 first_;
         RandomAccessIterator2 d_first_;
@@ -1463,7 +1722,7 @@ namespace ket
         UnaryOperation unary_operation_;
         PartialSumsPtr partial_sums_ptr_;
 
-        transform_inclusive_scan1_random_access_iterator_(
+        transform_inclusive_scan_random_access_iterator(
           RandomAccessIterator1 const first, RandomAccessIterator2 const d_first,
           BinaryOperation binary_operation, UnaryOperation unary_operation,
           PartialSumsPtr partial_sums_ptr)
@@ -1487,66 +1746,21 @@ namespace ket
       template <
         typename RandomAccessIterator1, typename RandomAccessIterator2,
         typename BinaryOperation, typename UnaryOperation, typename PartialSumsPtr>
-      inline ::ket::utility::parallel_loop_n_detail::transform_inclusive_scan1_random_access_iterator_<
+      inline ::ket::utility::parallel_loop_n_detail::transform_inclusive_scan_random_access_iterator<
         RandomAccessIterator1, RandomAccessIterator2,
         BinaryOperation, UnaryOperation, PartialSumsPtr>
-      make_transform_inclusive_scan1_random_access_iterator_(
+      make_transform_inclusive_scan_random_access_iterator(
         RandomAccessIterator1 const first, RandomAccessIterator2 const d_first,
         BinaryOperation binary_operation, UnaryOperation unary_operation,
         PartialSumsPtr partial_sums_ptr)
       {
         typedef
-          ::ket::utility::parallel_loop_n_detail::transform_inclusive_scan1_random_access_iterator_<
+          ::ket::utility::parallel_loop_n_detail::transform_inclusive_scan_random_access_iterator<
             RandomAccessIterator1, RandomAccessIterator2,
             BinaryOperation, UnaryOperation, PartialSumsPtr>
           result_type;
         return result_type(
           first, d_first, binary_operation, unary_operation, partial_sums_ptr);
-      }
-
-
-      template <
-        typename RandomAccessIterator, typename BinaryOperation,
-        typename PartialSumsPtr>
-      struct transform_inclusive_scan2_random_access_iterator_
-      {
-        RandomAccessIterator d_first_;
-        BinaryOperation binary_operation_;
-        PartialSumsPtr partial_sums_ptr_;
-
-        transform_inclusive_scan2_random_access_iterator_(
-          RandomAccessIterator const d_first, BinaryOperation binary_operation,
-          PartialSumsPtr partial_sums_ptr)
-          : d_first_(d_first), binary_operation_(binary_operation),
-            partial_sums_ptr_(partial_sums_ptr)
-        { }
-
-        typedef void result_type;
-        template <typename Size>
-        void operator()(Size const n, int const thread_index) const
-        {
-          if (thread_index == 0)
-            return;
-
-          d_first_[n]
-            = binary_operation_(partial_sums_ptr_[thread_index-1], d_first_[n]);
-        }
-      };
-
-      template <
-        typename RandomAccessIterator, typename BinaryOperation,
-        typename PartialSumsPtr>
-      inline ::ket::utility::parallel_loop_n_detail::transform_inclusive_scan2_random_access_iterator_<
-        RandomAccessIterator, BinaryOperation, PartialSumsPtr>
-      make_transform_inclusive_scan2_random_access_iterator_(
-        RandomAccessIterator const d_first, BinaryOperation binary_operation,
-        PartialSumsPtr partial_sums_ptr)
-      {
-        typedef
-          ::ket::utility::parallel_loop_n_detail::transform_inclusive_scan2_random_access_iterator_<
-            RandomAccessIterator, BinaryOperation, PartialSumsPtr>
-          result_type;
-        return result_type(d_first, binary_operation, partial_sums_ptr);
       }
 # endif // BOOST_NO_CXX11_LAMBDAS
     } // namespace parallel_loop_n_detail
@@ -1616,44 +1830,14 @@ namespace ket
 # else // BOOST_NO_CXX11_LAMBDAS
           loop_n(
             parallel_policy, std::distance(first, last),
-            ::ket::utility::parallel_loop_n_detail::make_transform_inclusive_scan1_forward_iterator_(
+            ::ket::utility::parallel_loop_n_detail::make_transform_inclusive_scan_forward_iterator(
               first, d_first, binary_operation, unary_operation,
               is_calleds_ptr, iters_ptr, outs_ptr, partial_sums_ptr));
 # endif // BOOST_NO_CXX11_LAMBDAS
 
-          std::partial_sum(
-            partial_sums_ptr, partial_sums_ptr + partial_sums.size(),
-            partial_sums_ptr);
-
-          std::fill(
-            is_calleds_ptr, is_calleds_ptr + is_calleds.size(),
-            static_cast<int>(false));
-# ifndef BOOST_NO_CXX11_LAMBDAS
-          loop_n(
-            parallel_policy, std::distance(first, last),
-            [d_first, binary_operation, is_calleds_ptr, outs_ptr, partial_sums_ptr](
-              difference_type const n, int const thread_index)
-            {
-              if (thread_index == 0)
-                return;
-
-              if (not is_calleds_ptr[thread_index])
-              {
-                outs_ptr[thread_index] = d_first;
-                std::advance(outs_ptr[thread_index], n);
-                is_calleds_ptr[thread_index] = static_cast<int>(true);
-              }
-
-              *outs_ptr[thread_index]++
-                = binary_operation(
-                    partial_sums_ptr[thread_index-1], *outs_ptr[thread_index]);
-            });
-# else // BOOST_NO_CXX11_LAMBDAS
-          loop_n(
-            parallel_policy, std::distance(first, last),
-            ::ket::utility::parallel_loop_n_detail::make_transform_inclusive_scan2_forward_iterator_(
-              d_first, binary_operation, is_calleds_ptr, outs_ptr, partial_sums_ptr));
-# endif // BOOST_NO_CXX11_LAMBDAS
+          ::ket::utility::parallel_loop_n_detail::post_inclusive_scan(
+            parallel_policy, std::distance(first, last), d_first, binary_operation,
+            is_calleds_ptr, partial_sums_ptr, outs_ptr, partial_sums.size());
 
           return outs.back();
         }
@@ -1694,32 +1878,138 @@ namespace ket
 # else // BOOST_NO_CXX11_LAMBDAS
           loop_n(
             parallel_policy, last-first,
-            ::ket::utility::parallel_loop_n_detail::make_transform_inclusive_scan1_random_access_iterator_(
+            ::ket::utility::parallel_loop_n_detail::make_transform_inclusive_scan_random_access_iterator(
               first, d_first, binary_operation, unary_operation, partial_sums_ptr));
 # endif // BOOST_NO_CXX11_LAMBDAS
 
-          std::partial_sum(
-            partial_sums_ptr, partial_sums_ptr + partial_sums.size(),
-            partial_sums_ptr);
+          ::ket::utility::parallel_loop_n_detail::post_inclusive_scan(
+            parallel_policy, last-first, d_first, binary_operation,
+            partial_sums_ptr, partial_sums.size());
 
+          return d_first + (last-first);
+        }
+
+        template <
+          typename ForwardIterator1, typename ForwardIterator2,
+          typename BinaryOperation, typename UnaryOperation, typename Value>
+        static ForwardIterator2 call(
+          ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
+          ForwardIterator1 const first, ForwardIterator1 const last,
+          ForwardIterator2 const d_first,
+          BinaryOperation binary_operation, UnaryOperation unary_operation,
+          Value const initial_value,
+          std::forward_iterator_tag const, std::forward_iterator_tag const)
+        {
+          std::vector<int> is_calleds(
+            ::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
+          std::vector<ForwardIterator1> iters(
+            ::ket::utility::num_threads(parallel_policy));
+          std::vector<ForwardIterator2> outs(
+            ::ket::utility::num_threads(parallel_policy));
+          typedef
+            typename std::iterator_traits<ForwardIterator1>::value_type
+            value_type;
+          std::vector<value_type> partial_sums(
+            ::ket::utility::num_threads(parallel_policy));
+
+          int* is_calleds_ptr = KET_addressof(is_calleds.front());
+          ForwardIterator1* iters_ptr = KET_addressof(iters.front());
+          ForwardIterator2* outs_ptr = KET_addressof(outs.front());
+          value_type* partial_sums_ptr = KET_addressof(partial_sums.front());
+
+          using ::ket::utility::loop_n;
 # ifndef BOOST_NO_CXX11_LAMBDAS
+          typedef
+            typename std::iterator_traits<ForwardIterator1>::difference_type
+            difference_type;
           loop_n(
-            parallel_policy, last-first,
-            [d_first, binary_operation, partial_sums_ptr](
+            parallel_policy, std::distance(first, last),
+            [first, d_first, binary_operation, unary_operation, initial_value,
+             is_calleds_ptr, iters_ptr, outs_ptr, partial_sums_ptr](
               difference_type const n, int const thread_index)
             {
-              if (thread_index == 0)
-                return;
+              if (not is_calleds_ptr[thread_index])
+              {
+                iters_ptr[thread_index] = first;
+                outs_ptr[thread_index] = d_first;
+                std::advance(iters_ptr[thread_index], n);
+                std::advance(outs_ptr[thread_index], n);
 
-              d_first[n]
-                = binary_operation(partial_sums_ptr[thread_index-1], d_first[n]);
+                partial_sums_ptr[thread_index]
+                  = thread_index == 0
+                    ? binary_operation(
+                        initial_value, unary_operation(*iters_ptr[thread_index]++))
+                    : unary_operation(*iters_ptr[thread_index]++);
+                is_calleds_ptr[thread_index] = static_cast<int>(true);
+              }
+              else
+                partial_sums_ptr[thread_index]
+                  = binary_operation(
+                      partial_sums_ptr[thread_index],
+                      unary_operation(*iters_ptr[thread_index]++));
+
+              *outs_ptr[thread_index]++ = partial_sums_ptr[thread_index];
             });
 # else // BOOST_NO_CXX11_LAMBDAS
           loop_n(
             parallel_policy, std::distance(first, last),
-            ::ket::utility::parallel_loop_n_detail::make_transform_inclusive_scan2_random_access_iterator_(
-              d_first, binary_operation, partial_sums_ptr));
+            ::ket::utility::parallel_loop_n_detail::make_transform_inclusive_scan_forward_iterator_init(
+              first, d_first, binary_operation, unary_operation, initial_value,
+              is_calleds_ptr, iters_ptr, outs_ptr, partial_sums_ptr));
 # endif // BOOST_NO_CXX11_LAMBDAS
+
+          ::ket::utility::parallel_loop_n_detail::post_inclusive_scan(
+            parallel_policy, std::distance(first, last), d_first, binary_operation,
+            is_calleds_ptr, partial_sums_ptr, outs_ptr, partial_sums.size());
+
+          return outs.back();
+        }
+
+        template <
+          typename RandomAccessIterator1, typename RandomAccessIterator2,
+          typename BinaryOperation, typename UnaryOperation, typename Value>
+        static RandomAccessIterator2 call(
+          ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
+          RandomAccessIterator1 const first, RandomAccessIterator1 const last,
+          RandomAccessIterator2 const d_first,
+          BinaryOperation binary_operation, UnaryOperation unary_operation,
+          Value const initial_value,
+          std::random_access_iterator_tag const, std::random_access_iterator_tag const)
+        {
+          typedef
+            typename std::iterator_traits<RandomAccessIterator1>::value_type
+            value_type;
+          std::vector<value_type> partial_sums(
+            ::ket::utility::num_threads(parallel_policy), static_cast<value_type>(0));
+          partial_sums.front() = initial_value;
+
+          value_type* partial_sums_ptr = KET_addressof(partial_sums.front());
+
+          using ::ket::utility::loop_n;
+# ifndef BOOST_NO_CXX11_LAMBDAS
+          typedef
+            typename std::iterator_traits<RandomAccessIterator1>::difference_type
+            difference_type;
+          loop_n(
+            parallel_policy, last-first,
+            [first, d_first, binary_operation, unary_operation, partial_sums_ptr](
+              difference_type const n, int const thread_index)
+            {
+              partial_sums_ptr[thread_index]
+                = binary_operation(
+                    partial_sums_ptr[thread_index], unary_operation(first[n]));
+              d_first[n] = partial_sums_ptr[thread_index];
+            });
+# else // BOOST_NO_CXX11_LAMBDAS
+          loop_n(
+            parallel_policy, last-first,
+            ::ket::utility::parallel_loop_n_detail::make_transform_inclusive_scan_random_access_iterator(
+              first, d_first, binary_operation, unary_operation, partial_sums_ptr));
+# endif // BOOST_NO_CXX11_LAMBDAS
+
+          ::ket::utility::parallel_loop_n_detail::post_inclusive_scan(
+            parallel_policy, last-first, d_first, binary_operation,
+            partial_sums_ptr, partial_sums.size());
 
           return d_first + (last-first);
         }
