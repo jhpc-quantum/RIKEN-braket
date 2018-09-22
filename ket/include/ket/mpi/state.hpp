@@ -32,9 +32,7 @@
 #   include <boost/core/addressof.hpp>
 # endif
 
-/*
 # include <boost/utility.hpp> // boost::prior
-*/
 
 # include <boost/iterator/iterator_facade.hpp>
 
@@ -56,14 +54,11 @@
 # include <ket/utility/integer_exp2.hpp>
 # include <ket/utility/is_nothrow_swappable.hpp>
 # include <ket/utility/loop_n.hpp>
-//# include <ket/utility/parallel/loop_n.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
-/*
 # include <ket/mpi/utility/transform_inclusive_scan.hpp>
 # include <ket/mpi/utility/transform_inclusive_scan_self.hpp>
 # include <ket/mpi/utility/upper_bound.hpp>
-*/
 # include <ket/mpi/utility/detail/swap_local_qubits.hpp>
 
 # ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
@@ -836,7 +831,6 @@ namespace ket
       };
 
 
-      /*
       template <int num_page_qubits>
       struct transform_inclusive_scan
       {
@@ -1110,7 +1104,6 @@ namespace ket
           return static_cast<difference_type>(local_state.size());
         }
       };
-      */
     } // namespace state_detail
 
 
@@ -1388,7 +1381,6 @@ namespace ket
       };
 
 
-      /*
       template <>
       struct transform_inclusive_scan<0>
       {
@@ -1474,7 +1466,6 @@ namespace ket
           Complex const& value, Compare compare)
         { return ::ket::mpi::utility::upper_bound(local_state.data(), value, compare); }
       };
-      */
     } // namespace state_detail
 
 
@@ -1559,7 +1550,6 @@ namespace ket
         };
 
 
-        /*
         template <typename LocalState_>
         struct transform_inclusive_scan;
 
@@ -1674,7 +1664,6 @@ namespace ket
             return upper_bound_type::call(local_state, value, compare);
           }
         };
-        */
       } // namespace dispatch
     } // namespace utility
   } // namespace mpi
