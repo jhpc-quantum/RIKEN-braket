@@ -5,12 +5,11 @@
 
 # include <ostream>
 
-# include <boost/range/begin.hpp>
-# include <boost/range/iterator.hpp>
-
 # include <yampi/environment.hpp>
 # include <yampi/communicator.hpp>
 
+# include <ket/utility/begin.hpp>
+# include <ket/utility/meta/const_iterator_of.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
 
@@ -36,10 +35,10 @@ namespace ket
           yampi::environment const& environment)
         {
           typedef
-            typename boost::range_iterator<RandomAccessRange const>::type
+            typename ::ket::utility::meta::const_iterator_of<RandomAccessRange const>::type
             local_state_iterator;
           local_state_iterator const local_state_first
-            = boost::begin(local_state);
+            = ::ket::utility::begin(local_state);
 
           StateInteger const num_local_states
             = static_cast<StateInteger>(boost::size(local_state));

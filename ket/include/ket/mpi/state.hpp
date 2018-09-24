@@ -38,9 +38,6 @@
 
 # include <boost/range/sub_range.hpp>
 # include <boost/range/iterator_range.hpp>
-# include <boost/range/begin.hpp>
-# include <boost/range/end.hpp>
-# include <boost/range/algorithm/find_if.hpp>
 
 # include <yampi/environment.hpp>
 # include <yampi/buffer.hpp>
@@ -54,6 +51,9 @@
 # include <ket/utility/integer_exp2.hpp>
 # include <ket/utility/is_nothrow_swappable.hpp>
 # include <ket/utility/loop_n.hpp>
+# include <ket/utility/begin.hpp>
+# include <ket/utility/end.hpp>
+# include <ket/utility/meta/iterator_of.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
 # include <ket/mpi/utility/transform_inclusive_scan.hpp>
@@ -300,8 +300,8 @@ namespace ket
 
         using std::swap;
         swap(
-          boost::begin(page_ranges_[page_nonpage_index_pair1.first])[page_nonpage_index_pair1.second],
-          boost::begin(page_ranges_[page_nonpage_index_pair2.first])[page_nonpage_index_pair2.second]);
+          ::ket::utility::begin(page_ranges_[page_nonpage_index_pair1.first])[page_nonpage_index_pair1.second],
+          ::ket::utility::begin(page_ranges_[page_nonpage_index_pair2.first])[page_nonpage_index_pair2.second]);
       }
 
       page_range_type& page_range(size_type const page_id)
@@ -336,32 +336,32 @@ namespace ket
       reference at(size_type const index)
       {
         return data_.at(
-          (boost::begin(page_ranges_[get_page_id(index)])-data_.begin())+get_index_in_page(index));
+          (::ket::utility::begin(page_ranges_[get_page_id(index)])-data_.begin())+get_index_in_page(index));
       }
 
       const_reference at(size_type const index) const
       {
         return data_.at(
-          (boost::begin(page_ranges_[get_page_id(index)])-data_.begin())+get_index_in_page(index));
+          (::ket::utility::begin(page_ranges_[get_page_id(index)])-data_.begin())+get_index_in_page(index));
       }
 
       reference operator[](size_type const index)
       {
         assert(index < (static_cast<size_type>(1u) << num_local_qubits_));
-        return boost::begin(page_ranges_[get_page_id(index)])[get_index_in_page(index)];
+        return ::ket::utility::begin(page_ranges_[get_page_id(index)])[get_index_in_page(index)];
       }
 
       const_reference operator[](size_type const index) const
       {
         assert(index < (static_cast<size_type>(1u) << num_local_qubits_));
-        return boost::begin(page_ranges_[get_page_id(index)])[get_index_in_page(index)];
+        return ::ket::utility::begin(page_ranges_[get_page_id(index)])[get_index_in_page(index)];
       }
 
-      reference front() { return *boost::begin(page_ranges_[get_page_id(0u)]); }
-      const_reference front() const { return *boost::begin(page_ranges_[get_page_id(0u)]); }
+      reference front() { return *::ket::utility::begin(page_ranges_[get_page_id(0u)]); }
+      const_reference front() const { return *::ket::utility::begin(page_ranges_[get_page_id(0u)]); }
 
-      reference back() { return *--boost::end(page_ranges_[get_page_id((1u << num_local_qubits_)-1u)]); }
-      const_reference back() const { return *--boost::end(page_ranges_[get_page_id((1u << num_local_qubits_)-1u)]); }
+      reference back() { return *--::ket::utility::end(page_ranges_[get_page_id((1u << num_local_qubits_)-1u)]); }
+      const_reference back() const { return *--::ket::utility::end(page_ranges_[get_page_id((1u << num_local_qubits_)-1u)]); }
 
 
       // Iterators
@@ -733,11 +733,11 @@ namespace ket
             size_type const page_size = boost::size(page_range);
 
             typedef
-              typename boost::range_iterator<page_range_type>::type
+              typename ::ket::utility::meta::iterator_of<page_range_type>::type
               page_iterator;
-            page_iterator const page_first = boost::begin(page_range);
-            page_iterator const page_last = boost::end(page_range);
-            page_iterator const buffer_first = boost::begin(local_state.buffer_range());
+            page_iterator const page_first = ::ket::utility::begin(page_range);
+            page_iterator const page_last = ::ket::utility::end(page_range);
+            page_iterator const buffer_first = ::ket::utility::begin(local_state.buffer_range());
 
             StateInteger const first_index
               = page_id == page_front_id
@@ -808,8 +808,8 @@ namespace ket
           typedef ::ket::mpi::state<Complex, num_page_qubits, Allocator> local_state_type;
           for (std::size_t page_id = 0u; page_id < local_state_type::num_pages; ++page_id)
             function(
-              boost::begin(local_state.page_range(page_id)),
-              boost::end(local_state.page_range(page_id)));
+              ::ket::utility::begin(local_state.page_range(page_id)),
+              ::ket::utility::end(local_state.page_range(page_id)));
           return local_state;
         }
 
@@ -824,8 +824,8 @@ namespace ket
           typedef ::ket::mpi::state<Complex, num_page_qubits, Allocator> local_state_type;
           for (std::size_t page_id = 0u; page_id < local_state_type::num_pages; ++page_id)
             function(
-              boost::begin(local_state.page_range(page_id)),
-              boost::end(local_state.page_range(page_id)));
+              ::ket::utility::begin(local_state.page_range(page_id)),
+              ::ket::utility::end(local_state.page_range(page_id)));
           return local_state;
         }
       };
@@ -886,8 +886,8 @@ namespace ket
             d_first
               = ::ket::utility::transform_inclusive_scan(
                   parallel_policy,
-                  boost::begin(local_state.page_range(page_id)),
-                  boost::end(local_state.page_range(page_id)),
+                  ::ket::utility::begin(local_state.page_range(page_id)),
+                  ::ket::utility::end(local_state.page_range(page_id)),
                   d_first, binary_operation, unary_operation, partial_sum);
             std::advance(prev_d_first, boost::size(local_state.page_range(page_id))-1);
             partial_sum = *prev_d_first;
@@ -917,8 +917,8 @@ namespace ket
             d_first
               = ::ket::utility::transform_inclusive_scan(
                   parallel_policy,
-                  boost::begin(local_state.page_range(page_id)),
-                  boost::end(local_state.page_range(page_id)),
+                  ::ket::utility::begin(local_state.page_range(page_id)),
+                  ::ket::utility::end(local_state.page_range(page_id)),
                   d_first, binary_operation, unary_operation, partial_sum);
             std::advance(prev_d_first, boost::size(local_state.page_range(page_id))-1);
             partial_sum = *prev_d_first;
@@ -946,8 +946,8 @@ namespace ket
             d_first
               = ::ket::utility::transform_inclusive_scan(
                   parallel_policy,
-                  boost::begin(local_state.page_range(page_id)),
-                  boost::end(local_state.page_range(page_id)),
+                  ::ket::utility::begin(local_state.page_range(page_id)),
+                  ::ket::utility::end(local_state.page_range(page_id)),
                   d_first, binary_operation, unary_operation, partial_sum);
             partial_sum = *boost::prior(d_first);
           }
@@ -975,8 +975,8 @@ namespace ket
             d_first
               = ::ket::utility::transform_inclusive_scan(
                   parallel_policy,
-                  boost::begin(local_state.page_range(page_id)),
-                  boost::end(local_state.page_range(page_id)),
+                  ::ket::utility::begin(local_state.page_range(page_id)),
+                  ::ket::utility::end(local_state.page_range(page_id)),
                   d_first, binary_operation, unary_operation, partial_sum);
             partial_sum = *boost::prior(d_first);
           }
@@ -1005,11 +1005,11 @@ namespace ket
           {
             ::ket::utility::transform_inclusive_scan(
               parallel_policy,
-              boost::begin(local_state.page_range(page_id)),
-              boost::end(local_state.page_range(page_id)),
-              boost::begin(local_state.page_range(page_id)),
+              ::ket::utility::begin(local_state.page_range(page_id)),
+              ::ket::utility::end(local_state.page_range(page_id)),
+              ::ket::utility::begin(local_state.page_range(page_id)),
               binary_operation, unary_operation, partial_sum);
-            partial_sum = *boost::prior(boost::end(local_state.page_range(page_id)));
+            partial_sum = *boost::prior(::ket::utility::end(local_state.page_range(page_id)));
           }
 
           return partial_sum;
@@ -1032,11 +1032,11 @@ namespace ket
           {
             ::ket::utility::transform_inclusive_scan(
               parallel_policy,
-              boost::begin(local_state.page_range(page_id)),
-              boost::end(local_state.page_range(page_id)),
-              boost::begin(local_state.page_range(page_id)),
+              ::ket::utility::begin(local_state.page_range(page_id)),
+              ::ket::utility::end(local_state.page_range(page_id)),
+              ::ket::utility::begin(local_state.page_range(page_id)),
               binary_operation, unary_operation, partial_sum);
-            partial_sum = *boost::prior(boost::end(local_state.page_range(page_id)));
+            partial_sum = *boost::prior(::ket::utility::end(local_state.page_range(page_id)));
           }
 
           return partial_sum;
@@ -1060,10 +1060,10 @@ namespace ket
           {
             std::size_t index_in_page
               = std::upper_bound(
-                  boost::begin(local_state.page_range(page_id)),
-                  boost::end(local_state.page_range(page_id)),
+                  ::ket::utility::begin(local_state.page_range(page_id)),
+                  ::ket::utility::end(local_state.page_range(page_id)),
                   value)
-                - boost::begin(local_state.page_range(page_id));
+                - ::ket::utility::begin(local_state.page_range(page_id));
 
             if (index_in_page < boost::size(local_state.page_range(page_id)))
             {
@@ -1088,10 +1088,10 @@ namespace ket
           {
             std::size_t index_in_page
               = std::upper_bound(
-                  boost::begin(local_state.page_range(page_id)),
-                  boost::end(local_state.page_range(page_id)),
+                  ::ket::utility::begin(local_state.page_range(page_id)),
+                  ::ket::utility::end(local_state.page_range(page_id)),
                   value, compare)
-                - boost::begin(local_state.page_range(page_id));
+                - ::ket::utility::begin(local_state.page_range(page_id));
 
             if (index_in_page < boost::size(local_state.page_range(page_id)))
             {

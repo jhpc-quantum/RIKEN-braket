@@ -18,12 +18,8 @@
 
 # include <boost/math/constants/constants.hpp>
 
-# include <boost/range/begin.hpp>
 # include <boost/range/size.hpp>
 # include <boost/range/value_type.hpp>
-# ifdef BOOST_NO_CXX11_AUTO_DECLARATIONS
-#   include <boost/range/iterator.hpp>
-# endif
 
 # include <yampi/environment.hpp>
 # include <yampi/datatype.hpp>
@@ -33,6 +29,8 @@
 # include <ket/control.hpp>
 # include <ket/utility/generate_phase_coefficients.hpp>
 # include <ket/utility/loop_n.hpp>
+# include <ket/utility/begin.hpp>
+# include <ket/utility/meta/const_iterator_of.hpp>
 # include <ket/utility/meta/real_of.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/gate/hadamard.hpp>
@@ -94,8 +92,8 @@ namespace ket
       std::size_t const num_qubits = boost::size(qubits);
       ::ket::utility::generate_phase_coefficients(phase_coefficients, num_qubits);
 
-      typedef typename boost::range_iterator<Qubits const>::type qubits_iterator;
-      qubits_iterator const qubits_first = boost::begin(qubits);
+      typedef typename ::ket::utility::meta::const_iterator_of<Qubits const>::type qubits_iterator;
+      qubits_iterator const qubits_first = ::ket::utility::begin(qubits);
 
       for (std::size_t index = 0u; index < num_qubits; ++index)
       {
@@ -299,8 +297,8 @@ namespace ket
       std::size_t const num_qubits = boost::size(qubits);
       ::ket::utility::generate_phase_coefficients(phase_coefficients, num_qubits);
 
-      typedef typename boost::range_iterator<Qubits const>::type qubits_iterator;
-      qubits_iterator const qubits_first = boost::begin(qubits);
+      typedef typename ::ket::utility::meta::const_iterator_of<Qubits const>::type qubits_iterator;
+      qubits_iterator const qubits_first = ::ket::utility::begin(qubits);
 
       for (std::size_t target_bit = 0u; target_bit < num_qubits; ++target_bit)
       {

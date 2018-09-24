@@ -23,7 +23,6 @@
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/positive_random_value_upto.hpp>
 # include <ket/utility/begin.hpp>
-# include <ket/utility/end.hpp>
 # include <ket/utility/meta/real_of.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
@@ -152,7 +151,7 @@ namespace ket
       yampi::gather(communicator, root_rank).call(
         environment,
         yampi::make_buffer(total_probability, real_datatype),
-        boost::begin(total_probabilities));
+        ::ket::utility::begin(total_probabilities));
 
       if (present_rank == root_rank)
         ::ket::utility::ranges::inclusive_scan(

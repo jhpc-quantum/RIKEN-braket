@@ -171,7 +171,7 @@ namespace ket
               (static_cast<StateInteger>(boost::size(local_state))
                >> boost::get<0u>(minmax_qubits)) >> 2u,
               ket::mpi::utility::swap_local_qubits_detail::make_swap_local_qubits_loop_inside(
-                boost::begin(local_state), boost::get<0u>(minmax_qubits),
+                ::ket::utility::begin(local_state), boost::get<0u>(minmax_qubits),
                 min_qubit_mask, max_qubit_mask, middle_bits_mask));
 # endif // BOOST_NO_CXX11_LAMBDAS
           }
