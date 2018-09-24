@@ -5,11 +5,16 @@
 
 # ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
 #   include <vector>
+#   ifndef BOOST_NO_CXX11_HDR_ARRAY
+#     include <array>
+#   endif
 #   ifndef BOOST_NO_CXX11_ADDRESSOF
 #     include <memory>
 #   else
 #     include <boost/core/addressof.hpp>
 #   endif
+
+#   include <boost/array.hpp>
 # endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
 
 # include <boost/range/end.hpp>
@@ -46,6 +51,28 @@ namespace ket
     inline typename std::vector<Value, Allocator>::const_pointer end(
       std::vector<Value, Allocator> const& vector)
     { return KET_addressof(vector.front()) + vector.size(); }
+
+    template <typename Value, std::size_t num_elements>
+    inline typename boost::array<Value, num_elements>::pointer end(
+      boost::array<Value, num_elements>& array)
+    { return KET_addressof(array.front()) + num_elements; }
+
+    template <typename Value, std::size_t num_elements>
+    inline typename boost::array<Value, num_elements>::const_pointer end(
+      boost::array<Value, num_elements> const& array)
+    { return KET_addressof(array.front()) + num_elements; }
+
+#   ifndef BOOST_NO_CXX11_HDR_ARRAY
+    template <typename Value, std::size_t num_elements>
+    inline typename std::array<Value, num_elements>::pointer end(
+      std::array<Value, num_elements>& array)
+    { return KET_addressof(array.front()) + num_elements; }
+
+    template <typename Value, std::size_t num_elements>
+    inline typename std::array<Value, num_elements>::const_pointer end(
+      std::array<Value, num_elements> const& array)
+    { return KET_addressof(array.front()) + num_elements; }
+#   endif // BOOST_NO_CXX11_HDR_ARRAY
 # endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
   }
 }
