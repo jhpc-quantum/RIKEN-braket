@@ -6,9 +6,6 @@
 # include <cassert>
 # include <cstddef>
 # include <cmath>
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   include <vector>
-# endif
 # include <iterator>
 # ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
 #   include <type_traits>
@@ -19,18 +16,9 @@
 # ifdef BOOST_NO_CXX11_STATIC_ASSERT
 #   include <boost/static_assert.hpp>
 # endif
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   ifndef BOOST_NO_CXX11_ADDRESSOF
-#     include <memory>
-#   else
-#     include <boost/core/addressof.hpp>
-#   endif
-# endif
 
 # include <boost/math/constants/constants.hpp>
 
-# include <boost/range/begin.hpp>
-# include <boost/range/end.hpp>
 # include <boost/range/value_type.hpp>
 # include <boost/range/size.hpp>
 
@@ -45,6 +33,9 @@
 #   include <ket/utility/is_unique.hpp>
 # endif
 # include <ket/utility/generate_phase_coefficients.hpp>
+# include <ket/utility/begin.hpp>
+# include <ket/utility/end.hpp>
+# include <ket/utility/meta/const_iterator_of.hpp>
 # include <ket/utility/meta/real_of.hpp>
 
 # ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
@@ -57,14 +48,6 @@
 
 # ifdef BOOST_NO_CXX11_STATIC_ASSERT
 #   define static_assert(exp, msg) BOOST_STATIC_ASSERT_MSG(exp, msg)
-# endif
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   ifndef BOOST_NO_CXX11_ADDRESSOF
-#     define KET_addressof std::addressof
-#   else
-#     define KET_addressof boost::addressof
-#   endif
 # endif
 
 
@@ -98,8 +81,8 @@ namespace ket
         <= static_cast<typename ::ket::meta::state_integer_of<qubit_type>::type>(boost::size(state))
       and ::ket::utility::ranges::is_unique(qubits));
 
-    typedef typename boost::range_iterator<Qubits const>::type qubits_iterator;
-    qubits_iterator const qubits_first = boost::begin(qubits);
+    typedef typename ::ket::iterator::meta::const_iterator_of<Qubits const>::type qubits_iterator;
+    qubits_iterator const qubits_first = ::ket::utility::begin(qubits);
 
     for (std::size_t index = 0u; index < num_qubits; ++index)
     {
@@ -178,7 +161,7 @@ namespace ket
     {
       ::ket::swapped_fourier_transform(
         parallel_policy,
-        boost::begin(state), boost::end(state), qubits, phase_coefficients);
+        ::ket::utility::begin(state), ::ket::utility::end(state), qubits, phase_coefficients);
       return state;
     }
 
@@ -193,7 +176,7 @@ namespace ket
         PhaseCoefficientsAllocator>& phase_coefficients)
     {
       ::ket::swapped_fourier_transform(
-        boost::begin(state), boost::end(state), qubits, phase_coefficients);
+        ::ket::utility::begin(state), ::ket::utility::end(state), qubits, phase_coefficients);
       return state;
     }
 
@@ -207,7 +190,7 @@ namespace ket
       Qubits const& qubits)
     {
       ::ket::swapped_fourier_transform(
-        parallel_policy, boost::begin(state), boost::end(state), qubits);
+        parallel_policy, ::ket::utility::begin(state), ::ket::utility::end(state), qubits);
       return state;
     }
 
@@ -215,63 +198,9 @@ namespace ket
     inline RandomAccessRange& swapped_fourier_transform(
       RandomAccessRange& state, Qubits const& qubits)
     {
-      ::ket::swapped_fourier_transform(boost::begin(state), boost::end(state), qubits);
+      ::ket::swapped_fourier_transform(::ket::utility::begin(state), ::ket::utility::end(state), qubits);
       return state;
     }
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-    template <
-      typename ParallelPolicy,
-      typename Complex typename Allocator, typename Qubits,
-      typename PhaseCoefficientsAllocator>>
-    inline std::vector<Complex, Allocator>& swapped_fourier_transform(
-      ParallelPolicy const parallel_policy, std::vector<Complex, Allocator>& state,
-      Qubits const& qubits,
-      std::vector<Complex, PhaseCoefficientsAllocator>& phase_coefficients)
-    {
-      ::ket::swapped_fourier_transform(
-        parallel_policy,
-        KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
-        qubits, phase_coefficients);
-      return state;
-    }
-
-    template <
-      typename Complex typename Allocator, typename Qubits,
-      typename PhaseCoefficientsAllocator>>
-    inline std::vector<Complex, Allocator>& swapped_fourier_transform(
-      std::vector<Complex, Allocator>& state, Qubits const& qubits,
-      std::vector<Complex, PhaseCoefficientsAllocator>& phase_coefficients)
-    {
-      ::ket::swapped_fourier_transform(
-        KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
-        qubits, phase_coefficients);
-      return state;
-    }
-
-    template <
-      typename ParallelPolicy, typename RandomAccessRange, typename Qubits>
-    inline std::vector<Complex, Allocator>& swapped_fourier_transform(
-      ParallelPolicy const parallel_policy, std::vector<Complex, Allocator>& state,
-      Qubits const& qubits)
-    {
-      ::ket::swapped_fourier_transform(
-        parallel_policy,
-        KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
-        qubits);
-      return state;
-    }
-
-    template <typename RandomAccessRange, typename Qubits, typename PhaseCoefficientsAllocator>
-    inline std::vector<Complex, Allocator>& swapped_fourier_transform(
-      std::vector<Complex, Allocator>& state, Qubits const& qubits)
-    {
-      ::ket::swapped_fourier_transform(
-        KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
-        qubits);
-      return state;
-    }
-# endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
   }
 
 
@@ -303,8 +232,8 @@ namespace ket
         <= static_cast<typename ::ket::meta::state_integer_of<qubit_type>::type>(boost::size(state))
       and ::ket::utility::ranges::is_unique(qubits));
 
-    typedef typename boost::range_iterator<Qubits const>::type qubits_iterator;
-    qubits_iterator const qubits_first = boost::begin(qubits);
+    typedef typename ::ket::utility::meta::const_iterator_of<Qubits const>::type qubits_iterator;
+    qubits_iterator const qubits_first = ::ket::utility::begin(qubits);
 
     for (std::size_t target_bit = 0u; target_bit < num_qubits; ++target_bit)
     {
@@ -381,7 +310,7 @@ namespace ket
     {
       ::ket::adj_swapped_fourier_transform(
         parallel_policy,
-        boost::begin(state), boost::end(state),
+        ::ket::utility::begin(state), ::ket::utility::end(state),
         qubits, phase_coefficients);
       return state;
     }
@@ -397,7 +326,7 @@ namespace ket
         PhaseCoefficientsAllocator>& phase_coefficients)
     {
       ::ket::adj_swapped_fourier_transform(
-        boost::begin(state), boost::end(state),
+        ::ket::utility::begin(state), ::ket::utility::end(state),
         qubits, phase_coefficients);
       return state;
     }
@@ -412,7 +341,7 @@ namespace ket
       Qubits const& qubits)
     {
       ::ket::adj_swapped_fourier_transform(
-        parallel_policy, boost::begin(state), boost::end(state), qubits);
+        parallel_policy, ::ket::utility::begin(state), ::ket::utility::end(state), qubits);
       return state;
     }
 
@@ -420,70 +349,13 @@ namespace ket
     inline RandomAccessRange& adj_swapped_fourier_transform(
       RandomAccessRange& state, Qubits const& qubits)
     {
-      ::ket::adj_swapped_fourier_transform(boost::begin(state), boost::end(state), qubits);
+      ::ket::adj_swapped_fourier_transform(::ket::utility::begin(state), ::ket::utility::end(state), qubits);
       return state;
     }
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-    template <
-      typename ParallelPolicy,
-      typename Complex typename Allocator, typename Qubits,
-      typename PhaseCoefficientsAllocator>>
-    inline std::vector<Complex, Allocator>& adj_swapped_fourier_transform(
-      ParallelPolicy const parallel_policy, std::vector<Complex, Allocator>& state,
-      Qubits const& qubits,
-      std::vector<Complex, PhaseCoefficientsAllocator>& phase_coefficients)
-    {
-      ::ket::adj_swapped_fourier_transform(
-        parallel_policy,
-        KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
-        qubits, phase_coefficients);
-      return state;
-    }
-
-    template <
-      typename Complex typename Allocator, typename Qubits,
-      typename PhaseCoefficientsAllocator>>
-    inline std::vector<Complex, Allocator>& adj_swapped_fourier_transform(
-      std::vector<Complex, Allocator>& state, Qubits const& qubits,
-      std::vector<Complex, PhaseCoefficientsAllocator>& phase_coefficients)
-    {
-      ::ket::adj_swapped_fourier_transform(
-        KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
-        qubits, phase_coefficients);
-      return state;
-    }
-
-    template <
-      typename ParallelPolicy, typename RandomAccessRange, typename Qubits>
-    inline std::vector<Complex, Allocator>& adj_swapped_fourier_transform(
-      ParallelPolicy const parallel_policy, std::vector<Complex, Allocator>& state,
-      Qubits const& qubits)
-    {
-      ::ket::adj_swapped_fourier_transform(
-        parallel_policy,
-        KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
-        qubits);
-      return state;
-    }
-
-    template <typename RandomAccessRange, typename Qubits, typename PhaseCoefficientsAllocator>
-    inline std::vector<Complex, Allocator>& adj_swapped_fourier_transform(
-      std::vector<Complex, Allocator>& state, Qubits const& qubits)
-    {
-      ::ket::adj_swapped_fourier_transform(
-        KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
-        qubits);
-      return state;
-    }
-# endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
   }
 } // namespace ket
 
 
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   undef KET_addressof
-# endif
 # undef KET_enable_if
 # undef KET_is_unsigned
 # ifdef BOOST_NO_CXX11_STATIC_ASSERT

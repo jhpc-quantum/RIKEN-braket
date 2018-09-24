@@ -15,22 +15,14 @@
 # ifdef BOOST_NO_CXX11_STATIC_ASSERT
 #   include <boost/static_assert.hpp>
 # endif
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   ifndef BOOST_NO_CXX11_ADDRESSOF
-#     include <memory>
-#   else
-#     include <boost/core/addressof.hpp>
-#   endif
-# endif
-
-# include <boost/range/begin.hpp>
-# include <boost/range/size.hpp>
-# include <boost/range/iterator.hpp>
 
 # include <ket/qubit.hpp>
 # include <ket/meta/state_integer_of.hpp>
 # include <ket/meta/bit_integer_of.hpp>
 # include <ket/utility/integer_exp2.hpp>
+# include <ket/utility/begin.hpp>
+# include <ket/utility/end.hpp>
+# include <ket/utility/meta/const_iterator_of.hpp>
 # include <ket/utility/meta/real_of.hpp>
 
 # ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
@@ -43,14 +35,6 @@
 
 # ifdef BOOST_NO_CXX11_STATIC_ASSERT
 #   define static_assert(exp, msg) BOOST_STATIC_ASSERT_MSG(exp, msg)
-# endif
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   ifndef BOOST_NO_CXX11_ADDRESSOF
-#     define KET_addressof std::addressof
-#   else
-#     define KET_addressof boost::addressof
-#   endif
 # endif
 
 
@@ -73,10 +57,10 @@ namespace ket
     template <typename UnsignedInteger, typename Qubits>
     inline UnsignedInteger make_filtered_integer(UnsignedInteger const unsigned_integer, Qubits const& qubits)
     {
-      typedef typename boost::range_iterator<Qubits const>::type qubits_iterator;
+      typedef typename ::ket::utility::meta::const_iterator_of<Qubits const>::type qubits_iterator;
       typedef typename boost::range_size<Qubits const>::type qubits_size_type;
       qubits_size_type const num_qubits = boost::size(qubits);
-      qubits_iterator const qubits_first = boost::begin(qubits);
+      qubits_iterator const qubits_first = ::ket::utility::begin(qubits);
 
       UnsignedInteger result = static_cast<UnsignedInteger>(0u);
       for (qubits_size_type index = static_cast<qubits_size_type>(0u); index < num_qubits; ++index)
@@ -229,7 +213,7 @@ namespace ket
       Qubits const& exponent_qubits, Qubits const& modular_exponentiation_qubits)
     {
       ::ket::shor_box(
-        parallel_policy, boost::begin(state), boost::end(state),
+        parallel_policy, ::ket::utility::begin(state), ::ket::utility::end(state),
         base, divisor, exponent_qubits, modular_exponentiation_qubits);
       return state;
     }
@@ -242,48 +226,14 @@ namespace ket
     {
       ::ket::shor_box(
         ::ket::utility::policy::make_sequential(),
-        boost::begin(state), boost::end(state),
+        ::ket::utility::begin(state), ::ket::utility::end(state),
         base, divisor, exponent_qubits, modular_exponentiation_qubits);
       return state;
     }
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-    template <
-      typename ParallelPolicy,
-      typename Complex, typename Allocator, typename StateInteger, typename Qubits>
-    inline std::vector<Complex, Allocator>& shor_box(
-      ParallelPolicy const parallel_policy,
-      std::vector<Complex, Allocator>& state,
-      StateInteger const base, StateInteger const divisor,
-      Qubits const& exponent_qubits, Qubits const& modular_exponentiation_qubits)
-    {
-      ::ket::shor_box(
-        parallel_policy,
-        KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
-        base, divisor, exponent_qubits, modular_exponentiation_qubits);
-      return state;
-    }
-
-    template <typename Complex, typename Allocator, typename StateInteger, typename Qubits>
-    inline std::vector<Complex, Allocator>& shor_box(
-      std::vector<Complex, Allocator>& state,
-      StateInteger const base, StateInteger const divisor,
-      Qubits const& exponent_qubits, Qubits const& modular_exponentiation_qubits)
-    {
-      ::ket::shor_box(
-        ::ket::utility::policy::make_sequential(),
-        KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
-        base, divisor, exponent_qubits, modular_exponentiation_qubits);
-      return state;
-    }
-# endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
   }
 }
 
 
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   undef KET_addressof
-# endif
 # undef KET_is_unsigned
 # undef KET_is_same
 # ifdef BOOST_NO_CXX11_STATIC_ASSERT

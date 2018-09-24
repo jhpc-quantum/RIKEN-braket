@@ -11,17 +11,8 @@
 # else
 #   include <boost/array.hpp>
 # endif
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   ifndef BOOST_NO_CXX11_ADDRESSOF
-#     include <memory>
-#   else
-#     include <boost/core/addressof.hpp>
-#   endif
-# endif
 
 # include <boost/range/value_type.hpp>
-# include <boost/range/begin.hpp>
-# include <boost/range/end.hpp>
 
 # include <ket/spin_expectation_value.hpp>
 # include <ket/meta/bit_integer_of.hpp>
@@ -30,20 +21,14 @@
 #   include <ket/utility/integer_exp2.hpp>
 # endif
 # include <ket/utility/loop_n.hpp>
+# include <ket/utility/begin.hpp>
+# include <ket/utility/end.hpp>
 # include <ket/utility/meta/real_of.hpp>
 
 # ifndef BOOST_NO_CXX11_HDR_ARRAY
 #   define KET_array std::array
 # else
 #   define KET_array boost::array
-# endif
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   ifndef BOOST_NO_CXX11_ADDRESSOF
-#     define KET_addressof std::addressof
-#   else
-#     define KET_addressof boost::addressof
-#   endif
 # endif
 
 
@@ -106,7 +91,7 @@ namespace ket
       ParallelPolicy const parallel_policy, RandomAccessRange& state)
     {
       return ::ket::all_spin_expectation_values<Qubit>(
-        parallel_policy, boost::begin(state), boost::end(state));
+        parallel_policy, ::ket::utility::begin(state), ::ket::utility::end(state));
     }
 
     template <typename Qubit, typename RandomAccessRange>
@@ -116,39 +101,10 @@ namespace ket
         typename ::ket::utility::meta::real_of<
           typename boost::range_value<RandomAccessRange>::type>::type, 3u> >
     all_spin_expectation_values(RandomAccessRange& state)
-    { return ::ket::all_spin_expectation_values<Qubit>(boost::begin(state), boost::end(state)); }
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-    template <typename Qubit, typename ParallelPolicy, typename Complex, typename Allocator>
-    inline
-    std::vector<
-      KET_array<
-        typename ::ket::utility::meta::real_of<Complex>::type, 3u> >
-    all_spin_expectation_values(
-      ParallelPolicy const parallel_policy, std::vector<Complex, Allocator>& state)
-    {
-      return ::ket::all_spin_expectation_values<Qubit>(
-        parallel_policy,
-        KET_addressof(state.front()), KET_addressof(state.front()) + state.size());
-    }
-
-    template <typename Qubit, typename Complex, typename Allocator>
-    inline
-    std::vector<
-      KET_array<
-        typename ::ket::utility::meta::real_of<Complex>::type, 3u> >
-    all_spin_expectation_values(std::vector<Complex, Allocator>& state)
-    {
-      return ::ket::all_spin_expectation_values<Qubit>(
-        KET_addressof(state.front()), KET_addressof(state.front()) + state.size());
-    }
-# endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
+    { return ::ket::all_spin_expectation_values<Qubit>(::ket::utility::begin(state), ::ket::utility::end(state)); }
   } // namespace ranges
 } // namespace ket
 
 
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   undef KET_addressof
-# endif
-
 #endif
+

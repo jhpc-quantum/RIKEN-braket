@@ -15,16 +15,9 @@
 #   include <boost/type_traits/integral_constant.hpp>
 #   include <boost/utility/enable_if.hpp>
 # endif
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   ifndef BOOST_NO_CXX11_ADDRESSOF
-#     include <memory>
-#   else
-#     include <boost/core/addressof.hpp>
-#   endif
-# endif
 
-# include <boost/range/begin.hpp>
-# include <boost/range/end.hpp>
+# include <ket/utility/begin.hpp>
+# include <ket/utility/end.hpp>
 
 # ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
 #   define KET_RVALUE_REFERENCE_OR_COPY(T) T&&
@@ -42,14 +35,6 @@
 #   define KET_enable_if boost::enable_if_c
 #   define KET_true_type boost::true_type
 #   define KET_false_type boost::false_type
-# endif
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   ifndef BOOST_NO_CXX11_ADDRESSOF
-#     define KET_addressof std::addressof
-#   else
-#     define KET_addressof boost::addressof
-#   endif
 # endif
 
 
@@ -203,41 +188,16 @@ namespace ket
       inline ForwardRange& fill(
         ParallelPolicy const parallel_policy, ForwardRange& range, Value const& value)
       {
-        ::ket::utility::fill(parallel_policy, boost::begin(range), boost::end(range), value);
+        ::ket::utility::fill(parallel_policy, ::ket::utility::begin(range), ::ket::utility::end(range), value);
         return range;
       }
 
       template <typename ForwardRange, typename Value>
       inline ForwardRange& fill(ForwardRange& range, Value const& value)
       {
-        ::ket::utility::fill(boost::begin(range), boost::end(range), value);
+        ::ket::utility::fill(::ket::utility::begin(range), ::ket::utility::end(range), value);
         return range;
       }
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-      template <
-        typename ParallelPolicy, typename Value, typename Allocator>
-      inline std::vector<Value, Allocator>& fill(
-        ParallelPolicy const parallel_policy,
-        std::vector<Value, Allocator>& range, Value const& value)
-      {
-        ::ket::utility::fill(
-          parallel_policy,
-          KET_addressof(range.front()), KET_addressof(range.front()) + range.size(),
-          value);
-        return range;
-      }
-
-      template <typename Value, typename Allocator>
-      inline std::vector<Value, Allocator>& fill(
-        std::vector<Value, Allocator>& range, Value const& value)
-      {
-        ::ket::utility::fill(
-          KET_addressof(range.front()), KET_addressof(range.front()) + range.size(),
-          value);
-        return range;
-      }
-# endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
     } // namespace ranges
 
 
@@ -421,7 +381,7 @@ namespace ket
         ForwardRange const& range, ForwardIterator const first)
       {
         return ::ket::utility::inclusive_scan(
-          parallel_policy, boost::begin(range), boost::end(range), first);
+          parallel_policy, ::ket::utility::begin(range), ::ket::utility::end(range), first);
       }
 
       template <typename ForwardRange, typename ForwardIterator>
@@ -429,7 +389,7 @@ namespace ket
         ForwardRange const& range, ForwardIterator const first)
       {
         return ::ket::utility::inclusive_scan(
-          boost::begin(range), boost::end(range), first);
+          ::ket::utility::begin(range), ::ket::utility::end(range), first);
       }
 
       template <
@@ -445,7 +405,7 @@ namespace ket
       {
         return ::ket::utility::inclusive_scan(
           parallel_policy,
-          boost::begin(range), boost::end(range), first, binary_operation);
+          ::ket::utility::begin(range), ::ket::utility::end(range), first, binary_operation);
       }
 
       template <
@@ -458,7 +418,7 @@ namespace ket
         BinaryOperation binary_operation)
       {
         return ::ket::utility::inclusive_scan(
-          boost::begin(range), boost::end(range), first, binary_operation);
+          ::ket::utility::begin(range), ::ket::utility::end(range), first, binary_operation);
       }
 
       template <
@@ -472,7 +432,7 @@ namespace ket
       {
         return ::ket::utility::inclusive_scan(
           parallel_policy,
-          boost::begin(range), boost::end(range), first,
+          ::ket::utility::begin(range), ::ket::utility::end(range), first,
           binary_operation, initial_value);
       }
 
@@ -487,101 +447,9 @@ namespace ket
         BinaryOperation binary_operation, Value const initial_value)
       {
         return ::ket::utility::inclusive_scan(
-          boost::begin(range), boost::end(range), first,
+          ::ket::utility::begin(range), ::ket::utility::end(range), first,
           binary_operation, initial_value);
       }
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-      template <
-        typename ParallelPolicy,
-        typename Value, typename Allocator, typename ForwardIterator>
-      inline typename KET_enable_if<
-        ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
-        ForwardIterator>::type
-      inclusive_scan(
-        ParallelPolicy const parallel_policy,
-        std::vector<Value, Allocator> const& range, ForwardIterator const first)
-      {
-        return ::ket::utility::inclusive_scan(
-          parallel_policy,
-          KET_addressof(range.front()), KET_addressof(range.front()) + range.size(),
-          first);
-      }
-
-      template <typename Value, typename Allocator, typename ForwardIterator>
-      inline ForwardIterator inclusive_scan(
-        std::vector<Value, Allocator> const& range, ForwardIterator const first)
-      {
-        return ::ket::utility::inclusive_scan(
-          KET_addressof(range.front()), KET_addressof(range.front()) + range.size(),
-          first);
-      }
-
-      template <
-        typename ParallelPolicy,
-        typename Value, typename Allocator, typename ForwardIterator,
-        typename BinaryOperation>
-      inline typename KET_enable_if<
-        ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
-        ForwardIterator>::type
-      inclusive_scan(
-        ParallelPolicy const parallel_policy,
-        std::vector<Value, Allocator> const& range, ForwardIterator const first,
-        BinaryOperation binary_operation)
-      {
-        return ::ket::utility::inclusive_scan(
-          parallel_policy,
-          KET_addressof(range.front()), KET_addressof(range.front()) + range.size(),
-          first, binary_operation);
-      }
-
-      template <
-        typename Value, typename Allocator, typename ForwardIterator,
-        typename BinaryOperation>
-      inline typename KET_enable_if<
-        not ::ket::utility::policy::meta::is_loop_n_policy<
-              std::vector<Value, Allocator> >::value,
-        ForwardIterator>::type
-      inclusive_scan(
-        std::vector<Value, Allocator> const& range, ForwardIterator const first,
-        BinaryOperation binary_operation)
-      {
-        return ::ket::utility::inclusive_scan(
-          KET_addressof(range.front()), KET_addressof(range.front()) + range.size(),
-          first, binary_operation);
-      }
-
-      template <
-        typename ParallelPolicy,
-        typename Value1, typename Allocator, typename ForwardIterator,
-        typename BinaryOperation, typename Value2>
-      inline ForwardIterator inclusive_scan(
-        ParallelPolicy const parallel_policy,
-        std::vector<Value1, Allocator> const& range, ForwardIterator const first,
-        BinaryOperation binary_operation, Value2 const initial_value)
-      {
-        return ::ket::utility::inclusive_scan(
-          parallel_policy,
-          KET_addressof(range.front()), KET_addressof(range.front()) + range.size(),
-          first, binary_operation, initial_value);
-      }
-
-      template <
-        typename Value1, typename Allocator, typename ForwardIterator,
-        typename BinaryOperation, typename Value2>
-      inline typename KET_enable_if<
-        not ::ket::utility::policy::meta::is_loop_n_policy<
-              std::vector<Value1, Allocator> >::value,
-        ForwardIterator>::type
-      inclusive_scan(
-        std::vector<Value1, Allocator> const& range, ForwardIterator const first,
-        BinaryOperation binary_operation, Value2 const initial_value)
-      {
-        return ::ket::utility::inclusive_scan(
-          KET_addressof(range.front()), KET_addressof(range.front()) + range.size(),
-          first, binary_operation, initial_value);
-      }
-# endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
     } // namespace ranges
 
 
@@ -761,7 +629,7 @@ namespace ket
       {
         return ::ket::utility::transform_inclusive_scan(
           parallel_policy,
-          boost::begin(range), boost::end(range), first,
+          ::ket::utility::begin(range), ::ket::utility::end(range), first,
           binary_operation, unary_operation);
       }
 
@@ -773,7 +641,7 @@ namespace ket
         BinaryOperation binary_operation, UnaryOperation unary_operation)
       {
         return ::ket::utility::transform_inclusive_scan(
-          boost::begin(range), boost::end(range), first,
+          ::ket::utility::begin(range), ::ket::utility::end(range), first,
           binary_operation, unary_operation);
       }
 
@@ -789,7 +657,7 @@ namespace ket
       {
         return ::ket::utility::transform_inclusive_scan(
           parallel_policy,
-          boost::begin(range), boost::end(range), first,
+          ::ket::utility::begin(range), ::ket::utility::end(range), first,
           binary_operation, unary_operation, initial_value);
       }
 
@@ -805,82 +673,14 @@ namespace ket
         Value const initial_value)
       {
         return ::ket::utility::transform_inclusive_scan(
-          boost::begin(range), boost::end(range), first,
+          ::ket::utility::begin(range), ::ket::utility::end(range), first,
           binary_operation, unary_operation, initial_value);
       }
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-      template <
-        typename ParallelPolicy,
-        typename Value, typename Allocator, typename ForwardIterator,
-        typename BinaryOperation, typename UnaryOperation>
-      inline typename KET_enable_if<
-        ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
-        ForwardIterator>::type
-      transform_inclusive_scan(
-        ParallelPolicy const parallel_policy,
-        std::vector<Value, Allocator> const& range, ForwardIterator const first,
-        BinaryOperation binary_operation, UnaryOperation unary_operation)
-      {
-        return ::ket::utility::transform_inclusive_scan(
-          parallel_policy,
-          KET_addressof(range.front()), KET_addressof(range.front()) + range.size(),
-          first, binary_operation, unary_operation);
-      }
-
-      template <
-        typename Value, typename Allocator, typename ForwardIterator,
-        typename BinaryOperation, typename UnaryOperation>
-      inline ForwardIterator transform_inclusive_scan(
-        std::vector<Value, Allocator> const& range, ForwardIterator const first,
-        BinaryOperation binary_operation, UnaryOperation unary_operation)
-      {
-        return ::ket::utility::transform_inclusive_scan(
-          KET_addressof(range.front()), KET_addressof(range.front()) + range.size(),
-          first, binary_operation, unary_operation);
-      }
-
-      template <
-        typename ParallelPolicy,
-        typename Value1, typename Allocator, typename ForwardIterator,
-        typename BinaryOperation, typename UnaryOperation, typename Value2>
-      inline ForwardIterator transform_inclusive_scan(
-        ParallelPolicy const parallel_policy,
-        std::vector<Value1, Allocator> const& range, ForwardIterator const first,
-        BinaryOperation binary_operation, UnaryOperation unary_operation,
-        Value2 const initial_value)
-      {
-        return ::ket::utility::transform_inclusive_scan(
-          parallel_policy,
-          KET_addressof(range.front()), KET_addressof(range.front()) + range.size(),
-          first, binary_operation, unary_operation, initial_value);
-      }
-
-      template <
-        typename Value1, typename Allocator, typename ForwardIterator,
-        typename BinaryOperation, typename UnaryOperation, typename Value2>
-      inline typename KET_enable_if<
-        not ::ket::utility::policy::meta::is_loop_n_policy<
-              std::vector<Value1, Allocator> >::value,
-        ForwardIterator>::type
-      transform_inclusive_scan(
-        std::vector<Value1, Allocator> const& range, ForwardIterator const first,
-        BinaryOperation binary_operation, UnaryOperation unary_operation,
-        Value2 const initial_value)
-      {
-        return ::ket::utility::transform_inclusive_scan(
-          KET_addressof(range.front()), KET_addressof(range.front()) + range.size(),
-          first, binary_operation, unary_operation, initial_value);
-      }
-# endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
     } // namespace ranges
   } // namespace utility
 } // namespace ket
 
 
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   undef KET_addressof
-# endif
 # undef KET_true_type
 # undef KET_false_type
 # undef KET_enable_if

@@ -24,20 +24,11 @@
 # ifdef BOOST_NO_CXX11_STATIC_ASSERT
 #   include <boost/static_assert.hpp>
 # endif
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   ifndef BOOST_NO_CXX11_ADDRESSOF
-#     include <memory>
-#   else
-#     include <boost/core/addressof.hpp>
-#   endif
-# endif
 
 # ifndef NDEBUG
 #   include <boost/optional.hpp>
 # endif
 
-# include <boost/range/begin.hpp>
-# include <boost/range/end.hpp>
 # include <boost/range/value_type.hpp>
 # include <boost/range/size.hpp>
 # include <boost/range/empty.hpp>
@@ -69,6 +60,8 @@
 # include <ket/utility/integer_exp2.hpp>
 # include <ket/utility/integer_log2.hpp>
 # include <ket/utility/loop_n.hpp>
+# include <ket/utility/begin.hpp>
+# include <ket/utility/end.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/detail/swap_local_qubits.hpp>
 # include <ket/mpi/utility/detail/interchange_qubits.hpp>
@@ -106,14 +99,6 @@
 # else
 #   define KET_RVALUE_REFERENCE_OR_COPY(T) T
 #   define KET_FORWARD_OR_COPY(T, x) x
-# endif
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   ifndef BOOST_NO_CXX11_ADDRESSOF
-#     define KET_addressof std::addressof
-#   else
-#     define KET_addressof boost::addressof
-#   endif
 # endif
 
 
@@ -756,7 +741,7 @@ namespace ket
           static LocalState& call(
             LocalState& local_state, KET_RVALUE_REFERENCE_OR_COPY(Function) function)
           {
-            function(boost::begin(local_state), boost::end(local_state));
+            function(::ket::utility::begin(local_state), ::ket::utility::end(local_state));
             return local_state;
           }
 
@@ -764,31 +749,9 @@ namespace ket
           static LocalState& call(
             LocalState const& local_state, KET_RVALUE_REFERENCE_OR_COPY(Function) function)
           {
-            function(boost::begin(local_state), boost::end(local_state));
+            function(::ket::utility::begin(local_state), ::ket::utility::end(local_state));
             return local_state;
           }
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-          template <typename Complex, typename Allocator, typename Function>
-          static std::vector<Complex, Allocator>& call(
-            std::vector<Complex, Allocator>& local_state, KET_RVALUE_REFERENCE_OR_COPY(Function) function)
-          {
-            function(
-              KET_addressof(local_state.front()),
-              KET_addressof(local_state.front())+local_state.size());
-            return local_state;
-          }
-
-          template <typename Complex, typename Allocator, typename Function>
-          static std::vector<Complex, Allocator>& call(
-            std::vector<Complex, Allocator> const& local_state, KET_RVALUE_REFERENCE_OR_COPY(Function) function)
-          {
-            function(
-              KET_addressof(local_state.front()),
-              KET_addressof(local_state.front())+local_state.size());
-            return local_state;
-          }
-# endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
         };
 
 
@@ -1610,9 +1573,6 @@ namespace ket
 # undef KET_false_type
 # ifdef BOOST_NO_CXX11_STATIC_ASSERT
 #   undef static_assert
-# endif
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   undef KET_addressof
 # endif
 
 #endif

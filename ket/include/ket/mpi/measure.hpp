@@ -5,16 +5,7 @@
 
 # include <cmath>
 # include <vector>
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   ifndef BOOST_NO_CXX11_ADDRESSOF
-#     include <memory>
-#   else
-#     include <boost/core/addressof.hpp>
-#   endif
-# endif
 
-# include <boost/range/begin.hpp>
-# include <boost/range/end.hpp>
 # include <boost/range/size.hpp>
 # include <boost/range/value_type.hpp>
 
@@ -31,6 +22,8 @@
 
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/positive_random_value_upto.hpp>
+# include <ket/utility/begin.hpp>
+# include <ket/utility/end.hpp>
 # include <ket/utility/meta/real_of.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
@@ -39,14 +32,6 @@
 # include <ket/mpi/utility/transform_inclusive_scan.hpp>
 # include <ket/mpi/utility/transform_inclusive_scan_self.hpp>
 # include <ket/mpi/utility/upper_bound.hpp>
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   ifndef BOOST_NO_CXX11_ADDRESSOF
-#     define KET_addressof std::addressof
-#   else
-#     define KET_addressof boost::addressof
-#   endif
-# endif
 
 
 namespace ket
@@ -146,8 +131,8 @@ namespace ket
       real_type const total_probability
         = real(::ket::mpi::utility::transform_inclusive_scan_self(
             parallel_policy, local_state,
-            ::ket::mpi::generate_events_detail::real_part_plus<complex_type>(),
-            ::ket::mpi::generate_events_detail::complex_norm<complex_type>()));
+            ::ket::mpi::measure_detail::real_part_plus<complex_type>(),
+            ::ket::mpi::measure_detail::complex_norm<complex_type>()));
 # endif // BOOST_NO_CXX11_LAMBDAS
 
       yampi::rank const present_rank = communicator.rank(environment);
@@ -166,13 +151,8 @@ namespace ket
       yampi::rank result_rank;
       if (present_rank == root_rank)
       {
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
         ::ket::utility::ranges::inclusive_scan(
-          total_probabilities, KET_addressof(total_probabilities.front()));
-# else // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-        ::ket::utility::ranges::inclusive_scan(
-          total_probabilities, boost::begin(total_probabilities));
-# endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
+          total_probabilities, ::ket::utility::begin(total_probabilities));
 
         random_value
           = ::ket::utility::positive_random_value_upto(
@@ -332,35 +312,19 @@ namespace ket
       typedef typename boost::range_value<LocalState>::type complex_type;
       typedef typename ::ket::utility::meta::real_of<complex_type>::type real_type;
       std::vector<real_type> partial_sum_probabilities(boost::size(local_state), real_type(0));
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   ifndef BOOST_NO_CXX11_LAMBDAS
+# ifndef BOOST_NO_CXX11_LAMBDAS
       ::ket::mpi::utility::transform_inclusive_scan(
-        parallel_policy, local_state, KET_addressof(partial_sum_probabilities.front()),
+        parallel_policy, local_state, ::ket::utility::begin(partial_sum_probabilities),
         [](complex_type const& lhs, complex_type const& rhs)
         { using std::real; return static_cast<complex_type>(real(lhs) + real(rhs)); },
         [](complex_type const& value)
         { using std::norm; return static_cast<complex_type>(norm(value)); });
-#   else // BOOST_NO_CXX11_LAMBDAS
+# else // BOOST_NO_CXX11_LAMBDAS
       ::ket::mpi::utility::transform_inclusive_scan(
-        parallel_policy, local_state, KET_addressof(partial_sum_probabilities.front()),
-        ::ket::mpi::generate_events_detail::real_part_plus<complex_type>(),
-        ::ket::mpi::generate_events_detail::complex_norm<complex_type>());
-#   endif // BOOST_NO_CXX11_LAMBDAS
-# else // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   ifndef BOOST_NO_CXX11_LAMBDAS
-      ::ket::mpi::utility::transform_inclusive_scan(
-        parallel_policy, local_state, partial_sum_probabilities.begin(),
-        [](complex_type const& lhs, complex_type const& rhs)
-        { using std::real; return static_cast<complex_type>(real(lhs) + real(rhs)); },
-        [](complex_type const& value)
-        { using std::norm; return static_cast<complex_type>(norm(value)); });
-#   else // BOOST_NO_CXX11_LAMBDAS
-      ::ket::mpi::utility::transform_inclusive_scan(
-        parallel_policy, local_state, partial_sum_probabilities.begin(),
-        ::ket::mpi::generate_events_detail::real_part_plus<complex_type>(),
-        ::ket::mpi::generate_events_detail::complex_norm<complex_type>());
-#   endif // BOOST_NO_CXX11_LAMBDAS
-# endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
+        parallel_policy, local_state, ::ket::utility::begin(partial_sum_probabilities),
+        ::ket::mpi::measure_detail::real_part_plus<complex_type>(),
+        ::ket::mpi::measure_detail::complex_norm<complex_type>());
+# endif // BOOST_NO_CXX11_LAMBDAS
 
       yampi::rank const present_rank = communicator.rank(environment);
       BOOST_CONSTEXPR_OR_CONST yampi::rank root_rank(0);
@@ -380,13 +344,8 @@ namespace ket
       yampi::rank result_rank;
       if (present_rank == root_rank)
       {
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
         ::ket::utility::ranges::inclusive_scan(
-          total_probabilities, KET_addressof(total_probabilities.front()));
-# else // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-        ::ket::utility::ranges::inclusive_scan(
-          total_probabilities, boost::begin(total_probabilities));
-# endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
+          total_probabilities, ::ket::utility::begin(total_probabilities));
 
         random_value
           = ::ket::utility::positive_random_value_upto(

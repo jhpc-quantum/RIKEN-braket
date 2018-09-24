@@ -4,9 +4,6 @@
 # include <boost/config.hpp>
 
 # include <cassert>
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   include <vector>
-# endif
 # include <vector>
 # include <iterator>
 # include <utility>
@@ -26,17 +23,8 @@
 # ifdef BOOST_NO_CXX11_STATIC_ASSERT
 #   include <boost/static_assert.hpp>
 # endif
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   ifndef BOOST_NO_CXX11_ADDRESSOF
-#     include <memory>
-#   else
-#     include <boost/core/addressof.hpp>
-#   endif
-# endif
 
 # include <boost/math/constants/constants.hpp>
-# include <boost/range/begin.hpp>
-# include <boost/range/end.hpp>
 # include <boost/range/numeric.hpp>
 
 # include <ket/qubit.hpp>
@@ -45,6 +33,8 @@
 # ifndef NDEBUG
 #   include <ket/utility/integer_log2.hpp>
 # endif
+# include <ket/utility/begin.hpp>
+# include <ket/utility/end.hpp>
 # include <ket/utility/meta/real_of.hpp>
 
 # ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
@@ -63,14 +53,6 @@
 
 # ifdef BOOST_NO_CXX11_STATIC_ASSERT
 #   define static_assert(exp, msg) BOOST_STATIC_ASSERT_MSG(exp, msg)
-# endif
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   ifndef BOOST_NO_CXX11_ADDRESSOF
-#     define KET_addressof std::addressof
-#   else
-#     define KET_addressof boost::addressof
-#   endif
 # endif
 
 
@@ -290,7 +272,7 @@ namespace ket
       ParallelPolicy const parallel_policy,
       RandomAccessRange const& state,
       ::ket::qubit<StateInteger, BitInteger> const qubit)
-    { return ::ket::spin_expectation_value(parallel_policy, boost::begin(state), boost::end(state), qubit); }
+    { return ::ket::spin_expectation_value(parallel_policy, ::ket::utility::begin(state), ::ket::utility::end(state), qubit); }
 
     template <typename RandomAccessRange, typename StateInteger, typename BitInteger>
     inline
@@ -300,43 +282,11 @@ namespace ket
     spin_expectation_value(
       RandomAccessRange const& state,
       ::ket::qubit<StateInteger, BitInteger> const qubit)
-    { return ::ket::spin_expectation_value(boost::begin(state), boost::end(state), qubit); }
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-    template <
-      typename ParallelPolicy,
-      typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
-    inline KET_array<typename ::ket::utility::meta::real_of<Complex>::type, 3u>
-    spin_expectation_value(
-      ParallelPolicy const parallel_policy,
-      std::vector<Complex, Allocator> const& state,
-      ::ket::qubit<StateInteger, BitInteger> const qubit)
-    {
-      return ::ket::spin_expectation_value(
-        parallel_policy,
-        KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
-        qubit);
-    }
-
-    template <
-      typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
-    inline KET_array<typename ::ket::utility::meta::real_of<Complex>::type, 3u>
-    spin_expectation_value(
-      std::vector<Complex, Allocator> const& state,
-      ::ket::qubit<StateInteger, BitInteger> const qubit)
-    {
-      return ::ket::spin_expectation_value(
-        KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
-        qubit);
-    }
-# endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
+    { return ::ket::spin_expectation_value(::ket::utility::begin(state), ::ket::utility::end(state), qubit); }
   } // namespace ranges
 } // namespace ket
 
 
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   undef KET_addressof
-# endif
 # undef KET_enable_if
 # undef KET_is_unsigned
 # undef KET_array

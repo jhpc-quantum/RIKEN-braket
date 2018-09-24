@@ -5,16 +5,7 @@
 
 # include <cmath>
 # include <vector>
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   ifndef BOOST_NO_CXX11_ADDRESSOF
-#     include <memory>
-#   else
-#     include <boost/core/addressof.hpp>
-#   endif
-# endif
 
-# include <boost/range/begin.hpp>
-# include <boost/range/end.hpp>
 # include <boost/range/size.hpp>
 # include <boost/range/value_type.hpp>
 
@@ -31,6 +22,8 @@
 
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/positive_random_value_upto.hpp>
+# include <ket/utility/begin.hpp>
+# include <ket/utility/end.hpp>
 # include <ket/utility/meta/real_of.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
@@ -39,14 +32,6 @@
 # include <ket/mpi/utility/transform_inclusive_scan.hpp>
 # include <ket/mpi/utility/transform_inclusive_scan_self.hpp>
 # include <ket/mpi/utility/upper_bound.hpp>
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   ifndef BOOST_NO_CXX11_ADDRESSOF
-#     define KET_addressof std::addressof
-#   else
-#     define KET_addressof boost::addressof
-#   endif
-# endif
 
 
 namespace ket
@@ -170,15 +155,8 @@ namespace ket
         boost::begin(total_probabilities));
 
       if (present_rank == root_rank)
-      {
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
         ::ket::utility::ranges::inclusive_scan(
-          total_probabilities, KET_addressof(total_probabilities.front()));
-# else // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-        ::ket::utility::ranges::inclusive_scan(
-          total_probabilities, boost::begin(total_probabilities));
-# endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-      }
+          total_probabilities, ::ket::utility::begin(total_probabilities));
 
       for (int event_index = 0; event_index < num_events; ++event_index)
       {
@@ -415,10 +393,6 @@ namespace ket
   } // namespace mpi
 } // namespace ket
 
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   undef KET_addressof
-# endif
 
 #endif
 

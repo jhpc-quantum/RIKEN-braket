@@ -4,35 +4,17 @@
 # include <boost/config.hpp>
 
 # include <cmath>
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   include <vector>
-# endif
 # include <iterator>
 # include <algorithm>
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   ifndef BOOST_NO_CXX11_ADDRESSOF
-#     include <memory>
-#   else
-#     include <boost/core/addressof.hpp>
-#   endif
-# endif
 
-# include <boost/range/begin.hpp>
-# include <boost/range/end.hpp>
 # include <boost/range/difference_type.hpp>
 # include <boost/utility.hpp>
 
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/positive_random_value_upto.hpp>
+# include <ket/utility/begin.hpp>
+# include <ket/utility/end.hpp>
 # include <ket/utility/meta/real_of.hpp>
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   ifndef BOOST_NO_CXX11_ADDRESSOF
-#     define KET_addressof std::addressof
-#   else
-#     define KET_addressof boost::addressof
-#   endif
-# endif
 
 
 namespace ket
@@ -140,7 +122,7 @@ namespace ket
     {
       return ::ket::measure(
         parallel_policy,
-        boost::begin(state), boost::end(state),
+        ::ket::utility::begin(state), ::ket::utility::end(state),
         random_number_generator);
     }
 
@@ -149,39 +131,12 @@ namespace ket
       RandomAccessRange& state, RandomNumberGenerator& random_number_generator)
     {
       return ::ket::measure(
-        boost::begin(state), boost::end(state),
+        ::ket::utility::begin(state), ::ket::utility::end(state),
         random_number_generator);
     }
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-    template <typename ParallelPolicy, typename Complex, typename Allocator, typename RandomNumberGenerator>
-    inline typename std::vector<Complex, Allocator>::difference_type measure(
-      ParallelPolicy const parallel_policy,
-      std::vector<Complex, Allocator>& state, RandomNumberGenerator& random_number_generator)
-    {
-      return ::ket::measure(
-        parallel_policy,
-        KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
-        random_number_generator);
-    }
-
-    template <typename Complex, typename Allocator, typename RandomNumberGenerator>
-    inline typename std::vector<Complex, Allocator>::difference_type measure(
-      std::vector<Complex, Allocator>& state, RandomNumberGenerator& random_number_generator)
-    {
-      return ::ket::measure(
-        ::ket::utility::policy::make_sequential(),
-        KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
-        random_number_generator);
-    }
-# endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
   }
 }
 
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   undef KET_addressof
-# endif
 
 #endif
 

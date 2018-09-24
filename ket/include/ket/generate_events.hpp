@@ -7,29 +7,14 @@
 # include <vector>
 # include <iterator>
 # include <algorithm>
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   ifndef BOOST_NO_CXX11_ADDRESSOF
-#     include <memory>
-#   else
-#     include <boost/core/addressof.hpp>
-#   endif
-# endif
 
-# include <boost/range/begin.hpp>
-# include <boost/range/end.hpp>
 # include <boost/utility.hpp>
 
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/positive_random_value_upto.hpp>
+# include <ket/utility/begin.hpp>
+# include <ket/utility/end.hpp>
 # include <ket/utility/meta/real_of.hpp>
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   ifndef BOOST_NO_CXX11_ADDRESSOF
-#     define KET_addressof std::addressof
-#   else
-#     define KET_addressof boost::addressof
-#   endif
-# endif
 
 
 namespace ket
@@ -186,7 +171,7 @@ namespace ket
     {
       ::ket::generate_events(
         parallel_policy,
-        result, boost::begin(state), boost::end(state), num_events, random_number_generator);
+        result, ::ket::utility::begin(state), ::ket::utility::end(state), num_events, random_number_generator);
     }
 
     template <typename ParallelPolicy, typename StateInteger, typename Allocator, typename RandomAccessRange, typename RandomNumberGenerator>
@@ -200,7 +185,7 @@ namespace ket
     {
       ::ket::generate_events(
         parallel_policy,
-        result, boost::begin(state), boost::end(state),
+        result, ::ket::utility::begin(state), ::ket::utility::end(state),
         num_events, random_number_generator, seed);
     }
 
@@ -212,7 +197,7 @@ namespace ket
       RandomNumberGenerator& random_number_generator)
     {
       ::ket::generate_events(
-        result, boost::begin(state), boost::end(state), num_events, random_number_generator);
+        result, ::ket::utility::begin(state), ::ket::utility::end(state), num_events, random_number_generator);
     }
 
     template <typename StateInteger, typename Allocator, typename RandomAccessRange, typename RandomNumberGenerator>
@@ -224,79 +209,12 @@ namespace ket
       typename RandomNumberGenerator::result_type const seed)
     {
       ::ket::generate_events(
-        result, boost::begin(state), boost::end(state),
+        result, ::ket::utility::begin(state), ::ket::utility::end(state),
         num_events, random_number_generator, seed);
     }
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-    template <
-      typename ParallelPolicy, typename StateInteger, typename ResultAllocator,
-      typename Complex, typename Allocator, typename RandomNumberGenerator>
-    inline void generate_events(
-      ParallelPolicy const parallel_policy,
-      std::vector<StateInteger, ResultAllocator>& result,
-      std::vector<Complex, Allocator>& state,
-      int const num_events,
-      RandomNumberGenerator& random_number_generator)
-    {
-      ::ket::generate_events(
-        parallel_policy,
-        result, KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
-        num_events, random_number_generator);
-    }
-
-    template <
-      typename ParallelPolicy, typename StateInteger, typename ResultAllocator,
-      typename Complex, typename Allocator, typename RandomNumberGenerator>
-    inline void generate_events(
-      ParallelPolicy const parallel_policy,
-      std::vector<StateInteger, ResultAllocator>& result,
-      std::vector<Complex, Allocator>& state,
-      int const num_events,
-      RandomNumberGenerator const& random_number_generator,
-      typename RandomNumberGenerator::result_type const seed)
-    {
-      ::ket::generate_events(
-        parallel_policy,
-        result, KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
-        num_events, random_number_generator, seed);
-    }
-
-    template <
-      typename StateInteger, typename ResultAllocator, typename Complex, typename Allocator, typename RandomNumberGenerator>
-    inline void generate_events(
-      std::vector<StateInteger, ResultAllocator>& result,
-      std::vector<Complex, Allocator>& state,
-      int const num_events,
-      RandomNumberGenerator& random_number_generator)
-    {
-      ::ket::generate_events(
-        result, KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
-        num_events, random_number_generator);
-    }
-
-    template <
-      typename StateInteger, typename ResultAllocator,
-      typename Complex, typename Allocator, typename RandomNumberGenerator>
-    inline void generate_events(
-      std::vector<StateInteger, ResultAllocator>& result,
-      std::vector<Complex, Allocator>& state,
-      int const num_events,
-      RandomNumberGenerator const& random_number_generator,
-      typename RandomNumberGenerator::result_type const seed)
-    {
-      ::ket::generate_events(
-        result, KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
-        num_events, random_number_generator, seed);
-    }
-# endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
   }
 }
 
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   undef KET_addressof
-# endif
 
 #endif
 
