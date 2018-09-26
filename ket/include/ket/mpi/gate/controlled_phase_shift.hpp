@@ -32,6 +32,7 @@
 # include <ket/mpi/page/is_on_page.hpp>
 
 
+// TODO: implement vector-support (KET_PREFER_POINTER_TO_VECTOR_ITERATOR)
 namespace ket
 {
   namespace mpi

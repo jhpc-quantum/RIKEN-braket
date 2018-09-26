@@ -4,45 +4,33 @@
 # include <boost/config.hpp>
 
 # include <cmath>
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   include <vector>
-# endif
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   ifndef BOOST_NO_CXX11_ADDRESSOF
-#     include <memory>
-#   else
-#     include <boost/core/addressof.hpp>
-#   endif
-# endif
+# include <iterator>
+# include <algorithm>
 
-# include <boost/range/begin.hpp>
-# include <boost/range/end.hpp>
+# include <boost/range/difference_type.hpp>
 # include <boost/utility.hpp>
-
-# include <boost/range/size.hpp>
-# include <boost/range/value_type.hpp>
-# include <boost/range/adaptor/transformed.hpp>
-# include <boost/range/algorithm/fill.hpp>
-# include <boost/range/algorithm/upper_bound.hpp>
-# include <boost/range/numeric.hpp>
 
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/positive_random_value_upto.hpp>
+# include <ket/utility/begin.hpp>
+# include <ket/utility/end.hpp>
 # include <ket/utility/meta/real_of.hpp>
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   ifndef BOOST_NO_CXX11_ADDRESSOF
-#     define KET_addressof std::addressof
-#   else
-#     define KET_addressof boost::addressof
-#   endif
-# endif
 
 
 namespace ket
 {
   namespace measure_detail
   {
+# ifdef BOOST_NO_CXX11_LAMBDAS
+    template <typename Complex>
+    struct real_part_plus
+    {
+      typedef Complex result_type;
+
+      Complex operator()(Complex const& lhs, Complex const& rhs) const
+      { using std::real; return static_cast<Complex>(real(lhs) + real(rhs)); }
+    };
+
     template <typename Complex>
     struct complex_norm
     {
@@ -52,12 +40,11 @@ namespace ket
       { using std::norm; return static_cast<Complex>(norm(value)); }
     };
 
-# ifdef BOOST_NO_CXX11_LAMBDAS
+    template <typename Complex>
     struct real_part_less_than
     {
       typedef bool result_type;
 
-      template <typename Complex>
       bool operator()(Complex const& lhs, Complex const& rhs) const
       { using std::real; return real(lhs) < real(rhs); }
     };
@@ -65,119 +52,91 @@ namespace ket
   }
 
 
-  template <typename ParallelPolicy, typename State, typename RandomNumberGenerator>
-  inline typename boost::range_size<State>::type measure(
+  template <typename ParallelPolicy, typename RandomAccessIterator, typename RandomNumberGenerator>
+  inline typename std::iterator_traits<RandomAccessIterator>::difference_type measure(
     ParallelPolicy const parallel_policy,
-    State& state, RandomNumberGenerator& random_number_generator)
+    RandomAccessIterator const first, RandomAccessIterator const last,
+    RandomNumberGenerator& random_number_generator)
   {
-    typedef typename boost::range_value<State>::type complex_type;
-
-    ::ket::utility::ranges::inclusive_scan(
-      parallel_policy,
-      state | boost::adaptors::transformed(
-                ::ket::measure_detail::complex_norm<complex_type>()),
-      boost::begin(state));
-
-    using std::real;
+    typedef typename std::iterator_traits<RandomAccessIterator>::value_type complex_type;
 # ifndef BOOST_NO_CXX11_LAMBDAS
-    typename boost::range_size<State>::type const result
-      = boost::size(boost::upper_bound<boost::return_begin_found>(
-          state,
-          static_cast<complex_type>(
-            ::ket::utility::positive_random_value_upto(
-              real(*boost::prior(boost::end(state))), random_number_generator)),
-          [](complex_type const& lhs, complex_type const& rhs)
-          { return real(lhs) < real(rhs); }));
+    ::ket::utility::transform_inclusive_scan(
+      parallel_policy, first, last, first,
+      [](complex_type const& lhs, complex_type const& rhs)
+      { using std::real; return static_cast<complex_type>(real(lhs) + real(rhs)); },
+      [](complex_type const& value)
+      { using std::norm; return static_cast<complex_type>(norm(value)); });
 # else // BOOST_NO_CXX11_LAMBDAS
-    typename boost::range_size<State>::type const result
-      = boost::size(boost::upper_bound<boost::return_begin_found>(
-          state,
-          static_cast<complex_type>(
-            ::ket::utility::positive_random_value_upto(
-              real(*boost::prior(boost::end(state))), random_number_generator)),
-          ::ket::measure_detail::real_part_less_than()));
+    ::ket::utility::transform_inclusive_scan(
+      parallel_policy, first, last, first,
+      ::ket::measure_detail::real_part_plus<complex_type>(),
+      ::ket::measure_detail::complex_norm<complex_type>());
 # endif // BOOST_NO_CXX11_LAMBDAS
 
-    typedef typename ::ket::utility::meta::real_of<complex_type>::type real_type;
-
-    boost::fill(state, complex_type(static_cast<real_type>(0)));
-    *(boost::begin(state)+result) = complex_type(static_cast<real_type>(1));
-
-    return result;
-  }
-
-  template <typename State, typename RandomNumberGenerator>
-  inline typename boost::range_size<State>::type measure(
-    State& state, RandomNumberGenerator& random_number_generator)
-  {
-    return ::ket::measure(
-      ::ket::utility::policy::make_sequential(),
-      state, random_number_generator);
-  }
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-  template <typename ParallelPolicy, typename Complex, typename Allocator, typename RandomNumberGenerator>
-  inline typename std::vector<Complex, Allocator>::size_type measure(
-    ParallelPolicy const parallel_policy,
-    std::vector<Complex, Allocator>& state, RandomNumberGenerator& random_number_generator)
-  {
-    typedef typename boost::range_value<State>::type complex_type;
-
-    ::ket::utility::ranges::inclusive_scan(
-      parallel_policy,
-      boost::make_iterator_range(
-        KET_addressof(state.front()), KET_addressof(state.front()) + state.size())
-        | boost::adaptors::transformed(
-            ::ket::measure_detail::complex_norm<Complex>()),
-      KET_addressof(state.front()));
-
-    using std::real;
-#   ifndef BOOST_NO_CXX11_LAMBDAS
-    typename boost::range_size<State>::type const result
-      = boost::size(boost::upper_bound<boost::return_begin_found>(
-          boost::make_iterator_range(
-            KET_addressof(state.front()), KET_addressof(state.front()) + state.size()),
+# ifndef BOOST_NO_CXX11_LAMBDAS
+    RandomAccessIterator const found
+      = std::upper_bound(
+          first, last,
           static_cast<complex_type>(
             ::ket::utility::positive_random_value_upto(
-              real(state.back()), random_number_generator)),
+              real(*boost::prior(last)), random_number_generator)),
           [](complex_type const& lhs, complex_type const& rhs)
-          { return real(lhs) < real(rhs); }));
-#   else // BOOST_NO_CXX11_LAMBDAS
-    typename boost::range_size<State>::type const result
-      = boost::size(boost::upper_bound<boost::return_begin_found>(
-          boost::make_iterator_range(
-            KET_addressof(state.front()), KET_addressof(state.front()) + state.size()),
+          { using std::real; return real(lhs) < real(rhs); });
+# else // BOOST_NO_CXX11_LAMBDAS
+    RandomAccessIterator const found
+      = std::upper_bound(
+          first, last,
           static_cast<complex_type>(
             ::ket::utility::positive_random_value_upto(
-              real(state.back()), random_number_generator)),
-          ::ket::measure_detail::real_part_less_than()));
-#   endif // BOOST_NO_CXX11_LAMBDAS
+              real(*boost::prior(last)), random_number_generator)),
+          ::ket::measure_detail::real_part_less_than<complex_type>());
+# endif // BOOST_NO_CXX11_LAMBDAS
+    typename std::iterator_traits<RandomAccessIterator>::difference_type const result
+      = found - first;
 
     typedef typename ::ket::utility::meta::real_of<complex_type>::type real_type;
 
-    std::fill(
-      KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
-      complex_type(static_cast<real_type>(0)));
-    state[result] = complex_type(static_cast<real_type>(1));
+    std::fill(first, last, complex_type(static_cast<real_type>(0)));
+    *(first + result) = complex_type(static_cast<real_type>(1));
 
     return result;
   }
 
-  template <typename Complex, typename Allocator, typename RandomNumberGenerator>
-  inline typename std::vector<Complex, Allocator>::size_type measure(
-    std::vector<Complex, Allocator>& state, RandomNumberGenerator& random_number_generator)
+  template <typename RandomAccessIterator, typename RandomNumberGenerator>
+  inline typename std::iterator_traits<RandomAccessIterator>::difference_type measure(
+    RandomAccessIterator const first, RandomAccessIterator const last,
+    RandomNumberGenerator& random_number_generator)
   {
     return ::ket::measure(
       ::ket::utility::policy::make_sequential(),
-      state, random_number_generator);
+      first, last, random_number_generator);
   }
-# endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
+
+
+  namespace ranges
+  {
+    template <typename ParallelPolicy, typename RandomAccessRange, typename RandomNumberGenerator>
+    inline typename boost::range_difference<RandomAccessRange>::type measure(
+      ParallelPolicy const parallel_policy,
+      RandomAccessRange& state, RandomNumberGenerator& random_number_generator)
+    {
+      return ::ket::measure(
+        parallel_policy,
+        ::ket::utility::begin(state), ::ket::utility::end(state),
+        random_number_generator);
+    }
+
+    template <typename RandomAccessRange, typename RandomNumberGenerator>
+    inline typename boost::range_difference<RandomAccessRange>::type measure(
+      RandomAccessRange& state, RandomNumberGenerator& random_number_generator)
+    {
+      return ::ket::measure(
+        ::ket::utility::begin(state), ::ket::utility::end(state),
+        random_number_generator);
+    }
+  }
 }
 
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   undef KET_addressof
-# endif
 
 #endif
 

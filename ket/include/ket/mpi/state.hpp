@@ -32,13 +32,12 @@
 #   include <boost/core/addressof.hpp>
 # endif
 
+# include <boost/utility.hpp> // boost::prior
+
 # include <boost/iterator/iterator_facade.hpp>
 
 # include <boost/range/sub_range.hpp>
 # include <boost/range/iterator_range.hpp>
-# include <boost/range/begin.hpp>
-# include <boost/range/end.hpp>
-# include <boost/range/algorithm/find_if.hpp>
 
 # include <yampi/environment.hpp>
 # include <yampi/buffer.hpp>
@@ -52,9 +51,14 @@
 # include <ket/utility/integer_exp2.hpp>
 # include <ket/utility/is_nothrow_swappable.hpp>
 # include <ket/utility/loop_n.hpp>
-//# include <ket/utility/parallel/loop_n.hpp>
+# include <ket/utility/begin.hpp>
+# include <ket/utility/end.hpp>
+# include <ket/utility/meta/iterator_of.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
+# include <ket/mpi/utility/transform_inclusive_scan.hpp>
+# include <ket/mpi/utility/transform_inclusive_scan_self.hpp>
+# include <ket/mpi/utility/upper_bound.hpp>
 # include <ket/mpi/utility/detail/swap_local_qubits.hpp>
 
 # ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
@@ -296,8 +300,8 @@ namespace ket
 
         using std::swap;
         swap(
-          boost::begin(page_ranges_[page_nonpage_index_pair1.first])[page_nonpage_index_pair1.second],
-          boost::begin(page_ranges_[page_nonpage_index_pair2.first])[page_nonpage_index_pair2.second]);
+          ::ket::utility::begin(page_ranges_[page_nonpage_index_pair1.first])[page_nonpage_index_pair1.second],
+          ::ket::utility::begin(page_ranges_[page_nonpage_index_pair2.first])[page_nonpage_index_pair2.second]);
       }
 
       page_range_type& page_range(size_type const page_id)
@@ -332,32 +336,32 @@ namespace ket
       reference at(size_type const index)
       {
         return data_.at(
-          (boost::begin(page_ranges_[get_page_id(index)])-data_.begin())+get_index_in_page(index));
+          (::ket::utility::begin(page_ranges_[get_page_id(index)])-data_.begin())+get_index_in_page(index));
       }
 
       const_reference at(size_type const index) const
       {
         return data_.at(
-          (boost::begin(page_ranges_[get_page_id(index)])-data_.begin())+get_index_in_page(index));
+          (::ket::utility::begin(page_ranges_[get_page_id(index)])-data_.begin())+get_index_in_page(index));
       }
 
       reference operator[](size_type const index)
       {
         assert(index < (static_cast<size_type>(1u) << num_local_qubits_));
-        return boost::begin(page_ranges_[get_page_id(index)])[get_index_in_page(index)];
+        return ::ket::utility::begin(page_ranges_[get_page_id(index)])[get_index_in_page(index)];
       }
 
       const_reference operator[](size_type const index) const
       {
         assert(index < (static_cast<size_type>(1u) << num_local_qubits_));
-        return boost::begin(page_ranges_[get_page_id(index)])[get_index_in_page(index)];
+        return ::ket::utility::begin(page_ranges_[get_page_id(index)])[get_index_in_page(index)];
       }
 
-      reference front() { return *boost::begin(page_ranges_[get_page_id(0u)]); }
-      const_reference front() const { return *boost::begin(page_ranges_[get_page_id(0u)]); }
+      reference front() { return *::ket::utility::begin(page_ranges_[get_page_id(0u)]); }
+      const_reference front() const { return *::ket::utility::begin(page_ranges_[get_page_id(0u)]); }
 
-      reference back() { return *--boost::end(page_ranges_[get_page_id((1u << num_local_qubits_)-1u)]); }
-      const_reference back() const { return *--boost::end(page_ranges_[get_page_id((1u << num_local_qubits_)-1u)]); }
+      reference back() { return *--::ket::utility::end(page_ranges_[get_page_id((1u << num_local_qubits_)-1u)]); }
+      const_reference back() const { return *--::ket::utility::end(page_ranges_[get_page_id((1u << num_local_qubits_)-1u)]); }
 
 
       // Iterators
@@ -513,7 +517,7 @@ namespace ket
         assert(index < (static_cast<size_type>(1u) << num_local_qubits_));
 
         std::size_t const num_qubits_in_page = num_local_qubits_-num_page_qubits;
-        return compl ((num_pages-1u) << num_qubits_in_page) bitand index;
+        return (compl ((num_pages-1u) << num_qubits_in_page)) bitand index;
       }
     };
 
@@ -729,11 +733,11 @@ namespace ket
             size_type const page_size = boost::size(page_range);
 
             typedef
-              typename boost::range_iterator<page_range_type>::type
+              typename ::ket::utility::meta::iterator_of<page_range_type>::type
               page_iterator;
-            page_iterator const page_first = boost::begin(page_range);
-            page_iterator const page_last = boost::end(page_range);
-            page_iterator const buffer_first = boost::begin(local_state.buffer_range());
+            page_iterator const page_first = ::ket::utility::begin(page_range);
+            page_iterator const page_last = ::ket::utility::end(page_range);
+            page_iterator const buffer_first = ::ket::utility::begin(local_state.buffer_range());
 
             StateInteger const first_index
               = page_id == page_front_id
@@ -804,8 +808,8 @@ namespace ket
           typedef ::ket::mpi::state<Complex, num_page_qubits, Allocator> local_state_type;
           for (std::size_t page_id = 0u; page_id < local_state_type::num_pages; ++page_id)
             function(
-              boost::begin(local_state.page_range(page_id)),
-              boost::end(local_state.page_range(page_id)));
+              ::ket::utility::begin(local_state.page_range(page_id)),
+              ::ket::utility::end(local_state.page_range(page_id)));
           return local_state;
         }
 
@@ -820,9 +824,284 @@ namespace ket
           typedef ::ket::mpi::state<Complex, num_page_qubits, Allocator> local_state_type;
           for (std::size_t page_id = 0u; page_id < local_state_type::num_pages; ++page_id)
             function(
-              boost::begin(local_state.page_range(page_id)),
-              boost::end(local_state.page_range(page_id)));
+              ::ket::utility::begin(local_state.page_range(page_id)),
+              ::ket::utility::end(local_state.page_range(page_id)));
           return local_state;
+        }
+      };
+
+
+      template <int num_page_qubits>
+      struct transform_inclusive_scan
+      {
+        template <
+          typename ParallelPolicy,
+          typename Complex, typename Allocator, typename ForwardIterator,
+          typename BinaryOperation, typename UnaryOperation>
+        static Complex call(
+          ParallelPolicy const parallel_policy,
+          ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state,
+          ForwardIterator const d_first,
+          BinaryOperation binary_operation, UnaryOperation unary_operation)
+        {
+          impl(
+            typename std::iterator_traits<ForwardIterator>::iterator_category(),
+            parallel_policy, local_state, d_first, binary_operation, unary_operation);
+        }
+
+        template <
+          typename ParallelPolicy,
+          typename Complex, typename Allocator, typename ForwardIterator,
+          typename BinaryOperation, typename UnaryOperation, typename Value>
+        static Complex call(
+          ParallelPolicy const parallel_policy,
+          ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state,
+          ForwardIterator const d_first,
+          BinaryOperation binary_operation, UnaryOperation unary_operation,
+          Value const initial_value)
+        {
+          impl(
+            typename std::iterator_traits<ForwardIterator>::iterator_category(),
+            parallel_policy, local_state, d_first, binary_operation, unary_operation, initial_value);
+        }
+
+       private:
+        template <
+          typename ParallelPolicy,
+          typename Complex, typename Allocator, typename ForwardIterator,
+          typename BinaryOperation, typename UnaryOperation>
+        static Complex impl(
+          std::forward_iterator_tag const,
+          ParallelPolicy const parallel_policy,
+          ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state,
+          ForwardIterator d_first,
+          BinaryOperation binary_operation, UnaryOperation unary_operation)
+        {
+          Complex partial_sum = static_cast<Complex>(0);
+
+          typedef ::ket::mpi::state<Complex, num_page_qubits, Allocator> local_state_type;
+          for (std::size_t page_id = 0u; page_id < local_state_type::num_pages; ++page_id)
+          {
+            ForwardIterator prev_d_first = d_first;
+            d_first
+              = ::ket::utility::transform_inclusive_scan(
+                  parallel_policy,
+                  ::ket::utility::begin(local_state.page_range(page_id)),
+                  ::ket::utility::end(local_state.page_range(page_id)),
+                  d_first, binary_operation, unary_operation, partial_sum);
+            std::advance(prev_d_first, boost::size(local_state.page_range(page_id))-1);
+            partial_sum = *prev_d_first;
+          }
+
+          return partial_sum;
+        }
+
+        template <
+          typename ParallelPolicy,
+          typename Complex, typename Allocator, typename ForwardIterator,
+          typename BinaryOperation, typename UnaryOperation, typename Value>
+        static Complex impl(
+          std::forward_iterator_tag const,
+          ParallelPolicy const parallel_policy,
+          ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state,
+          ForwardIterator d_first,
+          BinaryOperation binary_operation, UnaryOperation unary_operation,
+          Value const initial_value)
+        {
+          Complex partial_sum = static_cast<Complex>(initial_value);
+
+          typedef ::ket::mpi::state<Complex, num_page_qubits, Allocator> local_state_type;
+          for (std::size_t page_id = 0u; page_id < local_state_type::num_pages; ++page_id)
+          {
+            ForwardIterator prev_d_first = d_first;
+            d_first
+              = ::ket::utility::transform_inclusive_scan(
+                  parallel_policy,
+                  ::ket::utility::begin(local_state.page_range(page_id)),
+                  ::ket::utility::end(local_state.page_range(page_id)),
+                  d_first, binary_operation, unary_operation, partial_sum);
+            std::advance(prev_d_first, boost::size(local_state.page_range(page_id))-1);
+            partial_sum = *prev_d_first;
+          }
+
+          return partial_sum;
+        }
+
+        template <
+          typename ParallelPolicy,
+          typename Complex, typename Allocator, typename ForwardIterator,
+          typename BinaryOperation, typename UnaryOperation>
+        static Complex impl(
+          std::bidirectional_iterator_tag const,
+          ParallelPolicy const parallel_policy,
+          ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state,
+          ForwardIterator const d_first,
+          BinaryOperation binary_operation, UnaryOperation unary_operation)
+        {
+          Complex partial_sum = static_cast<Complex>(0);
+
+          typedef ::ket::mpi::state<Complex, num_page_qubits, Allocator> local_state_type;
+          for (std::size_t page_id = 0u; page_id < local_state_type::num_pages; ++page_id)
+          {
+            d_first
+              = ::ket::utility::transform_inclusive_scan(
+                  parallel_policy,
+                  ::ket::utility::begin(local_state.page_range(page_id)),
+                  ::ket::utility::end(local_state.page_range(page_id)),
+                  d_first, binary_operation, unary_operation, partial_sum);
+            partial_sum = *boost::prior(d_first);
+          }
+
+          return partial_sum;
+        }
+
+        template <
+          typename ParallelPolicy,
+          typename Complex, typename Allocator, typename ForwardIterator,
+          typename BinaryOperation, typename UnaryOperation, typename Value>
+        static Complex impl(
+          std::bidirectional_iterator_tag const,
+          ParallelPolicy const parallel_policy,
+          ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state,
+          ForwardIterator const d_first,
+          BinaryOperation binary_operation, UnaryOperation unary_operation,
+          Value const initial_value)
+        {
+          Complex partial_sum = static_cast<Complex>(initial_value);
+
+          typedef ::ket::mpi::state<Complex, num_page_qubits, Allocator> local_state_type;
+          for (std::size_t page_id = 0u; page_id < local_state_type::num_pages; ++page_id)
+          {
+            d_first
+              = ::ket::utility::transform_inclusive_scan(
+                  parallel_policy,
+                  ::ket::utility::begin(local_state.page_range(page_id)),
+                  ::ket::utility::end(local_state.page_range(page_id)),
+                  d_first, binary_operation, unary_operation, partial_sum);
+            partial_sum = *boost::prior(d_first);
+          }
+
+          return partial_sum;
+        }
+      };
+
+
+      template <int num_page_qubits>
+      struct transform_inclusive_scan_self
+      {
+        template <
+          typename ParallelPolicy,
+          typename Complex, typename Allocator,
+          typename BinaryOperation, typename UnaryOperation>
+        static Complex call(
+          ParallelPolicy const parallel_policy,
+          ::ket::mpi::state<Complex, num_page_qubits, Allocator>& local_state,
+          BinaryOperation binary_operation, UnaryOperation unary_operation)
+        {
+          Complex partial_sum = static_cast<Complex>(0);
+
+          typedef ::ket::mpi::state<Complex, num_page_qubits, Allocator> local_state_type;
+          for (std::size_t page_id = 0u; page_id < local_state_type::num_pages; ++page_id)
+          {
+            ::ket::utility::transform_inclusive_scan(
+              parallel_policy,
+              ::ket::utility::begin(local_state.page_range(page_id)),
+              ::ket::utility::end(local_state.page_range(page_id)),
+              ::ket::utility::begin(local_state.page_range(page_id)),
+              binary_operation, unary_operation, partial_sum);
+            partial_sum = *boost::prior(::ket::utility::end(local_state.page_range(page_id)));
+          }
+
+          return partial_sum;
+        }
+
+        template <
+          typename ParallelPolicy,
+          typename Complex, typename Allocator,
+          typename BinaryOperation, typename UnaryOperation, typename Value>
+        static Complex call(
+          ParallelPolicy const parallel_policy,
+          ::ket::mpi::state<Complex, num_page_qubits, Allocator>& local_state,
+          BinaryOperation binary_operation, UnaryOperation unary_operation,
+          Value const initial_value)
+        {
+          Complex partial_sum = static_cast<Complex>(initial_value);
+
+          typedef ::ket::mpi::state<Complex, num_page_qubits, Allocator> local_state_type;
+          for (std::size_t page_id = 0u; page_id < local_state_type::num_pages; ++page_id)
+          {
+            ::ket::utility::transform_inclusive_scan(
+              parallel_policy,
+              ::ket::utility::begin(local_state.page_range(page_id)),
+              ::ket::utility::end(local_state.page_range(page_id)),
+              ::ket::utility::begin(local_state.page_range(page_id)),
+              binary_operation, unary_operation, partial_sum);
+            partial_sum = *boost::prior(::ket::utility::end(local_state.page_range(page_id)));
+          }
+
+          return partial_sum;
+        }
+      };
+
+
+      // Usually num_page_qubits is small, so linear search for page is probably not bad.
+      template <int num_page_qubits>
+      struct upper_bound
+      {
+        template <typename Complex, typename Allocator>
+        static typename ::ket::mpi::state<Complex, num_page_qubits, Allocator>::difference_type call(
+          ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state,
+          Complex const& value)
+        {
+          typedef ::ket::mpi::state<Complex, num_page_qubits, Allocator> local_state_type;
+          typedef typename local_state_type::difference_type difference_type;
+
+          for (std::size_t page_id = 0u; page_id < local_state_type::num_pages; ++page_id)
+          {
+            std::size_t index_in_page
+              = std::upper_bound(
+                  ::ket::utility::begin(local_state.page_range(page_id)),
+                  ::ket::utility::end(local_state.page_range(page_id)),
+                  value)
+                - ::ket::utility::begin(local_state.page_range(page_id));
+
+            if (index_in_page < boost::size(local_state.page_range(page_id)))
+            {
+              std::size_t const num_qubits_in_page
+                = local_state.num_local_qubits()-num_page_qubits;
+              return static_cast<difference_type>((page_id << num_qubits_in_page) bitor index_in_page);
+            }
+          }
+
+          return static_cast<difference_type>(local_state.size());
+        }
+
+        template <typename Complex, typename Allocator, typename Compare>
+        static typename ::ket::mpi::state<Complex, num_page_qubits, Allocator>::difference_type call(
+          ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state,
+          Complex const& value, Compare compare)
+        {
+          typedef ::ket::mpi::state<Complex, num_page_qubits, Allocator> local_state_type;
+          typedef typename local_state_type::difference_type difference_type;
+
+          for (std::size_t page_id = 0u; page_id < local_state_type::num_pages; ++page_id)
+          {
+            std::size_t index_in_page
+              = std::upper_bound(
+                  ::ket::utility::begin(local_state.page_range(page_id)),
+                  ::ket::utility::end(local_state.page_range(page_id)),
+                  value, compare)
+                - ::ket::utility::begin(local_state.page_range(page_id));
+
+            if (index_in_page < boost::size(local_state.page_range(page_id)))
+            {
+              std::size_t const num_qubits_in_page
+                = local_state.num_local_qubits()-num_page_qubits;
+              return static_cast<difference_type>((page_id << num_qubits_in_page) bitor index_in_page);
+            }
+          }
+
+          return static_cast<difference_type>(local_state.size());
         }
       };
     } // namespace state_detail
@@ -1100,6 +1379,93 @@ namespace ket
           return local_state;
         }
       };
+
+
+      template <>
+      struct transform_inclusive_scan<0>
+      {
+        template <
+          typename ParallelPolicy,
+          typename Complex, typename Allocator, typename ForwardIterator,
+          typename BinaryOperation, typename UnaryOperation>
+        static Complex call(
+          ParallelPolicy const parallel_policy,
+          ::ket::mpi::state<Complex, 0, Allocator> const& local_state,
+          ForwardIterator const d_first,
+          BinaryOperation binary_operation, UnaryOperation unary_operation)
+        {
+          return ::ket::mpi::utility::transform_inclusive_scan(
+            parallel_policy,
+            local_state.data(), d_first, binary_operation, unary_operation);
+        }
+
+        template <
+          typename ParallelPolicy,
+          typename Complex, typename Allocator, typename ForwardIterator,
+          typename BinaryOperation, typename UnaryOperation, typename Value>
+        static Complex call(
+          ParallelPolicy const parallel_policy,
+          ::ket::mpi::state<Complex, 0, Allocator> const& local_state,
+          ForwardIterator const d_first,
+          BinaryOperation binary_operation, UnaryOperation unary_operation,
+          Value const initial_value)
+        {
+          return ::ket::mpi::utility::transform_inclusive_scan(
+            parallel_policy,
+            local_state.data(), d_first, binary_operation, unary_operation, initial_value);
+        }
+      };
+
+
+      template <>
+      struct transform_inclusive_scan_self<0>
+      {
+        template <
+          typename ParallelPolicy,
+          typename Complex, typename Allocator,
+          typename BinaryOperation, typename UnaryOperation>
+        static Complex call(
+          ParallelPolicy const parallel_policy,
+          ::ket::mpi::state<Complex, 0, Allocator>& local_state,
+          BinaryOperation binary_operation, UnaryOperation unary_operation)
+        {
+          return ::ket::mpi::utility::transform_inclusive_scan_self(
+            parallel_policy,
+            local_state.data(), binary_operation, unary_operation);
+        }
+
+        template <
+          typename ParallelPolicy,
+          typename Complex, typename Allocator,
+          typename BinaryOperation, typename UnaryOperation, typename Value>
+        static Complex call(
+          ParallelPolicy const parallel_policy,
+          ::ket::mpi::state<Complex, 0, Allocator>& local_state,
+          BinaryOperation binary_operation, UnaryOperation unary_operation,
+          Value const initial_value)
+        {
+          return ::ket::mpi::utility::transform_inclusive_scan_self(
+            parallel_policy,
+            local_state.data(), binary_operation, unary_operation, initial_value);
+        }
+      };
+
+
+      template <>
+      struct upper_bound<0>
+      {
+        template <typename Complex, typename Allocator>
+        static typename ::ket::mpi::state<Complex, 0, Allocator>::difference_type call(
+          ::ket::mpi::state<Complex, 0, Allocator> const& local_state,
+          Complex const& value)
+        { return ::ket::mpi::utility::upper_bound(local_state.data(), value); }
+
+        template <typename Complex, typename Allocator, typename Compare>
+        static typename ::ket::mpi::state<Complex, 0, Allocator>::difference_type call(
+          ::ket::mpi::state<Complex, 0, Allocator> const& local_state,
+          Complex const& value, Compare compare)
+        { return ::ket::mpi::utility::upper_bound(local_state.data(), value, compare); }
+      };
     } // namespace state_detail
 
 
@@ -1180,6 +1546,122 @@ namespace ket
               for_each_local_range_type;
             return for_each_local_range_type::call(
               local_state, KET_FORWARD_OR_COPY(Function, function));
+          }
+        };
+
+
+        template <typename LocalState_>
+        struct transform_inclusive_scan;
+
+        template <typename Complex, int num_page_qubits, typename Allocator>
+        struct transform_inclusive_scan<
+          ::ket::mpi::state<Complex, num_page_qubits, Allocator> >
+        {
+          template <
+            typename ParallelPolicy, typename ForwardIterator,
+            typename BinaryOperation, typename UnaryOperation>
+          static Complex call(
+            ParallelPolicy const parallel_policy,
+            ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state,
+            ForwardIterator const d_first,
+            BinaryOperation binary_operation, UnaryOperation unary_operation)
+          {
+            typedef
+              ::ket::mpi::state_detail::transform_inclusive_scan<num_page_qubits>
+              transform_inclusive_scan_type;
+            return transform_inclusive_scan_type::call(
+              parallel_policy,
+              local_state, d_first, binary_operation, unary_operation);
+          }
+
+          template <
+            typename ParallelPolicy, typename ForwardIterator,
+            typename BinaryOperation, typename UnaryOperation, typename Value>
+          static Complex call(
+            ParallelPolicy const parallel_policy,
+            ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state,
+            ForwardIterator const d_first,
+            BinaryOperation binary_operation, UnaryOperation unary_operation,
+            Value const initial_value)
+          {
+            typedef
+              ::ket::mpi::state_detail::transform_inclusive_scan<num_page_qubits>
+              transform_inclusive_scan_type;
+            return transform_inclusive_scan_type::call(
+              parallel_policy,
+              local_state, d_first, binary_operation, unary_operation, initial_value);
+          }
+        };
+
+
+        template <typename LocalState_>
+        struct transform_inclusive_scan_self;
+
+        template <typename Complex, int num_page_qubits, typename Allocator>
+        struct transform_inclusive_scan_self<
+          ::ket::mpi::state<Complex, num_page_qubits, Allocator> >
+        {
+          template <
+            typename ParallelPolicy,
+            typename BinaryOperation, typename UnaryOperation>
+          static Complex call(
+            ParallelPolicy const parallel_policy,
+            ::ket::mpi::state<Complex, num_page_qubits, Allocator>& local_state,
+            BinaryOperation binary_operation, UnaryOperation unary_operation)
+          {
+            typedef
+              ::ket::mpi::state_detail::transform_inclusive_scan_self<num_page_qubits>
+              transform_inclusive_scan_self_type;
+            return transform_inclusive_scan_self_type::call(
+              parallel_policy,
+              local_state, binary_operation, unary_operation);
+          }
+
+          template <
+            typename ParallelPolicy,
+            typename BinaryOperation, typename UnaryOperation, typename Value>
+          static Complex call(
+            ParallelPolicy const parallel_policy,
+            ::ket::mpi::state<Complex, num_page_qubits, Allocator>& local_state,
+            BinaryOperation binary_operation, UnaryOperation unary_operation,
+            Value const initial_value)
+          {
+            typedef
+              ::ket::mpi::state_detail::transform_inclusive_scan_self<num_page_qubits>
+              transform_inclusive_scan_self_type;
+            return transform_inclusive_scan_self_type::call(
+              parallel_policy,
+              local_state, binary_operation, unary_operation, initial_value);
+          }
+        };
+
+
+        template <typename LocalState_>
+        struct upper_bound;
+
+        template <typename Complex, int num_page_qubits, typename Allocator>
+        struct upper_bound<
+          ::ket::mpi::state<Complex, num_page_qubits, Allocator> >
+        {
+          static typename ::ket::mpi::state<Complex, num_page_qubits, Allocator>::difference_type call(
+            ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state,
+            Complex const& value)
+          {
+            typedef
+              ::ket::mpi::state_detail::upper_bound<num_page_qubits>
+              upper_bound_type;
+            return upper_bound_type::call(local_state, value);
+          }
+
+          template <typename Compare>
+          static typename ::ket::mpi::state<Complex, num_page_qubits, Allocator>::difference_type call(
+            ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state,
+            Complex const& value, Compare compare)
+          {
+            typedef
+              ::ket::mpi::state_detail::upper_bound<num_page_qubits>
+              upper_bound_type;
+            return upper_bound_type::call(local_state, value, compare);
           }
         };
       } // namespace dispatch

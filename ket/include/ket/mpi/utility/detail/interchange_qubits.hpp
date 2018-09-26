@@ -11,17 +11,8 @@
 # else
 #   include <boost/type_traits/remove_cv.hpp>
 # endif
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   ifndef BOOST_NO_CXX11_ADDRESSOF
-#     include <memory>
-#   else
-#     include <boost/core/addressof.hpp>
-#   endif
-# endif
 
 # include <boost/range/value_type.hpp>
-# include <boost/range/iterator.hpp>
-# include <boost/range/algorithm/copy.hpp>
 
 # include <yampi/environment.hpp>
 # include <yampi/datatype.hpp>
@@ -31,18 +22,14 @@
 # include <yampi/status.hpp>
 # include <yampi/algorithm/swap.hpp>
 
+# include <ket/utility/begin.hpp>
+# include <ket/utility/end.hpp>
+# include <ket/utility/meta/iterator_of.hpp>
+
 # ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
 #   define KET_remove_cv std::remove_cv
 # else
 #   define KET_remove_cv boost::remove_cv
-# endif
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   ifndef BOOST_NO_CXX11_ADDRESSOF
-#     define KET_addressof std::addressof
-#   else
-#     define KET_addressof boost::addressof
-#   endif
 # endif
 
 
@@ -69,53 +56,20 @@ namespace ket
             assert(source_local_last_index >= source_local_first_index);
 
             typedef
-              typename boost::range_iterator<LocalState>::type
+              typename ::ket::utility::meta::iterator_of<LocalState>::type
               iterator;
-            iterator const first = boost::begin(local_state)+source_local_first_index;
-            iterator const last = boost::begin(local_state)+source_local_last_index;
+            iterator const first = ::ket::utility::begin(local_state)+source_local_first_index;
+            iterator const last = ::ket::utility::begin(local_state)+source_local_last_index;
 
             buffer.resize(source_local_last_index - source_local_first_index);
             yampi::algorithm::swap(
               yampi::ignore_status(), communicator, environment,
               yampi::make_buffer(first, last, datatype),
               yampi::make_buffer(
-                boost::begin(buffer), boost::end(buffer), datatype),
+                ::ket::utility::begin(buffer), ::ket::utility::end(buffer), datatype),
               target_rank);
-            boost::copy(buffer, first);
+            std::copy(::ket::utility::begin(buffer), ::ket::utility::end(buffer), first);
           }
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-          template <
-            typename Complex, typename Allocator1, typename Allocator2, typename StateInteger>
-          static void call(
-            std::vector<Complex, Allocator1>& local_state,
-            std::vector<Complex, Allocator2>& buffer,
-            StateInteger const source_local_first_index,
-            StateInteger const source_local_last_index,
-            yampi::datatype const datatype, yampi::rank const target_rank,
-            yampi::communicator const& communicator, yampi::environment const& environment)
-          {
-            assert(source_local_last_index >= source_local_first_index);
-
-            typedef
-              typename std::vector<Complex, Allocator1>::pointer
-              pointer;
-            pointer const first = KET_addressof(local_state.front())+source_local_first_index;
-            pointer const last = KET_addressof(local_state.front())+source_local_last_index;
-
-            buffer.resize(source_local_last_index - source_local_first_index);
-            yampi::algorithm::swap(
-              yampi::ignore_status(), communicator, environment,
-              yampi::make_buffer(first, last, datatype),
-              yampi::make_buffer(
-                KET_addressof(buffer.front()),
-                KET_addressof(buffer.front())+buffer.size(),
-                datatype),
-              target_rank);
-            std::copy(
-              KET_addressof(buffer.front()), KET_addressof(buffer.front())+buffer.size(), first);
-          }
-# endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
         };
       } // namespace dispatch
 
@@ -144,9 +98,6 @@ namespace ket
 }
 
 
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   undef KET_addressof
-# endif
 # undef KET_remove_cv
 
 #endif

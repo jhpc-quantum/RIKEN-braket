@@ -16,12 +16,8 @@
 # endif
 # include <vector>
 
-# include <boost/range/begin.hpp>
 # include <boost/range/size.hpp>
 # include <boost/range/value_type.hpp>
-# ifdef BOOST_NO_CXX11_AUTO_DECLARATIONS
-#   include <boost/range/iterator.hpp>
-# endif
 # include <boost/range/join.hpp>
 
 # include <yampi/communicator.hpp>
@@ -30,6 +26,9 @@
 # include <ket/control.hpp>
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/generate_phase_coefficients.hpp>
+# include <ket/utility/begin.hpp>
+# include <ket/utility/end.hpp>
+# include <ket/utility/meta/const_iterator_of.hpp>
 # include <ket/utility/meta/real_of.hpp>
 # include <ket/mpi/swapped_fourier_transform.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
@@ -148,16 +147,16 @@ namespace ket
       for (qubits_type const& rhs_qubits: rhs_qubits_range)
         ::ket::mpi::addition_assignment_detail::do_addition_assignment(
           mpi_policy, parallel_policy, local_state,
-          boost::begin(lhs_qubits), boost::begin(rhs_qubits), num_qubits, phase_coefficients,
+          ::ket::utility::begin(lhs_qubits), ::ket::utility::begin(rhs_qubits), num_qubits, phase_coefficients,
           permutation, buffer, datatype, communicator, environment);
 # else // BOOST_NO_CXX11_RANGE_BASED_FOR
-      typedef typename boost::range_iterator<QubitsRange const>::type iterator;
-      iterator iter = boost::begin(rhs_qubits_range);
-      iterator const last = boost::end(rhs_qubits_range);
+      typedef typename ::ket::utility::meta::const_iterator_of<QubitsRange const>::type iterator;
+      iterator iter = ::ket::utility::begin(rhs_qubits_range);
+      iterator const last = ::ket::utility::end(rhs_qubits_range);
       for (; iter != last; ++iter)
         ::ket::mpi::addition_assignment_detail::do_addition_assignment(
           mpi_policy, parallel_policy, local_state,
-          boost::begin(lhs_qubits), boost::begin(*iter), num_qubits, phase_coefficients,
+          ::ket::utility::begin(lhs_qubits), ::ket::utility::begin(*iter), num_qubits, phase_coefficients,
           permutation, buffer, datatype, communicator, environment);
 # endif // BOOST_NO_CXX11_RANGE_BASED_FOR
 
@@ -411,16 +410,16 @@ namespace ket
       for (qubits_type const& rhs_qubits: rhs_qubits_range)
         ::ket::mpi::addition_assignment_detail::do_adj_addition_assignment(
           mpi_policy, parallel_policy, local_state,
-          boost::begin(lhs_qubits), boost::begin(rhs_qubits), num_qubits, phase_coefficients,
+          ::ket::utility::begin(lhs_qubits), ::ket::utility::begin(rhs_qubits), num_qubits, phase_coefficients,
           permutation, buffer, datatype, communicator, environment);
 # else // BOOST_NO_CXX11_RANGE_BASED_FOR
-      typedef typename boost::range_iterator<QubitsRange const>::type iterator;
-      iterator iter = boost::begin(rhs_qubits_range);
-      iterator const last = boost::end(rhs_qubits_range);
+      typedef typename ::ket::utility::meta::const_iterator_of<QubitsRange const>::type iterator;
+      iterator iter = ::ket::utility::begin(rhs_qubits_range);
+      iterator const last = ::ket::utility::end(rhs_qubits_range);
       for (; iter != last; ++iter)
         ::ket::mpi::addition_assignment_detail::do_adj_addition_assignment(
           mpi_policy, parallel_policy, local_state,
-          boost::begin(lhs_qubits), boost::begin(*iter), num_qubits, phase_coefficients,
+          ::ket::utility::begin(lhs_qubits), ::ket::utility::begin(*iter), num_qubits, phase_coefficients,
           permutation, buffer, datatype, communicator, environment);
 # endif // BOOST_NO_CXX11_RANGE_BASED_FOR
 

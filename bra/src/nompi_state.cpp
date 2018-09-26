@@ -203,7 +203,7 @@ namespace bra
   void nompi_state::do_measure()
   {
     measured_value_
-      = ket::measure(
+      = ket::ranges::measure(
           ket::utility::policy::make_sequential(), // parallel_policy_,
           data_, random_number_generator_);
   }
@@ -211,11 +211,11 @@ namespace bra
   void nompi_state::do_generate_events(int const num_events, int const seed)
   {
     if (seed < 0)
-      ket::generate_events(
+      ket::ranges::generate_events(
         ket::utility::policy::make_sequential(), // parallel_policy_,
         generated_events_, data_, num_events, random_number_generator_);
     else
-      ket::generate_events(
+      ket::ranges::generate_events(
         ket::utility::policy::make_sequential(), // parallel_policy_,
         generated_events_, data_, num_events, random_number_generator_, static_cast<seed_type>(seed));
   }
@@ -229,7 +229,7 @@ namespace bra
     std::vector<qubit_type> modular_exponentiation_qubits(total_num_qubits_-num_exponent_qubits);
     boost::iota(modular_exponentiation_qubits, static_cast<qubit_type>(0u));
 
-    ket::shor_box(
+    ket::ranges::shor_box(
       parallel_policy_,
       data_, base, divisor, exponent_qubits, modular_exponentiation_qubits);
   }

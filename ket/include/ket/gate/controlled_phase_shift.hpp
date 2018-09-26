@@ -5,9 +5,6 @@
 
 # include <cassert>
 # include <complex>
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   include <vector>
-# endif
 # include <iterator>
 # include <utility>
 # ifndef NDEBUG
@@ -21,18 +18,9 @@
 # ifdef BOOST_NO_CXX11_STATIC_ASSERT
 #   include <boost/static_assert.hpp>
 # endif
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   ifndef BOOST_NO_CXX11_ADDRESSOF
-#     include <memory>
-#   else
-#     include <boost/core/addressof.hpp>
-#   endif
-# endif
 
 # include <boost/algorithm/minmax.hpp>
 # include <boost/tuple/tuple.hpp>
-# include <boost/range/begin.hpp>
-# include <boost/range/end.hpp>
 
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
@@ -42,6 +30,8 @@
 #   include <ket/utility/integer_log2.hpp>
 # endif
 # include <ket/utility/exp_i.hpp>
+# include <ket/utility/begin.hpp>
+# include <ket/utility/end.hpp>
 # include <ket/utility/meta/real_of.hpp>
 
 # ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
@@ -54,14 +44,6 @@
 
 # ifdef BOOST_NO_CXX11_STATIC_ASSERT
 #   define static_assert(exp, msg) BOOST_STATIC_ASSERT_MSG(exp, msg)
-# endif
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   ifndef BOOST_NO_CXX11_ADDRESSOF
-#     define KET_addressof std::addressof
-#   else
-#     define KET_addressof boost::addressof
-#   endif
 # endif
 
 
@@ -263,7 +245,7 @@ namespace ket
       {
         ::ket::gate::controlled_phase_shift_detail::controlled_phase_shift_coeff_impl(
           ::ket::utility::policy::make_sequential(),
-          boost::begin(state), boost::end(state), phase_coefficient, target_qubit, control_qubit);
+          ::ket::utility::begin(state), ::ket::utility::end(state), phase_coefficient, target_qubit, control_qubit);
         return state;
       }
 
@@ -278,45 +260,9 @@ namespace ket
       {
         ::ket::gate::controlled_phase_shift_detail::controlled_phase_shift_coeff_impl(
           parallel_policy,
-          boost::begin(state), boost::end(state), phase_coefficient, target_qubit, control_qubit);
+          ::ket::utility::begin(state), ::ket::utility::end(state), phase_coefficient, target_qubit, control_qubit);
         return state;
       }
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-      template <
-        typename Complex, typename Allocator,
-        typename StateInteger, typename BitInteger>
-      inline std::vector<Complex, Allocator>& controlled_phase_shift_coeff(
-        std::vector<Complex, Allocator>& state,
-        Complex const& phase_coefficient,
-        ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit)
-      {
-        ::ket::gate::controlled_phase_shift_detail::controlled_phase_shift_coeff_impl(
-          ::ket::utility::policy::make_sequential(),
-          KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
-          phase_coefficient, target_qubit, control_qubit);
-        return state;
-      }
-
-      template <
-        typename ParallelPolicy,
-        typename Complex, typename Allocator,
-        typename StateInteger, typename BitInteger>
-      inline std::vector<Complex, Allocator>& controlled_phase_shift_coeff(
-        ParallelPolicy const parallel_policy,
-        std::vector<Complex, Allocator>& state,
-        Complex const& phase_coefficient,
-        ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit)
-      {
-        ::ket::gate::controlled_phase_shift_detail::controlled_phase_shift_coeff_impl(
-          parallel_policy,
-          KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
-          phase_coefficient, target_qubit, control_qubit);
-        return state;
-      }
-# endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
     } // namespace ranges
 
 
@@ -379,7 +325,7 @@ namespace ket
           parallel_policy, state,
           conj(phase_coefficient), target_qubit, control_qubit);
       }
-    } // namespace range
+    } // namespace ranges
 
 
     // controlled_phase_shift
@@ -511,9 +457,6 @@ namespace ket
 } // namespace ket
 
 
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   undef KET_addressof
-# endif
 # undef KET_is_unsigned
 # undef KET_is_same
 # ifdef BOOST_NO_CXX11_STATIC_ASSERT

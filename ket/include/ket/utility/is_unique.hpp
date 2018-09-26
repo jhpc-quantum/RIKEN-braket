@@ -7,9 +7,10 @@
 # include <algorithm>
 
 # include <boost/utility.hpp>
-# include <boost/range/begin.hpp>
-# include <boost/range/end.hpp>
 //# include <boost/algorithm/cxx11/any_of.hpp>
+
+# include <ket/utility/begin.hpp>
+# include <ket/utility/end.hpp>
 
 
 namespace ket
@@ -66,15 +67,15 @@ namespace ket
         typename std::iterator_traits<ForwardIterator>::value_type
         value_type;
       std::vector<value_type> sorted_values(first, last);
-      std::sort(boost::begin(sorted_values), boost::end(sorted_values));
-      return std::unique(boost::begin(sorted_values), boost::end(sorted_values)) == boost::end(sorted_values);
+      std::sort(::ket::utility::begin(sorted_values), ::ket::utility::end(sorted_values));
+      return std::unique(::ket::utility::begin(sorted_values), ::ket::utility::end(sorted_values)) == ::ket::utility::end(sorted_values);
     }
 
-    namespace range
+    namespace ranges
     {
       template <typename ForwardRange>
       inline bool is_unique(ForwardRange const& range)
-      { return ::ket::utility::is_unique(boost::begin(range), boost::end(range)); }
+      { return ::ket::utility::is_unique(::ket::utility::begin(range), ::ket::utility::end(range)); }
     }
   }
 }

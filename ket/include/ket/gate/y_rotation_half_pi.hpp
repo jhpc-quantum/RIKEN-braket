@@ -4,9 +4,6 @@
 # include <boost/config.hpp>
 
 # include <cassert>
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   include <vector>
-# endif
 # include <iterator>
 # include <utility>
 # ifndef NDEBUG
@@ -19,17 +16,8 @@
 # ifdef BOOST_NO_CXX11_STATIC_ASSERT
 #   include <boost/static_assert.hpp>
 # endif
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   ifndef BOOST_NO_CXX11_ADDRESSOF
-#     include <memory>
-#   else
-#     include <boost/core/addressof.hpp>
-#   endif
-# endif
 
 # include <boost/math/constants/constants.hpp>
-# include <boost/range/begin.hpp>
-# include <boost/range/end.hpp>
 
 # include <ket/qubit.hpp>
 # include <ket/utility/loop_n.hpp>
@@ -37,6 +25,8 @@
 # ifndef NDEBUG
 #   include <ket/utility/integer_log2.hpp>
 # endif
+# include <ket/utility/begin.hpp>
+# include <ket/utility/end.hpp>
 # include <ket/utility/meta/real_of.hpp>
 
 # ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
@@ -47,14 +37,6 @@
 
 # ifdef BOOST_NO_CXX11_STATIC_ASSERT
 #   define static_assert(exp, msg) BOOST_STATIC_ASSERT_MSG(exp, msg)
-# endif
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   ifndef BOOST_NO_CXX11_ADDRESSOF
-#     define KET_addressof std::addressof
-#   else
-#     define KET_addressof boost::addressof
-#   endif
 # endif
 
 
@@ -227,7 +209,7 @@ namespace ket
       {
         ::ket::gate::y_rotation_half_pi_detail::y_rotation_half_pi_impl(
           ::ket::utility::policy::make_sequential(),
-          boost::begin(state), boost::end(state), qubit);
+          ::ket::utility::begin(state), ::ket::utility::end(state), qubit);
         return state;
       }
 
@@ -239,41 +221,9 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const qubit)
       {
         ::ket::gate::y_rotation_half_pi_detail::y_rotation_half_pi_impl(
-          parallel_policy, boost::begin(state), boost::end(state), qubit);
+          parallel_policy, ::ket::utility::begin(state), ::ket::utility::end(state), qubit);
         return state;
       }
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-      template <
-        typename Complex, typename Allocator,
-        typename StateInteger, typename BitInteger>
-      inline std::vector<Complex, Allocator>& y_rotation_half_pi(
-        std::vector<Complex, Allocator>& state,
-        ::ket::qubit<StateInteger, BitInteger> const qubit)
-      {
-        ::ket::gate::y_rotation_half_pi_detail::y_rotation_half_pi_impl(
-          ::ket::utility::policy::make_sequential(),
-          KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
-          qubit);
-        return state;
-      }
-
-      template <
-        typename ParallelPolicy,
-        typename Complex, typename Allocator,
-        typename StateInteger, typename BitInteger>
-      inline std::vector<Complex, Allocator>& y_rotation_half_pi(
-        ParallelPolicy const parallel_policy,
-        std::vector<Complex, Allocator>& state,
-        ::ket::qubit<StateInteger, BitInteger> const qubit)
-      {
-        ::ket::gate::y_rotation_half_pi_detail::y_rotation_half_pi_impl(
-          parallel_policy,
-          KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
-          qubit);
-        return state;
-      }
-# endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
     } // namespace ranges
 
 
@@ -442,7 +392,7 @@ namespace ket
       {
         ::ket::gate::y_rotation_half_pi_detail::adj_y_rotation_half_pi_impl(
           ::ket::utility::policy::make_sequential(),
-          boost::begin(state), boost::end(state), qubit);
+          ::ket::utility::begin(state), ::ket::utility::end(state), qubit);
         return state;
       }
 
@@ -454,49 +404,14 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const qubit)
       {
         ::ket::gate::y_rotation_half_pi_detail::adj_y_rotation_half_pi_impl(
-          parallel_policy, boost::begin(state), boost::end(state), qubit);
+          parallel_policy, ::ket::utility::begin(state), ::ket::utility::end(state), qubit);
         return state;
       }
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-      template <
-        typename Complex, typename Allocator,
-        typename StateInteger, typename BitInteger>
-      inline std::vector<Complex, Allocator>& adj_y_rotation_half_pi(
-        std::vector<Complex, Allocator>& state,
-        ::ket::qubit<StateInteger, BitInteger> const qubit)
-      {
-        ::ket::gate::y_rotation_half_pi_detail::adj_y_rotation_half_pi_impl(
-          ::ket::utility::policy::make_sequential(),
-          KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
-          qubit);
-        return state;
-      }
-
-      template <
-        typename ParallelPolicy,
-        typename Complex, typename Allocator,
-        typename StateInteger, typename BitInteger>
-      inline std::vector<Complex, Allocator>& adj_y_rotation_half_pi(
-        ParallelPolicy const parallel_policy,
-        std::vector<Complex, Allocator>& state,
-        ::ket::qubit<StateInteger, BitInteger> const qubit)
-      {
-        ::ket::gate::y_rotation_half_pi_detail::adj_y_rotation_half_pi_impl(
-          parallel_policy,
-          KET_addressof(state.front()), KET_addressof(state.front()) + state.size(),
-          qubit);
-        return state;
-      }
-# endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
     } // namespace ranges
   } // namespace gate
 } // namespace ket
 
 
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   undef KET_addressof
-# endif
 # undef KET_is_unsigned
 # ifdef BOOST_NO_CXX11_STATIC_ASSERT
 #   undef static_assert

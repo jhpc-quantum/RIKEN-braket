@@ -16,10 +16,8 @@
 #   include <boost/static_assert.hpp>
 # endif
 
-# include <boost/range/begin.hpp>
 # include <boost/range/size.hpp>
 # include <boost/range/value_type.hpp>
-# include <boost/range/iterator.hpp>
 # include <boost/range/join.hpp>
 
 # include <yampi/environment.hpp>
@@ -33,6 +31,8 @@
 # include <ket/meta/bit_integer_of.hpp>
 # include <ket/utility/is_unique.hpp>
 # include <ket/utility/integer_exp2.hpp>
+# include <ket/utility/begin.hpp>
+# include <ket/utility/meta/iterator_of.hpp>
 # include <ket/utility/meta/real_of.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
@@ -110,7 +110,7 @@ namespace ket
       static_assert(KET_is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(KET_is_unsigned<bit_integer_type>::value, "BitInteger should be unsigned");
 
-      assert(::ket::utility::range::is_unique(boost::join(exponent_qubits, modular_exponentiation_qubits)));
+      assert(::ket::utility::ranges::is_unique(boost::join(exponent_qubits, modular_exponentiation_qubits)));
 
       ::ket::mpi::utility::log_with_time_guard<char> print("Shor", environment);
 
@@ -136,7 +136,7 @@ namespace ket
         = static_cast<complex_type>(static_cast<real_type>(pow(num_exponents, -0.5)));
 
       yampi::rank const present_rank = communicator.rank(environment);
-      typename boost::range_iterator<RandomAccessRange>::type iter = boost::begin(local_state);
+      typename ::ket::utility::meta::iterator_of<RandomAccessRange>::type iter = ::ket::utility::begin(local_state);
       for (StateInteger exponent = static_cast<StateInteger>(0u); exponent < num_exponents; ++exponent)
       {
         StateInteger const qubit_value

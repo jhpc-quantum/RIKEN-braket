@@ -53,6 +53,8 @@
 # endif
 
 
+// TODO: implement vector-support (KET_PREFER_POINTER_TO_VECTOR_ITERATOR)
+// avoid direct calling ket::gate::projective_measurement_detail::*
 namespace ket
 {
   namespace mpi

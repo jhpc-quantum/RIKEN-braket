@@ -13,8 +13,6 @@
 # endif
 
 # include <boost/range/value_type.hpp>
-# include <boost/range/begin.hpp>
-# include <boost/range/end.hpp>
 
 # include <ket/spin_expectation_value.hpp>
 # include <ket/meta/bit_integer_of.hpp>
@@ -23,6 +21,8 @@
 #   include <ket/utility/integer_exp2.hpp>
 # endif
 # include <ket/utility/loop_n.hpp>
+# include <ket/utility/begin.hpp>
+# include <ket/utility/end.hpp>
 # include <ket/utility/meta/real_of.hpp>
 
 # ifndef BOOST_NO_CXX11_HDR_ARRAY
@@ -91,7 +91,7 @@ namespace ket
       ParallelPolicy const parallel_policy, RandomAccessRange& state)
     {
       return ::ket::all_spin_expectation_values<Qubit>(
-        parallel_policy, boost::begin(state), boost::end(state));
+        parallel_policy, ::ket::utility::begin(state), ::ket::utility::end(state));
     }
 
     template <typename Qubit, typename RandomAccessRange>
@@ -101,9 +101,10 @@ namespace ket
         typename ::ket::utility::meta::real_of<
           typename boost::range_value<RandomAccessRange>::type>::type, 3u> >
     all_spin_expectation_values(RandomAccessRange& state)
-    { return ::ket::all_spin_expectation_values<Qubit>(boost::begin(state), boost::end(state)); }
+    { return ::ket::all_spin_expectation_values<Qubit>(::ket::utility::begin(state), ::ket::utility::end(state)); }
   } // namespace ranges
 } // namespace ket
 
 
 #endif
+

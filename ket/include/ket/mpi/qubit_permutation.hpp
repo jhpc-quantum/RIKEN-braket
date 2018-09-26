@@ -5,6 +5,7 @@
 
 # include <cassert>
 # include <vector>
+# include <algorithm>
 # include <memory>
 # include <utility>
 # ifndef BOOST_NO_CXX11_HDR_INITIALIZER_LIST
@@ -23,14 +24,14 @@
 
 # include <boost/cstdint.hpp>
 
-# include <boost/range/begin.hpp>
-# include <boost/range/end.hpp>
-# include <boost/range/algorithm/sort.hpp>
 # include <boost/range/algorithm_ext/iota.hpp>
 
 # include <ket/qubit.hpp>
 # include <ket/meta/bit_integer_of.hpp>
 # include <ket/utility/is_nothrow_swappable.hpp>
+# include <ket/utility/begin.hpp>
+# include <ket/utility/end.hpp>
+# include <ket/utility/meta/const_iterator_of.hpp>
 
 # ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
 #   define KET_is_unsigned std::is_unsigned
@@ -323,12 +324,16 @@ namespace ket
 
       bool is_valid_permutation(data_type permutation) const
       {
-        boost::sort(permutation);
+        std::sort(
+          ::ket::utility::begin(permutation), ::ket::utility::end(permutation));
 
         value_type previous_qubit = permutation.front();
-        const_iterator const last = boost::end(permutation);
+        typedef
+          typename ::ket::utility::meta::const_iterator_of<data_type>::type
+          my_iterator;
+        my_iterator const last = ::ket::utility::end(permutation);
 
-        for (const_iterator iter = ++boost::begin(permutation); iter != last; ++iter)
+        for (my_iterator iter = ++::ket::utility::begin(permutation); iter != last; ++iter)
           if (*iter == previous_qubit)
             return false;
           else

@@ -19,8 +19,6 @@
 # include <boost/optional.hpp>
 
 # include <boost/range/value_type.hpp>
-# include <boost/range/begin.hpp>
-# include <boost/range/end.hpp>
 
 # include <yampi/environment.hpp>
 # include <yampi/datatype.hpp>
@@ -34,6 +32,8 @@
 # include <ket/qubit.hpp>
 # include <ket/qubit_io.hpp>
 # include <ket/utility/loop_n.hpp>
+# include <ket/utility/begin.hpp>
+# include <ket/utility/end.hpp>
 # include <ket/utility/meta/real_of.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
@@ -164,8 +164,8 @@ namespace ket
       spin_type result;
       yampi::all_reduce(
         communicator, environment,
-        yampi::make_buffer(boost::begin(spin), boost::end(spin), real_datatype),
-        boost::begin(result), yampi::binary_operation(::yampi::plus_t()));
+        yampi::make_buffer(::ket::utility::begin(spin), ::ket::utility::end(spin), real_datatype),
+        ::ket::utility::begin(result), yampi::binary_operation(::yampi::plus_t()));
 
       return result;
     }
@@ -293,8 +293,8 @@ namespace ket
       spin_type result;
       yampi::reduce(communicator, root).call(
         environment,
-        yampi::make_buffer(boost::begin(spin), boost::end(spin), real_datatype),
-        boost::begin(result), yampi::binary_operation(yampi::plus_t()));
+        yampi::make_buffer(::ket::utility::begin(spin), ::ket::utility::end(spin), real_datatype),
+        ::ket::utility::begin(result), yampi::binary_operation(yampi::plus_t()));
 
       if (communicator.rank(environment) != root)
         return boost::none;

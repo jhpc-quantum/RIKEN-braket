@@ -7,6 +7,7 @@
 # include <cassert>
 # include <iostream>
 # include <vector>
+# include <algorithm>
 # include <iterator>
 # include <utility>
 # ifndef BOOST_NO_CXX11_HDR_ARRAY
@@ -24,26 +25,14 @@
 # ifdef BOOST_NO_CXX11_STATIC_ASSERT
 #   include <boost/static_assert.hpp>
 # endif
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   ifndef BOOST_NO_CXX11_ADDRESSOF
-#     include <memory>
-#   else
-#     include <boost/core/addressof.hpp>
-#   endif
-# endif
 
 # ifndef NDEBUG
 #   include <boost/optional.hpp>
 # endif
 
-# include <boost/range/begin.hpp>
-# include <boost/range/end.hpp>
 # include <boost/range/value_type.hpp>
 # include <boost/range/size.hpp>
 # include <boost/range/empty.hpp>
-# include <boost/range/algorithm/find.hpp>
-# include <boost/range/algorithm/copy.hpp>
-# include <boost/range/algorithm/sort.hpp>
 # include <boost/range/numeric.hpp>
 
 # ifdef BOOST_NO_CXX11_VARIADIC_TEMPLATES
@@ -69,6 +58,9 @@
 # include <ket/utility/integer_exp2.hpp>
 # include <ket/utility/integer_log2.hpp>
 # include <ket/utility/loop_n.hpp>
+# include <ket/utility/begin.hpp>
+# include <ket/utility/end.hpp>
+# include <ket/utility/meta/const_iterator_of.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/detail/swap_local_qubits.hpp>
 # include <ket/mpi/utility/detail/interchange_qubits.hpp>
@@ -106,14 +98,6 @@
 # else
 #   define KET_RVALUE_REFERENCE_OR_COPY(T) T
 #   define KET_FORWARD_OR_COPY(T, x) x
-# endif
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   ifndef BOOST_NO_CXX11_ADDRESSOF
-#     define KET_addressof std::addressof
-#   else
-#     define KET_addressof boost::addressof
-#   endif
 # endif
 
 
@@ -175,8 +159,12 @@ namespace ket
           qubit_type const local_swap_qubit
             = inverse(permutation)[permutated_local_swap_qubit];
 
-          if (not boost::empty(boost::find<boost::return_found_end>(
-                    unswappable_qubits, local_swap_qubit)))
+          typename ::ket::utility::meta::const_iterator_of<UnswappableQubits const>::type const last
+            = ::ket::utility::end(unswappable_qubits);
+
+          if (std::find(
+                ::ket::utility::begin(unswappable_qubits), last, local_swap_qubit)
+              != last)
           {
             qubit_type permutated_other_qubit = permutated_local_swap_qubit;
             qubit_type other_qubit;
@@ -187,8 +175,9 @@ namespace ket
               other_qubit
                 = inverse(permutation)[permutated_other_qubit];
             }
-            while (not boost::empty(boost::find<boost::return_found_end>(
-                         unswappable_qubits, other_qubit)));
+            while (std::find(
+                     ::ket::utility::begin(unswappable_qubits), last, other_qubit)
+                   != last);
 
             ::ket::mpi::utility::detail::swap_local_qubits(
               parallel_policy, local_state,
@@ -378,7 +367,10 @@ namespace ket
             {
               KET_array<qubit_type, 1u> new_qubits = { qubits[1u] };
               KET_array<qubit_type, num_unswappable_qubits+1u> new_unswappable_qubits;
-              boost::copy(unswappable_qubits, boost::begin(new_unswappable_qubits));
+              std::copy(
+                ::ket::utility::begin(unswappable_qubits),
+                ::ket::utility::end(unswappable_qubits),
+                ::ket::utility::begin(new_unswappable_qubits));
               new_unswappable_qubits.back() = qubits[0u];
 
               typedef
@@ -397,7 +389,10 @@ namespace ket
             {
               KET_array<qubit_type, 1u> new_qubits = { qubits[0u] };
               KET_array<qubit_type, num_unswappable_qubits+1u> new_unswappable_qubits;
-              boost::copy(unswappable_qubits, boost::begin(new_unswappable_qubits));
+              std::copy(
+                ::ket::utility::begin(unswappable_qubits),
+                ::ket::utility::end(unswappable_qubits),
+                ::ket::utility::begin(new_unswappable_qubits));
               new_unswappable_qubits.back() = qubits[1u];
 
               typedef
@@ -564,7 +559,10 @@ namespace ket
             {
               KET_array<qubit_type, 2u> new_qubits = { qubits[1u], qubits[2u] };
               KET_array<qubit_type, num_unswappable_qubits+1u> new_unswappable_qubits;
-              boost::copy(unswappable_qubits, boost::begin(new_unswappable_qubits));
+              std::copy(
+                ::ket::utility::begin(unswappable_qubits),
+                ::ket::utility::end(unswappable_qubits),
+                ::ket::utility::begin(new_unswappable_qubits));
               new_unswappable_qubits.back() = qubits[0u];
 
               typedef
@@ -583,7 +581,10 @@ namespace ket
             {
               KET_array<qubit_type, 2u> new_qubits = { qubits[0u], qubits[2u] };
               KET_array<qubit_type, num_unswappable_qubits+1u> new_unswappable_qubits;
-              boost::copy(unswappable_qubits, boost::begin(new_unswappable_qubits));
+              std::copy(
+                ::ket::utility::begin(unswappable_qubits),
+                ::ket::utility::end(unswappable_qubits),
+                ::ket::utility::begin(new_unswappable_qubits));
               new_unswappable_qubits.back() = qubits[1u];
 
               typedef
@@ -602,7 +603,10 @@ namespace ket
             {
               KET_array<qubit_type, 2u> new_qubits = { qubits[0u], qubits[1u] };
               KET_array<qubit_type, num_unswappable_qubits+1u> new_unswappable_qubits;
-              boost::copy(unswappable_qubits, boost::begin(new_unswappable_qubits));
+              std::copy(
+                ::ket::utility::begin(unswappable_qubits),
+                ::ket::utility::end(unswappable_qubits),
+                ::ket::utility::begin(new_unswappable_qubits));
               new_unswappable_qubits.back() = qubits[2u];
 
               typedef
@@ -756,7 +760,7 @@ namespace ket
           static LocalState& call(
             LocalState& local_state, KET_RVALUE_REFERENCE_OR_COPY(Function) function)
           {
-            function(boost::begin(local_state), boost::end(local_state));
+            function(::ket::utility::begin(local_state), ::ket::utility::end(local_state));
             return local_state;
           }
 
@@ -764,31 +768,9 @@ namespace ket
           static LocalState& call(
             LocalState const& local_state, KET_RVALUE_REFERENCE_OR_COPY(Function) function)
           {
-            function(boost::begin(local_state), boost::end(local_state));
+            function(::ket::utility::begin(local_state), ::ket::utility::end(local_state));
             return local_state;
           }
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-          template <typename Complex, typename Allocator, typename Function>
-          static std::vector<Complex, Allocator>& call(
-            std::vector<Complex, Allocator>& local_state, KET_RVALUE_REFERENCE_OR_COPY(Function) function)
-          {
-            function(
-              KET_addressof(local_state.front()),
-              KET_addressof(local_state.front())+local_state.size());
-            return local_state;
-          }
-
-          template <typename Complex, typename Allocator, typename Function>
-          static std::vector<Complex, Allocator>& call(
-            std::vector<Complex, Allocator> const& local_state, KET_RVALUE_REFERENCE_OR_COPY(Function) function)
-          {
-            function(
-              KET_addressof(local_state.front()),
-              KET_addressof(local_state.front())+local_state.size());
-            return local_state;
-          }
-# endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
         };
 
 
@@ -946,10 +928,10 @@ namespace ket
                     bitor ((state_integer bitand upper_mask) << 1u);
               }
 #     else // BOOST_NO_CXX11_RANGE_BASED_FOR
-              typedef typename qubits_type::const_iterator iterator;
+              typedef typename ::ket::utility::meta::const_iterator_of<qubits_type>::type iterator;
 
-              iterator const last = boost::end(sorted_local_permutated_control_qubits_);
-              for (iterator iter = boost::begin(sorted_local_permutated_control_qubits_);
+              iterator const last = ::ket::utility::end(sorted_local_permutated_control_qubits_);
+              for (iterator iter = ::ket::utility::begin(sorted_local_permutated_control_qubits_);
                    iter != last; ++iter)
               {
                 StateInteger const lower_mask = (one_state_integer_ << *iter) - one_state_integer_;
@@ -977,10 +959,10 @@ namespace ket
                     bitor ((state_integer bitand upper_mask) << 1u);
               }
 #     else // BOOST_NO_CXX11_RANGE_BASED_FOR
-              typedef typename qubits_type::const_iterator iterator;
+              typedef typename ::ket::utility::meta::const_iterator_of<qubits_type>::type iterator;
 
-              iterator const last = boost::end(sorted_local_permutated_control_qubits_);
-              for (iterator iter = boost::begin(sorted_local_permutated_control_qubits_);
+              iterator const last = ::ket::utility::end(sorted_local_permutated_control_qubits_);
+              for (iterator iter = ::ket::utility::begin(sorted_local_permutated_control_qubits_);
                    iter != last; ++iter)
               {
                 StateInteger const lower_mask = (one_state_integer_ << *iter) - one_state_integer_;
@@ -1154,9 +1136,9 @@ namespace ket
             {
               KET_array<qubit_type, num_local_control_qubits+1u> new_local_permutated_control_qubits;
               std::copy(
-                boost::begin(local_permutated_control_qubits),
-                boost::end(local_permutated_control_qubits),
-                boost::begin(new_local_permutated_control_qubits));
+                ::ket::utility::begin(local_permutated_control_qubits),
+                ::ket::utility::end(local_permutated_control_qubits),
+                ::ket::utility::begin(new_local_permutated_control_qubits));
               new_local_permutated_control_qubits.back() = permutated_control_qubit;
 
               call_impl(
@@ -1212,9 +1194,9 @@ namespace ket
             {\
               KET_array<qubit_type, num_local_control_qubits+1u> new_local_permutated_control_qubits;\
               std::copy(\
-                boost::begin(local_permutated_control_qubits),\
-                boost::end(local_permutated_control_qubits),\
-                boost::begin(new_local_permutated_control_qubits));\
+                ::ket::utility::begin(local_permutated_control_qubits),\
+                ::ket::utility::end(local_permutated_control_qubits),\
+                ::ket::utility::begin(new_local_permutated_control_qubits));\
               new_local_permutated_control_qubits.back() = permutated_control_qubit;\
 \
               call_impl(\
@@ -1332,7 +1314,9 @@ namespace ket
 
             KET_array<qubit_type, num_local_control_qubits> sorted_local_permutated_control_qubits
               = local_permutated_control_qubits;
-            boost::sort(sorted_local_permutated_control_qubits);
+            std::sort(
+              ::ket::utility::begin(sorted_local_permutated_control_qubits),
+              ::ket::utility::end(sorted_local_permutated_control_qubits));
 
             for_each_impl(
               parallel_policy, last_integer, sorted_local_permutated_control_qubits,
@@ -1368,8 +1352,8 @@ namespace ket
 #   else // BOOST_NO_CXX11_LAMBDAS
             StateInteger const mask
               = std::accumulate(
-                  boost::begin(sorted_local_permutated_control_qubits),
-                  boost::end(sorted_local_permutated_control_qubits),
+                  ::ket::utility::begin(sorted_local_permutated_control_qubits),
+                  ::ket::utility::end(sorted_local_permutated_control_qubits),
                   zero_state_integer,
                   ::ket::mpi::utility::dispatch::diagonal_loop_detail::generate_control_qubit_mask<StateInteger, BitInteger>());
 #   endif // BOOST_NO_CXX11_LAMBDAS
@@ -1394,13 +1378,15 @@ namespace ket
                 }
 #     else // BOOST_NO_CXX11_RANGE_BASED_FOR
                 typedef
-                  typename KET_array<
-                    ::ket::qubit<StateInteger, BitInteger>,
-                    num_local_control_qubits>::const_iterator
+                  typename ::ket::utility::meta::const_iterator_of<
+                    KET_array<
+                      ::ket::qubit<StateInteger, BitInteger>,
+                      num_local_control_qubits>
+                  >::type
                   iterator;
 
-                iterator const last = boost::end(sorted_local_permutated_control_qubits);
-                for (iterator iter = boost::begin(sorted_local_permutated_control_qubits);
+                iterator const last = ::ket::utility::end(sorted_local_permutated_control_qubits);
+                for (iterator iter = ::ket::utility::begin(sorted_local_permutated_control_qubits);
                      iter != last; ++iter)
                 {
                   StateInteger const lower_mask = (one_state_integer << *iter) - one_state_integer;
@@ -1610,9 +1596,6 @@ namespace ket
 # undef KET_false_type
 # ifdef BOOST_NO_CXX11_STATIC_ASSERT
 #   undef static_assert
-# endif
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   undef KET_addressof
 # endif
 
 #endif

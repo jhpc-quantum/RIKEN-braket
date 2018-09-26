@@ -3,45 +3,28 @@
 
 # include <boost/config.hpp>
 
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   include <vector>
-# endif
 # include <algorithm>
 # ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
 #   include <type_traits>
 # else
 #   include <boost/type_traits/remove_cv.hpp>
 # endif
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   ifndef BOOST_NO_CXX11_ADDRESSOF
-#     include <memory>
-#   else
-#     include <boost/core/addressof.hpp>
-#   endif
-# endif
 
 # include <boost/tuple/tuple.hpp>
 # include <boost/algorithm/minmax.hpp>
 
-# include <boost/range/begin.hpp>
 # include <boost/range/size.hpp>
 
 # include <ket/qubit.hpp>
 # include <ket/utility/integer_exp2.hpp>
 # include <ket/utility/loop_n.hpp>
+# include <ket/utility/begin.hpp>
+# include <ket/utility/meta/iterator_of.hpp>
 
 # ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
 #   define KET_remove_cv std::remove_cv
 # else
 #   define KET_remove_cv boost::remove_cv
-# endif
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   ifndef BOOST_NO_CXX11_ADDRESSOF
-#     define KET_addressof std::addressof
-#   else
-#     define KET_addressof boost::addressof
-#   endif
 # endif
 
 
@@ -152,8 +135,8 @@ namespace ket
 
             using ket::utility::loop_n;
 # ifndef BOOST_NO_CXX11_LAMBDAS
-            typename boost::range_iterator<LocalState>::type const local_state_first
-              = boost::begin(local_state);
+            typename ::ket::utility::meta::iterator_of<LocalState>::type const local_state_first
+              = ::ket::utility::begin(local_state);
             loop_n(
               parallel_policy,
               (static_cast<StateInteger>(boost::size(local_state))
@@ -188,79 +171,10 @@ namespace ket
               (static_cast<StateInteger>(boost::size(local_state))
                >> boost::get<0u>(minmax_qubits)) >> 2u,
               ket::mpi::utility::swap_local_qubits_detail::make_swap_local_qubits_loop_inside(
-                boost::begin(local_state), boost::get<0u>(minmax_qubits),
+                ::ket::utility::begin(local_state), boost::get<0u>(minmax_qubits),
                 min_qubit_mask, max_qubit_mask, middle_bits_mask));
 # endif // BOOST_NO_CXX11_LAMBDAS
           }
-
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-          template <
-            typename ParallelPolicy, typename Complex, typename Allocator,
-            typename StateInteger, typename BitInteger>
-          static void call(
-            ParallelPolicy const parallel_policy,
-            std::vector<Complex, Allocator>& local_state,
-            ket::qubit<StateInteger, BitInteger> const permutated_qubit1,
-            ket::qubit<StateInteger, BitInteger> const permutated_qubit2)
-          {
-            typedef ket::qubit<StateInteger, BitInteger> qubit_type;
-            boost::tuple<qubit_type, qubit_type> const minmax_qubits
-              = boost::minmax(permutated_qubit1, permutated_qubit2);
-            // 00000001000
-            StateInteger const min_qubit_mask
-              = ket::utility::integer_exp2<StateInteger>(boost::get<0u>(minmax_qubits));
-            // 00010000000
-            StateInteger const max_qubit_mask
-              = ket::utility::integer_exp2<StateInteger>(boost::get<1u>(minmax_qubits));
-            // 000|111|
-            StateInteger const middle_bits_mask
-              = ket::utility::integer_exp2<StateInteger>(
-                  boost::get<1u>(minmax_qubits)-boost::get<0u>(minmax_qubits))
-                - static_cast<StateInteger>(1u);
-
-            using ket::utility::loop_n;
-#   ifndef BOOST_NO_CXX11_LAMBDAS
-            typename std::vector<Complex, Allocator>::pointer const local_state_first
-              = KET_addressof(local_state.front());
-            loop_n(
-              parallel_policy,
-              (static_cast<StateInteger>(boost::size(local_state))
-               >> boost::get<0u>(minmax_qubits)) >> 2u,
-              [local_state_first, &minmax_qubits,
-               min_qubit_mask, max_qubit_mask, middle_bits_mask](
-                // xxx|xxx|
-                StateInteger const value_wo_qubits, int const)
-              {
-                typedef ket::qubit<StateInteger, BitInteger> qubit_type;
-                // xxx0xxx0000
-                StateInteger const base_index
-                  = ((value_wo_qubits bitand middle_bits_mask)
-                     << (boost::get<0u>(minmax_qubits)+static_cast<qubit_type>(1u)))
-                    bitor ((value_wo_qubits bitand compl middle_bits_mask)
-                           << (boost::get<0u>(minmax_qubits)+static_cast<qubit_type>(2u)));
-                // xxx1xxx0000
-                StateInteger const index1
-                  = base_index bitor max_qubit_mask;
-                // xxx0xxx1000
-                StateInteger const index2
-                  = base_index bitor min_qubit_mask;
-
-                std::swap_ranges(
-                  local_state_first+index1,
-                  local_state_first+(index1 bitor min_qubit_mask),
-                  local_state_first+index2);
-              });
-#   else // BOOST_NO_CXX11_LAMBDAS
-            loop_n(
-              parallel_policy,
-              (static_cast<StateInteger>(boost::size(local_state))
-               >> boost::get<0u>(minmax_qubits)) >> 2u,
-              ket::mpi::utility::swap_local_qubits_detail::make_swap_local_qubits_loop_inside(
-                KET_addressof(local_state.front()), boost::get<0u>(minmax_qubits),
-                min_qubit_mask, max_qubit_mask, middle_bits_mask));
-#   endif // BOOST_NO_CXX11_LAMBDAS
-          }
-# endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
         };
       }
 
@@ -288,9 +202,6 @@ namespace ket
 }
 
 
-# ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-#   undef KET_addressof
-# endif
 # undef KET_remove_cv
 
 #endif
