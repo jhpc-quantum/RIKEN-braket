@@ -8,8 +8,6 @@
 #   ifndef BOOST_NO_CXX11_HDR_ARRAY
 #     include <array>
 #   endif
-
-#   include <boost/array.hpp>
 # endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
 
 # include <boost/range/iterator.hpp>
@@ -34,14 +32,6 @@ namespace ket
       template <typename Value, typename Allocator>
       struct iterator_of<std::vector<Value, Allocator> const>
       { typedef typename std::vector<Value, Allocator>::const_pointer type; };
-
-      template <typename Value, std::size_t num_elements>
-      struct iterator_of< boost::array<Value, num_elements> >
-      { typedef typename boost::array<Value, num_elements>::pointer type; };
-
-      template <typename Value, std::size_t num_elements>
-      struct iterator_of<boost::array<Value, num_elements> const>
-      { typedef typename boost::array<Value, num_elements>::const_pointer type; };
 
 #   ifndef BOOST_NO_CXX11_HDR_ARRAY
       template <typename Value, std::size_t num_elements>

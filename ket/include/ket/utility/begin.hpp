@@ -13,8 +13,6 @@
 #   else
 #     include <boost/core/addressof.hpp>
 #   endif
-
-#   include <boost/array.hpp>
 # endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
 
 # include <boost/range/begin.hpp>
@@ -51,16 +49,6 @@ namespace ket
     inline typename std::vector<Value, Allocator>::const_pointer begin(
       std::vector<Value, Allocator> const& vector)
     { return KET_addressof(vector.front()); }
-
-    template <typename Value, std::size_t num_elements>
-    inline typename boost::array<Value, num_elements>::pointer begin(
-      boost::array<Value, num_elements>& array)
-    { return KET_addressof(array.front()); }
-
-    template <typename Value, std::size_t num_elements>
-    inline typename boost::array<Value, num_elements>::const_pointer begin(
-      boost::array<Value, num_elements> const& array)
-    { return KET_addressof(array.front()); }
 
 #   ifndef BOOST_NO_CXX11_HDR_ARRAY
     template <typename Value, std::size_t num_elements>
