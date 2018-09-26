@@ -370,7 +370,7 @@ namespace ket
               std::copy(
                 ::ket::utility::begin(unswappable_qubits),
                 ::ket::utility::end(unswappable_qubits),
-                ::ket::utility::begin(new_unswappable_qubits))
+                ::ket::utility::begin(new_unswappable_qubits));
               new_unswappable_qubits.back() = qubits[0u];
 
               typedef
@@ -392,7 +392,7 @@ namespace ket
               std::copy(
                 ::ket::utility::begin(unswappable_qubits),
                 ::ket::utility::end(unswappable_qubits),
-                ::ket::utility::begin(new_unswappable_qubits))
+                ::ket::utility::begin(new_unswappable_qubits));
               new_unswappable_qubits.back() = qubits[1u];
 
               typedef
@@ -562,7 +562,7 @@ namespace ket
               std::copy(
                 ::ket::utility::begin(unswappable_qubits),
                 ::ket::utility::end(unswappable_qubits),
-                ::ket::utility::begin(new_unswappable_qubits))
+                ::ket::utility::begin(new_unswappable_qubits));
               new_unswappable_qubits.back() = qubits[0u];
 
               typedef
@@ -584,7 +584,7 @@ namespace ket
               std::copy(
                 ::ket::utility::begin(unswappable_qubits),
                 ::ket::utility::end(unswappable_qubits),
-                ::ket::utility::begin(new_unswappable_qubits))
+                ::ket::utility::begin(new_unswappable_qubits));
               new_unswappable_qubits.back() = qubits[1u];
 
               typedef
@@ -606,7 +606,7 @@ namespace ket
               std::copy(
                 ::ket::utility::begin(unswappable_qubits),
                 ::ket::utility::end(unswappable_qubits),
-                ::ket::utility::begin(new_unswappable_qubits))
+                ::ket::utility::begin(new_unswappable_qubits));
               new_unswappable_qubits.back() = qubits[2u];
 
               typedef
