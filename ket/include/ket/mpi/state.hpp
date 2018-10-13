@@ -710,7 +710,7 @@ namespace ket
           std::vector<Complex, Allocator_>&,
           StateInteger const source_local_first_index,
           StateInteger const source_local_last_index,
-          yampi::datatype const datatype, yampi::rank const target_rank,
+          yampi::datatype const& datatype, yampi::rank const target_rank,
           yampi::communicator const& communicator, yampi::environment const& environment)
         {
           static_assert(
@@ -1332,7 +1332,7 @@ namespace ket
           std::vector<Complex, Allocator_>& buffer,
           StateInteger const source_local_first_index,
           StateInteger const source_local_last_index,
-          yampi::datatype const datatype, yampi::rank const target_rank,
+          yampi::datatype const& datatype, yampi::rank const target_rank,
           yampi::communicator const& communicator, yampi::environment const& environment)
         {
           ::ket::mpi::utility::detail::interchange_qubits(
@@ -1506,7 +1506,7 @@ namespace ket
             std::vector<Complex, Allocator_>& buffer,
             StateInteger const source_local_first_index,
             StateInteger const source_local_last_index,
-            yampi::datatype const datatype, yampi::rank const target_rank,
+            yampi::datatype const& datatype, yampi::rank const target_rank,
             yampi::communicator const& communicator, yampi::environment const& environment)
           {
             ::ket::mpi::state_detail::interchange_qubits<num_page_qubits>::call(

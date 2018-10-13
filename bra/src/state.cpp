@@ -17,7 +17,8 @@
 #include <boost/range/end.hpp>
 
 #ifndef BRA_NO_MPI
-# include <yampi/basic_datatype_of.hpp>
+# include <yampi/basic_datatype_tag_of.hpp>
+# include <yampi/uncommitted_datatype.hpp>
 # include <yampi/communicator.hpp>
 # include <yampi/environment.hpp>
 # include <yampi/wall_clock.hpp>
@@ -52,14 +53,15 @@ namespace bra
       random_number_generator_(seed),
       permutation_(static_cast<permutation_type::size_type>(total_num_qubits)),
       buffer_(),
-      state_integer_datatype_(yampi::basic_datatype_of<state_integer_type>::call()),
-      real_datatype_(yampi::basic_datatype_of<real_type>::call()),
-      derived_real_pair_datatype_(real_datatype_, 2, environment),
-      real_pair_datatype_(derived_real_pair_datatype_.datatype()),
+      state_integer_datatype_(yampi::basic_datatype_tag_of<state_integer_type>::call()),
+      real_datatype_(yampi::basic_datatype_tag_of<real_type>::call()),
+      uncommitted_real_pair_datatype_(
+        real_datatype_.to_uncommitted_datatype(), 2, environment),
+      real_pair_datatype_(uncommitted_real_pair_datatype_, environment),
 # if MPI_VERSION >= 3
-      complex_datatype_(yampi::basic_datatype_of<complex_type>::call()),
+      complex_datatype_(yampi::basic_datatype_tag_of<complex_type>::call()),
 # else
-      complex_datatype_(derived_real_pair_datatype_.datatype()),
+      complex_datatype_(uncommitted_real_pair_datatype_, environment),
 # endif
       communicator_(communicator),
       environment_(environment),
@@ -80,14 +82,15 @@ namespace bra
       permutation_(
         boost::begin(initial_permutation), boost::end(initial_permutation)),
       buffer_(),
-      state_integer_datatype_(yampi::basic_datatype_of<state_integer_type>::call()),
-      real_datatype_(yampi::basic_datatype_of<real_type>::call()),
-      derived_real_pair_datatype_(real_datatype_, 2, environment),
-      real_pair_datatype_(derived_real_pair_datatype_.datatype()),
+      state_integer_datatype_(yampi::basic_datatype_tag_of<state_integer_type>::call()),
+      real_datatype_(yampi::basic_datatype_tag_of<real_type>::call()),
+      uncommitted_real_pair_datatype_(
+        real_datatype_.to_uncommitted_datatype(), 2, environment),
+      real_pair_datatype_(uncommitted_real_pair_datatype_, environment),
 # if MPI_VERSION >= 3
-      complex_datatype_(yampi::basic_datatype_of<complex_type>::call()),
+      complex_datatype_(yampi::basic_datatype_tag_of<complex_type>::call()),
 # else
-      complex_datatype_(derived_real_pair_datatype_.datatype()),
+      complex_datatype_(uncommitted_real_pair_datatype_, environment),
 # endif
       communicator_(communicator),
       environment_(environment),

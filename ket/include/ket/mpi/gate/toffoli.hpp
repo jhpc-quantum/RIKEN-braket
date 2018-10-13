@@ -101,7 +101,7 @@ namespace ket
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::datatype const datatype,
+        yampi::datatype const& datatype,
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
@@ -195,7 +195,7 @@ namespace ket
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::datatype const datatype,
+        yampi::datatype const& datatype,
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
@@ -218,7 +218,7 @@ namespace ket
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::datatype const datatype,
+        yampi::datatype const& datatype,
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
@@ -288,7 +288,7 @@ namespace ket
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::datatype const datatype,
+        yampi::datatype const& datatype,
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
@@ -382,7 +382,7 @@ namespace ket
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::datatype const datatype,
+        yampi::datatype const& datatype,
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
@@ -405,7 +405,7 @@ namespace ket
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::datatype const datatype,
+        yampi::datatype const& datatype,
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {

@@ -65,8 +65,8 @@ namespace ket
         StateInteger, BitInteger, Allocator>& permutation,
       BitInteger const num_qubits,
       std::vector<typename boost::range_value<LocalState>::type, BufferAllocator>& buffer,
-      yampi::datatype const real_datatype,
-      yampi::datatype const complex_datatype,
+      yampi::datatype const& real_datatype,
+      yampi::datatype const& complex_datatype,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
@@ -105,8 +105,8 @@ namespace ket
         StateInteger, BitInteger, Allocator>& permutation,
       BitInteger const num_qubits,
       std::vector<typename boost::range_value<LocalState>::type, BufferAllocator>& buffer,
-      yampi::datatype const real_datatype,
-      yampi::datatype const complex_datatype,
+      yampi::datatype const& real_datatype,
+      yampi::datatype const& complex_datatype,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
@@ -135,8 +135,8 @@ namespace ket
         StateInteger, BitInteger, Allocator>& permutation,
       BitInteger const num_qubits,
       std::vector<typename boost::range_value<LocalState>::type, BufferAllocator>& buffer,
-      yampi::datatype const real_datatype,
-      yampi::datatype const complex_datatype,
+      yampi::datatype const& real_datatype,
+      yampi::datatype const& complex_datatype,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
@@ -165,8 +165,8 @@ namespace ket
         StateInteger, BitInteger, Allocator>& permutation,
       BitInteger const num_qubits,
       std::vector<typename boost::range_value<LocalState>::type, BufferAllocator>& buffer,
-      yampi::datatype const real_datatype,
-      yampi::datatype const complex_datatype,
+      yampi::datatype const& real_datatype,
+      yampi::datatype const& complex_datatype,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
@@ -195,8 +195,8 @@ namespace ket
         StateInteger, BitInteger, Allocator>& permutation,
       BitInteger const num_qubits,
       std::vector<typename boost::range_value<LocalState>::type, BufferAllocator>& buffer,
-      yampi::datatype const real_datatype,
-      yampi::datatype const complex_datatype,
+      yampi::datatype const& real_datatype,
+      yampi::datatype const& complex_datatype,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
@@ -224,8 +224,8 @@ namespace ket
         StateInteger, BitInteger, Allocator>& permutation,
       BitInteger const num_qubits,
       std::vector<typename boost::range_value<LocalState>::type, BufferAllocator>& buffer,
-      yampi::datatype const real_datatype,
-      yampi::datatype const complex_datatype,
+      yampi::datatype const& real_datatype,
+      yampi::datatype const& complex_datatype,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
@@ -257,8 +257,8 @@ namespace ket
         StateInteger, BitInteger, Allocator>& permutation,
       BitInteger const num_qubits,
       std::vector<typename boost::range_value<LocalState>::type, BufferAllocator>& buffer,
-      yampi::datatype const real_datatype,
-      yampi::datatype const complex_datatype,
+      yampi::datatype const& real_datatype,
+      yampi::datatype const& complex_datatype,
       yampi::rank const root,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
@@ -310,8 +310,8 @@ namespace ket
         StateInteger, BitInteger, Allocator>& permutation,
       BitInteger const num_qubits,
       std::vector<typename boost::range_value<LocalState>::type, BufferAllocator>& buffer,
-      yampi::datatype const real_datatype,
-      yampi::datatype const complex_datatype,
+      yampi::datatype const& real_datatype,
+      yampi::datatype const& complex_datatype,
       yampi::rank const root,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
@@ -342,8 +342,8 @@ namespace ket
         StateInteger, BitInteger, Allocator>& permutation,
       BitInteger const num_qubits,
       std::vector<typename boost::range_value<LocalState>::type, BufferAllocator>& buffer,
-      yampi::datatype const real_datatype,
-      yampi::datatype const complex_datatype,
+      yampi::datatype const& real_datatype,
+      yampi::datatype const& complex_datatype,
       yampi::rank const root,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
@@ -374,8 +374,8 @@ namespace ket
         StateInteger, BitInteger, Allocator>& permutation,
       BitInteger const num_qubits,
       std::vector<typename boost::range_value<LocalState>::type, BufferAllocator>& buffer,
-      yampi::datatype const real_datatype,
-      yampi::datatype const complex_datatype,
+      yampi::datatype const& real_datatype,
+      yampi::datatype const& complex_datatype,
       yampi::rank const root,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
@@ -407,8 +407,8 @@ namespace ket
         StateInteger, BitInteger, Allocator>& permutation,
       BitInteger const num_qubits,
       std::vector<typename boost::range_value<LocalState>::type, BufferAllocator>& buffer,
-      yampi::datatype const real_datatype,
-      yampi::datatype const complex_datatype,
+      yampi::datatype const& real_datatype,
+      yampi::datatype const& complex_datatype,
       yampi::rank const root,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
@@ -438,8 +438,8 @@ namespace ket
         StateInteger, BitInteger, Allocator>& permutation,
       BitInteger const num_qubits,
       std::vector<typename boost::range_value<LocalState>::type, BufferAllocator>& buffer,
-      yampi::datatype const real_datatype,
-      yampi::datatype const complex_datatype,
+      yampi::datatype const& real_datatype,
+      yampi::datatype const& complex_datatype,
       yampi::rank const root,
       yampi::communicator const& communicator,
       yampi::environment const& environment)

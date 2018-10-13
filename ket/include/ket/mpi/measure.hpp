@@ -16,7 +16,7 @@
 # include <yampi/buffer.hpp>
 # include <yampi/gather.hpp>
 # include <yampi/broadcast.hpp>
-# include <yampi/basic_datatype_of.hpp>
+# include <yampi/basic_datatype_tag_of.hpp>
 # include <yampi/algorithm/ranked_buffer.hpp>
 # include <yampi/algorithm/transform.hpp>
 
@@ -108,8 +108,8 @@ namespace ket
       LocalState& local_state, RandomNumberGenerator& random_number_generator,
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,
-      yampi::datatype const state_integer_datatype,
-      yampi::datatype const real_datatype,
+      yampi::datatype const& state_integer_datatype,
+      yampi::datatype const& real_datatype,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
@@ -163,7 +163,9 @@ namespace ket
 
       int result_mpi_rank = result_rank.mpi_rank();
       yampi::broadcast(communicator, root_rank).call(
-        environment, yampi::make_buffer(result_mpi_rank, yampi::basic_datatype_of<int>::call()));
+        environment,
+        yampi::make_buffer(
+          result_mpi_rank, yampi::datatype(yampi::int_datatype_t())));
       result_rank = static_cast<yampi::rank>(result_mpi_rank);
 
 # ifndef BOOST_NO_CXX11_LAMBDAS
@@ -225,8 +227,8 @@ namespace ket
       LocalState& local_state, RandomNumberGenerator& random_number_generator,
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,
-      yampi::datatype const state_integer_datatype,
-      yampi::datatype const real_datatype,
+      yampi::datatype const& state_integer_datatype,
+      yampi::datatype const& real_datatype,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
@@ -255,8 +257,8 @@ namespace ket
       return ::ket::mpi::measure(
         mpi_policy, parallel_policy,
         local_state, random_number_generator, permutation,
-        yampi::basic_datatype_of<real_type>::call(),
-        yampi::basic_datatype_of<StateInteger>::call(),
+        yampi::datatype(yampi::basic_datatype_tag_of<real_type>::call()),
+        yampi::datatype(yampi::basic_datatype_tag_of<StateInteger>::call()),
         communicator, environment);
     }
 
@@ -301,8 +303,8 @@ namespace ket
       LocalState& local_state, RandomNumberGenerator& random_number_generator,
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,
-      yampi::datatype const state_integer_datatype,
-      yampi::datatype const real_datatype,
+      yampi::datatype const& state_integer_datatype,
+      yampi::datatype const& real_datatype,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
@@ -356,7 +358,10 @@ namespace ket
 
       int result_mpi_rank = result_rank.mpi_rank();
       yampi::broadcast(communicator, root_rank).call(
-        environment, yampi::make_buffer(result_mpi_rank, yampi::basic_datatype_of<int>::call()));
+        environment,
+        yampi::make_buffer(
+          result_mpi_rank,
+          yampi::datatype(yampi::int_datatype_t())));
       result_rank = static_cast<yampi::rank>(result_mpi_rank);
 
 # ifndef BOOST_NO_CXX11_LAMBDAS
@@ -407,8 +412,8 @@ namespace ket
       LocalState& local_state, RandomNumberGenerator& random_number_generator,
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,
-      yampi::datatype const state_integer_datatype,
-      yampi::datatype const real_datatype,
+      yampi::datatype const& state_integer_datatype,
+      yampi::datatype const& real_datatype,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
@@ -437,8 +442,8 @@ namespace ket
       return ::ket::mpi::fast_measure(
         mpi_policy, parallel_policy,
         local_state, random_number_generator, permutation,
-        yampi::basic_datatype_of<real_type>::call(),
-        yampi::basic_datatype_of<StateInteger>::call(),
+        yampi::datatype(yampi::basic_datatype_tag_of<real_type>::call()),
+        yampi::datatype(yampi::basic_datatype_tag_of<StateInteger>::call()),
         communicator, environment);
     }
 

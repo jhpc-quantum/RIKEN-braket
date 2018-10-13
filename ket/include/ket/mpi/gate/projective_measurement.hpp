@@ -72,8 +72,8 @@ namespace ket
         RandomNumberGenerator& random_number_generator,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::datatype const complex_datatype,
-        yampi::datatype const real_pair_datatype,
+        yampi::datatype const& complex_datatype,
+        yampi::datatype const& real_pair_datatype,
         yampi::rank const root,
         yampi::communicator const& communicator,
         yampi::environment const& environment)
@@ -112,7 +112,9 @@ namespace ket
               < zero_one_probabilities.first
             ? 0 : 1;
 
-        yampi::broadcast(communicator, root).call(environment, yampi::make_buffer(zero_or_one));
+        yampi::broadcast(communicator, root).call(
+          environment,
+          yampi::make_buffer(zero_or_one, yampi::datatype(yampi::int_datatype_t())));
 
         if (zero_or_one == 0)
         {
@@ -149,8 +151,8 @@ namespace ket
         RandomNumberGenerator& random_number_generator,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::datatype const complex_datatype,
-        yampi::datatype const real_pair_datatype,
+        yampi::datatype const& complex_datatype,
+        yampi::datatype const& real_pair_datatype,
         yampi::rank const root,
         yampi::communicator const& communicator,
         yampi::environment const& environment)
@@ -173,8 +175,8 @@ namespace ket
         RandomNumberGenerator& random_number_generator,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::datatype const complex_datatype,
-        yampi::datatype const real_pair_datatype,
+        yampi::datatype const& complex_datatype,
+        yampi::datatype const& real_pair_datatype,
         yampi::rank const root,
         yampi::communicator const& communicator,
         yampi::environment const& environment)
