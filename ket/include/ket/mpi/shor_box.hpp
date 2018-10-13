@@ -96,7 +96,7 @@ namespace ket
         /*
       std::vector<
         typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-      yampi::datatype const datatype,
+      yampi::datatype const& datatype,
       */
       yampi::communicator const& communicator,
       yampi::environment const& environment)
@@ -171,7 +171,7 @@ namespace ket
         /*
       std::vector<
         typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-      yampi::datatype const datatype,
+      yampi::datatype const& datatype,
       */
       yampi::communicator const& communicator,
       yampi::environment const& environment)
@@ -196,7 +196,7 @@ namespace ket
         /*
       std::vector<
         typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-      yampi::datatype const datatype,
+      yampi::datatype const& datatype,
       */
       yampi::communicator const& communicator,
       yampi::environment const& environment)

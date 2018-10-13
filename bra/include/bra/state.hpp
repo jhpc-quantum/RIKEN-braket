@@ -39,7 +39,7 @@
 
 #   include <yampi/allocator.hpp>
 #   include <yampi/datatype.hpp>
-#   include <yampi/derived_datatype.hpp>
+#   include <yampi/uncommitted_datatype.hpp>
 #   include <yampi/rank.hpp>
 #   include <yampi/communicator.hpp>
 #   include <yampi/environment.hpp>
@@ -140,7 +140,7 @@ namespace bra
     std::vector<complex_type, yampi::allocator<complex_type> > buffer_;
     yampi::datatype state_integer_datatype_;
     yampi::datatype real_datatype_;
-    yampi::derived_datatype derived_real_pair_datatype_;
+    yampi::uncommitted_datatype uncommitted_real_pair_datatype_;
     yampi::datatype real_pair_datatype_;
     yampi::datatype complex_datatype_;
     yampi::communicator const& communicator_;

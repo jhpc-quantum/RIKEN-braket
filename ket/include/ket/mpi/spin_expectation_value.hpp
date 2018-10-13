@@ -115,8 +115,8 @@ namespace ket
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,
       std::vector<typename boost::range_value<LocalState>::type, BufferAllocator>& buffer,
-      yampi::datatype const real_datatype,
-      yampi::datatype const complex_datatype,
+      yampi::datatype const& real_datatype,
+      yampi::datatype const& complex_datatype,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
@@ -185,8 +185,8 @@ namespace ket
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,
       std::vector<typename boost::range_value<LocalState>::type, BufferAllocator>& buffer,
-      yampi::datatype const real_datatype,
-      yampi::datatype const complex_datatype,
+      yampi::datatype const& real_datatype,
+      yampi::datatype const& complex_datatype,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
@@ -213,8 +213,8 @@ namespace ket
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,
       std::vector<typename boost::range_value<LocalState>::type, BufferAllocator>& buffer,
-      yampi::datatype const real_datatype,
-      yampi::datatype const complex_datatype,
+      yampi::datatype const& real_datatype,
+      yampi::datatype const& complex_datatype,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
@@ -243,8 +243,8 @@ namespace ket
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,
       std::vector<typename boost::range_value<LocalState>::type, BufferAllocator>& buffer,
-      yampi::datatype const real_datatype,
-      yampi::datatype const complex_datatype,
+      yampi::datatype const& real_datatype,
+      yampi::datatype const& complex_datatype,
       yampi::rank const root,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
@@ -318,8 +318,8 @@ namespace ket
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,
       std::vector<typename boost::range_value<LocalState>::type, BufferAllocator>& buffer,
-      yampi::datatype const real_datatype,
-      yampi::datatype const complex_datatype,
+      yampi::datatype const& real_datatype,
+      yampi::datatype const& complex_datatype,
       yampi::rank const root,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
@@ -348,8 +348,8 @@ namespace ket
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,
       std::vector<typename boost::range_value<LocalState>::type, BufferAllocator>& buffer,
-      yampi::datatype const real_datatype,
-      yampi::datatype const complex_datatype,
+      yampi::datatype const& real_datatype,
+      yampi::datatype const& complex_datatype,
       yampi::rank const root,
       yampi::communicator const& communicator,
       yampi::environment const& environment)

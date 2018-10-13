@@ -72,8 +72,8 @@ namespace ket
         RandomNumberGenerator& random_number_generator,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::datatype const complex_datatype,
-        yampi::datatype const real_pair_datatype,
+        yampi::datatype const& complex_datatype,
+        yampi::datatype const& real_pair_datatype,
         yampi::rank const root,
         yampi::communicator const& communicator,
         yampi::environment const& environment)
@@ -149,8 +149,8 @@ namespace ket
         RandomNumberGenerator& random_number_generator,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::datatype const complex_datatype,
-        yampi::datatype const real_pair_datatype,
+        yampi::datatype const& complex_datatype,
+        yampi::datatype const& real_pair_datatype,
         yampi::rank const root,
         yampi::communicator const& communicator,
         yampi::environment const& environment)
@@ -173,8 +173,8 @@ namespace ket
         RandomNumberGenerator& random_number_generator,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::datatype const complex_datatype,
-        yampi::datatype const real_pair_datatype,
+        yampi::datatype const& complex_datatype,
+        yampi::datatype const& real_pair_datatype,
         yampi::rank const root,
         yampi::communicator const& communicator,
         yampi::environment const& environment)

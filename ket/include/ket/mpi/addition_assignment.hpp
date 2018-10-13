@@ -21,6 +21,8 @@
 # include <boost/range/join.hpp>
 
 # include <yampi/communicator.hpp>
+# include <yampi/environment.hpp>
+# include <yampi/datatype.hpp>
 
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
@@ -73,7 +75,7 @@ namespace ket
           StateInteger, BitInteger, Allocator>& permutation,
         std::vector<
           typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::datatype const datatype,
+        yampi::datatype const& datatype,
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
@@ -121,7 +123,7 @@ namespace ket
         StateInteger, BitInteger, Allocator>& permutation,
       std::vector<
         typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-      yampi::datatype const datatype,
+      yampi::datatype const& datatype,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
@@ -187,7 +189,7 @@ namespace ket
         StateInteger, BitInteger, Allocator>& permutation,
       std::vector<
         typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-      yampi::datatype const datatype,
+      yampi::datatype const& datatype,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
@@ -216,7 +218,7 @@ namespace ket
         StateInteger, BitInteger, Allocator>& permutation,
       std::vector<
         typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-      yampi::datatype const datatype,
+      yampi::datatype const& datatype,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
@@ -243,7 +245,7 @@ namespace ket
         StateInteger, BitInteger, Allocator>& permutation,
       std::vector<
         typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-      yampi::datatype const datatype,
+      yampi::datatype const& datatype,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
@@ -271,7 +273,7 @@ namespace ket
         StateInteger, BitInteger, Allocator>& permutation,
       std::vector<
         typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-      yampi::datatype const datatype,
+      yampi::datatype const& datatype,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
@@ -300,7 +302,7 @@ namespace ket
         StateInteger, BitInteger, Allocator>& permutation,
       std::vector<
         typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-      yampi::datatype const datatype,
+      yampi::datatype const& datatype,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
@@ -335,7 +337,7 @@ namespace ket
           StateInteger, BitInteger, Allocator>& permutation,
         std::vector<
           typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::datatype const datatype,
+        yampi::datatype const& datatype,
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
@@ -384,7 +386,7 @@ namespace ket
         StateInteger, BitInteger, Allocator>& permutation,
       std::vector<
         typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-      yampi::datatype const datatype,
+      yampi::datatype const& datatype,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
@@ -450,7 +452,7 @@ namespace ket
         StateInteger, BitInteger, Allocator>& permutation,
       std::vector<
         typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-      yampi::datatype const datatype,
+      yampi::datatype const& datatype,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
@@ -480,7 +482,7 @@ namespace ket
         StateInteger, BitInteger, Allocator>& permutation,
       std::vector<
         typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-      yampi::datatype const datatype,
+      yampi::datatype const& datatype,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
@@ -507,7 +509,7 @@ namespace ket
         StateInteger, BitInteger, Allocator>& permutation,
       std::vector<
         typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-      yampi::datatype const datatype,
+      yampi::datatype const& datatype,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
@@ -535,7 +537,7 @@ namespace ket
         StateInteger, BitInteger, Allocator>& permutation,
       std::vector<
         typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-      yampi::datatype const datatype,
+      yampi::datatype const& datatype,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
@@ -565,7 +567,7 @@ namespace ket
         StateInteger, BitInteger, Allocator>& permutation,
       std::vector<
         typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-      yampi::datatype const datatype,
+      yampi::datatype const& datatype,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
