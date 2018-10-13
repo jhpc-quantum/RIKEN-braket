@@ -175,8 +175,7 @@ namespace ket
         yampi::broadcast(communicator, root_rank).call(
           environment,
           yampi::make_buffer(
-            result_mpi_rank,
-            yampi::datatype(yampi::basic_datatype_tag_of<int>::call())));
+            result_mpi_rank, yampi::datatype(yampi::int_datatype_t())));
         result_rank = static_cast<yampi::rank>(result_mpi_rank);
 
 # ifndef BOOST_NO_CXX11_LAMBDAS

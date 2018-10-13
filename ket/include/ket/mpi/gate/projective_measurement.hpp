@@ -112,7 +112,9 @@ namespace ket
               < zero_one_probabilities.first
             ? 0 : 1;
 
-        yampi::broadcast(communicator, root).call(environment, yampi::make_buffer(zero_or_one));
+        yampi::broadcast(communicator, root).call(
+          environment,
+          yampi::make_buffer(zero_or_one, yampi::datatype(yampi::int_datatype_t())));
 
         if (zero_or_one == 0)
         {
