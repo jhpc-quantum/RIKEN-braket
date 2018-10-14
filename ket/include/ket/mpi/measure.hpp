@@ -141,10 +141,10 @@ namespace ket
       if (present_rank == root_rank)
         total_probabilities.resize(communicator.size(environment));
 
-      yampi::gather(communicator, root_rank).call(
-        environment,
+      yampi::gather(root_rank, communicator).call(
         yampi::make_buffer(total_probability, real_datatype),
-        ::ket::utility::begin(total_probabilities));
+        ::ket::utility::begin(total_probabilities),
+        environment);
 
       real_type random_value;
       yampi::rank result_rank;
@@ -162,25 +162,27 @@ namespace ket
       }
 
       int result_mpi_rank = result_rank.mpi_rank();
-      yampi::broadcast(communicator, root_rank).call(
-        environment,
+      yampi::broadcast(root_rank, communicator).call(
         yampi::make_buffer(
-          result_mpi_rank, yampi::datatype(yampi::int_datatype_t())));
+          result_mpi_rank, yampi::datatype(yampi::int_datatype_t())),
+        environment);
       result_rank = static_cast<yampi::rank>(result_mpi_rank);
 
 # ifndef BOOST_NO_CXX11_LAMBDAS
       yampi::algorithm::transform(
-        yampi::ignore_status(), communicator, environment,
+        yampi::ignore_status(),
         yampi::algorithm::make_ranked_buffer(random_value, real_datatype, root_rank),
         yampi::algorithm::make_ranked_buffer(random_value, real_datatype, result_rank),
         [&total_probabilities, result_rank](real_type const random_value)
-        { return random_value - total_probabilities[result_rank.mpi_rank()-1]; });
+        { return random_value - total_probabilities[result_rank.mpi_rank()-1]; },
+        communicator, environment);
 # else
       yampi::algorithm::transform(
-        yampi::ignore_status(), communicator, environment,
+        yampi::ignore_status(),
         yampi::algorithm::make_ranked_buffer(random_value, real_datatype, root_rank),
         yampi::algorithm::make_ranked_buffer(random_value, real_datatype, result_rank),
-        ::ket::mpi::measure_detail::make_modify_random_value(total_probabilities, result_rank));
+        ::ket::mpi::measure_detail::make_modify_random_value(total_probabilities, result_rank),
+        communicator, environment);
 # endif
 
       StateInteger permutated_result;
@@ -213,8 +215,8 @@ namespace ket
         ::ket::mpi::utility::fill(
           mpi_policy, parallel_policy, local_state, complex_type(real_type(0)));
 
-      yampi::broadcast(communicator, result_rank).call(
-        environment, yampi::make_buffer(permutated_result, state_integer_datatype));
+      yampi::broadcast(result_rank, communicator).call(
+        yampi::make_buffer(permutated_result, state_integer_datatype), environment);
 
       using ::ket::mpi::inverse_permutate_bits;
       return inverse_permutate_bits(permutation, permutated_result);
@@ -335,11 +337,11 @@ namespace ket
         total_probabilities.resize(communicator.size(environment));
 
       using std::real;
-      yampi::gather(communicator, root_rank).call(
-        environment,
+      yampi::gather(root_rank, communicator).call(
         yampi::make_buffer(
           partial_sum_probabilities.back(), real_datatype),
-        ::ket::utility::begin(total_probabilities));
+        ::ket::utility::begin(total_probabilities),
+        environment);
 
       real_type random_value;
       yampi::rank result_rank;
@@ -357,26 +359,28 @@ namespace ket
       }
 
       int result_mpi_rank = result_rank.mpi_rank();
-      yampi::broadcast(communicator, root_rank).call(
-        environment,
+      yampi::broadcast(root_rank, communicator).call(
         yampi::make_buffer(
           result_mpi_rank,
-          yampi::datatype(yampi::int_datatype_t())));
+          yampi::datatype(yampi::int_datatype_t())),
+        environment);
       result_rank = static_cast<yampi::rank>(result_mpi_rank);
 
 # ifndef BOOST_NO_CXX11_LAMBDAS
       yampi::algorithm::transform(
-        yampi::ignore_status(), communicator, environment,
+        yampi::ignore_status(),
         yampi::algorithm::make_ranked_buffer(random_value, real_datatype, root_rank),
         yampi::algorithm::make_ranked_buffer(random_value, real_datatype, result_rank),
         [&total_probabilities, result_rank](real_type const random_value)
-        { return random_value - total_probabilities[result_rank.mpi_rank()-1]; });
+        { return random_value - total_probabilities[result_rank.mpi_rank()-1]; },
+        communicator, environment);
 # else
       yampi::algorithm::transform(
-        yampi::ignore_status(), communicator, environment,
+        yampi::ignore_status(),
         yampi::algorithm::make_ranked_buffer(random_value, real_datatype, root_rank),
         yampi::algorithm::make_ranked_buffer(random_value, real_datatype, result_rank),
-        ::ket::mpi::measure_detail::make_modify_random_value(total_probabilities, result_rank));
+        ::ket::mpi::measure_detail::make_modify_random_value(total_probabilities, result_rank),
+        communicator, environment);
 # endif
 
       StateInteger permutated_result;
@@ -398,8 +402,8 @@ namespace ket
         ::ket::mpi::utility::fill(
           mpi_policy, parallel_policy, local_state, complex_type(real_type(0)));
 
-      yampi::broadcast(communicator, result_rank).call(
-        environment, yampi::make_buffer(permutated_result, state_integer_datatype));
+      yampi::broadcast(result_rank, communicator).call(
+        yampi::make_buffer(permutated_result, state_integer_datatype), environment);
 
       using ::ket::mpi::inverse_permutate_bits;
       return inverse_permutate_bits(permutation, permutated_result);

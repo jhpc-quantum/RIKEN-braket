@@ -102,9 +102,9 @@ namespace ket
                 parallel_policy, boost::begin(local_state), boost::end(local_state), qubit);
 
         yampi::all_reduce(
-          communicator, environment,
           yampi::make_buffer(zero_one_probabilities, real_pair_datatype),
-          KET_addressof(zero_one_probabilities), yampi::binary_operation(yampi::plus_t()));
+          KET_addressof(zero_one_probabilities), yampi::binary_operation(yampi::plus_t()),
+          communicator, environment);
         real_type const total_probability = zero_one_probabilities.first + zero_one_probabilities.second;
 
         int zero_or_one
@@ -112,9 +112,9 @@ namespace ket
               < zero_one_probabilities.first
             ? 0 : 1;
 
-        yampi::broadcast(communicator, root).call(
-          environment,
-          yampi::make_buffer(zero_or_one, yampi::datatype(yampi::int_datatype_t())));
+        yampi::broadcast(root, communicator).call(
+          yampi::make_buffer(zero_or_one, yampi::datatype(yampi::int_datatype_t())),
+          environment);
 
         if (zero_or_one == 0)
         {
