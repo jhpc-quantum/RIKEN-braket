@@ -63,11 +63,12 @@ namespace ket
 
             buffer.resize(source_local_last_index - source_local_first_index);
             yampi::algorithm::swap(
-              yampi::ignore_status(), communicator, environment,
+              yampi::ignore_status(),
               yampi::make_buffer(first, last, datatype),
               yampi::make_buffer(
                 ::ket::utility::begin(buffer), ::ket::utility::end(buffer), datatype),
-              target_rank);
+              target_rank,
+              communicator, environment);
             std::copy(::ket::utility::begin(buffer), ::ket::utility::end(buffer), first);
           }
         };
