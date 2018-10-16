@@ -17,7 +17,7 @@
 # include <yampi/gather.hpp>
 # include <yampi/broadcast.hpp>
 # include <yampi/basic_datatype_tag_of.hpp>
-# include <yampi/algorithm/ranked_buffer.hpp>
+# include <yampi/message_envelope.hpp>
 # include <yampi/algorithm/transform.hpp>
 
 # include <ket/utility/loop_n.hpp>
@@ -181,18 +181,20 @@ namespace ket
 # ifndef BOOST_NO_CXX11_LAMBDAS
         yampi::algorithm::transform(
           yampi::ignore_status(),
-          yampi::algorithm::make_ranked_buffer(random_value, real_datatype, root_rank),
-          yampi::algorithm::make_ranked_buffer(random_value, real_datatype, result_rank),
+          yampi::make_buffer(random_value, real_datatype),
+          yampi::make_buffer(random_value, real_datatype),
           [&total_probabilities, result_rank](real_type const random_value)
           { return random_value - total_probabilities[result_rank.mpi_rank()-1]; },
-          communicator, environment);
+          ::yampi::message_envelope(root_rank, result_rank, communicator),
+          environment);
 # else
         yampi::algorithm::transform(
           yampi::ignore_status(),
-          yampi::algorithm::make_ranked_buffer(random_value, real_datatype, root_rank),
-          yampi::algorithm::make_ranked_buffer(random_value, real_datatype, result_rank),
+          yampi::make_buffer(random_value, real_datatype),
+          yampi::make_buffer(random_value, real_datatype),
           ::ket::mpi::generate_events_detail::make_modify_random_value(total_probabilities, result_rank),
-          communicator, environment);
+          ::yampi::message_envelope(root_rank, result_rank, communicator),
+          environment);
 # endif
 
         StateInteger permutated_result;
