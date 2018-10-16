@@ -90,7 +90,7 @@ namespace bra
 # if MPI_VERSION >= 3
       complex_datatype_(yampi::basic_datatype_tag_of<complex_type>::call()),
 # else
-      complex_datatype_(uncommitted_real_pair_datatype_, environment),
+      complex_datatype_(real_pair_datatype_, environment),
 # endif
       communicator_(communicator),
       environment_(environment),
