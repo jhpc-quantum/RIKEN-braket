@@ -11,8 +11,12 @@
 # include <utility>
 # ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
 #   include <type_traits>
+#   if __cplusplus < 201703L
+#     include <boost/type_traits/is_nothrow_swappable.hpp>
+#   endif
 # else
 #   include <boost/type_traits/integral_constant.hpp>
+#   include <boost/type_traits/is_nothrow_swappable.hpp>
 # endif
 # ifndef BOOST_NO_CXX11_HDR_ARRAY
 #   include <array>
@@ -49,7 +53,6 @@
 
 # include <ket/qubit.hpp>
 # include <ket/utility/integer_exp2.hpp>
-# include <ket/utility/is_nothrow_swappable.hpp>
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/begin.hpp>
 # include <ket/utility/end.hpp>
@@ -65,6 +68,12 @@
 #   define KET_true_type std::true_type
 # else
 #   define KET_true_type boost::true_type
+# endif
+
+# if __cplusplus >= 201703L
+#   define KET_is_nothrow_swappable std::is_nothrow_swappable
+# else
+#   define KET_is_nothrow_swappable boost::is_nothrow_swappable
 # endif
 
 # ifndef BOOST_NO_CXX11_HDR_ARRAY
@@ -394,10 +403,10 @@ namespace ket
       // Modifiers
       void swap(state& other)
         BOOST_NOEXCEPT_IF((
-          ::ket::utility::is_nothrow_swappable<data_type>::value
-          and ::ket::utility::is_nothrow_swappable<std::size_t>::value
-          and ::ket::utility::is_nothrow_swappable< KET_array<page_range_type, num_pages> >::value
-          and ::ket::utility::is_nothrow_swappable<page_range_type>::value ))
+          KET_is_nothrow_swappable<data_type>::value
+          and KET_is_nothrow_swappable<std::size_t>::value
+          and KET_is_nothrow_swappable< KET_array<page_range_type, num_pages> >::value
+          and KET_is_nothrow_swappable<page_range_type>::value ))
       {
         using std::swap;
         swap(data_, other.data_);
@@ -1232,7 +1241,7 @@ namespace ket
 
       // Modifiers
       void swap(state& other)
-        BOOST_NOEXCEPT_IF(( ::ket::utility::is_nothrow_swappable<data_type>::value ))
+        BOOST_NOEXCEPT_IF(( KET_is_nothrow_swappable<data_type>::value ))
       {
         using std::swap;
         swap(data_, other.data_);
@@ -1297,7 +1306,7 @@ namespace ket
       ::ket::mpi::state<Complex, num_page_qubits, Allocator>& lhs,
       ::ket::mpi::state<Complex, num_page_qubits, Allocator>& rhs)
       BOOST_NOEXCEPT_IF((
-        ::ket::utility::is_nothrow_swappable<
+        KET_is_nothrow_swappable<
           ::ket::mpi::state<Complex, num_page_qubits, Allocator> >::value ))
     { lhs.swap(rhs); }
 
@@ -1676,6 +1685,7 @@ namespace ket
 # ifdef BOOST_NO_CXX11_NULLPTR
 #   undef nullptr
 # endif
+# undef KET_is_nothrow_swappable
 # undef KET_true_type
 # undef KET_array
 # ifdef BOOST_NO_CXX11_STATIC_ASSERT

@@ -12,6 +12,11 @@
 # ifndef BOOST_NO_CXX11_HDR_INITIALIZER_LIST
 #   include <initializer_list>
 # endif
+# if __cplusplus >= 201703L
+#   include <type_traits>
+# else
+#   include <boost/type_traits/is_nothrow_swappable.hpp>
+# endif
 
 # include <boost/lexical_cast.hpp>
 # include <boost/tuple/tuple.hpp>
@@ -28,10 +33,14 @@
 #   include <yampi/environment.hpp>
 # endif // BRA_NO_MPI
 
-# include <ket/utility/is_nothrow_swappable.hpp>
-
 # include <bra/state.hpp>
 # include <bra/gate/gate.hpp>
+
+# if __cplusplus >= 201703L
+#   define BRA_is_nothrow_swappable std::is_nothrow_swappable
+# else
+#   define BRA_is_nothrow_swappable boost::is_nothrow_swappable
+# endif
 
 
 namespace bra
@@ -271,10 +280,10 @@ namespace bra
     //void resize(size_type const count) { data_.resize(count); }
     void swap(gates& other)
       BOOST_NOEXCEPT_IF(
-        ket::utility::is_nothrow_swappable<data_type>::value
-        and ket::utility::is_nothrow_swappable<bit_integer_type>::value
-        and ket::utility::is_nothrow_swappable<state_integer_type>::value
-        and ket::utility::is_nothrow_swappable<qubit_type>::value);
+        BRA_is_nothrow_swappable<data_type>::value
+        and BRA_is_nothrow_swappable<bit_integer_type>::value
+        and BRA_is_nothrow_swappable<state_integer_type>::value
+        and BRA_is_nothrow_swappable<qubit_type>::value);
 
    private:
     bit_integer_type read_num_qubits(columns_type const& columns) const;
@@ -400,5 +409,7 @@ namespace bra
   } // namespace gates_detail
 }
 
+
+# undef BRA_is_nothrow_swappable
 
 #endif

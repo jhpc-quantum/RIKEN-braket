@@ -5,6 +5,11 @@
 #include <utility>
 #include <algorithm>
 #include <stdexcept>
+# if __cplusplus >= 201703L
+#   include <type_traits>
+# else
+#   include <boost/type_traits/is_nothrow_swappable.hpp>
+# endif
 
 #include <boost/lexical_cast.hpp>
 #include <boost/tuple/tuple.hpp>
@@ -28,7 +33,6 @@
 #include <ket/control.hpp>
 #include <ket/utility/integer_log2.hpp>
 #include <ket/utility/integer_exp2.hpp>
-#include <ket/utility/is_nothrow_swappable.hpp>
 #include <ket/utility/generate_phase_coefficients.hpp>
 
 #include <bra/gates.hpp>
@@ -65,6 +69,12 @@
 #include <bra/gate/set.hpp>
 #include <bra/gate/depolarizing_channel.hpp>
 #include <bra/gate/exit.hpp>
+
+# if __cplusplus >= 201703L
+#   define BRA_is_nothrow_swappable std::is_nothrow_swappable
+# else
+#   define BRA_is_nothrow_swappable boost::is_nothrow_swappable
+# endif
 
 
 namespace bra
@@ -626,10 +636,10 @@ namespace bra
 
   void gates::swap(gates& other)
     BOOST_NOEXCEPT_IF(
-      ket::utility::is_nothrow_swappable<data_type>::value
-      and ket::utility::is_nothrow_swappable<bit_integer_type>::value
-      and ket::utility::is_nothrow_swappable<state_integer_type>::value
-      and ket::utility::is_nothrow_swappable<qubit_type>::value)
+      BRA_is_nothrow_swappable<data_type>::value
+      and BRA_is_nothrow_swappable<bit_integer_type>::value
+      and BRA_is_nothrow_swappable<state_integer_type>::value
+      and BRA_is_nothrow_swappable<qubit_type>::value)
   {
     using std::swap;
 #ifndef BRA_NO_MPI
@@ -987,3 +997,7 @@ namespace bra
     return boost::make_tuple(BRA_DEPOLARIZING_STATEMENT_VALUE(channel), px, py, pz, seed);
   }
 }
+
+
+# undef BRA_is_nothrow_swappable
+

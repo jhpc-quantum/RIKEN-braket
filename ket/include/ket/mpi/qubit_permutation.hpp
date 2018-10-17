@@ -11,12 +11,14 @@
 # ifndef BOOST_NO_CXX11_HDR_INITIALIZER_LIST
 #   include <initializer_list>
 # endif
-# ifndef NDEBUG
-#   ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
-#     include <type_traits>
-#   else
-#     include <boost/type_traits/is_unsigned.hpp>
+# ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
+#   include <type_traits>
+#   if __cplusplus < 201703L
+#     include <boost/type_traits/is_nothrow_swappable.hpp>
 #   endif
+# else
+#   include <boost/type_traits/is_unsigned.hpp>
+#   include <boost/type_traits/is_nothrow_swappable.hpp>
 # endif
 # ifdef BOOST_NO_CXX11_STATIC_ASSERT
 #   include <boost/static_assert.hpp>
@@ -28,7 +30,6 @@
 
 # include <ket/qubit.hpp>
 # include <ket/meta/bit_integer_of.hpp>
-# include <ket/utility/is_nothrow_swappable.hpp>
 # include <ket/utility/begin.hpp>
 # include <ket/utility/end.hpp>
 # include <ket/utility/meta/const_iterator_of.hpp>
@@ -37,6 +38,12 @@
 #   define KET_is_unsigned std::is_unsigned
 # else
 #   define KET_is_unsigned boost::is_unsigned
+# endif
+
+# if __cplusplus >= 201703L
+#   define KET_is_nothrow_swappable std::is_nothrow_swappable
+# else
+#   define KET_is_nothrow_swappable boost::is_nothrow_swappable
 # endif
 
 # ifdef BOOST_NO_CXX11_STATIC_ASSERT
@@ -277,8 +284,8 @@ namespace ket
 
       void swap(qubit_permutation& other)
         BOOST_NOEXCEPT_IF((
-          ::ket::utility::is_nothrow_swappable<data_type>::value
-          and ::ket::utility::is_nothrow_swappable<inverse_data_type>::value ))
+          KET_is_nothrow_swappable<data_type>::value
+          and KET_is_nothrow_swappable<inverse_data_type>::value ))
       { data_.swap(other.data_); inverse_data_.swap(other.inverse_data_); }
 
       void push_back()
@@ -349,7 +356,7 @@ namespace ket
       ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& lhs,
       ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& rhs)
       BOOST_NOEXCEPT_IF((
-        ::ket::utility::is_nothrow_swappable<
+        KET_is_nothrow_swappable<
            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> >::value ))
     { lhs.swap(rhs); }
 
@@ -555,6 +562,7 @@ namespace ket
 }
 
 
+# undef KET_is_nothrow_swappable
 # undef KET_is_unsigned
 # ifdef BOOST_NO_CXX11_STATIC_ASSERT
 #   undef static_assert
