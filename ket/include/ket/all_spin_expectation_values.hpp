@@ -88,7 +88,7 @@ namespace ket
         typename ::ket::utility::meta::real_of<
           typename boost::range_value<RandomAccessRange>::type>::type, 3u> >
     all_spin_expectation_values(
-      ParallelPolicy const parallel_policy, RandomAccessRange& state)
+      ParallelPolicy const parallel_policy, RandomAccessRange const& state)
     {
       return ::ket::all_spin_expectation_values<Qubit>(
         parallel_policy, ::ket::utility::begin(state), ::ket::utility::end(state));
@@ -100,7 +100,7 @@ namespace ket
       KET_array<
         typename ::ket::utility::meta::real_of<
           typename boost::range_value<RandomAccessRange>::type>::type, 3u> >
-    all_spin_expectation_values(RandomAccessRange& state)
+    all_spin_expectation_values(RandomAccessRange const& state)
     { return ::ket::all_spin_expectation_values<Qubit>(::ket::utility::begin(state), ::ket::utility::end(state)); }
   } // namespace ranges
 } // namespace ket
