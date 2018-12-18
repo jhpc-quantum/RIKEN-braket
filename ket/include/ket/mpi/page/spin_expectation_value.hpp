@@ -110,14 +110,15 @@ namespace ket
           template <typename StateInteger>
           void operator()(StateInteger const index, int const thread_index) const
           {
-            complex_type const zero_value = *(zero_first_+index);
+            using std::conj;
+            complex_type const conj_zero_value = conj(*(zero_first_+index));
             complex_type const one_value = *(one_first_+index);
-            complex_type const zero_times_one = zero_value*one_value;
+            complex_type const conj_zero_times_one = conj_zero_value * one_value;
 
             using std::real;
-            spins_in_threads_[thread_index][0u] += static_cast<long double>(real(zero_times_one));
+            spins_in_threads_[thread_index][0u] += static_cast<long double>(real(conj_zero_times_one));
             using std::imag;
-            spins_in_threads_[thread_index][1u] += static_cast<long double>(imag(zero_times_one));
+            spins_in_threads_[thread_index][1u] += static_cast<long double>(imag(conj_zero_times_one));
             using std::norm;
             spins_in_threads_[thread_index][2u]
               += static_cast<long double>(norm(zero_value)) - static_cast<long double>(norm(one_value));
@@ -222,14 +223,15 @@ namespace ket
             [&zero_page_range, &one_page_range, &spins_in_threads](
               StateInteger const index, int const thread_index)
             {
-              Complex const zero_value = *(boost::begin(zero_page_range)+index);
+              using std::conj;
+              Complex const conj_zero_value = conj(*(boost::begin(zero_page_range)+index));
               Complex const one_value = *(boost::begin(one_page_range)+index);
-              Complex const zero_times_one = zero_value*one_value;
+              Complex const conj_zero_times_one = conj_zero_value * one_value;
 
               using std::real;
-              spins_in_threads[thread_index][0u] += static_cast<long double>(real(zero_times_one));
+              spins_in_threads[thread_index][0u] += static_cast<long double>(real(conj_zero_times_one));
               using std::imag;
-              spins_in_threads[thread_index][1u] += static_cast<long double>(imag(zero_times_one));
+              spins_in_threads[thread_index][1u] += static_cast<long double>(imag(conj_zero_times_one));
               using std::norm;
               spins_in_threads[thread_index][2u]
                 += static_cast<long double>(norm(zero_value)) - static_cast<long double>(norm(one_value));

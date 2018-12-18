@@ -96,14 +96,15 @@ namespace ket
         // xxxxx1xxxxxx
         StateInteger const one_index = zero_index bitor qubit_mask_;
 
-        complex_type const zero_value = *(first_+zero_index);
+        using std::conj;
+        complex_type const conj_zero_value = conj(*(first_+zero_index));
         complex_type const one_value = *(first_+one_index);
-        complex_type const zero_times_one = zero_value*one_value;
+        complex_type const conj_zero_times_one = conj_zero_value * one_value;
 
         using std::real;
-        spins_in_threads_[thread_index][0u] += static_cast<long double>(real(zero_times_one));
+        spins_in_threads_[thread_index][0u] += static_cast<long double>(real(conj_zero_times_one));
         using std::imag;
-        spins_in_threads_[thread_index][1u] += static_cast<long double>(imag(zero_times_one));
+        spins_in_threads_[thread_index][1u] += static_cast<long double>(imag(conj_zero_times_one));
         using std::norm;
         spins_in_threads_[thread_index][2u]
           += static_cast<long double>(norm(zero_value)) - static_cast<long double>(norm(one_value));
@@ -193,14 +194,15 @@ namespace ket
         // xxxxx1xxxxxx
         StateInteger const one_index = zero_index bitor qubit_mask;
 
-        complex_type const zero_value = *(first+zero_index);
+        using std::conj;
+        complex_type const conj_zero_value = conj(*(first+zero_index));
         complex_type const one_value = *(first+one_index);
-        complex_type const zero_times_one = zero_value*one_value;
+        complex_type const conj_zero_times_one = conj_zero_value * one_value;
 
         using std::real;
-        spins_in_threads[thread_index][0u] += static_cast<long double>(real(zero_times_one));
+        spins_in_threads[thread_index][0u] += static_cast<long double>(real(conj_zero_times_one));
         using std::imag;
-        spins_in_threads[thread_index][1u] += static_cast<long double>(imag(zero_times_one));
+        spins_in_threads[thread_index][1u] += static_cast<long double>(imag(conj_zero_times_one));
         using std::norm;
         spins_in_threads[thread_index][2u]
           += static_cast<long double>(norm(zero_value)) - static_cast<long double>(norm(one_value));
