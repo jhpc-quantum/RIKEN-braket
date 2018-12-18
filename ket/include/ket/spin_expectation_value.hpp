@@ -107,7 +107,7 @@ namespace ket
         spins_in_threads_[thread_index][1u] += static_cast<long double>(imag(conj_zero_times_one));
         using std::norm;
         spins_in_threads_[thread_index][2u]
-          += static_cast<long double>(norm(zero_value)) - static_cast<long double>(norm(one_value));
+          += static_cast<long double>(norm(conj_zero_value)) - static_cast<long double>(norm(one_value));
       }
     };
 
@@ -205,7 +205,7 @@ namespace ket
         spins_in_threads[thread_index][1u] += static_cast<long double>(imag(conj_zero_times_one));
         using std::norm;
         spins_in_threads[thread_index][2u]
-          += static_cast<long double>(norm(zero_value)) - static_cast<long double>(norm(one_value));
+          += static_cast<long double>(norm(conj_zero_value)) - static_cast<long double>(norm(one_value));
       });
 # else // BOOST_NO_CXX11_LAMBDAS
     loop_n(
