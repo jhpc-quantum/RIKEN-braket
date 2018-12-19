@@ -136,26 +136,26 @@ namespace ket
 
           StateInteger const target_qubit_mask
             = ::ket::utility::integer_exp2<StateInteger>(
-                permutated_target_qubit - static_cast<qubit_type>(num_nonpage_qubits));
+                permutated_target_qubit - static_cast<BitInteger>(num_nonpage_qubits));
           StateInteger const control_qubits_mask
             = ::ket::utility::integer_exp2<StateInteger>(
-                permutated_cqubit1 - static_cast<qubit_type>(num_nonpage_qubits))
+                permutated_cqubit1 - static_cast<BitInteger>(num_nonpage_qubits))
               bitor ::ket::utility::integer_exp2<StateInteger>(
-                      permutated_cqubit2 - static_cast<qubit_type>(num_nonpage_qubits));
+                      permutated_cqubit2 - static_cast<BitInteger>(num_nonpage_qubits));
 
           KET_array<StateInteger, 4u> bits_mask;
           bits_mask[0u]
             = ::ket::utility::integer_exp2<StateInteger>(
-                sorted_permutated_qubits[0u] - static_cast<qubit_type>(num_nonpage_qubits))
+                sorted_permutated_qubits[0u] - static_cast<BitInteger>(num_nonpage_qubits))
               - static_cast<StateInteger>(1u);
           bits_mask[1u]
             = (::ket::utility::integer_exp2<StateInteger>(
-                 sorted_permutated_qubits[1u]-static_cast<qubit_type>(1u+num_nonpage_qubits))
+                 sorted_permutated_qubits[1u]-static_cast<BitInteger>(1u+num_nonpage_qubits))
                - static_cast<StateInteger>(1u))
               xor bits_mask[0u];
           bits_mask[2u]
             = (::ket::utility::integer_exp2<StateInteger>(
-                 sorted_permutated_qubits[2u]-static_cast<qubit_type>(2u+num_nonpage_qubits))
+                 sorted_permutated_qubits[2u]-static_cast<BitInteger>(2u+num_nonpage_qubits))
                - static_cast<StateInteger>(1u))
               xor (bits_mask[0u] bitor bits_mask[1u]);
           bits_mask[3u]
@@ -324,21 +324,21 @@ namespace ket
 
           StateInteger const target_qubit_mask
             = ::ket::utility::integer_exp2<StateInteger>(
-                permutated_target_qubit - static_cast<qubit_type>(num_nonpage_qubits));
+                permutated_target_qubit - static_cast<BitInteger>(num_nonpage_qubits));
           StateInteger const page_control_qubit_mask
             = ::ket::utility::integer_exp2<StateInteger>(
-                permutated_page_cqubit - static_cast<qubit_type>(num_nonpage_qubits));
+                permutated_page_cqubit - static_cast<BitInteger>(num_nonpage_qubits));
           StateInteger const nonpage_control_qubit_mask
             = ::ket::utility::integer_exp2<StateInteger>(permutation[nonpage_control_qubit.qubit()]);
 
           using boost::get;
           StateInteger const page_lower_bits_mask
             = ::ket::utility::integer_exp2<StateInteger>(
-                get<0u>(minmax_page_permutated_qubits) - static_cast<qubit_type>(num_nonpage_qubits))
+                get<0u>(minmax_page_permutated_qubits) - static_cast<BitInteger>(num_nonpage_qubits))
               - static_cast<StateInteger>(1u);
           StateInteger const page_middle_bits_mask
             = (::ket::utility::integer_exp2<StateInteger>(
-                 get<1u>(minmax_page_permutated_qubits) - static_cast<qubit_type>(1u+num_nonpage_qubits))
+                 get<1u>(minmax_page_permutated_qubits) - static_cast<BitInteger>(1u+num_nonpage_qubits))
                - static_cast<StateInteger>(1u))
               xor page_lower_bits_mask;
           StateInteger const page_upper_bits_mask
@@ -538,20 +538,20 @@ namespace ket
 
           StateInteger const page_control_qubits_mask
             = ::ket::utility::integer_exp2<StateInteger>(
-                permutated_cqubit1 - static_cast<qubit_type>(num_nonpage_qubits))
+                permutated_cqubit1 - static_cast<BitInteger>(num_nonpage_qubits))
               bitor ::ket::utility::integer_exp2<StateInteger>(
-                      permutated_cqubit2 - static_cast<qubit_type>(num_nonpage_qubits));
+                      permutated_cqubit2 - static_cast<BitInteger>(num_nonpage_qubits));
           StateInteger const nonpage_target_qubit_mask
             = ::ket::utility::integer_exp2<StateInteger>(permutation[target_qubit]);
 
           using boost::get;
           StateInteger const page_lower_bits_mask
             = ::ket::utility::integer_exp2<StateInteger>(
-                get<0u>(minmax_page_permutated_qubits) - static_cast<qubit_type>(num_nonpage_qubits))
+                get<0u>(minmax_page_permutated_qubits) - static_cast<BitInteger>(num_nonpage_qubits))
               - static_cast<StateInteger>(1u);
           StateInteger const page_middle_bits_mask
             = (::ket::utility::integer_exp2<StateInteger>(
-                 get<1u>(minmax_page_permutated_qubits) - static_cast<qubit_type>(1u+num_nonpage_qubits))
+                 get<1u>(minmax_page_permutated_qubits) - static_cast<BitInteger>(1u+num_nonpage_qubits))
                - static_cast<StateInteger>(1u))
               xor page_lower_bits_mask;
           StateInteger const page_upper_bits_mask
@@ -751,7 +751,7 @@ namespace ket
 
           StateInteger const target_qubit_mask
             = ::ket::utility::integer_exp2<StateInteger>(
-                permutation[target_qubit] - static_cast<qubit_type>(num_nonpage_qubits));
+                permutation[target_qubit] - static_cast<BitInteger>(num_nonpage_qubits));
           StateInteger const control_qubits_mask
             = ::ket::utility::integer_exp2<StateInteger>(permutated_cqubit1)
               bitor ::ket::utility::integer_exp2<StateInteger>(permutated_cqubit2);
@@ -763,7 +763,7 @@ namespace ket
             = ::ket::utility::integer_exp2<StateInteger>(get<0u>(minmax_nonpage_permutated_qubits))
               - static_cast<StateInteger>(1u);
           StateInteger const nonpage_middle_bits_mask
-            = (::ket::utility::integer_exp2<StateInteger>(get<1u>(minmax_nonpage_permutated_qubits) - static_cast<qubit_type>(1u))
+            = (::ket::utility::integer_exp2<StateInteger>(get<1u>(minmax_nonpage_permutated_qubits) - static_cast<BitInteger>(1u))
                - static_cast<StateInteger>(1u))
               xor nonpage_lower_bits_mask;
           StateInteger const nonpage_upper_bits_mask
@@ -969,7 +969,7 @@ namespace ket
             = ::ket::utility::integer_exp2<StateInteger>(permutated_target_qubit);
           StateInteger const page_control_qubit_mask
             = ::ket::utility::integer_exp2<StateInteger>(
-                permutation[page_control_qubit.qubit()] - static_cast<qubit_type>(num_nonpage_qubits));
+                permutation[page_control_qubit.qubit()] - static_cast<BitInteger>(num_nonpage_qubits));
           StateInteger const nonpage_control_qubit_mask
             = ::ket::utility::integer_exp2<StateInteger>(permutated_nonpage_cqubit);
 
@@ -980,7 +980,7 @@ namespace ket
             = ::ket::utility::integer_exp2<StateInteger>(get<0u>(minmax_nonpage_permutated_qubits))
               - static_cast<StateInteger>(1u);
           StateInteger const nonpage_middle_bits_mask
-            = (::ket::utility::integer_exp2<StateInteger>(get<1u>(minmax_nonpage_permutated_qubits) - static_cast<qubit_type>(1u))
+            = (::ket::utility::integer_exp2<StateInteger>(get<1u>(minmax_nonpage_permutated_qubits) - static_cast<BitInteger>(1u))
                - static_cast<StateInteger>(1u))
               xor nonpage_lower_bits_mask;
           StateInteger const nonpage_upper_bits_mask

@@ -112,7 +112,7 @@ namespace ket
             = static_cast<BitInteger>(local_state.num_local_qubits()-num_page_qubits_);
           StateInteger const qubit_mask
             = ::ket::utility::integer_exp2<StateInteger>(
-                permutation[qubit] - static_cast<qubit_type>(num_nonpage_qubits));
+                permutation[qubit] - static_cast<BitInteger>(num_nonpage_qubits));
           StateInteger const lower_bits_mask = qubit_mask-static_cast<StateInteger>(1u);
           StateInteger const upper_bits_mask = compl lower_bits_mask;
 
@@ -265,7 +265,7 @@ namespace ket
             = static_cast<BitInteger>(local_state.num_local_qubits()-num_page_qubits_);
           StateInteger const qubit_mask
             = ::ket::utility::integer_exp2<StateInteger>(
-                permutation[qubit] - static_cast<qubit_type>(num_nonpage_qubits));
+                permutation[qubit] - static_cast<BitInteger>(num_nonpage_qubits));
           StateInteger const lower_bits_mask = qubit_mask-static_cast<StateInteger>(1u);
           StateInteger const upper_bits_mask = compl lower_bits_mask;
 
@@ -427,7 +427,7 @@ namespace ket
             = static_cast<BitInteger>(local_state.num_local_qubits()-num_page_qubits_);
           StateInteger const qubit_mask
             = ::ket::utility::integer_exp2<StateInteger>(
-                permutation[qubit] - static_cast<qubit_type>(num_nonpage_qubits));
+                permutation[qubit] - static_cast<BitInteger>(num_nonpage_qubits));
           StateInteger const lower_bits_mask = qubit_mask-static_cast<StateInteger>(1u);
           StateInteger const upper_bits_mask = compl lower_bits_mask;
 
@@ -602,7 +602,7 @@ namespace ket
             = static_cast<BitInteger>(local_state.num_local_qubits()-num_page_qubits_);
           StateInteger const qubit_mask
             = ::ket::utility::integer_exp2<StateInteger>(
-                permutation[qubit] - static_cast<qubit_type>(num_nonpage_qubits));
+                permutation[qubit] - static_cast<BitInteger>(num_nonpage_qubits));
           StateInteger const lower_bits_mask = qubit_mask-static_cast<StateInteger>(1u);
           StateInteger const upper_bits_mask = compl lower_bits_mask;
 
@@ -781,7 +781,7 @@ namespace ket
             = static_cast<BitInteger>(local_state.num_local_qubits()-num_page_qubits_);
           StateInteger const qubit_mask
             = ::ket::utility::integer_exp2<StateInteger>(
-                permutation[qubit] - static_cast<qubit_type>(num_nonpage_qubits));
+                permutation[qubit] - static_cast<BitInteger>(num_nonpage_qubits));
           StateInteger const lower_bits_mask = qubit_mask-static_cast<StateInteger>(1u);
           StateInteger const upper_bits_mask = compl lower_bits_mask;
 

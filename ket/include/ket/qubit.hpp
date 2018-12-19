@@ -58,10 +58,12 @@ namespace ket
       --(*this);
       return result;
     }
-    qubit& operator+=(qubit const other) BOOST_NOEXCEPT_OR_NOTHROW
-    { bit_ += other.bit_; return *this; }
-    qubit& operator-=(qubit const other) BOOST_NOEXCEPT_OR_NOTHROW
-    { bit_ -= other.bit_; return *this; }
+    qubit& operator+=(BitInteger const bit) BOOST_NOEXCEPT_OR_NOTHROW
+    { bit_ += bit; return *this; }
+    qubit& operator-=(BitInteger const bit) BOOST_NOEXCEPT_OR_NOTHROW
+    { bit_ -= bit; return *this; }
+    BitInteger operator-(qubit const& other) const BOOST_NOEXCEPT_OR_NOTHROW
+    { return bit_ - other.bit_; }
   };
 
   template <typename StateInteger, typename BitInteger>
@@ -102,15 +104,18 @@ namespace ket
 
   template <typename StateInteger, typename BitInteger>
   inline BOOST_CONSTEXPR qubit<StateInteger, BitInteger> operator+(
-    ::ket::qubit<StateInteger, BitInteger> qubit1,
-    ::ket::qubit<StateInteger, BitInteger> const qubit2) BOOST_NOEXCEPT_OR_NOTHROW
-  { return qubit1 += qubit2; }
+    ::ket::qubit<StateInteger, BitInteger> qubit, BitInteger const bit) BOOST_NOEXCEPT_OR_NOTHROW
+  { return qubit += bit; }
+
+  template <typename StateInteger, typename BitInteger>
+  inline BOOST_CONSTEXPR qubit<StateInteger, BitInteger> operator+(
+    BitInteger const bit, ::ket::qubit<StateInteger, BitInteger> const qubit) BOOST_NOEXCEPT_OR_NOTHROW
+  { return qubit + bit; }
 
   template <typename StateInteger, typename BitInteger>
   inline BOOST_CONSTEXPR qubit<StateInteger, BitInteger> operator-(
-    ::ket::qubit<StateInteger, BitInteger> qubit1,
-    ::ket::qubit<StateInteger, BitInteger> const qubit2) BOOST_NOEXCEPT_OR_NOTHROW
-  { return qubit1 -= qubit2; }
+    ::ket::qubit<StateInteger, BitInteger> qubit, BitInteger const bit) BOOST_NOEXCEPT_OR_NOTHROW
+  { return qubit -= bit; }
 
   template <typename Value, typename StateInteger, typename BitInteger>
   inline BOOST_CONSTEXPR

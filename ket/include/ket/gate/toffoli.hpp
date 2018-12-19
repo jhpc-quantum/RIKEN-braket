@@ -163,12 +163,12 @@ namespace ket
             - static_cast<StateInteger>(1u);
         bits_mask[1u]
           = (::ket::utility::integer_exp2<StateInteger>(
-               sorted_qubits[1u]-static_cast<qubit_type>(1u))
+               sorted_qubits[1u]-static_cast<BitInteger>(1u))
              - static_cast<StateInteger>(1u))
             xor bits_mask[0u];
         bits_mask[2u]
           = (::ket::utility::integer_exp2<StateInteger>(
-               sorted_qubits[2u]-static_cast<qubit_type>(2u))
+               sorted_qubits[2u]-static_cast<BitInteger>(2u))
              - static_cast<StateInteger>(1u))
             xor (bits_mask[0u] bitor bits_mask[1u]);
         bits_mask[3u]

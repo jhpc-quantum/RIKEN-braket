@@ -150,9 +150,9 @@ namespace ket
                 // xxx0xxx0000
                 StateInteger const base_index
                   = ((value_wo_qubits bitand middle_bits_mask)
-                     << (boost::get<0u>(minmax_qubits)+static_cast<qubit_type>(1u)))
+                     << (boost::get<0u>(minmax_qubits)+static_cast<BitInteger>(1u)))
                     bitor ((value_wo_qubits bitand compl middle_bits_mask)
-                           << (boost::get<0u>(minmax_qubits)+static_cast<qubit_type>(2u)));
+                           << (boost::get<0u>(minmax_qubits)+static_cast<BitInteger>(2u)));
                 // xxx1xxx0000
                 StateInteger const index1
                   = base_index bitor max_qubit_mask;
