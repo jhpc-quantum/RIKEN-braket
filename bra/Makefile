@@ -44,7 +44,7 @@ endif
 ifneq ($(findstring juqueen,$(nodename)),)
 release: release03
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 release: release11
   else
 release: release14
@@ -55,7 +55,7 @@ endif
 ifneq ($(findstring juqueen,$(nodename)),)
 debug: debug03
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 debug: debug11
   else
 debug: debug14
@@ -66,7 +66,7 @@ endif
 ifneq ($(findstring juqueen,$(nodename)),)
 release03: common_flags += -O4 -qarch=qp -qtune=qp
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 release03: common_flags += -Kfast -std=c++03
   else
 release03: common_flags += -O3 -std=c++03
@@ -79,7 +79,7 @@ release03: $(bin_dir)/$(target)
 ifneq ($(findstring juqueen,$(nodename)),)
 debug03: common_flags += -O0
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 debug03: common_flags += -O2 -std=c++03
   else
 debug03: common_flags += -O0 -std=c++03
@@ -91,7 +91,7 @@ debug03: $(bin_dir)/$(target)
 ifneq ($(findstring juqueen,$(nodename)),)
 release11: release03
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 release11: common_flags += -Kfast -Xg -std=c++11
   else
 release11: common_flags += -O3 -std=c++11
@@ -104,7 +104,7 @@ release11: $(bin_dir)/$(target)
 ifneq ($(findstring juqueen,$(nodename)),)
 debug11: debug03
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 debug11: common_flags += -O2 -Xg -std=c++11
   else
 debug11: common_flags += -O0 -std=c++11
@@ -116,7 +116,7 @@ debug11: $(bin_dir)/$(target)
 ifneq ($(findstring juqueen,$(nodename)),)
 release14: release11
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 release14: release11
   else
 release14: common_flags += -O3 -std=c++14
@@ -129,7 +129,7 @@ release14: $(bin_dir)/$(target)
 ifneq ($(findstring juqueen,$(nodename)),)
 debug14: debug11
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 debug14: debug11
   else
 debug14: common_flags += -O0 -std=c++14
@@ -145,7 +145,7 @@ nompi: nompi-release
 ifneq ($(findstring juqueen,$(nodename)),)
 nompi-release: nompi-release03
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 nompi-release: nompi-release11
   else
 nompi-release: nompi-release14
@@ -156,7 +156,7 @@ endif
 ifneq ($(findstring juqueen,$(nodename)),)
 nompi-debug: nompi-debug03
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 nompi-debug: nompi-debug11
   else
 nompi-debug: nompi-debug14
@@ -167,7 +167,7 @@ endif
 ifneq ($(findstring juqueen,$(nodename)),)
 nompi-release03: common_flags += -O4 -qarch=qp -qtune=qp
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 nompi-release03: common_flags += -Kfast -std=c++03
   else
 nompi-release03: common_flags += -O3 -std=c++03
@@ -180,7 +180,7 @@ nompi-release03: $(bin_dir)/$(target)
 ifneq ($(findstring juqueen,$(nodename)),)
 nompi-debug03: common_flags += -O0
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 nompi-debug03: common_flags += -O2 -std=c++03
   else
 nompi-debug03: common_flags += -O0 -std=c++03
@@ -193,7 +193,7 @@ nompi-debug03: $(bin_dir)/$(target)
 ifneq ($(findstring juqueen,$(nodename)),)
 nompi-release11: nompi-release03
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 nompi-release11: common_flags += -Kfast -Xg -std=c++11
   else
 nompi-release11: common_flags += -O3 -std=c++11
@@ -206,7 +206,7 @@ nompi-release11: $(bin_dir)/$(target)
 ifneq ($(findstring juqueen,$(nodename)),)
 nompi-debug11: nompi-debug03
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 nompi-debug11: common_flags += -O2 -Xg -std=c++11
   else
 nompi-debug11: common_flags += -O0 -std=c++11
@@ -219,7 +219,7 @@ nompi-debug11: $(bin_dir)/$(target)
 ifneq ($(findstring juqueen,$(nodename)),)
 nompi-release14: nompi-release11
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 nompi-release14: nompi-release11
   else
 nompi-release14: common_flags += -O3 -std=c++14
@@ -232,7 +232,7 @@ nompi-release14: $(bin_dir)/$(target)
 ifneq ($(findstring juqueen,$(nodename)),)
 nompi-debug14: nompi-debug11
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 nompi-debug14: nompi-debug11
   else
 nompi-debug14: common_flags += -O0 -std=c++14
@@ -246,7 +246,7 @@ nompi-debug14: $(bin_dir)/$(target)
 ifneq ($(findstring juqueen,$(nodename)),)
 release-float: release03-float
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 release-float: release11-float
   else
 release-float: release14-float
@@ -257,7 +257,7 @@ endif
 ifneq ($(findstring juqueen,$(nodename)),)
 debug-float: debug03-float
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 debug-float: debug11-float
   else
 debug-float: debug14-float
@@ -268,7 +268,7 @@ endif
 ifneq ($(findstring juqueen,$(nodename)),)
 release03-float: common_flags += -O4 -qarch=qp -qtune=qp
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 release03-float: common_flags += -Kfast -std=c++03
   else
 release03-float: common_flags += -O3 -std=c++03
@@ -281,7 +281,7 @@ release03-float: $(bin_dir)/$(target)
 ifneq ($(findstring juqueen,$(nodename)),)
 debug03-float: common_flags += -O0
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 debug03-float: common_flags += -O2 -std=c++03
   else
 debug03-float: common_flags += -O0 -std=c++03
@@ -294,7 +294,7 @@ debug03-float: $(bin_dir)/$(target)
 ifneq ($(findstring juqueen,$(nodename)),)
 release11-float: release03-float
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 release11-float: common_flags += -Kfast -Xg -std=c++11
   else
 release11-float: common_flags += -O3 -std=c++11
@@ -307,7 +307,7 @@ release11-float: $(bin_dir)/$(target)
 ifneq ($(findstring juqueen,$(nodename)),)
 debug11-float: debug03-float
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 debug11-float: common_flags += -O2 -Xg -std=c++11
   else
 debug11-float: common_flags += -O0 -std=c++11
@@ -320,7 +320,7 @@ debug11-float: $(bin_dir)/$(target)
 ifneq ($(findstring juqueen,$(nodename)),)
 release14-float: release11-float
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 release14-float: release11-float
   else
 release14-float: common_flags += -O3 -std=c++14
@@ -333,7 +333,7 @@ release14-float: $(bin_dir)/$(target)
 ifneq ($(findstring juqueen,$(nodename)),)
 debug14-float: debug11-float
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 debug14-float: debug11-float
   else
 debug14-float: common_flags += -O0 -std=c++14
@@ -350,7 +350,7 @@ nompi-float: nompi-release-float
 ifneq ($(findstring juqueen,$(nodename)),)
 nompi-release-float: nompi-release03-float
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 nompi-release-float: nompi-release11-float
   else
 nompi-release-float: nompi-release14-float
@@ -361,7 +361,7 @@ endif
 ifneq ($(findstring juqueen,$(nodename)),)
 nompi-debug-float: nompi-debug03-float
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 nompi-debug-float: nompi-debug11-float
   else
 nompi-debug-float: nompi-debug14-float
@@ -372,7 +372,7 @@ endif
 ifneq ($(findstring juqueen,$(nodename)),)
 nompi-release03-float: common_flags += -O4 -qarch=qp -qtune=qp
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 nompi-release03-float: common_flags += -Kfast -std=c++03
   else
 nompi-release03-float: common_flags += -O3 -std=c++03
@@ -385,7 +385,7 @@ nompi-release03-float: $(bin_dir)/$(target)
 ifneq ($(findstring juqueen,$(nodename)),)
 nompi-debug03-float: common_flags += -O0
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 nompi-debug03-float: common_flags += -O2 -std=c++03
   else
 nompi-debug03-float: common_flags += -O0 -std=c++03
@@ -398,7 +398,7 @@ nompi-debug03-float: $(bin_dir)/$(target)
 ifneq ($(findstring juqueen,$(nodename)),)
 nompi-release11-float: nompi-release03-float
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 nompi-release11-float: common_flags += -Kfast -Xg -std=c++11
   else
 nompi-release11-float: common_flags += -O3 -std=c++11
@@ -411,7 +411,7 @@ nompi-release11-float: $(bin_dir)/$(target)
 ifneq ($(findstring juqueen,$(nodename)),)
 nompi-debug11-float: nompi-debug03-float
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 nompi-debug11-float: common_flags += -O2 -Xg -std=c++11
   else
 nompi-debug11-float: common_flags += -O0 -std=c++11
@@ -424,7 +424,7 @@ nompi-debug11-float: $(bin_dir)/$(target)
 ifneq ($(findstring juqueen,$(nodename)),)
 nompi-release14-float: nompi-release11-float
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 nompi-release14-float: nompi-release11-float
   else
 nompi-release14-float: common_flags += -O3 -std=c++14
@@ -437,7 +437,7 @@ nompi-release14-float: $(bin_dir)/$(target)
 ifneq ($(findstring juqueen,$(nodename)),)
 nompi-debug14-float: nompi-debug11-float
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 nompi-debug14-float: nompi-debug11-float
   else
 nompi-debug14-float: common_flags += -O0 -std=c++14
@@ -451,7 +451,7 @@ nompi-debug14-float: $(bin_dir)/$(target)
 ifneq ($(findstring juqueen,$(nodename)),)
 release-long: release03-long
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 release-long: release11-long
   else
 release-long: release14-long
@@ -462,7 +462,7 @@ endif
 ifneq ($(findstring juqueen,$(nodename)),)
 debug-long: debug03-long
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 debug-long: debug11-long
   else
 debug-long: debug14-long
@@ -473,7 +473,7 @@ endif
 ifneq ($(findstring juqueen,$(nodename)),)
 release03-long: common_flags += -O4 -qarch=qp -qtune=qp
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 release03-long: common_flags += -Kfast -std=c++03
   else
 release03-long: common_flags += -O3 -std=c++03
@@ -486,7 +486,7 @@ release03-long: $(bin_dir)/$(target)
 ifneq ($(findstring juqueen,$(nodename)),)
 debug03-long: common_flags += -O0
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 debug03-long: common_flags += -O2 -std=c++03
   else
 debug03-long: common_flags += -O0 -std=c++03
@@ -499,7 +499,7 @@ debug03-long: $(bin_dir)/$(target)
 ifneq ($(findstring juqueen,$(nodename)),)
 release11-long: release03-long
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 release11-long: common_flags += -Kfast -Xg -std=c++11
   else
 release11-long: common_flags += -O3 -std=c++11
@@ -512,7 +512,7 @@ release11-long: $(bin_dir)/$(target)
 ifneq ($(findstring juqueen,$(nodename)),)
 debug11-long: debug03-long
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 debug11-long: common_flags += -O2 -Xg -std=c++11
   else
 debug11-long: common_flags += -O0 -std=c++11
@@ -525,7 +525,7 @@ debug11-long: $(bin_dir)/$(target)
 ifneq ($(findstring juqueen,$(nodename)),)
 release14-long: release11-long
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 release14-long: release11-long
   else
 release14-long: common_flags += -O3 -std=c++14
@@ -538,7 +538,7 @@ release14-long: $(bin_dir)/$(target)
 ifneq ($(findstring juqueen,$(nodename)),)
 debug14-long: debug11-long
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 debug14-long: debug11-long
   else
 debug14-long: common_flags += -O0 -std=c++14
@@ -555,7 +555,7 @@ nompi-long: nompi-release-long
 ifneq ($(findstring juqueen,$(nodename)),)
 nompi-release-long: nompi-release03-long
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 nompi-release-long: nompi-release11-long
   else
 nompi-release-long: nompi-release14-long
@@ -566,7 +566,7 @@ endif
 ifneq ($(findstring juqueen,$(nodename)),)
 nompi-debug-long: nompi-debug03-long
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 nompi-debug-long: nompi-debug11-long
   else
 nompi-debug-long: nompi-debug14-long
@@ -577,7 +577,7 @@ endif
 ifneq ($(findstring juqueen,$(nodename)),)
 nompi-release03-long: common_flags += -O4 -qarch=qp -qtune=qp
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 nompi-release03-long: common_flags += -Kfast -std=c++03
   else
 nompi-release03-long: common_flags += -O3 -std=c++03
@@ -590,7 +590,7 @@ nompi-release03-long: $(bin_dir)/$(target)
 ifneq ($(findstring juqueen,$(nodename)),)
 nompi-debug03-long: common_flags += -O0
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 nompi-debug03-long: common_flags += -O2 -std=c++03
   else
 nompi-debug03-long: common_flags += -O0 -std=c++03
@@ -603,7 +603,7 @@ nompi-debug03-long: $(bin_dir)/$(target)
 ifneq ($(findstring juqueen,$(nodename)),)
 nompi-release11-long: nompi-release03-long
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 nompi-release11-long: common_flags += -Kfast -Xg -std=c++11
   else
 nompi-release11-long: common_flags += -O3 -std=c++11
@@ -616,7 +616,7 @@ nompi-release11-long: $(bin_dir)/$(target)
 ifneq ($(findstring juqueen,$(nodename)),)
 nompi-debug11-long: nompi-debug03-long
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 nompi-debug11-long: common_flags += -O2 -Xg -std=c++11
   else
 nompi-debug11-long: common_flags += -O0 -std=c++11
@@ -629,7 +629,7 @@ nompi-debug11-long: $(bin_dir)/$(target)
 ifneq ($(findstring juqueen,$(nodename)),)
 nompi-release14-long: nompi-release11-long
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 nompi-release14-long: nompi-release11-long
   else
 nompi-release14-long: common_flags += -O3 -std=c++14
@@ -642,7 +642,7 @@ nompi-release14-long: $(bin_dir)/$(target)
 ifneq ($(findstring juqueen,$(nodename)),)
 nompi-debug14-long: nompi-debug11-long
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
 nompi-debug14-long: nompi-debug11-long
   else
 nompi-debug14-long: common_flags += -O0 -std=c++14
@@ -657,7 +657,7 @@ ifneq ($(findstring juqueen,$(nodename)),)
   common_flags = -qsmp=omp
   cxx_flags =
 else
-  ifneq ($(findstring fe01p,$(nodename)),)
+  ifneq ($(findstring fe01p,$(nodename))$(findstring hpcifx,$(nodename)),)
     CXX = mpiFCCpx
     common_flags = -Kparallel,openmp
     cxx_flags = --alternative_tokens
