@@ -9,7 +9,7 @@
 # include <boost/range/value_type.hpp>
 
 # include <yampi/environment.hpp>
-# include <yampi/datatype.hpp>
+# include <yampi/datatype_base.hpp>
 # include <yampi/communicator.hpp>
 
 # include <ket/qubit.hpp>

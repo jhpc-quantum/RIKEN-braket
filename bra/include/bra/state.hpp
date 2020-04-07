@@ -39,7 +39,6 @@
 
 #   include <yampi/allocator.hpp>
 #   include <yampi/datatype.hpp>
-#   include <yampi/uncommitted_datatype.hpp>
 #   include <yampi/rank.hpp>
 #   include <yampi/communicator.hpp>
 #   include <yampi/environment.hpp>
@@ -138,11 +137,7 @@ namespace bra
 
     permutation_type permutation_;
     std::vector<complex_type, yampi::allocator<complex_type> > buffer_;
-    yampi::datatype state_integer_datatype_;
-    yampi::datatype real_datatype_;
-    yampi::uncommitted_datatype uncommitted_real_pair_datatype_;
     yampi::datatype real_pair_datatype_;
-    yampi::datatype complex_datatype_;
     yampi::communicator const& communicator_;
     yampi::environment const& environment_;
 # endif
@@ -209,9 +204,6 @@ namespace bra
 # ifndef BRA_NO_MPI
     permutation_type const& permutation() const { return permutation_; }
 
-    yampi::datatype const& state_integer_datatype() const { return state_integer_datatype_; }
-    yampi::datatype const& real_datatype() const { return real_datatype_; }
-    yampi::datatype const& complex_datatype() const { return complex_datatype_; }
     yampi::communicator const& communicator() const { return communicator_; }
     yampi::environment const& environment() const { return environment_; }
 # endif

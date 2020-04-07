@@ -17,11 +17,10 @@
 #include <boost/range/end.hpp>
 
 #ifndef BRA_NO_MPI
-# include <yampi/basic_datatype_tag_of.hpp>
-# include <yampi/uncommitted_datatype.hpp>
 # include <yampi/communicator.hpp>
 # include <yampi/environment.hpp>
 # include <yampi/wall_clock.hpp>
+# include <yampi/predefined_datatype.hpp>
 #endif // BRA_NO_MPI
 
 #include <bra/state.hpp>
@@ -53,16 +52,7 @@ namespace bra
       random_number_generator_(seed),
       permutation_(static_cast<permutation_type::size_type>(total_num_qubits)),
       buffer_(),
-      state_integer_datatype_(yampi::basic_datatype_tag_of<state_integer_type>::call()),
-      real_datatype_(yampi::basic_datatype_tag_of<real_type>::call()),
-      uncommitted_real_pair_datatype_(
-        real_datatype_.to_uncommitted_datatype(), 2, environment),
-      real_pair_datatype_(uncommitted_real_pair_datatype_, environment),
-# if MPI_VERSION >= 3
-      complex_datatype_(yampi::basic_datatype_tag_of<complex_type>::call()),
-# else
-      complex_datatype_(real_pair_datatype_, environment),
-# endif
+      real_pair_datatype_(yampi::predefined_datatype<real_type>(), 2, environment),
       communicator_(communicator),
       environment_(environment),
       finish_times_and_processes_()
@@ -82,16 +72,7 @@ namespace bra
       permutation_(
         boost::begin(initial_permutation), boost::end(initial_permutation)),
       buffer_(),
-      state_integer_datatype_(yampi::basic_datatype_tag_of<state_integer_type>::call()),
-      real_datatype_(yampi::basic_datatype_tag_of<real_type>::call()),
-      uncommitted_real_pair_datatype_(
-        real_datatype_.to_uncommitted_datatype(), 2, environment),
-      real_pair_datatype_(uncommitted_real_pair_datatype_, environment),
-# if MPI_VERSION >= 3
-      complex_datatype_(yampi::basic_datatype_tag_of<complex_type>::call()),
-# else
-      complex_datatype_(real_pair_datatype_, environment),
-# endif
+      real_pair_datatype_(yampi::predefined_datatype<real_type>(), 2, environment),
       communicator_(communicator),
       environment_(environment),
       finish_times_and_processes_()

@@ -87,8 +87,7 @@ namespace bra
   {
     ket::mpi::gate::hadamard(
       mpi_policy_, parallel_policy_,
-      data_, qubit,
-      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+      data_, qubit, permutation_, buffer_, communicator_, environment_);
   }
 
   void general_mpi_state::do_adj_hadamard(
@@ -96,8 +95,7 @@ namespace bra
   {
     ket::mpi::gate::adj_hadamard(
       mpi_policy_, parallel_policy_,
-      data_, qubit,
-      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+      data_, qubit, permutation_, buffer_, communicator_, environment_);
   }
 
   void general_mpi_state::do_pauli_x(
@@ -105,8 +103,7 @@ namespace bra
   {
     ket::mpi::gate::pauli_x(
       mpi_policy_, parallel_policy_,
-      data_, qubit,
-      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+      data_, qubit, permutation_, buffer_, communicator_, environment_);
   }
 
   void general_mpi_state::do_adj_pauli_x(
@@ -114,8 +111,7 @@ namespace bra
   {
     ket::mpi::gate::adj_pauli_x(
       mpi_policy_, parallel_policy_,
-      data_, qubit,
-      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+      data_, qubit, permutation_, buffer_, communicator_, environment_);
   }
 
   void general_mpi_state::do_pauli_y(
@@ -123,8 +119,7 @@ namespace bra
   {
     ket::mpi::gate::pauli_y(
       mpi_policy_, parallel_policy_,
-      data_, qubit,
-      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+      data_, qubit, permutation_, buffer_, communicator_, environment_);
   }
 
   void general_mpi_state::do_adj_pauli_y(
@@ -132,8 +127,7 @@ namespace bra
   {
     ket::mpi::gate::adj_pauli_y(
       mpi_policy_, parallel_policy_,
-      data_, qubit,
-      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+      data_, qubit, permutation_, buffer_, communicator_, environment_);
   }
 
   void general_mpi_state::do_pauli_z(
@@ -141,8 +135,7 @@ namespace bra
   {
     ket::mpi::gate::pauli_z(
       mpi_policy_, parallel_policy_,
-      data_, qubit,
-      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+      data_, qubit, permutation_, buffer_, communicator_, environment_);
   }
 
   void general_mpi_state::do_adj_pauli_z(
@@ -150,24 +143,21 @@ namespace bra
   {
     ket::mpi::gate::adj_pauli_z(
       mpi_policy_, parallel_policy_,
-      data_, qubit,
-      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+      data_, qubit, permutation_, buffer_, communicator_, environment_);
   }
 
   void general_mpi_state::do_u1(real_type const phase, qubit_type const qubit)
   {
     ket::mpi::gate::phase_shift(
       mpi_policy_, parallel_policy_,
-      data_, phase, qubit,
-      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+      data_, phase, qubit, permutation_, buffer_, communicator_, environment_);
   }
 
   void general_mpi_state::do_adj_u1(real_type const phase, qubit_type const qubit)
   {
     ket::mpi::gate::adj_phase_shift(
       mpi_policy_, parallel_policy_,
-      data_, phase, qubit,
-      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+      data_, phase, qubit, permutation_, buffer_, communicator_, environment_);
   }
 
   void general_mpi_state::do_u2(
@@ -175,8 +165,7 @@ namespace bra
   {
     ket::mpi::gate::phase_shift2(
       mpi_policy_, parallel_policy_,
-      data_, phase1, phase2, qubit,
-      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+      data_, phase1, phase2, qubit, permutation_, buffer_, communicator_, environment_);
   }
 
   void general_mpi_state::do_adj_u2(
@@ -184,8 +173,7 @@ namespace bra
   {
     ket::mpi::gate::adj_phase_shift2(
       mpi_policy_, parallel_policy_,
-      data_, phase1, phase2, qubit,
-      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+      data_, phase1, phase2, qubit, permutation_, buffer_, communicator_, environment_);
   }
 
   void general_mpi_state::do_u3(
@@ -194,8 +182,7 @@ namespace bra
   {
     ket::mpi::gate::phase_shift3(
       mpi_policy_, parallel_policy_,
-      data_, phase1, phase2, phase3, qubit,
-      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+      data_, phase1, phase2, phase3, qubit, permutation_, buffer_, communicator_, environment_);
   }
 
   void general_mpi_state::do_adj_u3(
@@ -204,8 +191,7 @@ namespace bra
   {
     ket::mpi::gate::adj_phase_shift3(
       mpi_policy_, parallel_policy_,
-      data_, phase1, phase2, phase3, qubit,
-      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+      data_, phase1, phase2, phase3, qubit, permutation_, buffer_, communicator_, environment_);
   }
 
   void general_mpi_state::do_phase_shift(
@@ -213,8 +199,7 @@ namespace bra
   {
     ket::mpi::gate::phase_shift_coeff(
       mpi_policy_, parallel_policy_,
-      data_, phase_coefficient, qubit,
-      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+      data_, phase_coefficient, qubit, permutation_, buffer_, communicator_, environment_);
   }
 
   void general_mpi_state::do_adj_phase_shift(
@@ -222,8 +207,7 @@ namespace bra
   {
     ket::mpi::gate::adj_phase_shift_coeff(
       mpi_policy_, parallel_policy_,
-      data_, phase_coefficient, qubit,
-      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+      data_, phase_coefficient, qubit, permutation_, buffer_, communicator_, environment_);
   }
 
   void general_mpi_state::do_x_rotation_half_pi(
@@ -231,8 +215,7 @@ namespace bra
   {
     ket::mpi::gate::x_rotation_half_pi(
       mpi_policy_, parallel_policy_,
-      data_, qubit,
-      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+      data_, qubit, permutation_, buffer_, communicator_, environment_);
   }
 
   void general_mpi_state::do_adj_x_rotation_half_pi(
@@ -240,8 +223,7 @@ namespace bra
   {
     ket::mpi::gate::adj_x_rotation_half_pi(
       mpi_policy_, parallel_policy_,
-      data_, qubit,
-      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+      data_, qubit, permutation_, buffer_, communicator_, environment_);
   }
 
   void general_mpi_state::do_y_rotation_half_pi(
@@ -249,8 +231,7 @@ namespace bra
   {
     ket::mpi::gate::y_rotation_half_pi(
       mpi_policy_, parallel_policy_,
-      data_, qubit,
-      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+      data_, qubit, permutation_, buffer_, communicator_, environment_);
   }
 
   void general_mpi_state::do_adj_y_rotation_half_pi(
@@ -258,8 +239,7 @@ namespace bra
   {
     ket::mpi::gate::adj_y_rotation_half_pi(
       mpi_policy_, parallel_policy_,
-      data_, qubit,
-      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+      data_, qubit, permutation_, buffer_, communicator_, environment_);
   }
 
   void general_mpi_state::do_controlled_not(
@@ -267,8 +247,7 @@ namespace bra
   {
     ket::mpi::gate::controlled_not(
       mpi_policy_, parallel_policy_,
-      data_, target_qubit, control_qubit,
-      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+      data_, target_qubit, control_qubit, permutation_, buffer_, communicator_, environment_);
   }
 
   void general_mpi_state::do_adj_controlled_not(
@@ -276,8 +255,7 @@ namespace bra
   {
     ket::mpi::gate::adj_controlled_not(
       mpi_policy_, parallel_policy_,
-      data_, target_qubit, control_qubit,
-      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+      data_, target_qubit, control_qubit, permutation_, buffer_, communicator_, environment_);
   }
 
   void general_mpi_state::do_controlled_phase_shift(
@@ -286,8 +264,7 @@ namespace bra
   {
     ket::mpi::gate::controlled_phase_shift_coeff(
       mpi_policy_, parallel_policy_,
-      data_, phase_coefficient, target_qubit, control_qubit,
-      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+      data_, phase_coefficient, target_qubit, control_qubit, permutation_, buffer_, communicator_, environment_);
   }
 
   void general_mpi_state::do_adj_controlled_phase_shift(
@@ -296,8 +273,7 @@ namespace bra
   {
     ket::mpi::gate::adj_controlled_phase_shift_coeff(
       mpi_policy_, parallel_policy_,
-      data_, phase_coefficient, target_qubit, control_qubit,
-      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+      data_, phase_coefficient, target_qubit, control_qubit, permutation_, buffer_, communicator_, environment_);
   }
 
   void general_mpi_state::do_controlled_v(
@@ -306,8 +282,7 @@ namespace bra
   {
     ket::mpi::gate::controlled_v_coeff(
       mpi_policy_, parallel_policy_,
-      data_, phase_coefficient, target_qubit, control_qubit,
-      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+      data_, phase_coefficient, target_qubit, control_qubit, permutation_, buffer_, communicator_, environment_);
   }
 
   void general_mpi_state::do_adj_controlled_v(
@@ -316,8 +291,7 @@ namespace bra
   {
     ket::mpi::gate::adj_controlled_v_coeff(
       mpi_policy_, parallel_policy_,
-      data_, phase_coefficient, target_qubit, control_qubit,
-      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+      data_, phase_coefficient, target_qubit, control_qubit, permutation_, buffer_, communicator_, environment_);
   }
 
   void general_mpi_state::do_toffoli(
@@ -327,8 +301,7 @@ namespace bra
   {
     ket::mpi::gate::toffoli(
       mpi_policy_, parallel_policy_,
-      data_, target_qubit, control_qubit1, control_qubit2,
-      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+      data_, target_qubit, control_qubit1, control_qubit2, permutation_, buffer_, communicator_, environment_);
   }
 
   void general_mpi_state::do_adj_toffoli(
@@ -338,8 +311,7 @@ namespace bra
   {
     ket::mpi::gate::adj_toffoli(
       mpi_policy_, parallel_policy_,
-      data_, target_qubit, control_qubit1, control_qubit2,
-      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+      data_, target_qubit, control_qubit1, control_qubit2, permutation_, buffer_, communicator_, environment_);
   }
 
   KET_GATE_OUTCOME_TYPE general_mpi_state::do_projective_measurement(
@@ -348,7 +320,7 @@ namespace bra
     return ket::mpi::gate::projective_measurement(
       mpi_policy_, parallel_policy_,
       data_, qubit, random_number_generator_, permutation_,
-      buffer_, complex_datatype_, real_pair_datatype_, root, communicator_, environment_);
+      buffer_, real_pair_datatype_, root, communicator_, environment_);
   }
 
   void general_mpi_state::do_expectation_values(yampi::rank const root)
@@ -356,8 +328,7 @@ namespace bra
     maybe_expectation_values_
       = ket::mpi::all_spin_expectation_values<spins_allocator_type>(
           mpi_policy_, parallel_policy_,
-          data_, permutation_, total_num_qubits_,
-          buffer_, real_datatype_, complex_datatype_, root, communicator_, environment_);
+          data_, permutation_, total_num_qubits_, buffer_, root, communicator_, environment_);
   }
 
   void general_mpi_state::do_measure(yampi::rank const root)
@@ -365,8 +336,7 @@ namespace bra
     measured_value_
       = ket::mpi::measure(
           mpi_policy_, ket::utility::policy::make_sequential(), // parallel_policy_,
-          data_, random_number_generator_, permutation_,
-          state_integer_datatype_, real_datatype_, communicator_, environment_);
+          data_, random_number_generator_, permutation_, communicator_, environment_);
   }
 
   void general_mpi_state::do_generate_events(yampi::rank const root, int const num_events, int const seed)
@@ -375,12 +345,12 @@ namespace bra
       ket::mpi::generate_events(
         mpi_policy_, ket::utility::policy::make_sequential(), // parallel_policy_,
         generated_events_, data_, num_events, random_number_generator_, permutation_,
-        state_integer_datatype_, real_datatype_, communicator_, environment_);
+        communicator_, environment_);
     else
       ket::mpi::generate_events(
         mpi_policy_, ket::utility::policy::make_sequential(), // parallel_policy_,
         generated_events_, data_, num_events, random_number_generator_, static_cast<seed_type>(seed), permutation_,
-        state_integer_datatype_, real_datatype_, communicator_, environment_);
+        communicator_, environment_);
   }
 
   void general_mpi_state::do_shor_box(
@@ -402,16 +372,14 @@ namespace bra
   {
     ket::mpi::gate::clear(
       mpi_policy_, parallel_policy_,
-      data_, qubit,
-      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+      data_, qubit, permutation_, buffer_, communicator_, environment_);
   }
 
   void general_mpi_state::do_set(qubit_type const qubit)
   {
     ket::mpi::gate::set(
       mpi_policy_, parallel_policy_,
-      data_, qubit,
-      permutation_, buffer_, complex_datatype_, communicator_, environment_);
+      data_, qubit, permutation_, buffer_, communicator_, environment_);
   }
 
   void general_mpi_state::do_depolarizing_channel(real_type const px, real_type const py, real_type const pz, int const seed)

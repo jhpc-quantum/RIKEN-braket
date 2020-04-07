@@ -45,7 +45,7 @@
 
 # include <yampi/environment.hpp>
 # include <yampi/buffer.hpp>
-# include <yampi/datatype.hpp>
+# include <yampi/datatype_base.hpp>
 # include <yampi/communicator.hpp>
 # include <yampi/rank.hpp>
 # include <yampi/status.hpp>
@@ -719,7 +719,74 @@ namespace ket
           std::vector<Complex, Allocator_>&,
           StateInteger const source_local_first_index,
           StateInteger const source_local_last_index,
-          yampi::datatype const& datatype, yampi::rank const target_rank,
+          yampi::rank const target_rank,
+          yampi::communicator const& communicator, yampi::environment const& environment)
+        {
+          static_assert(
+            num_page_qubits >= 1,
+            "num_page_qubits should be at least 1 if using this function");
+          assert(source_local_last_index >= source_local_first_index);
+
+          typedef
+            typename ::ket::mpi::state<Complex, num_page_qubits, Allocator>::size_type
+            size_type;
+          size_type const page_front_id = local_state.get_page_id(source_local_first_index);
+          size_type const page_back_id = local_state.get_page_id(source_local_last_index-1u);
+
+          for (std::size_t page_id = page_front_id; page_id <= page_back_id; ++page_id)
+          {
+            typedef
+              typename ::ket::mpi::state<Complex, num_page_qubits, Allocator>::page_range_type
+              page_range_type;
+            page_range_type page_range = local_state.page_range(page_id);
+            size_type const page_size = boost::size(page_range);
+
+            typedef
+              typename ::ket::utility::meta::iterator_of<page_range_type>::type
+              page_iterator;
+            page_iterator const page_first = ::ket::utility::begin(page_range);
+            page_iterator const page_last = ::ket::utility::end(page_range);
+            page_iterator const buffer_first = ::ket::utility::begin(local_state.buffer_range());
+
+            StateInteger const first_index
+              = page_id == page_front_id
+                ? static_cast<StateInteger>(
+                    local_state.get_index_in_page(source_local_first_index))
+                : static_cast<StateInteger>(0u);
+            StateInteger const last_index
+              = page_id == page_back_id
+                ? static_cast<StateInteger>(
+                    local_state.get_index_in_page(source_local_last_index-1u)+1u)
+                : static_cast<StateInteger>(page_size);
+
+            page_iterator const the_first = page_first + first_index;
+            page_iterator const the_last = page_first + last_index;
+            page_iterator const the_buffer_first = buffer_first + first_index;
+            page_iterator const the_buffer_last = buffer_first + last_index;
+
+            std::copy(page_first, the_first, buffer_first);
+            std::copy(the_last, page_last, the_buffer_last);
+
+            yampi::algorithm::swap(
+              yampi::ignore_status(),
+              yampi::make_buffer(the_first, the_last),
+              yampi::make_buffer(the_buffer_first, the_buffer_last),
+              target_rank,
+              communicator, environment);
+
+            local_state.swap_buffer_and_page(page_id);
+          }
+        }
+
+        template <
+          typename Allocator, typename Complex, typename Allocator_, typename StateInteger,
+          typename DerivedDatatype>
+        static void call(
+          ::ket::mpi::state<Complex, num_page_qubits, Allocator>& local_state,
+          std::vector<Complex, Allocator_>&,
+          StateInteger const source_local_first_index,
+          StateInteger const source_local_last_index,
+          yampi::datatype_base<DerivedDatatype> const& datatype, yampi::rank const target_rank,
           yampi::communicator const& communicator, yampi::environment const& environment)
         {
           static_assert(
@@ -1342,7 +1409,23 @@ namespace ket
           std::vector<Complex, Allocator_>& buffer,
           StateInteger const source_local_first_index,
           StateInteger const source_local_last_index,
-          yampi::datatype const& datatype, yampi::rank const target_rank,
+          yampi::rank const target_rank,
+          yampi::communicator const& communicator, yampi::environment const& environment)
+        {
+          ::ket::mpi::utility::detail::interchange_qubits(
+            local_state.data(), buffer, source_local_first_index, source_local_last_index,
+            target_rank, communicator, environment);
+        }
+
+        template <
+          typename Allocator, typename Complex, typename Allocator_, typename StateInteger,
+          typename DerivedDatatype>
+        static void call(
+          ::ket::mpi::state<Complex, 0, Allocator>& local_state,
+          std::vector<Complex, Allocator_>& buffer,
+          StateInteger const source_local_first_index,
+          StateInteger const source_local_last_index,
+          yampi::datatype_base<DerivedDatatype> const& datatype, yampi::rank const target_rank,
           yampi::communicator const& communicator, yampi::environment const& environment)
         {
           ::ket::mpi::utility::detail::interchange_qubits(
@@ -1516,7 +1599,21 @@ namespace ket
             std::vector<Complex, Allocator_>& buffer,
             StateInteger const source_local_first_index,
             StateInteger const source_local_last_index,
-            yampi::datatype const& datatype, yampi::rank const target_rank,
+            yampi::rank const target_rank,
+            yampi::communicator const& communicator, yampi::environment const& environment)
+          {
+            ::ket::mpi::state_detail::interchange_qubits<num_page_qubits>::call(
+              local_state, buffer, source_local_first_index, source_local_last_index,
+              target_rank, communicator, environment);
+          }
+
+          template <typename Allocator_, typename StateInteger, typename DerivedDatatype>
+          static void call(
+            ::ket::mpi::state<Complex, num_page_qubits, Allocator>& local_state,
+            std::vector<Complex, Allocator_>& buffer,
+            StateInteger const source_local_first_index,
+            StateInteger const source_local_last_index,
+            yampi::datatype_base<DerivedDatatype> const& datatype, yampi::rank const target_rank,
             yampi::communicator const& communicator, yampi::environment const& environment)
           {
             ::ket::mpi::state_detail::interchange_qubits<num_page_qubits>::call(

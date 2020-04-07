@@ -4,7 +4,6 @@
 # include <boost/config.hpp>
 
 # include <cassert>
-//# include <vector>
 # include <iterator>
 # ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
 #   include <type_traits>
@@ -22,7 +21,6 @@
 
 # include <yampi/environment.hpp>
 # include <yampi/communicator.hpp>
-//# include <yampi/datatype.hpp>
 # include <yampi/rank.hpp>
 
 # include <ket/shor_box.hpp>
@@ -85,7 +83,7 @@ namespace ket
     template <
       typename MpiPolicy, typename ParallelPolicy,
       typename RandomAccessRange, typename StateInteger, typename Qubits,
-      typename BitInteger, typename Allocator/*, typename BufferAllocator*/>
+      typename BitInteger, typename Allocator>
     inline RandomAccessRange& shor_box(
       MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
       RandomAccessRange& local_state,
@@ -93,11 +91,6 @@ namespace ket
       Qubits const& exponent_qubits, Qubits const& modular_exponentiation_qubits,
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,
-        /*
-      std::vector<
-        typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-      yampi::datatype const& datatype,
-      */
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
@@ -161,18 +154,13 @@ namespace ket
 
     template <
       typename RandomAccessRange, typename StateInteger, typename Qubits,
-      typename BitInteger, typename Allocator/*, typename BufferAllocator*/>
+      typename BitInteger, typename Allocator>
     inline RandomAccessRange& shor_box(
       RandomAccessRange& local_state,
       StateInteger const base, StateInteger const divisor,
       Qubits const& exponent_qubits, Qubits const& modular_exponentiation_qubits,
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,
-        /*
-      std::vector<
-        typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-      yampi::datatype const& datatype,
-      */
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
@@ -180,24 +168,19 @@ namespace ket
         ::ket::mpi::utility::policy::make_general_mpi(),
         ::ket::utility::policy::make_sequential(),
         local_state, base, divisor, exponent_qubits, modular_exponentiation_qubits, permutation,
-        /*buffer, datatype, */communicator, environment);
+        communicator, environment);
     }
 
     template <
       typename ParallelPolicy,
       typename RandomAccessRange, typename StateInteger, typename Qubits,
-      typename BitInteger, typename Allocator/*, typename BufferAllocator*/>
+      typename BitInteger, typename Allocator>
     inline RandomAccessRange& shor_box(
       ParallelPolicy const parallel_policy, RandomAccessRange& local_state,
       StateInteger const base, StateInteger const divisor,
       Qubits const& exponent_qubits, Qubits const& modular_exponentiation_qubits,
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,
-        /*
-      std::vector<
-        typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-      yampi::datatype const& datatype,
-      */
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
@@ -205,7 +188,7 @@ namespace ket
         ::ket::mpi::utility::policy::make_general_mpi(),
         parallel_policy,
         local_state, base, divisor, exponent_qubits, modular_exponentiation_qubits, permutation,
-        /*buffer, datatype, */communicator, environment);
+        communicator, environment);
     }
   } // namespace mpi
 } // namespace ket

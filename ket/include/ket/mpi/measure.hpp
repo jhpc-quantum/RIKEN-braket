@@ -10,13 +10,12 @@
 # include <boost/range/value_type.hpp>
 
 # include <yampi/environment.hpp>
-# include <yampi/datatype.hpp>
+# include <yampi/datatype_base.hpp>
 # include <yampi/communicator.hpp>
 # include <yampi/rank.hpp>
 # include <yampi/buffer.hpp>
 # include <yampi/gather.hpp>
 # include <yampi/broadcast.hpp>
-# include <yampi/basic_datatype_tag_of.hpp>
 # include <yampi/message_envelope.hpp>
 # include <yampi/algorithm/transform.hpp>
 
@@ -108,8 +107,130 @@ namespace ket
       LocalState& local_state, RandomNumberGenerator& random_number_generator,
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,
-      yampi::datatype const& state_integer_datatype,
-      yampi::datatype const& real_datatype,
+      yampi::communicator const& communicator,
+      yampi::environment const& environment)
+    {
+      ket::mpi::utility::log_with_time_guard<char> print("Measurement", environment);
+
+      typedef typename boost::range_value<LocalState>::type complex_type;
+      typedef typename ::ket::utility::meta::real_of<complex_type>::type real_type;
+      using std::real;
+# ifndef BOOST_NO_CXX11_LAMBDAS
+      real_type const total_probability
+        = real(::ket::mpi::utility::transform_inclusive_scan_self(
+            parallel_policy, local_state,
+            [](complex_type const& lhs, complex_type const& rhs)
+            { using std::real; return static_cast<complex_type>(real(lhs) + real(rhs)); },
+            [](complex_type const& value)
+            { using std::norm; return static_cast<complex_type>(norm(value)); }));
+# else // BOOST_NO_CXX11_LAMBDAS
+      real_type const total_probability
+        = real(::ket::mpi::utility::transform_inclusive_scan_self(
+            parallel_policy, local_state,
+            ::ket::mpi::measure_detail::real_part_plus<complex_type>(),
+            ::ket::mpi::measure_detail::complex_norm<complex_type>()));
+# endif // BOOST_NO_CXX11_LAMBDAS
+
+      yampi::rank const present_rank = communicator.rank(environment);
+      BOOST_CONSTEXPR_OR_CONST yampi::rank root_rank(0);
+
+      std::vector<real_type> total_probabilities;
+      if (present_rank == root_rank)
+        total_probabilities.resize(communicator.size(environment));
+
+      yampi::gather(root_rank, communicator).call(
+        yampi::make_buffer(total_probability),
+        ::ket::utility::begin(total_probabilities),
+        environment);
+
+      real_type random_value;
+      yampi::rank result_rank;
+      if (present_rank == root_rank)
+      {
+        ::ket::utility::ranges::inclusive_scan(
+          total_probabilities, ::ket::utility::begin(total_probabilities));
+
+        random_value
+          = ::ket::utility::positive_random_value_upto(
+              total_probabilities.back(), random_number_generator);
+        result_rank
+          = static_cast<yampi::rank>(static_cast<StateInteger>(
+              ::ket::mpi::utility::upper_bound(total_probabilities, random_value)));
+      }
+
+      int result_mpi_rank = result_rank.mpi_rank();
+      yampi::broadcast(root_rank, communicator).call(
+        yampi::make_buffer(result_mpi_rank), environment);
+      result_rank = static_cast<yampi::rank>(result_mpi_rank);
+
+# ifndef BOOST_NO_CXX11_LAMBDAS
+      yampi::algorithm::transform(
+        yampi::ignore_status(),
+        yampi::make_buffer(random_value),
+        yampi::make_buffer(random_value),
+        [&total_probabilities, result_rank](real_type const random_value)
+        { return random_value - total_probabilities[result_rank.mpi_rank()-1]; },
+        ::yampi::message_envelope(root_rank, result_rank, communicator),
+        environment);
+# else
+      yampi::algorithm::transform(
+        yampi::ignore_status(),
+        yampi::make_buffer(random_value),
+        yampi::make_buffer(random_value),
+        ::ket::mpi::measure_detail::make_modify_random_value(total_probabilities, result_rank),
+        ::yampi::message_envelope(root_rank, result_rank, communicator),
+        environment);
+# endif
+
+      StateInteger permutated_result;
+      if (present_rank == result_rank)
+      {
+# ifndef BOOST_NO_CXX11_LAMBDAS
+        StateInteger const local_result
+          = static_cast<StateInteger>(
+              ::ket::mpi::utility::upper_bound(
+                local_state, static_cast<complex_type>(random_value),
+                [](complex_type const& lhs, complex_type const& rhs)
+                { using std::real; return real(lhs) < real(rhs); }));
+# else // BOOST_NO_CXX11_LAMBDAS
+        StateInteger const local_result
+          = static_cast<StateInteger>(
+              ::ket::mpi::utility::upper_bound(
+                local_state, static_cast<complex_type>(random_value),
+                ::ket::mpi::measure_detail::real_part_less_than<complex_type>()));
+# endif // BOOST_NO_CXX11_LAMBDAS
+        using ::ket::mpi::utility::rank_index_to_qubit_value;
+        permutated_result
+          = rank_index_to_qubit_value(
+              mpi_policy, local_state, result_rank, local_result);
+
+        ::ket::mpi::utility::fill(
+          mpi_policy, parallel_policy, local_state, complex_type(real_type(0)));
+        ::ket::utility::begin(local_state)[local_result] = complex_type(real_type(1));
+      }
+      else
+        ::ket::mpi::utility::fill(
+          mpi_policy, parallel_policy, local_state, complex_type(real_type(0)));
+
+      yampi::broadcast(result_rank, communicator).call(
+        yampi::make_buffer(permutated_result), environment);
+
+      using ::ket::mpi::inverse_permutate_bits;
+      return inverse_permutate_bits(permutation, permutated_result);
+    }
+
+    template <
+      typename MpiPolicy, typename ParallelPolicy,
+      typename LocalState, typename RandomNumberGenerator,
+      typename StateInteger, typename BitInteger, typename Allocator,
+      typename DerivedDatatype1, typename DerivedDatatype2>
+    inline StateInteger measure(
+      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      LocalState& local_state, RandomNumberGenerator& random_number_generator,
+      ::ket::mpi::qubit_permutation<
+        StateInteger, BitInteger, Allocator>& permutation,
+      yampi::datatype_base<DerivedDatatype1> const& state_integer_datatype,
+      yampi::datatype_base<DerivedDatatype2> const& real_datatype,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
@@ -163,8 +284,7 @@ namespace ket
 
       int result_mpi_rank = result_rank.mpi_rank();
       yampi::broadcast(root_rank, communicator).call(
-        yampi::make_buffer(
-          result_mpi_rank, yampi::datatype(yampi::int_datatype_t())),
+        yampi::make_buffer(result_mpi_rank),
         environment);
       result_rank = static_cast<yampi::rank>(result_mpi_rank);
 
@@ -231,8 +351,26 @@ namespace ket
       LocalState& local_state, RandomNumberGenerator& random_number_generator,
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,
-      yampi::datatype const& state_integer_datatype,
-      yampi::datatype const& real_datatype,
+      yampi::communicator const& communicator,
+      yampi::environment const& environment)
+    {
+      return ::ket::mpi::measure(
+        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::utility::policy::make_sequential(),
+        local_state, random_number_generator, permutation,
+        communicator, environment);
+    }
+
+    template <
+      typename LocalState, typename RandomNumberGenerator,
+      typename StateInteger, typename BitInteger, typename Allocator,
+      typename DerivedDatatype1, typename DerivedDatatype2>
+    inline StateInteger measure(
+      LocalState& local_state, RandomNumberGenerator& random_number_generator,
+      ::ket::mpi::qubit_permutation<
+        StateInteger, BitInteger, Allocator>& permutation,
+      yampi::datatype_base<DerivedDatatype1> const& state_integer_datatype,
+      yampi::datatype_base<DerivedDatatype2> const& real_datatype,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
@@ -241,46 +379,6 @@ namespace ket
         ::ket::utility::policy::make_sequential(),
         local_state, random_number_generator, permutation,
         state_integer_datatype, real_datatype, communicator, environment);
-    }
-
-
-    template <
-      typename MpiPolicy, typename ParallelPolicy,
-      typename LocalState, typename RandomNumberGenerator,
-      typename StateInteger, typename BitInteger, typename Allocator>
-    inline StateInteger measure(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
-      LocalState& local_state, RandomNumberGenerator& random_number_generator,
-      ::ket::mpi::qubit_permutation<
-        StateInteger, BitInteger, Allocator>& permutation,
-      yampi::communicator const& communicator,
-      yampi::environment const& environment)
-    {
-      typedef typename boost::range_value<LocalState>::type complex_type;
-      typedef typename ::ket::utility::meta::real_of<complex_type>::type real_type;
-      return ::ket::mpi::measure(
-        mpi_policy, parallel_policy,
-        local_state, random_number_generator, permutation,
-        yampi::datatype(yampi::basic_datatype_tag_of<real_type>::call()),
-        yampi::datatype(yampi::basic_datatype_tag_of<StateInteger>::call()),
-        communicator, environment);
-    }
-
-    template <
-      typename LocalState, typename RandomNumberGenerator,
-      typename StateInteger, typename BitInteger, typename Allocator>
-    inline StateInteger measure(
-      LocalState& local_state, RandomNumberGenerator& random_number_generator,
-      ::ket::mpi::qubit_permutation<
-        StateInteger, BitInteger, Allocator>& permutation,
-      yampi::communicator const& communicator,
-      yampi::environment const& environment)
-    {
-      return ::ket::mpi::measure(
-        ::ket::mpi::utility::policy::make_general_mpi(),
-        ::ket::utility::policy::make_sequential(),
-        local_state, random_number_generator, permutation,
-        communicator, environment);
     }
 
 
@@ -307,8 +405,118 @@ namespace ket
       LocalState& local_state, RandomNumberGenerator& random_number_generator,
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,
-      yampi::datatype const& state_integer_datatype,
-      yampi::datatype const& real_datatype,
+      yampi::communicator const& communicator,
+      yampi::environment const& environment)
+    {
+      ket::mpi::utility::log_with_time_guard<char> print("Measurement (fast)", environment);
+
+      typedef typename boost::range_value<LocalState>::type complex_type;
+      typedef typename ::ket::utility::meta::real_of<complex_type>::type real_type;
+      std::vector<real_type> partial_sum_probabilities(boost::size(local_state), real_type(0));
+# ifndef BOOST_NO_CXX11_LAMBDAS
+      ::ket::mpi::utility::transform_inclusive_scan(
+        parallel_policy, local_state, ::ket::utility::begin(partial_sum_probabilities),
+        [](complex_type const& lhs, complex_type const& rhs)
+        { using std::real; return static_cast<complex_type>(real(lhs) + real(rhs)); },
+        [](complex_type const& value)
+        { using std::norm; return static_cast<complex_type>(norm(value)); });
+# else // BOOST_NO_CXX11_LAMBDAS
+      ::ket::mpi::utility::transform_inclusive_scan(
+        parallel_policy, local_state, ::ket::utility::begin(partial_sum_probabilities),
+        ::ket::mpi::measure_detail::real_part_plus<complex_type>(),
+        ::ket::mpi::measure_detail::complex_norm<complex_type>());
+# endif // BOOST_NO_CXX11_LAMBDAS
+
+      yampi::rank const present_rank = communicator.rank(environment);
+      BOOST_CONSTEXPR_OR_CONST yampi::rank root_rank(0);
+
+      std::vector<real_type> total_probabilities;
+      if (present_rank == root_rank)
+        total_probabilities.resize(communicator.size(environment));
+
+      using std::real;
+      yampi::gather(root_rank, communicator).call(
+        yampi::make_buffer(partial_sum_probabilities.back()),
+        ::ket::utility::begin(total_probabilities),
+        environment);
+
+      real_type random_value;
+      yampi::rank result_rank;
+      if (present_rank == root_rank)
+      {
+        ::ket::utility::ranges::inclusive_scan(
+          total_probabilities, ::ket::utility::begin(total_probabilities));
+
+        random_value
+          = ::ket::utility::positive_random_value_upto(
+              total_probabilities.back(), random_number_generator);
+        result_rank
+          = static_cast<yampi::rank>(static_cast<StateInteger>(
+              ::ket::mpi::utility::upper_bound(total_probabilities, random_value)));
+      }
+
+      int result_mpi_rank = result_rank.mpi_rank();
+      yampi::broadcast(root_rank, communicator).call(
+        yampi::make_buffer(result_mpi_rank), environment);
+      result_rank = static_cast<yampi::rank>(result_mpi_rank);
+
+# ifndef BOOST_NO_CXX11_LAMBDAS
+      yampi::algorithm::transform(
+        yampi::ignore_status(),
+        yampi::make_buffer(random_value),
+        yampi::make_buffer(random_value),
+        [&total_probabilities, result_rank](real_type const random_value)
+        { return random_value - total_probabilities[result_rank.mpi_rank()-1]; },
+        ::yampi::message_envelope(root_rank, result_rank, communicator),
+        environment);
+# else
+      yampi::algorithm::transform(
+        yampi::ignore_status(),
+        yampi::make_buffer(random_value),
+        yampi::make_buffer(random_value),
+        ::ket::mpi::measure_detail::make_modify_random_value(total_probabilities, result_rank),
+        ::yampi::message_envelope(root_rank, result_rank, communicator),
+        environment);
+# endif
+
+      StateInteger permutated_result;
+      if (present_rank == result_rank)
+      {
+        StateInteger const local_result
+          = static_cast<StateInteger>(
+              ::ket::mpi::utility::upper_bound(partial_sum_probabilities, random_value));
+        using ::ket::mpi::utility::rank_index_to_qubit_value;
+        permutated_result
+          = rank_index_to_qubit_value(
+              mpi_policy, local_state, result_rank, local_result);
+
+        ::ket::mpi::utility::fill(
+          mpi_policy, parallel_policy, local_state, complex_type(real_type(0)));
+        ::ket::utility::begin(local_state)[local_result] = complex_type(real_type(1));
+      }
+      else
+        ::ket::mpi::utility::fill(
+          mpi_policy, parallel_policy, local_state, complex_type(real_type(0)));
+
+      yampi::broadcast(result_rank, communicator).call(
+        yampi::make_buffer(permutated_result), environment);
+
+      using ::ket::mpi::inverse_permutate_bits;
+      return inverse_permutate_bits(permutation, permutated_result);
+    }
+
+    template <
+      typename MpiPolicy, typename ParallelPolicy,
+      typename LocalState, typename RandomNumberGenerator,
+      typename StateInteger, typename BitInteger, typename Allocator,
+      typename DerivedDatatype1, typename DerivedDatatype2>
+    inline StateInteger fast_measure(
+      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      LocalState& local_state, RandomNumberGenerator& random_number_generator,
+      ::ket::mpi::qubit_permutation<
+        StateInteger, BitInteger, Allocator>& permutation,
+      yampi::datatype_base<DerivedDatatype1> const& state_integer_datatype,
+      yampi::datatype_base<DerivedDatatype2> const& real_datatype,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
@@ -362,9 +570,7 @@ namespace ket
 
       int result_mpi_rank = result_rank.mpi_rank();
       yampi::broadcast(root_rank, communicator).call(
-        yampi::make_buffer(
-          result_mpi_rank,
-          yampi::datatype(yampi::int_datatype_t())),
+        yampi::make_buffer(result_mpi_rank),
         environment);
       result_rank = static_cast<yampi::rank>(result_mpi_rank);
 
@@ -420,8 +626,26 @@ namespace ket
       LocalState& local_state, RandomNumberGenerator& random_number_generator,
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,
-      yampi::datatype const& state_integer_datatype,
-      yampi::datatype const& real_datatype,
+      yampi::communicator const& communicator,
+      yampi::environment const& environment)
+    {
+      return ::ket::mpi::fast_measure(
+        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::utility::policy::make_sequential(),
+        local_state, random_number_generator, permutation,
+        communicator, environment);
+    }
+
+    template <
+      typename LocalState, typename RandomNumberGenerator,
+      typename StateInteger, typename BitInteger, typename Allocator,
+      typename DerivedDatatype1, typename DerivedDatatype2>
+    inline StateInteger fast_measure(
+      LocalState& local_state, RandomNumberGenerator& random_number_generator,
+      ::ket::mpi::qubit_permutation<
+        StateInteger, BitInteger, Allocator>& permutation,
+      yampi::datatype_base<DerivedDatatype1> const& state_integer_datatype,
+      yampi::datatype_base<DerivedDatatype2> const& real_datatype,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
@@ -430,46 +654,6 @@ namespace ket
         ::ket::utility::policy::make_sequential(),
         local_state, random_number_generator, permutation,
         state_integer_datatype, real_datatype, communicator, environment);
-    }
-
-
-    template <
-      typename MpiPolicy, typename ParallelPolicy,
-      typename LocalState, typename RandomNumberGenerator,
-      typename StateInteger, typename BitInteger, typename Allocator>
-    inline StateInteger fast_measure(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
-      LocalState& local_state, RandomNumberGenerator& random_number_generator,
-      ::ket::mpi::qubit_permutation<
-        StateInteger, BitInteger, Allocator>& permutation,
-      yampi::communicator const& communicator,
-      yampi::environment const& environment)
-    {
-      typedef typename boost::range_value<LocalState>::type complex_type;
-      typedef typename ::ket::utility::meta::real_of<complex_type>::type real_type;
-      return ::ket::mpi::fast_measure(
-        mpi_policy, parallel_policy,
-        local_state, random_number_generator, permutation,
-        yampi::datatype(yampi::basic_datatype_tag_of<real_type>::call()),
-        yampi::datatype(yampi::basic_datatype_tag_of<StateInteger>::call()),
-        communicator, environment);
-    }
-
-    template <
-      typename LocalState, typename RandomNumberGenerator,
-      typename StateInteger, typename BitInteger, typename Allocator>
-    inline StateInteger fast_measure(
-      LocalState& local_state, RandomNumberGenerator& random_number_generator,
-      ::ket::mpi::qubit_permutation<
-        StateInteger, BitInteger, Allocator>& permutation,
-      yampi::communicator const& communicator,
-      yampi::environment const& environment)
-    {
-      return ::ket::mpi::fast_measure(
-        ::ket::mpi::utility::policy::make_general_mpi(),
-        ::ket::utility::policy::make_sequential(),
-        local_state, random_number_generator, permutation,
-        communicator, environment);
     }
   } // namespace mpi
 } // namespace ket

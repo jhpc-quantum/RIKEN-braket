@@ -15,7 +15,7 @@
 # include <boost/range/value_type.hpp>
 
 # include <yampi/environment.hpp>
-# include <yampi/datatype.hpp>
+# include <yampi/datatype_base.hpp>
 # include <yampi/communicator.hpp>
 
 # include <ket/qubit.hpp>
@@ -79,6 +79,56 @@ namespace ket
             parallel_policy, target_qubit, control_qubit);
         }
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange,
+          typename StateInteger, typename BitInteger, typename Allocator>
+        inline RandomAccessRange& controlled_not(
+          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation)
+        {
+          if (::ket::mpi::page::is_on_page(target_qubit, local_state, permutation))
+          {
+            if (::ket::mpi::page::is_on_page(control_qubit.qubit(), local_state, permutation))
+              return ::ket::mpi::gate::page::controlled_not_tcp(
+                mpi_policy, parallel_policy, local_state,
+                target_qubit, control_qubit, permutation);
+
+            return ::ket::mpi::gate::page::controlled_not_tp(
+              mpi_policy, parallel_policy, local_state,
+              target_qubit, control_qubit, permutation);
+          }
+          else if (::ket::mpi::page::is_on_page(control_qubit.qubit(), local_state, permutation))
+            return ::ket::mpi::gate::page::controlled_not_cp(
+              mpi_policy, parallel_policy, local_state,
+              target_qubit, control_qubit, permutation);
+
+# ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
+          typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
+          qubit_type const permutated_target_qubit = permutation[target_qubit];
+          ::ket::control<qubit_type> const permutated_control_qubit
+            = ::ket::make_control(permutation[control_qubit.qubit()]);
+          return ::ket::mpi::utility::for_each_local_range(
+            mpi_policy, local_state,
+            [parallel_policy, permutated_target_qubit, permutated_control_qubit](
+              auto const first, auto const last)
+            {
+              ::ket::gate::controlled_not(
+                parallel_policy, first, last,
+                permutated_target_qubit, permutated_control_qubit);
+            });
+# else // BOOST_NO_CXX14_GENERIC_LAMBDAS
+          return ::ket::mpi::utility::for_each_local_range(
+            mpi_policy, local_state,
+            ::ket::mpi::gate::controlled_not_detail::make_call_controlled_not(
+              parallel_policy,
+              permutation[target_qubit],
+              ::ket::make_control(permutation[control_qubit.qubit()])));
+# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+        }
       } // namespace controlled_not_detail
 
       template <
@@ -92,7 +142,36 @@ namespace ket
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::datatype const& datatype,
+        yampi::communicator const& communicator,
+        yampi::environment const& environment)
+      {
+        std::ostringstream output_string_stream("CNOT ", std::ios_base::ate);
+        output_string_stream << target_qubit << ' ' << control_qubit;
+        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
+
+        typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
+        KET_array<qubit_type, 2u> qubits = { target_qubit, control_qubit.qubit() };
+        ::ket::mpi::utility::maybe_interchange_qubits(
+          mpi_policy, parallel_policy,
+          local_state, qubits, permutation,
+          buffer, communicator, environment);
+
+        return ::ket::mpi::gate::controlled_not_detail::controlled_not(
+          mpi_policy, parallel_policy, local_state, target_qubit, control_qubit, permutation);
+      }
+
+      template <
+        typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange,
+        typename StateInteger, typename BitInteger,
+        typename Allocator, typename BufferAllocator, typename DerivedDatatype>
+      inline RandomAccessRange& controlled_not(
+        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+        RandomAccessRange& local_state,
+        ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
@@ -107,43 +186,8 @@ namespace ket
           local_state, qubits, permutation,
           buffer, datatype, communicator, environment);
 
-        if (::ket::mpi::page::is_on_page(target_qubit, local_state, permutation))
-        {
-          if (::ket::mpi::page::is_on_page(control_qubit.qubit(), local_state, permutation))
-            return ::ket::mpi::gate::page::controlled_not_tcp(
-              mpi_policy, parallel_policy, local_state,
-              target_qubit, control_qubit, permutation);
-
-          return ::ket::mpi::gate::page::controlled_not_tp(
-            mpi_policy, parallel_policy, local_state,
-            target_qubit, control_qubit, permutation);
-        }
-        else if (::ket::mpi::page::is_on_page(control_qubit.qubit(), local_state, permutation))
-          return ::ket::mpi::gate::page::controlled_not_cp(
-            mpi_policy, parallel_policy, local_state,
-            target_qubit, control_qubit, permutation);
-
-# ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
-        qubit_type const permutated_target_qubit = permutation[target_qubit];
-        ::ket::control<qubit_type> const permutated_control_qubit
-          = ::ket::make_control(permutation[control_qubit.qubit()]);
-        return ::ket::mpi::utility::for_each_local_range(
-          mpi_policy, local_state,
-          [parallel_policy, permutated_target_qubit, permutated_control_qubit](
-            auto const first, auto const last)
-          {
-            ::ket::gate::controlled_not(
-              parallel_policy, first, last,
-              permutated_target_qubit, permutated_control_qubit);
-          });
-# else // BOOST_NO_CXX14_GENERIC_LAMBDAS
-        return ::ket::mpi::utility::for_each_local_range(
-          mpi_policy, local_state,
-          ::ket::mpi::gate::controlled_not_detail::make_call_controlled_not(
-            parallel_policy,
-            permutation[target_qubit],
-            ::ket::make_control(permutation[control_qubit.qubit()])));
-# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+        return ::ket::mpi::gate::controlled_not_detail::controlled_not(
+          mpi_policy, parallel_policy, local_state, target_qubit, control_qubit, permutation);
       }
 
       template <
@@ -156,7 +200,27 @@ namespace ket
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::datatype const& datatype,
+        yampi::communicator const& communicator,
+        yampi::environment const& environment)
+      {
+        return ::ket::mpi::gate::controlled_not(
+          ::ket::mpi::utility::policy::make_general_mpi(),
+          ::ket::utility::policy::make_sequential(),
+          local_state, target_qubit, control_qubit, permutation,
+          buffer, communicator, environment);
+      }
+
+      template <
+        typename RandomAccessRange,
+        typename StateInteger, typename BitInteger,
+        typename Allocator, typename BufferAllocator, typename DerivedDatatype>
+      inline RandomAccessRange& controlled_not(
+        RandomAccessRange& local_state,
+        ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
@@ -178,7 +242,27 @@ namespace ket
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::datatype const& datatype,
+        yampi::communicator const& communicator,
+        yampi::environment const& environment)
+      {
+        return ::ket::mpi::gate::controlled_not(
+          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+          local_state, target_qubit, control_qubit, permutation,
+          buffer, communicator, environment);
+      }
+
+      template <
+        typename ParallelPolicy, typename RandomAccessRange,
+        typename StateInteger, typename BitInteger,
+        typename Allocator, typename BufferAllocator, typename DerivedDatatype>
+      inline RandomAccessRange& controlled_not(
+        ParallelPolicy const parallel_policy,
+        RandomAccessRange& local_state,
+        ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
@@ -226,6 +310,56 @@ namespace ket
             parallel_policy, target_qubit, control_qubit);
         }
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange,
+          typename StateInteger, typename BitInteger, typename Allocator>
+        inline RandomAccessRange& adj_controlled_not(
+          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation)
+        {
+          if (::ket::mpi::page::is_on_page(target_qubit, local_state, permutation))
+          {
+            if (::ket::mpi::page::is_on_page(control_qubit.qubit(), local_state, permutation))
+              return ::ket::mpi::gate::page::adj_controlled_not_tcp(
+                mpi_policy, parallel_policy, local_state,
+                target_qubit, control_qubit, permutation);
+
+            return ::ket::mpi::gate::page::adj_controlled_not_tp(
+              mpi_policy, parallel_policy, local_state,
+              target_qubit, control_qubit, permutation);
+          }
+          else if (::ket::mpi::page::is_on_page(control_qubit.qubit(), local_state, permutation))
+            return ::ket::mpi::gate::page::adj_controlled_not_cp(
+              mpi_policy, parallel_policy, local_state,
+              target_qubit, control_qubit, permutation);
+
+# ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
+          typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
+          qubit_type const permutated_target_qubit = permutation[target_qubit];
+          ::ket::control<qubit_type> const permutated_control_qubit
+            = ::ket::make_control(permutation[control_qubit.qubit()]);
+          return ::ket::mpi::utility::for_each_local_range(
+            mpi_policy, local_state,
+            [parallel_policy, permutated_target_qubit, permutated_control_qubit](
+              auto const first, auto const last)
+            {
+              ::ket::gate::adj_controlled_not(
+                parallel_policy, first, last,
+                permutated_target_qubit, permutated_control_qubit);
+            });
+# else // BOOST_NO_CXX14_GENERIC_LAMBDAS
+          return ::ket::mpi::utility::for_each_local_range(
+            mpi_policy, local_state,
+            ::ket::mpi::gate::controlled_not_detail::make_call_adj_controlled_not(
+              parallel_policy,
+              permutation[target_qubit],
+              ::ket::make_control(permutation[control_qubit.qubit()])));
+# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+        }
       }
 
       template <
@@ -239,7 +373,36 @@ namespace ket
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::datatype const& datatype,
+        yampi::communicator const& communicator,
+        yampi::environment const& environment)
+      {
+        std::ostringstream output_string_stream("Adj(CNOT) ", std::ios_base::ate);
+        output_string_stream << target_qubit << ' ' << control_qubit;
+        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
+
+        typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
+        KET_array<qubit_type, 2u> qubits = { target_qubit, control_qubit.qubit() };
+        ::ket::mpi::utility::maybe_interchange_qubits(
+          mpi_policy, parallel_policy,
+          local_state, qubits, permutation,
+          buffer, communicator, environment);
+
+        return ::ket::mpi::gate::controlled_not_detail::controlled_not(
+          mpi_policy, parallel_policy, local_state, target_qubit, control_qubit, permutation);
+      }
+
+      template <
+        typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange,
+        typename StateInteger, typename BitInteger,
+        typename Allocator, typename BufferAllocator, typename DerivedDatatype>
+      inline RandomAccessRange& adj_controlled_not(
+        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+        RandomAccessRange& local_state,
+        ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
@@ -254,43 +417,8 @@ namespace ket
           local_state, qubits, permutation,
           buffer, datatype, communicator, environment);
 
-        if (::ket::mpi::page::is_on_page(target_qubit, local_state, permutation))
-        {
-          if (::ket::mpi::page::is_on_page(control_qubit.qubit(), local_state, permutation))
-            return ::ket::mpi::gate::page::adj_controlled_not_tcp(
-              mpi_policy, parallel_policy, local_state,
-              target_qubit, control_qubit, permutation);
-
-          return ::ket::mpi::gate::page::adj_controlled_not_tp(
-            mpi_policy, parallel_policy, local_state,
-            target_qubit, control_qubit, permutation);
-        }
-        else if (::ket::mpi::page::is_on_page(control_qubit.qubit(), local_state, permutation))
-          return ::ket::mpi::gate::page::adj_controlled_not_cp(
-            mpi_policy, parallel_policy, local_state,
-            target_qubit, control_qubit, permutation);
-
-# ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
-        qubit_type const permutated_target_qubit = permutation[target_qubit];
-        ::ket::control<qubit_type> const permutated_control_qubit
-          = ::ket::make_control(permutation[control_qubit.qubit()]);
-        return ::ket::mpi::utility::for_each_local_range(
-          mpi_policy, local_state,
-          [parallel_policy, permutated_target_qubit, permutated_control_qubit](
-            auto const first, auto const last)
-          {
-            ::ket::gate::adj_controlled_not(
-              parallel_policy, first, last,
-              permutated_target_qubit, permutated_control_qubit);
-          });
-# else // BOOST_NO_CXX14_GENERIC_LAMBDAS
-        return ::ket::mpi::utility::for_each_local_range(
-          mpi_policy, local_state,
-          ::ket::mpi::gate::controlled_not_detail::make_call_adj_controlled_not(
-            parallel_policy,
-            permutation[target_qubit],
-            ::ket::make_control(permutation[control_qubit.qubit()])));
-# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+        return ::ket::mpi::gate::controlled_not_detail::controlled_not(
+          mpi_policy, parallel_policy, local_state, target_qubit, control_qubit, permutation);
       }
 
       template <
@@ -303,7 +431,27 @@ namespace ket
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::datatype const& datatype,
+        yampi::communicator const& communicator,
+        yampi::environment const& environment)
+      {
+        return ::ket::mpi::gate::adj_controlled_not(
+          ::ket::mpi::utility::policy::make_general_mpi(),
+          ::ket::utility::policy::make_sequential(),
+          local_state, target_qubit, control_qubit, permutation,
+          buffer, communicator, environment);
+      }
+
+      template <
+        typename RandomAccessRange,
+        typename StateInteger, typename BitInteger,
+        typename Allocator, typename BufferAllocator, typename DerivedDatatype>
+      inline RandomAccessRange& adj_controlled_not(
+        RandomAccessRange& local_state,
+        ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
@@ -325,7 +473,27 @@ namespace ket
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::datatype const& datatype,
+        yampi::communicator const& communicator,
+        yampi::environment const& environment)
+      {
+        return ::ket::mpi::gate::adj_controlled_not(
+          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+          local_state, target_qubit, control_qubit, permutation,
+          buffer, communicator, environment);
+      }
+
+      template <
+        typename ParallelPolicy, typename RandomAccessRange,
+        typename StateInteger, typename BitInteger,
+        typename Allocator, typename BufferAllocator, typename DerivedDatatype>
+      inline RandomAccessRange& adj_controlled_not(
+        ParallelPolicy const parallel_policy,
+        RandomAccessRange& local_state,
+        ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
