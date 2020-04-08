@@ -712,6 +712,66 @@ namespace ket
       template <int num_page_qubits>
       struct interchange_qubits
       {
+        static_assert(
+          num_page_qubits >= 1,
+          "num_page_qubits should be at least 1 if using this function");
+
+# ifdef BOOST_NO_CXX11_LAMBDAS
+        class yampi_swap
+        {
+          yampi::rank target_rank_;
+          yampi::communicator const& communicator_;
+          yampi::environment const& environment_;
+
+         public:
+          yampi_swap(
+            yampi::rank const target_rank,
+            yampi::communicator const& communicator, yampi::environment const& environment)
+            : target_rank_(target_rank), communicator_(communicator), environment_(environment)
+          { }
+
+          template <typename PageIterator>
+          void operator()(
+            PageIterator const first, PageIterator const last,
+            PageIterator const buffer_first, PageIterator const buffer_last) const
+          {
+            yampi::algorithm::swap(
+              yampi::ignore_status(),
+              yampi::make_buffer(first, last),
+              yampi::make_buffer(buffer_first, buffer_last),
+              target_rank_, communicator_, environment_);
+          }
+        }; // class yampi_swap
+
+        template <typename DerivedDatatype>
+        class yampi_swap_with_datatype
+        {
+          yampi::datatype_base<DerivedDatatype> const& datatype_;
+          yampi::rank target_rank_;
+          yampi::communicator const& communicator_;
+          yampi::environment const& environment_;
+
+         public:
+          yampi_swap_with_datatype(
+            yampi::datatype_base<DerivedDatatype> const& datatype, yampi::rank const target_rank,
+            yampi::communicator const& communicator, yampi::environment const& environment)
+            : datatype_(datatype), target_rank_(target_rank), communicator_(communicator), environment_(environment)
+          { }
+
+          template <typename PageIterator>
+          void operator()(
+            PageIterator const first, PageIterator const last,
+            PageIterator const buffer_first, PageIterator const buffer_last) const
+          {
+            yampi::algorithm::swap(
+              yampi::ignore_status(),
+              yampi::make_buffer(first, last, datatype_),
+              yampi::make_buffer(buffer_first, buffer_last, datatype_),
+              target_rank_, communicator_, environment_);
+          }
+        }; // class yampi_swap_with_datatype<DerivedDatatype>
+# endif // BOOST_NO_CXX11_LAMBDAS
+
         template <
           typename Allocator, typename Complex, typename Allocator_, typename StateInteger>
         static void call(
@@ -722,60 +782,30 @@ namespace ket
           yampi::rank const target_rank,
           yampi::communicator const& communicator, yampi::environment const& environment)
         {
-          static_assert(
-            num_page_qubits >= 1,
-            "num_page_qubits should be at least 1 if using this function");
-          assert(source_local_last_index >= source_local_first_index);
-
+# ifndef BOOST_NO_CXX11_LAMBDAS
           typedef
-            typename ::ket::mpi::state<Complex, num_page_qubits, Allocator>::size_type
-            size_type;
-          size_type const page_front_id = local_state.get_page_id(source_local_first_index);
-          size_type const page_back_id = local_state.get_page_id(source_local_last_index-1u);
-
-          for (std::size_t page_id = page_front_id; page_id <= page_back_id; ++page_id)
-          {
-            typedef
-              typename ::ket::mpi::state<Complex, num_page_qubits, Allocator>::page_range_type
-              page_range_type;
-            page_range_type page_range = local_state.page_range(page_id);
-            size_type const page_size = boost::size(page_range);
-
-            typedef
-              typename ::ket::utility::meta::iterator_of<page_range_type>::type
-              page_iterator;
-            page_iterator const page_first = ::ket::utility::begin(page_range);
-            page_iterator const page_last = ::ket::utility::end(page_range);
-            page_iterator const buffer_first = ::ket::utility::begin(local_state.buffer_range());
-
-            StateInteger const first_index
-              = page_id == page_front_id
-                ? static_cast<StateInteger>(
-                    local_state.get_index_in_page(source_local_first_index))
-                : static_cast<StateInteger>(0u);
-            StateInteger const last_index
-              = page_id == page_back_id
-                ? static_cast<StateInteger>(
-                    local_state.get_index_in_page(source_local_last_index-1u)+1u)
-                : static_cast<StateInteger>(page_size);
-
-            page_iterator const the_first = page_first + first_index;
-            page_iterator const the_last = page_first + last_index;
-            page_iterator const the_buffer_first = buffer_first + first_index;
-            page_iterator const the_buffer_last = buffer_first + last_index;
-
-            std::copy(page_first, the_first, buffer_first);
-            std::copy(the_last, page_last, the_buffer_last);
-
-            yampi::algorithm::swap(
-              yampi::ignore_status(),
-              yampi::make_buffer(the_first, the_last),
-              yampi::make_buffer(the_buffer_first, the_buffer_last),
-              target_rank,
-              communicator, environment);
-
-            local_state.swap_buffer_and_page(page_id);
-          }
+            typename ::ket::mpi::state<Complex, num_page_qubits, Allocator>::page_range_type
+            page_range_type;
+          typedef
+            typename ::ket::utility::meta::iterator_of<page_range_type>::type
+            page_iterator;
+          do_call(
+            local_state, source_local_first_index, source_local_last_index,
+            [target_rank, &communicator, &environment](
+              page_iterator const first, page_iterator const last,
+              page_iterator const buffer_first, page_iterator const buffer_last)
+            {
+              yampi::algorithm::swap(
+                yampi::ignore_status(),
+                yampi::make_buffer(first, last),
+                yampi::make_buffer(buffer_first, buffer_last),
+                target_rank, communicator, environment);
+            });
+# else // BOOST_NO_CXX11_LAMBDAS
+          do_call(
+            local_state, source_local_first_index, source_local_last_index,
+            yampi_swap(target_rank, communicator, environment));
+# endif // BOOST_NO_CXX11_LAMBDAS
         }
 
         template <
@@ -789,9 +819,40 @@ namespace ket
           yampi::datatype_base<DerivedDatatype> const& datatype, yampi::rank const target_rank,
           yampi::communicator const& communicator, yampi::environment const& environment)
         {
-          static_assert(
-            num_page_qubits >= 1,
-            "num_page_qubits should be at least 1 if using this function");
+# ifndef BOOST_NO_CXX11_LAMBDAS
+          typedef
+            typename ::ket::mpi::state<Complex, num_page_qubits, Allocator>::page_range_type
+            page_range_type;
+          typedef
+            typename ::ket::utility::meta::iterator_of<page_range_type>::type
+            page_iterator;
+          do_call(
+            local_state, source_local_first_index, source_local_last_index,
+            [&datatype, target_rank, &communicator, &environment](
+              page_iterator const first, page_iterator const last,
+              page_iterator const buffer_first, page_iterator const buffer_last)
+            {
+              yampi::algorithm::swap(
+                yampi::ignore_status(),
+                yampi::make_buffer(first, last, datatype),
+                yampi::make_buffer(buffer_first, buffer_last, datatype),
+                target_rank, communicator, environment);
+            });
+# else // BOOST_NO_CXX11_LAMBDAS
+          do_call(
+            local_state, source_local_first_index, source_local_last_index,
+            yampi_swap_with_datatype<DerivedDatatype>(datatype, target_rank, communicator, environment));
+# endif // BOOST_NO_CXX11_LAMBDAS
+        }
+
+       private:
+        template <
+          typename Allocator, typename Complex, typename StateInteger, typename Function>
+        static void do_call(
+          ::ket::mpi::state<Complex, num_page_qubits, Allocator>& local_state,
+          StateInteger const source_local_first_index, StateInteger const source_local_last_index,
+          KET_RVALUE_REFERENCE_OR_COPY(Function) yampi_swap)
+        {
           assert(source_local_last_index >= source_local_first_index);
 
           typedef
@@ -834,13 +895,7 @@ namespace ket
             std::copy(page_first, the_first, buffer_first);
             std::copy(the_last, page_last, the_buffer_last);
 
-            yampi::algorithm::swap(
-              yampi::ignore_status(),
-              yampi::make_buffer(the_first, the_last, datatype),
-              yampi::make_buffer(
-                the_buffer_first, the_buffer_last, datatype),
-              target_rank,
-              communicator, environment);
+            yampi_swap(the_first, the_last, the_buffer_first, the_buffer_last);
 
             local_state.swap_buffer_and_page(page_id);
           }

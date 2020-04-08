@@ -188,12 +188,72 @@ namespace ket
 
           return inverse(permutation)[permutated_local_swap_qubit];
         }
+
+# ifdef BOOST_NO_CXX11_LAMBDAS
+        template <typename Buffer>
+        class interchange_qubits
+        {
+          Buffer& buffer_;
+
+         public:
+          explicit interchange_qubits(Buffer& buffer)
+            : buffer_(buffer)
+          { }
+
+          template <typename LocalState, typename StateInteger>
+          void operator()(
+            LocalState& local_state,
+            StateInteger const source_local_first_index, StateInteger const source_local_last_index,
+            StateInteger const target_global_index,
+            yampi::communicator const& communicator, yampi::environment const& environment)
+          {
+            ::ket::mpi::utility::detail::interchange_qubits(
+              local_state, buffer_, source_local_first_index, source_local_last_index,
+              static_cast<yampi::rank>(target_global_index),
+              communicator, environment);
+          }
+        }; // class interchange_qubits<Buffer>
+
+        template <typename Buffer>
+        static interchange_qubits<Buffer> make_interchange_qubits(Buffer& buffer)
+        { return interchange_qubits<Buffer>(buffer); }
+
+        template <typename Buffer, typename DerivedDatatype>
+        class interchange_qubits_with_datatype
+        {
+          Buffer& buffer_;
+          yampi::datatype_base<DerivedDatatype> const& datatype_;
+
+         public:
+          explicit interchange_qubits_with_datatype(
+            Buffer& buffer, yampi::datatype_base<DerivedDatatype> const& datatype)
+            : buffer_(buffer), datatype_(datatype)
+          { }
+
+          template <typename LocalState, typename StateInteger>
+          void operator()(
+            LocalState& local_state,
+            StateInteger const source_local_first_index, StateInteger const source_local_last_index,
+            StateInteger const target_global_index,
+            yampi::communicator const& communicator, yampi::environment const& environment)
+          {
+            ::ket::mpi::utility::detail::interchange_qubits(
+              local_state, buffer_, source_local_first_index, source_local_last_index,
+              datatype_, static_cast<yampi::rank>(target_global_index),
+              communicator, environment);
+          }
+        }; // class interchange_qubits_with_datatype<Buffer, DerivedDatatype>
+
+        template <typename Buffer, typename DerivedDatatype>
+        static interchange_qubits_with_datatype<Buffer, DerivedDatatype> make_interchange_qubits_with_datatype(
+          Buffer& buffer, yampi::datatype_base<DerivedDatatype> const& datatype)
+        { return interchange_qubits_with_datatype<Buffer, DerivedDatatype>(buffer, datatype); }
+# endif // BOOST_NO_CXX11_LAMBDAS
       } // namespace general_mpi_detail
 
 
       namespace dispatch
       {
-        // TODO: Modify maybe_interchange_qubits. This implementation of maybe_interchange_qubits has redundancy
         template <std::size_t num_qubits_of_operation, typename MpiPolicy>
         struct maybe_interchange_qubits;
 
@@ -242,77 +302,29 @@ namespace ket
               return;
 
 
-            ::ket::mpi::utility::log_with_time_guard<char> print(
-              "interchange_qubits<1>", environment);
-
-# ifndef NDEBUG
-            boost::optional<yampi::rank> const maybe_io_rank = yampi::lowest_io_process(environment);
-            yampi::rank const my_rank = yampi::communicator(yampi::world_communicator_t()).rank(environment);
-            if (maybe_io_rank && my_rank == *maybe_io_rank)
-              std::clog << "[permutation before changing qubits] " << permutation << std::endl;
-# endif // NDEBUG
-
-            //  Swaps between xxxbxxx|(~b)xxxxxxxxx and xxx(~b)xxx|bxxxxxxxxx.
-            // Upper qubits are global qubits representing MPI rank. Lower
-            // qubits are local qubits representing memory address. The first
-            // upper qubit in the local qubits is a "local swap qubit". A bit in
-            // global qubits and the "local swap qubit" would be swapped. If the
-            // first upper qubit in the local qubits is an unswappable qubit, it
-            // and a lowerer (swappable) qubit should be swapped before this
-            // process.
-
-            qubit_type const permutated_local_swap_qubit(num_local_qubits-1u);
-            qubit_type const local_swap_qubit
-              = ::ket::mpi::utility::general_mpi_detail::make_local_swap_qubit_swappable(
-                  parallel_policy, local_state, permutation,
-                  unswappable_qubits, permutated_local_swap_qubit);
-
-# ifndef NDEBUG
-            if (maybe_io_rank && my_rank == *maybe_io_rank)
-              std::clog << "[permutation after changing local swap qubits] " << permutation << std::endl;
-# endif // NDEBUG
-
-
-            // xxxxxbxx(|xxxxxxxxxx)
-            StateInteger const source_global_index
-              = static_cast<StateInteger>(communicator.rank(environment).mpi_rank());
-            // xxxxx(~b)xx(|xxxxxxxxxx)
-            StateInteger const target_global_index
-              = source_global_index
-                xor ((static_cast<StateInteger>(1u) << permutated_global_swap_qubit)
-                     >> num_local_qubits);
-
-            // (00000000|)(~b)0000000000
-            StateInteger const source_local_first_index
-              = ((target_global_index << num_local_qubits)
-                 bitand ket::utility::integer_exp2<StateInteger>(
-                          permutated_global_swap_qubit))
-                >> (permutated_global_swap_qubit-permutated_local_swap_qubit);
-            // (00000000|)0111111111
-            StateInteger const prev_last_mask
-              = (static_cast<StateInteger>(1u) << permutated_local_swap_qubit)
-                - static_cast<StateInteger>(1u);
-            // (00000000|)(~b)1111111111 + 1
-            StateInteger const source_local_last_index
-              = (source_local_first_index bitor prev_last_mask)
-                + static_cast<StateInteger>(1u);
-
-            {
-            ::ket::mpi::utility::log_with_time_guard<char> print(
-              "interchange_qubits<1>::swap", environment);
-
-            ::ket::mpi::utility::detail::interchange_qubits(
-              local_state, buffer, source_local_first_index, source_local_last_index,
-              static_cast<yampi::rank>(target_global_index), communicator, environment);
-            }
-
-            using ::ket::mpi::permutate;
-            permutate(permutation, qubits[0u], local_swap_qubit);
-
-# ifndef NDEBUG
-            if (maybe_io_rank && my_rank == *maybe_io_rank)
-              std::clog << "[permutation after changing local/global qubits] " << permutation << std::endl;
-# endif // NDEBUG
+# ifndef BOOST_NO_CXX11_LAMBDAS
+            do_call(
+              parallel_policy, local_state, num_local_qubits,
+              permutated_global_swap_qubit, qubits, unswappable_qubits, permutation,
+              communicator, environment,
+              [&buffer](
+                LocalState& local_state,
+                StateInteger const source_local_first_index, StateInteger const source_local_last_index,
+                StateInteger const target_global_index,
+                yampi::communicator const& communicator, yampi::environment const& environment)
+              {
+                ::ket::mpi::utility::detail::interchange_qubits(
+                  local_state, buffer, source_local_first_index, source_local_last_index,
+                  static_cast<yampi::rank>(target_global_index),
+                  communicator, environment);
+              });
+# else // BOOST_NO_CXX11_LAMBDAS
+            do_call(
+              parallel_policy, local_state, num_local_qubits,
+              permutated_global_swap_qubit, qubits, unswappable_qubits, permutation,
+              communicator, environment,
+              ::ket::mpi::utility::general_mpi_detail::make_interchange_qubits(buffer));
+# endif // BOOST_NO_CXX11_LAMBDAS
           }
 
           template <
@@ -357,6 +369,51 @@ namespace ket
               return;
 
 
+# ifndef BOOST_NO_CXX11_LAMBDAS
+            do_call(
+              parallel_policy, local_state, num_local_qubits,
+              permutated_global_swap_qubit, qubits, unswappable_qubits, permutation,
+              communicator, environment,
+              [&buffer, &datatype](
+                LocalState& local_state,
+                StateInteger const source_local_first_index, StateInteger const source_local_last_index,
+                StateInteger const target_global_index,
+                yampi::communicator const& communicator, yampi::environment const& environment)
+              {
+                ::ket::mpi::utility::detail::interchange_qubits(
+                  local_state, buffer, source_local_first_index, source_local_last_index,
+                  datatype, static_cast<yampi::rank>(target_global_index),
+                  communicator, environment);
+              });
+# else // BOOST_NO_CXX11_LAMBDAS
+            do_call(
+              parallel_policy, local_state, num_local_qubits,
+              permutated_global_swap_qubit, qubits, unswappable_qubits, permutation,
+              communicator, environment,
+              ::ket::mpi::utility::general_mpi_detail::make_interchange_qubits_with_datatype(buffer, datatype));
+# endif // BOOST_NO_CXX11_LAMBDAS
+          }
+
+         private:
+          template <
+            typename ParallelPolicy, typename LocalState,
+            typename StateInteger, typename BitInteger,
+            std::size_t num_unswappable_qubits, typename Allocator, typename Function>
+          static void do_call(
+            ParallelPolicy const parallel_policy,
+            LocalState& local_state,
+            BitInteger const num_local_qubits,
+            ::ket::qubit<StateInteger, BitInteger> const permutated_global_swap_qubit,
+            KET_array<
+              ::ket::qubit<StateInteger, BitInteger>, 1u> const& qubits,
+            KET_array<
+              ::ket::qubit<StateInteger, BitInteger>, num_unswappable_qubits> const&
+              unswappable_qubits,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            yampi::communicator const& communicator,
+            yampi::environment const& environment,
+            KET_RVALUE_REFERENCE_OR_COPY(Function) interchange_qubits)
+          {
             ::ket::mpi::utility::log_with_time_guard<char> print(
               "interchange_qubits<1>", environment);
 
@@ -376,6 +433,7 @@ namespace ket
             // and a lowerer (swappable) qubit should be swapped before this
             // process.
 
+            typedef ket::qubit<StateInteger, BitInteger> qubit_type;
             qubit_type const permutated_local_swap_qubit(num_local_qubits-1u);
             qubit_type const local_swap_qubit
               = ::ket::mpi::utility::general_mpi_detail::make_local_swap_qubit_swappable(
@@ -416,9 +474,9 @@ namespace ket
             ::ket::mpi::utility::log_with_time_guard<char> print(
               "interchange_qubits<1>::swap", environment);
 
-            ::ket::mpi::utility::detail::interchange_qubits(
-              local_state, buffer, source_local_first_index, source_local_last_index,
-              datatype, static_cast<yampi::rank>(target_global_index),
+            interchange_qubits(
+              local_state,
+              source_local_first_index, source_local_last_index, target_global_index,
               communicator, environment);
             }
 
@@ -521,103 +579,29 @@ namespace ket
             }
 
 
-            ::ket::mpi::utility::log_with_time_guard<char> print(
-              "interchange_qubits<2>", environment);
-
-# ifndef NDEBUG
-            boost::optional<yampi::rank> const maybe_io_rank = yampi::lowest_io_process(environment);
-            yampi::rank const my_rank = yampi::communicator(yampi::world_communicator_t()).rank(environment);
-            if (maybe_io_rank && my_rank == *maybe_io_rank)
-              std::clog << "[permutation before changing qubits] " << permutation << std::endl;
-# endif // NDEBUG
-
-            //  Swaps between xxbxb'xx|cc'xxxxxxxx and
-            // xxcxc'xx|bb'xxxxxxxx (c = b or ~b). Upper qubits are global
-            // qubits representing MPI rank. Lower qubits are local qubits
-            // representing memory address. The first two upper qubits in the
-            // local qubits are "local swap qubits". Two consecutive bits in
-            // global qubits and the "local swap qubits" would be swapped.
-
-            qubit_type const permutated_local_swap_qubit0(num_local_qubits-1u);
-            qubit_type const local_swap_qubit0
-              = ::ket::mpi::utility::general_mpi_detail::make_local_swap_qubit_swappable(
-                  parallel_policy, local_state, permutation,
-                  unswappable_qubits, permutated_local_swap_qubit0);
-            qubit_type const permutated_local_swap_qubit1(num_local_qubits-2u);
-            qubit_type const local_swap_qubit1
-              = ::ket::mpi::utility::general_mpi_detail::make_local_swap_qubit_swappable(
-                  parallel_policy, local_state, permutation,
-                  unswappable_qubits, permutated_local_swap_qubit1);
-
-# ifndef NDEBUG
-            if (maybe_io_rank && my_rank == *maybe_io_rank)
-              std::clog << "[permutation after changing local swap qubits] " << permutation << std::endl;
-# endif // NDEBUG
-
-            // xxbxb'xx(|xxxxxxxxxx)
-            StateInteger const source_global_index
-              = static_cast<StateInteger>(communicator.rank(environment).mpi_rank());
-
-            for (StateInteger target_global_mask = 1u;
-                 target_global_mask < ::ket::utility::integer_exp2<StateInteger>(2u);
-                 ++target_global_mask)
-            {
-              StateInteger const target_global_mask0
-                = target_global_mask bitand static_cast<StateInteger>(1u);
-              StateInteger const target_global_mask1
-                = (target_global_mask bitand static_cast<StateInteger>(2u)) >> 1;
-
-              // xxcxc'xx(|xxxxxxxxxx) (c = b or b')
-              StateInteger const target_global_index
-                = source_global_index
-                  xor
-                  (((target_global_mask0 << permutated_global_swap_qubit0)
-                    >> num_local_qubits)
-                   bitor
-                   ((target_global_mask1 << permutated_global_swap_qubit1)
-                    >> num_local_qubits));
-
-              // (0000000|)c0000000000
-              StateInteger const source_local_first_index0
-                = ((target_global_index << num_local_qubits)
-                   bitand ::ket::utility::integer_exp2<StateInteger>(
-                            permutated_global_swap_qubit0))
-                  >> (permutated_global_swap_qubit0-permutated_local_swap_qubit0);
-              // (0000000|)0c'000000000
-              StateInteger const source_local_first_index1
-                = ((target_global_index << num_local_qubits)
-                   bitand ::ket::utility::integer_exp2<StateInteger>(
-                            permutated_global_swap_qubit1))
-                  >> (permutated_global_swap_qubit1-permutated_local_swap_qubit1);
-              // (0000000|)cc'000000000
-              StateInteger const source_local_first_index
-                = source_local_first_index0 bitor source_local_first_index1;
-              // (0000000|)0011111111
-              StateInteger const prev_last_mask
-                = (static_cast<StateInteger>(1u) << permutated_local_swap_qubit1)
-                  - static_cast<StateInteger>(1u);
-              // (0000000|)cc'111111111 + 1
-              StateInteger const source_local_last_index
-                = (source_local_first_index bitor prev_last_mask)
-                  + static_cast<StateInteger>(1u);
-
-              ::ket::mpi::utility::log_with_time_guard<char> print(
-                "interchange_qubits<2>::swap", environment);
-
-              ::ket::mpi::utility::detail::interchange_qubits(
-                local_state, buffer, source_local_first_index, source_local_last_index,
-                static_cast<yampi::rank>(target_global_index),
-                communicator, environment);
-            }
-
-            using ::ket::mpi::permutate;
-            permutate(permutation, qubits[0u], local_swap_qubit0);
-            permutate(permutation, qubits[1u], local_swap_qubit1);
-
-# ifndef NDEBUG
-            if (maybe_io_rank && my_rank == *maybe_io_rank)
-              std::clog << "[permutation after changing local/global qubits] " << permutation << std::endl;
-# endif // NDEBUG
+# ifndef BOOST_NO_CXX11_LAMBDAS
+            do_call(
+              parallel_policy, local_state, num_local_qubits,
+              permutated_global_swap_qubit0, permutated_global_swap_qubit1, qubits, unswappable_qubits, permutation,
+              communicator, environment,
+              [&buffer](
+                LocalState& local_state,
+                StateInteger const source_local_first_index, StateInteger const source_local_last_index,
+                StateInteger const target_global_index,
+                yampi::communicator const& communicator, yampi::environment const& environment)
+              {
+                ::ket::mpi::utility::detail::interchange_qubits(
+                  local_state, buffer, source_local_first_index, source_local_last_index,
+                  static_cast<yampi::rank>(target_global_index),
+                  communicator, environment);
+              });
+# else // BOOST_NO_CXX11_LAMBDAS
+            do_call(
+              parallel_policy, local_state, num_local_qubits,
+              permutated_global_swap_qubit0, permutated_global_swap_qubit1, qubits, unswappable_qubits, permutation,
+              communicator, environment,
+              ::ket::mpi::utility::general_mpi_detail::make_interchange_qubits(buffer));
+# endif // BOOST_NO_CXX11_LAMBDAS
           }
 
           template <
@@ -706,6 +690,52 @@ namespace ket
             }
 
 
+# ifndef BOOST_NO_CXX11_LAMBDAS
+            do_call(
+              parallel_policy, local_state, num_local_qubits,
+              permutated_global_swap_qubit0, permutated_global_swap_qubit1, qubits, unswappable_qubits, permutation,
+              communicator, environment,
+              [&buffer, &datatype](
+                LocalState& local_state,
+                StateInteger const source_local_first_index, StateInteger const source_local_last_index,
+                StateInteger const target_global_index,
+                yampi::communicator const& communicator, yampi::environment const& environment)
+              {
+                ::ket::mpi::utility::detail::interchange_qubits(
+                  local_state, buffer, source_local_first_index, source_local_last_index,
+                  datatype, static_cast<yampi::rank>(target_global_index),
+                  communicator, environment);
+              });
+# else // BOOST_NO_CXX11_LAMBDAS
+            do_call(
+              parallel_policy, local_state, num_local_qubits,
+              permutated_global_swap_qubit0, permutated_global_swap_qubit1, qubits, unswappable_qubits, permutation,
+              communicator, environment,
+              ::ket::mpi::utility::general_mpi_detail::make_interchange_qubits_with_datatype(buffer, datatype));
+# endif // BOOST_NO_CXX11_LAMBDAS
+          }
+
+         private:
+          template <
+            typename ParallelPolicy, typename LocalState,
+            typename StateInteger, typename BitInteger,
+            std::size_t num_unswappable_qubits, typename Allocator, typename Function>
+          static void do_call(
+            ParallelPolicy const parallel_policy,
+            LocalState& local_state,
+            BitInteger const num_local_qubits,
+            ::ket::qubit<StateInteger, BitInteger> const permutated_global_swap_qubit0,
+            ::ket::qubit<StateInteger, BitInteger> const permutated_global_swap_qubit1,
+            KET_array<
+              ::ket::qubit<StateInteger, BitInteger>, 2u> const& qubits,
+            KET_array<
+              ::ket::qubit<StateInteger, BitInteger>, num_unswappable_qubits> const&
+              unswappable_qubits,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            yampi::communicator const& communicator,
+            yampi::environment const& environment,
+            KET_RVALUE_REFERENCE_OR_COPY(Function) interchange_qubits)
+          {
             ::ket::mpi::utility::log_with_time_guard<char> print(
               "interchange_qubits<2>", environment);
 
@@ -723,6 +753,7 @@ namespace ket
             // local qubits are "local swap qubits". Two consecutive bits in
             // global qubits and the "local swap qubits" would be swapped.
 
+            typedef ket::qubit<StateInteger, BitInteger> qubit_type;
             qubit_type const permutated_local_swap_qubit0(num_local_qubits-1u);
             qubit_type const local_swap_qubit0
               = ::ket::mpi::utility::general_mpi_detail::make_local_swap_qubit_swappable(
@@ -789,9 +820,9 @@ namespace ket
               ::ket::mpi::utility::log_with_time_guard<char> print(
                 "interchange_qubits<2>::swap", environment);
 
-              ::ket::mpi::utility::detail::interchange_qubits(
-                local_state, buffer, source_local_first_index, source_local_last_index,
-                datatype, static_cast<yampi::rank>(target_global_index),
+              interchange_qubits(
+                local_state,
+                source_local_first_index, source_local_last_index, target_global_index,
                 communicator, environment);
             }
 
@@ -919,120 +950,29 @@ namespace ket
             }
 
 
-            ::ket::mpi::utility::log_with_time_guard<char> print(
-              "interchange_qubits<3>", environment);
-
-# ifndef NDEBUG
-            boost::optional<yampi::rank> const maybe_io_rank = yampi::lowest_io_process(environment);
-            yampi::rank const my_rank = yampi::communicator(yampi::world_communicator_t()).rank(environment);
-            if (maybe_io_rank && my_rank == *maybe_io_rank)
-              std::clog << "[permutation before changing qubits] " << permutation << std::endl;
-# endif // NDEBUG
-
-            //  Swaps between xxbxb'xb''xx|cc'c''xxxxxxxx and
-            // xxcxc'xx|bb'xxxxxxxx (c = b or ~b). Upper qubits are global
-            // qubits representing MPI rank. Lower qubits are local qubits
-            // representing memory address. The first two upper qubits in the
-            // local qubits are "local swap qubits". Two consecutive bits in
-            // global qubits and the "local swap qubits" would be swapped.
-
-            qubit_type const permutated_local_swap_qubit0(num_local_qubits-1u);
-            qubit_type const local_swap_qubit0
-              = ::ket::mpi::utility::general_mpi_detail::make_local_swap_qubit_swappable(
-                  parallel_policy, local_state, permutation,
-                  unswappable_qubits, permutated_local_swap_qubit0);
-            qubit_type const permutated_local_swap_qubit1(num_local_qubits-2u);
-            qubit_type const local_swap_qubit1
-              = ::ket::mpi::utility::general_mpi_detail::make_local_swap_qubit_swappable(
-                  parallel_policy, local_state, permutation,
-                  unswappable_qubits, permutated_local_swap_qubit1);
-            qubit_type const permutated_local_swap_qubit2(num_local_qubits-3u);
-            qubit_type const local_swap_qubit2
-              = ::ket::mpi::utility::general_mpi_detail::make_local_swap_qubit_swappable(
-                  parallel_policy, local_state, permutation,
-                  unswappable_qubits, permutated_local_swap_qubit2);
-
-# ifndef NDEBUG
-            if (maybe_io_rank && my_rank == *maybe_io_rank)
-              std::clog << "[permutation after changing local swap qubits] " << permutation << std::endl;
-# endif // NDEBUG
-
-            // xxbxb'xb''xx(|xxxxxxxxxx)
-            StateInteger const source_global_index
-              = static_cast<StateInteger>(communicator.rank(environment).mpi_rank());
-
-            for (StateInteger target_global_mask = 1u;
-                 target_global_mask < ::ket::utility::integer_exp2<StateInteger>(3u);
-                 ++target_global_mask)
-            {
-              StateInteger const target_global_mask0
-                = target_global_mask bitand static_cast<StateInteger>(1u);
-              StateInteger const target_global_mask1
-                = (target_global_mask bitand static_cast<StateInteger>(2u)) >> 1;
-              StateInteger const target_global_mask2
-                = (target_global_mask bitand static_cast<StateInteger>(4u)) >> 2;
-
-              // xxcxc'xc''xx(|xxxxxxxxxx) (c = b or ~b, except for (c, c', c'') = (b, b', b''))
-              StateInteger const target_global_index
-                = source_global_index
-                  xor
-                  (((target_global_mask0 << permutated_global_swap_qubit0)
-                    >> num_local_qubits)
-                   bitor
-                   ((target_global_mask1 << permutated_global_swap_qubit1)
-                    >> num_local_qubits)
-                   bitor
-                   ((target_global_mask2 << permutated_global_swap_qubit2)
-                    >> num_local_qubits));
-
-              // (0000000|)c0000000000
-              StateInteger const source_local_first_index0
-                = ((target_global_index << num_local_qubits)
-                   bitand ::ket::utility::integer_exp2<StateInteger>(
-                            permutated_global_swap_qubit0))
-                  >> (permutated_global_swap_qubit0-permutated_local_swap_qubit0);
-              // (0000000|)0c'000000000
-              StateInteger const source_local_first_index1
-                = ((target_global_index << num_local_qubits)
-                   bitand ::ket::utility::integer_exp2<StateInteger>(
-                            permutated_global_swap_qubit1))
-                  >> (permutated_global_swap_qubit1-permutated_local_swap_qubit1);
-              // (0000000|)00c''00000000
-              StateInteger const source_local_first_index2
-                = ((target_global_index << num_local_qubits)
-                   bitand ::ket::utility::integer_exp2<StateInteger>(
-                            permutated_global_swap_qubit2))
-                  >> (permutated_global_swap_qubit2-permutated_local_swap_qubit2);
-              // (0000000|)cc'c''00000000
-              StateInteger const source_local_first_index
-                = source_local_first_index0 bitor source_local_first_index1
-                  bitor source_local_first_index2;
-              // (0000000|)0001111111
-              StateInteger const prev_last_mask
-                = (static_cast<StateInteger>(1u) << permutated_local_swap_qubit2)
-                  - static_cast<StateInteger>(1u);
-              // (0000000|)cc'c''11111111 + 1
-              StateInteger const source_local_last_index
-                = (source_local_first_index bitor prev_last_mask)
-                  + static_cast<StateInteger>(1u);
-
-              ::ket::mpi::utility::log_with_time_guard<char> print(
-                "interchange_qubits<3>::swap", environment);
-
-              ::ket::mpi::utility::detail::interchange_qubits(
-                local_state, buffer, source_local_first_index, source_local_last_index,
-                static_cast<yampi::rank>(target_global_index), communicator, environment);
-            }
-
-            using ::ket::mpi::permutate;
-            permutate(permutation, qubits[0u], local_swap_qubit0);
-            permutate(permutation, qubits[1u], local_swap_qubit1);
-            permutate(permutation, qubits[2u], local_swap_qubit2);
-
-# ifndef NDEBUG
-            if (maybe_io_rank && my_rank == *maybe_io_rank)
-              std::clog << "[permutation after changing local/global qubits] " << permutation << std::endl;
-# endif // NDEBUG
+# ifndef BOOST_NO_CXX11_LAMBDAS
+            do_call(
+              parallel_policy, local_state, num_local_qubits,
+              permutated_global_swap_qubit0, permutated_global_swap_qubit1, permutated_global_swap_qubit2,
+              qubits, unswappable_qubits, permutation, communicator, environment,
+              [&buffer](
+                LocalState& local_state,
+                StateInteger const source_local_first_index, StateInteger const source_local_last_index,
+                StateInteger const target_global_index,
+                yampi::communicator const& communicator, yampi::environment const& environment)
+              {
+                ::ket::mpi::utility::detail::interchange_qubits(
+                  local_state, buffer, source_local_first_index, source_local_last_index,
+                  static_cast<yampi::rank>(target_global_index), communicator, environment);
+              });
+# else // BOOST_NO_CXX11_LAMBDAS
+            do_call(
+              parallel_policy, local_state, num_local_qubits,
+              permutated_global_swap_qubit0, permutated_global_swap_qubit1, permutated_global_swap_qubit2,
+              qubits, unswappable_qubits, permutation,
+              communicator, environment,
+              ::ket::mpi::utility::general_mpi_detail::make_interchange_qubits(buffer));
+# endif // BOOST_NO_CXX11_LAMBDAS
           }
 
           template <
@@ -1145,6 +1085,54 @@ namespace ket
             }
 
 
+# ifndef BOOST_NO_CXX11_LAMBDAS
+            do_call(
+              parallel_policy, local_state, num_local_qubits,
+              permutated_global_swap_qubit0, permutated_global_swap_qubit1, permutated_global_swap_qubit2,
+              qubits, unswappable_qubits, permutation, communicator, environment,
+              [&buffer, &datatype](
+                LocalState& local_state,
+                StateInteger const source_local_first_index, StateInteger const source_local_last_index,
+                StateInteger const target_global_index,
+                yampi::communicator const& communicator, yampi::environment const& environment)
+              {
+                ::ket::mpi::utility::detail::interchange_qubits(
+                  local_state, buffer, source_local_first_index, source_local_last_index,
+                  datatype, static_cast<yampi::rank>(target_global_index),
+                  communicator, environment);
+              });
+# else // BOOST_NO_CXX11_LAMBDAS
+            do_call(
+              parallel_policy, local_state, num_local_qubits,
+              permutated_global_swap_qubit0, permutated_global_swap_qubit1, permutated_global_swap_qubit2,
+              qubits, unswappable_qubits, permutation,
+              communicator, environment,
+              ::ket::mpi::utility::general_mpi_detail::make_interchange_qubits_with_datatype(buffer, datatype));
+# endif // BOOST_NO_CXX11_LAMBDAS
+          }
+
+         private:
+          template <
+            typename ParallelPolicy, typename LocalState,
+            typename StateInteger, typename BitInteger,
+            std::size_t num_unswappable_qubits, typename Allocator, typename Function>
+          static void do_call(
+            ParallelPolicy const parallel_policy,
+            LocalState& local_state,
+            BitInteger const num_local_qubits,
+            ::ket::qubit<StateInteger, BitInteger> const permutated_global_swap_qubit0,
+            ::ket::qubit<StateInteger, BitInteger> const permutated_global_swap_qubit1,
+            ::ket::qubit<StateInteger, BitInteger> const permutated_global_swap_qubit2,
+            KET_array<
+              ::ket::qubit<StateInteger, BitInteger>, 3u> const& qubits,
+            KET_array<
+              ::ket::qubit<StateInteger, BitInteger>, num_unswappable_qubits> const&
+              unswappable_qubits,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            yampi::communicator const& communicator,
+            yampi::environment const& environment,
+            KET_RVALUE_REFERENCE_OR_COPY(Function) interchange_qubits)
+          {
             ::ket::mpi::utility::log_with_time_guard<char> print(
               "interchange_qubits<3>", environment);
 
@@ -1162,6 +1150,7 @@ namespace ket
             // local qubits are "local swap qubits". Two consecutive bits in
             // global qubits and the "local swap qubits" would be swapped.
 
+            typedef ket::qubit<StateInteger, BitInteger> qubit_type;
             qubit_type const permutated_local_swap_qubit0(num_local_qubits-1u);
             qubit_type const local_swap_qubit0
               = ::ket::mpi::utility::general_mpi_detail::make_local_swap_qubit_swappable(
@@ -1245,9 +1234,9 @@ namespace ket
               ::ket::mpi::utility::log_with_time_guard<char> print(
                 "interchange_qubits<3>::swap", environment);
 
-              ::ket::mpi::utility::detail::interchange_qubits(
-                local_state, buffer, source_local_first_index, source_local_last_index,
-                datatype, static_cast<yampi::rank>(target_global_index),
+              interchange_qubits(
+                local_state,
+                source_local_first_index, source_local_last_index, target_global_index,
                 communicator, environment);
             }
 
