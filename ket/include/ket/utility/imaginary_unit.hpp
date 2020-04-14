@@ -10,7 +10,7 @@ namespace ket
 {
   namespace utility
   {
-# if !defined(__FUJITSU) && !defined(BOOST_NO_CXX11_CONSTEXPR)
+# if !defined(BOOST_NO_CXX11_CONSTEXPR)
     namespace imaginary_unit_detail
     {
       template <typename Complex>
