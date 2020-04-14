@@ -126,7 +126,7 @@ namespace ket
 
       using std::pow;
       complex_type const constant_coefficient
-        = static_cast<complex_type>(static_cast<real_type>(pow(num_exponents, -0.5)));
+        = static_cast<complex_type>(static_cast<real_type>(pow(static_cast<real_type>(num_exponents), -0.5)));
 
       yampi::rank const present_rank = communicator.rank(environment);
       typename ::ket::utility::meta::iterator_of<RandomAccessRange>::type iter = ::ket::utility::begin(local_state);
