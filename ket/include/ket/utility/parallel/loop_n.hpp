@@ -417,6 +417,162 @@ namespace ket
     } // namespace dispatch
 
 
+    // execute
+    namespace parallel_loop_n_detail
+    {
+# if !defined(_OPENMP) || !defined(KET_USE_OPENMP)
+#   ifdef BOOST_NO_CXX11_LAMBDAS
+      template <typename Function>
+      struct call_execute
+      {
+        Function function_;
+        int thread_index_;
+
+        call_execute(
+          KET_RVALUE_REFERENCE_OR_COPY(Function) function, int const thread_index)
+          : function_(KET_MOVE_OR_COPY(function)),
+            thread_index_(thread_index)
+        { }
+
+        void operator()() const { function_(thread_index_); }
+      };
+
+      template <typename Function>
+      inline call_execute<Function> make_call_execute(
+        Function function, int const thrad_index)
+      { return call_execute<Function>(function, thread_index); }
+#   endif
+# endif // !defined(_OPENMP) || !defined(KET_USE_OPENMP)
+    } // namespace parallel_loop_n_detail
+
+    namespace dispatch
+    {
+# if defined(_OPENMP) && defined(KET_USE_OPENMP)
+      template <typename NumThreads>
+      struct execute< ::ket::utility::policy::parallel<NumThreads> >
+      {
+        template <typename Function>
+        static void call(
+          ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
+          KET_RVALUE_REFERENCE_OR_COPY(Function) function)
+        {
+          assert(::ket::utility::num_threads(parallel_policy) > 0u);
+
+          boost::optional<std::exception> maybe_error;
+          bool is_nonstandard_exception_thrown = false;
+
+          typedef ::ket::utility::parallel_loop_n_detail::omp_mutex mutex_type;
+          mutex_type mutex;
+
+#   pragma omp parallel reduction(||:is_nonstandard_exception_thrown)
+          {
+            try
+            {
+              function(omp_get_thread_num());
+            }
+            catch (std::exception& error)
+            {
+#   ifndef BOOST_NO_CXX11_HDR_THREAD
+              typedef std::lock_guard<mutex_type> lock_guard_type;
+#   else
+#     ifndef KET_DONT_USE_BOOST_LOCK_GUARD_IN_OPENMP_BLOCKS
+              typedef boost::lock_guard<mutex_type> lock_guard_type;
+#     else
+              typedef
+                ::ket::utility::parallel_loop_n_detail::lock_guard<mutex_type>
+                lock_guard_type;
+#     endif
+#   endif
+              lock_guard_type lock(mutex);
+
+              if (!maybe_error)
+                maybe_error = error;
+            }
+            catch (...)
+            {
+              is_nonstandard_exception_thrown = true;
+            }
+          }
+
+          if (is_nonstandard_exception_thrown)
+            throw ::ket::utility::parallel_loop_n_detail::omp_nonstandard_exception();
+
+          if (maybe_error)
+            throw *maybe_error;
+        }
+      };
+# else // defined(_OPENMP) && defined(KET_USE_OPENMP)
+      template <typename NumThreads>
+      struct execute< ::ket::utility::policy::parallel<NumThreads> >
+      {
+        template <typename Function>
+        static void call(
+          ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
+          KET_RVALUE_REFERENCE_OR_COPY(Function) function)
+        {
+          assert(::ket::utility::num_threads(parallel_policy) > 0u);
+
+#   ifndef BOOST_NO_CXX11_HDR_FUTURE
+          NumThreads const num_threads = ::ket::utility::num_threads(parallel_policy);
+          NumThreads const num_futures = num_threads-1u;
+          std::vector< std::future<void> > futures;
+          futures.reserve(num_futures);
+
+          for (NumThreads thread_index = 0u; thread_index < num_futures; ++thread_index)
+          {
+#     ifndef BOOST_NO_CXX11_LAMBDAS
+            futures.push_back(std::async(
+              std::launch::async,
+              [&function, thread_index]()
+              { function(static_cast<int>(thread_index)); }));
+#     else // BOOST_NO_CXX11_LAMBDAS
+            futures.push_back(std::async(
+              std::launch::async,
+              ::ket::utility::parallel_loop_n_detail::make_call_execute(
+                function, static_cast<int>(thread_index))));
+#     endif // BOOST_NO_CXX11_LAMBDAS
+          }
+
+          KET_FORWARD_OR_COPY(Function, function)(static_cast<int>(num_futures));
+
+#     ifndef BOOST_NO_CXX11_RANGE_BASED_FOR
+          for (std::future<void> const& future: futures)
+            futures.wait();
+#     else // BOOST_NO_CXX11_RANGE_BASED_FOR
+          typedef std::vector< std::future<void> >::const_iterator futures_iterator;
+
+          futures_iterator const last = futures.end();
+          for (futures_iterator iter = futures.begin(); iter != last; ++iter)
+            iter->wait();
+#     endif // BOOST_NO_CXX11_RANGE_BASED_FOR
+#   else // BOOST_NO_CXX11_HDR_FUTURE
+          NumThreads const num_threads = ::ket::utility::num_threads(parallel_policy);
+          NumThreads const num_threads_in_group = num_threads-1u;
+          boost::thread_group threads;
+
+          for (NumThreads thread_index = 0u; thread_index < num_threads_in_group; ++thread_index)
+          {
+#     ifndef BOOST_NO_CXX11_LAMBDAS
+            threads.create_thread(
+              [&function, thread_index]()
+              { function(static_cast<int>(thread_index)); });
+#     else // BOOST_NO_CXX11_LAMBDAS
+            threads.create_thread(
+              ::ket::utility::parallel_loop_n_detail::make_call_function_from_to(
+                function, static_cast<int>(thread_index)));
+#     endif // BOOST_NO_CXX11_LAMBDAS
+          }
+
+          KET_FORWARD_OR_COPY(Function, function)(static_cast<int>(num_threads)-1);
+
+          threads.join_all();
+#   endif // BOOST_NO_CXX11_HDR_FUTURE
+        }
+      };
+# endif // defined(_OPENMP) && defined(KET_USE_OPENMP)
+    } // namespace dispatch
+
+
     // fill
     namespace parallel_loop_n_detail
     {
@@ -442,7 +598,7 @@ namespace ket
         template <typename Difference>
         void operator()(Difference const n, int thread_index) const
         {
-          if (not is_calleds_ptr_[thread_index])
+          if (not static_cast<bool>(is_calleds_ptr_[thread_index]))
           {
             iters_ptr_[thread_index] = first_;
             std::advance(iters_ptr_[thread_index], n);
@@ -519,7 +675,7 @@ namespace ket
             [first, &value, is_calleds_ptr, iters_ptr](
               difference_type const n, int const thread_index)
             {
-              if (not is_calleds_ptr[thread_index])
+              if (not static_cast<bool>(is_calleds_ptr[thread_index]))
               {
                 iters_ptr[thread_index] = first;
                 std::advance(iters_ptr[thread_index], n);

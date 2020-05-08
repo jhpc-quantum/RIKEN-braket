@@ -142,6 +142,45 @@ namespace ket
     }
 
 
+    // execute
+    namespace dispatch
+    {
+      template <typename ParallelPolicy>
+      struct execute
+      {
+        template <typename ParallelPolicy_, typename Function>
+        static void call(
+          ParallelPolicy_ const, KET_RVALUE_REFERENCE_OR_COPY(Function) function);
+      };
+
+      template <>
+      struct execute< ::ket::utility::policy::sequential >
+      {
+        template <typename ParallelPolicy, typename Function>
+        static void call(
+          ParallelPolicy const, KET_RVALUE_REFERENCE_OR_COPY(Function) function)
+        { function(0); }
+      };
+    } // namespace dispatch
+
+    template <typename Function>
+    inline void execute(KET_RVALUE_REFERENCE_OR_COPY(Function) function)
+    {
+      ::ket::utility::dispatch::execute< ::ket::utility::policy::sequential >::call(
+        ::ket::utility::policy::sequential(),
+        KET_FORWARD_OR_COPY(Function, function));
+    }
+
+    template <typename ParallelPolicy, typename Function>
+    inline void execute(
+      ParallelPolicy const parallel_policy,
+      KET_RVALUE_REFERENCE_OR_COPY(Function) function)
+    {
+      ::ket::utility::dispatch::execute<ParallelPolicy>::call(
+        parallel_policy, KET_FORWARD_OR_COPY(Function, function));
+    }
+
+
     // fill
     namespace dispatch
     {
