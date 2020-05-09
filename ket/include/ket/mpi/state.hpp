@@ -183,11 +183,9 @@ namespace ket
       data_type data_;
 
      public:
-# ifndef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-      typedef boost::sub_range<data_type> page_range_type;
-# else
-      typedef boost::iterator_range<typename data_type::pointer> page_range_type;
-# endif
+      typedef
+        boost::iterator_range<typename ::ket::utility::meta::iterator_of<data_type>::type>
+        page_range_type;
 
      public:
       std::size_t num_local_qubits_;
@@ -481,16 +479,10 @@ namespace ket
         KET_array<page_range_type, num_pages> result;
         for (std::size_t page_id = 0u; page_id < num_pages; ++page_id)
         {
-# ifndef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
           result[page_id]
             = boost::make_iterator_range(
-                data.begin()+page_id*page_size, data.begin()+(page_id+1u)*page_size);
-# else // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-          result[page_id]
-            = boost::make_iterator_range(
-                KET_addressof(data.front())+page_id*page_size,
-                KET_addressof(data.front())+(page_id+1u)*page_size);
-# endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
+                ::ket::utility::begin(data)+page_id*page_size,
+                ::ket::utility::begin(data)+(page_id+1u)*page_size);
         }
 
         return result;
@@ -501,14 +493,9 @@ namespace ket
         assert(data.size() % (num_pages+1u) == 0u);
         size_type const page_size = data.size() / (num_pages+1u);
 
-# ifndef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
         return boost::make_iterator_range(
-          data.begin()+num_pages*page_size, data.begin()+(num_pages+1u)*page_size);
-# else // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-        return boost::make_iterator_range(
-          KET_addressof(data.front())+num_pages*page_size,
-          KET_addressof(data.front())+(num_pages+1u)*page_size);
-# endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
+          ::ket::utility::begin(data)+num_pages*page_size,
+          ::ket::utility::begin(data)+(num_pages+1u)*page_size);
       }
 
 
