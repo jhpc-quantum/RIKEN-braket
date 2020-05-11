@@ -155,7 +155,10 @@ namespace ket
               total_probabilities.back(), random_number_generator);
         result_rank
           = static_cast<yampi::rank>(static_cast<StateInteger>(
-              ::ket::mpi::utility::upper_bound(total_probabilities, random_value)));
+              std::upper_bound(
+                ::ket::utility::begin(total_probabilities),
+                ::ket::utility::end(total_probabilities), random_value)
+              - ::ket::utility::begin(total_probabilities)));
       }
 
       int result_mpi_rank = result_rank.mpi_rank();
@@ -279,7 +282,10 @@ namespace ket
               total_probabilities.back(), random_number_generator);
         result_rank
           = static_cast<yampi::rank>(static_cast<StateInteger>(
-              ::ket::mpi::utility::upper_bound(total_probabilities, random_value)));
+              std::upper_bound(
+                ::ket::utility::begin(total_probabilities),
+                ::ket::utility::end(total_probabilities), random_value)
+              - ::ket::utility::begin(total_probabilities)));
       }
 
       int result_mpi_rank = result_rank.mpi_rank();
@@ -452,7 +458,10 @@ namespace ket
               total_probabilities.back(), random_number_generator);
         result_rank
           = static_cast<yampi::rank>(static_cast<StateInteger>(
-              ::ket::mpi::utility::upper_bound(total_probabilities, random_value)));
+              std::upper_bound(
+                ::ket::utility::begin(total_probabilities),
+                ::ket::utility::end(total_probabilities), random_value)
+              - ::ket::utility::begin(total_probabilities)));
       }
 
       int result_mpi_rank = result_rank.mpi_rank();
@@ -484,7 +493,10 @@ namespace ket
       {
         StateInteger const local_result
           = static_cast<StateInteger>(
-              ::ket::mpi::utility::upper_bound(partial_sum_probabilities, random_value));
+              std::upper_bound(
+                ::ket::utility::begin(partial_sum_probabilities),
+                ::ket::utility::end(partial_sum_probabilities), random_value)
+              - ::ket::utility::begin(partial_sum_probabilities));
         using ::ket::mpi::utility::rank_index_to_qubit_value;
         permutated_result
           = rank_index_to_qubit_value(
@@ -565,7 +577,10 @@ namespace ket
               total_probabilities.back(), random_number_generator);
         result_rank
           = static_cast<yampi::rank>(static_cast<StateInteger>(
-              ::ket::mpi::utility::upper_bound(total_probabilities, random_value)));
+              std::upper_bound(
+                ::ket::utility::begin(total_probabilities),
+                ::ket::utility::end(total_probabilities), random_value)
+              - ::ket::utility::begin(total_probabilities)));
       }
 
       int result_mpi_rank = result_rank.mpi_rank();
@@ -598,7 +613,10 @@ namespace ket
       {
         StateInteger const local_result
           = static_cast<StateInteger>(
-              ::ket::mpi::utility::upper_bound(partial_sum_probabilities, random_value));
+              std::upper_bound(
+                ::ket::utility::begin(partial_sum_probabilities),
+                ::ket::utility::end(partial_sum_probabilities), random_value)
+              - ::ket::utility::begin(partial_sum_probabilities));
         using ::ket::mpi::utility::rank_index_to_qubit_value;
         permutated_result
           = rank_index_to_qubit_value(

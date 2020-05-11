@@ -1176,34 +1176,6 @@ namespace ket
       template <int num_page_qubits>
       struct upper_bound
       {
-        template <typename Complex, typename Allocator>
-        static typename ::ket::mpi::state<Complex, num_page_qubits, Allocator>::difference_type call(
-          ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state,
-          Complex const& value)
-        {
-          typedef ::ket::mpi::state<Complex, num_page_qubits, Allocator> local_state_type;
-          typedef typename local_state_type::difference_type difference_type;
-
-          for (std::size_t page_id = 0u; page_id < local_state_type::num_pages; ++page_id)
-          {
-            std::size_t index_in_page
-              = std::upper_bound(
-                  ::ket::utility::begin(local_state.page_range(page_id)),
-                  ::ket::utility::end(local_state.page_range(page_id)),
-                  value)
-                - ::ket::utility::begin(local_state.page_range(page_id));
-
-            if (index_in_page < boost::size(local_state.page_range(page_id)))
-            {
-              std::size_t const num_qubits_in_page
-                = local_state.num_local_qubits()-num_page_qubits;
-              return static_cast<difference_type>((page_id << num_qubits_in_page) bitor index_in_page);
-            }
-          }
-
-          return static_cast<difference_type>(local_state.size());
-        }
-
         template <typename Complex, typename Allocator, typename Compare>
         static typename ::ket::mpi::state<Complex, num_page_qubits, Allocator>::difference_type call(
           ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state,
@@ -1214,6 +1186,9 @@ namespace ket
 
           for (std::size_t page_id = 0u; page_id < local_state_type::num_pages; ++page_id)
           {
+            if (not compare(value, *boost::prior(::ket::utility::end(local_state.page_range(page_id)))))
+              continue;
+
             std::size_t index_in_page
               = std::upper_bound(
                   ::ket::utility::begin(local_state.page_range(page_id)),
@@ -1221,12 +1196,9 @@ namespace ket
                   value, compare)
                 - ::ket::utility::begin(local_state.page_range(page_id));
 
-            if (index_in_page < boost::size(local_state.page_range(page_id)))
-            {
-              std::size_t const num_qubits_in_page
-                = local_state.num_local_qubits()-num_page_qubits;
-              return static_cast<difference_type>((page_id << num_qubits_in_page) bitor index_in_page);
-            }
+            std::size_t const num_qubits_in_page
+              = local_state.num_local_qubits() - num_page_qubits;
+            return static_cast<difference_type>((page_id << num_qubits_in_page) bitor index_in_page);
           }
 
           return static_cast<difference_type>(local_state.size());
@@ -1598,12 +1570,6 @@ namespace ket
       template <>
       struct upper_bound<0>
       {
-        template <typename Complex, typename Allocator>
-        static typename ::ket::mpi::state<Complex, 0, Allocator>::difference_type call(
-          ::ket::mpi::state<Complex, 0, Allocator> const& local_state,
-          Complex const& value)
-        { return ::ket::mpi::utility::upper_bound(local_state.data(), value); }
-
         template <typename Complex, typename Allocator, typename Compare>
         static typename ::ket::mpi::state<Complex, 0, Allocator>::difference_type call(
           ::ket::mpi::state<Complex, 0, Allocator> const& local_state,
@@ -1801,16 +1767,6 @@ namespace ket
         struct upper_bound<
           ::ket::mpi::state<Complex, num_page_qubits, Allocator> >
         {
-          static typename ::ket::mpi::state<Complex, num_page_qubits, Allocator>::difference_type call(
-            ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state,
-            Complex const& value)
-          {
-            typedef
-              ::ket::mpi::state_detail::upper_bound<num_page_qubits>
-              upper_bound_type;
-            return upper_bound_type::call(local_state, value);
-          }
-
           template <typename Compare>
           static typename ::ket::mpi::state<Complex, num_page_qubits, Allocator>::difference_type call(
             ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state,
