@@ -963,7 +963,7 @@ namespace ket
           ForwardIterator const d_first,
           BinaryOperation binary_operation, UnaryOperation unary_operation)
         {
-          impl(
+          return impl(
             typename std::iterator_traits<ForwardIterator>::iterator_category(),
             parallel_policy, local_state, d_first, binary_operation, unary_operation);
         }
@@ -979,7 +979,7 @@ namespace ket
           BinaryOperation binary_operation, UnaryOperation unary_operation,
           Value const initial_value)
         {
-          impl(
+          return impl(
             typename std::iterator_traits<ForwardIterator>::iterator_category(),
             parallel_policy, local_state, d_first, binary_operation, unary_operation, initial_value);
         }
@@ -996,18 +996,23 @@ namespace ket
           ForwardIterator d_first,
           BinaryOperation binary_operation, UnaryOperation unary_operation)
         {
-          Complex partial_sum = static_cast<Complex>(0);
+          ForwardIterator prev_d_first = d_first;
+          d_first
+            = ::ket::utility::ranges::transform_inclusive_scan(
+                parallel_policy,
+                local_state.page_range(0u), d_first, binary_operation, unary_operation);
+          std::advance(prev_d_first, boost::size(local_state.page_range(0u))-1);
+          Complex partial_sum = *prev_d_first;
 
           typedef ::ket::mpi::state<Complex, num_page_qubits, Allocator> local_state_type;
-          for (std::size_t page_id = 0u; page_id < local_state_type::num_pages; ++page_id)
+          for (std::size_t page_id = 1u; page_id < local_state_type::num_pages; ++page_id)
           {
-            ForwardIterator prev_d_first = d_first;
+            prev_d_first = d_first;
             d_first
-              = ::ket::utility::transform_inclusive_scan(
+              = ::ket::utility::ranges::transform_inclusive_scan(
                   parallel_policy,
-                  ::ket::utility::begin(local_state.page_range(page_id)),
-                  ::ket::utility::end(local_state.page_range(page_id)),
-                  d_first, binary_operation, unary_operation, partial_sum);
+                  local_state.page_range(page_id), d_first,
+                  binary_operation, unary_operation, partial_sum);
             std::advance(prev_d_first, boost::size(local_state.page_range(page_id))-1);
             partial_sum = *prev_d_first;
           }
@@ -1034,11 +1039,10 @@ namespace ket
           {
             ForwardIterator prev_d_first = d_first;
             d_first
-              = ::ket::utility::transform_inclusive_scan(
+              = ::ket::utility::ranges::transform_inclusive_scan(
                   parallel_policy,
-                  ::ket::utility::begin(local_state.page_range(page_id)),
-                  ::ket::utility::end(local_state.page_range(page_id)),
-                  d_first, binary_operation, unary_operation, partial_sum);
+                  local_state.page_range(page_id), d_first,
+                  binary_operation, unary_operation, partial_sum);
             std::advance(prev_d_first, boost::size(local_state.page_range(page_id))-1);
             partial_sum = *prev_d_first;
           }
@@ -1048,26 +1052,29 @@ namespace ket
 
         template <
           typename ParallelPolicy,
-          typename Complex, typename Allocator, typename ForwardIterator,
+          typename Complex, typename Allocator, typename BidirectionalIterator,
           typename BinaryOperation, typename UnaryOperation>
         static Complex impl(
           std::bidirectional_iterator_tag const,
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state,
-          ForwardIterator const d_first,
+          BidirectionalIterator const d_first,
           BinaryOperation binary_operation, UnaryOperation unary_operation)
         {
-          Complex partial_sum = static_cast<Complex>(0);
+          d_first
+            = ::ket::utility::ranges::transform_inclusive_scan(
+                parallel_policy,
+                local_state.page_range(0u), d_first, binary_operation, unary_operation);
+          Complex partial_sum = *boost::prior(d_first);
 
           typedef ::ket::mpi::state<Complex, num_page_qubits, Allocator> local_state_type;
-          for (std::size_t page_id = 0u; page_id < local_state_type::num_pages; ++page_id)
+          for (std::size_t page_id = 1u; page_id < local_state_type::num_pages; ++page_id)
           {
             d_first
-              = ::ket::utility::transform_inclusive_scan(
+              = ::ket::utility::ranges::transform_inclusive_scan(
                   parallel_policy,
-                  ::ket::utility::begin(local_state.page_range(page_id)),
-                  ::ket::utility::end(local_state.page_range(page_id)),
-                  d_first, binary_operation, unary_operation, partial_sum);
+                  local_state.page_range(page_id), d_first,
+                  binary_operation, unary_operation, partial_sum);
             partial_sum = *boost::prior(d_first);
           }
 
@@ -1076,13 +1083,13 @@ namespace ket
 
         template <
           typename ParallelPolicy,
-          typename Complex, typename Allocator, typename ForwardIterator,
+          typename Complex, typename Allocator, typename BidirectionalIterator,
           typename BinaryOperation, typename UnaryOperation, typename Value>
         static Complex impl(
           std::bidirectional_iterator_tag const,
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state,
-          ForwardIterator const d_first,
+          BidirectionalIterator const d_first,
           BinaryOperation binary_operation, UnaryOperation unary_operation,
           Value const initial_value)
         {
@@ -1092,11 +1099,10 @@ namespace ket
           for (std::size_t page_id = 0u; page_id < local_state_type::num_pages; ++page_id)
           {
             d_first
-              = ::ket::utility::transform_inclusive_scan(
+              = ::ket::utility::ranges::transform_inclusive_scan(
                   parallel_policy,
-                  ::ket::utility::begin(local_state.page_range(page_id)),
-                  ::ket::utility::end(local_state.page_range(page_id)),
-                  d_first, binary_operation, unary_operation, partial_sum);
+                  local_state.page_range(page_id), d_first,
+                  binary_operation, unary_operation, partial_sum);
             partial_sum = *boost::prior(d_first);
           }
 
@@ -1117,15 +1123,19 @@ namespace ket
           ::ket::mpi::state<Complex, num_page_qubits, Allocator>& local_state,
           BinaryOperation binary_operation, UnaryOperation unary_operation)
         {
-          Complex partial_sum = static_cast<Complex>(0);
+          ::ket::utility::ranges::transform_inclusive_scan(
+            parallel_policy,
+            local_state.page_range(0u),
+            ::ket::utility::begin(local_state.page_range(0u)),
+            binary_operation, unary_operation);
+          Complex partial_sum = *boost::prior(::ket::utility::end(local_state.page_range(0u)));
 
           typedef ::ket::mpi::state<Complex, num_page_qubits, Allocator> local_state_type;
-          for (std::size_t page_id = 0u; page_id < local_state_type::num_pages; ++page_id)
+          for (std::size_t page_id = 1u; page_id < local_state_type::num_pages; ++page_id)
           {
-            ::ket::utility::transform_inclusive_scan(
+            ::ket::utility::ranges::transform_inclusive_scan(
               parallel_policy,
-              ::ket::utility::begin(local_state.page_range(page_id)),
-              ::ket::utility::end(local_state.page_range(page_id)),
+              local_state.page_range(page_id),
               ::ket::utility::begin(local_state.page_range(page_id)),
               binary_operation, unary_operation, partial_sum);
             partial_sum = *boost::prior(::ket::utility::end(local_state.page_range(page_id)));
@@ -1149,10 +1159,9 @@ namespace ket
           typedef ::ket::mpi::state<Complex, num_page_qubits, Allocator> local_state_type;
           for (std::size_t page_id = 0u; page_id < local_state_type::num_pages; ++page_id)
           {
-            ::ket::utility::transform_inclusive_scan(
+            ::ket::utility::ranges::transform_inclusive_scan(
               parallel_policy,
-              ::ket::utility::begin(local_state.page_range(page_id)),
-              ::ket::utility::end(local_state.page_range(page_id)),
+              local_state.page_range(page_id),
               ::ket::utility::begin(local_state.page_range(page_id)),
               binary_operation, unary_operation, partial_sum);
             partial_sum = *boost::prior(::ket::utility::end(local_state.page_range(page_id)));
