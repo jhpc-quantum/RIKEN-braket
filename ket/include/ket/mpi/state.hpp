@@ -961,11 +961,13 @@ namespace ket
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state,
           ForwardIterator const d_first,
-          BinaryOperation binary_operation, UnaryOperation unary_operation)
+          BinaryOperation binary_operation, UnaryOperation unary_operation,
+          yampi::environment const& environment)
         {
           return impl(
             typename std::iterator_traits<ForwardIterator>::iterator_category(),
-            parallel_policy, local_state, d_first, binary_operation, unary_operation);
+            parallel_policy, local_state, d_first, binary_operation, unary_operation,
+            environment);
         }
 
         template <
@@ -977,11 +979,12 @@ namespace ket
           ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state,
           ForwardIterator const d_first,
           BinaryOperation binary_operation, UnaryOperation unary_operation,
-          Value const initial_value)
+          Value const initial_value, yampi::environment const& environment)
         {
           return impl(
             typename std::iterator_traits<ForwardIterator>::iterator_category(),
-            parallel_policy, local_state, d_first, binary_operation, unary_operation, initial_value);
+            parallel_policy, local_state, d_first, binary_operation, unary_operation,
+            initial_value, environment);
         }
 
        private:
@@ -994,7 +997,8 @@ namespace ket
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state,
           ForwardIterator d_first,
-          BinaryOperation binary_operation, UnaryOperation unary_operation)
+          BinaryOperation binary_operation, UnaryOperation unary_operation,
+          yampi::environment const&)
         {
           ForwardIterator prev_d_first = d_first;
           d_first
@@ -1030,7 +1034,7 @@ namespace ket
           ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state,
           ForwardIterator d_first,
           BinaryOperation binary_operation, UnaryOperation unary_operation,
-          Value const initial_value)
+          Value const initial_value, yampi::environment const&)
         {
           Complex partial_sum = static_cast<Complex>(initial_value);
 
@@ -1059,7 +1063,8 @@ namespace ket
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state,
           BidirectionalIterator const d_first,
-          BinaryOperation binary_operation, UnaryOperation unary_operation)
+          BinaryOperation binary_operation, UnaryOperation unary_operation,
+          yampi::environment const&)
         {
           d_first
             = ::ket::utility::ranges::transform_inclusive_scan(
@@ -1091,7 +1096,7 @@ namespace ket
           ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state,
           BidirectionalIterator const d_first,
           BinaryOperation binary_operation, UnaryOperation unary_operation,
-          Value const initial_value)
+          Value const initial_value, yampi::environment const&)
         {
           Complex partial_sum = static_cast<Complex>(initial_value);
 
@@ -1121,7 +1126,8 @@ namespace ket
         static Complex call(
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, num_page_qubits, Allocator>& local_state,
-          BinaryOperation binary_operation, UnaryOperation unary_operation)
+          BinaryOperation binary_operation, UnaryOperation unary_operation,
+          yampi::environment const&)
         {
           ::ket::utility::ranges::transform_inclusive_scan(
             parallel_policy,
@@ -1152,7 +1158,7 @@ namespace ket
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, num_page_qubits, Allocator>& local_state,
           BinaryOperation binary_operation, UnaryOperation unary_operation,
-          Value const initial_value)
+          Value const initial_value, yampi::environment const&)
         {
           Complex partial_sum = static_cast<Complex>(initial_value);
 
@@ -1179,7 +1185,7 @@ namespace ket
         template <typename Complex, typename Allocator, typename Compare>
         static typename ::ket::mpi::state<Complex, num_page_qubits, Allocator>::difference_type call(
           ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state,
-          Complex const& value, Compare compare)
+          Complex const& value, Compare compare, yampi::environment const&)
         {
           typedef ::ket::mpi::state<Complex, num_page_qubits, Allocator> local_state_type;
           typedef typename local_state_type::difference_type difference_type;
@@ -1508,11 +1514,13 @@ namespace ket
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, 0, Allocator> const& local_state,
           ForwardIterator const d_first,
-          BinaryOperation binary_operation, UnaryOperation unary_operation)
+          BinaryOperation binary_operation, UnaryOperation unary_operation,
+          yampi::environment const& environment)
         {
           return ::ket::mpi::utility::transform_inclusive_scan(
             parallel_policy,
-            local_state.data(), d_first, binary_operation, unary_operation);
+            local_state.data(), d_first, binary_operation, unary_operation,
+            environment);
         }
 
         template <
@@ -1524,11 +1532,12 @@ namespace ket
           ::ket::mpi::state<Complex, 0, Allocator> const& local_state,
           ForwardIterator const d_first,
           BinaryOperation binary_operation, UnaryOperation unary_operation,
-          Value const initial_value)
+          Value const initial_value, yampi::environment const& environment)
         {
           return ::ket::mpi::utility::transform_inclusive_scan(
             parallel_policy,
-            local_state.data(), d_first, binary_operation, unary_operation, initial_value);
+            local_state.data(), d_first, binary_operation, unary_operation,
+            initial_value, environment);
         }
       };
 
@@ -1543,11 +1552,13 @@ namespace ket
         static Complex call(
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, 0, Allocator>& local_state,
-          BinaryOperation binary_operation, UnaryOperation unary_operation)
+          BinaryOperation binary_operation, UnaryOperation unary_operation,
+          yampi::environment const& environment)
         {
           return ::ket::mpi::utility::transform_inclusive_scan_self(
             parallel_policy,
-            local_state.data(), binary_operation, unary_operation);
+            local_state.data(), binary_operation, unary_operation,
+            environment);
         }
 
         template <
@@ -1558,11 +1569,12 @@ namespace ket
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, 0, Allocator>& local_state,
           BinaryOperation binary_operation, UnaryOperation unary_operation,
-          Value const initial_value)
+          Value const initial_value, yampi::environment const& environment)
         {
           return ::ket::mpi::utility::transform_inclusive_scan_self(
             parallel_policy,
-            local_state.data(), binary_operation, unary_operation, initial_value);
+            local_state.data(), binary_operation, unary_operation,
+            initial_value, environment);
         }
       };
 
@@ -1573,8 +1585,11 @@ namespace ket
         template <typename Complex, typename Allocator, typename Compare>
         static typename ::ket::mpi::state<Complex, 0, Allocator>::difference_type call(
           ::ket::mpi::state<Complex, 0, Allocator> const& local_state,
-          Complex const& value, Compare compare)
-        { return ::ket::mpi::utility::upper_bound(local_state.data(), value, compare); }
+          Complex const& value, Compare compare, yampi::environment const& environment)
+        {
+          return ::ket::mpi::utility::upper_bound(
+            local_state.data(), value, compare, environment);
+        }
       };
     } // namespace state_detail
 
@@ -1688,14 +1703,16 @@ namespace ket
             ParallelPolicy const parallel_policy,
             ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state,
             ForwardIterator const d_first,
-            BinaryOperation binary_operation, UnaryOperation unary_operation)
+            BinaryOperation binary_operation, UnaryOperation unary_operation,
+            yampi::environment const& environment)
           {
             typedef
               ::ket::mpi::state_detail::transform_inclusive_scan<num_page_qubits>
               transform_inclusive_scan_type;
             return transform_inclusive_scan_type::call(
               parallel_policy,
-              local_state, d_first, binary_operation, unary_operation);
+              local_state, d_first, binary_operation, unary_operation,
+              environment);
           }
 
           template <
@@ -1706,14 +1723,15 @@ namespace ket
             ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state,
             ForwardIterator const d_first,
             BinaryOperation binary_operation, UnaryOperation unary_operation,
-            Value const initial_value)
+            Value const initial_value, yampi::environment const& environment)
           {
             typedef
               ::ket::mpi::state_detail::transform_inclusive_scan<num_page_qubits>
               transform_inclusive_scan_type;
             return transform_inclusive_scan_type::call(
               parallel_policy,
-              local_state, d_first, binary_operation, unary_operation, initial_value);
+              local_state, d_first, binary_operation, unary_operation,
+              initial_value, environment);
           }
         };
 
@@ -1731,14 +1749,15 @@ namespace ket
           static Complex call(
             ParallelPolicy const parallel_policy,
             ::ket::mpi::state<Complex, num_page_qubits, Allocator>& local_state,
-            BinaryOperation binary_operation, UnaryOperation unary_operation)
+            BinaryOperation binary_operation, UnaryOperation unary_operation,
+            yampi::environment const& environment)
           {
             typedef
               ::ket::mpi::state_detail::transform_inclusive_scan_self<num_page_qubits>
               transform_inclusive_scan_self_type;
             return transform_inclusive_scan_self_type::call(
               parallel_policy,
-              local_state, binary_operation, unary_operation);
+              local_state, binary_operation, unary_operation, environment);
           }
 
           template <
@@ -1748,14 +1767,14 @@ namespace ket
             ParallelPolicy const parallel_policy,
             ::ket::mpi::state<Complex, num_page_qubits, Allocator>& local_state,
             BinaryOperation binary_operation, UnaryOperation unary_operation,
-            Value const initial_value)
+            Value const initial_value, yampi::environment const& environment)
           {
             typedef
               ::ket::mpi::state_detail::transform_inclusive_scan_self<num_page_qubits>
               transform_inclusive_scan_self_type;
             return transform_inclusive_scan_self_type::call(
               parallel_policy,
-              local_state, binary_operation, unary_operation, initial_value);
+              local_state, binary_operation, unary_operation, initial_value, environment);
           }
         };
 
@@ -1770,12 +1789,12 @@ namespace ket
           template <typename Compare>
           static typename ::ket::mpi::state<Complex, num_page_qubits, Allocator>::difference_type call(
             ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state,
-            Complex const& value, Compare compare)
+            Complex const& value, Compare compare, yampi::environment const& environment)
           {
             typedef
               ::ket::mpi::state_detail::upper_bound<num_page_qubits>
               upper_bound_type;
-            return upper_bound_type::call(local_state, value, compare);
+            return upper_bound_type::call(local_state, value, compare, environment);
           }
         };
       } // namespace dispatch

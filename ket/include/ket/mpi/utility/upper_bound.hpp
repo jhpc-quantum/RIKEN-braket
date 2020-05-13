@@ -5,6 +5,8 @@
 
 # include <boost/range/difference_type.hpp>
 
+# include <yampi/environment.hpp>
+
 # include <ket/utility/begin.hpp>
 # include <ket/utility/end.hpp>
 
@@ -22,7 +24,8 @@ namespace ket
         {
           template <typename LocalState, typename Value, typename Compare>
           static typename boost::range_difference<LocalState>::type call(
-            LocalState const& local_state, Value const& value, Compare compare)
+            LocalState const& local_state, Value const& value, Compare compare,
+            yampi::environment const&)
           {
             return
               std::upper_bound(
@@ -34,10 +37,11 @@ namespace ket
 
       template <typename LocalState, typename Value, typename Compare>
       inline typename boost::range_difference<LocalState>::type upper_bound(
-        LocalState const& local_state, Value const& value, Compare compare)
+        LocalState const& local_state, Value const& value, Compare compare,
+        yampi::environment const& environment)
       {
         return ::ket::mpi::utility::dispatch::upper_bound<LocalState>::call(
-          local_state, value, compare);
+          local_state, value, compare, environment);
       }
     } // namespace utility
   } // namespace mpi

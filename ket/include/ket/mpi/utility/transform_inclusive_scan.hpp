@@ -14,6 +14,8 @@
 # include <boost/range/value_type.hpp>
 # include <boost/utility.hpp> // boost::prior
 
+# include <yampi/environment.hpp>
+
 # include <ket/utility/loop_n.hpp>
 
 # ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
@@ -42,7 +44,8 @@ namespace ket
           static typename boost::range_value<LocalState>::type call(
             ParallelPolicy const parallel_policy,
             LocalState const& local_state, ForwardIterator const d_first,
-            BinaryOperation binary_operation, UnaryOperation unary_operation)
+            BinaryOperation binary_operation, UnaryOperation unary_operation,
+            yampi::environment const&)
           {
             ::ket::utility::ranges::transform_inclusive_scan(
               parallel_policy,
@@ -59,7 +62,7 @@ namespace ket
             ParallelPolicy const parallel_policy,
             LocalState const& local_state, ForwardIterator const d_first,
             BinaryOperation binary_operation, UnaryOperation unary_operation,
-            Value const initial_value)
+            Value const initial_value, yampi::environment const&)
           {
             ::ket::utility::ranges::transform_inclusive_scan(
               parallel_policy,
@@ -80,12 +83,13 @@ namespace ket
       transform_inclusive_scan(
         ParallelPolicy const parallel_policy,
         LocalState const& local_state, ForwardIterator const d_first,
-        BinaryOperation binary_operation, UnaryOperation unary_operation)
+        BinaryOperation binary_operation, UnaryOperation unary_operation,
+        yampi::environment const& environment)
       {
         return static_cast<Value>(
           ::ket::mpi::utility::dispatch::transform_inclusive_scan<LocalState>::call(
             parallel_policy,
-            local_state, d_first, binary_operation, unary_operation));
+            local_state, d_first, binary_operation, unary_operation, environment));
       }
 
       template <
@@ -93,12 +97,13 @@ namespace ket
         typename BinaryOperation, typename UnaryOperation>
       inline Value transform_inclusive_scan(
         LocalState const& local_state, OutputIterator const d_first,
-        BinaryOperation binary_operation, UnaryOperation unary_operation)
+        BinaryOperation binary_operation, UnaryOperation unary_operation,
+        yampi::environment const& environment)
       {
         return static_cast<Value>(
           ::ket::mpi::utility::dispatch::transform_inclusive_scan<LocalState>::call(
             ::ket::utility::policy::make_sequential(),
-            local_state, d_first, binary_operation, unary_operation));
+            local_state, d_first, binary_operation, unary_operation, environment));
       }
 
       template <
@@ -109,12 +114,14 @@ namespace ket
         ParallelPolicy const parallel_policy,
         LocalState const& local_state, ForwardIterator const d_first,
         BinaryOperation binary_operation, UnaryOperation unary_operation,
-        Value2 const initial_value)
+        Value2 const initial_value,
+        yampi::environment const& environment)
       {
         return static_cast<Value1>(
           ::ket::mpi::utility::dispatch::transform_inclusive_scan<LocalState>::call(
             parallel_policy,
-            local_state, d_first, binary_operation, unary_operation, initial_value));
+            local_state, d_first, binary_operation, unary_operation,
+            initial_value, environment));
       }
 
       template <
@@ -126,12 +133,14 @@ namespace ket
       transform_inclusive_scan(
         LocalState const& local_state, OutputIterator const d_first,
         BinaryOperation binary_operation, UnaryOperation unary_operation,
-        Value2 const initial_value)
+        Value2 const initial_value,
+        yampi::environment const& environment)
       {
         return static_cast<Value1>(
           ::ket::mpi::utility::dispatch::transform_inclusive_scan<LocalState>::call(
             ::ket::utility::policy::make_sequential(),
-            local_state, d_first, binary_operation, unary_operation, initial_value));
+            local_state, d_first, binary_operation, unary_operation,
+            initial_value, environment));
       }
     } // namespace utility
   } // namespace mpi
