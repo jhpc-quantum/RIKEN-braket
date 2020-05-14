@@ -330,7 +330,7 @@ namespace ket
 #     ifndef BOOST_NO_CXX11_LAMBDAS
             futures.push_back(std::async(
               std::launch::async,
-              [&function, first_count, last_count, thread_index]()
+              [&function, first_count, last_count, thread_index]
               {
                 for (Integer count = first_count; count < last_count; ++count)
                   function(count, static_cast<int>(thread_index));
@@ -354,7 +354,7 @@ namespace ket
 
 #     ifndef BOOST_NO_CXX11_RANGE_BASED_FOR
           for (std::future<void> const& future: futures)
-            futures.wait();
+            future.wait();
 #     else // BOOST_NO_CXX11_RANGE_BASED_FOR
           typedef std::vector<std::future<void> >::const_iterator futures_iterator;
 
@@ -379,7 +379,7 @@ namespace ket
 
 #     ifndef BOOST_NO_CXX11_LAMBDAS
             threads.create_thread(
-              [&function, first_count, last_count, thread_index]()
+              [&function, first_count, last_count, thread_index]
               {
                 for (Integer count = first_count; count < last_count; ++count)
                   function(count, static_cast<int>(thread_index));
@@ -440,12 +440,13 @@ namespace ket
     {
 # if defined(_OPENMP) && defined(KET_USE_OPENMP)
       template <typename NumThreads>
-      struct execute< ::ket::utility::policy::parallel<NumThreads> >
+      class execute< ::ket::utility::policy::parallel<NumThreads> >
       {
+       public:
         template <typename Function>
-        static void call(
+        void invoke(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
-          KET_RVALUE_REFERENCE_OR_COPY(Function) function)
+          KET_RVALUE_REFERENCE_OR_COPY(Function) function) const
         {
           assert(::ket::utility::num_threads(parallel_policy) > 0u);
 
@@ -492,12 +493,62 @@ namespace ket
             throw *maybe_error;
         }
       };
-# else // defined(_OPENMP) && defined(KET_USE_OPENMP)
-      template <typename NumThreads>
-      struct execute< ::ket::utility::policy::parallel<NumThreads> >
+
+      template <typename NumThreads, typename Integer>
+      struct loop_n_in_execute< ::ket::utility::policy::parallel<NumThreads>, Integer>
       {
         template <typename Function>
         static void call(
+          ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
+          Integer const n, int const,
+          KET_RVALUE_REFERENCE_OR_COPY(Function) function)
+        {
+#   pragma omp for
+          for (Integer count = 0; count < n; ++count)
+            function(count);
+        }
+      };
+
+      template <typename NumThreads>
+      struct barrier< ::ket::utility::policy::parallel<NumThreads> >
+      {
+        static void call(
+          ::ket::utility::policy::parallel<NumThreads> const parallel_policy)
+        {
+#   pragma omp barrier
+        }
+      };
+
+      template <typename NumThreads>
+      struct single_execute< ::ket::utility::policy::parallel<NumThreads> >
+      {
+        template <typename Function>
+        static void call(
+          ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
+          KET_RVALUE_REFERENCE_OR_COPY(Function) function)
+        {
+#   pragma omp single
+          {
+            function();
+          }
+        }
+      };
+# else // defined(_OPENMP) && defined(KET_USE_OPENMP)
+      template <typename NumThreads>
+      class execute< ::ket::utility::policy::parallel<NumThreads> >
+      {
+        /*
+        std::mutex mutex_;
+        std::conditional_variable cond_;
+        */
+
+       public:
+         /*
+        execute() { }
+        */
+
+        template <typename Function>
+        void invoke(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
           KET_RVALUE_REFERENCE_OR_COPY(Function) function)
         {
@@ -514,7 +565,7 @@ namespace ket
 #     ifndef BOOST_NO_CXX11_LAMBDAS
             futures.push_back(std::async(
               std::launch::async,
-              [&function, thread_index]()
+              [&function, thread_index]
               { function(static_cast<int>(thread_index)); }));
 #     else // BOOST_NO_CXX11_LAMBDAS
             futures.push_back(std::async(
@@ -528,7 +579,7 @@ namespace ket
 
 #     ifndef BOOST_NO_CXX11_RANGE_BASED_FOR
           for (std::future<void> const& future: futures)
-            futures.wait();
+            future.wait();
 #     else // BOOST_NO_CXX11_RANGE_BASED_FOR
           typedef std::vector< std::future<void> >::const_iterator futures_iterator;
 
@@ -545,7 +596,7 @@ namespace ket
           {
 #     ifndef BOOST_NO_CXX11_LAMBDAS
             threads.create_thread(
-              [&function, thread_index]()
+              [&function, thread_index]
               { function(static_cast<int>(thread_index)); });
 #     else // BOOST_NO_CXX11_LAMBDAS
             threads.create_thread(
@@ -560,6 +611,51 @@ namespace ket
 #   endif // BOOST_NO_CXX11_HDR_FUTURE
         }
       };
+
+      template <typename NumThreads, typename Integer>
+      struct loop_n_in_execute< ::ket::utility::policy::parallel<NumThreads>, Integer>
+      {
+        template <typename Function>
+        static void call(
+          ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
+          Integer const n, int const thread_index,
+          KET_RVALUE_REFERENCE_OR_COPY(Function) function)
+        {
+          NumThreads const num_threads = ::ket::utility::num_threads(parallel_policy);
+          NumThreads const local_num_counts = n / num_threads;
+          NumThreads const remainder = n % num_threads;
+          Integer const first_count
+            = static_cast<Integer>(local_num_counts * thread_index + std::min(remainder, thread_index));
+          Integer const last_count
+            = static_cast<Integer>(local_num_counts * (thread_index+1) + std::min(remainder, thread_index+1));
+
+          for (Integer count = first_count; count < last_count; ++count)
+            function(count);
+        }
+      };
+
+      /*
+      template <typename NumThreads>
+      struct barrier< ::ket::utility::policy::parallel<NumThreads> >
+      {
+        static void call(
+          ::ket::utility::policy::parallel<NumThreads> const parallel_policy)
+        {
+        }
+      };
+
+      template <typename NumThreads>
+      struct single_execute< ::ket::utility::policy::parallel<NumThreads> >
+      {
+        template <typename Function>
+        static void call(
+          ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
+          KET_RVALUE_REFERENCE_OR_COPY(Function) function)
+        {
+          function();
+        }
+      };
+      */
 # endif // defined(_OPENMP) && defined(KET_USE_OPENMP)
     } // namespace dispatch
 

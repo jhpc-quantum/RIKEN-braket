@@ -42,6 +42,7 @@
 
 # include <boost/range/sub_range.hpp>
 # include <boost/range/iterator_range.hpp>
+# include <boost/range/iterator.hpp>
 
 # include <yampi/environment.hpp>
 # include <yampi/buffer.hpp>
@@ -1119,6 +1120,185 @@ namespace ket
       template <int num_page_qubits>
       struct transform_inclusive_scan_self
       {
+# ifdef KET_USE_PARALLEL_EXECUTE_FOR_TRANSFORM_INCLUSIVE_SCAN
+        template <
+          typename ParallelPolicy,
+          typename Complex, typename Allocator,
+          typename BinaryOperation, typename UnaryOperation>
+        static Complex call(
+          ParallelPolicy const parallel_policy,
+          ::ket::mpi::state<Complex, num_page_qubits, Allocator>& local_state,
+          BinaryOperation binary_operation, UnaryOperation unary_operation,
+          yampi::environment const&)
+        {
+          typedef ::ket::mpi::state<Complex, num_page_qubits, Allocator> local_state_type;
+          unsigned int num_threads = ::ket::utility::num_threads(parallel_policy);
+          std::vector<Complex> partial_sums(num_threads * local_state_type::num_pages);
+
+          ::ket::utility::execute(
+            parallel_policy,
+            [num_threads, &partial_sums,
+             parallel_policy, &local_state, binary_operation, unary_operation](
+              int const thread_index)
+            {
+              for (std::size_t page_id = 0u; page_id < local_state_type::num_pages; ++page_id)
+              {
+                typedef typename local_state_type::page_range_type page_range_type;
+                typedef typename boost::range_iterator<page_range_type>::type page_iterator;
+                page_iterator const first
+                  = ::ket::utility::begin(local_state.page_range(page_id));
+                bool is_called = false;
+
+                typedef
+                  typename std::iterator_traits<page_iterator>::difference_type
+                  difference_type;
+                ::ket::utility::loop_n_in_execute(
+                  parallel_policy,
+                  boost::size(local_state.page_range(page_id)), thread_index,
+                  [thread_index, page_id, first, &is_called, num_threads, &partial_sums,
+                   binary_operation, unary_operation](
+                    difference_type const n)
+                  {
+                    if (not is_called)
+                    {
+                      partial_sums[num_threads * page_id + thread_index]
+                        = unary_operation(first[n]);
+                      is_called = true;
+                    }
+                    else
+                      partial_sums[num_threads * page_id + thread_index]
+                        = binary_operation(
+                            partial_sums[num_threads * page_id + thread_index],
+                            unary_operation(first[n]));
+
+                    first[n] = partial_sums[num_threads * page_id + thread_index];
+                  });
+              }
+
+              post_process(
+                parallel_policy, local_state, binary_operation,
+                partial_sums, thread_index);
+            });
+
+          return partial_sums.back();
+        }
+
+        template <
+          typename ParallelPolicy,
+          typename Complex, typename Allocator,
+          typename BinaryOperation, typename UnaryOperation, typename Value>
+        static Complex call(
+          ParallelPolicy const parallel_policy,
+          ::ket::mpi::state<Complex, num_page_qubits, Allocator>& local_state,
+          BinaryOperation binary_operation, UnaryOperation unary_operation,
+          Value const initial_value, yampi::environment const&)
+        {
+          typedef ::ket::mpi::state<Complex, num_page_qubits, Allocator> local_state_type;
+          unsigned int num_threads = ::ket::utility::num_threads(parallel_policy);
+          std::vector<Complex> partial_sums(num_threads * local_state_type::num_pages);
+
+          ::ket::utility::execute(
+            parallel_policy,
+            [num_threads, &partial_sums,
+             parallel_policy, &local_state, binary_operation, unary_operation,
+             initial_value](
+              int const thread_index)
+            {
+              for (std::size_t page_id = 0u; page_id < local_state_type::num_pages; ++page_id)
+              {
+                typedef typename local_state_type::page_range_type page_range_type;
+                typedef typename boost::range_iterator<page_range_type>::type page_iterator;
+                page_iterator const first
+                  = ::ket::utility::begin(local_state.page_range(page_id));
+                bool is_called = false;
+
+                typedef
+                  typename std::iterator_traits<page_iterator>::difference_type
+                  difference_type;
+                ::ket::utility::loop_n_in_execute(
+                  parallel_policy,
+                  boost::size(local_state.page_range(page_id)), thread_index,
+                  [thread_index, page_id, first, &is_called, num_threads, &partial_sums,
+                   binary_operation, unary_operation, initial_value](
+                    difference_type const n)
+                  {
+                    if (not is_called)
+                    {
+                      partial_sums[num_threads * page_id + thread_index]
+                        = page_id == 0 && thread_index == 0
+                          ? binary_operation(initial_value, unary_operation(first[n]))
+                          : unary_operation(first[n]);
+                      is_called = true;
+                    }
+                    else
+                      partial_sums[num_threads * page_id + thread_index]
+                        = binary_operation(
+                            partial_sums[num_threads * page_id + thread_index],
+                            unary_operation(first[n]));
+
+                    first[n] = partial_sums[num_threads * page_id + thread_index];
+                  });
+              }
+
+              post_process(
+                parallel_policy, local_state, binary_operation,
+                partial_sums, thread_index);
+            });
+
+          return partial_sums.back();
+        }
+
+       private:
+        template <
+          typename ParallelPolicy,
+          typename Complex, typename Allocator, typename BinaryOperation>
+        static void post_process(
+          ParallelPolicy const parallel_policy,
+          ::ket::mpi::state<Complex, num_page_qubits, Allocator>& local_state,
+          BinaryOperation binary_operation,
+          std::vector<Complex>& partial_sums, int const thread_index)
+        {
+          ::ket::utility::barrier();
+
+          ::ket::utility::single_execute(
+            parallel_policy,
+            [&partial_sums, binary_operation]
+            {
+              std::partial_sum(
+                ::ket::utility::begin(partial_sums), ::ket::utility::end(partial_sums),
+                ::ket::utility::begin(partial_sums), binary_operation);
+            });
+
+          unsigned int num_threads = ::ket::utility::num_threads(parallel_policy);
+          typedef ::ket::mpi::state<Complex, num_page_qubits, Allocator> local_state_type;
+          for (std::size_t page_id = 0u; page_id < local_state_type::num_pages; ++page_id)
+          {
+            if (thread_index == 0 and page_id == 0)
+              continue;
+
+            typedef typename local_state_type::page_range_type page_range_type;
+            typedef typename boost::range_iterator<page_range_type>::type page_iterator;
+            page_iterator const first
+              = ::ket::utility::begin(local_state.page_range(page_id));
+
+            typedef
+              typename std::iterator_traits<page_iterator>::difference_type
+              difference_type;
+            ::ket::utility::loop_n_in_execute(
+              parallel_policy,
+              boost::size(local_state.page_range(page_id)), thread_index,
+              [thread_index, page_id, first, num_threads, &partial_sums,
+               binary_operation](
+                difference_type const n)
+              {
+                first[n]
+                  = binary_operation(
+                      partial_sums[num_threads * page_id + thread_index - 1],
+                      first[n]);
+              });
+          }
+        }
+# else // KET_USE_PARALLEL_EXECUTE_FOR_TRANSFORM_INCLUSIVE_SCAN
         template <
           typename ParallelPolicy,
           typename Complex, typename Allocator,
@@ -1175,6 +1355,7 @@ namespace ket
 
           return partial_sum;
         }
+# endif // KET_USE_PARALLEL_EXECUTE_FOR_TRANSFORM_INCLUSIVE_SCAN
       };
 
 

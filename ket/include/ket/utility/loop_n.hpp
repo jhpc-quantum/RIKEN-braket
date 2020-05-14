@@ -146,27 +146,90 @@ namespace ket
     namespace dispatch
     {
       template <typename ParallelPolicy>
-      struct execute
+      class execute;
+
+      template <>
+      class execute< ::ket::utility::policy::sequential >
+      {
+       public:
+        template <typename ParallelPolicy, typename Function>
+        void invoke(
+          ParallelPolicy const, KET_RVALUE_REFERENCE_OR_COPY(Function) function) const
+        { function(0); }
+      };
+
+      template <typename ParallelPolicy, typename Integer>
+      struct loop_n_in_execute
       {
         template <typename ParallelPolicy_, typename Function>
         static void call(
-          ParallelPolicy_ const, KET_RVALUE_REFERENCE_OR_COPY(Function) function);
+          ParallelPolicy_ const,
+          Integer const, int const, KET_RVALUE_REFERENCE_OR_COPY(Function) function);
       };
 
-      template <>
-      struct execute< ::ket::utility::policy::sequential >
+      template <typename Integer>
+      struct loop_n_in_execute< ::ket::utility::policy::sequential, Integer >
       {
         template <typename ParallelPolicy, typename Function>
         static void call(
-          ParallelPolicy const, KET_RVALUE_REFERENCE_OR_COPY(Function) function)
-        { function(0); }
+          ParallelPolicy const, Integer const n, int const,
+          KET_RVALUE_REFERENCE_OR_COPY(Function) function)
+        {
+# ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
+          if (n > 0)
+          {
+            for (Integer count = 0; count < n-1; ++count)
+              function(count);
+            std::forward<Function>(function)(n-1);
+          }
+# else // BOOST_NO_CXX11_RVALUE_REFERENCES
+          for (Integer count = 0; count < n; ++count)
+            function(count);
+# endif // BOOST_NO_CXX11_RVALUE_REFERENCES
+        }
+      };
+
+      template <typename ParallelPolicy>
+      struct barrier
+      {
+        template <typename ParallelPolicy_>
+        static void call(ParallelPolicy_ const);
+      };
+
+      template <>
+      struct barrier< ::ket::utility::policy::sequential >
+      {
+        template <typename ParallelPolicy>
+        static void call(ParallelPolicy const) { }
+      };
+
+      template <typename ParallelPolicy>
+      struct single_execute
+      {
+        template <typename ParallelPolicy_, typename Function>
+        static void call(
+          ParallelPolicy_ const,
+          KET_RVALUE_REFERENCE_OR_COPY(Function) function);
+      };
+
+      template <>
+      struct single_execute< ::ket::utility::policy::sequential >
+      {
+        template <typename ParallelPolicy, typename Function>
+        static void call(
+          ParallelPolicy const,
+          KET_RVALUE_REFERENCE_OR_COPY(Function) function)
+        { function(); }
       };
     } // namespace dispatch
 
     template <typename Function>
     inline void execute(KET_RVALUE_REFERENCE_OR_COPY(Function) function)
     {
-      ::ket::utility::dispatch::execute< ::ket::utility::policy::sequential >::call(
+      typedef
+        ::ket::utility::dispatch::execute< ::ket::utility::policy::sequential >
+        execute_type;
+      execute_type().invoke(
         ::ket::utility::policy::sequential(),
         KET_FORWARD_OR_COPY(Function, function));
     }
@@ -176,7 +239,57 @@ namespace ket
       ParallelPolicy const parallel_policy,
       KET_RVALUE_REFERENCE_OR_COPY(Function) function)
     {
-      ::ket::utility::dispatch::execute<ParallelPolicy>::call(
+      typedef ::ket::utility::dispatch::execute<ParallelPolicy> execute_type;
+      execute_type().invoke(
+        parallel_policy, KET_FORWARD_OR_COPY(Function, function));
+    }
+
+    template <typename Integer, typename Function>
+    inline void loop_n_in_execute(
+      Integer const n, int const thread_index,
+      KET_RVALUE_REFERENCE_OR_COPY(Function) function)
+    {
+      ::ket::utility::dispatch
+      ::loop_n_in_execute< ::ket::utility::policy::sequential, Integer >::call(
+        ::ket::utility::policy::sequential(),
+        n, thread_index, KET_FORWARD_OR_COPY(Function, function));
+    }
+
+    template <typename ParallelPolicy, typename Integer, typename Function>
+    inline void loop_n_in_execute(
+      ParallelPolicy const parallel_policy,
+      Integer const n, int const thread_index,
+      KET_RVALUE_REFERENCE_OR_COPY(Function) function)
+    {
+      ::ket::utility::dispatch
+      ::loop_n_in_execute<ParallelPolicy, Integer>::call(
+        parallel_policy, n, thread_index, KET_FORWARD_OR_COPY(Function, function));
+    }
+
+    inline void barrier()
+    {
+      ::ket::utility::dispatch::barrier< ::ket::utility::policy::sequential >::call(
+        ::ket::utility::policy::sequential());
+    }
+
+    template <typename ParallelPolicy>
+    inline void barrier(ParallelPolicy const parallel_policy)
+    { ::ket::utility::dispatch::barrier<ParallelPolicy>::call(parallel_policy); }
+
+    template <typename Function>
+    inline void single_execute(KET_RVALUE_REFERENCE_OR_COPY(Function) function)
+    {
+      ::ket::utility::dispatch::single_execute< ::ket::utility::policy::sequential >::call(
+        ::ket::utility::policy::sequential(),
+        KET_FORWARD_OR_COPY(Function, function));
+    }
+
+    template <typename ParallelPolicy, typename Function>
+    inline void single_execute(
+      ParallelPolicy const parallel_policy,
+      KET_RVALUE_REFERENCE_OR_COPY(Function) function)
+    {
+      ::ket::utility::dispatch::single_execute<ParallelPolicy>::call(
         parallel_policy, KET_FORWARD_OR_COPY(Function, function));
     }
 
