@@ -974,13 +974,13 @@ namespace ket
         template <
           typename ParallelPolicy,
           typename Complex, typename Allocator, typename ForwardIterator,
-          typename BinaryOperation, typename UnaryOperation, typename Value>
+          typename BinaryOperation, typename UnaryOperation>
         static Complex call(
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state,
           ForwardIterator const d_first,
           BinaryOperation binary_operation, UnaryOperation unary_operation,
-          Value const initial_value, yampi::environment const& environment)
+          Complex const initial_value, yampi::environment const& environment)
         {
           return impl(
             typename std::iterator_traits<ForwardIterator>::iterator_category(),
@@ -1028,14 +1028,14 @@ namespace ket
         template <
           typename ParallelPolicy,
           typename Complex, typename Allocator, typename ForwardIterator,
-          typename BinaryOperation, typename UnaryOperation, typename Value>
+          typename BinaryOperation, typename UnaryOperation>
         static Complex impl(
           std::forward_iterator_tag const,
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state,
           ForwardIterator d_first,
           BinaryOperation binary_operation, UnaryOperation unary_operation,
-          Value const initial_value, yampi::environment const&)
+          Complex const initial_value, yampi::environment const&)
         {
           Complex partial_sum = static_cast<Complex>(initial_value);
 
@@ -1090,14 +1090,14 @@ namespace ket
         template <
           typename ParallelPolicy,
           typename Complex, typename Allocator, typename BidirectionalIterator,
-          typename BinaryOperation, typename UnaryOperation, typename Value>
+          typename BinaryOperation, typename UnaryOperation>
         static Complex impl(
           std::bidirectional_iterator_tag const,
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state,
           BidirectionalIterator const d_first,
           BinaryOperation binary_operation, UnaryOperation unary_operation,
-          Value const initial_value, yampi::environment const&)
+          Complex const initial_value, yampi::environment const&)
         {
           Complex partial_sum = static_cast<Complex>(initial_value);
 
@@ -1186,12 +1186,12 @@ namespace ket
         template <
           typename ParallelPolicy,
           typename Complex, typename Allocator,
-          typename BinaryOperation, typename UnaryOperation, typename Value>
+          typename BinaryOperation, typename UnaryOperation>
         static Complex call(
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, num_page_qubits, Allocator>& local_state,
           BinaryOperation binary_operation, UnaryOperation unary_operation,
-          Value const initial_value, yampi::environment const&)
+          Complex const initial_value, yampi::environment const&)
         {
           typedef ::ket::mpi::state<Complex, num_page_qubits, Allocator> local_state_type;
           unsigned int num_threads = ::ket::utility::num_threads(parallel_policy);
@@ -1273,9 +1273,6 @@ namespace ket
           typedef ::ket::mpi::state<Complex, num_page_qubits, Allocator> local_state_type;
           for (std::size_t page_id = 0u; page_id < local_state_type::num_pages; ++page_id)
           {
-            if (thread_index == 0 and page_id == 0)
-              continue;
-
             typedef typename local_state_type::page_range_type page_range_type;
             typedef typename boost::range_iterator<page_range_type>::type page_iterator;
             page_iterator const first
@@ -1291,9 +1288,12 @@ namespace ket
                binary_operation](
                 difference_type const n)
               {
+                if (thread_index == 0u and page_id == 0u)
+                  return;
+
                 first[n]
                   = binary_operation(
-                      partial_sums[num_threads * page_id + thread_index - 1],
+                      partial_sums[num_threads * page_id + thread_index - 1u],
                       first[n]);
               });
           }
@@ -1333,12 +1333,12 @@ namespace ket
         template <
           typename ParallelPolicy,
           typename Complex, typename Allocator,
-          typename BinaryOperation, typename UnaryOperation, typename Value>
+          typename BinaryOperation, typename UnaryOperation>
         static Complex call(
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, num_page_qubits, Allocator>& local_state,
           BinaryOperation binary_operation, UnaryOperation unary_operation,
-          Value const initial_value, yampi::environment const&)
+          Complex const initial_value, yampi::environment const&)
         {
           Complex partial_sum = static_cast<Complex>(initial_value);
 
@@ -1707,13 +1707,13 @@ namespace ket
         template <
           typename ParallelPolicy,
           typename Complex, typename Allocator, typename ForwardIterator,
-          typename BinaryOperation, typename UnaryOperation, typename Value>
+          typename BinaryOperation, typename UnaryOperation>
         static Complex call(
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, 0, Allocator> const& local_state,
           ForwardIterator const d_first,
           BinaryOperation binary_operation, UnaryOperation unary_operation,
-          Value const initial_value, yampi::environment const& environment)
+          Complex const initial_value, yampi::environment const& environment)
         {
           return ::ket::mpi::utility::transform_inclusive_scan(
             parallel_policy,
@@ -1745,12 +1745,12 @@ namespace ket
         template <
           typename ParallelPolicy,
           typename Complex, typename Allocator,
-          typename BinaryOperation, typename UnaryOperation, typename Value>
+          typename BinaryOperation, typename UnaryOperation>
         static Complex call(
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, 0, Allocator>& local_state,
           BinaryOperation binary_operation, UnaryOperation unary_operation,
-          Value const initial_value, yampi::environment const& environment)
+          Complex const initial_value, yampi::environment const& environment)
         {
           return ::ket::mpi::utility::transform_inclusive_scan_self(
             parallel_policy,
@@ -1898,13 +1898,13 @@ namespace ket
 
           template <
             typename ParallelPolicy, typename ForwardIterator,
-            typename BinaryOperation, typename UnaryOperation, typename Value>
+            typename BinaryOperation, typename UnaryOperation>
           static Complex call(
             ParallelPolicy const parallel_policy,
             ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state,
             ForwardIterator const d_first,
             BinaryOperation binary_operation, UnaryOperation unary_operation,
-            Value const initial_value, yampi::environment const& environment)
+            Complex const initial_value, yampi::environment const& environment)
           {
             typedef
               ::ket::mpi::state_detail::transform_inclusive_scan<num_page_qubits>
@@ -1943,12 +1943,12 @@ namespace ket
 
           template <
             typename ParallelPolicy,
-            typename BinaryOperation, typename UnaryOperation, typename Value>
+            typename BinaryOperation, typename UnaryOperation>
           static Complex call(
             ParallelPolicy const parallel_policy,
             ::ket::mpi::state<Complex, num_page_qubits, Allocator>& local_state,
             BinaryOperation binary_operation, UnaryOperation unary_operation,
-            Value const initial_value, yampi::environment const& environment)
+            Complex const initial_value, yampi::environment const& environment)
           {
             typedef
               ::ket::mpi::state_detail::transform_inclusive_scan_self<num_page_qubits>
