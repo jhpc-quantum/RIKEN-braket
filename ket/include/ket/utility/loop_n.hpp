@@ -94,18 +94,18 @@ namespace ket
       template <typename ParallelPolicy, typename Integer>
       struct loop_n
       {
-        template <typename ParallelPolicy_, typename Function>
+        template <typename Function>
         static void call(
-          ParallelPolicy_ const, Integer const n,
+          ParallelPolicy const, Integer const n,
           KET_RVALUE_REFERENCE_OR_COPY(Function) function);
       };
 
       template <typename Integer>
       struct loop_n< ::ket::utility::policy::sequential, Integer>
       {
-        template <typename ParallelPolicy, typename Function>
+        template <typename Function>
         static void call(
-          ParallelPolicy const, Integer const n,
+          ::ket::utility::policy::sequential const, Integer const n,
           KET_RVALUE_REFERENCE_OR_COPY(Function) function)
         {
 # ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
@@ -152,39 +152,41 @@ namespace ket
       class execute< ::ket::utility::policy::sequential >
       {
        public:
-        template <typename ParallelPolicy, typename Function>
+        template <typename Function>
         void invoke(
-          ParallelPolicy const, KET_RVALUE_REFERENCE_OR_COPY(Function) function) const
-        { function(0); }
+          ::ket::utility::policy::sequential const,
+          KET_RVALUE_REFERENCE_OR_COPY(Function) function)
+        { function(0, *this); }
       };
 
-      template <typename ParallelPolicy, typename Integer>
+      template <typename ParallelPolicy>
       struct loop_n_in_execute
       {
-        template <typename ParallelPolicy_, typename Function>
+        template <typename Integer, typename Function>
         static void call(
-          ParallelPolicy_ const,
+          ParallelPolicy const,
           Integer const, int const, KET_RVALUE_REFERENCE_OR_COPY(Function) function);
       };
 
-      template <typename Integer>
-      struct loop_n_in_execute< ::ket::utility::policy::sequential, Integer >
+      template <>
+      struct loop_n_in_execute< ::ket::utility::policy::sequential >
       {
-        template <typename ParallelPolicy, typename Function>
+        template <typename Integer, typename Function>
         static void call(
-          ParallelPolicy const, Integer const n, int const,
+          ::ket::utility::policy::sequential const,
+          Integer const n, int const thread_index,
           KET_RVALUE_REFERENCE_OR_COPY(Function) function)
         {
 # ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
           if (n > 0)
           {
             for (Integer count = 0; count < n-1; ++count)
-              function(count);
-            std::forward<Function>(function)(n-1);
+              function(count, thread_index);
+            std::forward<Function>(function)(n-1, thread_index);
           }
 # else // BOOST_NO_CXX11_RVALUE_REFERENCES
           for (Integer count = 0; count < n; ++count)
-            function(count);
+            function(count, thread_index);
 # endif // BOOST_NO_CXX11_RVALUE_REFERENCES
         }
       };
@@ -192,32 +194,35 @@ namespace ket
       template <typename ParallelPolicy>
       struct barrier
       {
-        template <typename ParallelPolicy_>
-        static void call(ParallelPolicy_ const);
+        template <typename Executor>
+        static void call(ParallelPolicy const, Executor&);
       };
 
       template <>
       struct barrier< ::ket::utility::policy::sequential >
       {
-        template <typename ParallelPolicy>
-        static void call(ParallelPolicy const) { }
+        static void call(
+          ::ket::utility::policy::sequential const,
+          ::ket::utility::dispatch::execute< ::ket::utility::policy::sequential >&)
+        { }
       };
 
       template <typename ParallelPolicy>
       struct single_execute
       {
-        template <typename ParallelPolicy_, typename Function>
+        template <typename Executor, typename Function>
         static void call(
-          ParallelPolicy_ const,
+          ParallelPolicy const, Executor&,
           KET_RVALUE_REFERENCE_OR_COPY(Function) function);
       };
 
       template <>
       struct single_execute< ::ket::utility::policy::sequential >
       {
-        template <typename ParallelPolicy, typename Function>
+        template <typename Function>
         static void call(
-          ParallelPolicy const,
+          ::ket::utility::policy::sequential const,
+          ::ket::utility::dispatch::execute< ::ket::utility::policy::sequential >&,
           KET_RVALUE_REFERENCE_OR_COPY(Function) function)
         { function(); }
       };
@@ -230,8 +235,7 @@ namespace ket
         ::ket::utility::dispatch::execute< ::ket::utility::policy::sequential >
         execute_type;
       execute_type().invoke(
-        ::ket::utility::policy::sequential(),
-        KET_FORWARD_OR_COPY(Function, function));
+        ::ket::utility::policy::sequential(), KET_FORWARD_OR_COPY(Function, function));
     }
 
     template <typename ParallelPolicy, typename Function>
@@ -250,7 +254,7 @@ namespace ket
       KET_RVALUE_REFERENCE_OR_COPY(Function) function)
     {
       ::ket::utility::dispatch
-      ::loop_n_in_execute< ::ket::utility::policy::sequential, Integer >::call(
+      ::loop_n_in_execute< ::ket::utility::policy::sequential >::call(
         ::ket::utility::policy::sequential(),
         n, thread_index, KET_FORWARD_OR_COPY(Function, function));
     }
@@ -262,35 +266,37 @@ namespace ket
       KET_RVALUE_REFERENCE_OR_COPY(Function) function)
     {
       ::ket::utility::dispatch
-      ::loop_n_in_execute<ParallelPolicy, Integer>::call(
+      ::loop_n_in_execute<ParallelPolicy>::call(
         parallel_policy, n, thread_index, KET_FORWARD_OR_COPY(Function, function));
     }
 
-    inline void barrier()
+    template <typename Executor>
+    inline void barrier(Executor& executor)
     {
       ::ket::utility::dispatch::barrier< ::ket::utility::policy::sequential >::call(
-        ::ket::utility::policy::sequential());
+        ::ket::utility::policy::sequential(), executor);
     }
 
-    template <typename ParallelPolicy>
-    inline void barrier(ParallelPolicy const parallel_policy)
-    { ::ket::utility::dispatch::barrier<ParallelPolicy>::call(parallel_policy); }
+    template <typename ParallelPolicy, typename Executor>
+    inline void barrier(ParallelPolicy const parallel_policy, Executor& executor)
+    { ::ket::utility::dispatch::barrier<ParallelPolicy>::call(parallel_policy, executor); }
 
-    template <typename Function>
-    inline void single_execute(KET_RVALUE_REFERENCE_OR_COPY(Function) function)
+    template <typename Executor, typename Function>
+    inline void single_execute(
+      Executor& executor, KET_RVALUE_REFERENCE_OR_COPY(Function) function)
     {
       ::ket::utility::dispatch::single_execute< ::ket::utility::policy::sequential >::call(
-        ::ket::utility::policy::sequential(),
+        ::ket::utility::policy::sequential(), executor,
         KET_FORWARD_OR_COPY(Function, function));
     }
 
-    template <typename ParallelPolicy, typename Function>
+    template <typename ParallelPolicy, typename Executor, typename Function>
     inline void single_execute(
-      ParallelPolicy const parallel_policy,
+      ParallelPolicy const parallel_policy, Executor& executor,
       KET_RVALUE_REFERENCE_OR_COPY(Function) function)
     {
       ::ket::utility::dispatch::single_execute<ParallelPolicy>::call(
-        parallel_policy, KET_FORWARD_OR_COPY(Function, function));
+        parallel_policy, executor, KET_FORWARD_OR_COPY(Function, function));
     }
 
 

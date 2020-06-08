@@ -21,8 +21,11 @@
 #   endif
 #   include <boost/optional.hpp>
 # else
-#   ifndef BOOST_NO_CXX11_HDR_THREAD
+#   if !defined(BOOST_NO_CXX11_HDR_THREAD) && !defined(BOOST_NO_CXX11_HDR_FUTURE) && !defined(BOOST_NO_CXX11_HDR_MUTEX) && !defined(BOOST_NO_CXX11_HDR_CONDITION_VARIABLE)
 #     include <thread>
+#     include <future>
+#     include <mutex>
+#     include <condition_variable>
 #   else
 #     include <boost/thread/thread.hpp>
 #   endif
@@ -413,25 +416,31 @@ namespace ket
     {
 # if !defined(_OPENMP) || !defined(KET_USE_OPENMP)
 #   ifdef BOOST_NO_CXX11_LAMBDAS
-      template <typename Function>
+      template <typename Function, typename Executor>
       struct call_execute
       {
         Function function_;
         int thread_index_;
+        Executor& executor_;
 
+        template <typename Function_>
         call_execute(
-          KET_RVALUE_REFERENCE_OR_COPY(Function) function, int const thread_index)
-          : function_(KET_MOVE_OR_COPY(function)),
-            thread_index_(thread_index)
+          KET_RVALUE_REFERENCE_OR_COPY(Function_) function, int const thread_index, Executor& executor)
+          : function_(KET_FORWARD_OR_COPY(Function_, function)),
+            thread_index_(thread_index),
+            executor_(executor)
         { }
 
-        void operator()() const { function_(thread_index_); }
+        void operator()() { function_(thread_index_, executor_); }
       };
 
-      template <typename Function>
-      inline call_execute<Function> make_call_execute(
-        Function function, int const thrad_index)
-      { return call_execute<Function>(function, thread_index); }
+      template <typename Function, typename Executor>
+      inline call_execute<typename KET_remove_cv<typename KET_remove_reference<Function>::type>::type, Executor> make_call_execute(
+        KET_RVALUE_REFERENCE_OR_COPY(Function) function, int const thrad_index, Executor& executor)
+      {
+        return call_execute<typename KET_remove_cv<typename KET_remove_reference<Function>::type>::type, Executor>(
+          KET_FORWARD_OR_COPY(Function, function), thread_index, executor);
+      }
 #   endif
 # endif // !defined(_OPENMP) || !defined(KET_USE_OPENMP)
     } // namespace parallel_loop_n_detail
@@ -446,7 +455,7 @@ namespace ket
         template <typename Function>
         void invoke(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
-          KET_RVALUE_REFERENCE_OR_COPY(Function) function) const
+          KET_RVALUE_REFERENCE_OR_COPY(Function) function)
         {
           assert(::ket::utility::num_threads(parallel_policy) > 0u);
 
@@ -460,7 +469,7 @@ namespace ket
           {
             try
             {
-              function(omp_get_thread_num());
+              function(omp_get_thread_num(), *this);
             }
             catch (std::exception& error)
             {
@@ -494,26 +503,27 @@ namespace ket
         }
       };
 
-      template <typename NumThreads, typename Integer>
-      struct loop_n_in_execute< ::ket::utility::policy::parallel<NumThreads>, Integer>
+      template <typename NumThreads>
+      struct loop_n_in_execute< ::ket::utility::policy::parallel<NumThreads> >
       {
-        template <typename Function>
+        template <typename Integer, typename Function>
         static void call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
-          Integer const n, int const,
+          Integer const n, int const thread_index,
           KET_RVALUE_REFERENCE_OR_COPY(Function) function)
         {
 #   pragma omp for
           for (Integer count = 0; count < n; ++count)
-            function(count);
+            function(count, thread_index);
         }
       };
 
       template <typename NumThreads>
       struct barrier< ::ket::utility::policy::parallel<NumThreads> >
       {
+        template <typename Executor>
         static void call(
-          ::ket::utility::policy::parallel<NumThreads> const parallel_policy)
+          ::ket::utility::policy::parallel<NumThreads> const, Executor&)
         {
 #   pragma omp barrier
         }
@@ -522,9 +532,9 @@ namespace ket
       template <typename NumThreads>
       struct single_execute< ::ket::utility::policy::parallel<NumThreads> >
       {
-        template <typename Function>
+        template <typename Executor, typename Function>
         static void call(
-          ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
+          ::ket::utility::policy::parallel<NumThreads> const, Executor&,
           KET_RVALUE_REFERENCE_OR_COPY(Function) function)
         {
 #   pragma omp single
@@ -537,15 +547,21 @@ namespace ket
       template <typename NumThreads>
       class execute< ::ket::utility::policy::parallel<NumThreads> >
       {
-        /*
+#   if !defined(BOOST_NO_CXX11_HDR_THREAD) && !defined(BOOST_NO_CXX11_HDR_FUTURE) && !defined(BOOST_NO_CXX11_HDR_MUTEX) && !defined(BOOST_NO_CXX11_HDR_CONDITION_VARIABLE)
         std::mutex mutex_;
-        std::conditional_variable cond_;
-        */
+        std::condition_variable cond_;
+        int barrier_counter_;
+#   else // !defined(BOOST_NO_CXX11_HDR_THREAD) && !defined(BOOST_NO_CXX11_HDR_FUTURE) && !defined(BOOST_NO_CXX11_HDR_MUTEX) && !defined(BOOST_NO_CXX11_HDR_CONDITION_VARIABLE)
+#   endif // !defined(BOOST_NO_CXX11_HDR_THREAD) && !defined(BOOST_NO_CXX11_HDR_FUTURE) && !defined(BOOST_NO_CXX11_HDR_MUTEX) && !defined(BOOST_NO_CXX11_HDR_CONDITION_VARIABLE)
+
+        friend class loop_n_in_execute< ::ket::utility::policy::parallel<NumThreads> >;
+        friend class barrier< ::ket::utility::policy::parallel<NumThreads> >;
+        friend class single_execute< ::ket::utility::policy::parallel<NumThreads> >;
 
        public:
-         /*
-        execute() { }
-        */
+        execute()
+          : mutex_(), cond_(), barrier_counter_(0)
+        { }
 
         template <typename Function>
         void invoke(
@@ -565,17 +581,17 @@ namespace ket
 #     ifndef BOOST_NO_CXX11_LAMBDAS
             futures.push_back(std::async(
               std::launch::async,
-              [&function, thread_index]
-              { function(static_cast<int>(thread_index)); }));
+              [&function, thread_index, this]
+              { function(static_cast<int>(thread_index), *this); }));
 #     else // BOOST_NO_CXX11_LAMBDAS
             futures.push_back(std::async(
               std::launch::async,
               ::ket::utility::parallel_loop_n_detail::make_call_execute(
-                function, static_cast<int>(thread_index))));
+                function, static_cast<int>(thread_index), *this)));
 #     endif // BOOST_NO_CXX11_LAMBDAS
           }
 
-          KET_FORWARD_OR_COPY(Function, function)(static_cast<int>(num_futures));
+          KET_FORWARD_OR_COPY(Function, function)(static_cast<int>(num_futures), *this);
 
 #     ifndef BOOST_NO_CXX11_RANGE_BASED_FOR
           for (std::future<void> const& future: futures)
@@ -597,25 +613,25 @@ namespace ket
 #     ifndef BOOST_NO_CXX11_LAMBDAS
             threads.create_thread(
               [&function, thread_index]
-              { function(static_cast<int>(thread_index)); });
+              { function(static_cast<int>(thread_index), *this); });
 #     else // BOOST_NO_CXX11_LAMBDAS
             threads.create_thread(
               ::ket::utility::parallel_loop_n_detail::make_call_function_from_to(
-                function, static_cast<int>(thread_index)));
+                function, static_cast<int>(thread_index), *this));
 #     endif // BOOST_NO_CXX11_LAMBDAS
           }
 
-          KET_FORWARD_OR_COPY(Function, function)(static_cast<int>(num_threads)-1);
+          KET_FORWARD_OR_COPY(Function, function)(static_cast<int>(num_threads)-1, *this);
 
           threads.join_all();
 #   endif // BOOST_NO_CXX11_HDR_FUTURE
         }
       };
 
-      template <typename NumThreads, typename Integer>
-      struct loop_n_in_execute< ::ket::utility::policy::parallel<NumThreads>, Integer>
+      template <typename NumThreads>
+      struct loop_n_in_execute< ::ket::utility::policy::parallel<NumThreads> >
       {
-        template <typename Function>
+        template <typename Integer, typename Function>
         static void call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
           Integer const n, int const thread_index,
@@ -634,13 +650,29 @@ namespace ket
         }
       };
 
-      /*
       template <typename NumThreads>
       struct barrier< ::ket::utility::policy::parallel<NumThreads> >
       {
         static void call(
-          ::ket::utility::policy::parallel<NumThreads> const parallel_policy)
+          ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
+          ::ket::utility::dispatch::execute< ::ket::utility::policy::parallel<NumThreads> >& executor)
         {
+#   if !defined(BOOST_NO_CXX11_HDR_THREAD) && !defined(BOOST_NO_CXX11_HDR_MUTEX) && !defined(BOOST_NO_CXX11_HDR_CONDITION_VARIABLE)
+          std::unique_lock<std::mutex> lock(executor.mutex_);
+
+          if (executor.barrier_counter_ == 0)
+            executor.barrier_counter_ = ::ket::utility::num_threads(parallel_policy);
+
+          if (--executor.barrier_counter_ == 0)
+          {
+            executor.cond_.notify_all();
+            return;
+          }
+
+          executor.cond_.wait(
+            lock, [&executor] { return executor.barrier_counter_ == 0; });
+#   else // !defined(BOOST_NO_CXX11_HDR_THREAD) && !defined(BOOST_NO_CXX11_HDR_MUTEX) && !defined(BOOST_NO_CXX11_HDR_CONDITION_VARIABLE)
+#   endif // !defined(BOOST_NO_CXX11_HDR_THREAD) && !defined(BOOST_NO_CXX11_HDR_MUTEX) && !defined(BOOST_NO_CXX11_HDR_CONDITION_VARIABLE)
         }
       };
 
@@ -650,12 +682,30 @@ namespace ket
         template <typename Function>
         static void call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
+          ::ket::utility::dispatch::execute< ::ket::utility::policy::parallel<NumThreads> >& executor,
           KET_RVALUE_REFERENCE_OR_COPY(Function) function)
         {
-          function();
+#   if !defined(BOOST_NO_CXX11_HDR_THREAD) && !defined(BOOST_NO_CXX11_HDR_MUTEX) && !defined(BOOST_NO_CXX11_HDR_CONDITION_VARIABLE)
+          std::unique_lock<std::mutex> lock(executor.mutex_);
+
+          if (executor.barrier_counter_ == 0)
+          {
+            executor.barrier_counter_ = ::ket::utility::num_threads(parallel_policy);
+            function();
+          }
+
+          if (--executor.barrier_counter_ == 0)
+          {
+            executor.cond_.notify_all();
+            return;
+          }
+
+          executor.cond_.wait(
+            lock, [&executor] { return executor.barrier_counter_ == 0; });
+#   else // !defined(BOOST_NO_CXX11_HDR_THREAD) && !defined(BOOST_NO_CXX11_HDR_MUTEX) && !defined(BOOST_NO_CXX11_HDR_CONDITION_VARIABLE)
+#   endif // !defined(BOOST_NO_CXX11_HDR_THREAD) && !defined(BOOST_NO_CXX11_HDR_MUTEX) && !defined(BOOST_NO_CXX11_HDR_CONDITION_VARIABLE)
         }
       };
-      */
 # endif // defined(_OPENMP) && defined(KET_USE_OPENMP)
     } // namespace dispatch
 

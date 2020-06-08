@@ -1139,7 +1139,7 @@ namespace ket
             parallel_policy,
             [num_threads, &partial_sums,
              parallel_policy, &local_state, binary_operation, unary_operation](
-              int const thread_index)
+              int const thread_index, auto& executor)
             {
               for (std::size_t page_id = 0u; page_id < local_state_type::num_pages; ++page_id)
               {
@@ -1155,9 +1155,9 @@ namespace ket
                 ::ket::utility::loop_n_in_execute(
                   parallel_policy,
                   boost::size(local_state.page_range(page_id)), thread_index,
-                  [thread_index, page_id, first, &is_called, num_threads, &partial_sums,
+                  [page_id, first, &is_called, num_threads, &partial_sums,
                    binary_operation, unary_operation](
-                    difference_type const n)
+                    difference_type const n, int const thread_index)
                   {
                     if (not is_called)
                     {
@@ -1177,7 +1177,7 @@ namespace ket
 
               post_process(
                 parallel_policy, local_state, binary_operation,
-                partial_sums, thread_index);
+                partial_sums, thread_index, executor);
             });
 
           return partial_sums.back();
@@ -1202,7 +1202,7 @@ namespace ket
             [num_threads, &partial_sums,
              parallel_policy, &local_state, binary_operation, unary_operation,
              initial_value](
-              int const thread_index)
+              int const thread_index, auto& executor)
             {
               for (std::size_t page_id = 0u; page_id < local_state_type::num_pages; ++page_id)
               {
@@ -1218,9 +1218,9 @@ namespace ket
                 ::ket::utility::loop_n_in_execute(
                   parallel_policy,
                   boost::size(local_state.page_range(page_id)), thread_index,
-                  [thread_index, page_id, first, &is_called, num_threads, &partial_sums,
+                  [page_id, first, &is_called, num_threads, &partial_sums,
                    binary_operation, unary_operation, initial_value](
-                    difference_type const n)
+                    difference_type const n, int const thread_index)
                   {
                     if (not is_called)
                     {
@@ -1242,7 +1242,7 @@ namespace ket
 
               post_process(
                 parallel_policy, local_state, binary_operation,
-                partial_sums, thread_index);
+                partial_sums, thread_index, executor);
             });
 
           return partial_sums.back();
@@ -1251,17 +1251,19 @@ namespace ket
        private:
         template <
           typename ParallelPolicy,
-          typename Complex, typename Allocator, typename BinaryOperation>
+          typename Complex, typename Allocator, typename BinaryOperation,
+          typename Executor>
         static void post_process(
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, num_page_qubits, Allocator>& local_state,
           BinaryOperation binary_operation,
-          std::vector<Complex>& partial_sums, int const thread_index)
+          std::vector<Complex>& partial_sums, int const thread_index,
+          Executor& executor)
         {
-          ::ket::utility::barrier();
+          ::ket::utility::barrier(parallel_policy, executor);
 
           ::ket::utility::single_execute(
-            parallel_policy,
+            parallel_policy, executor,
             [&partial_sums, binary_operation]
             {
               std::partial_sum(
@@ -1284,9 +1286,8 @@ namespace ket
             ::ket::utility::loop_n_in_execute(
               parallel_policy,
               boost::size(local_state.page_range(page_id)), thread_index,
-              [thread_index, page_id, first, num_threads, &partial_sums,
-               binary_operation](
-                difference_type const n)
+              [page_id, first, num_threads, &partial_sums, binary_operation](
+                difference_type const n, int const thread_index)
               {
                 if (thread_index == 0u and page_id == 0u)
                   return;
