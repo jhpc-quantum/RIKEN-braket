@@ -328,7 +328,7 @@ namespace ket
           {
             Integer const last_count
               = static_cast<Integer>(
-                  local_num_counts*(thread_index+1u) + std::min(remainder, thread_index+1u));
+                  local_num_counts*(thread_index+1u) + std::min(remainder, static_cast<NumThreads>(thread_index+1u)));
 
 #     ifndef BOOST_NO_CXX11_LAMBDAS
             futures.push_back(std::async(
@@ -378,7 +378,7 @@ namespace ket
           {
             Integer const last_count
               = static_cast<Integer>(
-                  local_num_counts*(thread_index+1u) + std::min(remainder, thread_index+1u));
+                  local_num_counts*(thread_index+1u) + std::min(remainder, static_cast<NumThreads>(thread_index+1u)));
 
 #     ifndef BOOST_NO_CXX11_LAMBDAS
             threads.create_thread(
@@ -641,9 +641,9 @@ namespace ket
           NumThreads const local_num_counts = n / num_threads;
           NumThreads const remainder = n % num_threads;
           Integer const first_count
-            = static_cast<Integer>(local_num_counts * thread_index + std::min(remainder, thread_index));
+            = static_cast<Integer>(local_num_counts * thread_index + std::min(remainder, static_cast<NumThreads>(thread_index)));
           Integer const last_count
-            = static_cast<Integer>(local_num_counts * (thread_index+1) + std::min(remainder, thread_index+1));
+            = static_cast<Integer>(local_num_counts * (thread_index+1u) + std::min(remainder, static_cast<NumThreads>(thread_index+1u)));
 
           for (Integer count = first_count; count < last_count; ++count)
             function(count, thread_index);
