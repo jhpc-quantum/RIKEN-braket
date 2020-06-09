@@ -646,7 +646,7 @@ namespace ket
             = static_cast<Integer>(local_num_counts * (thread_index+1) + std::min(remainder, thread_index+1));
 
           for (Integer count = first_count; count < last_count; ++count)
-            function(count);
+            function(count, thread_index);
         }
       };
 
