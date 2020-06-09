@@ -2553,7 +2553,7 @@ namespace ket
 # else // BOOST_NO_CXX11_LAMBDAS
           loop_n(
             parallel_policy, last-first,
-            ::ket::utility::parallel_loop_n_detail::make_transform_inclusive_scan_random_access_iterator(
+            ::ket::utility::parallel_loop_n_detail::make_transform_inclusive_scan_random_access_iterator_init(
               first, d_first, binary_operation, unary_operation,
               initial_value, is_calleds_first, partial_sums_first));
 # endif // BOOST_NO_CXX11_LAMBDAS

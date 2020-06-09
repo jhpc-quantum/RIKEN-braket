@@ -1121,6 +1121,407 @@ namespace ket
       struct transform_inclusive_scan_self
       {
 # ifdef KET_USE_PARALLEL_EXECUTE_FOR_TRANSFORM_INCLUSIVE_SCAN
+#   ifdef BOOST_NO_CXX11_LAMBDAS
+        template <
+          typename PageIterator, typename PartialSums,
+          typename BinaryOperation, typename UnaryOperation>
+        class loop_body_in_process_in_execute
+        {
+          std::size_t page_id_;
+          PageIterator first_;
+          bool& is_called_;
+          unsigned int num_threads_;
+          PartialSums& partial_sums_;
+          BinaryOperation binary_operation_;
+          UnaryOperation unary_operation_;
+
+         public:
+          loop_body_in_process_in_execute(
+            std::size_t page_id, PageIterator first, bool& is_called,
+            unsigned int num_threads, PartialSums& partial_sums,
+            BinaryOperation binary_operation, UnaryOperation unary_operation)
+            : page_id_(page_id),
+              first_(first),
+              is_called_(is_called),
+              num_threads_(num_threads),
+              partial_sums_(partial_sums),
+              binary_operation_(binary_operation),
+              unary_operation_(unary_operation)
+          { }
+
+          typedef
+            typename std::iterator_traits<PageIterator>::difference_type
+            difference_type;
+          void operator()(difference_type const n, int const thread_index)
+          {
+            if (not is_called_)
+            {
+              partial_sums_[num_threads_ * page_id_ + thread_index]
+                = unary_operation_(first_[n]);
+              is_called_ = true;
+            }
+            else
+              partial_sums_[num_threads_ * page_id_ + thread_index]
+                = binary_operation_(
+                    partial_sums_[num_threads_ * page_id_ + thread_index],
+                    unary_operation_(first_[n]));
+
+            first_[n] = partial_sums_[num_threads_ * page_id_ + thread_index];
+          }
+        };
+
+        template <
+          typename PageIterator, typename PartialSums,
+          typename BinaryOperation, typename UnaryOperation>
+        static loop_body_in_process_in_execute<PageIterator, PartialSums, BinaryOperation, UnaryOperation>
+        make_loop_body_in_process_in_execute(
+          std::size_t page_id, PageIterator first, bool& is_called,
+          unsigned int num_threads, PartialSums& partial_sums,
+          BinaryOperation binary_operation, UnaryOperation unary_operation)
+        {
+          typedef
+            loop_body_in_process_in_execute<PageIterator, PartialSums, BinaryOperation, UnaryOperation>
+            result_type;
+          return result_type(
+            page_id, first, is_called, num_threads, partial_sums, binary_operation, unary_operation);
+        }
+
+
+        template <
+          typename PageIterator, typename PartialSums,
+          typename BinaryOperation, typename UnaryOperation, typename Complex>
+        class loop_body_in_process_in_execute_with_initial_value
+        {
+          std::size_t page_id_;
+          PageIterator first_;
+          bool& is_called_;
+          unsigned int num_threads_;
+          PartialSums& partial_sums_;
+          BinaryOperation binary_operation_;
+          UnaryOperation unary_operation_;
+          Complex initial_value_;
+
+         public:
+          loop_body_in_process_in_execute_with_initial_value(
+            std::size_t page_id, PageIterator first, bool& is_called,
+            unsigned int num_threads, PartialSums& partial_sums,
+            BinaryOperation binary_operation, UnaryOperation unary_operation,
+            Complex initial_value)
+            : page_id_(page_id),
+              first_(first),
+              is_called_(is_called),
+              num_threads_(num_threads),
+              partial_sums_(partial_sums),
+              binary_operation_(binary_operation),
+              unary_operation_(unary_operation),
+              initial_value_(initial_value)
+          { }
+
+          typedef
+            typename std::iterator_traits<PageIterator>::difference_type
+            difference_type;
+          void operator()(difference_type const n, int const thread_index)
+          {
+            if (not is_called_)
+            {
+              partial_sums_[num_threads_ * page_id_ + thread_index]
+                = page_id_ == 0 && thread_index == 0
+                  ? binary_operation_(initial_value_, unary_operation_(first_[n]))
+                  : unary_operation_(first_[n]);
+              is_called_ = true;
+            }
+            else
+              partial_sums_[num_threads_ * page_id_ + thread_index]
+                = binary_operation_(
+                    partial_sums_[num_threads_ * page_id_ + thread_index],
+                    unary_operation_(first_[n]));
+
+            first_[n] = partial_sums_[num_threads_ * page_id_ + thread_index];
+          }
+        };
+
+        template <
+          typename PageIterator, typename PartialSums,
+          typename BinaryOperation, typename UnaryOperation, typename Complex>
+        static loop_body_in_process_in_execute_with_initial_value<PageIterator, PartialSums, BinaryOperation, UnaryOperation, Complex>
+        make_loop_body_in_process_in_execute_with_initial_value(
+          std::size_t page_id, PageIterator first, bool& is_called,
+          unsigned int num_threads, PartialSums& partial_sums,
+          BinaryOperation binary_operation, UnaryOperation unary_operation, Complex initial_value)
+        {
+          typedef
+            loop_body_in_process_in_execute_with_initial_value<PageIterator, PartialSums, BinaryOperation, UnaryOperation, Complex>
+            result_type;
+          return result_type(
+            page_id, first, is_called, num_threads, partial_sums, binary_operation, unary_operation, initial_value);
+        }
+
+
+        template <typename PartialSums, typename BinaryOperation>
+        class process_in_single_execute
+        {
+          PartialSums& partial_sums_;
+          BinaryOperation binary_operation_;
+
+         public:
+          process_in_single_execute(PartialSums& partial_sums, BinaryOperation binary_operation)
+            : partial_sums_(partial_sums), binary_operation_(binary_operation)
+          { }
+
+          void operator()()
+          {
+            std::partial_sum(
+              ::ket::utility::begin(partial_sums_), ::ket::utility::end(partial_sums_),
+              ::ket::utility::begin(partial_sums_), binary_operation_);
+          }
+        };
+
+        template <typename PartialSums, typename BinaryOperation>
+        static process_in_single_execute<PartialSums, BinaryOperation>
+        make_process_in_single_execute(PartialSums& partial_sums, BinaryOperation binary_operation)
+        { return process_in_single_execute<PartialSums, BinaryOperation>(partial_sums, binary_operation); }
+
+
+        template <typename PageIterator, typename PartialSums, typename BinaryOperation>
+        class loop_body_in_post_process
+        {
+          std::size_t page_id_;
+          PageIterator first_;
+          unsigned int num_threads_;
+          PartialSums& partial_sums_;
+          BinaryOperation binary_operation_;
+
+         public:
+          loop_body_in_post_process(
+            std::size_t page_id, PageIterator first,
+            unsigned int num_threads, PartialSums& partial_sums, BinaryOperation binary_operation)
+            : page_id_(page_id),
+              first_(first),
+              num_threads_(num_threads),
+              partial_sums_(partial_sums),
+              binary_operation_(binary_operation)
+          { }
+
+          typedef
+            typename std::iterator_traits<PageIterator>::difference_type
+            difference_type;
+          void operator()(difference_type const n, int const thread_index)
+          {
+            if (thread_index == 0u and page_id_ == 0u)
+              return;
+
+            first_[n]
+              = binary_operation_(
+                  partial_sums_[num_threads_ * page_id_ + thread_index - 1u],
+                  first_[n]);
+          }
+        };
+
+        template <typename PageIterator, typename PartialSums, typename BinaryOperation>
+        static loop_body_in_post_process<PageIterator, PartialSums, BinaryOperation>
+        make_loop_body_in_post_process(
+          std::size_t page_id, PageIterator first,
+          unsigned int num_threads, PartialSums& partial_sums, BinaryOperation binary_operation)
+        {
+          typedef
+            loop_body_in_post_process<PageIterator, PartialSums, BinaryOperation>
+            result_type;
+          return result_type(page_id, first, num_threads, partial_sums, binary_operation);
+        }
+#   endif // BOOST_NO_CXX11_LAMBDAS
+
+
+#   ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
+        template <
+          typename PartialSums, typename ParallelPolicy, typename LocalState,
+          typename BinaryOperation, typename UnaryOperation>
+        class process_in_execute
+        {
+          unsigned int num_threads_;
+          PartialSums& partial_sums_;
+          ParallelPolicy parallel_policy_;
+          LocalState& local_state_;
+          BinaryOperation binary_operation_;
+          UnaryOperation unary_operation_;
+
+         public:
+          process_in_execute(
+            unsigned int num_threads, PartialSums& partial_sums,
+            ParallelPolicy parallel_policy, LocalState& local_state,
+            BinaryOperation binary_operation, UnaryOperation unary_operation)
+            : num_threads_(num_threads),
+              partial_sums_(partial_sums),
+              parallel_policy_(parallel_policy),
+              local_state_(local_state),
+              binary_operation_(binary_operation),
+              unary_operation_(unary_operation)
+          { }
+
+          template <typename Executor>
+          void operator()(int const thread_index, Executor& executor)
+          {
+            for (std::size_t page_id = 0u; page_id < LocalState::num_pages; ++page_id)
+            {
+              typedef typename LocalState::page_range_type page_range_type;
+              typedef typename boost::range_iterator<page_range_type>::type page_iterator;
+              page_iterator const first
+                = ::ket::utility::begin(local_state_.page_range(page_id));
+              bool is_called = false;
+
+#     ifndef BOOST_NO_CXX11_LAMBDAS
+              typedef
+                typename std::iterator_traits<page_iterator>::difference_type
+                difference_type;
+              ::ket::utility::loop_n_in_execute(
+                parallel_policy_,
+                boost::size(local_state_.page_range(page_id)), thread_index,
+                [page_id, first, &is_called, this](difference_type const n, int const thread_index)
+                {
+                  if (not is_called)
+                  {
+                    this->partial_sums_[this->num_threads_ * page_id + thread_index]
+                      = this->unary_operation_(first[n]);
+                    is_called = true;
+                  }
+                  else
+                    this->partial_sums_[this->num_threads_ * page_id + thread_index]
+                      = this->binary_operation_(
+                          this->partial_sums_[this->num_threads_ * page_id + thread_index],
+                          this->unary_operation_(first[n]));
+
+                  first[n] = this->partial_sums_[this->num_threads_ * page_id + thread_index];
+                });
+#     else // BOOST_NO_CXX11_LAMBDAS
+              ::ket::utility::loop_n_in_execute(
+                parallel_policy_,
+                boost::size(local_state_.page_range(page_id)), thread_index,
+                make_loop_body_in_process_in_execute(
+                  page_id, first, is_called, num_threads_, partial_sums_,
+                  binary_operation_, unary_operation_));
+#     endif // BOOST_NO_CXX11_LAMBDAS
+            }
+
+            post_process(
+              parallel_policy_, local_state_, binary_operation_,
+              partial_sums_, thread_index, executor);
+          }
+        };
+
+        template <
+          typename PartialSums, typename ParallelPolicy, typename LocalState,
+          typename BinaryOperation, typename UnaryOperation>
+        static process_in_execute<PartialSums, ParallelPolicy, LocalState, BinaryOperation, UnaryOperation>
+        make_process_in_execute(
+          unsigned int num_threads, PartialSums& partial_sums,
+          ParallelPolicy parallel_policy, LocalState& local_state,
+          BinaryOperation binary_operation, UnaryOperation unary_operation)
+        {
+          typedef
+            process_in_execute<PartialSums, ParallelPolicy, LocalState, BinaryOperation, UnaryOperation>
+            result_type;
+          return result_type(
+            num_threads, partial_sums, parallel_policy, local_state, binary_operation, unary_operation);
+        }
+
+
+        template <
+          typename PartialSums, typename ParallelPolicy, typename LocalState,
+          typename BinaryOperation, typename UnaryOperation, typename Complex>
+        class process_in_execute_with_initial_value
+        {
+          unsigned int num_threads_;
+          PartialSums& partial_sums_;
+          ParallelPolicy parallel_policy_;
+          LocalState& local_state_;
+          BinaryOperation binary_operation_;
+          UnaryOperation unary_operation_;
+          Complex initial_value_;
+
+         public:
+          process_in_execute_with_initial_value(
+            unsigned int num_threads, PartialSums& partial_sums,
+            ParallelPolicy parallel_policy, LocalState& local_state,
+            BinaryOperation binary_operation, UnaryOperation unary_operation,
+            Complex initial_value)
+            : num_threads_(num_threads),
+              partial_sums_(partial_sums),
+              parallel_policy_(parallel_policy),
+              local_state_(local_state),
+              binary_operation_(binary_operation),
+              unary_operation_(unary_operation),
+              initial_value_(initial_value)
+          { }
+
+          template <typename Executor>
+          void operator()(int const thread_index, Executor& executor)
+          {
+            for (std::size_t page_id = 0u; page_id < LocalState::num_pages; ++page_id)
+            {
+              typedef typename LocalState::page_range_type page_range_type;
+              typedef typename boost::range_iterator<page_range_type>::type page_iterator;
+              page_iterator const first
+                = ::ket::utility::begin(local_state_.page_range(page_id));
+              bool is_called = false;
+
+#     ifndef BOOST_NO_CXX11_LAMBDAS
+              typedef
+                typename std::iterator_traits<page_iterator>::difference_type
+                difference_type;
+              ::ket::utility::loop_n_in_execute(
+                parallel_policy_,
+                boost::size(local_state_.page_range(page_id)), thread_index,
+                [page_id, first, &is_called, this](difference_type const n, int const thread_index)
+                {
+                  if (not is_called)
+                  {
+                    this->partial_sums_[this->num_threads_ * page_id + thread_index]
+                      = page_id == 0 && thread_index == 0
+                        ? this->binary_operation_(this->initial_value_, this->unary_operation_(first[n]))
+                        : this->unary_operation_(first[n]);
+                    is_called = true;
+                  }
+                  else
+                    this->partial_sums_[this->num_threads_ * page_id + thread_index]
+                      = this->binary_operation_(
+                          this->partial_sums_[this->num_threads_ * page_id + thread_index],
+                          this->unary_operation_(first[n]));
+
+                  first[n] = this->partial_sums_[this->num_threads_ * page_id + thread_index];
+                });
+#     else // BOOST_NO_CXX11_LAMBDAS
+              ::ket::utility::loop_n_in_execute(
+                parallel_policy_,
+                boost::size(local_state_.page_range(page_id)), thread_index,
+                make_loop_body_in_process_in_execute_with_initial_value(
+                  page_id, first, is_called, num_threads_, partial_sums_,
+                  binary_operation_, unary_operation_, initial_value_));
+#     endif // BOOST_NO_CXX11_LAMBDAS
+            }
+
+            post_process(
+              parallel_policy_, local_state_, binary_operation_,
+              partial_sums_, thread_index, executor);
+          }
+        };
+
+        template <
+          typename PartialSums, typename ParallelPolicy, typename LocalState,
+          typename BinaryOperation, typename UnaryOperation, typename Complex>
+        static process_in_execute_with_initial_value<PartialSums, ParallelPolicy, LocalState, BinaryOperation, UnaryOperation, Complex>
+        make_process_in_execute_with_initial_value(
+          unsigned int num_threads, PartialSums& partial_sums,
+          ParallelPolicy parallel_policy, LocalState& local_state,
+          BinaryOperation binary_operation, UnaryOperation unary_operation, Complex initial_value)
+        {
+          typedef
+            process_in_execute_with_initial_value<PartialSums, ParallelPolicy, LocalState, BinaryOperation, UnaryOperation, Complex>
+            result_type;
+          return result_type(
+            num_threads, partial_sums, parallel_policy, local_state, binary_operation, unary_operation, initial_value);
+        }
+#   endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+
+
         template <
           typename ParallelPolicy,
           typename Complex, typename Allocator,
@@ -1135,6 +1536,7 @@ namespace ket
           unsigned int num_threads = ::ket::utility::num_threads(parallel_policy);
           std::vector<Complex> partial_sums(num_threads * local_state_type::num_pages);
 
+#   ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           ::ket::utility::execute(
             parallel_policy,
             [num_threads, &partial_sums,
@@ -1149,6 +1551,7 @@ namespace ket
                   = ::ket::utility::begin(local_state.page_range(page_id));
                 bool is_called = false;
 
+#     ifndef BOOST_NO_CXX11_LAMBDAS
                 typedef
                   typename std::iterator_traits<page_iterator>::difference_type
                   difference_type;
@@ -1173,12 +1576,27 @@ namespace ket
 
                     first[n] = partial_sums[num_threads * page_id + thread_index];
                   });
+#     else // BOOST_NO_CXX11_LAMBDAS
+                ::ket::utility::loop_n_in_execute(
+                  parallel_policy_,
+                  boost::size(local_state_.page_range(page_id)), thread_index,
+                  make_loop_body_in_process_in_execute(
+                    page_id, first, is_called, num_threads_, partial_sums_,
+                    binary_operation_, unary_operation_));
+#     endif // BOOST_NO_CXX11_LAMBDAS
               }
 
               post_process(
                 parallel_policy, local_state, binary_operation,
                 partial_sums, thread_index, executor);
             });
+#   else // BOOST_NO_CXX14_GENERIC_LAMBDAS
+          ::ket::utility::execute(
+            parallel_policy,
+            make_process_in_execute(
+              num_threads, partial_sums, parallel_policy, local_state,
+              binary_operation, unary_operation));
+#   endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 
           return partial_sums.back();
         }
@@ -1197,6 +1615,7 @@ namespace ket
           unsigned int num_threads = ::ket::utility::num_threads(parallel_policy);
           std::vector<Complex> partial_sums(num_threads * local_state_type::num_pages);
 
+#   ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           ::ket::utility::execute(
             parallel_policy,
             [num_threads, &partial_sums,
@@ -1212,6 +1631,7 @@ namespace ket
                   = ::ket::utility::begin(local_state.page_range(page_id));
                 bool is_called = false;
 
+#     ifndef BOOST_NO_CXX11_LAMBDAS
                 typedef
                   typename std::iterator_traits<page_iterator>::difference_type
                   difference_type;
@@ -1238,12 +1658,27 @@ namespace ket
 
                     first[n] = partial_sums[num_threads * page_id + thread_index];
                   });
+#     else // BOOST_NO_CXX11_LAMBDAS
+                ::ket::utility::loop_n_in_execute(
+                  parallel_policy_,
+                  boost::size(local_state_.page_range(page_id)), thread_index,
+                  make_loop_body_in_process_in_execute_with_initial_value(
+                    page_id, first, is_called, num_threads_, partial_sums_,
+                    binary_operation_, unary_operation_, initial_value));
+#     endif // BOOST_NO_CXX11_LAMBDAS
               }
 
               post_process(
                 parallel_policy, local_state, binary_operation,
                 partial_sums, thread_index, executor);
             });
+#   else // BOOST_NO_CXX14_GENERIC_LAMBDAS
+          ::ket::utility::execute(
+            parallel_policy,
+            make_process_in_execute_with_initial_value(
+              num_threads, partial_sums, parallel_policy, local_state,
+              binary_operation, unary_operation, initial_value));
+#   endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 
           return partial_sums.back();
         }
@@ -1262,6 +1697,7 @@ namespace ket
         {
           ::ket::utility::barrier(parallel_policy, executor);
 
+#   ifndef BOOST_NO_CXX11_LAMBDAS
           ::ket::utility::single_execute(
             parallel_policy, executor,
             [&partial_sums, binary_operation]
@@ -1270,6 +1706,11 @@ namespace ket
                 ::ket::utility::begin(partial_sums), ::ket::utility::end(partial_sums),
                 ::ket::utility::begin(partial_sums), binary_operation);
             });
+#   else // BOOST_NO_CXX11_LAMBDAS
+          ::ket::utility::single_execute(
+            parallel_policy, executor,
+            make_process_in_single_execute(partial_sums, binary_operation));
+#   endif // BOOST_NO_CXX11_LAMBDAS
 
           unsigned int num_threads = ::ket::utility::num_threads(parallel_policy);
           typedef ::ket::mpi::state<Complex, num_page_qubits, Allocator> local_state_type;
@@ -1280,6 +1721,7 @@ namespace ket
             page_iterator const first
               = ::ket::utility::begin(local_state.page_range(page_id));
 
+#   ifndef BOOST_NO_CXX11_LAMBDAS
             typedef
               typename std::iterator_traits<page_iterator>::difference_type
               difference_type;
@@ -1297,6 +1739,13 @@ namespace ket
                       partial_sums[num_threads * page_id + thread_index - 1u],
                       first[n]);
               });
+#   else // BOOST_NO_CXX11_LAMBDAS
+            ::ket::utility::loop_n_in_execute(
+              parallel_policy,
+              boost::size(local_state.page_range(page_id)), thread_index,
+              make_loop_body_in_post_process(
+                page_id, first, num_threads, partial_sums, binary_operation));
+#   endif // BOOST_NO_CXX11_LAMBDAS
           }
         }
 # else // KET_USE_PARALLEL_EXECUTE_FOR_TRANSFORM_INCLUSIVE_SCAN
