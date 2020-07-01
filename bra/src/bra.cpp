@@ -120,35 +120,42 @@ int main(int argc, char* argv[])
 #endif // BRA_NO_MPI
 
 #ifndef BRA_NO_MPI
-  if (argc < 2 or argc > 4)
+  if (argc < 2 or argc > 5)
   {
     if (is_io_root_rank)
-      std::cerr << "wrong number of arguments: bra qcxfile [num_page_qubits [seed]]" << std::endl;
+      std::cerr << "wrong number of arguments: bra qcxfile [num_threads_per_process [num_page_qubits [seed]]]" << std::endl;
     return EXIT_FAILURE;
   }
 #else // BRA_NO_MPI
-  if (argc < 2 or argc > 3)
+  if (argc < 2 or argc > 4)
   {
-    std::cerr << "wrong number of arguments: bra qcxfile [seed]" << std::endl;
+    std::cerr << "wrong number of arguments: bra qcxfile [num_threads_per_process [seed]]" << std::endl;
     return EXIT_FAILURE;
   }
 #endif // BRA_NO_MPI
 
-#ifndef BRA_NO_MPI
   std::string const filename(argv[1]);
-  unsigned int const num_page_qubits
+#ifndef BRA_NO_MPI
+  unsigned int const num_threads_per_process
     = argc >= 3
       ? boost::lexical_cast<unsigned int>(argv[2])
+      : 1u;
+  unsigned int const num_page_qubits
+    = argc >= 4
+      ? boost::lexical_cast<unsigned int>(argv[3])
       : 2u;
+  seed_type const seed
+    = argc == 5
+      ? boost::lexical_cast<seed_type>(argv[4])
+      : static_cast<seed_type>(1);
+#else // BRA_NO_MPI
+  unsigned int const num_threads
+    = argc >= 3
+      ? boost::lexical_cast<unsigned int>(argv[2])
+      : 1u;
   seed_type const seed
     = argc == 4
       ? boost::lexical_cast<seed_type>(argv[3])
-      : static_cast<seed_type>(1);
-#else // BRA_NO_MPI
-  std::string const filename(argv[1]);
-  seed_type const seed
-    = argc == 3
-      ? boost::lexical_cast<seed_type>(argv[2])
       : static_cast<seed_type>(1);
 #endif // BRA_NO_MPI
 
@@ -169,11 +176,11 @@ int main(int argc, char* argv[])
   boost::movelib::unique_ptr<bra::state> state_ptr
     = bra::make_general_mpi_state(
         num_page_qubits, gates.initial_state_value(), gates.num_lqubits(), gates.initial_permutation(),
-        seed, communicator, environment);
+        num_threads_per_process, seed, communicator, environment);
 #else // BRA_NO_MPI
   bra::gates gates(file_stream);
   boost::movelib::unique_ptr<bra::state> state_ptr
-    = bra::make_nompi_state(gates.initial_state_value(), gates.num_qubits(), seed);
+    = bra::make_nompi_state(gates.initial_state_value(), gates.num_qubits(), num_threads, seed);
 #endif // BRA_NO_MPI
 
 #ifndef BRA_NO_MPI

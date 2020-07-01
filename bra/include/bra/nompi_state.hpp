@@ -34,7 +34,7 @@ namespace bra
     nompi_state(
       ::bra::state::state_integer_type const initial_integer,
       unsigned int const total_num_qubits,
-      ::bra::state::seed_type const seed);
+      unsigned int const num_threads, ::bra::state::seed_type const seed);
 
    private:
     data_type make_initial_data(
@@ -149,10 +149,11 @@ namespace bra
   inline boost::movelib::unique_ptr< ::bra::state > make_nompi_state(
     ::bra::state::state_integer_type const initial_integer,
     ::bra::state::bit_integer_type const total_num_qubits,
+    unsigned int const num_threads,
     ::bra::state::seed_type const seed)
   {
     return boost::movelib::unique_ptr< ::bra::state >(
-      new ::bra::nompi_state(initial_integer, total_num_qubits, seed));
+      new ::bra::nompi_state(initial_integer, total_num_qubits, num_threads, seed));
   }
 }
 

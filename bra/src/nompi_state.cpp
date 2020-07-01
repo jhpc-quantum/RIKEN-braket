@@ -49,9 +49,9 @@ namespace bra
   nompi_state::nompi_state(
     ::bra::state::state_integer_type const initial_integer,
     unsigned int const total_num_qubits,
-    ::bra::state::seed_type const seed)
+    unsigned int num_threads, ::bra::state::seed_type const seed)
     : ::bra::state(total_num_qubits, seed),
-      parallel_policy_(),
+      parallel_policy_(num_threads),
       data_(make_initial_data(initial_integer, total_num_qubits))
   { }
 
