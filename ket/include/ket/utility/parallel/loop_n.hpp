@@ -74,36 +74,56 @@ namespace ket
 
        public:
 # if defined(_OPENMP) && defined(KET_USE_OPENMP)
-        BOOST_CONSTEXPR parallel() BOOST_NOEXCEPT_OR_NOTHROW
+        parallel() BOOST_NOEXCEPT_OR_NOTHROW
           : num_threads_(static_cast<NumThreads>(omp_get_max_threads()))
         { }
 
-#   ifndef BOOST_NO_CXX11_DELETED_FUNCTIONS
-        parallel(NumThreads const num_threads) = delete;
-#   else
-       private:
-        parallel(NumThreads const num_threads);
-
-       public:
-#   endif
-# else
+        explicit parallel(NumThreads const num_threads)
+          : num_threads_(num_threads <= 0 ? NumThreads(1) : num_threads > omp_get_max_threads() ? omp_get_max_threads() : num_threads)
+        { omp_set_num_threads(num_threads_); }
+# else // defined(_OPENMP) && defined(KET_USE_OPENMP)
 #   ifndef BOOST_NO_CXX11_HDR_THREAD
-        BOOST_CONSTEXPR parallel() BOOST_NOEXCEPT_OR_NOTHROW
+        parallel() BOOST_NOEXCEPT_OR_NOTHROW
           : num_threads_(static_cast<NumThreads>(std::thread::hardware_concurrency()))
         { }
-#   else
-        BOOST_CONSTEXPR parallel() BOOST_NOEXCEPT_OR_NOTHROW
+
+        explicit parallel(NumThreads const num_threads) BOOST_NOEXCEPT_OR_NOTHROW
+          : num_threads_(num_threads <= 0 ? NumThreads(1) : num_threads >= std::thread::hardware_concurrency() ? std::thread::hardware_concurrency() : num_threads)
+        { }
+#   else // BOOST_NO_CXX11_HDR_THREAD
+        parallel() BOOST_NOEXCEPT_OR_NOTHROW
           : num_threads_(static_cast<NumThreads>(boost::thread::hardware_concurrency()))
         { }
-#   endif
 
-        explicit BOOST_CONSTEXPR parallel(NumThreads const num_threads) BOOST_NOEXCEPT_OR_NOTHROW
-          : num_threads_(num_threads)
+        explicit parallel(NumThreads const num_threads) BOOST_NOEXCEPT_OR_NOTHROW
+          : num_threads_(num_threads <= 0 ? NumThreads(1) : num_threads >= boost::thread::hardware_concurrency() ? boost::thread::hardware_concurrency() : num_threads)
         { }
-# endif
+#   endif // BOOST_NO_CXX11_HDR_THREAD
+# endif // defined(_OPENMP) && defined(KET_USE_OPENMP)
 
-        BOOST_CONSTEXPR NumThreads num_threads() const BOOST_NOEXCEPT_OR_NOTHROW
+        NumThreads num_threads() const BOOST_NOEXCEPT_OR_NOTHROW
         { return num_threads_; }
+
+        void num_threads(NumThreads const num_threads) const BOOST_NOEXCEPT_OR_NOTHROW
+        {
+# if defined(_OPENMP) && defined(KET_USE_OPENMP)
+          if (num_threads <= 0 or num_threads > omp_get_max_threads())
+            return;
+# else // defined(_OPENMP) && defined(KET_USE_OPENMP)
+#   ifndef BOOST_NO_CXX11_HDR_THREAD
+          if (num_threads <= 0 or num_threads > std::thread::hardware_concurrency())
+            return;
+#   else // BOOST_NO_CXX11_HDR_THREAD
+          if (num_threads <= 0 or num_threads > boost::thread::hardware_concurrency())
+            return;
+#   endif // BOOST_NO_CXX11_HDR_THREAD
+# endif // defined(_OPENMP) && defined(KET_USE_OPENMP)
+
+          num_threads_ = num_threads;
+# if defined(_OPENMP) && defined(KET_USE_OPENMP)
+          omp_set_num_threads(num_threads_);
+# endif // defined(_OPENMP) && defined(KET_USE_OPENMP)
+        }
       };
 
       template <typename NumThreads>
