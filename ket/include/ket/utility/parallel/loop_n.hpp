@@ -570,7 +570,7 @@ namespace ket
 #   if !defined(BOOST_NO_CXX11_HDR_THREAD) && !defined(BOOST_NO_CXX11_HDR_FUTURE) && !defined(BOOST_NO_CXX11_HDR_MUTEX) && !defined(BOOST_NO_CXX11_HDR_CONDITION_VARIABLE)
         std::mutex mutex_;
         std::condition_variable cond_;
-        int barrier_counter_;
+        std::vector<int> barrier_counters_;
 #   else // !defined(BOOST_NO_CXX11_HDR_THREAD) && !defined(BOOST_NO_CXX11_HDR_FUTURE) && !defined(BOOST_NO_CXX11_HDR_MUTEX) && !defined(BOOST_NO_CXX11_HDR_CONDITION_VARIABLE)
 #   endif // !defined(BOOST_NO_CXX11_HDR_THREAD) && !defined(BOOST_NO_CXX11_HDR_FUTURE) && !defined(BOOST_NO_CXX11_HDR_MUTEX) && !defined(BOOST_NO_CXX11_HDR_CONDITION_VARIABLE)
 
@@ -580,8 +580,8 @@ namespace ket
 
        public:
         execute()
-          : mutex_(), cond_(), barrier_counter_(0)
-        { }
+          : mutex_(), cond_(), barrier_counters_()
+        { barrier_counters_.reserve(64); }
 
         template <typename Function>
         void invoke(
@@ -592,6 +592,7 @@ namespace ket
 
 #   ifndef BOOST_NO_CXX11_HDR_FUTURE
           NumThreads const num_threads = ::ket::utility::num_threads(parallel_policy);
+          barrier_counters_.push_back(num_threads);
           NumThreads const num_futures = num_threads-1u;
           std::vector< std::future<void> > futures;
           futures.reserve(num_futures);
@@ -678,19 +679,21 @@ namespace ket
           ::ket::utility::dispatch::execute< ::ket::utility::policy::parallel<NumThreads> >& executor)
         {
 #   if !defined(BOOST_NO_CXX11_HDR_THREAD) && !defined(BOOST_NO_CXX11_HDR_MUTEX) && !defined(BOOST_NO_CXX11_HDR_CONDITION_VARIABLE)
-          std::unique_lock<std::mutex> lock(executor.mutex_);
+          std::size_t const index = executor.barrier_counters_.size() - 1u;
 
-          if (executor.barrier_counter_ == 0)
-            executor.barrier_counter_ = ::ket::utility::num_threads(parallel_policy);
-
-          if (--executor.barrier_counter_ == 0)
+          if (executor.barrier_counters_[index] == 1)
           {
+            std::lock_guard<std::mutex> lock(executor.mutex_);
+            executor.barrier_counters_.push_back(::ket::utility::num_threads(parallel_policy));
+            --executor.barrier_counters_[index];
             executor.cond_.notify_all();
             return;
           }
 
+          std::unique_lock<std::mutex> lock(executor.mutex_);
+          --executor.barrier_counters_[index];
           executor.cond_.wait(
-            lock, [&executor] { return executor.barrier_counter_ == 0; });
+            lock, [&executor,index] { return executor.barrier_counters_[index] == 0; });
 #   else // !defined(BOOST_NO_CXX11_HDR_THREAD) && !defined(BOOST_NO_CXX11_HDR_MUTEX) && !defined(BOOST_NO_CXX11_HDR_CONDITION_VARIABLE)
 #   endif // !defined(BOOST_NO_CXX11_HDR_THREAD) && !defined(BOOST_NO_CXX11_HDR_MUTEX) && !defined(BOOST_NO_CXX11_HDR_CONDITION_VARIABLE)
         }
@@ -706,22 +709,27 @@ namespace ket
           KET_RVALUE_REFERENCE_OR_COPY(Function) function)
         {
 #   if !defined(BOOST_NO_CXX11_HDR_THREAD) && !defined(BOOST_NO_CXX11_HDR_MUTEX) && !defined(BOOST_NO_CXX11_HDR_CONDITION_VARIABLE)
-          std::unique_lock<std::mutex> lock(executor.mutex_);
+          std::size_t const index = executor.barrier_counters_.size() - 1u;
 
-          if (executor.barrier_counter_ == 0)
+          if (executor.barrier_counters_[index] == ::ket::utility::num_threads(parallel_policy))
           {
-            executor.barrier_counter_ = ::ket::utility::num_threads(parallel_policy);
+            std::lock_guard<std::mutex> lock(executor.mutex_);
             function();
           }
 
-          if (--executor.barrier_counter_ == 0)
+          if (executor.barrier_counters_[index] == 1)
           {
+            std::lock_guard<std::mutex> lock(executor.mutex_);
+            executor.barrier_counters_.push_back(::ket::utility::num_threads(parallel_policy));
+            --executor.barrier_counters_[index];
             executor.cond_.notify_all();
             return;
           }
 
+          std::unique_lock<std::mutex> lock(executor.mutex_);
+          --executor.barrier_counters_[index];
           executor.cond_.wait(
-            lock, [&executor] { return executor.barrier_counter_ == 0; });
+            lock, [&executor,index] { return executor.barrier_counters_[index] == 0; });
 #   else // !defined(BOOST_NO_CXX11_HDR_THREAD) && !defined(BOOST_NO_CXX11_HDR_MUTEX) && !defined(BOOST_NO_CXX11_HDR_CONDITION_VARIABLE)
 #   endif // !defined(BOOST_NO_CXX11_HDR_THREAD) && !defined(BOOST_NO_CXX11_HDR_MUTEX) && !defined(BOOST_NO_CXX11_HDR_CONDITION_VARIABLE)
         }
