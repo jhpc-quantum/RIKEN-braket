@@ -3,6 +3,8 @@
 
 # include <boost/config.hpp>
 
+# include <yampi/environment.hpp>
+
 # include <ket/utility/loop_n.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
 
@@ -45,7 +47,8 @@ namespace ket
       template <typename MpiPolicy, typename ParallelPolicy, typename LocalState, typename Value>
       inline LocalState& fill(
         MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
-        LocalState& local_state, Value const& value)
+        LocalState& local_state, Value const& value,
+        yampi::environment const& environment)
       {
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
         return ::ket::mpi::utility::for_each_local_range(
@@ -60,12 +63,14 @@ namespace ket
       }
 
       template <typename LocalState, typename Value>
-      inline LocalState& fill(LocalState& local_state, Value const& value)
+      inline LocalState& fill(
+        LocalState& local_state, Value const& value,
+        yampi::environment const& environment)
       {
         return ::ket::mpi::utility::fill(
           ::ket::mpi::utility::policy::make_general_mpi(), 
           ::ket::utility::policy::make_sequential(),
-          local_state, value);
+          local_state, value, environment);
       }
     } // namespace utility
   } // namespace mpi

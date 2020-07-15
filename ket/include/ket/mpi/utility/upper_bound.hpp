@@ -5,6 +5,8 @@
 
 # include <boost/range/difference_type.hpp>
 
+# include <yampi/environment.hpp>
+
 # include <ket/utility/begin.hpp>
 # include <ket/utility/end.hpp>
 
@@ -20,19 +22,10 @@ namespace ket
         template <typename LocalState_>
         struct upper_bound
         {
-          template <typename LocalState, typename Value>
-          static typename boost::range_difference<LocalState>::type call(
-            LocalState const& local_state, Value const& value)
-          {
-            return
-              std::upper_bound(
-                ::ket::utility::begin(local_state), ::ket::utility::end(local_state), value)
-              - ::ket::utility::begin(local_state);
-          }
-
           template <typename LocalState, typename Value, typename Compare>
           static typename boost::range_difference<LocalState>::type call(
-            LocalState const& local_state, Value const& value, Compare compare)
+            LocalState const& local_state, Value const& value, Compare compare,
+            yampi::environment const&)
           {
             return
               std::upper_bound(
@@ -42,20 +35,13 @@ namespace ket
         };
       } // namespace dispatch
 
-      template <typename LocalState, typename Value>
-      inline typename boost::range_difference<LocalState>::type upper_bound(
-        LocalState const& local_state, Value const& value)
-      {
-        return ::ket::mpi::utility::dispatch::upper_bound<LocalState>::call(
-          local_state, value);
-      }
-
       template <typename LocalState, typename Value, typename Compare>
       inline typename boost::range_difference<LocalState>::type upper_bound(
-        LocalState const& local_state, Value const& value, Compare compare)
+        LocalState const& local_state, Value const& value, Compare compare,
+        yampi::environment const& environment)
       {
         return ::ket::mpi::utility::dispatch::upper_bound<LocalState>::call(
-          local_state, value, compare);
+          local_state, value, compare, environment);
       }
     } // namespace utility
   } // namespace mpi

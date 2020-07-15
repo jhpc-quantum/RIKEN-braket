@@ -6,6 +6,8 @@
 # include <boost/range/value_type.hpp>
 # include <boost/utility.hpp> // boost::prior
 
+# include <yampi/environment.hpp>
+
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/begin.hpp>
 # include <ket/utility/end.hpp>
@@ -27,7 +29,8 @@ namespace ket
             typename LocalState, typename BinaryOperation, typename UnaryOperation>
           static typename boost::range_value<LocalState>::type call(
             ParallelPolicy const parallel_policy, LocalState& local_state,
-            BinaryOperation binary_operation, UnaryOperation unary_operation)
+            BinaryOperation binary_operation, UnaryOperation unary_operation,
+            yampi::environment const&)
           {
             ::ket::utility::ranges::transform_inclusive_scan(
               parallel_policy,
@@ -42,7 +45,7 @@ namespace ket
           static typename boost::range_value<LocalState>::type call(
             ParallelPolicy const parallel_policy, LocalState& local_state,
             BinaryOperation binary_operation, UnaryOperation unary_operation,
-            Value const initial_value)
+            Value const initial_value, yampi::environment const&)
           {
             ::ket::utility::ranges::transform_inclusive_scan(
               parallel_policy,
@@ -59,11 +62,12 @@ namespace ket
       inline typename boost::range_value<LocalState>::type
       transform_inclusive_scan_self(
         ParallelPolicy const parallel_policy, LocalState& local_state,
-        BinaryOperation binary_operation, UnaryOperation unary_operation)
+        BinaryOperation binary_operation, UnaryOperation unary_operation,
+        yampi::environment const& environment)
       {
         return ::ket::mpi::utility::dispatch::transform_inclusive_scan_self<LocalState>::call(
           parallel_policy,
-          local_state, binary_operation, unary_operation);
+          local_state, binary_operation, unary_operation, environment);
       }
 
       template <
@@ -73,11 +77,12 @@ namespace ket
       transform_inclusive_scan_self(
         ParallelPolicy const parallel_policy, LocalState& local_state,
         BinaryOperation binary_operation, UnaryOperation unary_operation,
-        Value const initial_value)
+        Value const initial_value,
+        yampi::environment const& environment)
       {
         return ::ket::mpi::utility::dispatch::transform_inclusive_scan_self<LocalState>::call(
           parallel_policy,
-          local_state, binary_operation, unary_operation, initial_value);
+          local_state, binary_operation, unary_operation, initial_value, environment);
       }
     } // namespace utility
   } // namespace mpi

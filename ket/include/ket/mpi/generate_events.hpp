@@ -27,7 +27,6 @@
 # include <ket/mpi/utility/general_mpi.hpp>
 # include <ket/mpi/utility/logger.hpp>
 # include <ket/mpi/utility/fill.hpp>
-# include <ket/mpi/utility/transform_inclusive_scan.hpp>
 # include <ket/mpi/utility/transform_inclusive_scan_self.hpp>
 # include <ket/mpi/utility/upper_bound.hpp>
 
@@ -129,13 +128,15 @@ namespace ket
             [](complex_type const& lhs, complex_type const& rhs)
             { using std::real; return static_cast<complex_type>(real(lhs) + real(rhs)); },
             [](complex_type const& value)
-            { using std::norm; return static_cast<complex_type>(norm(value)); }));
+            { using std::norm; return static_cast<complex_type>(norm(value)); },
+            environment));
 # else // BOOST_NO_CXX11_LAMBDAS
       real_type const total_probability
         = real(::ket::mpi::utility::transform_inclusive_scan_self(
             parallel_policy, local_state,
             ::ket::mpi::generate_events_detail::real_part_plus<complex_type>(),
-            ::ket::mpi::generate_events_detail::complex_norm<complex_type>()));
+            ::ket::mpi::generate_events_detail::complex_norm<complex_type>(),
+            environment));
 # endif // BOOST_NO_CXX11_LAMBDAS
 
       yampi::rank const present_rank = communicator.rank(environment);
@@ -165,7 +166,10 @@ namespace ket
                 total_probabilities.back(), random_number_generator);
           result_rank
             = static_cast<yampi::rank>(static_cast<StateInteger>(
-                ::ket::mpi::utility::upper_bound(total_probabilities, random_value)));
+                std::upper_bound(
+                  ::ket::utility::begin(total_probabilities),
+                  ::ket::utility::end(total_probabilities), random_value)
+                - ::ket::utility::begin(total_probabilities)));
         }
 
         int result_mpi_rank = result_rank.mpi_rank();
@@ -202,13 +206,15 @@ namespace ket
                 ::ket::mpi::utility::upper_bound(
                   local_state, static_cast<complex_type>(random_value),
                   [](complex_type const& lhs, complex_type const& rhs)
-                  { using std::real; return real(lhs) < real(rhs); }));
+                  { using std::real; return real(lhs) < real(rhs); },
+                  environment));
 # else // BOOST_NO_CXX11_LAMBDAS
           StateInteger const local_result
             = static_cast<StateInteger>(
                 ::ket::mpi::utility::upper_bound(
                   local_state, static_cast<complex_type>(random_value),
-                  ::ket::mpi::generate_events_detail::real_part_less_than<complex_type>()));
+                  ::ket::mpi::generate_events_detail::real_part_less_than<complex_type>(),
+                  environment));
 # endif // BOOST_NO_CXX11_LAMBDAS
           using ::ket::mpi::utility::rank_index_to_qubit_value;
           permutated_result
@@ -258,13 +264,15 @@ namespace ket
             [](complex_type const& lhs, complex_type const& rhs)
             { using std::real; return static_cast<complex_type>(real(lhs) + real(rhs)); },
             [](complex_type const& value)
-            { using std::norm; return static_cast<complex_type>(norm(value)); }));
+            { using std::norm; return static_cast<complex_type>(norm(value)); },
+            environment));
 # else // BOOST_NO_CXX11_LAMBDAS
       real_type const total_probability
         = real(::ket::mpi::utility::transform_inclusive_scan_self(
             parallel_policy, local_state,
             ::ket::mpi::generate_events_detail::real_part_plus<complex_type>(),
-            ::ket::mpi::generate_events_detail::complex_norm<complex_type>()));
+            ::ket::mpi::generate_events_detail::complex_norm<complex_type>(),
+            environment));
 # endif // BOOST_NO_CXX11_LAMBDAS
 
       yampi::rank const present_rank = communicator.rank(environment);
@@ -294,7 +302,10 @@ namespace ket
                 total_probabilities.back(), random_number_generator);
           result_rank
             = static_cast<yampi::rank>(static_cast<StateInteger>(
-                ::ket::mpi::utility::upper_bound(total_probabilities, random_value)));
+                std::upper_bound(
+                  ::ket::utility::begin(total_probabilities),
+                  ::ket::utility::end(total_probabilities), random_value)
+                - ::ket::utility::begin(total_probabilities)));
         }
 
         int result_mpi_rank = result_rank.mpi_rank();
@@ -331,13 +342,15 @@ namespace ket
                 ::ket::mpi::utility::upper_bound(
                   local_state, static_cast<complex_type>(random_value),
                   [](complex_type const& lhs, complex_type const& rhs)
-                  { using std::real; return real(lhs) < real(rhs); }));
+                  { using std::real; return real(lhs) < real(rhs); },
+                  environment));
 # else // BOOST_NO_CXX11_LAMBDAS
           StateInteger const local_result
             = static_cast<StateInteger>(
                 ::ket::mpi::utility::upper_bound(
                   local_state, static_cast<complex_type>(random_value),
-                  ::ket::mpi::generate_events_detail::real_part_less_than<complex_type>()));
+                  ::ket::mpi::generate_events_detail::real_part_less_than<complex_type>(),
+                  environment));
 # endif // BOOST_NO_CXX11_LAMBDAS
           using ::ket::mpi::utility::rank_index_to_qubit_value;
           permutated_result

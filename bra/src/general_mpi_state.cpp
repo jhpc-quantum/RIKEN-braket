@@ -56,11 +56,12 @@ namespace bra
     ::bra::state::state_integer_type const initial_integer,
     unsigned int const num_local_qubits,
     unsigned int const total_num_qubits,
+    unsigned int num_threads_per_process,
     ::bra::state::seed_type const seed,
     yampi::communicator const& communicator,
     yampi::environment const& environment)
     : ::bra::state(total_num_qubits, seed, communicator, environment),
-      parallel_policy_(),
+      parallel_policy_(num_threads_per_process),
       mpi_policy_(),
       data_(
         mpi_policy_, num_local_qubits, initial_integer,
@@ -71,11 +72,12 @@ namespace bra
     ::bra::state::state_integer_type const initial_integer,
     unsigned int const num_local_qubits,
     std::vector<qubit_type> const& initial_permutation,
+    unsigned int num_threads_per_process,
     ::bra::state::seed_type const seed,
     yampi::communicator const& communicator,
     yampi::environment const& environment)
     : ::bra::state(initial_permutation, seed, communicator, environment),
-      parallel_policy_(),
+      parallel_policy_(num_threads_per_process),
       mpi_policy_(),
       data_(
         mpi_policy_, num_local_qubits, initial_integer,
