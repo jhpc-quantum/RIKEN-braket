@@ -1,5 +1,3 @@
-#include <boost/config.hpp>
-
 #include <string>
 #include <ios>
 #include <iomanip>
@@ -19,7 +17,7 @@ namespace bra
     std::string const adj_pauli_z::name_ = "Z+";
 
     adj_pauli_z::adj_pauli_z(qubit_type const qubit)
-      : ::bra::gate::gate(), qubit_(qubit)
+      : ::bra::gate::gate{}, qubit_{qubit}
     { }
 
     ::bra::state& adj_pauli_z::do_apply(::bra::state& state) const
@@ -34,6 +32,5 @@ namespace bra
         << std::setw(parameter_width) << qubit_;
       return repr_stream.str();
     }
-  }
-}
-
+  } // namespace gate
+} // namespace bra

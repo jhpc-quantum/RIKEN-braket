@@ -1,18 +1,11 @@
 #ifndef BRA_GATE_ADJ_PAULI_Y_HPP
 # define BRA_GATE_ADJ_PAULI_Y_HPP
 
-# include <boost/config.hpp>
-
 # include <string>
 # include <iosfwd>
 
 # include <bra/gate/gate.hpp>
 # include <bra/state.hpp>
-
-# ifdef BOOST_NO_CXX11_FINAL
-#   define final 
-#   define override 
-# endif // BOOST_NO_CXX11_FINAL
 
 
 namespace bra
@@ -23,7 +16,7 @@ namespace bra
       : public ::bra::gate::gate
     {
      public:
-      typedef ::bra::state::qubit_type qubit_type;
+      using qubit_type = ::bra::state::qubit_type;
 
      private:
       qubit_type qubit_;
@@ -32,43 +25,21 @@ namespace bra
 
      public:
       explicit adj_pauli_y(qubit_type const qubit);
-# ifndef BOOST_NO_CXX11_DEFAULTED_FUNCTIONS
-      ~adj_pauli_y() = default;
-# else
-      ~adj_pauli_y() { }
-# endif
 
-     private:
-# ifndef BOOST_NO_CXX11_DELETED_FUNCTIONS
+      ~adj_pauli_y() = default;
       adj_pauli_y(adj_pauli_y const&) = delete;
       adj_pauli_y& operator=(adj_pauli_y const&) = delete;
-#   ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
       adj_pauli_y(adj_pauli_y&&) = delete;
       adj_pauli_y& operator=(adj_pauli_y&&) = delete;
-#   endif // BOOST_NO_CXX11_RVALUE_REFERENCES
-# else // BOOST_NO_CXX11_DELETED_FUNCTIONS
-      adj_pauli_y(adj_pauli_y const&);
-      adj_pauli_y& operator=(adj_pauli_y const&);
-#   ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
-      adj_pauli_y(adj_pauli_y&&);
-      adj_pauli_y& operator=(adj_pauli_y&&);
-#   endif // BOOST_NO_CXX11_RVALUE_REFERENCES
-# endif // BOOST_NO_CXX11_DELETED_FUNCTIONS
 
      private:
       ::bra::state& do_apply(::bra::state& state) const override;
       std::string const& do_name() const override;
       std::string do_representation(
         std::ostringstream& repr_stream, int const parameter_width) const override;
-    };
-  }
-}
+    }; // class adj_pauli_y
+  } // namespace gate
+} // namespace bra
 
 
-# ifdef BOOST_NO_CXX11_FINAL
-#   undef final 
-#   undef override 
-# endif // BOOST_NO_CXX11_FINAL
-
-#endif
-
+#endif // BRA_GATE_ADJ_PAULI_Y_HPP

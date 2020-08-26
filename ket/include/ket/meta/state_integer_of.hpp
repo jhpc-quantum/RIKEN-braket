@@ -1,8 +1,6 @@
 #ifndef KET_META_STATE_INTEGER_OF_HPP
 # define KET_META_STATE_INTEGER_OF_HPP
 
-# include <boost/config.hpp>
-
 
 namespace ket
 {
@@ -10,10 +8,9 @@ namespace ket
   {
     template <typename Qubit>
     struct state_integer_of
-    { typedef typename Qubit::state_integer_type type; };
+    { using type = typename Qubit::state_integer_type; };
   } // namespace meta
 } // namespace ket
 
 
-#endif
-
+#endif // KET_META_STATE_INTEGER_OF_HPP

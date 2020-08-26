@@ -1,5 +1,3 @@
-#include <boost/config.hpp>
-
 #include <string>
 #include <ios>
 #include <iomanip>
@@ -24,14 +22,14 @@ namespace bra
 
 #ifndef BRA_NO_MPI
     projective_measurement::projective_measurement(qubit_type const qubit, yampi::rank const root)
-      : ::bra::gate::gate(), qubit_(qubit), root_(root)
+      : ::bra::gate::gate{}, qubit_{qubit}, root_{root}
     { }
 
     ::bra::state& projective_measurement::do_apply(::bra::state& state) const
     { return state.projective_measurement(qubit_, root_); }
 #else // BRA_NO_MPI
     projective_measurement::projective_measurement(qubit_type const qubit)
-      : ::bra::gate::gate(), qubit_(qubit)
+      : ::bra::gate::gate{}, qubit_{qubit}
     { }
 
     ::bra::state& projective_measurement::do_apply(::bra::state& state) const
@@ -47,6 +45,5 @@ namespace bra
         << std::setw(parameter_width) << qubit_;
       return repr_stream.str();
     }
-  }
-}
-
+  } // namespace gate
+} // namespace bra

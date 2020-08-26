@@ -1,5 +1,3 @@
-#include <boost/config.hpp>
-
 #include <string>
 #include <ios>
 #include <iomanip>
@@ -17,7 +15,7 @@ namespace bra
     std::string const depolarizing_channel::name_ = "DEPOLARIZING CHANNEL";
 
     depolarizing_channel::depolarizing_channel(real_type const px, real_type const py, real_type const pz, int seed)
-      : ::bra::gate::gate(), px_(px), py_(py), pz_(pz), seed_(seed)
+      : ::bra::gate::gate{}, px_{px}, py_{py}, pz_{pz}, seed_{seed}
     { }
 
     ::bra::state& depolarizing_channel::do_apply(::bra::state& state) const
@@ -27,6 +25,5 @@ namespace bra
     std::string depolarizing_channel::do_representation(
       std::ostringstream& repr_stream, int const) const
     { return repr_stream.str(); }
-  }
-}
-
+  } // namespace gate
+} // namespace bra

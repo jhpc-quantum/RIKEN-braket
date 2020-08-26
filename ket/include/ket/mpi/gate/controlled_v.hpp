@@ -5,11 +5,7 @@
 
 # include <complex>
 # include <vector>
-# ifndef BOOST_NO_CXX11_HDR_ARRAY
-#   include <array>
-# else
-#   include <boost/array.hpp>
-# endif
+# include <array>
 # include <ios>
 # include <sstream>
 
@@ -29,12 +25,6 @@
 # include <ket/mpi/utility/logger.hpp>
 # include <ket/mpi/gate/page/controlled_v.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
-
-# ifndef BOOST_NO_CXX11_HDR_ARRAY
-#   define KET_array std::array
-# else
-#   define KET_array boost::array
-# endif
 
 
 namespace ket
@@ -60,8 +50,8 @@ namespace ket
           call_controlled_v_coeff(
             ParallelPolicy const parallel_policy, Complex const& phase_coefficient,
             TargetQubit const target_qubit, ControlQubit const control_qubit)
-            : parallel_policy_(parallel_policy), phase_coefficient_(phase_coefficient),
-              target_qubit_(target_qubit), control_qubit_(control_qubit)
+            : parallel_policy_{parallel_policy}, phase_coefficient_{phase_coefficient},
+              target_qubit_{target_qubit}, control_qubit_{control_qubit}
           { }
 
           template <typename RandomAccessIterator>
@@ -72,7 +62,7 @@ namespace ket
             ::ket::gate::controlled_v_coeff(
               parallel_policy_, first, last, phase_coefficient_, target_qubit_, control_qubit_);
           }
-        };
+        }; // struct call_controlled_v_coeff<ParallelPolicy, Complex, TargetQubit, ControlQubit>
 
         template <
           typename ParallelPolicy, typename Complex,
@@ -82,10 +72,9 @@ namespace ket
           ParallelPolicy const parallel_policy, Complex const& phase_coefficient,
           TargetQubit const target_qubit, ControlQubit const control_qubit)
         {
-          typedef
-            call_controlled_v_coeff<ParallelPolicy, Complex, TargetQubit, ControlQubit>
-            result_type;
-          return result_type(parallel_policy, phase_coefficient, target_qubit, control_qubit);
+          using result_type
+            = call_controlled_v_coeff<ParallelPolicy, Complex, TargetQubit, ControlQubit>;
+          return result_type{parallel_policy, phase_coefficient, target_qubit, control_qubit};
         }
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 
@@ -119,9 +108,8 @@ namespace ket
               local_state, phase_coefficient, target_qubit, control_qubit, permutation);
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
-          typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
-          qubit_type const permutated_target_qubit = permutation[target_qubit];
-          ::ket::control<qubit_type> const permutated_control_qubit
+          auto const permutated_target_qubit = permutation[target_qubit];
+          auto const permutated_control_qubit
             = ::ket::make_control(permutation[control_qubit.qubit()]);
           return ::ket::mpi::utility::for_each_local_range(
             mpi_policy, local_state,
@@ -158,12 +146,11 @@ namespace ket
           yampi::communicator const& communicator,
           yampi::environment const& environment)
         {
-          typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
-          KET_array<qubit_type, 2u> qubits = { target_qubit, control_qubit.qubit() };
+          using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+          auto qubits = std::array<qubit_type, 2u>{target_qubit, control_qubit.qubit()};
           ::ket::mpi::utility::maybe_interchange_qubits(
             mpi_policy, parallel_policy,
-            local_state, qubits, permutation,
-            buffer, communicator, environment);
+            local_state, qubits, permutation, buffer, communicator, environment);
 
           return ::ket::mpi::gate::controlled_v_detail::do_controlled_v_coeff(
             mpi_policy, parallel_policy,
@@ -187,12 +174,11 @@ namespace ket
           yampi::communicator const& communicator,
           yampi::environment const& environment)
         {
-          typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
-          KET_array<qubit_type, 2u> qubits = { target_qubit, control_qubit.qubit() };
+          using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+          auto qubits = std::array<qubit_type, 2u>{target_qubit, control_qubit.qubit()};
           ::ket::mpi::utility::maybe_interchange_qubits(
             mpi_policy, parallel_policy,
-            local_state, qubits, permutation,
-            buffer, datatype, communicator, environment);
+            local_state, qubits, permutation, buffer, datatype, communicator, environment);
 
           return ::ket::mpi::gate::controlled_v_detail::do_controlled_v_coeff(
             mpi_policy, parallel_policy,
@@ -216,9 +202,10 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        std::ostringstream output_string_stream("Cv(coeff) ", std::ios_base::ate);
+        auto output_string_stream = std::ostringstream{"Cv(coeff) ", std::ios_base::ate};
         output_string_stream << phase_coefficient << ' ' << target_qubit << ' ' << control_qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
+        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+
         return ::ket::mpi::gate::controlled_v_detail::controlled_v_coeff(
           mpi_policy, parallel_policy,
           local_state, phase_coefficient, target_qubit, control_qubit, permutation,
@@ -242,9 +229,10 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        std::ostringstream output_string_stream("Cv(coeff) ", std::ios_base::ate);
+        auto output_string_stream = std::ostringstream{"Cv(coeff) ", std::ios_base::ate};
         output_string_stream << phase_coefficient << ' ' << target_qubit << ' ' << control_qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
+        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+
         return ::ket::mpi::gate::controlled_v_detail::controlled_v_coeff(
           mpi_policy, parallel_policy,
           local_state, phase_coefficient, target_qubit, control_qubit, permutation,
@@ -337,7 +325,6 @@ namespace ket
           buffer, datatype, communicator, environment);
       }
 
-
       namespace controlled_v_detail
       {
         template <
@@ -359,8 +346,7 @@ namespace ket
           using std::conj;
           return ::ket::mpi::gate::controlled_v_detail::controlled_v_coeff(
             mpi_policy, parallel_policy,
-            local_state, conj(phase_coefficient),
-            target_qubit, control_qubit, permutation,
+            local_state, conj(phase_coefficient), target_qubit, control_qubit, permutation,
             buffer, communicator, environment);
         }
 
@@ -384,8 +370,7 @@ namespace ket
           using std::conj;
           return ::ket::mpi::gate::controlled_v_detail::controlled_v_coeff(
             mpi_policy, parallel_policy,
-            local_state, conj(phase_coefficient),
-            target_qubit, control_qubit, permutation,
+            local_state, conj(phase_coefficient), target_qubit, control_qubit, permutation,
             buffer, datatype, communicator, environment);
         }
       } // namespace controlled_v_detail
@@ -406,9 +391,10 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        std::ostringstream output_string_stream("Adj(Cv(coeff)) ", std::ios_base::ate);
+        auto output_string_stream = std::ostringstream{"Adj(Cv(coeff)) ", std::ios_base::ate};
         output_string_stream << phase_coefficient << ' ' << target_qubit << ' ' << control_qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
+        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+
         return ::ket::mpi::gate::controlled_v_detail::adj_controlled_v_coeff(
           mpi_policy, parallel_policy,
           local_state, phase_coefficient, target_qubit, control_qubit, permutation,
@@ -432,9 +418,10 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        std::ostringstream output_string_stream("Adj(Cv(coeff)) ", std::ios_base::ate);
+        auto output_string_stream = std::ostringstream{"Adj(Cv(coeff)) ", std::ios_base::ate};
         output_string_stream << phase_coefficient << ' ' << target_qubit << ' ' << control_qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
+        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+
         return ::ket::mpi::gate::controlled_v_detail::adj_controlled_v_coeff(
           mpi_policy, parallel_policy,
           local_state, phase_coefficient, target_qubit, control_qubit, permutation,
@@ -526,7 +513,6 @@ namespace ket
           local_state, phase_coefficient, target_qubit, control_qubit, permutation,
           buffer, datatype, communicator, environment);
       }
-
 
       // controlled_v
       namespace controlled_v_detail
@@ -547,7 +533,7 @@ namespace ket
           yampi::communicator const& communicator,
           yampi::environment const& environment)
         {
-          typedef typename boost::range_value<RandomAccessRange>::type complex_type;
+          using complex_type = typename boost::range_value<RandomAccessRange>::type;
           return ::ket::mpi::gate::controlled_v_detail::controlled_v_coeff(
             mpi_policy, parallel_policy,
             local_state, ::ket::utility::exp_i<complex_type>(phase),
@@ -572,7 +558,7 @@ namespace ket
           yampi::communicator const& communicator,
           yampi::environment const& environment)
         {
-          typedef typename boost::range_value<RandomAccessRange>::type complex_type;
+          using complex_type = typename boost::range_value<RandomAccessRange>::type;
           return ::ket::mpi::gate::controlled_v_detail::controlled_v_coeff(
             mpi_policy, parallel_policy,
             local_state, ::ket::utility::exp_i<complex_type>(phase),
@@ -597,9 +583,10 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        std::ostringstream output_string_stream("Cv ", std::ios_base::ate);
+        auto output_string_stream = std::ostringstream{"Cv ", std::ios_base::ate};
         output_string_stream << phase << ' ' << target_qubit << ' ' << control_qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
+        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+
         return ::ket::mpi::gate::controlled_v_detail::controlled_v(
           mpi_policy, parallel_policy,
           local_state, phase, target_qubit, control_qubit, permutation,
@@ -623,9 +610,10 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        std::ostringstream output_string_stream("Cv ", std::ios_base::ate);
+        auto output_string_stream = std::ostringstream{"Cv ", std::ios_base::ate};
         output_string_stream << phase << ' ' << target_qubit << ' ' << control_qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
+        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+
         return ::ket::mpi::gate::controlled_v_detail::controlled_v(
           mpi_policy, parallel_policy,
           local_state, phase, target_qubit, control_qubit, permutation,
@@ -717,7 +705,6 @@ namespace ket
           local_state, phase, target_qubit, control_qubit, permutation,
           buffer, datatype, communicator, environment);
       }
-
 
       namespace controlled_v_detail
       {
@@ -783,9 +770,10 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        std::ostringstream output_string_stream("Adj(Cv) ", std::ios_base::ate);
+        auto output_string_stream = std::ostringstream{"Adj(Cv) ", std::ios_base::ate};
         output_string_stream << phase << ' ' << target_qubit << ' ' << control_qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
+        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+
         return ::ket::mpi::gate::controlled_v_detail::adj_controlled_v(
           mpi_policy, parallel_policy,
           local_state, phase, target_qubit, control_qubit, permutation,
@@ -809,9 +797,10 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        std::ostringstream output_string_stream("Adj(Cv) ", std::ios_base::ate);
+        auto output_string_stream = std::ostringstream{"Adj(Cv) ", std::ios_base::ate};
         output_string_stream << phase << ' ' << target_qubit << ' ' << control_qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
+        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+
         return ::ket::mpi::gate::controlled_v_detail::adj_controlled_v(
           mpi_policy, parallel_policy,
           local_state, phase, target_qubit, control_qubit, permutation,
@@ -908,7 +897,4 @@ namespace ket
 } // namespace ket
 
 
-# undef KET_array
-
-#endif
-
+#endif // KET_MPI_GATE_CONTROLLED_V_HPP

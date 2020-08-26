@@ -1,31 +1,18 @@
 #ifndef KET_SPIN_EXPECTATION_VALUE_HPP
 # define KET_SPIN_EXPECTATION_VALUE_HPP
 
-# include <boost/config.hpp>
-
 # include <cassert>
 # include <vector>
 # include <iterator>
+# include <numeric>
 # include <utility>
 # ifndef NDEBUG
-#   ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
-#     include <type_traits>
-#   else
-#     include <boost/type_traits/is_unsigned.hpp>
-#     include <boost/utility/enable_if.hpp>
-#   endif
+#   include <type_traits>
 # endif
-# ifndef BOOST_NO_CXX11_HDR_ARRAY
-#   include <array>
-# else
-#   include <boost/array.hpp>
-# endif
-# ifdef BOOST_NO_CXX11_STATIC_ASSERT
-#   include <boost/static_assert.hpp>
-# endif
+# include <array>
 
+# include <boost/range/value_type.hpp>
 # include <boost/math/constants/constants.hpp>
-# include <boost/range/numeric.hpp>
 
 # include <ket/qubit.hpp>
 # include <ket/utility/loop_n.hpp>
@@ -37,118 +24,14 @@
 # include <ket/utility/end.hpp>
 # include <ket/utility/meta/real_of.hpp>
 
-# ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
-#   define KET_is_unsigned std::is_unsigned
-#   define KET_enable_if std::enable_if
-# else
-#   define KET_is_unsigned boost::is_unsigned
-#   define KET_enable_if boost::enable_if_c
-# endif
-
-# ifndef BOOST_NO_CXX11_HDR_ARRAY
-#   define KET_array std::array
-# else
-#   define KET_array boost::array
-# endif
-
-# ifdef BOOST_NO_CXX11_STATIC_ASSERT
-#   define static_assert(exp, msg) BOOST_STATIC_ASSERT_MSG(exp, msg)
-# endif
-
 
 namespace ket
 {
-  namespace spin_expectation_value_detail
-  {
-# ifdef BOOST_NO_CXX11_LAMBDAS
-    template <typename RandomAccessIterator, typename StateInteger>
-    struct spin_expectation_value_loop_inside
-    {
-      RandomAccessIterator first_;
-      StateInteger qubit_mask_;
-      StateInteger lower_bits_mask_;
-      StateInteger upper_bits_mask_;
-
-      typedef typename std::iterator_traits<RandomAccessIterator>::value_type complex_type;
-      typedef typename ::ket::utility::meta::real_of<complex_type>::type real_type;
-      typedef KET_array<long double, 3u> spin_type;
-      std::vector<spin_type>& spins_in_threads_;
-
-      spin_expectation_value_loop_inside(
-        RandomAccessIterator const first,
-        StateInteger const qubit_mask,
-        StateInteger const lower_bits_mask,
-        StateInteger const upper_bits_mask,
-        std::vector<spin_type>& spins_in_threads)
-        : first_(first),
-          qubit_mask_(qubit_mask),
-          lower_bits_mask_(lower_bits_mask),
-          upper_bits_mask_(upper_bits_mask),
-          spins_in_threads_(spins_in_threads)
-      { }
-
-      void operator()(StateInteger const value_wo_qubit, int const thread_index) const
-      {
-        // xxxxx0xxxxxx
-        StateInteger const zero_index
-          = ((value_wo_qubit bitand upper_bits_mask_) << 1u)
-            bitor (value_wo_qubit bitand lower_bits_mask_);
-        // xxxxx1xxxxxx
-        StateInteger const one_index = zero_index bitor qubit_mask_;
-
-        using std::conj;
-        complex_type const conj_zero_value = conj(*(first_+zero_index));
-        complex_type const one_value = *(first_+one_index);
-        complex_type const conj_zero_times_one = conj_zero_value * one_value;
-
-        using std::real;
-        spins_in_threads_[thread_index][0u] += static_cast<long double>(real(conj_zero_times_one));
-        using std::imag;
-        spins_in_threads_[thread_index][1u] += static_cast<long double>(imag(conj_zero_times_one));
-        using std::norm;
-        spins_in_threads_[thread_index][2u]
-          += static_cast<long double>(norm(conj_zero_value)) - static_cast<long double>(norm(one_value));
-      }
-    };
-
-    template <typename RandomAccessIterator, typename StateInteger, typename Spin>
-    inline spin_expectation_value_loop_inside<RandomAccessIterator, StateInteger>
-    make_spin_expectation_value_loop_inside(
-      RandomAccessIterator const first,
-      StateInteger const qubit_mask,
-      StateInteger const lower_bits_mask,
-      StateInteger const upper_bits_mask,
-      std::vector<Spin>& spins_in_threads)
-    {
-      return spin_expectation_value_loop_inside<RandomAccessIterator, StateInteger>(
-        first, qubit_mask, lower_bits_mask, upper_bits_mask, spins_in_threads);
-    }
-
-
-    struct spin_expectation_value_accumulate_inside
-    {
-      template <typename Spin>
-      Spin operator()(Spin accumulated_spin, Spin const& spin) const
-      {
-        accumulated_spin[0u] += spin[0u];
-        accumulated_spin[1u] += spin[1u];
-        accumulated_spin[2u] += spin[2u];
-        return accumulated_spin;
-      }
-    };
-
-    inline spin_expectation_value_accumulate_inside
-    make_spin_expectation_value_accumulate_inside()
-    { return spin_expectation_value_accumulate_inside(); }
-# endif // BOOST_NO_CXX11_LAMBDAS
-  } // namespace spin_expectation_value_detail
-
-
   template <
     typename ParallelPolicy,
     typename RandomAccessIterator, typename StateInteger, typename BitInteger>
   inline
-  KET_array<
+  std::array<
     typename ::ket::utility::meta::real_of<
       typename std::iterator_traits<RandomAccessIterator>::value_type>::type, 3u>
   spin_expectation_value(
@@ -156,8 +39,8 @@ namespace ket
     RandomAccessIterator const first, RandomAccessIterator const last,
     ::ket::qubit<StateInteger, BitInteger> const qubit)
   {
-    static_assert(KET_is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
-    static_assert(KET_is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
+    static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+    static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
     assert(
       ::ket::utility::integer_exp2<StateInteger>(qubit)
       < static_cast<StateInteger>(last-first));
@@ -166,38 +49,35 @@ namespace ket
         ::ket::utility::integer_log2<BitInteger>(last-first))
       == static_cast<StateInteger>(last-first));
 
-    StateInteger const qubit_mask
-      = ::ket::utility::integer_exp2<StateInteger>(qubit);
-    StateInteger const lower_bits_mask
-      = qubit_mask-static_cast<StateInteger>(1u);
-    StateInteger const upper_bits_mask = compl lower_bits_mask;
+    auto const qubit_mask = ::ket::utility::integer_exp2<StateInteger>(qubit);
+    auto const lower_bits_mask = qubit_mask - StateInteger{1u};
+    auto const upper_bits_mask = compl lower_bits_mask;
 
-    typedef typename std::iterator_traits<RandomAccessIterator>::value_type complex_type;
-    typedef KET_array<long double, 3u> hd_spin_type;
-    hd_spin_type BOOST_CONSTEXPR_OR_CONST zero_spin = { };
-    std::vector<hd_spin_type> spins_in_threads(
-      ::ket::utility::num_threads(parallel_policy), zero_spin);
+    using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+    using hd_spin_type = std::array<long double, 3u>;
+    auto constexpr zero_spin = hd_spin_type{ };
+    auto spins_in_threads
+      = std::vector<hd_spin_type>(::ket::utility::num_threads(parallel_policy), zero_spin);
 
     using ::ket::utility::loop_n;
-# ifndef BOOST_NO_CXX11_LAMBDAS
     loop_n(
       parallel_policy,
-      static_cast<StateInteger>(last-first)/2u,
+      static_cast<StateInteger>(last - first)/2u,
       [first, qubit_mask, lower_bits_mask, upper_bits_mask,
        &spins_in_threads](
         StateInteger const value_wo_qubit, int const thread_index)
       {
         // xxxxx0xxxxxx
-        StateInteger const zero_index
+        auto const zero_index
           = ((value_wo_qubit bitand upper_bits_mask) << 1u)
             bitor (value_wo_qubit bitand lower_bits_mask);
         // xxxxx1xxxxxx
-        StateInteger const one_index = zero_index bitor qubit_mask;
+        auto const one_index = zero_index bitor qubit_mask;
 
         using std::conj;
-        complex_type const conj_zero_value = conj(*(first+zero_index));
-        complex_type const one_value = *(first+one_index);
-        complex_type const conj_zero_times_one = conj_zero_value * one_value;
+        auto const conj_zero_value = conj(*(first+zero_index));
+        auto const one_value = *(first+one_index);
+        auto const conj_zero_times_one = conj_zero_value * one_value;
 
         using std::real;
         spins_in_threads[thread_index][0u] += static_cast<long double>(real(conj_zero_times_one));
@@ -207,18 +87,10 @@ namespace ket
         spins_in_threads[thread_index][2u]
           += static_cast<long double>(norm(conj_zero_value)) - static_cast<long double>(norm(one_value));
       });
-# else // BOOST_NO_CXX11_LAMBDAS
-    loop_n(
-      parallel_policy,
-      static_cast<StateInteger>(last-first)/2u,
-      ::ket::spin_expectation_value_detail::make_spin_expectation_value_loop_inside(
-        first, qubit_mask, lower_bits_mask, upper_bits_mask, spins_in_threads));
-# endif // BOOST_NO_CXX11_LAMBDAS
 
-# ifndef BOOST_NO_CXX11_LAMBDAS
     hd_spin_type hd_spin
-      = boost::accumulate(
-          spins_in_threads, zero_spin,
+      = std::accumulate(
+          ::ket::utility::begin(spins_in_threads), ::ket::utility::end(spins_in_threads), zero_spin,
           [](hd_spin_type accumulated_spin, hd_spin_type const& spin)
           {
             accumulated_spin[0u] += spin[0u];
@@ -226,16 +98,10 @@ namespace ket
             accumulated_spin[2u] += spin[2u];
             return accumulated_spin;
           });
-# else // BOOST_NO_CXX11_LAMBDAS
-    hd_spin_type hd_spin
-      = boost::accumulate(
-          spins_in_threads, zero_spin,
-          ::ket::spin_expectation_value_detail::make_spin_expectation_value_accumulate_inside());
-# endif // BOOST_NO_CXX11_LAMBDAS
 
-    typedef typename ::ket::utility::meta::real_of<complex_type>::type real_type;
-    typedef KET_array<real_type, 3u> spin_type;
-    spin_type spin;
+    using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
+    using spin_type = std::array<real_type, 3u>;
+    auto spin = spin_type{};
     spin[0u] = static_cast<real_type>(hd_spin[0u]);
     spin[1u] = static_cast<real_type>(hd_spin[1u]);
     spin[2u] = static_cast<real_type>(hd_spin[2u]);
@@ -248,9 +114,9 @@ namespace ket
 
   template <typename RandomAccessIterator, typename StateInteger, typename BitInteger>
   inline
-  typename KET_enable_if<
+  typename std::enable_if<
     not ::ket::utility::policy::meta::is_loop_n_policy<RandomAccessIterator>::value,
-    KET_array<
+    std::array<
       typename ::ket::utility::meta::real_of<
         typename std::iterator_traits<RandomAccessIterator>::value_type>::type, 3u> >::type
   spin_expectation_value(
@@ -265,9 +131,9 @@ namespace ket
       typename ParallelPolicy,
       typename RandomAccessRange, typename StateInteger, typename BitInteger>
     inline
-    typename KET_enable_if<
+    typename std::enable_if<
       ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
-      KET_array<
+      std::array<
         typename ::ket::utility::meta::real_of<
           typename boost::range_value<RandomAccessRange const>::type>::type, 3u> >::type
     spin_expectation_value(
@@ -278,7 +144,7 @@ namespace ket
 
     template <typename RandomAccessRange, typename StateInteger, typename BitInteger>
     inline
-    KET_array<
+    std::array<
       typename ::ket::utility::meta::real_of<
         typename boost::range_value<RandomAccessRange const>::type>::type, 3u>
     spin_expectation_value(
@@ -289,11 +155,4 @@ namespace ket
 } // namespace ket
 
 
-# undef KET_enable_if
-# undef KET_is_unsigned
-# undef KET_array
-# ifdef BOOST_NO_CXX11_STATIC_ASSERT
-#   undef static_assert
-# endif
-
-#endif
+#endif // KET_SPIN_EXPECTATION_VALUE_HPP

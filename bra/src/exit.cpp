@@ -1,5 +1,3 @@
-#include <boost/config.hpp>
-
 #include <string>
 #include <ios>
 #include <iomanip>
@@ -22,10 +20,10 @@ namespace bra
 
 #ifndef BRA_NO_MPI
     exit::exit(yampi::rank const root)
-      : ::bra::gate::gate(), root_(root)
+      : ::bra::gate::gate{}, root_{root}
     { }
 #else // BRA_NO_MPI
-    exit::exit() : ::bra::gate::gate() { }
+    exit::exit() : ::bra::gate::gate{} { }
 #endif // BRA_NO_MPI
 
 #ifndef BRA_NO_MPI
@@ -40,6 +38,5 @@ namespace bra
     std::string exit::do_representation(
       std::ostringstream& repr_stream, int const) const
     { return repr_stream.str(); }
-  }
-}
-
+  } // namespace gate
+} // namespace bra

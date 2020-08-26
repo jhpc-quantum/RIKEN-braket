@@ -1,22 +1,11 @@
 #ifndef KET_GATE_CLEAR_HPP
 # define KET_GATE_CLEAR_HPP
 
-# include <boost/config.hpp>
-
 # include <cassert>
 # include <cmath>
 # include <iterator>
 # include <utility>
-# ifndef NDEBUG
-#   ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
-#     include <type_traits>
-#   else
-#     include <boost/type_traits/is_unsigned.hpp>
-#   endif
-# endif
-# ifdef BOOST_NO_CXX11_STATIC_ASSERT
-#   include <boost/static_assert.hpp>
-# endif
+# include <type_traits>
 
 # include <boost/math/constants/constants.hpp>
 
@@ -30,16 +19,6 @@
 # include <ket/utility/end.hpp>
 # include <ket/utility/meta/real_of.hpp>
 
-# ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
-#   define KET_is_unsigned std::is_unsigned
-# else
-#   define KET_is_unsigned boost::is_unsigned
-# endif
-
-# ifdef BOOST_NO_CXX11_STATIC_ASSERT
-#   define static_assert(exp, msg) BOOST_STATIC_ASSERT_MSG(exp, msg)
-# endif
-
 
 namespace ket
 {
@@ -47,103 +26,6 @@ namespace ket
   {
     namespace clear_detail
     {
-# ifdef BOOST_NO_CXX11_LAMBDAS
-      template <typename Real, typename RandomAccessIterator, typename StateInteger>
-      struct clear_loop1_inside
-      {
-        Real& zero_probability_;
-        RandomAccessIterator first_;
-        StateInteger qubit_mask_;
-        StateInteger lower_bits_mask_;
-        StateInteger upper_bits_mask_;
-
-        clear_loop1_inside(
-          Real& zero_probability,
-          RandomAccessIterator const first,
-          StateInteger const qubit_mask,
-          StateInteger const lower_bits_mask,
-          StateInteger const upper_bits_mask)
-          : zero_probability_(zero_probability),
-            first_(first),
-            qubit_mask_(qubit_mask),
-            lower_bits_mask_(lower_bits_mask),
-            upper_bits_mask_(upper_bits_mask)
-        { }
-
-        void operator()(StateInteger const value_wo_qubit, int const) const
-        {
-          // xxxxx0xxxxxx
-          StateInteger const zero_index
-            = ((value_wo_qubit bitand upper_bits_mask_) << 1u)
-              bitor (value_wo_qubit bitand lower_bits_mask_);
-          // xxxxx1xxxxxx
-          StateInteger const one_index = zero_index bitor qubit_mask_;
-          typedef
-            typename std::iterator_traits<RandomAccessIterator>::value_type
-            complex_type;
-          *(first_+one_index) = static_cast<complex_type>(0);
-
-          using std::norm;
-          zero_probability_ += norm(*(first_+zero_index));
-        }
-      };
-
-      template <typename Real, typename RandomAccessIterator, typename StateInteger>
-      inline clear_loop1_inside<Real, RandomAccessIterator, StateInteger>
-      make_clear_loop1_inside(
-        Real& zero_probability,
-        RandomAccessIterator const first,
-        StateInteger const qubit_mask,
-        StateInteger const lower_bits_mask,
-        StateInteger const upper_bits_mask)
-      {
-        return clear_loop1_inside<Real, RandomAccessIterator, StateInteger>(
-          zero_probability, first, qubit_mask, lower_bits_mask, upper_bits_mask);
-      }
-
-
-      template <typename RandomAccessIterator, typename StateInteger, typename Real>
-      struct clear_loop2_inside
-      {
-        RandomAccessIterator first_;
-        StateInteger lower_bits_mask_;
-        StateInteger upper_bits_mask_;
-        Real multiplier_;
-
-        clear_loop2_inside(
-          RandomAccessIterator const first,
-          StateInteger const lower_bits_mask,
-          StateInteger const upper_bits_mask,
-          Real const multiplier)
-          : first_(first),
-            lower_bits_mask_(lower_bits_mask),
-            upper_bits_mask_(upper_bits_mask),
-            multiplier_(multiplier)
-        { }
-
-        void operator()(StateInteger const value_wo_qubit, int const) const
-        {
-          // xxxxx0xxxxxx
-          StateInteger const zero_index
-            = ((value_wo_qubit bitand upper_bits_mask_) << 1u)
-              bitor (value_wo_qubit bitand lower_bits_mask_);
-          *(first_+zero_index) *= multiplier_;
-        }
-      };
-
-      template <typename RandomAccessIterator, typename StateInteger, typename Real>
-      inline clear_loop2_inside<RandomAccessIterator, StateInteger, Real>
-      make_clear_loop2_inside(
-        RandomAccessIterator const first,
-        StateInteger const lower_bits_mask,
-        StateInteger const upper_bits_mask,
-        Real const multiplier)
-      {
-        return clear_loop2_inside<RandomAccessIterator, StateInteger, Real>(
-          first, lower_bits_mask, upper_bits_mask, multiplier);
-      }
-# endif // BOOST_NO_CXX11_LAMBDAS
-
       template <
         typename ParallelPolicy, typename RandomAccessIterator,
         typename StateInteger, typename BitInteger>
@@ -153,83 +35,61 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const qubit)
       {
         static_assert(
-          KET_is_unsigned<StateInteger>::value,
-          "StateInteger should be unsigned");
+          std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
         static_assert(
-          KET_is_unsigned<BitInteger>::value,
-          "BitInteger should be unsigned");
+          std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
         assert(
           ::ket::utility::integer_exp2<StateInteger>(qubit)
-          < static_cast<StateInteger>(last-first));
+          < static_cast<StateInteger>(last - first));
         assert(
           ::ket::utility::integer_exp2<StateInteger>(
-            ::ket::utility::integer_log2<BitInteger>(last-first))
-          == static_cast<StateInteger>(last-first));
+            ::ket::utility::integer_log2<BitInteger>(last - first))
+          == static_cast<StateInteger>(last - first));
 
-        StateInteger const qubit_mask
+        auto const qubit_mask
           = ::ket::utility::integer_exp2<StateInteger>(qubit);
-        StateInteger const lower_bits_mask
-          = qubit_mask-static_cast<StateInteger>(1u);
-        StateInteger const upper_bits_mask = compl lower_bits_mask;
+        auto const lower_bits_mask = qubit_mask - StateInteger{1u};
+        auto const upper_bits_mask = compl lower_bits_mask;
 
-        typedef
-          typename std::iterator_traits<RandomAccessIterator>::value_type
-          complex_type;
-        typedef
-          typename ::ket::utility::meta::real_of<complex_type>::type real_type;
-        real_type zero_probability = static_cast<real_type>(0);
+        using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+        using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
+        auto zero_probability = real_type{0};
 
         using ::ket::utility::loop_n;
-# ifndef BOOST_NO_CXX11_LAMBDAS
         loop_n(
           parallel_policy,
-          static_cast<StateInteger>(last-first)/2u,
+          static_cast<StateInteger>(last - first) / 2u,
           [&zero_probability, first, qubit_mask, lower_bits_mask, upper_bits_mask](
             StateInteger const value_wo_qubit, int const)
           {
             // xxxxx0xxxxxx
-            StateInteger const zero_index
+            auto const zero_index
               = ((value_wo_qubit bitand upper_bits_mask) << 1u)
                 bitor (value_wo_qubit bitand lower_bits_mask);
             // xxxxx1xxxxxx
-            StateInteger const one_index = zero_index bitor qubit_mask;
-            *(first+one_index) = static_cast<complex_type>(0);
+            auto const one_index = zero_index bitor qubit_mask;
+            *(first+one_index) = complex_type{0};
 
             using std::norm;
-            zero_probability += norm(*(first+zero_index));
+            zero_probability += norm(*(first + zero_index));
           });
-# else // BOOST_NO_CXX11_LAMBDAS
-        loop_n(
-          parallel_policy,
-          static_cast<StateInteger>(last-first)/2u,
-          ::ket::gate::clear_detail::make_clear_loop1_inside(
-            zero_probability, first, qubit_mask, lower_bits_mask, upper_bits_mask));
-# endif // BOOST_NO_CXX11_LAMBDAS
 
         using std::pow;
         using boost::math::constants::half;
-        real_type const multiplier = pow(zero_probability, -half<real_type>());
+        auto const multiplier = pow(zero_probability, -half<real_type>());
 
-# ifndef BOOST_NO_CXX11_LAMBDAS
         loop_n(
           parallel_policy,
-          static_cast<StateInteger>(last-first)/2u,
+          static_cast<StateInteger>(last - first)/2u,
           [first, lower_bits_mask, upper_bits_mask, multiplier](
             StateInteger const value_wo_qubit, int const)
           {
             // xxxxx0xxxxxx
-            StateInteger const zero_index
+            auto const zero_index
               = ((value_wo_qubit bitand upper_bits_mask) << 1u)
                 bitor (value_wo_qubit bitand lower_bits_mask);
-            *(first+zero_index) *= multiplier;
+            *(first + zero_index) *= multiplier;
           });
-# else // BOOST_NO_CXX11_LAMBDAS
-        loop_n(
-          parallel_policy,
-          static_cast<StateInteger>(last-first)/2u,
-          ::ket::gate::clear_detail::make_clear_loop2_inside(
-            first, lower_bits_mask, upper_bits_mask, multiplier));
-# endif // BOOST_NO_CXX11_LAMBDAS
       }
     }
 
@@ -287,10 +147,4 @@ namespace ket
 } // namespace ket
 
 
-# undef KET_is_unsigned
-# ifdef BOOST_NO_CXX11_STATIC_ASSERT
-#   undef static_assert
-# endif
-
-#endif
-
+#endif // KET_GATE_CLEAR_HPP

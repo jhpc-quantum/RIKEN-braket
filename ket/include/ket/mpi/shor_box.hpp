@@ -5,19 +5,13 @@
 
 # include <cassert>
 # include <iterator>
-# ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
-#   include <type_traits>
-# else
-#   include <boost/type_traits/is_unsigned.hpp>
-#   include <boost/type_traits/is_same.hpp>
-# endif
-# ifdef BOOST_NO_CXX11_STATIC_ASSERT
-#   include <boost/static_assert.hpp>
-# endif
+# include <type_traits>
 
 # include <boost/range/size.hpp>
 # include <boost/range/value_type.hpp>
-# include <boost/range/join.hpp>
+# ifndef NDEBUG
+#   include <boost/range/join.hpp>
+# endif // NDEBUG
 
 # include <yampi/environment.hpp>
 # include <yampi/communicator.hpp>
@@ -27,26 +21,13 @@
 # include <ket/qubit.hpp>
 # include <ket/meta/state_integer_of.hpp>
 # include <ket/meta/bit_integer_of.hpp>
-# include <ket/utility/is_unique.hpp>
+# include <ket/utility/is_unique_if_sorted.hpp>
 # include <ket/utility/integer_exp2.hpp>
 # include <ket/utility/begin.hpp>
-# include <ket/utility/meta/iterator_of.hpp>
 # include <ket/utility/meta/real_of.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
 # include <ket/mpi/utility/logger.hpp>
-
-# ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
-#   define KET_is_unsigned std::is_unsigned
-#   define KET_is_same std::is_same
-# else
-#   define KET_is_unsigned boost::is_unsigned
-#   define KET_is_same boost::is_same
-# endif
-
-# ifdef BOOST_NO_CXX11_STATIC_ASSERT
-#   define static_assert(exp, msg) BOOST_STATIC_ASSERT_MSG(exp, msg)
-# endif
 
 
 namespace ket
@@ -65,20 +46,19 @@ namespace ket
 
         template <typename RandomAccessIterator>
         void operator()(
-          RandomAccessIterator const first,
-          RandomAccessIterator const last) const
+          RandomAccessIterator const first, RandomAccessIterator const last) const
         {
-          typedef typename std::iterator_traits<RandomAccessIterator>::value_type complex_type;
-          typedef typename ::ket::utility::meta::real_of<complex_type>::type real_type;
-          ::ket::utility::fill(parallel_policy_, first, last, static_cast<complex_type>(static_cast<real_type>(0)));
+          using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+          using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
+          ::ket::utility::fill(parallel_policy_, first, last, complex_type{real_type{0}});
         }
-      };
+      }; // struct call_fill
 
       template <typename ParallelPolicy>
       inline call_fill<ParallelPolicy> make_call_fill(ParallelPolicy const parallel_policy)
-      { return call_fill<ParallelPolicy>(parallel_policy); }
+      { return call_fill<ParallelPolicy>{parallel_policy}; }
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
-    }
+    } // namespace shor_box_detail
 
     template <
       typename MpiPolicy, typename ParallelPolicy,
@@ -94,56 +74,59 @@ namespace ket
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
-      typedef typename boost::range_value<Qubits>::type qubit_type;
-      typedef typename ::ket::meta::bit_integer_of<qubit_type>::type bit_integer_type;
+      using qubit_type = typename boost::range_value<Qubits>::type;
       static_assert(
-        (KET_is_same<
+        (std::is_same<
            StateInteger, typename ::ket::meta::state_integer_of<qubit_type>::type>::value),
         "StateInteger should be state_integer_type of qubit_type");
-      static_assert(KET_is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
-      static_assert(KET_is_unsigned<bit_integer_type>::value, "BitInteger should be unsigned");
+      static_assert(
+        (std::is_same<
+           BitInteger, typename ::ket::meta::bit_integer_of<qubit_type>::type>::value),
+        "BitInteger should be bit_integer_type of qubit_type");
+      static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+      static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
 
-      assert(::ket::utility::ranges::is_unique(boost::join(exponent_qubits, modular_exponentiation_qubits)));
+      assert(::ket::utility::ranges::is_unique_if_sorted(boost::join(exponent_qubits, modular_exponentiation_qubits)));
 
-      ::ket::mpi::utility::log_with_time_guard<char> print("Shor", environment);
+      ::ket::mpi::utility::log_with_time_guard<char> print{"Shor", environment};
 
-      typedef typename boost::range_value<RandomAccessRange>::type complex_type;
-      typedef typename ::ket::utility::meta::real_of<complex_type>::type real_type;
+      using complex_type = typename boost::range_value<RandomAccessRange>::type;
+      using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
       ::ket::mpi::utility::for_each_local_range(
         mpi_policy, local_state,
         [parallel_policy](auto const first, auto const last)
-        { ::ket::utility::fill(parallel_policy, first, last, static_cast<complex_type>(static_cast<real_type>(0))); });
+        { ::ket::utility::fill(parallel_policy, first, last, complex_type{real_type{0}}); });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
       ::ket::mpi::utility::for_each_local_range(
         mpi_policy, local_state,
         ::ket::mpi::shor_box_detail::make_call_fill(parallel_policy));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 
-      bit_integer_type const num_exponent_qubits = static_cast<bit_integer_type>(boost::size(exponent_qubits));
-      StateInteger const num_exponents = ::ket::utility::integer_exp2<StateInteger>(num_exponent_qubits);
-      StateInteger modular_exponentiation_value = static_cast<StateInteger>(1u);
+      auto const num_exponent_qubits = static_cast<BitInteger>(boost::size(exponent_qubits));
+      auto const num_exponents = ::ket::utility::integer_exp2<StateInteger>(num_exponent_qubits);
+      auto modular_exponentiation_value = StateInteger{1u};
 
       using std::pow;
-      complex_type const constant_coefficient
+      auto const constant_coefficient
         = static_cast<complex_type>(static_cast<real_type>(pow(static_cast<real_type>(num_exponents), -0.5)));
 
-      yampi::rank const present_rank = communicator.rank(environment);
-      typename ::ket::utility::meta::iterator_of<RandomAccessRange>::type iter = ::ket::utility::begin(local_state);
-      for (StateInteger exponent = static_cast<StateInteger>(0u); exponent < num_exponents; ++exponent)
+      auto const present_rank = communicator.rank(environment);
+      auto const first = ::ket::utility::begin(local_state);
+      for (auto exponent = StateInteger{0u}; exponent < num_exponents; ++exponent)
       {
-        StateInteger const qubit_value
+        auto const qubit_value
           = ::ket::shor_box_detail::calculate_index(
               ::ket::shor_box_detail::reverse_bits(exponent, num_exponent_qubits), exponent_qubits,
               modular_exponentiation_value, modular_exponentiation_qubits);
 
         using ::ket::mpi::permutate_bits;
-        std::pair<yampi::rank, StateInteger> const rank_index
+        auto const rank_index
           = ::ket::mpi::utility::qubit_value_to_rank_index(
               mpi_policy, local_state, permutate_bits(permutation, qubit_value));
 
         if (rank_index.first == present_rank)
-          *(iter + rank_index.second) = constant_coefficient;
+          *(first + rank_index.second) = constant_coefficient;
 
         modular_exponentiation_value *= base;
         modular_exponentiation_value %= divisor;
@@ -194,11 +177,4 @@ namespace ket
 } // namespace ket
 
 
-# undef KET_is_unsigned
-# undef KET_is_same
-# ifdef BOOST_NO_CXX11_STATIC_ASSERT
-#   undef static_assert
-# endif
-
-#endif
-
+#endif // KET_MPI_SHOR_BOX_HPP

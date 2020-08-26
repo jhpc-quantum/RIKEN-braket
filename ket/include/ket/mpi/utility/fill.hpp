@@ -25,21 +25,21 @@ namespace ket
           Value const& value_;
 
           fill(ParallelPolicy const parallel_policy, Value const& value)
-            : parallel_policy_(parallel_policy), value_(value)
+            : parallel_policy_{parallel_policy}, value_{value}
           { }
 
           typedef void result_type;
           template <typename Iterator>
           void operator()(Iterator const first, Iterator const last) const
           { ::ket::utility::fill(parallel_policy_, first, last, value_); }
-        };
+        }; // struct fill<ParallelPolicy, Value>
 
         template <typename ParallelPolicy, typename Value>
         inline ::ket::mpi::utility::fill_detail::fill<ParallelPolicy, Value> make_fill(
           ParallelPolicy const parallel_policy, Value const& value)
         {
-          return ::ket::mpi::utility::fill_detail::fill<ParallelPolicy, Value>(
-            parallel_policy, value);
+          return ::ket::mpi::utility::fill_detail::fill<ParallelPolicy, Value>{
+            parallel_policy, value};
         }
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
       } // namespace fill_detail
@@ -68,7 +68,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::utility::fill(
-          ::ket::mpi::utility::policy::make_general_mpi(), 
+          ::ket::mpi::utility::policy::make_general_mpi(),
           ::ket::utility::policy::make_sequential(),
           local_state, value, environment);
       }
@@ -77,4 +77,4 @@ namespace ket
 } // namespace ket
 
 
-#endif
+#endif // KET_MPI_UTILITY_FILL_HPP

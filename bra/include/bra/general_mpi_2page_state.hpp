@@ -2,8 +2,6 @@
 # define BRA_GENERAL_MPI_2PAGE_STATE_HPP
 
 # ifndef BRA_NO_MPI
-#   include <boost/config.hpp>
-
 #   include <vector>
 
 #   include <ket/gate/projective_measurement.hpp>
@@ -18,11 +16,6 @@
 
 #   include <bra/state.hpp>
 
-#   ifdef BOOST_NO_CXX11_FINAL
-#     define final 
-#     define override 
-#   endif // BOOST_NO_CXX11_FINAL
-
 
 namespace bra
 {
@@ -32,9 +25,7 @@ namespace bra
     ket::utility::policy::parallel<unsigned int> parallel_policy_;
     ket::mpi::utility::policy::general_mpi mpi_policy_;
 
-    typedef
-      ket::mpi::state<complex_type, 2, yampi::allocator<complex_type> >
-      data_type;
+    using data_type = ket::mpi::state<complex_type, 2, yampi::allocator<complex_type>>;
     data_type data_;
 
    public:
@@ -56,28 +47,11 @@ namespace bra
       yampi::communicator const& communicator,
       yampi::environment const& environment);
 
-#   ifndef BOOST_NO_CXX11_DEFAULTED_FUNCTIONS
     ~general_mpi_2page_state() = default;
-#   else
-    ~general_mpi_2page_state() { }
-#   endif
-
-   private:
-#   ifndef BOOST_NO_CXX11_DELETED_FUNCTIONS
     general_mpi_2page_state(general_mpi_2page_state const&) = delete;
     general_mpi_2page_state& operator=(general_mpi_2page_state const&) = delete;
-#     ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
     general_mpi_2page_state(general_mpi_2page_state&&) = delete;
     general_mpi_2page_state& operator=(general_mpi_2page_state&&) = delete;
-#     endif // BOOST_NO_CXX11_RVALUE_REFERENCES
-#   else // BOOST_NO_CXX11_DELETED_FUNCTIONS
-    general_mpi_2page_state(general_mpi_2page_state const&);
-    general_mpi_2page_state& operator=(general_mpi_2page_state const&);
-#     ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
-    general_mpi_2page_state(general_mpi_2page_state&&);
-    general_mpi_2page_state& operator=(general_mpi_2page_state&&);
-#     endif // BOOST_NO_CXX11_RVALUE_REFERENCES
-#   endif // BOOST_NO_CXX11_DELETED_FUNCTIONS
 
    private:
     unsigned int do_num_page_qubits() const override;
@@ -143,26 +117,21 @@ namespace bra
       qubit_type const target_qubit,
       control_qubit_type const control_qubit1,
       control_qubit_type const control_qubit2) override;
-    KET_GATE_OUTCOME_TYPE do_projective_measurement(
+    ket::gate::outcome do_projective_measurement(
       qubit_type const qubit, yampi::rank const root) override;
     void do_expectation_values(yampi::rank const root) override;
     void do_measure(yampi::rank const root) override;
     void do_generate_events(yampi::rank const root, int const num_events, int const seed) override;
     void do_shor_box(
-      bit_integer_type const num_exponent_qubits,
-      state_integer_type const divisor, state_integer_type const base) override;
+      state_integer_type const divisor, state_integer_type const base,
+      std::vector<qubit_type> const& exponent_qubits,
+      std::vector<qubit_type> const& modular_exponentiation_qubits) override;
     void do_clear(qubit_type const qubit) override;
     void do_set(qubit_type const qubit) override;
-    void do_depolarizing_channel(real_type const px, real_type const py, real_type const pz, int const seed) override;
-  };
-}
+  }; // class general_mpi_2page_state
+} // namespace bra
 
 
-#   ifdef BOOST_NO_CXX11_FINAL
-#     undef final 
-#     undef override 
-#   endif // BOOST_NO_CXX11_FINAL
 # endif // BRA_NO_MPI
 
-#endif
-
+#endif // BRA_GENERAL_MPI_2PAGE_STATE_HPP

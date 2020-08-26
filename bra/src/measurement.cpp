@@ -1,5 +1,3 @@
-#include <boost/config.hpp>
-
 #include <string>
 #include <ios>
 #include <iomanip>
@@ -22,14 +20,14 @@ namespace bra
 
 #ifndef BRA_NO_MPI
     measurement::measurement(yampi::rank const root)
-      : ::bra::gate::gate(), root_(root)
+      : ::bra::gate::gate{}, root_{root}
     { }
 
     ::bra::state& measurement::do_apply(::bra::state& state) const
     { return state.measurement(root_); }
 #else // BRA_NO_MPI
     measurement::measurement()
-      : ::bra::gate::gate()
+      : ::bra::gate::gate{}
     { }
 
     ::bra::state& measurement::do_apply(::bra::state& state) const
@@ -40,6 +38,5 @@ namespace bra
     std::string measurement::do_representation(
       std::ostringstream& repr_stream, int const) const
     { return repr_stream.str(); }
-  }
-}
-
+  } // namespace gate
+} // namespace bra

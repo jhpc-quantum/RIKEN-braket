@@ -1,5 +1,3 @@
-#include <boost/config.hpp>
-
 #include <string>
 #include <ios>
 #include <iomanip>
@@ -22,7 +20,7 @@ namespace bra
     controlled_not::controlled_not(
       qubit_type const target_qubit,
       control_qubit_type const control_qubit)
-      : ::bra::gate::gate(), target_qubit_(target_qubit), control_qubit_(control_qubit)
+      : ::bra::gate::gate{}, target_qubit_{target_qubit}, control_qubit_{control_qubit}
     { }
 
     ::bra::state& controlled_not::do_apply(::bra::state& state) const
@@ -38,6 +36,5 @@ namespace bra
         << std::setw(parameter_width) << target_qubit_;
       return repr_stream.str();
     }
-  }
-}
-
+  } // namespace gate
+} // namespace bra

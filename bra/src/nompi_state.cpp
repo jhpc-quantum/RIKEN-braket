@@ -1,19 +1,9 @@
 #ifdef BRA_NO_MPI
-# include <boost/config.hpp>
-
 # include <vector>
-# ifndef BOOST_NO_CXX11_HDR_RANDOM
-#   include <random>
-# else
-#   include <boost/random/uniform_real_distribution.hpp>
-# endif
-
-# include <boost/range/algorithm_ext/iota.hpp>
 
 # include <yampi/communicator.hpp>
 # include <yampi/environment.hpp>
 
-# include <ket/qubit.hpp>
 # include <ket/gate/hadamard.hpp>
 # include <ket/gate/pauli_x.hpp>
 # include <ket/gate/pauli_y.hpp>
@@ -35,13 +25,6 @@
 
 # include <bra/nompi_state.hpp>
 # include <bra/state.hpp>
-# include <bra/utility/closest_floating_point_of.hpp>
-
-# ifndef BOOST_NO_CXX11_HDR_RANDOM
-#   define BRA_uniform_real_distribution std::uniform_real_distribution
-# else
-#   define BRA_uniform_real_distribution boost::random::uniform_real_distribution
-# endif
 
 
 namespace bra
@@ -50,9 +33,9 @@ namespace bra
     ::bra::state::state_integer_type const initial_integer,
     unsigned int const total_num_qubits,
     unsigned int num_threads, ::bra::state::seed_type const seed)
-    : ::bra::state(total_num_qubits, seed),
-      parallel_policy_(num_threads),
-      data_(make_initial_data(initial_integer, total_num_qubits))
+    : ::bra::state{total_num_qubits, seed},
+      parallel_policy_{num_threads},
+      data_{make_initial_data(initial_integer, total_num_qubits)}
   { }
 
   void nompi_state::do_hadamard(qubit_type const qubit)
@@ -187,7 +170,7 @@ namespace bra
       data_, target_qubit, control_qubit1, control_qubit2);
   }
 
-  KET_GATE_OUTCOME_TYPE nompi_state::do_projective_measurement(qubit_type const qubit)
+  ket::gate::outcome nompi_state::do_projective_measurement(qubit_type const qubit)
   {
     return ket::gate::ranges::projective_measurement(
       parallel_policy_, data_, qubit, random_number_generator_);
@@ -221,14 +204,10 @@ namespace bra
   }
 
   void nompi_state::do_shor_box(
-    bit_integer_type const num_exponent_qubits,
-    state_integer_type const divisor, state_integer_type const base)
+    state_integer_type const divisor, state_integer_type const base,
+    std::vector<qubit_type> const& exponent_qubits,
+    std::vector<qubit_type> const& modular_exponentiation_qubits)
   {
-    std::vector<qubit_type> exponent_qubits(num_exponent_qubits);
-    boost::iota(exponent_qubits, static_cast<qubit_type>(total_num_qubits_-num_exponent_qubits));
-    std::vector<qubit_type> modular_exponentiation_qubits(total_num_qubits_-num_exponent_qubits);
-    boost::iota(modular_exponentiation_qubits, static_cast<qubit_type>(0u));
-
     ket::ranges::shor_box(
       parallel_policy_,
       data_, base, divisor, exponent_qubits, modular_exponentiation_qubits);
@@ -239,41 +218,7 @@ namespace bra
 
   void nompi_state::do_set(qubit_type const qubit)
   { ket::gate::ranges::set(parallel_policy_, data_, qubit); }
-
-  void nompi_state::do_depolarizing_channel(real_type const px, real_type const py, real_type const pz, int const seed)
-  {
-    typedef typename ::bra::utility::closest_floating_point_of<real_type>::type floating_point;
-    BRA_uniform_real_distribution<floating_point> distribution(0.0, px + py + pz);
-    qubit_type const last_qubit = ket::make_qubit(total_num_qubits_);
-    if (seed < 0)
-      for (qubit_type qubit = ket::make_qubit(static_cast<bit_integer_type>(0u)); qubit < last_qubit; ++qubit)
-      {
-        real_type const probability = static_cast<real_type>(distribution(random_number_generator_));
-        if (probability < px)
-          do_pauli_x(qubit);
-        else if (probability < px + py)
-          do_pauli_y(qubit);
-        else
-          do_pauli_z(qubit);
-      }
-    else
-    {
-      random_number_generator_type temporal_random_number_generator(static_cast<seed_type>(seed));
-      for (qubit_type qubit = ket::make_qubit(static_cast<bit_integer_type>(0u)); qubit < last_qubit; ++qubit)
-      {
-        real_type const probability = static_cast<real_type>(distribution(temporal_random_number_generator));
-        if (probability < px)
-          do_pauli_x(qubit);
-        else if (probability < px + py)
-          do_pauli_y(qubit);
-        else
-          do_pauli_z(qubit);
-      }
-    }
-  }
-}
+} // namespace bra
 
 
-# undef BRA_uniform_real_distribution
 #endif // BRA_NO_MPI
-

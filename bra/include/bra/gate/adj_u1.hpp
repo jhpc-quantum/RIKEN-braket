@@ -1,18 +1,11 @@
 #ifndef BRA_GATE_ADJ_U1_HPP
 # define BRA_GATE_ADJ_U1_HPP
 
-# include <boost/config.hpp>
-
 # include <string>
 # include <iosfwd>
 
 # include <bra/gate/gate.hpp>
 # include <bra/state.hpp>
-
-# ifdef BOOST_NO_CXX11_FINAL
-#   define final 
-#   define override 
-# endif // BOOST_NO_CXX11_FINAL
 
 
 namespace bra
@@ -23,8 +16,8 @@ namespace bra
       : public ::bra::gate::gate
     {
      public:
-      typedef ::bra::state::qubit_type qubit_type;
-      typedef ::bra::state::real_type real_type;
+      using qubit_type = ::bra::state::qubit_type;
+      using real_type = ::bra::state::real_type;
 
      private:
       real_type phase_;
@@ -34,43 +27,21 @@ namespace bra
 
      public:
       adj_u1(real_type const phase, qubit_type const qubit);
-# ifndef BOOST_NO_CXX11_DEFAULTED_FUNCTIONS
-      ~adj_u1() = default;
-# else
-      ~adj_u1() { }
-# endif
 
-     private:
-# ifndef BOOST_NO_CXX11_DELETED_FUNCTIONS
+      ~adj_u1() = default;
       adj_u1(adj_u1 const&) = delete;
       adj_u1& operator=(adj_u1 const&) = delete;
-#   ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
       adj_u1(adj_u1&&) = delete;
       adj_u1& operator=(adj_u1&&) = delete;
-#   endif // BOOST_NO_CXX11_RVALUE_REFERENCES
-# else // BOOST_NO_CXX11_DELETED_FUNCTIONS
-      adj_u1(adj_u1 const&);
-      adj_u1& operator=(adj_u1 const&);
-#   ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
-      adj_u1(adj_u1&&);
-      adj_u1& operator=(adj_u1&&);
-#   endif // BOOST_NO_CXX11_RVALUE_REFERENCES
-# endif // BOOST_NO_CXX11_DELETED_FUNCTIONS
 
      private:
       ::bra::state& do_apply(::bra::state& state) const override;
       std::string const& do_name() const override;
       std::string do_representation(
         std::ostringstream& repr_stream, int const parameter_width) const override;
-    };
-  }
-}
+    }; // class adj_u1
+  } // namespace gate
+} // namespace bra
 
 
-# ifdef BOOST_NO_CXX11_FINAL
-#   undef final 
-#   undef override 
-# endif // BOOST_NO_CXX11_FINAL
-
-#endif
-
+#endif // BRA_GATE_ADJ_U1_HPP

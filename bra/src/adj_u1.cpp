@@ -1,5 +1,3 @@
-#include <boost/config.hpp>
-
 #include <string>
 #include <ios>
 #include <iomanip>
@@ -19,8 +17,8 @@ namespace bra
     std::string const adj_u1::name_ = "U1+";
 
     adj_u1::adj_u1(real_type const phase, qubit_type const qubit)
-      : ::bra::gate::gate(),
-        phase_(phase), qubit_(qubit)
+      : ::bra::gate::gate{},
+        phase_{phase}, qubit_{qubit}
     { }
 
     ::bra::state& adj_u1::do_apply(::bra::state& state) const
@@ -36,6 +34,5 @@ namespace bra
         << std::setw(parameter_width) << phase_;
       return repr_stream.str();
     }
-  }
-}
-
+  } // namespace gate
+} // namespace bra

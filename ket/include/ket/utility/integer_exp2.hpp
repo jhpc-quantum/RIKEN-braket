@@ -1,19 +1,16 @@
 #ifndef KET_UTILITY_INTEGER_EXP2_HPP
 # define KET_UTILITY_INTEGER_EXP2_HPP
 
-# include <boost/config.hpp>
-
 
 namespace ket
 {
   namespace utility
   {
     template <typename UnsignedInteger, typename Exponent>
-    inline BOOST_CONSTEXPR UnsignedInteger integer_exp2(Exponent const exponent) BOOST_NOEXCEPT_OR_NOTHROW
-    { return static_cast<UnsignedInteger>(1u) << exponent; }
-  }
-}
+    inline constexpr UnsignedInteger integer_exp2(Exponent const exponent) noexcept
+    { return UnsignedInteger{1u} << exponent; }
+  } // namespace utility
+} // namespace ket
 
 
-#endif
-
+#endif // KET_UTILITY_INTEGER_EXP2_HPP

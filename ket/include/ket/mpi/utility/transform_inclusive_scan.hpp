@@ -1,29 +1,15 @@
 #ifndef KET_MPI_UTILITY_TRANSFORM_INCLUSIVE_SCAN_HPP
 # define KET_MPI_UTILITY_TRANSFORM_INCLUSIVE_SCAN_HPP
 
-# include <boost/config.hpp>
+# include <iterator>
+# include <type_traits>
 
-# ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
-#   include <type_traits>
-# else
-#   include <boost/utility/enable_if.hpp>
-# endif
-
-# include <boost/range/begin.hpp>
-# include <boost/range/end.hpp>
 # include <boost/range/value_type.hpp>
-# include <boost/utility.hpp> // boost::prior
 
 # include <yampi/environment.hpp>
 
 # include <ket/utility/loop_n.hpp>
-
-# ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
-#   define KET_enable_if std::enable_if
-# else
-#   define KET_enable_if boost::enable_if_c
-# endif
-
+# include <ket/utility/end.hpp>
 
 
 namespace ket
@@ -50,7 +36,7 @@ namespace ket
             ::ket::utility::ranges::transform_inclusive_scan(
               parallel_policy,
               local_state, d_first, binary_operation, unary_operation);
-            return *boost::prior(boost::end(local_state));
+            return *std::prev(::ket::utility::end(local_state));
           }
 
           template <
@@ -68,16 +54,16 @@ namespace ket
               parallel_policy,
               local_state, d_first,
               binary_operation, unary_operation, initial_value);
-            return *boost::prior(boost::end(local_state));
+            return *std::prev(::ket::utility::end(local_state));
           }
-        };
+        }; // struct transform_inclusive_scan<LocalState_>
       } // namespace dispatch
 
       template <
         typename Value, typename ParallelPolicy,
         typename LocalState, typename ForwardIterator,
         typename BinaryOperation, typename UnaryOperation>
-      inline typename KET_enable_if<
+      inline typename std::enable_if<
         ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
         Value>::type
       transform_inclusive_scan(
@@ -127,7 +113,7 @@ namespace ket
       template <
         typename Value1, typename LocalState, typename OutputIterator,
         typename BinaryOperation, typename UnaryOperation, typename Value2>
-      inline typename KET_enable_if<
+      inline typename std::enable_if<
         not ::ket::utility::policy::meta::is_loop_n_policy<LocalState>::value,
         Value1>::type
       transform_inclusive_scan(
@@ -147,7 +133,4 @@ namespace ket
 } // namespace ket
 
 
-# undef KET_enable_if
-
-#endif
-
+#endif // KET_MPI_UTILITY_TRANSFORM_INCLUSIVE_SCAN_HPP

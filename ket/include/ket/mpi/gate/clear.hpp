@@ -4,11 +4,7 @@
 # include <boost/config.hpp>
 
 # include <vector>
-# ifndef BOOST_NO_CXX11_HDR_ARRAY
-#   include <array>
-# else
-#   include <boost/array.hpp>
-# endif
+# include <array>
 # include <ios>
 # include <sstream>
 
@@ -27,12 +23,6 @@
 # include <ket/mpi/gate/page/clear.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
 
-# ifndef BOOST_NO_CXX11_HDR_ARRAY
-#   define KET_array std::array
-# else
-#   define KET_array boost::array
-# endif
-
 
 namespace ket
 {
@@ -50,8 +40,8 @@ namespace ket
           Qubit qubit_;
 
           call_clear(ParallelPolicy const parallel_policy, Qubit const qubit)
-            : parallel_policy_(parallel_policy),
-              qubit_(qubit)
+            : parallel_policy_{parallel_policy},
+              qubit_{qubit}
           { }
 
           template <typename RandomAccessIterator>
@@ -59,12 +49,12 @@ namespace ket
             RandomAccessIterator const first,
             RandomAccessIterator const last) const
           { ::ket::gate::clear(parallel_policy_, first, last, qubit_); }
-        };
+        }; // struct call_clear<ParallelPolicy, Qubit>
 
         template <typename ParallelPolicy, typename Qubit>
         inline call_clear<ParallelPolicy, Qubit> make_call_clear(
           ParallelPolicy const parallel_policy, Qubit const qubit)
-        { return call_clear<ParallelPolicy, Qubit>(parallel_policy, qubit); }
+        { return call_clear<ParallelPolicy, Qubit>{parallel_policy, qubit}; }
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 
         template <
@@ -81,8 +71,7 @@ namespace ket
               mpi_policy, parallel_policy, local_state, qubit, permutation);
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
-          typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
-          qubit_type const permutated_qubit = permutation[qubit];
+          auto const permutated_qubit = permutation[qubit];
           return ::ket::mpi::utility::for_each_local_range(
             mpi_policy, local_state,
             [parallel_policy, permutated_qubit](auto const first, auto const last)
@@ -109,16 +98,15 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        std::ostringstream output_string_stream("Clear ", std::ios_base::ate);
+        auto output_string_stream = std::ostringstream{"Clear ", std::ios_base::ate};
         output_string_stream << qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
+        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
 
-        typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
-        KET_array<qubit_type, 1u> qubits = { qubit };
+        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+        auto qubits = std::array<qubit_type, 1u>{qubit};
         ::ket::mpi::utility::maybe_interchange_qubits(
           mpi_policy, parallel_policy,
-          local_state, qubits, permutation,
-          buffer, communicator, environment);
+          local_state, qubits, permutation, buffer, communicator, environment);
 
         return ::ket::mpi::gate::clear_detail::clear(
           mpi_policy, parallel_policy, local_state, qubit, permutation);
@@ -139,16 +127,15 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        std::ostringstream output_string_stream("Clear ", std::ios_base::ate);
+        auto output_string_stream = std::ostringstream{"Clear ", std::ios_base::ate};
         output_string_stream << qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
+        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
 
-        typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
-        KET_array<qubit_type, 1u> qubits = { qubit };
+        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+        auto qubits = std::array<qubit_type, 1u>{qubit};
         ::ket::mpi::utility::maybe_interchange_qubits(
           mpi_policy, parallel_policy,
-          local_state, qubits, permutation,
-          buffer, datatype, communicator, environment);
+          local_state, qubits, permutation, buffer, datatype, communicator, environment);
 
         return ::ket::mpi::gate::clear_detail::clear(
           mpi_policy, parallel_policy, local_state, qubit, permutation);
@@ -189,8 +176,7 @@ namespace ket
         return ::ket::mpi::gate::clear(
           ::ket::mpi::utility::policy::make_general_mpi(),
           ::ket::utility::policy::make_sequential(),
-          local_state, qubit, permutation,
-          buffer, datatype, communicator, environment);
+          local_state, qubit, permutation, buffer, datatype, communicator, environment);
       }
 
       template <
@@ -236,7 +222,4 @@ namespace ket
 } // namespace ket
 
 
-# undef KET_array
-
-#endif
-
+#endif // KET_MPI_GATE_CLEAR_HPP

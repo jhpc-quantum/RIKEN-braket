@@ -1,8 +1,6 @@
 #ifndef KET_MPI_MEASURE_HPP
 # define KET_MPI_MEASURE_HPP
 
-# include <boost/config.hpp>
-
 # include <cmath>
 # include <vector>
 
@@ -22,6 +20,7 @@
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/positive_random_value_upto.hpp>
 # include <ket/utility/begin.hpp>
+# include <ket/utility/end.hpp>
 # include <ket/utility/meta/real_of.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
@@ -37,67 +36,6 @@ namespace ket
   namespace mpi
   {
     // measure
-    namespace measure_detail
-    {
-# ifdef BOOST_NO_CXX11_LAMBDAS
-      template <typename Complex>
-      struct real_part_plus
-      {
-        typedef Complex result_type;
-
-        Complex operator()(Complex const& lhs, Complex const& rhs) const
-        { using std::real; return static_cast<Complex>(real(lhs) + real(rhs)); }
-      };
-
-      template <typename Complex>
-      struct complex_norm
-      {
-        typedef Complex result_type;
-
-        Complex operator()(Complex const& value) const
-        { using std::norm; return static_cast<Complex>(norm(value)); }
-      };
-
-      template <typename Complex>
-      struct real_part_less_than
-      {
-        typedef bool result_type;
-
-        bool operator()(Complex const& lhs, Complex const& rhs) const
-        { using std::real; return real(lhs) < real(rhs); }
-      };
-
-
-      template <typename TotalProbabilities>
-      struct modify_random_value
-      {
-       private:
-        TotalProbabilities const& total_probabilities_;
-        yampi::rank result_rank_;
-
-       public:
-        typedef typename TotalProbabilities::value_type result_type;
-
-        modify_random_value(
-          TotalProbabilities const& total_probabilities, yampi::rank const result_rank)
-          : total_probabilities_(total_probabilities), result_rank_(result_rank)
-        { }
-
-        result_type operator()(result_type const random_value) const
-        { return random_value - total_probabilities_[result_rank_.mpi_rank()-1]; }
-      };
-
-      template <typename TotalProbabilities>
-      inline ::ket::mpi::measure_detail::modify_random_value<TotalProbabilities>
-      make_modify_random_value(
-        TotalProbabilities const& total_probabilities, yampi::rank const result_rank)
-      {
-        return ::ket::mpi::measure_detail::modify_random_value<TotalProbabilities>(
-          total_probabilities, result_rank);
-      }
-# endif // BOOST_NO_CXX11_LAMBDAS
-    }
-
     template <
       typename MpiPolicy, typename ParallelPolicy,
       typename LocalState, typename RandomNumberGenerator,
@@ -110,13 +48,11 @@ namespace ket
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
-      ket::mpi::utility::log_with_time_guard<char> print("Measurement", environment);
+      ket::mpi::utility::log_with_time_guard<char> print{"Measurement", environment};
 
-      typedef typename boost::range_value<LocalState>::type complex_type;
-      typedef typename ::ket::utility::meta::real_of<complex_type>::type real_type;
+      using complex_type = typename boost::range_value<LocalState>::type;
       using std::real;
-# ifndef BOOST_NO_CXX11_LAMBDAS
-      real_type const total_probability
+      auto const total_probability
         = real(::ket::mpi::utility::transform_inclusive_scan_self(
             parallel_policy, local_state,
             [](complex_type const& lhs, complex_type const& rhs)
@@ -124,19 +60,12 @@ namespace ket
             [](complex_type const& value)
             { using std::norm; return static_cast<complex_type>(norm(value)); },
             environment));
-# else // BOOST_NO_CXX11_LAMBDAS
-      real_type const total_probability
-        = real(::ket::mpi::utility::transform_inclusive_scan_self(
-            parallel_policy, local_state,
-            ::ket::mpi::measure_detail::real_part_plus<complex_type>(),
-            ::ket::mpi::measure_detail::complex_norm<complex_type>(),
-            environment));
-# endif // BOOST_NO_CXX11_LAMBDAS
 
-      yampi::rank const present_rank = communicator.rank(environment);
-      BOOST_CONSTEXPR_OR_CONST yampi::rank root_rank(0);
+      auto const present_rank = communicator.rank(environment);
+      constexpr auto root_rank = yampi::rank{0};
 
-      std::vector<real_type> total_probabilities;
+      using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
+      auto total_probabilities = std::vector<real_type>{};
       if (present_rank == root_rank)
         total_probabilities.resize(communicator.size(environment));
 
@@ -145,8 +74,8 @@ namespace ket
         ::ket::utility::begin(total_probabilities),
         environment);
 
-      real_type random_value;
-      yampi::rank result_rank;
+      auto random_value = real_type{};
+      auto result_rank = yampi::rank{};
       if (present_rank == root_rank)
       {
         ::ket::utility::ranges::inclusive_scan(
@@ -163,61 +92,43 @@ namespace ket
               - ::ket::utility::begin(total_probabilities)));
       }
 
-      int result_mpi_rank = result_rank.mpi_rank();
+      auto result_mpi_rank = result_rank.mpi_rank();
       yampi::broadcast(root_rank, communicator).call(
         yampi::make_buffer(result_mpi_rank), environment);
       result_rank = static_cast<yampi::rank>(result_mpi_rank);
 
-# ifndef BOOST_NO_CXX11_LAMBDAS
       yampi::algorithm::transform(
         yampi::ignore_status(),
         yampi::make_buffer(random_value),
         yampi::make_buffer(random_value),
         [&total_probabilities, result_rank](real_type const random_value)
-        { return random_value - total_probabilities[result_rank.mpi_rank()-1]; },
+        { return random_value - total_probabilities[result_rank.mpi_rank() - 1]; },
         ::yampi::message_envelope(root_rank, result_rank, communicator),
         environment);
-# else
-      yampi::algorithm::transform(
-        yampi::ignore_status(),
-        yampi::make_buffer(random_value),
-        yampi::make_buffer(random_value),
-        ::ket::mpi::measure_detail::make_modify_random_value(total_probabilities, result_rank),
-        ::yampi::message_envelope(root_rank, result_rank, communicator),
-        environment);
-# endif
 
-      StateInteger permutated_result;
+      auto permutated_result = StateInteger{};
       if (present_rank == result_rank)
       {
-# ifndef BOOST_NO_CXX11_LAMBDAS
-        StateInteger const local_result
+        auto const local_result
           = static_cast<StateInteger>(
               ::ket::mpi::utility::upper_bound(
                 local_state, static_cast<complex_type>(random_value),
                 [](complex_type const& lhs, complex_type const& rhs)
                 { using std::real; return real(lhs) < real(rhs); },
                 environment));
-# else // BOOST_NO_CXX11_LAMBDAS
-        StateInteger const local_result
-          = static_cast<StateInteger>(
-              ::ket::mpi::utility::upper_bound(
-                local_state, static_cast<complex_type>(random_value),
-                ::ket::mpi::measure_detail::real_part_less_than<complex_type>(),
-                environment));
-# endif // BOOST_NO_CXX11_LAMBDAS
+
         using ::ket::mpi::utility::rank_index_to_qubit_value;
         permutated_result
           = rank_index_to_qubit_value(
               mpi_policy, local_state, result_rank, local_result);
 
         ::ket::mpi::utility::fill(
-          mpi_policy, parallel_policy, local_state, complex_type(real_type(0)), environment);
-        ::ket::utility::begin(local_state)[local_result] = complex_type(real_type(1));
+          mpi_policy, parallel_policy, local_state, complex_type{real_type{0}}, environment);
+        ::ket::utility::begin(local_state)[local_result] = complex_type{real_type{1}};
       }
       else
         ::ket::mpi::utility::fill(
-          mpi_policy, parallel_policy, local_state, complex_type(real_type(0)), environment);
+          mpi_policy, parallel_policy, local_state, complex_type{real_type{0}}, environment);
 
       yampi::broadcast(result_rank, communicator).call(
         yampi::make_buffer(permutated_result), environment);
@@ -241,13 +152,12 @@ namespace ket
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
-      ket::mpi::utility::log_with_time_guard<char> print("Measurement", environment);
+      ket::mpi::utility::log_with_time_guard<char> print{"Measurement", environment};
 
-      typedef typename boost::range_value<LocalState>::type complex_type;
-      typedef typename ::ket::utility::meta::real_of<complex_type>::type real_type;
+      using complex_type = typename boost::range_value<LocalState>::type;
+      using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
       using std::real;
-# ifndef BOOST_NO_CXX11_LAMBDAS
-      real_type const total_probability
+      auto const total_probability
         = real(::ket::mpi::utility::transform_inclusive_scan_self(
             parallel_policy, local_state,
             [](complex_type const& lhs, complex_type const& rhs)
@@ -255,19 +165,11 @@ namespace ket
             [](complex_type const& value)
             { using std::norm; return static_cast<complex_type>(norm(value)); },
             environment));
-# else // BOOST_NO_CXX11_LAMBDAS
-      real_type const total_probability
-        = real(::ket::mpi::utility::transform_inclusive_scan_self(
-            parallel_policy, local_state,
-            ::ket::mpi::measure_detail::real_part_plus<complex_type>(),
-            ::ket::mpi::measure_detail::complex_norm<complex_type>(),
-            environment));
-# endif // BOOST_NO_CXX11_LAMBDAS
 
-      yampi::rank const present_rank = communicator.rank(environment);
-      BOOST_CONSTEXPR_OR_CONST yampi::rank root_rank(0);
+      auto const present_rank = communicator.rank(environment);
+      constexpr auto root_rank = yampi::rank{0};
 
-      std::vector<real_type> total_probabilities;
+      auto total_probabilities = std::vector<real_type>{};
       if (present_rank == root_rank)
         total_probabilities.resize(communicator.size(environment));
 
@@ -276,8 +178,8 @@ namespace ket
         ::ket::utility::begin(total_probabilities),
         environment);
 
-      real_type random_value;
-      yampi::rank result_rank;
+      auto random_value = real_type{};
+      auto result_rank = yampi::rank{};
       if (present_rank == root_rank)
       {
         ::ket::utility::ranges::inclusive_scan(
@@ -294,62 +196,43 @@ namespace ket
               - ::ket::utility::begin(total_probabilities)));
       }
 
-      int result_mpi_rank = result_rank.mpi_rank();
+      auto result_mpi_rank = result_rank.mpi_rank();
       yampi::broadcast(root_rank, communicator).call(
-        yampi::make_buffer(result_mpi_rank),
-        environment);
+        yampi::make_buffer(result_mpi_rank), environment);
       result_rank = static_cast<yampi::rank>(result_mpi_rank);
 
-# ifndef BOOST_NO_CXX11_LAMBDAS
       yampi::algorithm::transform(
         yampi::ignore_status(),
         yampi::make_buffer(random_value, real_datatype),
         yampi::make_buffer(random_value, real_datatype),
         [&total_probabilities, result_rank](real_type const random_value)
-        { return random_value - total_probabilities[result_rank.mpi_rank()-1]; },
+        { return random_value - total_probabilities[result_rank.mpi_rank() - 1]; },
         ::yampi::message_envelope(root_rank, result_rank, communicator),
         environment);
-# else
-      yampi::algorithm::transform(
-        yampi::ignore_status(),
-        yampi::make_buffer(random_value, real_datatype),
-        yampi::make_buffer(random_value, real_datatype),
-        ::ket::mpi::measure_detail::make_modify_random_value(total_probabilities, result_rank),
-        ::yampi::message_envelope(root_rank, result_rank, communicator),
-        environment);
-# endif
 
-      StateInteger permutated_result;
+      auto permutated_result = StateInteger{};
       if (present_rank == result_rank)
       {
-# ifndef BOOST_NO_CXX11_LAMBDAS
-        StateInteger const local_result
+        auto const local_result
           = static_cast<StateInteger>(
               ::ket::mpi::utility::upper_bound(
                 local_state, static_cast<complex_type>(random_value),
                 [](complex_type const& lhs, complex_type const& rhs)
                 { using std::real; return real(lhs) < real(rhs); },
                 environment));
-# else // BOOST_NO_CXX11_LAMBDAS
-        StateInteger const local_result
-          = static_cast<StateInteger>(
-              ::ket::mpi::utility::upper_bound(
-                local_state, static_cast<complex_type>(random_value),
-                ::ket::mpi::measure_detail::real_part_less_than<complex_type>(),
-                environment));
-# endif // BOOST_NO_CXX11_LAMBDAS
+
         using ::ket::mpi::utility::rank_index_to_qubit_value;
         permutated_result
           = rank_index_to_qubit_value(
               mpi_policy, local_state, result_rank, local_result);
 
         ::ket::mpi::utility::fill(
-          mpi_policy, parallel_policy, local_state, complex_type(real_type(0)), environment);
-        ::ket::utility::begin(local_state)[local_result] = complex_type(real_type(1));
+          mpi_policy, parallel_policy, local_state, complex_type{real_type{0}}, environment);
+        ::ket::utility::begin(local_state)[local_result] = complex_type{real_type{1}};
       }
       else
         ::ket::mpi::utility::fill(
-          mpi_policy, parallel_policy, local_state, complex_type(real_type(0)), environment);
+          mpi_policy, parallel_policy, local_state, complex_type{real_type{0}}, environment);
 
       yampi::broadcast(result_rank, communicator).call(
         yampi::make_buffer(permutated_result, state_integer_datatype), environment);
@@ -397,19 +280,6 @@ namespace ket
 
 
     // fast_measure
-    namespace measure_detail
-    {
-      template <typename Real>
-      struct norm
-      {
-        typedef Real result_type;
-
-        template <typename Complex>
-        Real operator()(Complex const& value) const
-        { using std::norm; return norm(value); }
-      };
-    }
-
     template <
       typename MpiPolicy, typename ParallelPolicy,
       typename LocalState, typename RandomNumberGenerator,
@@ -422,31 +292,21 @@ namespace ket
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
-      ket::mpi::utility::log_with_time_guard<char> print("Measurement (fast)", environment);
+      ket::mpi::utility::log_with_time_guard<char> print{"Measurement (fast)", environment};
 
-      typedef typename boost::range_value<LocalState>::type complex_type;
-      typedef typename ::ket::utility::meta::real_of<complex_type>::type real_type;
-      std::vector<real_type> partial_sum_probabilities(boost::size(local_state), real_type(0));
-# ifndef BOOST_NO_CXX11_LAMBDAS
+      using complex_type = typename boost::range_value<LocalState>::type;
+      using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
+      auto partial_sum_probabilities = std::vector<real_type>(boost::size(local_state), real_type{0});
       ::ket::mpi::utility::transform_inclusive_scan(
         parallel_policy, local_state, ::ket::utility::begin(partial_sum_probabilities),
-        [](complex_type const& lhs, complex_type const& rhs)
-        { using std::real; return static_cast<complex_type>(real(lhs) + real(rhs)); },
-        [](complex_type const& value)
-        { using std::norm; return static_cast<complex_type>(norm(value)); },
+        [](real_type const& lhs, real_type const& rhs) { return lhs + rhs; },
+        [](complex_type const& value) { using std::norm; return norm(value); },
         environment);
-# else // BOOST_NO_CXX11_LAMBDAS
-      ::ket::mpi::utility::transform_inclusive_scan(
-        parallel_policy, local_state, ::ket::utility::begin(partial_sum_probabilities),
-        ::ket::mpi::measure_detail::real_part_plus<complex_type>(),
-        ::ket::mpi::measure_detail::complex_norm<complex_type>(),
-        environment);
-# endif // BOOST_NO_CXX11_LAMBDAS
 
-      yampi::rank const present_rank = communicator.rank(environment);
-      BOOST_CONSTEXPR_OR_CONST yampi::rank root_rank(0);
+      auto const present_rank = communicator.rank(environment);
+      constexpr auto root_rank = yampi::rank{0};
 
-      std::vector<real_type> total_probabilities;
+      auto total_probabilities = std::vector<real_type>{};
       if (present_rank == root_rank)
         total_probabilities.resize(communicator.size(environment));
 
@@ -456,8 +316,8 @@ namespace ket
         ::ket::utility::begin(total_probabilities),
         environment);
 
-      real_type random_value;
-      yampi::rank result_rank;
+      auto random_value = real_type{};
+      auto result_rank = yampi::rank{};
       if (present_rank == root_rank)
       {
         ::ket::utility::ranges::inclusive_scan(
@@ -474,34 +334,24 @@ namespace ket
               - ::ket::utility::begin(total_probabilities)));
       }
 
-      int result_mpi_rank = result_rank.mpi_rank();
+      auto result_mpi_rank = result_rank.mpi_rank();
       yampi::broadcast(root_rank, communicator).call(
         yampi::make_buffer(result_mpi_rank), environment);
       result_rank = static_cast<yampi::rank>(result_mpi_rank);
 
-# ifndef BOOST_NO_CXX11_LAMBDAS
       yampi::algorithm::transform(
         yampi::ignore_status(),
         yampi::make_buffer(random_value),
         yampi::make_buffer(random_value),
         [&total_probabilities, result_rank](real_type const random_value)
-        { return random_value - total_probabilities[result_rank.mpi_rank()-1]; },
+        { return random_value - total_probabilities[result_rank.mpi_rank() - 1]; },
         ::yampi::message_envelope(root_rank, result_rank, communicator),
         environment);
-# else
-      yampi::algorithm::transform(
-        yampi::ignore_status(),
-        yampi::make_buffer(random_value),
-        yampi::make_buffer(random_value),
-        ::ket::mpi::measure_detail::make_modify_random_value(total_probabilities, result_rank),
-        ::yampi::message_envelope(root_rank, result_rank, communicator),
-        environment);
-# endif
 
-      StateInteger permutated_result;
+      auto permutated_result = StateInteger{};
       if (present_rank == result_rank)
       {
-        StateInteger const local_result
+        auto const local_result
           = static_cast<StateInteger>(
               std::upper_bound(
                 ::ket::utility::begin(partial_sum_probabilities),
@@ -513,12 +363,12 @@ namespace ket
               mpi_policy, local_state, result_rank, local_result);
 
         ::ket::mpi::utility::fill(
-          mpi_policy, parallel_policy, local_state, complex_type(real_type(0)), environment);
-        ::ket::utility::begin(local_state)[local_result] = complex_type(real_type(1));
+          mpi_policy, parallel_policy, local_state, complex_type{real_type{0}}, environment);
+        ::ket::utility::begin(local_state)[local_result] = complex_type{real_type{1}};
       }
       else
         ::ket::mpi::utility::fill(
-          mpi_policy, parallel_policy, local_state, complex_type(real_type(0)), environment);
+          mpi_policy, parallel_policy, local_state, complex_type{real_type{0}}, environment);
 
       yampi::broadcast(result_rank, communicator).call(
         yampi::make_buffer(permutated_result), environment);
@@ -542,43 +392,31 @@ namespace ket
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
-      ket::mpi::utility::log_with_time_guard<char> print("Measurement (fast)", environment);
+      ket::mpi::utility::log_with_time_guard<char> print{"Measurement (fast)", environment};
 
-      typedef typename boost::range_value<LocalState>::type complex_type;
-      typedef typename ::ket::utility::meta::real_of<complex_type>::type real_type;
-      std::vector<real_type> partial_sum_probabilities(boost::size(local_state), real_type(0));
-# ifndef BOOST_NO_CXX11_LAMBDAS
+      using complex_type = typename boost::range_value<LocalState>::type;
+      using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
+      auto partial_sum_probabilities = std::vector<real_type>(boost::size(local_state), real_type{0});
       ::ket::mpi::utility::transform_inclusive_scan(
         parallel_policy, local_state, ::ket::utility::begin(partial_sum_probabilities),
-        [](complex_type const& lhs, complex_type const& rhs)
-        { using std::real; return static_cast<complex_type>(real(lhs) + real(rhs)); },
-        [](complex_type const& value)
-        { using std::norm; return static_cast<complex_type>(norm(value)); },
+        [](real_type const& lhs, real_type const& rhs) { return lhs + rhs; },
+        [](complex_type const& value) { using std::norm; return norm(value); },
         environment);
-# else // BOOST_NO_CXX11_LAMBDAS
-      ::ket::mpi::utility::transform_inclusive_scan(
-        parallel_policy, local_state, ::ket::utility::begin(partial_sum_probabilities),
-        ::ket::mpi::measure_detail::real_part_plus<complex_type>(),
-        ::ket::mpi::measure_detail::complex_norm<complex_type>(),
-        environment);
-# endif // BOOST_NO_CXX11_LAMBDAS
 
-      yampi::rank const present_rank = communicator.rank(environment);
-      BOOST_CONSTEXPR_OR_CONST yampi::rank root_rank(0);
+      auto const present_rank = communicator.rank(environment);
+      constexpr auto root_rank = yampi::rank{0};
 
-      std::vector<real_type> total_probabilities;
+      auto total_probabilities = std::vector<real_type>{};
       if (present_rank == root_rank)
         total_probabilities.resize(communicator.size(environment));
 
       using std::real;
       yampi::gather(root_rank, communicator).call(
-        yampi::make_buffer(
-          partial_sum_probabilities.back(), real_datatype),
-        ::ket::utility::begin(total_probabilities),
-        environment);
+        yampi::make_buffer(partial_sum_probabilities.back(), real_datatype),
+        ::ket::utility::begin(total_probabilities), environment);
 
-      real_type random_value;
-      yampi::rank result_rank;
+      auto random_value = real_type{};
+      auto result_rank = yampi::rank{};
       if (present_rank == root_rank)
       {
         ::ket::utility::ranges::inclusive_scan(
@@ -595,35 +433,24 @@ namespace ket
               - ::ket::utility::begin(total_probabilities)));
       }
 
-      int result_mpi_rank = result_rank.mpi_rank();
+      auto result_mpi_rank = result_rank.mpi_rank();
       yampi::broadcast(root_rank, communicator).call(
-        yampi::make_buffer(result_mpi_rank),
-        environment);
+        yampi::make_buffer(result_mpi_rank), environment);
       result_rank = static_cast<yampi::rank>(result_mpi_rank);
 
-# ifndef BOOST_NO_CXX11_LAMBDAS
       yampi::algorithm::transform(
         yampi::ignore_status(),
         yampi::make_buffer(random_value, real_datatype),
         yampi::make_buffer(random_value, real_datatype),
         [&total_probabilities, result_rank](real_type const random_value)
-        { return random_value - total_probabilities[result_rank.mpi_rank()-1]; },
+        { return random_value - total_probabilities[result_rank.mpi_rank() - 1]; },
         ::yampi::message_envelope(root_rank, result_rank, communicator),
         environment);
-# else
-      yampi::algorithm::transform(
-        yampi::ignore_status(),
-        yampi::make_buffer(random_value, real_datatype),
-        yampi::make_buffer(random_value, real_datatype),
-        ::ket::mpi::measure_detail::make_modify_random_value(total_probabilities, result_rank),
-        ::yampi::message_envelope(root_rank, result_rank, communicator),
-        environment);
-# endif
 
-      StateInteger permutated_result;
+      auto permutated_result = StateInteger{};
       if (present_rank == result_rank)
       {
-        StateInteger const local_result
+        auto const local_result
           = static_cast<StateInteger>(
               std::upper_bound(
                 ::ket::utility::begin(partial_sum_probabilities),
@@ -635,12 +462,12 @@ namespace ket
               mpi_policy, local_state, result_rank, local_result);
 
         ::ket::mpi::utility::fill(
-          mpi_policy, parallel_policy, local_state, complex_type(real_type(0)), environment);
-        ::ket::utility::begin(local_state)[local_result] = complex_type(real_type(1));
+          mpi_policy, parallel_policy, local_state, complex_type{real_type{0}}, environment);
+        ::ket::utility::begin(local_state)[local_result] = complex_type{real_type{1}};
       }
       else
         ::ket::mpi::utility::fill(
-          mpi_policy, parallel_policy, local_state, complex_type(real_type(0)), environment);
+          mpi_policy, parallel_policy, local_state, complex_type{real_type{0}}, environment);
 
       yampi::broadcast(result_rank, communicator).call(
         yampi::make_buffer(permutated_result, state_integer_datatype), environment);
@@ -689,5 +516,4 @@ namespace ket
 } // namespace ket
 
 
-#endif
-
+#endif // KET_MPI_MEASURE_HPP

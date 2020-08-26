@@ -1,5 +1,3 @@
-#include <boost/config.hpp>
-
 #include <string>
 #include <ios>
 #include <iomanip>
@@ -14,10 +12,9 @@ namespace bra
   {
     std::string gate::representation() const
     {
-      std::ostringstream repr_stream;
+      auto repr_stream = std::ostringstream{};
       repr_stream << std::left << std::setw(10) << this->name();
       return this->do_representation(repr_stream, 4);
     }
-  }
-}
-
+  } // namespace gate
+} // namespace bra
