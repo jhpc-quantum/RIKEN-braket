@@ -184,7 +184,7 @@ namespace ket
               }
               catch (std::exception& error)
               {
-                auto lock = std::lock_guard<mutex_type>{mutex};
+                std::lock_guard<mutex_type> lock{mutex};
 
                 if (!maybe_error)
                   maybe_error = error;
@@ -285,7 +285,7 @@ namespace ket
             }
             catch (std::exception& error)
             {
-              auto lock = std::lock_guard<mutex_type>{mutex};
+              std::lock_guard<mutex_type> lock{mutex};
 
               if (!maybe_error)
                 maybe_error = error;
@@ -430,7 +430,7 @@ namespace ket
 
           if (executor.barrier_counters_[index] == 1)
           {
-            auto lock = std::lock_guard<std::mutex>{executor.mutex_};
+            std::lock_guard<std::mutex> lock{executor.mutex_};
             executor.barrier_counters_.push_back(
               static_cast<int>(::ket::utility::num_threads(parallel_policy)));
             --executor.barrier_counters_[index];
@@ -460,13 +460,13 @@ namespace ket
           if (executor.barrier_counters_[index]
               == static_cast<int>(::ket::utility::num_threads(parallel_policy)))
           {
-            auto lock = std::lock_guard<std::mutex>{executor.mutex_};
+            std::lock_guard<std::mutex> lock{executor.mutex_};
             function();
           }
 
           if (executor.barrier_counters_[index] == 1)
           {
-            auto lock = std::lock_guard<std::mutex>{executor.mutex_};
+            std::lock_guard<std::mutex> lock{executor.mutex_};
             executor.barrier_counters_.push_back(
               static_cast<int>(::ket::utility::num_threads(parallel_policy)));
             --executor.barrier_counters_[index];
