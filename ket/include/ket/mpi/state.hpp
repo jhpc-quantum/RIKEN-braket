@@ -782,7 +782,7 @@ namespace ket
           auto local_permutated_control_qubits = std::array<qubit_type, 0u>{};
 
           auto const least_global_permutated_qubit
-            = qubit_type{::ket::utility::integer_log2<BitInteger>(boost::size(local_state))};
+            = qubit_type{::ket::utility::integer_log2<BitInteger>(local_state.size())};
 
           call_impl(
             parallel_policy, local_state, permutation, communicator.rank(environment),
