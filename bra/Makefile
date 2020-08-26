@@ -4,11 +4,6 @@ SHELL = /bin/sh
 KET_DIR = $(pwd)/../ket
 YAMPI_DIR = $(pwd)/../yampi
 
-boost_dir = $(pwd)/../boost
-boost_submodules = $(shell ls $(boost_dir))
-boost_submodule_dirs = $(addprefix $(boost_dir)/,$(boost_submodules))
-boost_include_dirs = $(addsuffix /include,$(boost_submodule_dirs))
-
 target = bra
 nodename := $(shell uname -n)
 
@@ -19,16 +14,16 @@ build_dir = $(pwd)/build
 bin_dir = $(pwd)/bin
 
 library_dirs = $(KET_DIR) $(YAMPI_DIR)
-idirs = $(include_dir) $(addsuffix /include,$(library_dirs)) $(boost_include_dirs)
+idirs = $(include_dir) $(addsuffix /include,$(library_dirs))
 ldirs = $(addsuffix /lib,$(library_dirs))
 
 sources := $(shell find $(src_dir) -name *.cpp)
 objects = $(sources:$(src_dir)/%.cpp=$(build_dir)/%.o)
 
 macros = KET_PRINT_LOG
-macros += KET_USE_OPENMP KET_DONT_USE_BOOST_LOCK_GUARD_IN_OPENMP_BLOCKS
+macros += KET_USE_OPENMP
 #macros += KET_USE_PARALLEL_EXECUTE_FOR_TRANSFORM_INCLUSIVE_SCAN
-#macros += KET_PREFER_POINTER_TO_VECTOR_ITERATOR
+macros += KET_PREFER_POINTER_TO_VECTOR_ITERATOR
 #macros += KET_USE_DIAGONAL_LOOP
 libraries =
 

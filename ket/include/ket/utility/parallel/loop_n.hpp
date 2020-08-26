@@ -1,8 +1,6 @@
 #ifndef KET_UTILITY_PARALLEL_LOOP_N_HPP
 # define KET_UTILITY_PARALLEL_LOOP_N_HPP
 
-// If you cannot use C++11 and you want to be free from Boost.Thread, define KET_USE_OPENMP and KET_DONT_USE_BOOST_LOCK_GUARD_IN_OPENMP_BLOCKS
-
 # include <cassert>
 # include <vector>
 # include <iterator>
