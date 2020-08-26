@@ -1,5 +1,3 @@
-#include <boost/config.hpp>
-
 #include <string>
 #include <ios>
 #include <iomanip>
@@ -17,7 +15,7 @@ namespace bra
     std::string const shor_box::name_ = "SHORBOX";
 
     shor_box::shor_box(bit_integer_type const num_exponent_qubits, state_integer_type const divisor, state_integer_type const base)
-      : ::bra::gate::gate(), num_exponent_qubits_(num_exponent_qubits), divisor_(divisor), base_(base)
+      : ::bra::gate::gate{}, num_exponent_qubits_{num_exponent_qubits}, divisor_{divisor}, base_{base}
     { }
 
     ::bra::state& shor_box::do_apply(::bra::state& state) const
@@ -27,6 +25,5 @@ namespace bra
     std::string shor_box::do_representation(
       std::ostringstream& repr_stream, int const) const
     { return repr_stream.str(); }
-  }
-}
-
+  } // namespace gate
+} // namespace bra

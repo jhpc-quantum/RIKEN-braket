@@ -1,8 +1,6 @@
 #ifndef KET_MPI_QUBIT_PERMUTATION_IO_HPP
 # define KET_MPI_QUBIT_PERMUTATION_IO_HPP
 
-# include <boost/config.hpp>
-
 # include <ostream>
 
 # include <ket/qubit.hpp>
@@ -22,19 +20,16 @@ namespace ket
       ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const&
         permutation)
     {
-      typedef ket::qubit<StateInteger, BitInteger> qubit_type;
+      using qubit_type = ket::qubit<StateInteger, BitInteger>;
+      auto const last_qubit = qubit_type{static_cast<BitInteger>(permutation.size())};
 
-      qubit_type const last_qubit(
-        static_cast<BitInteger>(permutation.size()));
-
-      for (qubit_type qubit = qubit_type(0u); qubit < last_qubit; ++qubit)
+      for (auto qubit = qubit_type{0u}; qubit < last_qubit; ++qubit)
         output_stream << '(' << qubit << ',' << permutation[qubit] << ')';
 
       return output_stream;
     }
-  }
-}
+  } // namespace mpi
+} // namespace ket
 
 
-#endif
-
+#endif // KET_MPI_QUBIT_PERMUTATION_IO_HPP

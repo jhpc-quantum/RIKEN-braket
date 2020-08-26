@@ -1,22 +1,10 @@
 #ifndef KET_MPI_SWAPPED_FOURIER_TRANSFORM_HPP
 # define KET_MPI_SWAPPED_FOURIER_TRANSFORM_HPP
 
-# include <boost/config.hpp>
-
 # include <cassert>
 # include <cstddef>
-# ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
-#   include <type_traits>
-# else
-#   include <boost/type_traits/is_unsigned.hpp>
-#   include <boost/utility/enable_if.hpp>
-# endif
-# ifdef BOOST_NO_CXX11_STATIC_ASSERT
-#   include <boost/static_assert.hpp>
-# endif
+# include <type_traits>
 # include <vector>
-
-# include <boost/math/constants/constants.hpp>
 
 # include <boost/range/size.hpp>
 # include <boost/range/value_type.hpp>
@@ -39,19 +27,7 @@
 # include <ket/mpi/utility/logger.hpp>
 # include <ket/utility/integer_exp2.hpp>
 # ifndef NDEBUG
-#   include <ket/utility/is_unique.hpp>
-# endif
-
-# ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
-#   define KET_is_unsigned std::is_unsigned
-#   define KET_enable_if std::enable_if
-# else
-#   define KET_is_unsigned boost::is_unsigned
-#   define KET_enable_if boost::enable_if_c
-# endif
-
-# ifdef BOOST_NO_CXX11_STATIC_ASSERT
-#   define static_assert(exp, msg) BOOST_STATIC_ASSERT_MSG(exp, msg)
+#   include <ket/utility/is_unique_if_sorted.hpp>
 # endif
 
 
@@ -63,7 +39,7 @@ namespace ket
       typename MpiPolicy, typename ParallelPolicy,
       typename RandomAccessRange, typename Qubits, typename PhaseCoefficientsAllocator,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     swapped_fourier_transform(
@@ -81,22 +57,21 @@ namespace ket
       yampi::environment const& environment)
     {
       static_assert(
-        KET_is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+        std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(
-        KET_is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
-      assert(::ket::utility::ranges::is_unique(qubits));
+        std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
+      assert(::ket::utility::ranges::is_unique_if_sorted(qubits));
 
-      ::ket::mpi::utility::log_with_time_guard<char> print("Fourier", environment);
+      ::ket::mpi::utility::log_with_time_guard<char> print{"Fourier", environment};
 
-      std::size_t const num_qubits = boost::size(qubits);
+      auto const num_qubits = boost::size(qubits);
       ::ket::utility::generate_phase_coefficients(phase_coefficients, num_qubits);
 
-      typedef typename ::ket::utility::meta::const_iterator_of<Qubits const>::type qubits_iterator;
-      qubits_iterator const qubits_first = ::ket::utility::begin(qubits);
+      auto const qubits_first = ::ket::utility::begin(qubits);
 
-      for (std::size_t index = 0u; index < num_qubits; ++index)
+      for (auto index = decltype(num_qubits){0u}; index < num_qubits; ++index)
       {
-        std::size_t target_bit = num_qubits-index-1u;
+        auto target_bit = num_qubits - index - decltype(num_qubits){1u};
 
         using ::ket::mpi::gate::hadamard;
         hadamard(
@@ -104,10 +79,10 @@ namespace ket
           local_state, qubits_first[target_bit], permutation,
           buffer, communicator, environment);
 
-        for (std::size_t phase_exponent = 2u;
-             phase_exponent <= num_qubits-index; ++phase_exponent)
+        for (auto phase_exponent = decltype(num_qubits){2u};
+             phase_exponent <= num_qubits - index; ++phase_exponent)
         {
-          std::size_t const control_bit = target_bit-(phase_exponent-1u);
+          auto const control_bit = target_bit - (phase_exponent - decltype(phase_exponent){1u});
 
           using ::ket::mpi::gate::controlled_phase_shift_coeff;
           controlled_phase_shift_coeff(
@@ -126,7 +101,7 @@ namespace ket
       typename RandomAccessRange, typename Qubits, typename PhaseCoefficientsAllocator,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator,
       typename DerivedDatatype>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     swapped_fourier_transform(
@@ -145,22 +120,21 @@ namespace ket
       yampi::environment const& environment)
     {
       static_assert(
-        KET_is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+        std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(
-        KET_is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
-      assert(::ket::utility::ranges::is_unique(qubits));
+        std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
+      assert(::ket::utility::ranges::is_unique_if_sorted(qubits));
 
-      ::ket::mpi::utility::log_with_time_guard<char> print("Fourier", environment);
+      ::ket::mpi::utility::log_with_time_guard<char> print{"Fourier", environment};
 
-      std::size_t const num_qubits = boost::size(qubits);
+      auto const num_qubits = boost::size(qubits);
       ::ket::utility::generate_phase_coefficients(phase_coefficients, num_qubits);
 
-      typedef typename ::ket::utility::meta::const_iterator_of<Qubits const>::type qubits_iterator;
-      qubits_iterator const qubits_first = ::ket::utility::begin(qubits);
+      auto const qubits_first = ::ket::utility::begin(qubits);
 
-      for (std::size_t index = 0u; index < num_qubits; ++index)
+      for (auto index = decltype(num_qubits){0u}; index < num_qubits; ++index)
       {
-        std::size_t target_bit = num_qubits-index-1u;
+        auto target_bit = num_qubits - index - decltype(num_qubits){1u};
 
         using ::ket::mpi::gate::hadamard;
         hadamard(
@@ -168,10 +142,10 @@ namespace ket
           local_state, qubits_first[target_bit], permutation,
           buffer, datatype, communicator, environment);
 
-        for (std::size_t phase_exponent = 2u;
-             phase_exponent <= num_qubits-index; ++phase_exponent)
+        for (auto phase_exponent = decltype(num_qubits){2u};
+             phase_exponent <= num_qubits - index; ++phase_exponent)
         {
-          std::size_t const control_bit = target_bit-(phase_exponent-1u);
+          auto const control_bit = target_bit - (phase_exponent - decltype(phase_exponent){1u});
 
           using ::ket::mpi::gate::controlled_phase_shift_coeff;
           controlled_phase_shift_coeff(
@@ -188,7 +162,7 @@ namespace ket
     template <
       typename RandomAccessRange, typename Qubits, typename PhaseCoefficientsAllocator,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       (not ::ket::mpi::utility::policy::meta::is_mpi_policy<RandomAccessRange>::value)
         and (not ::ket::utility::policy::meta::is_loop_n_policy<RandomAccessRange>::value),
       RandomAccessRange&>::type
@@ -216,7 +190,7 @@ namespace ket
       typename RandomAccessRange, typename Qubits, typename PhaseCoefficientsAllocator,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator,
       typename DerivedDatatype>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       (not ::ket::mpi::utility::policy::meta::is_mpi_policy<RandomAccessRange>::value)
         and (not ::ket::utility::policy::meta::is_loop_n_policy<RandomAccessRange>::value),
       RandomAccessRange&>::type
@@ -245,7 +219,7 @@ namespace ket
       typename ParallelPolicy,
       typename RandomAccessRange, typename Qubits, typename PhaseCoefficientsAllocator,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
       RandomAccessRange&>::type
     swapped_fourier_transform(
@@ -272,7 +246,7 @@ namespace ket
       typename RandomAccessRange, typename Qubits, typename PhaseCoefficientsAllocator,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator,
       typename DerivedDatatype>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
       RandomAccessRange&>::type
     swapped_fourier_transform(
@@ -300,7 +274,7 @@ namespace ket
       typename MpiPolicy, typename ParallelPolicy,
       typename RandomAccessRange, typename Qubits,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     swapped_fourier_transform(
@@ -314,8 +288,8 @@ namespace ket
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
-      typedef typename boost::range_value<RandomAccessRange>::type complex_type;
-      std::vector<complex_type> phase_coefficients
+      using complex_type = typename boost::range_value<RandomAccessRange>::type;
+      auto phase_coefficients
         = ::ket::utility::generate_phase_coefficients<complex_type>(boost::size(qubits));
 
       return swapped_fourier_transform(
@@ -329,7 +303,7 @@ namespace ket
       typename RandomAccessRange, typename Qubits,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator,
       typename DerivedDatatype>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     swapped_fourier_transform(
@@ -344,8 +318,8 @@ namespace ket
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
-      typedef typename boost::range_value<RandomAccessRange>::type complex_type;
-      std::vector<complex_type> phase_coefficients
+      using complex_type = typename boost::range_value<RandomAccessRange>::type;
+      auto phase_coefficients
         = ::ket::utility::generate_phase_coefficients<complex_type>(boost::size(qubits));
 
       return swapped_fourier_transform(
@@ -357,7 +331,7 @@ namespace ket
     template <
       typename RandomAccessRange, typename Qubits,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       (not ::ket::mpi::utility::policy::meta::is_mpi_policy<RandomAccessRange>::value)
         and (not ::ket::utility::policy::meta::is_loop_n_policy<RandomAccessRange>::value),
       RandomAccessRange&>::type
@@ -371,8 +345,8 @@ namespace ket
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
-      typedef typename boost::range_value<RandomAccessRange>::type complex_type;
-      std::vector<complex_type> phase_coefficients
+      using complex_type = typename boost::range_value<RandomAccessRange>::type;
+      auto phase_coefficients
         = ::ket::utility::generate_phase_coefficients<complex_type>(boost::size(qubits));
 
       return swapped_fourier_transform(
@@ -384,7 +358,7 @@ namespace ket
       typename RandomAccessRange, typename Qubits,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator,
       typename DerivedDatatype>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       (not ::ket::mpi::utility::policy::meta::is_mpi_policy<RandomAccessRange>::value)
         and (not ::ket::utility::policy::meta::is_loop_n_policy<RandomAccessRange>::value),
       RandomAccessRange&>::type
@@ -399,8 +373,8 @@ namespace ket
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
-      typedef typename boost::range_value<RandomAccessRange>::type complex_type;
-      std::vector<complex_type> phase_coefficients
+      using complex_type = typename boost::range_value<RandomAccessRange>::type;
+      auto phase_coefficients
         = ::ket::utility::generate_phase_coefficients<complex_type>(boost::size(qubits));
 
       return swapped_fourier_transform(
@@ -412,7 +386,7 @@ namespace ket
       typename ParallelPolicy,
       typename RandomAccessRange, typename Qubits,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
       RandomAccessRange&>::type
     swapped_fourier_transform(
@@ -425,8 +399,8 @@ namespace ket
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
-      typedef typename boost::range_value<RandomAccessRange>::type complex_type;
-      std::vector<complex_type> phase_coefficients
+      using complex_type = typename boost::range_value<RandomAccessRange>::type;
+      auto phase_coefficients
         = ::ket::utility::generate_phase_coefficients<complex_type>(boost::size(qubits));
 
       return swapped_fourier_transform(
@@ -440,7 +414,7 @@ namespace ket
       typename RandomAccessRange, typename Qubits,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator,
       typename DerivedDatatype>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
       RandomAccessRange&>::type
     swapped_fourier_transform(
@@ -454,8 +428,8 @@ namespace ket
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
-      typedef typename boost::range_value<RandomAccessRange>::type complex_type;
-      std::vector<complex_type> phase_coefficients
+      using complex_type = typename boost::range_value<RandomAccessRange>::type;
+      auto phase_coefficients
         = ::ket::utility::generate_phase_coefficients<complex_type>(boost::size(qubits));
 
       return swapped_fourier_transform(
@@ -470,7 +444,7 @@ namespace ket
       typename MpiPolicy, typename ParallelPolicy,
       typename RandomAccessRange, typename Qubits, typename PhaseCoefficientsAllocator,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     adj_swapped_fourier_transform(
@@ -488,25 +462,24 @@ namespace ket
       yampi::environment const& environment)
     {
       static_assert(
-        KET_is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+        std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(
-        KET_is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
-      assert(::ket::utility::ranges::is_unique(qubits));
+        std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
+      assert(::ket::utility::ranges::is_unique_if_sorted(qubits));
 
-      ::ket::mpi::utility::log_with_time_guard<char> print("Adj(Fourier)", environment);
+      ::ket::mpi::utility::log_with_time_guard<char> print{"Adj(Fourier)", environment};
 
-      std::size_t const num_qubits = boost::size(qubits);
+      auto const num_qubits = boost::size(qubits);
       ::ket::utility::generate_phase_coefficients(phase_coefficients, num_qubits);
 
-      typedef typename ::ket::utility::meta::const_iterator_of<Qubits const>::type qubits_iterator;
-      qubits_iterator const qubits_first = ::ket::utility::begin(qubits);
+      auto const qubits_first = ::ket::utility::begin(qubits);
 
-      for (std::size_t target_bit = 0u; target_bit < num_qubits; ++target_bit)
+      for (auto target_bit = decltype(num_qubits){0u}; target_bit < num_qubits; ++target_bit)
       {
-        for (std::size_t index = 0u; index < target_bit; ++index)
+        for (auto index = decltype(target_bit){0u}; index < target_bit; ++index)
         {
-          std::size_t const phase_exponent = 1u+target_bit-index;
-          std::size_t const control_bit = target_bit-(phase_exponent-1u);
+          auto const phase_exponent = decltype(target_bit){1u} + target_bit - index;
+          auto const control_bit = target_bit - (phase_exponent - decltype(phase_exponent){1u});
 
           using ::ket::mpi::gate::adj_controlled_phase_shift_coeff;
           adj_controlled_phase_shift_coeff(
@@ -531,7 +504,7 @@ namespace ket
       typename RandomAccessRange, typename Qubits, typename PhaseCoefficientsAllocator,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator,
       typename DerivedDatatype>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     adj_swapped_fourier_transform(
@@ -550,25 +523,24 @@ namespace ket
       yampi::environment const& environment)
     {
       static_assert(
-        KET_is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+        std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(
-        KET_is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
-      assert(::ket::utility::ranges::is_unique(qubits));
+        std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
+      assert(::ket::utility::ranges::is_unique_if_sorted(qubits));
 
-      ::ket::mpi::utility::log_with_time_guard<char> print("Adj(Fourier)", environment);
+      ::ket::mpi::utility::log_with_time_guard<char> print{"Adj(Fourier)", environment};
 
-      std::size_t const num_qubits = boost::size(qubits);
+      auto const num_qubits = boost::size(qubits);
       ::ket::utility::generate_phase_coefficients(phase_coefficients, num_qubits);
 
-      typedef typename ::ket::utility::meta::const_iterator_of<Qubits const>::type qubits_iterator;
-      qubits_iterator const qubits_first = ::ket::utility::begin(qubits);
+      auto const qubits_first = ::ket::utility::begin(qubits);
 
-      for (std::size_t target_bit = 0u; target_bit < num_qubits; ++target_bit)
+      for (auto target_bit = decltype(num_qubits){0u}; target_bit < num_qubits; ++target_bit)
       {
-        for (std::size_t index = 0u; index < target_bit; ++index)
+        for (auto index = decltype(target_bit){0u}; index < target_bit; ++index)
         {
-          std::size_t const phase_exponent = 1u+target_bit-index;
-          std::size_t const control_bit = target_bit-(phase_exponent-1u);
+          auto const phase_exponent = decltype(target_bit){1u} + target_bit - index;
+          auto const control_bit = target_bit - (phase_exponent - decltype(phase_exponent){1u});
 
           using ::ket::mpi::gate::adj_controlled_phase_shift_coeff;
           adj_controlled_phase_shift_coeff(
@@ -591,7 +563,7 @@ namespace ket
     template <
       typename RandomAccessRange, typename Qubits, typename PhaseCoefficientsAllocator,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       (not ::ket::mpi::utility::policy::meta::is_mpi_policy<RandomAccessRange>::value)
         and (not ::ket::utility::policy::meta::is_loop_n_policy<RandomAccessRange>::value),
       RandomAccessRange&>::type
@@ -619,7 +591,7 @@ namespace ket
       typename RandomAccessRange, typename Qubits, typename PhaseCoefficientsAllocator,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator,
       typename DerivedDatatype>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       (not ::ket::mpi::utility::policy::meta::is_mpi_policy<RandomAccessRange>::value)
         and (not ::ket::utility::policy::meta::is_loop_n_policy<RandomAccessRange>::value),
       RandomAccessRange&>::type
@@ -648,7 +620,7 @@ namespace ket
       typename ParallelPolicy,
       typename RandomAccessRange, typename Qubits, typename PhaseCoefficientsAllocator,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
       RandomAccessRange&>::type
     adj_swapped_fourier_transform(
@@ -675,7 +647,7 @@ namespace ket
       typename RandomAccessRange, typename Qubits, typename PhaseCoefficientsAllocator,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator,
       typename DerivedDatatype>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
       RandomAccessRange&>::type
     adj_swapped_fourier_transform(
@@ -703,7 +675,7 @@ namespace ket
       typename MpiPolicy, typename ParallelPolicy,
       typename RandomAccessRange, typename Qubits,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     adj_swapped_fourier_transform(
@@ -717,8 +689,8 @@ namespace ket
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
-      typedef typename boost::range_value<RandomAccessRange>::type complex_type;
-      std::vector<complex_type> phase_coefficients
+      using complex_type = typename boost::range_value<RandomAccessRange>::type;
+      auto phase_coefficients
         = ::ket::utility::generate_phase_coefficients<complex_type>(boost::size(qubits));
 
       return adj_swapped_fourier_transform(
@@ -732,7 +704,7 @@ namespace ket
       typename RandomAccessRange, typename Qubits,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator,
       typename DerivedDatatype>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     adj_swapped_fourier_transform(
@@ -747,8 +719,8 @@ namespace ket
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
-      typedef typename boost::range_value<RandomAccessRange>::type complex_type;
-      std::vector<complex_type> phase_coefficients
+      using complex_type = typename boost::range_value<RandomAccessRange>::type;
+      auto phase_coefficients
         = ::ket::utility::generate_phase_coefficients<complex_type>(boost::size(qubits));
 
       return adj_swapped_fourier_transform(
@@ -760,7 +732,7 @@ namespace ket
     template <
       typename RandomAccessRange, typename Qubits,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       (not ::ket::mpi::utility::policy::meta::is_mpi_policy<RandomAccessRange>::value)
         and (not ::ket::utility::policy::meta::is_loop_n_policy<RandomAccessRange>::value),
       RandomAccessRange&>::type
@@ -774,8 +746,8 @@ namespace ket
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
-      typedef typename boost::range_value<RandomAccessRange>::type complex_type;
-      std::vector<complex_type> phase_coefficients
+      using complex_type = typename boost::range_value<RandomAccessRange>::type;
+      auto phase_coefficients
         = ::ket::utility::generate_phase_coefficients<complex_type>(boost::size(qubits));
 
       return adj_swapped_fourier_transform(
@@ -787,7 +759,7 @@ namespace ket
       typename RandomAccessRange, typename Qubits,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator,
       typename DerivedDatatype>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       (not ::ket::mpi::utility::policy::meta::is_mpi_policy<RandomAccessRange>::value)
         and (not ::ket::utility::policy::meta::is_loop_n_policy<RandomAccessRange>::value),
       RandomAccessRange&>::type
@@ -802,8 +774,8 @@ namespace ket
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
-      typedef typename boost::range_value<RandomAccessRange>::type complex_type;
-      std::vector<complex_type> phase_coefficients
+      using complex_type = typename boost::range_value<RandomAccessRange>::type;
+      auto phase_coefficients
         = ::ket::utility::generate_phase_coefficients<complex_type>(boost::size(qubits));
 
       return adj_swapped_fourier_transform(
@@ -815,7 +787,7 @@ namespace ket
       typename ParallelPolicy,
       typename RandomAccessRange, typename Qubits,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
       RandomAccessRange&>::type
     adj_swapped_fourier_transform(
@@ -828,8 +800,8 @@ namespace ket
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
-      typedef typename boost::range_value<RandomAccessRange>::type complex_type;
-      std::vector<complex_type> phase_coefficients
+      using complex_type = typename boost::range_value<RandomAccessRange>::type;
+      auto phase_coefficients
         = ::ket::utility::generate_phase_coefficients<complex_type>(boost::size(qubits));
 
       return adj_swapped_fourier_transform(
@@ -843,7 +815,7 @@ namespace ket
       typename RandomAccessRange, typename Qubits,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator,
       typename DerivedDatatype>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
       RandomAccessRange&>::type
     adj_swapped_fourier_transform(
@@ -857,8 +829,8 @@ namespace ket
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
-      typedef typename boost::range_value<RandomAccessRange>::type complex_type;
-      std::vector<complex_type> phase_coefficients
+      using complex_type = typename boost::range_value<RandomAccessRange>::type;
+      auto phase_coefficients
         = ::ket::utility::generate_phase_coefficients<complex_type>(boost::size(qubits));
 
       return adj_swapped_fourier_transform(
@@ -870,11 +842,4 @@ namespace ket
 } // namespace ket
 
 
-# undef KET_enable_if
-# undef KET_is_unsigned
-# ifdef BOOST_NO_CXX11_STATIC_ASSERT
-#   undef static_assert
-# endif
-
-#endif
-
+#endif // KET_MPI_SWAPPED_FOURIER_TRANSFORM_HPP

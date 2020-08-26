@@ -4,11 +4,7 @@
 # include <boost/config.hpp>
 
 # include <vector>
-# ifndef BOOST_NO_CXX11_HDR_ARRAY
-#   include <array>
-# else
-#   include <boost/array.hpp>
-# endif
+# include <array>
 # include <ios>
 # include <sstream>
 
@@ -28,12 +24,6 @@
 # include <ket/mpi/utility/logger.hpp>
 # include <ket/mpi/gate/page/toffoli.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
-
-# ifndef BOOST_NO_CXX11_HDR_ARRAY
-#   define KET_array std::array
-# else
-#   define KET_array boost::array
-# endif
 
 
 namespace ket
@@ -58,10 +48,10 @@ namespace ket
             TargetQubit const permutated_target_qubit,
             ControlQubit const permutated_control_qubit1,
             ControlQubit const permutated_control_qubit2)
-            : parallel_policy_(parallel_policy),
-              permutated_target_qubit_(permutated_target_qubit),
-              permutated_control_qubit1_(permutated_control_qubit1),
-              permutated_control_qubit2_(permutated_control_qubit2)
+            : parallel_policy_{parallel_policy},
+              permutated_target_qubit_{permutated_target_qubit},
+              permutated_control_qubit1_{permutated_control_qubit1},
+              permutated_control_qubit2_{permutated_control_qubit2}
           { }
 
           template <typename RandomAccessIterator>
@@ -82,9 +72,9 @@ namespace ket
           TargetQubit const permutated_target_qubit,
           ControlQubit const permutated_control_qubit1, ControlQubit const permutated_control_qubit2)
         {
-          return call_toffoli<ParallelPolicy, TargetQubit, ControlQubit>(
+          return call_toffoli<ParallelPolicy, TargetQubit, ControlQubit>{
             parallel_policy,
-            permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2);
+            permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2};
         }
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 
@@ -139,12 +129,10 @@ namespace ket
               mpi_policy, parallel_policy, local_state,
               target_qubit, control_qubit2, control_qubit1, permutation);
 
-          typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
-          qubit_type permutated_target_qubit = permutation[target_qubit];
-          typedef ::ket::control<qubit_type> control_qubit_type;
-          control_qubit_type permutated_control_qubit1
+          auto permutated_target_qubit = permutation[target_qubit];
+          auto permutated_control_qubit1
             = ::ket::make_control(permutation[control_qubit1.qubit()]);
-          control_qubit_type permutated_control_qubit2
+          auto permutated_control_qubit2
             = ::ket::make_control(permutation[control_qubit2.qubit()]);
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -183,13 +171,13 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        std::ostringstream output_string_stream("Toffoli ", std::ios_base::ate);
+        auto output_string_stream = std::ostringstream{"Toffoli ", std::ios_base::ate};
         output_string_stream << target_qubit << ' ' << control_qubit1 << ' ' << control_qubit2;
-        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
+        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
 
-        typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
-        KET_array<qubit_type, 3u> const qubits
-          = { target_qubit, control_qubit1.qubit(), control_qubit2.qubit() };
+        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+        auto const qubits
+          = std::array<qubit_type, 3u>{target_qubit, control_qubit1.qubit(), control_qubit2.qubit()};
         ::ket::mpi::utility::maybe_interchange_qubits(
           mpi_policy, parallel_policy,
           local_state, qubits, permutation, buffer, communicator, environment);
@@ -214,17 +202,16 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        std::ostringstream output_string_stream("Toffoli ", std::ios_base::ate);
+        auto output_string_stream = std::ostringstream{"Toffoli ", std::ios_base::ate};
         output_string_stream << target_qubit << ' ' << control_qubit1 << ' ' << control_qubit2;
-        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
+        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
 
-        typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
-        KET_array<qubit_type, 3u> const qubits
-          = { target_qubit, control_qubit1.qubit(), control_qubit2.qubit() };
+        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+        auto const qubits
+          = std::array<qubit_type, 3u>{target_qubit, control_qubit1.qubit(), control_qubit2.qubit()};
         ::ket::mpi::utility::maybe_interchange_qubits(
           mpi_policy, parallel_policy,
-          local_state, qubits, permutation,
-          buffer, datatype, communicator, environment);
+          local_state, qubits, permutation, buffer, datatype, communicator, environment);
 
         return ::ket::mpi::gate::toffoli_detail::toffoli(
           mpi_policy, parallel_policy, local_state, target_qubit, control_qubit1, control_qubit2, permutation);
@@ -316,7 +303,6 @@ namespace ket
           buffer, datatype, communicator, environment);
       }
 
-
       namespace toffoli_detail
       {
 # ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -333,10 +319,10 @@ namespace ket
             TargetQubit const permutated_target_qubit,
             ControlQubit const permutated_control_qubit1,
             ControlQubit const permutated_control_qubit2)
-            : parallel_policy_(parallel_policy),
-              permutated_target_qubit_(permutated_target_qubit),
-              permutated_control_qubit1_(permutated_control_qubit1),
-              permutated_control_qubit2_(permutated_control_qubit2)
+            : parallel_policy_{parallel_policy},
+              permutated_target_qubit_{permutated_target_qubit},
+              permutated_control_qubit1_{permutated_control_qubit1},
+              permutated_control_qubit2_{permutated_control_qubit2}
           { }
 
           template <typename RandomAccessIterator>
@@ -357,9 +343,9 @@ namespace ket
           TargetQubit const permutated_target_qubit,
           ControlQubit const permutated_control_qubit1, ControlQubit const permutated_control_qubit2)
         {
-          return call_adj_toffoli<ParallelPolicy, TargetQubit, ControlQubit>(
+          return call_adj_toffoli<ParallelPolicy, TargetQubit, ControlQubit>{
             parallel_policy,
-            permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2);
+            permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2};
         }
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 
@@ -413,12 +399,10 @@ namespace ket
               mpi_policy, parallel_policy, local_state,
               target_qubit, control_qubit2, control_qubit1, permutation);
 
-          typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
-          qubit_type permutated_target_qubit = permutation[target_qubit];
-          typedef ::ket::control<qubit_type> control_qubit_type;
-          control_qubit_type permutated_control_qubit1
+          auto permutated_target_qubit = permutation[target_qubit];
+          auto permutated_control_qubit1
             = ::ket::make_control(permutation[control_qubit1.qubit()]);
-          control_qubit_type permutated_control_qubit2
+          auto permutated_control_qubit2
             = ::ket::make_control(permutation[control_qubit2.qubit()]);
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -457,13 +441,13 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        std::ostringstream output_string_stream("Adj(Toffoli) ", std::ios_base::ate);
+        auto output_string_stream = std::ostringstream{"Adj(Toffoli) ", std::ios_base::ate};
         output_string_stream << target_qubit << ' ' << control_qubit1 << ' ' << control_qubit2;
-        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
+        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
 
-        typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
-        KET_array<qubit_type, 3u> const qubits
-          = { target_qubit, control_qubit1.qubit(), control_qubit2.qubit() };
+        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+        auto const qubits
+          = std::array<qubit_type, 3u>{target_qubit, control_qubit1.qubit(), control_qubit2.qubit()};
         ::ket::mpi::utility::maybe_interchange_qubits(
           mpi_policy, parallel_policy,
           local_state, qubits, permutation, buffer, communicator, environment);
@@ -488,17 +472,16 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        std::ostringstream output_string_stream("Adj(Toffoli) ", std::ios_base::ate);
+        auto output_string_stream = std::ostringstream{"Adj(Toffoli) ", std::ios_base::ate};
         output_string_stream << target_qubit << ' ' << control_qubit1 << ' ' << control_qubit2;
-        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
+        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
 
-        typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
-        KET_array<qubit_type, 3u> const qubits
-          = { target_qubit, control_qubit1.qubit(), control_qubit2.qubit() };
+        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+        auto const qubits
+          = std::array<qubit_type, 3u>{target_qubit, control_qubit1.qubit(), control_qubit2.qubit()};
         ::ket::mpi::utility::maybe_interchange_qubits(
           mpi_policy, parallel_policy,
-          local_state, qubits, permutation,
-          buffer, datatype, communicator, environment);
+          local_state, qubits, permutation, buffer, datatype, communicator, environment);
 
         return ::ket::mpi::gate::toffoli_detail::adj_toffoli(
           mpi_policy, parallel_policy, local_state, target_qubit, control_qubit1, control_qubit2, permutation);
@@ -594,6 +577,4 @@ namespace ket
 } // namespace ket
 
 
-# undef KET_array
-
-#endif
+#endif // KET_MPI_GATE_TOFFOLI_HPP

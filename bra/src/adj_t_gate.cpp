@@ -1,5 +1,3 @@
-#include <boost/config.hpp>
-
 #include <string>
 #include <ios>
 #include <iomanip>
@@ -19,8 +17,8 @@ namespace bra
     std::string const adj_t_gate::name_ = "T+";
 
     adj_t_gate::adj_t_gate(complex_type const phase_coefficient, qubit_type const qubit)
-      : ::bra::gate::gate(),
-        phase_coefficient_(phase_coefficient), qubit_(qubit)
+      : ::bra::gate::gate{},
+        phase_coefficient_{phase_coefficient}, qubit_{qubit}
     { }
 
     ::bra::state& adj_t_gate::do_apply(::bra::state& state) const
@@ -35,6 +33,5 @@ namespace bra
         << std::setw(parameter_width) << qubit_;
       return repr_stream.str();
     }
-  }
-}
-
+  } // namespace gate
+} // namespace bra

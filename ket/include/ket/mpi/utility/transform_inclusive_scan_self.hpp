@@ -1,10 +1,9 @@
 #ifndef KET_MPI_UTILITY_TRANSFORM_INCLUSIVE_SCAN_SELF_HPP
 # define KET_MPI_UTILITY_TRANSFORM_INCLUSIVE_SCAN_SELF_HPP
 
-# include <boost/config.hpp>
+# include <iterator>
 
 # include <boost/range/value_type.hpp>
-# include <boost/utility.hpp> // boost::prior
 
 # include <yampi/environment.hpp>
 
@@ -35,7 +34,7 @@ namespace ket
             ::ket::utility::ranges::transform_inclusive_scan(
               parallel_policy,
               local_state, ::ket::utility::begin(local_state), binary_operation, unary_operation);
-            return *boost::prior(::ket::utility::end(local_state));
+            return *std::prev(::ket::utility::end(local_state));
           }
 
           template <
@@ -51,7 +50,7 @@ namespace ket
               parallel_policy,
               local_state, ::ket::utility::begin(local_state),
               binary_operation, unary_operation, initial_value);
-            return *boost::prior(::ket::utility::end(local_state));
+            return *std::prev(::ket::utility::end(local_state));
           }
         };
       } // namespace dispatch
@@ -89,5 +88,4 @@ namespace ket
 } // namespace ket
 
 
-#endif
-
+#endif // KET_MPI_UTILITY_TRANSFORM_INCLUSIVE_SCAN_SELF_HPP

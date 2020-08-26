@@ -1,8 +1,6 @@
 #ifndef KET_MPI_GATE_DETAIL_GENERATE_SINGLE_QUBIT_GATE_HPP
 # define KET_MPI_GATE_DETAIL_GENERATE_SINGLE_QUBIT_GATE_HPP
 
-# include <boost/config.hpp>
-
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
 #   define KET_MPI_GATE_DETAIL_GENERATE_SINGLE_QUBIT_GATE(gate_name, gate_symbol) \
 namespace ket\
@@ -27,8 +25,7 @@ namespace ket\
             return ::ket::mpi::gate::page::gate_name(\
               mpi_policy, parallel_policy, local_state, qubit, permutation);\
 \
-          typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;\
-          qubit_type const permutated_qubit = permutation[qubit];\
+          auto const permutated_qubit = permutation[qubit];\
           return ::ket::mpi::utility::for_each_local_range(\
             mpi_policy, local_state,\
             [parallel_policy, permutated_qubit](auto const first, auto const last)\
@@ -50,12 +47,12 @@ namespace ket\
         yampi::communicator const& communicator,\
         yampi::environment const& environment)\
       {\
-        std::ostringstream output_string_stream(#gate_symbol " ", std::ios_base::ate);\
+        auto output_string_stream = std::ostringstream{#gate_symbol " ", std::ios_base::ate};\
         output_string_stream << qubit;\
-        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);\
+        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};\
 \
-        typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;\
-        KET_array<qubit_type, 1u> qubits = { qubit };\
+        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;\
+        auto qubits = std::array<qubit_type, 1u>{qubit};\
         ::ket::mpi::utility::maybe_interchange_qubits(\
           mpi_policy, parallel_policy,\
           local_state, qubits, permutation, buffer, communicator, environment);\
@@ -79,16 +76,15 @@ namespace ket\
         yampi::communicator const& communicator,\
         yampi::environment const& environment)\
       {\
-        std::ostringstream output_string_stream(#gate_symbol " ", std::ios_base::ate);\
+        auto output_string_stream = std::ostringstream{#gate_symbol " ", std::ios_base::ate};\
         output_string_stream << qubit;\
-        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);\
+        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};\
 \
-        typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;\
-        KET_array<qubit_type, 1u> qubits = { qubit };\
+        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;\
+        auto qubits = std::array<qubit_type, 1u>{qubit};\
         ::ket::mpi::utility::maybe_interchange_qubits(\
           mpi_policy, parallel_policy,\
-          local_state, qubits, permutation,\
-          buffer, datatype, communicator, environment);\
+          local_state, qubits, permutation, buffer, datatype, communicator, environment);\
 \
         return ::ket::mpi::gate::gate_name ## _detail::gate_name(\
           mpi_policy, parallel_policy, local_state, qubit, permutation);\
@@ -128,8 +124,7 @@ namespace ket\
         return ::ket::mpi::gate::gate_name(\
           ::ket::mpi::utility::policy::make_general_mpi(),\
           ::ket::utility::policy::make_sequential(),\
-          local_state, qubit, permutation,\
-          buffer, datatype, communicator, environment);\
+          local_state, qubit, permutation, buffer, datatype, communicator, environment);\
       }\
 \
       template <\
@@ -166,10 +161,8 @@ namespace ket\
       {\
         return ::ket::mpi::gate::gate_name(\
           ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,\
-          local_state, qubit, permutation,\
-          buffer, datatype, communicator, environment);\
+          local_state, qubit, permutation, buffer, datatype, communicator, environment);\
       }\
-\
 \
       namespace gate_name ## _detail\
       {\
@@ -187,8 +180,7 @@ namespace ket\
             return ::ket::mpi::gate::page::adj_ ## gate_name(\
               mpi_policy, parallel_policy, local_state, qubit, permutation);\
 \
-          typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;\
-          qubit_type const permutated_qubit = permutation[qubit];\
+          auto const permutated_qubit = permutation[qubit];\
           return ::ket::mpi::utility::for_each_local_range(\
             mpi_policy, local_state,\
             [parallel_policy, permutated_qubit](auto const first, auto const last)\
@@ -210,12 +202,12 @@ namespace ket\
         yampi::communicator const& communicator,\
         yampi::environment const& environment)\
       {\
-        std::ostringstream output_string_stream("Adj(" #gate_symbol ") ", std::ios_base::ate);\
+        auto output_string_stream = std::ostringstream{"Adj(" #gate_symbol ") ", std::ios_base::ate};\
         output_string_stream << qubit;\
-        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);\
+        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};\
 \
-        typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;\
-        KET_array<qubit_type, 1u> qubits = { qubit };\
+        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;\
+        auto qubits = std::array<qubit_type, 1u>{qubit};\
         ::ket::mpi::utility::maybe_interchange_qubits(\
           mpi_policy, parallel_policy,\
           local_state, qubits, permutation, buffer, communicator, environment);\
@@ -239,16 +231,15 @@ namespace ket\
         yampi::communicator const& communicator,\
         yampi::environment const& environment)\
       {\
-        std::ostringstream output_string_stream("Adj(" #gate_symbol ") ", std::ios_base::ate);\
+        auto output_string_stream = std::ostringstream{"Adj(" #gate_symbol ") ", std::ios_base::ate};\
         output_string_stream << qubit;\
-        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);\
+        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};\
 \
-        typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;\
-        KET_array<qubit_type, 1u> qubits = { qubit };\
+        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;\
+        auto qubits = std::array<qubit_type, 1u>{qubit};\
         ::ket::mpi::utility::maybe_interchange_qubits(\
           mpi_policy, parallel_policy,\
-          local_state, qubits, permutation,\
-          buffer, datatype, communicator, environment);\
+          local_state, qubits, permutation, buffer, datatype, communicator, environment);\
 \
         return ::ket::mpi::gate::gate_name ## _detail::adj_ ## gate_name(\
           mpi_policy, parallel_policy, local_state, qubit, permutation);\
@@ -288,8 +279,7 @@ namespace ket\
         return ::ket::mpi::gate::adj_ ## gate_name(\
           ::ket::mpi::utility::policy::make_general_mpi(),\
           ::ket::utility::policy::make_sequential(),\
-          local_state, qubit, permutation,\
-          buffer, datatype, communicator, environment);\
+          local_state, qubit, permutation, buffer, datatype, communicator, environment);\
       }\
 \
       template <\
@@ -326,8 +316,7 @@ namespace ket\
       {\
         return ::ket::mpi::gate::adj_ ## gate_name(\
           ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,\
-          local_state, qubit, permutation,\
-          buffer, datatype, communicator, environment);\
+          local_state, qubit, permutation, buffer, datatype, communicator, environment);\
       }\
     }\
   }\
@@ -349,8 +338,8 @@ namespace ket\
           Qubit qubit_;\
 \
           call_ ## gate_name(ParallelPolicy const parallel_policy, Qubit const qubit)\
-            : parallel_policy_(parallel_policy),\
-              qubit_(qubit)\
+            : parallel_policy_{parallel_policy},\
+              qubit_{qubit}\
           { }\
 \
           template <typename RandomAccessIterator>\
@@ -364,8 +353,8 @@ namespace ket\
         inline call_ ## gate_name<ParallelPolicy, Qubit> make_call_ ## gate_name(\
           ParallelPolicy const parallel_policy, Qubit const qubit)\
         {\
-          return call_ ## gate_name<ParallelPolicy, Qubit>(\
-            parallel_policy, qubit);\
+          return call_ ## gate_name<ParallelPolicy, Qubit>{\
+            parallel_policy, qubit};\
         }\
 \
         template <\
@@ -403,12 +392,12 @@ namespace ket\
         yampi::communicator const& communicator,\
         yampi::environment const& environment)\
       {\
-        std::ostringstream output_string_stream(#gate_symbol " ", std::ios_base::ate);\
+        auto output_string_stream = std::ostringstream{#gate_symbol " ", std::ios_base::ate};\
         output_string_stream << qubit;\
-        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);\
+        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};\
 \
-        typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;\
-        KET_array<qubit_type, 1u> qubits = { qubit };\
+        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;\
+        auto qubits = std::array<qubit_type, 1u>{qubit};\
         ::ket::mpi::utility::maybe_interchange_qubits(\
           mpi_policy, parallel_policy,\
           local_state, qubits, permutation, buffer, communicator, environment);\
@@ -432,16 +421,15 @@ namespace ket\
         yampi::communicator const& communicator,\
         yampi::environment const& environment)\
       {\
-        std::ostringstream output_string_stream(#gate_symbol " ", std::ios_base::ate);\
+        std::ostringstream output_string_stream{#gate_symbol " ", std::ios_base::ate};\
         output_string_stream << qubit;\
-        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);\
+        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};\
 \
-        typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;\
-        KET_array<qubit_type, 1u> qubits = { qubit };\
+        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;\
+        auto qubits = std::array<qubit_type, 1u>{qubit};\
         ::ket::mpi::utility::maybe_interchange_qubits(\
           mpi_policy, parallel_policy,\
-          local_state, qubits, permutation,\
-          buffer, datatype, communicator, environment);\
+          local_state, qubits, permutation, buffer, datatype, communicator, environment);\
 \
         return ::ket::mpi::gate::gate_name ## _detail::gate_name(\
           mpi_policy, parallel_policy, local_state, qubit, permutation);\
@@ -481,8 +469,7 @@ namespace ket\
         return ::ket::mpi::gate::gate_name(\
           ::ket::mpi::utility::policy::make_general_mpi(),\
           ::ket::utility::policy::make_sequential(),\
-          local_state, qubit, permutation,\
-          buffer, datatype, communicator, environment);\
+          local_state, qubit, permutation, buffer, datatype, communicator, environment);\
       }\
 \
       template <\
@@ -519,10 +506,8 @@ namespace ket\
       {\
         return ::ket::mpi::gate::gate_name(\
           ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,\
-          local_state, qubit, permutation,\
-          buffer, datatype, communicator, environment);\
+          local_state, qubit, permutation, buffer, datatype, communicator, environment);\
       }\
-\
 \
       namespace gate_name ## _detail\
       {\
@@ -533,8 +518,8 @@ namespace ket\
           Qubit qubit_;\
 \
           call_adj_ ## gate_name(ParallelPolicy const parallel_policy, Qubit const qubit)\
-            : parallel_policy_(parallel_policy),\
-              qubit_(qubit)\
+            : parallel_policy_{parallel_policy},\
+              qubit_{qubit}\
           { }\
 \
           template <typename RandomAccessIterator>\
@@ -548,8 +533,8 @@ namespace ket\
         inline call_adj_ ## gate_name<ParallelPolicy, Qubit> make_call_adj_ ## gate_name(\
           ParallelPolicy const parallel_policy, Qubit const qubit)\
         {\
-          return call_adj_ ## gate_name<ParallelPolicy, Qubit>(\
-            parallel_policy, qubit);\
+          return call_adj_ ## gate_name<ParallelPolicy, Qubit>{\
+            parallel_policy, qubit};\
         }\
 \
         template <\
@@ -587,16 +572,15 @@ namespace ket\
         yampi::communicator const& communicator,\
         yampi::environment const& environment)\
       {\
-        std::ostringstream output_string_stream("Adj(" #gate_symbol ") ", std::ios_base::ate);\
+        auto output_string_stream = std::ostringstream{"Adj(" #gate_symbol ") ", std::ios_base::ate};\
         output_string_stream << qubit;\
-        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);\
+        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};\
 \
-        typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;\
-        KET_array<qubit_type, 1u> qubits = { qubit };\
+        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;\
+        auto qubits = std::array<qubit_type, 1u>{qubit};\
         ::ket::mpi::utility::maybe_interchange_qubits(\
           mpi_policy, parallel_policy,\
-          local_state, qubits, permutation,\
-          buffer, communicator, environment);\
+          local_state, qubits, permutation, buffer, communicator, environment);\
 \
         return ::ket::mpi::gate::gate_name ## _detail::adj_ ## gate_name(\
           mpi_policy, parallel_policy, local_state, qubit, permutation);\
@@ -617,16 +601,15 @@ namespace ket\
         yampi::communicator const& communicator,\
         yampi::environment const& environment)\
       {\
-        std::ostringstream output_string_stream("Adj(" #gate_symbol ") ", std::ios_base::ate);\
+        auto output_string_stream = std::ostringstream{"Adj(" #gate_symbol ") ", std::ios_base::ate};\
         output_string_stream << qubit;\
-        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);\
+        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};\
 \
-        typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;\
-        KET_array<qubit_type, 1u> qubits = { qubit };\
+        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;\
+        auto qubits = std::array<qubit_type, 1u>{qubit};\
         ::ket::mpi::utility::maybe_interchange_qubits(\
           mpi_policy, parallel_policy,\
-          local_state, qubits, permutation,\
-          buffer, datatype, communicator, environment);\
+          local_state, qubits, permutation, buffer, datatype, communicator, environment);\
 \
         return ::ket::mpi::gate::gate_name ## _detail::adj_ ## gate_name(\
           mpi_policy, parallel_policy, local_state, qubit, permutation);\
@@ -666,8 +649,7 @@ namespace ket\
         return ::ket::mpi::gate::adj_ ## gate_name(\
           ::ket::mpi::utility::policy::make_general_mpi(),\
           ::ket::utility::policy::make_sequential(),\
-          local_state, qubit, permutation,\
-          buffer, datatype, communicator, environment);\
+          local_state, qubit, permutation, buffer, datatype, communicator, environment);\
       }\
 \
       template <\
@@ -712,5 +694,4 @@ namespace ket\
 }
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 
-#endif
-
+#endif // KET_MPI_GATE_DETAIL_GENERATE_SINGLE_QUBIT_GATE_HPP

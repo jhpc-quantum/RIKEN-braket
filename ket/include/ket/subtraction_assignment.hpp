@@ -1,27 +1,15 @@
 #ifndef KET_SUBTRACTION_ASSIGNMENT_HPP
 # define KET_SUBTRACTION_ASSIGNMENT_HPP
 
-# include <boost/config.hpp>
-
 # include <cstddef>
 # include <vector>
-# ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
-#   include <type_traits>
-# else
-#   include <boost/utility/enable_if.hpp>
-# endif
+# include <type_traits>
 
 # include <boost/range/value_type.hpp>
 
 # include <ket/qubit.hpp>
 # include <ket/addition_assignment.hpp>
 # include <ket/utility/loop_n.hpp>
-
-# ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
-#   define KET_enable_if std::enable_if
-# else
-#   define KET_enable_if boost::enable_if_c
-# endif
 
 
 namespace ket
@@ -46,7 +34,7 @@ namespace ket
   template <
     typename RandomAccessIterator, typename Qubits, typename QubitsRange,
     typename PhaseCoefficientsAllocator>
-  inline typename KET_enable_if<
+  inline typename std::enable_if<
     not ::ket::utility::policy::meta::is_loop_n_policy<RandomAccessIterator>::value,
     void>::type
   subtraction_assignment(
@@ -63,7 +51,7 @@ namespace ket
   template <
     typename ParallelPolicy,
     typename RandomAccessIterator, typename Qubits, typename QubitsRange>
-  inline typename KET_enable_if<
+  inline typename std::enable_if<
     ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
     void>::type
   subtraction_assignment(
@@ -102,7 +90,7 @@ namespace ket
     template <
       typename RandomAccessRange, typename Qubits, typename QubitsRange,
       typename PhaseCoefficientsAllocator>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       not ::ket::utility::policy::meta::is_loop_n_policy<RandomAccessRange>::value,
       RandomAccessRange&>::type
     subtraction_assignment(
@@ -119,7 +107,7 @@ namespace ket
     template <
       typename ParallelPolicy,
       typename RandomAccessRange, typename Qubits, typename QubitsRange>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
       RandomAccessRange&>::type
     subtraction_assignment(
@@ -136,7 +124,7 @@ namespace ket
       RandomAccessRange& state,
       Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range)
     { return ::ket::adj_addition_assignment(state, lhs_qubits, rhs_qubits_range); }
-  }
+  } // namespace ranges
 
 
   template <
@@ -158,7 +146,7 @@ namespace ket
   template <
     typename RandomAccessIterator, typename Qubits, typename QubitsRange,
     typename PhaseCoefficientsAllocator>
-  inline typename KET_enable_if<
+  inline typename std::enable_if<
     not ::ket::utility::policy::meta::is_loop_n_policy<RandomAccessIterator>::value,
     void>::type
   adj_subtraction_assignment(
@@ -175,7 +163,7 @@ namespace ket
   template <
     typename ParallelPolicy,
     typename RandomAccessIterator, typename Qubits, typename QubitsRange>
-  inline typename KET_enable_if<
+  inline typename std::enable_if<
     ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
     void>::type
   adj_subtraction_assignment(
@@ -214,7 +202,7 @@ namespace ket
     template <
       typename RandomAccessRange, typename Qubits, typename QubitsRange,
       typename PhaseCoefficientsAllocator>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       not ::ket::utility::policy::meta::is_loop_n_policy<RandomAccessRange>::value,
       RandomAccessRange&>::type
     adj_subtraction_assignment(
@@ -231,7 +219,7 @@ namespace ket
     template <
       typename ParallelPolicy,
       typename RandomAccessRange, typename Qubits, typename QubitsRange>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
       RandomAccessRange&>::type
     adj_subtraction_assignment(
@@ -248,11 +236,8 @@ namespace ket
       RandomAccessRange& state,
       Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range)
     { return ::ket::addition_assignment(state, lhs_qubits, rhs_qubits_range); }
-  }
-}
+  } // namespace ranges
+} // namespace ket
 
 
-# undef KET_enable_if
-
-#endif
-
+#endif // KET_SUBTRACTION_ASSIGNMENT_HPP

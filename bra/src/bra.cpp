@@ -1,26 +1,13 @@
-#include <boost/config.hpp>
-
 #include <cstddef>
 #include <iostream>
 #include <fstream>
 #include <string>
 #include <utility>
-#ifndef BOOST_NO_CXX11_HDR_RANDOM
-# include <random>
-#else
-# include <boost/random/mersenne_twister.hpp>
-#endif
-#ifndef BOOST_NO_CXX11_HDR_CHRONO
-#  include <chrono>
-#else
-#  define BOOST_CHRONO_HEADER_ONLY
-#  include <boost/chrono/chrono.hpp>
-#endif
+#include <random>
+#include <chrono>
 
 #include <boost/lexical_cast.hpp>
 #include <boost/format.hpp>
-
-#include <boost/move/unique_ptr.hpp>
 
 #ifndef BRA_NO_MPI
 # include <yampi/environment.hpp>
@@ -41,35 +28,25 @@
 # include <bra/nompi_state.hpp>
 #endif
 
-#ifndef BOOST_NO_CXX11_HDR_RANDOM
-# define BRA_mt19937_64 std::mt19937_64
-#else
-# define BRA_mt19937_64 boost::random::mt19937_64
-#endif
-
-#ifndef BOOST_NO_CXX11_HDR_CHRONO
-# define BRA_chrono std::chrono
-#else // BOOST_NO_CXX11_HDR_CHRONO
-# define BRA_chrono boost::chrono
-#endif // BOOST_NO_CXX11_HDR_CHRONO
-
 #ifndef BRA_NO_MPI
 # define BRA_clock yampi::wall_clock
 #else // BRA_NO_MPI
-# define BRA_clock BRA_chrono::system_clock
+# define BRA_clock std::chrono::system_clock
 #endif // BRA_NO_MPI
 
 
 template <typename StateInteger, typename BitInteger>
 std::string integer_to_bits_string(StateInteger const integer, BitInteger const total_num_qubits)
 {
-  std::string result;
+  auto result = std::string{};
   result.reserve(total_num_qubits);
 
-  for (BitInteger left_bit = total_num_qubits; left_bit > static_cast<BitInteger>(0u); --left_bit)
+  for (auto left_bit = total_num_qubits; left_bit > BitInteger{0u}; --left_bit)
   {
-    StateInteger const zero_or_one = (integer bitand (static_cast<StateInteger>(1u) << (left_bit-1u))) >> (left_bit-1u);
-    if (zero_or_one == static_cast<StateInteger>(0u))
+    auto const zero_or_one
+      = (integer bitand (StateInteger{1u} << (left_bit - BitInteger{1u})))
+        >> (left_bit - BitInteger{1u});
+    if (zero_or_one == StateInteger{0u})
       result.push_back('0');
     else
       result.push_back('1');
@@ -79,26 +56,24 @@ std::string integer_to_bits_string(StateInteger const integer, BitInteger const 
 
 template <typename Clock, typename Duration>
 double duration_to_second(
-  BRA_chrono::time_point<Clock, Duration> const& from,
-  BRA_chrono::time_point<Clock, Duration> const& to)
-{ return 0.000001 * BRA_chrono::duration_cast<BRA_chrono::microseconds>(to - from).count(); }
-
+  std::chrono::time_point<Clock, Duration> const& from,
+  std::chrono::time_point<Clock, Duration> const& to)
+{ return 0.000001 * std::chrono::duration_cast<std::chrono::microseconds>(to - from).count(); }
 
 int main(int argc, char* argv[])
 {
   std::ios::sync_with_stdio(false);
 
-  typedef unsigned int bit_integer_type;
-  typedef BRA_mt19937_64 rng_type;
-  typedef rng_type::result_type seed_type;
+  using bit_integer_type = unsigned int;
+  using rng_type = std::mt19937_64;
+  using seed_type = rng_type::result_type;
 
 #ifndef BRA_NO_MPI
-  yampi::environment environment(argc, argv, yampi::thread_support::funneled);
-  yampi::world_communicator_t const world_communicator_tag;
-  yampi::communicator communicator(world_communicator_tag);
-  yampi::rank const rank = communicator.rank(environment);
-  BOOST_CONSTEXPR_OR_CONST yampi::rank root_rank(0);
-  bool const is_io_root_rank = rank == root_rank and yampi::is_io_process(root_rank, environment);
+  yampi::environment environment{argc, argv, yampi::thread_support::funneled};
+  auto communicator = yampi::communicator{yampi::tags::world_communicator()};
+  auto const rank = communicator.rank(environment);
+  constexpr auto root_rank = yampi::rank{0};
+  auto const is_io_root_rank = rank == root_rank and yampi::is_io_process(root_rank, environment);
 
   if (environment.thread_support() == yampi::thread_support::single)
   {
@@ -107,7 +82,7 @@ int main(int argc, char* argv[])
     return EXIT_FAILURE;
   }
 
-  bit_integer_type const num_gqubits
+  auto const num_gqubits
     = ket::utility::integer_log2<bit_integer_type>(communicator.size(environment));
 
   if (ket::utility::integer_exp2<bit_integer_type>(num_gqubits)
@@ -134,32 +109,32 @@ int main(int argc, char* argv[])
   }
 #endif // BRA_NO_MPI
 
-  std::string const filename(argv[1]);
+  auto const filename = std::string{argv[1]};
 #ifndef BRA_NO_MPI
-  unsigned int const num_threads_per_process
+  auto const num_threads_per_process
     = argc >= 3
       ? boost::lexical_cast<unsigned int>(argv[2])
       : 1u;
-  unsigned int const num_page_qubits
+  auto const num_page_qubits
     = argc >= 4
       ? boost::lexical_cast<unsigned int>(argv[3])
       : 2u;
-  seed_type const seed
+  auto const seed
     = argc == 5
       ? boost::lexical_cast<seed_type>(argv[4])
-      : static_cast<seed_type>(1);
+      : seed_type{1};
 #else // BRA_NO_MPI
-  unsigned int const num_threads
+  auto const num_threads
     = argc >= 3
       ? boost::lexical_cast<unsigned int>(argv[2])
       : 1u;
-  seed_type const seed
+  auto const seed
     = argc == 4
       ? boost::lexical_cast<seed_type>(argv[3])
-      : static_cast<seed_type>(1);
+      : seed_type{1};
 #endif // BRA_NO_MPI
 
-  std::ifstream file_stream(filename.c_str());
+  auto file_stream = std::ifstream{filename.c_str()};
   if (!file_stream)
   {
 #ifndef BRA_NO_MPI
@@ -172,23 +147,23 @@ int main(int argc, char* argv[])
   }
 
 #ifndef BRA_NO_MPI
-  bra::gates gates(file_stream, environment, root_rank, communicator);
-  boost::movelib::unique_ptr<bra::state> state_ptr
+  auto gates = bra::gates{file_stream, environment, root_rank, communicator};
+  auto state_ptr
     = bra::make_general_mpi_state(
         num_page_qubits, gates.initial_state_value(), gates.num_lqubits(), gates.initial_permutation(),
         num_threads_per_process, seed, communicator, environment);
 #else // BRA_NO_MPI
-  bra::gates gates(file_stream);
-  boost::movelib::unique_ptr<bra::state> state_ptr
+  auto gates = bra::gates{file_stream};
+  auto state_ptr
     = bra::make_nompi_state(gates.initial_state_value(), gates.num_qubits(), num_threads, seed);
 #endif // BRA_NO_MPI
 
 #ifndef BRA_NO_MPI
-  BRA_clock::time_point const start_time = BRA_clock::now(environment);
+  auto const start_time = BRA_clock::now(environment);
 #else
-  BRA_clock::time_point const start_time = BRA_clock::now();
+  auto const start_time = BRA_clock::now();
 #endif
-  BRA_clock::time_point last_processed_time = start_time;
+  auto last_processed_time = start_time;
 
   *state_ptr << gates;
 
@@ -197,13 +172,12 @@ int main(int argc, char* argv[])
     return EXIT_SUCCESS;
 #endif
 
-  std::size_t const num_finish_processes = state_ptr->num_finish_processes();
-  for (std::size_t index = 0u; index < num_finish_processes; ++index)
+  auto const num_finish_processes = state_ptr->num_finish_processes();
+  for (auto index = decltype(num_finish_processes){0u}; index < num_finish_processes; ++index)
   {
-    typedef bra::state::time_and_process_type time_and_process_type;
-    time_and_process_type finish_time_and_process = state_ptr->finish_time_and_process(index);
+    auto finish_time_and_process = state_ptr->finish_time_and_process(index);
 
-    if (finish_time_and_process.second == BRA_FINISHED_PROCESS_VALUE(operations))
+    if (finish_time_and_process.second == ::bra::finished_process::operations)
     {
       std::cout
         << "Operations finished: "
@@ -214,26 +188,15 @@ int main(int argc, char* argv[])
         << std::endl;
       last_processed_time = finish_time_and_process.first;
     }
-    else if (finish_time_and_process.second == BRA_FINISHED_PROCESS_VALUE(begin_measurement))
+    else if (finish_time_and_process.second == ::bra::finished_process::begin_measurement)
     {
       std::cout
         << boost::format("Expectation values of spins:\n%|=8s| %|=8s| %|=8s|\n")
            % "<Qx>" % "<Qy>" % "<Qz>";
-# ifndef BOOST_NO_CXX11_RANGE_BASED_FOR
-      typedef bra::state::spin_type spin_type;
-      for (spin_type const& spin: *(state_ptr->maybe_expectation_values()))
+      for (auto const& spin: *(state_ptr->maybe_expectation_values()))
         std::cout
           << boost::format("%|=8.3f| %|=8.3f| %|=8.3f|\n")
              % (0.5-spin[0u]) % (0.5-spin[1u]) % (0.5-spin[2u]);
-# else // BOOST_NO_CXX11_RANGE_BASED_FOR
-      typedef bra::state::spins_type::const_iterator const_iterator;
-      const_iterator const last = state_ptr->maybe_expectation_values()->end();
-      for (const_iterator iter = state_ptr->maybe_expectation_values()->begin();
-           iter != last; ++iter)
-        std::cout
-          << boost::format("%|=8.3f| %|=8.3f| %|=8.3f|\n")
-             % (0.5-(*iter)[0u]) % (0.5-(*iter)[1u]) % (0.5-(*iter)[2u]);
-# endif // BOOST_NO_CXX11_RANGE_BASED_FOR
       std::cout << std::flush;
 
       std::cout
@@ -245,7 +208,7 @@ int main(int argc, char* argv[])
         << std::endl;
       last_processed_time = finish_time_and_process.first;
     }
-    else if (finish_time_and_process.second == BRA_FINISHED_PROCESS_VALUE(ket_measure))
+    else if (finish_time_and_process.second == ::bra::finished_process::ket_measure)
     {
       std::cout
         << "Measurement result: " << state_ptr->measured_value()
@@ -257,11 +220,11 @@ int main(int argc, char* argv[])
         << std::endl;
       break;
     }
-    else if (finish_time_and_process.second == BRA_FINISHED_PROCESS_VALUE(generate_events))
+    else if (finish_time_and_process.second == ::bra::finished_process::generate_events)
     {
       std::cout << "Events:\n";
-      std::size_t const num_events = state_ptr->generated_events().size();
-      for (std::size_t index = 0u; index < num_events; ++index)
+      auto const num_events = state_ptr->generated_events().size();
+      for (auto index = decltype(num_events){0u}; index < num_events; ++index)
         std::cout << index << ' ' << integer_to_bits_string(state_ptr->generated_events()[index], state_ptr->total_num_qubits()) << '\n';
       std::cout
         << "Events finished: "
@@ -279,6 +242,3 @@ int main(int argc, char* argv[])
 
 
 #undef BRA_clock
-#undef BRA_chrono
-#undef BRA_mt19937_64
-

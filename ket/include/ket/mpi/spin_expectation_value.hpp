@@ -3,18 +3,10 @@
 
 # include <boost/config.hpp>
 
-# ifndef BOOST_NO_CXX11_HDR_ARRAY
-#   include <array>
-# else
-#   include <boost/array.hpp>
-# endif
+# include <array>
 # include <ios>
 # include <sstream>
-# ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
-#   include <type_traits>
-# else
-#   include <boost/utility/enable_if.hpp>
-# endif
+# include <type_traits>
 
 # include <boost/optional.hpp>
 
@@ -30,7 +22,6 @@
 
 # include <ket/spin_expectation_value.hpp>
 # include <ket/qubit.hpp>
-# include <ket/qubit_io.hpp>
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/begin.hpp>
 # include <ket/utility/end.hpp>
@@ -40,18 +31,6 @@
 # include <ket/mpi/page/spin_expectation_value.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
 # include <ket/mpi/utility/logger.hpp>
-
-# ifndef BOOST_NO_CXX11_HDR_ARRAY
-#   define KET_array std::array
-# else
-#   define KET_array boost::array
-# endif
-
-# ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
-#   define KET_enable_if std::enable_if
-# else
-#   define KET_enable_if boost::enable_if_c
-# endif
 
 
 namespace ket
@@ -80,20 +59,20 @@ namespace ket
           RandomAccessIterator const first,
           RandomAccessIterator const last) const
         {
-          Spin const local_spin
+          auto const local_spin
             = ::ket::spin_expectation_value(parallel_policy_, first, last, qubit_);
           spin_[0u] += local_spin[0u];
           spin_[1u] += local_spin[1u];
           spin_[2u] += local_spin[2u];
         }
-      };
+      }; // struct call_spin_expectation_value<ParallelPolicy, Qubit, Spin>
 
       template <typename ParallelPolicy, typename Qubit, typename Spin>
       inline call_spin_expectation_value<ParallelPolicy, Qubit, Spin> make_call_spin_expectation_value(
         ParallelPolicy const parallel_policy, Qubit const qubit, Spin& spin)
       {
-        return call_spin_expectation_value<ParallelPolicy, Qubit, Spin>(
-          parallel_policy, qubit, spin);
+        return call_spin_expectation_value<ParallelPolicy, Qubit, Spin>{
+          parallel_policy, qubit, spin};
       }
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
     } // namespace spin_expectation_value_detail
@@ -103,11 +82,11 @@ namespace ket
       typename MpiPolicy, typename ParallelPolicy,
       typename LocalState, typename StateInteger, typename BitInteger,
       typename Allocator, typename BufferAllocator>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
-      KET_array<
+      std::array<
         typename ::ket::utility::meta::real_of<
-          typename boost::range_value<LocalState>::type>::type, 3u> >::type
+          typename boost::range_value<LocalState>::type>::type, 3u>>::type
     spin_expectation_value(
       MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
       LocalState& local_state,
@@ -118,21 +97,20 @@ namespace ket
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
-      std::ostringstream output_string_stream("Spin ", std::ios_base::ate);
+      auto output_string_stream = std::ostringstream{"Spin ", std::ios_base::ate};
       output_string_stream << qubit;
-      ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
+      ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
 
-      typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
-      KET_array<qubit_type, 1u> qubits = { qubit };
+      using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+      auto qubits = std::array<qubit_type, 1u>{qubit};
       ::ket::mpi::utility::maybe_interchange_qubits(
         mpi_policy, parallel_policy,
-        local_state, qubits, permutation,
-        buffer, communicator, environment);
+        local_state, qubits, permutation, buffer, communicator, environment);
 
-      typedef typename boost::range_value<LocalState>::type complex_type;
-      typedef typename ::ket::utility::meta::real_of<complex_type>::type real_type;
-      typedef KET_array<real_type, 3u> spin_type;
-      spin_type spin = { };
+      using complex_type = typename boost::range_value<LocalState>::type;
+      using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
+      using spin_type = std::array<real_type, 3u>;
+      auto spin = spin_type{};
 
       if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))
         spin
@@ -145,7 +123,7 @@ namespace ket
           mpi_policy, local_state,
           [parallel_policy, qubit, &permutation, &spin](auto const first, auto const last)
           {
-            spin_type const local_spin
+            auto const local_spin
               = ::ket::spin_expectation_value(parallel_policy, first, last, permutation[qubit]);
             spin[0u] += local_spin[0u];
             spin[1u] += local_spin[1u];
@@ -159,7 +137,7 @@ namespace ket
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
       }
 
-      spin_type result;
+      auto result = spin_type{};
       yampi::all_reduce(
         yampi::make_buffer(::ket::utility::begin(spin), ::ket::utility::end(spin)),
         ::ket::utility::begin(result), yampi::binary_operation(::yampi::plus_t()),
@@ -173,11 +151,11 @@ namespace ket
       typename LocalState, typename StateInteger, typename BitInteger,
       typename Allocator, typename BufferAllocator,
       typename DerivedDatatype1, typename DerivedDatatype2>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
-      KET_array<
+      std::array<
         typename ::ket::utility::meta::real_of<
-          typename boost::range_value<LocalState>::type>::type, 3u> >::type
+          typename boost::range_value<LocalState>::type>::type, 3u>>::type
     spin_expectation_value(
       MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
       LocalState& local_state,
@@ -190,21 +168,20 @@ namespace ket
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
-      std::ostringstream output_string_stream("Spin ", std::ios_base::ate);
+      auto output_string_stream = std::ostringstream{"Spin ", std::ios_base::ate};
       output_string_stream << qubit;
-      ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
+      ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
 
-      typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
-      KET_array<qubit_type, 1u> qubits = { qubit };
+      using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+      auto qubits = std::array<qubit_type, 1u>{qubit};
       ::ket::mpi::utility::maybe_interchange_qubits(
         mpi_policy, parallel_policy,
-        local_state, qubits, permutation,
-        buffer, complex_datatype, communicator, environment);
+        local_state, qubits, permutation, buffer, complex_datatype, communicator, environment);
 
-      typedef typename boost::range_value<LocalState>::type complex_type;
-      typedef typename ::ket::utility::meta::real_of<complex_type>::type real_type;
-      typedef KET_array<real_type, 3u> spin_type;
-      spin_type spin = { };
+      using complex_type = typename boost::range_value<LocalState>::type;
+      using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
+      using spin_type = std::array<real_type, 3u>;
+      auto spin = spin_type{};
 
       if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))
         spin
@@ -217,7 +194,7 @@ namespace ket
           mpi_policy, local_state,
           [parallel_policy, qubit, &permutation, &spin](auto const first, auto const last)
           {
-            spin_type const local_spin
+            auto const local_spin
               = ::ket::spin_expectation_value(parallel_policy, first, last, permutation[qubit]);
             spin[0u] += local_spin[0u];
             spin[1u] += local_spin[1u];
@@ -231,7 +208,7 @@ namespace ket
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
       }
 
-      spin_type result;
+      auto result = spin_type{};
       yampi::all_reduce(
         yampi::make_buffer(::ket::utility::begin(spin), ::ket::utility::end(spin), real_datatype),
         ::ket::utility::begin(result), yampi::binary_operation(::yampi::plus_t()),
@@ -243,12 +220,12 @@ namespace ket
     template <
       typename LocalState, typename StateInteger, typename BitInteger,
       typename Allocator, typename BufferAllocator>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       (not ::ket::mpi::utility::policy::meta::is_mpi_policy<LocalState>::value)
         and (not ::ket::utility::policy::meta::is_loop_n_policy<LocalState>::value),
-      KET_array<
+      std::array<
         typename ::ket::utility::meta::real_of<
-          typename boost::range_value<LocalState>::type>::type, 3u> >::type
+          typename boost::range_value<LocalState>::type>::type, 3u>>::type
     spin_expectation_value(
       LocalState& local_state,
       ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -268,12 +245,12 @@ namespace ket
       typename LocalState, typename StateInteger, typename BitInteger,
       typename Allocator, typename BufferAllocator,
       typename DerivedDatatype1, typename DerivedDatatype2>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       (not ::ket::mpi::utility::policy::meta::is_mpi_policy<LocalState>::value)
         and (not ::ket::utility::policy::meta::is_loop_n_policy<LocalState>::value),
-      KET_array<
+      std::array<
         typename ::ket::utility::meta::real_of<
-          typename boost::range_value<LocalState>::type>::type, 3u> >::type
+          typename boost::range_value<LocalState>::type>::type, 3u>>::type
     spin_expectation_value(
       LocalState& local_state,
       ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -296,11 +273,11 @@ namespace ket
       typename ParallelPolicy,
       typename LocalState, typename StateInteger, typename BitInteger,
       typename Allocator, typename BufferAllocator>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
-      KET_array<
+      std::array<
         typename ::ket::utility::meta::real_of<
-          typename boost::range_value<LocalState>::type>::type, 3u> >::type
+          typename boost::range_value<LocalState>::type>::type, 3u>>::type
     spin_expectation_value(
       ParallelPolicy const parallel_policy,
       LocalState& local_state,
@@ -321,11 +298,11 @@ namespace ket
       typename LocalState, typename StateInteger, typename BitInteger,
       typename Allocator, typename BufferAllocator,
       typename DerivedDatatype1, typename DerivedDatatype2>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
-      KET_array<
+      std::array<
         typename ::ket::utility::meta::real_of<
-          typename boost::range_value<LocalState>::type>::type, 3u> >::type
+          typename boost::range_value<LocalState>::type>::type, 3u>>::type
     spin_expectation_value(
       ParallelPolicy const parallel_policy,
       LocalState& local_state,
@@ -350,12 +327,12 @@ namespace ket
       typename MpiPolicy, typename ParallelPolicy,
       typename LocalState, typename StateInteger, typename BitInteger,
       typename Allocator, typename BufferAllocator>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       boost::optional<
-        KET_array<
+        std::array<
           typename ::ket::utility::meta::real_of<
-            typename boost::range_value<LocalState>::type>::type, 3u> > >::type
+            typename boost::range_value<LocalState>::type>::type, 3u>>>::type
     spin_expectation_value(
       MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
       LocalState& local_state,
@@ -367,21 +344,20 @@ namespace ket
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
-      std::ostringstream output_string_stream("Spin ", std::ios_base::ate);
+      auto output_string_stream = std::ostringstream{"Spin ", std::ios_base::ate};
       output_string_stream << qubit;
-      ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
+      ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
 
-      typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
-      KET_array<qubit_type, 1u> qubits = { qubit };
+      using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+      auto qubits = std::array<qubit_type, 1u>{qubit};
       ::ket::mpi::utility::maybe_interchange_qubits(
         mpi_policy, parallel_policy,
-        local_state, qubits, permutation,
-        buffer, communicator, environment);
+        local_state, qubits, permutation, buffer, communicator, environment);
 
-      typedef typename boost::range_value<LocalState>::type complex_type;
-      typedef typename ::ket::utility::meta::real_of<complex_type>::type real_type;
-      typedef KET_array<real_type, 3u> spin_type;
-      spin_type spin = { };
+      using complex_type = typename boost::range_value<LocalState>::type;
+      using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
+      using spin_type = std::array<real_type, 3u>;
+      auto spin = spin_type{};
 
       if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))
         spin
@@ -394,7 +370,7 @@ namespace ket
           mpi_policy, local_state,
           [parallel_policy, qubit, &permutation, &spin](auto const first, auto const last)
           {
-            spin_type const local_spin
+            auto const local_spin
               = ::ket::spin_expectation_value(parallel_policy, first, last, permutation[qubit]);
             spin[0u] += local_spin[0u];
             spin[1u] += local_spin[1u];
@@ -408,7 +384,7 @@ namespace ket
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
       }
 
-      spin_type result;
+      auto result = spin_type{};
       yampi::reduce(root, communicator).call(
         yampi::make_buffer(::ket::utility::begin(spin), ::ket::utility::end(spin)),
         ::ket::utility::begin(result), yampi::binary_operation(yampi::plus_t()),
@@ -425,12 +401,12 @@ namespace ket
       typename LocalState, typename StateInteger, typename BitInteger,
       typename Allocator, typename BufferAllocator,
       typename DerivedDatatype1, typename DerivedDatatype2>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       boost::optional<
-        KET_array<
+        std::array<
           typename ::ket::utility::meta::real_of<
-            typename boost::range_value<LocalState>::type>::type, 3u> > >::type
+            typename boost::range_value<LocalState>::type>::type, 3u>>>::type
     spin_expectation_value(
       MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
       LocalState& local_state,
@@ -444,21 +420,20 @@ namespace ket
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
-      std::ostringstream output_string_stream("Spin ", std::ios_base::ate);
+      auto output_string_stream = std::ostringstream{"Spin ", std::ios_base::ate};
       output_string_stream << qubit;
-      ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
+      ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
 
-      typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
-      KET_array<qubit_type, 1u> qubits = { qubit };
+      using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+      auto qubits = std::array<qubit_type, 1u>{qubit};
       ::ket::mpi::utility::maybe_interchange_qubits(
         mpi_policy, parallel_policy,
-        local_state, qubits, permutation,
-        buffer, complex_datatype, communicator, environment);
+        local_state, qubits, permutation, buffer, complex_datatype, communicator, environment);
 
-      typedef typename boost::range_value<LocalState>::type complex_type;
-      typedef typename ::ket::utility::meta::real_of<complex_type>::type real_type;
-      typedef KET_array<real_type, 3u> spin_type;
-      spin_type spin = { };
+      using complex_type = typename boost::range_value<LocalState>::type;
+      using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
+      using spin_type = std::array<real_type, 3u>;
+      auto spin = spin_type{};
 
       if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))
         spin
@@ -471,7 +446,7 @@ namespace ket
           mpi_policy, local_state,
           [parallel_policy, qubit, &permutation, &spin](auto const first, auto const last)
           {
-            spin_type const local_spin
+            auto const local_spin
               = ::ket::spin_expectation_value(parallel_policy, first, last, permutation[qubit]);
             spin[0u] += local_spin[0u];
             spin[1u] += local_spin[1u];
@@ -485,7 +460,7 @@ namespace ket
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
       }
 
-      spin_type result;
+      auto result = spin_type{};
       yampi::reduce(root, communicator).call(
         yampi::make_buffer(::ket::utility::begin(spin), ::ket::utility::end(spin), real_datatype),
         ::ket::utility::begin(result), yampi::binary_operation(yampi::plus_t()),
@@ -500,13 +475,13 @@ namespace ket
     template <
       typename LocalState, typename StateInteger, typename BitInteger,
       typename Allocator, typename BufferAllocator>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       (not ::ket::mpi::utility::policy::meta::is_mpi_policy<LocalState>::value)
         and (not ::ket::utility::policy::meta::is_loop_n_policy<LocalState>::value),
       boost::optional<
-        KET_array<
+        std::array<
           typename ::ket::utility::meta::real_of<
-            typename boost::range_value<LocalState>::type>::type, 3u> > >::type
+            typename boost::range_value<LocalState>::type>::type, 3u>>>::type
     spin_expectation_value(
       LocalState& local_state,
       ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -527,13 +502,13 @@ namespace ket
       typename LocalState, typename StateInteger, typename BitInteger,
       typename Allocator, typename BufferAllocator,
       typename DerivedDatatype1, typename DerivedDatatype2>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       (not ::ket::mpi::utility::policy::meta::is_mpi_policy<LocalState>::value)
         and (not ::ket::utility::policy::meta::is_loop_n_policy<LocalState>::value),
       boost::optional<
-        KET_array<
+        std::array<
           typename ::ket::utility::meta::real_of<
-            typename boost::range_value<LocalState>::type>::type, 3u> > >::type
+            typename boost::range_value<LocalState>::type>::type, 3u>>>::type
     spin_expectation_value(
       LocalState& local_state,
       ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -557,12 +532,12 @@ namespace ket
       typename ParallelPolicy,
       typename LocalState, typename StateInteger, typename BitInteger,
       typename Allocator, typename BufferAllocator>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
       boost::optional<
-        KET_array<
+        std::array<
           typename ::ket::utility::meta::real_of<
-            typename boost::range_value<LocalState>::type>::type, 3u> > >::type
+            typename boost::range_value<LocalState>::type>::type, 3u>>>::type
     spin_expectation_value(
       ParallelPolicy const parallel_policy,
       LocalState& local_state,
@@ -584,12 +559,12 @@ namespace ket
       typename LocalState, typename StateInteger, typename BitInteger,
       typename Allocator, typename BufferAllocator,
       typename DerivedDatatype1, typename DerivedDatatype2>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
       boost::optional<
-        KET_array<
+        std::array<
           typename ::ket::utility::meta::real_of<
-            typename boost::range_value<LocalState>::type>::type, 3u> > >::type
+            typename boost::range_value<LocalState>::type>::type, 3u>>>::type
     spin_expectation_value(
       ParallelPolicy const parallel_policy,
       LocalState& local_state,
@@ -612,7 +587,4 @@ namespace ket
 } // namespace ket
 
 
-# undef KET_enable_if
-# undef KET_array
-
-#endif
+#endif // KET_MPI_SPIN_EXPECTATION_VALUE_HPP

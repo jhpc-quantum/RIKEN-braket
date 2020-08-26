@@ -1,9 +1,10 @@
-#include <boost/config.hpp>
-
 #include <istream>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <algorithm>
+#include <iterator>
+#include <memory>
 #include <stdexcept>
 # if __cplusplus >= 201703L
 #   include <type_traits>
@@ -12,11 +13,8 @@
 # endif
 
 #include <boost/lexical_cast.hpp>
-#include <boost/tuple/tuple.hpp>
-#include <boost/move/unique_ptr.hpp>
 
-#include <boost/range/iterator.hpp>
-#include <boost/range/begin.hpp>
+#include <boost/range/empty.hpp>
 #include <boost/range/size.hpp>
 
 #include <boost/algorithm/string/case_conv.hpp>
@@ -80,20 +78,19 @@
 namespace bra
 {
   unsupported_mnemonic_error::unsupported_mnemonic_error(std::string const& mnemonic)
-    : std::runtime_error((mnemonic + " is not supported").c_str())
+    : std::runtime_error{(mnemonic + " is not supported").c_str()}
   { }
 
   wrong_mnemonics_error::wrong_mnemonics_error(::bra::gates::columns_type const& columns)
-    : std::runtime_error(generate_what_string(columns).c_str())
+    : std::runtime_error{generate_what_string(columns).c_str()}
   { }
 
   std::string wrong_mnemonics_error::generate_what_string(::bra::gates::columns_type const& columns)
   {
-    std::string result;
+    auto result = std::string{};
 
-    typedef ::bra::gates::columns_type::const_iterator const_iterator;
-    const_iterator const last = columns.end();
-    for (const_iterator iter = columns.begin(); iter != last; ++iter)
+    auto const last = columns.end();
+    for (auto iter = columns.begin(); iter != last; ++iter)
     {
       result += *iter;
       result += " ";
@@ -104,72 +101,66 @@ namespace bra
 
 #ifndef BRA_NO_MPI
   wrong_mpi_communicator_size_error::wrong_mpi_communicator_size_error()
-    : std::runtime_error("communicator size is wrong")
+    : std::runtime_error{"communicator size is wrong"}
   { }
 #endif // BRA_NO_MPI
-
 
 #ifndef BRA_NO_MPI
   gates::gates()
-    : data_(), num_qubits_(), num_lqubits_(),
-      initial_state_value_(), initial_permutation_(), phase_coefficients_(), root_()
+    : data_{}, num_qubits_{}, num_lqubits_{},
+      initial_state_value_{}, initial_permutation_{}, phase_coefficients_{}, root_{}
   { }
 
   gates::gates(gates::allocator_type const& allocator)
-    : data_(allocator), num_qubits_(), num_lqubits_(),
-      initial_state_value_(), initial_permutation_(), phase_coefficients_(), root_()
+    : data_{allocator}, num_qubits_{}, num_lqubits_{},
+      initial_state_value_{}, initial_permutation_{}, phase_coefficients_{}, root_{}
   { }
 
-# ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
   gates::gates(gates&& other, gates::allocator_type const& allocator)
-      : data_(std::move(other.data_), allocator),
-        num_qubits_(std::move(other.num_qubits_)),
-        num_lqubits_(std::move(other.num_lqubits_)),
-        initial_state_value_(std::move(other.initial_state_value_)),
-        initial_permutation_(std::move(other.initial_permutation_)),
-        phase_coefficients_(std::move(other.phase_coefficients_)),
-        root_(std::move(other.root_))
+      : data_{std::move(other.data_), allocator},
+        num_qubits_{std::move(other.num_qubits_)},
+        num_lqubits_{std::move(other.num_lqubits_)},
+        initial_state_value_{std::move(other.initial_state_value_)},
+        initial_permutation_{std::move(other.initial_permutation_)},
+        phase_coefficients_{std::move(other.phase_coefficients_)},
+        root_{std::move(other.root_)}
   { }
-# endif // BOOST_NO_CXX11_RVALUE_REFERENCES
 #else // BRA_NO_MPI
   gates::gates()
-    : data_(), num_qubits_(),
-      initial_state_value_(), phase_coefficients_()
+    : data_{}, num_qubits_{},
+      initial_state_value_{}, phase_coefficients_{}
   { }
 
   gates::gates(gates::allocator_type const& allocator)
-    : data_(allocator), num_qubits_(),
-      initial_state_value_(), phase_coefficients_()
+    : data_{allocator}, num_qubits_{},
+      initial_state_value_{}, phase_coefficients_{}
   { }
 
-# ifndef BOOST_NO_CXX11_RVALUE_REFERENCES
   gates::gates(gates&& other, gates::allocator_type const& allocator)
-      : data_(std::move(other.data_), allocator),
-        num_qubits_(std::move(other.num_qubits_)),
-        initial_state_value_(std::move(other.initial_state_value_)),
-        phase_coefficients_(std::move(other.phase_coefficients_))
+      : data_{std::move(other.data_), allocator},
+        num_qubits_{std::move(other.num_qubits_)},
+        initial_state_value_{std::move(other.initial_state_value_)},
+        phase_coefficients_{std::move(other.phase_coefficients_)}
   { }
-# endif // BOOST_NO_CXX11_RVALUE_REFERENCES
 #endif // BRA_NO_MPI
-
 
 #ifndef BRA_NO_MPI
   gates::gates(
     std::istream& input_stream, yampi::environment const& environment,
     yampi::rank const root, yampi::communicator const& communicator,
     size_type const num_reserved_gates)
-    : data_(), num_qubits_(), num_lqubits_(),
-      initial_state_value_(), initial_permutation_(), phase_coefficients_(), root_(root)
+    : data_{}, num_qubits_{}, num_lqubits_{},
+      initial_state_value_{}, initial_permutation_{}, phase_coefficients_{}, root_{root}
   { assign(input_stream, environment, communicator, num_reserved_gates); }
 #else // BRA_NO_MPI
   gates::gates(std::istream& input_stream)
-    : data_(), num_qubits_(),
-      initial_state_value_(), phase_coefficients_()
-  { assign(input_stream, static_cast<size_type>(0u)); }
+    : data_{}, num_qubits_{},
+      initial_state_value_{}, phase_coefficients_{}
+  { assign(input_stream, size_type{0u}); }
 
   gates::gates(std::istream& input_stream, size_type const num_reserved_gates)
-    : data_(), num_qubits_(),
-      initial_state_value_(), phase_coefficients_()
+    : data_{}, num_qubits_{},
+      initial_state_value_{}, phase_coefficients_{}
   { assign(input_stream, num_reserved_gates); }
 #endif // BRA_NO_MPI
 
@@ -196,9 +187,9 @@ namespace bra
     bit_integer_type const new_num_qubits,
     yampi::communicator const& communicator, yampi::environment const& environment)
   {
-    bit_integer_type const num_gqubits
+    auto const num_gqubits
       = ket::utility::integer_log2<bit_integer_type>(communicator.size(environment));
-    set_num_qubits_params(new_num_qubits-num_gqubits, num_gqubits, communicator, environment);
+    set_num_qubits_params(new_num_qubits - num_gqubits, num_gqubits, communicator, environment);
   }
 
   void gates::num_lqubits(
@@ -222,7 +213,7 @@ namespace bra
   {
     if (ket::utility::integer_exp2<bit_integer_type>(num_gqubits)
         != static_cast<bit_integer_type>(communicator.size(environment)))
-      throw wrong_mpi_communicator_size_error();
+      throw wrong_mpi_communicator_size_error{};
 
     num_lqubits_ = new_num_lqubits;
     num_qubits_ = new_num_lqubits + num_gqubits;
@@ -230,8 +221,8 @@ namespace bra
 
     initial_permutation_.clear();
     initial_permutation_.reserve(num_qubits_);
-    for (bit_integer_type bit = 0u; bit < num_qubits_; ++bit)
-      initial_permutation_.push_back(static_cast<qubit_type>(bit));
+    for (auto bit = bit_integer_type{0u}; bit < num_qubits_; ++bit)
+      initial_permutation_.push_back(qubit_type{bit});
   }
 #else // BRA_NO_MPI
   void gates::set_num_qubits_params(bit_integer_type const new_num_qubits)
@@ -250,18 +241,18 @@ namespace bra
 #endif // BRA_NO_MPI
   {
 #ifndef BRA_NO_MPI
-    bit_integer_type const num_gqubits
+    auto const num_gqubits
       = ket::utility::integer_log2<bit_integer_type>(communicator.size(environment));
     if (ket::utility::integer_exp2<bit_integer_type>(num_gqubits)
         != static_cast<bit_integer_type>(communicator.size(environment)))
-      throw wrong_mpi_communicator_size_error();
+      throw wrong_mpi_communicator_size_error{};
 
 #endif // BRA_NO_MPI
     data_.clear();
     data_.reserve(num_reserved_gates);
 
-    std::string line;
-    columns_type columns;
+    auto line = std::string{};
+    auto columns = columns_type{};
     columns.reserve(10u);
 
     while (std::getline(input_stream, line))
@@ -282,7 +273,7 @@ namespace bra
         continue;
 
       boost::algorithm::to_upper(columns.front());
-      std::string const& first_mnemonic = columns.front();
+      auto const& first_mnemonic = columns.front();
       if (first_mnemonic == "QUBITS")
       {
 #ifndef BRA_NO_MPI
@@ -309,9 +300,9 @@ namespace bra
       }
       else if (first_mnemonic == "BIT") // BIT ASSIGNMENT
       {
-        BRA_BIT_STATEMENT_TYPE const statement = read_bit_statement(columns);
+        auto const statement = read_bit_statement(columns);
 
-        if (statement == BRA_BIT_STATEMENT_VALUE(assignment))
+        if (statement == ::bra::bit_statement::assignment)
         {
 #ifndef BRA_NO_MPI
           initial_permutation_ = read_initial_permutation(columns);
@@ -319,323 +310,329 @@ namespace bra
         }
       }
       else if (first_mnemonic == "PERMUTATION")
-        throw unsupported_mnemonic_error(first_mnemonic);
+        throw unsupported_mnemonic_error{first_mnemonic};
       else if (first_mnemonic == "RANDOM") // RANDOM PERMUTATION
-        throw unsupported_mnemonic_error(first_mnemonic);
+        throw unsupported_mnemonic_error{first_mnemonic};
       else if (first_mnemonic == "H")
         data_.push_back(
-          boost::movelib::unique_ptr< ::bra::gate::gate >(
-            new ::bra::gate::hadamard(read_hadamard(columns))));
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::hadamard{read_hadamard(columns)}});
       else if (first_mnemonic == "X")
         data_.push_back(
-          boost::movelib::unique_ptr< ::bra::gate::gate >(
-            new ::bra::gate::pauli_x(read_pauli_x(columns))));
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::pauli_x{read_pauli_x(columns)}});
       else if (first_mnemonic == "Y")
         data_.push_back(
-          boost::movelib::unique_ptr< ::bra::gate::gate >(
-            new ::bra::gate::pauli_y(read_pauli_y(columns))));
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::pauli_y{read_pauli_y(columns)}});
       else if (first_mnemonic == "Z")
         data_.push_back(
-          boost::movelib::unique_ptr< ::bra::gate::gate >(
-            new ::bra::gate::pauli_z(read_pauli_z(columns))));
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::pauli_z{read_pauli_z(columns)}});
       else if (first_mnemonic == "S")
         data_.push_back(
-          boost::movelib::unique_ptr< ::bra::gate::gate >(
-            new ::bra::gate::s_gate(
-              phase_coefficients_[2u], read_s_gate(columns))));
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::s_gate{
+              phase_coefficients_[2u], read_s_gate(columns)}});
       else if (first_mnemonic == "S+")
         data_.push_back(
-          boost::movelib::unique_ptr< ::bra::gate::gate >(
-            new ::bra::gate::adj_s_gate(
-              phase_coefficients_[2u], read_adj_s_gate(columns))));
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::adj_s_gate{
+              phase_coefficients_[2u], read_adj_s_gate(columns)}});
       else if (first_mnemonic == "T")
         data_.push_back(
-          boost::movelib::unique_ptr< ::bra::gate::gate >(
-            new ::bra::gate::t_gate(
-              phase_coefficients_[3u], read_t_gate(columns))));
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::t_gate{
+              phase_coefficients_[3u], read_t_gate(columns)}});
       else if (first_mnemonic == "T+")
         data_.push_back(
-          boost::movelib::unique_ptr< ::bra::gate::gate >(
-            new ::bra::gate::adj_t_gate(
-              phase_coefficients_[3u], read_adj_t_gate(columns))));
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::adj_t_gate{
+              phase_coefficients_[3u], read_adj_t_gate(columns)}});
       else if (first_mnemonic == "U1")
       {
-        qubit_type target;
-        real_type phase;
-        boost::tie(target, phase) = read_u1(columns);
+        auto target = qubit_type{};
+        auto phase = real_type{};
+        std::tie(target, phase) = read_u1(columns);
 
         data_.push_back(
-          boost::movelib::unique_ptr< ::bra::gate::gate >(
-            new ::bra::gate::u1(phase, target)));
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::u1{phase, target}});
       }
       else if (first_mnemonic == "U2")
       {
-        qubit_type target;
-        real_type phase1, phase2;
-        boost::tie(target, phase1, phase2) = read_u2(columns);
+        auto target = qubit_type{};
+        auto phase1 = real_type{};
+        auto phase2 = real_type{};
+        std::tie(target, phase1, phase2) = read_u2(columns);
 
         data_.push_back(
-          boost::movelib::unique_ptr< ::bra::gate::gate >(
-            new ::bra::gate::u2(phase1, phase2, target)));
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::u2{phase1, phase2, target}});
       }
       else if (first_mnemonic == "U3")
       {
-        qubit_type target;
-        real_type phase1, phase2, phase3;
-        boost::tie(target, phase1, phase2, phase3) = read_u3(columns);
+        auto target = qubit_type{};
+        auto phase1 = real_type{};
+        auto phase2 = real_type{};
+        auto phase3 = real_type{};
+        std::tie(target, phase1, phase2, phase3) = read_u3(columns);
 
         data_.push_back(
-          boost::movelib::unique_ptr< ::bra::gate::gate >(
-            new ::bra::gate::u3(phase1, phase2, phase3, target)));
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::u3{phase1, phase2, phase3, target}});
       }
       else if (first_mnemonic == "R" or first_mnemonic == "+R")
       {
-        qubit_type target;
-        int phase_exponent;
-        boost::tie(target, phase_exponent) = read_phase_shift(columns);
+        auto target = qubit_type{};
+        auto phase_exponent = int{};
+        std::tie(target, phase_exponent) = read_phase_shift(columns);
 
         if (phase_exponent >= 0)
-          data_.push_back(boost::movelib::unique_ptr< ::bra::gate::gate >(
-            new ::bra::gate::phase_shift(
-              phase_exponent, phase_coefficients_[phase_exponent], target)));
+          data_.push_back(std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::phase_shift{
+              phase_exponent, phase_coefficients_[phase_exponent], target}});
         else
         {
           phase_exponent *= -1;
-          data_.push_back(boost::movelib::unique_ptr< ::bra::gate::gate >(
-            new ::bra::gate::adj_phase_shift(
-              phase_exponent, phase_coefficients_[phase_exponent], target)));
+          data_.push_back(std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::adj_phase_shift{
+              phase_exponent, phase_coefficients_[phase_exponent], target}});
         }
       }
       else if (first_mnemonic == "-R")
       {
-        qubit_type target;
-        int phase_exponent;
-        boost::tie(target, phase_exponent) = read_phase_shift(columns);
+        auto target = qubit_type{};
+        auto phase_exponent = int{};
+        std::tie(target, phase_exponent) = read_phase_shift(columns);
 
         if (phase_exponent >= 0)
-          data_.push_back(boost::movelib::unique_ptr< ::bra::gate::gate >(
-            new ::bra::gate::adj_phase_shift(
-              phase_exponent, phase_coefficients_[phase_exponent], target)));
+          data_.push_back(std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::adj_phase_shift{
+              phase_exponent, phase_coefficients_[phase_exponent], target}});
         else
         {
           phase_exponent *= -1;
-          data_.push_back(boost::movelib::unique_ptr< ::bra::gate::gate >(
-            new ::bra::gate::phase_shift(
-              phase_exponent, phase_coefficients_[phase_exponent], target)));
+          data_.push_back(std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::phase_shift{
+              phase_exponent, phase_coefficients_[phase_exponent], target}});
         }
       }
       else if (first_mnemonic == "+X")
         data_.push_back(
-          boost::movelib::unique_ptr< ::bra::gate::gate >(
-            new ::bra::gate::x_rotation_half_pi(read_x_rotation_half_pi(columns))));
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::x_rotation_half_pi{read_x_rotation_half_pi(columns)}});
       else if (first_mnemonic == "-X")
         data_.push_back(
-          boost::movelib::unique_ptr< ::bra::gate::gate >(
-            new ::bra::gate::adj_x_rotation_half_pi(read_adj_x_rotation_half_pi(columns))));
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::adj_x_rotation_half_pi{read_adj_x_rotation_half_pi(columns)}});
       else if (first_mnemonic == "+Y")
         data_.push_back(
-          boost::movelib::unique_ptr< ::bra::gate::gate >(
-            new ::bra::gate::y_rotation_half_pi(read_y_rotation_half_pi(columns))));
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::y_rotation_half_pi{read_y_rotation_half_pi(columns)}});
       else if (first_mnemonic == "-Y")
         data_.push_back(
-          boost::movelib::unique_ptr< ::bra::gate::gate >(
-            new ::bra::gate::adj_y_rotation_half_pi(read_adj_y_rotation_half_pi(columns))));
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::adj_y_rotation_half_pi{read_adj_y_rotation_half_pi(columns)}});
       else if (first_mnemonic == "CNOT")
       {
-        control_qubit_type control;
-        qubit_type target;
-        boost::tie(control, target) = read_controlled_not(columns);
+        auto control = control_qubit_type{};
+        auto target = qubit_type{};
+        std::tie(control, target) = read_controlled_not(columns);
 
         data_.push_back(
-          boost::movelib::unique_ptr< ::bra::gate::gate >(
-            new ::bra::gate::controlled_not(target, control)));
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::controlled_not{target, control}});
       }
       else if (first_mnemonic == "U")
       {
-        control_qubit_type control;
-        qubit_type target;
-        int phase_exponent;
-        boost::tie(control, target, phase_exponent) = read_controlled_phase_shift(columns);
+        auto control = control_qubit_type{};
+        auto target = qubit_type{};
+        auto phase_exponent = int{};
+        std::tie(control, target, phase_exponent) = read_controlled_phase_shift(columns);
 
         if (phase_exponent >= 0)
           data_.push_back(
-            boost::movelib::unique_ptr< ::bra::gate::gate >(
-              new ::bra::gate::controlled_phase_shift(
-                phase_exponent, phase_coefficients_[phase_exponent], target, control)));
+            std::unique_ptr< ::bra::gate::gate >{
+              new ::bra::gate::controlled_phase_shift{
+                phase_exponent, phase_coefficients_[phase_exponent], target, control}});
         else
         {
           phase_exponent *= -1;
           data_.push_back(
-            boost::movelib::unique_ptr< ::bra::gate::gate >(
-              new ::bra::gate::adj_controlled_phase_shift(
-                phase_exponent, phase_coefficients_[phase_exponent], target, control)));
+            std::unique_ptr< ::bra::gate::gate >{
+              new ::bra::gate::adj_controlled_phase_shift{
+                phase_exponent, phase_coefficients_[phase_exponent], target, control}});
         }
       }
       else if (first_mnemonic == "V")
       {
-        control_qubit_type control;
-        qubit_type target;
-        int phase_exponent;
-        boost::tie(control, target, phase_exponent) = read_controlled_v(columns);
+        auto control = control_qubit_type{};
+        auto target = qubit_type{};
+        auto phase_exponent = int{};
+        std::tie(control, target, phase_exponent) = read_controlled_v(columns);
 
         if (phase_exponent >= 0)
           data_.push_back(
-            boost::movelib::unique_ptr< ::bra::gate::gate >(
-              new ::bra::gate::controlled_v(
-                phase_exponent, phase_coefficients_[phase_exponent], target, control)));
+            std::unique_ptr< ::bra::gate::gate >{
+              new ::bra::gate::controlled_v{
+                phase_exponent, phase_coefficients_[phase_exponent], target, control}});
         else
         {
           phase_exponent *= -1;
           data_.push_back(
-            boost::movelib::unique_ptr< ::bra::gate::gate >(
-              new ::bra::gate::adj_controlled_v(
-                phase_exponent, phase_coefficients_[phase_exponent], target, control)));
+            std::unique_ptr< ::bra::gate::gate >{
+              new ::bra::gate::adj_controlled_v{
+                phase_exponent, phase_coefficients_[phase_exponent], target, control}});
         }
       }
       else if (first_mnemonic == "TOFFOLI")
       {
-        control_qubit_type control1;
-        control_qubit_type control2;
-        qubit_type target;
-        boost::tie(control1, control2, target) = read_toffoli(columns);
+        auto control1 = control_qubit_type{};
+        auto control2 = control_qubit_type{};
+        auto target = qubit_type{};
+        std::tie(control1, control2, target) = read_toffoli(columns);
 
         data_.push_back(
-          boost::movelib::unique_ptr< ::bra::gate::gate >(
-            new ::bra::gate::toffoli(target, control1, control2)));
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::toffoli{target, control1, control2}});
       }
       else if (first_mnemonic == "M")
       {
 #ifndef BRA_NO_MPI
         data_.push_back(
-          boost::movelib::unique_ptr< ::bra::gate::gate >(
-            new ::bra::gate::projective_measurement(read_projective_measurement(columns), root_)));
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::projective_measurement{read_projective_measurement(columns), root_}});
 #else // BRA_NO_MPI
         data_.push_back(
-          boost::movelib::unique_ptr< ::bra::gate::gate >(
-            new ::bra::gate::projective_measurement(read_projective_measurement(columns))));
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::projective_measurement{read_projective_measurement(columns)}});
 #endif // BRA_NO_MPI
       }
       else if (first_mnemonic == "SHORBOX")
       {
-        bit_integer_type num_exponent_qubits;
-        state_integer_type divisor, base;
-        boost::tie(num_exponent_qubits, divisor, base) = read_shor_box(columns);
+        auto num_exponent_qubits = bit_integer_type{};
+        auto divisor = state_integer_type{};
+        auto base = state_integer_type{};
+        std::tie(num_exponent_qubits, divisor, base) = read_shor_box(columns);
 
         data_.push_back(
-          boost::movelib::unique_ptr< ::bra::gate::gate >(
-            new ::bra::gate::shor_box(
-              num_exponent_qubits, divisor, base)));
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::shor_box{num_exponent_qubits, divisor, base}});
       }
       else if (first_mnemonic == "BEGIN") // BEGIN MEASUREMENT/LEARNING MACHINE
       {
-        BRA_BEGIN_STATEMENT_TYPE const statement = read_begin_statement(columns);
+        auto const statement = read_begin_statement(columns);
 
-        if (statement == BRA_BEGIN_STATEMENT_VALUE(measurement))
+        if (statement == ::bra::begin_statement::measurement)
         {
 #ifndef BRA_NO_MPI
           data_.push_back(
-            boost::movelib::unique_ptr< ::bra::gate::gate >(new ::bra::gate::measurement(root_)));
+            std::unique_ptr< ::bra::gate::gate >{new ::bra::gate::measurement{root_}});
 #else // BRA_NO_MPI
           data_.push_back(
-            boost::movelib::unique_ptr< ::bra::gate::gate >(new ::bra::gate::measurement()));
+            std::unique_ptr< ::bra::gate::gate >{new ::bra::gate::measurement{}});
 #endif // BRA_NO_MPI
         }
-        else if (statement == BRA_BEGIN_STATEMENT_VALUE(learning_machine))
-          throw unsupported_mnemonic_error(first_mnemonic);
+        else if (statement == ::bra::begin_statement::learning_machine)
+          throw unsupported_mnemonic_error{first_mnemonic};
       }
       else if (first_mnemonic == "DO") // DO MEASUREMENT
       {
         /*
-        do_statement const statement = read_do_statement(columns);
+        auto const statement = read_do_statement(columns);
 
         if (statement == do_statement::error)
-          throw wrong_mnemonics_error(columns);
+          throw wrong_mnemonics_error{columns};
         else if (statement == do_statement::measurement)
-          throw unsupported_mnemonic_error(first_mnemonic);
+          throw unsupported_mnemonic_error{first_mnemonic};
           */
-        throw unsupported_mnemonic_error(first_mnemonic);
+        throw unsupported_mnemonic_error{first_mnemonic};
       }
       else if (first_mnemonic == "END") // END MEASUREMENT/LEARNING MACHINE
       {
         /*
-        BRA_END_STATEMENT_TYPE const statement = read_end_statement(columns);
+        auto const statement = read_end_statement(columns);
 
-        if (statement == BRA_END_STATEMENT_VALUE(measurement))
+        if (statement == ::bra::end_statement::measurement)
         {
 #ifndef BRA_NO_MPI
-          data_.push_back(boost::movelib::make_unique< ::bra::gate::measurement >(root_));
+          data_.push_back(std::make_unique< ::bra::gate::measurement >(root_));
 #else // BRA_NO_MPI
-          data_.push_back(boost::movelib::make_unique< ::bra::gate::measurement >());
+          data_.push_back(std::make_unique< ::bra::gate::measurement >());
 #endif // BRA_NO_MPI
         }
-        else if (statement == BRA_END_STATEMENT_VALUE(learning_machine))
-          throw unsupported_mnemonic_error(first_mnemonic);
+        else if (statement == ::bra::end_statement::learning_machine)
+          throw unsupported_mnemonic_error{first_mnemonic};
 */
-        throw unsupported_mnemonic_error(first_mnemonic);
+        throw unsupported_mnemonic_error{first_mnemonic};
       }
       else if (first_mnemonic == "GENERATE") // GENERATE EVENTS
       {
-        BRA_GENERATE_STATEMENT_TYPE statement;
-        int num_events, seed;
-        boost::tie(statement, num_events, seed) = read_generate_statement(columns);
+        auto statement = ::bra::generate_statement{};
+        auto num_events = int{};
+        auto seed = int{};
+        std::tie(statement, num_events, seed) = read_generate_statement(columns);
 
-        if (statement == BRA_GENERATE_STATEMENT_VALUE(events))
+        if (statement == ::bra::generate_statement::events)
         {
 #ifndef BRA_NO_MPI
           data_.push_back(
-            boost::movelib::unique_ptr< ::bra::gate::gate >(
-              new ::bra::gate::generate_events(root_, num_events, seed)));
+            std::unique_ptr< ::bra::gate::gate >{
+              new ::bra::gate::generate_events{root_, num_events, seed}});
 #else // BRA_NO_MPI
           data_.push_back(
-            boost::movelib::unique_ptr< ::bra::gate::gate >(
-              new ::bra::gate::generate_events(num_events, seed)));
+            std::unique_ptr< ::bra::gate::gate >{
+              new ::bra::gate::generate_events{num_events, seed}});
 #endif // BRA_NO_MPI
           break;
         }
       }
       else if (first_mnemonic == "CLEAR")
         data_.push_back(
-          boost::movelib::unique_ptr< ::bra::gate::gate >(
-            new ::bra::gate::clear(read_clear(columns))));
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::clear{read_clear(columns)}});
       else if (first_mnemonic == "SET")
         data_.push_back(
-          boost::movelib::unique_ptr< ::bra::gate::gate >(
-            new ::bra::gate::set(read_set(columns))));
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::set{read_set(columns)}});
       else if (first_mnemonic == "DEPOLARIZING")
       {
-        BRA_DEPOLARIZING_STATEMENT_TYPE statement;
-        real_type px, py, pz;
-        int seed;
-        boost::tie(statement, px, py, pz, seed) = read_depolarizing_statement(columns);
+        auto statement = ::bra::depolarizing_statement{};
+        auto px = real_type{};
+        auto py = real_type{};
+        auto pz = real_type{};
+        auto seed = int{};
+        std::tie(statement, px, py, pz, seed) = read_depolarizing_statement(columns);
 
-        if (statement == BRA_DEPOLARIZING_STATEMENT_VALUE(channel))
+        if (statement == ::bra::depolarizing_statement::channel)
           data_.push_back(
-            boost::movelib::unique_ptr< ::bra::gate::gate >(
-              new ::bra::gate::depolarizing_channel(px, py, pz, seed)));
+            std::unique_ptr< ::bra::gate::gate >{
+              new ::bra::gate::depolarizing_channel{px, py, pz, seed}});
         else
-          throw unsupported_mnemonic_error(first_mnemonic);
+          throw unsupported_mnemonic_error{first_mnemonic};
       }
       else if (first_mnemonic == "EXIT")
       {
         if (boost::size(columns) != 1u)
-          throw wrong_mnemonics_error(columns);
+          throw wrong_mnemonics_error{columns};
 
 #ifndef BRA_NO_MPI
         data_.push_back(
-          boost::movelib::unique_ptr< ::bra::gate::gate >(new ::bra::gate::exit(root_)));
+          std::unique_ptr< ::bra::gate::gate >{new ::bra::gate::exit{root_}});
 #else // BRA_NO_MPI
         data_.push_back(
-          boost::movelib::unique_ptr< ::bra::gate::gate >(new ::bra::gate::exit()));
+          std::unique_ptr< ::bra::gate::gate >{new ::bra::gate::exit{}});
 #endif // BRA_NO_MPI
         break;
       }
       else
-        throw unsupported_mnemonic_error(first_mnemonic);
+        throw unsupported_mnemonic_error{first_mnemonic};
     }
   }
 
   void gates::swap(gates& other)
-    BOOST_NOEXCEPT_IF(
+    noexcept(
       BRA_is_nothrow_swappable<data_type>::value
       and BRA_is_nothrow_swappable<bit_integer_type>::value
       and BRA_is_nothrow_swappable<state_integer_type>::value
@@ -661,21 +658,21 @@ namespace bra
   gates::bit_integer_type gates::read_num_qubits(gates::columns_type const& columns) const
   {
     if (boost::size(columns) != 2u)
-      throw ::bra::wrong_mnemonics_error(columns);
+      throw ::bra::wrong_mnemonics_error{columns};
 
-    boost::range_iterator<columns_type const>::type iter = boost::begin(columns);
+    auto iter = std::begin(columns);
     return boost::lexical_cast<bit_integer_type>(*++iter);
   }
 
   gates::state_integer_type gates::read_initial_state_value(gates::columns_type& columns) const
   {
     if (boost::size(columns) != 3u)
-      throw wrong_mnemonics_error(columns);
+      throw wrong_mnemonics_error{columns};
 
-    boost::range_iterator<columns_type>::type iter = boost::begin(columns);
+    auto iter = std::begin(columns);
     boost::algorithm::to_upper(*++iter);
     if (columns[1] != "STATE")
-      throw wrong_mnemonics_error(columns);
+      throw wrong_mnemonics_error{columns};
 
     return boost::lexical_cast<state_integer_type>(*++iter);
   }
@@ -683,18 +680,18 @@ namespace bra
   gates::bit_integer_type gates::read_num_mpi_processes(gates::columns_type const& columns) const
   {
     if (boost::size(columns) != 2u)
-      throw ::bra::wrong_mnemonics_error(columns);
+      throw ::bra::wrong_mnemonics_error{columns};
 
-    boost::range_iterator<columns_type const>::type iter = boost::begin(columns);
+    auto iter = std::begin(columns);
     return boost::lexical_cast<bit_integer_type>(*++iter);
   }
 
   gates::state_integer_type gates::read_mpi_buffer_size(gates::columns_type const& columns) const
   {
     if (boost::size(columns) != 2u)
-      throw ::bra::wrong_mnemonics_error(columns);
+      throw ::bra::wrong_mnemonics_error{columns};
 
-    boost::range_iterator<columns_type const>::type iter = boost::begin(columns);
+    auto iter = std::begin(columns);
     return boost::lexical_cast<state_integer_type>(*++iter);
   }
 
@@ -702,14 +699,14 @@ namespace bra
   std::vector<gates::qubit_type>
   gates::read_initial_permutation(gates::columns_type const& columns) const
   {
-    std::vector<qubit_type> result;
+    auto result = std::vector<qubit_type>{};
     result.reserve(boost::size(columns)-2u);
 
-    boost::range_iterator<columns_type const>::type iter = boost::begin(columns);
+    auto iter = std::begin(columns);
     ++iter;
     ++iter;
 
-    boost::range_iterator<columns_type const>::type last = boost::end(columns);
+    auto const last = std::end(columns);
     for (; iter != last; ++iter)
       result.push_back(static_cast<qubit_type>(boost::lexical_cast<bit_integer_type>(*iter)));
 
@@ -720,271 +717,271 @@ namespace bra
   gates::qubit_type gates::read_target(gates::columns_type const& columns) const
   {
     if (boost::size(columns) != 2u)
-      throw wrong_mnemonics_error(columns);
+      throw wrong_mnemonics_error{columns};
 
-    boost::range_iterator<columns_type const>::type iter = boost::begin(columns);
-    bit_integer_type const target
-      = boost::lexical_cast<bit_integer_type>(*++iter);
+    auto iter = std::begin(columns);
+    auto const target = boost::lexical_cast<bit_integer_type>(*++iter);
 
     return ket::make_qubit<state_integer_type>(target);
   }
 
-  boost::tuple<gates::qubit_type, gates::real_type>
+  std::tuple<gates::qubit_type, gates::real_type>
   gates::read_target_phase(gates::columns_type const& columns) const
   {
     if (boost::size(columns) != 3u)
-      throw wrong_mnemonics_error(columns);
+      throw wrong_mnemonics_error{columns};
 
-    boost::range_iterator<columns_type const>::type iter = boost::begin(columns);
-    bit_integer_type const target = boost::lexical_cast<bit_integer_type>(*++iter);
-    real_type const phase = boost::lexical_cast<real_type>(*++iter);
+    auto iter = std::begin(columns);
+    auto const target = boost::lexical_cast<bit_integer_type>(*++iter);
+    auto const phase = boost::lexical_cast<real_type>(*++iter);
 
-    return boost::make_tuple(ket::make_qubit<state_integer_type>(target), phase);
+    return std::make_tuple(ket::make_qubit<state_integer_type>(target), phase);
   }
 
-  boost::tuple<gates::qubit_type, gates::real_type, gates::real_type>
+  std::tuple<gates::qubit_type, gates::real_type, gates::real_type>
   gates::read_target_2phases(gates::columns_type const& columns) const
   {
     if (boost::size(columns) != 4u)
-      throw wrong_mnemonics_error(columns);
+      throw wrong_mnemonics_error{columns};
 
-    boost::range_iterator<columns_type const>::type iter = boost::begin(columns);
-    bit_integer_type const target = boost::lexical_cast<bit_integer_type>(*++iter);
-    real_type const phase1 = boost::lexical_cast<real_type>(*++iter);
-    real_type const phase2 = boost::lexical_cast<real_type>(*++iter);
+    auto iter = std::begin(columns);
+    auto const target = boost::lexical_cast<bit_integer_type>(*++iter);
+    auto const phase1 = boost::lexical_cast<real_type>(*++iter);
+    auto const phase2 = boost::lexical_cast<real_type>(*++iter);
 
-    return boost::make_tuple(ket::make_qubit<state_integer_type>(target), phase1, phase2);
+    return std::make_tuple(ket::make_qubit<state_integer_type>(target), phase1, phase2);
   }
 
-  boost::tuple<gates::qubit_type, gates::real_type, gates::real_type, gates::real_type>
+  std::tuple<gates::qubit_type, gates::real_type, gates::real_type, gates::real_type>
   gates::read_target_3phases(gates::columns_type const& columns) const
   {
     if (boost::size(columns) != 5u)
-      throw wrong_mnemonics_error(columns);
+      throw wrong_mnemonics_error{columns};
 
-    boost::range_iterator<columns_type const>::type iter = boost::begin(columns);
-    bit_integer_type const target = boost::lexical_cast<bit_integer_type>(*++iter);
-    real_type const phase1 = boost::lexical_cast<real_type>(*++iter);
-    real_type const phase2 = boost::lexical_cast<real_type>(*++iter);
-    real_type const phase3 = boost::lexical_cast<real_type>(*++iter);
+    auto iter = std::begin(columns);
+    auto const target = boost::lexical_cast<bit_integer_type>(*++iter);
+    auto const phase1 = boost::lexical_cast<real_type>(*++iter);
+    auto const phase2 = boost::lexical_cast<real_type>(*++iter);
+    auto const phase3 = boost::lexical_cast<real_type>(*++iter);
 
-    return boost::make_tuple(ket::make_qubit<state_integer_type>(target), phase1, phase2, phase3);
+    return std::make_tuple(ket::make_qubit<state_integer_type>(target), phase1, phase2, phase3);
   }
 
-  boost::tuple<gates::qubit_type, int> gates::read_target_phaseexp(gates::columns_type const& columns) const
+  std::tuple<gates::qubit_type, int> gates::read_target_phaseexp(gates::columns_type const& columns) const
   {
     if (boost::size(columns) != 3u)
-      throw wrong_mnemonics_error(columns);
+      throw wrong_mnemonics_error{columns};
 
-    boost::range_iterator<columns_type const>::type iter = boost::begin(columns);
-    bit_integer_type const target = boost::lexical_cast<bit_integer_type>(*++iter);
-    int const phase_exponent = boost::lexical_cast<int>(*++iter);
+    auto iter = std::begin(columns);
+    auto const target = boost::lexical_cast<bit_integer_type>(*++iter);
+    auto const phase_exponent = boost::lexical_cast<int>(*++iter);
 
-    return boost::make_tuple(ket::make_qubit<state_integer_type>(target), phase_exponent);
+    return std::make_tuple(ket::make_qubit<state_integer_type>(target), phase_exponent);
   }
 
-  boost::tuple<gates::control_qubit_type, gates::qubit_type> gates::read_control_target(gates::columns_type const& columns) const
+  std::tuple<gates::control_qubit_type, gates::qubit_type> gates::read_control_target(gates::columns_type const& columns) const
   {
     if (boost::size(columns) != 3u)
-      throw wrong_mnemonics_error(columns);
+      throw wrong_mnemonics_error{columns};
 
-    boost::range_iterator<columns_type const>::type iter = boost::begin(columns);
-    bit_integer_type const control = boost::lexical_cast<bit_integer_type>(*++iter);
-    bit_integer_type const target = boost::lexical_cast<bit_integer_type>(*++iter);
+    auto iter = std::begin(columns);
+    auto const control = boost::lexical_cast<bit_integer_type>(*++iter);
+    auto const target = boost::lexical_cast<bit_integer_type>(*++iter);
 
-    return boost::make_tuple(
+    return std::make_tuple(
       ket::make_control(ket::make_qubit<state_integer_type>(control)),
       ket::make_qubit<state_integer_type>(target));
   }
 
-  boost::tuple<gates::control_qubit_type, gates::qubit_type, int>
+  std::tuple<gates::control_qubit_type, gates::qubit_type, int>
   gates::read_control_target_phaseexp(gates::columns_type const& columns) const
   {
     if (boost::size(columns) != 4u)
-      throw wrong_mnemonics_error(columns);
+      throw wrong_mnemonics_error{columns};
 
-    boost::range_iterator<columns_type const>::type iter = boost::begin(columns);
-    bit_integer_type const control = boost::lexical_cast<bit_integer_type>(*++iter);
-    bit_integer_type const target = boost::lexical_cast<bit_integer_type>(*++iter);
-    int const phase_exponent = boost::lexical_cast<int>(*++iter);
+    auto iter = std::begin(columns);
+    auto const control = boost::lexical_cast<bit_integer_type>(*++iter);
+    auto const target = boost::lexical_cast<bit_integer_type>(*++iter);
+    auto const phase_exponent = boost::lexical_cast<int>(*++iter);
 
-    return boost::make_tuple(
+    return std::make_tuple(
       ket::make_control(ket::make_qubit<state_integer_type>(control)),
       ket::make_qubit<state_integer_type>(target),
       phase_exponent);
   }
 
-  boost::tuple<gates::control_qubit_type, gates::control_qubit_type, gates::qubit_type>
+  std::tuple<gates::control_qubit_type, gates::control_qubit_type, gates::qubit_type>
   gates::read_2controls_target(gates::columns_type const& columns) const
   {
     if (boost::size(columns) != 4u)
-      throw wrong_mnemonics_error(columns);
+      throw wrong_mnemonics_error{columns};
 
-    boost::range_iterator<columns_type const>::type iter = boost::begin(columns);
-    bit_integer_type const control1 = boost::lexical_cast<bit_integer_type>(*++iter);
-    bit_integer_type const control2 = boost::lexical_cast<bit_integer_type>(*++iter);
-    bit_integer_type const target = boost::lexical_cast<bit_integer_type>(*++iter);
+    auto iter = std::begin(columns);
+    auto const control1 = boost::lexical_cast<bit_integer_type>(*++iter);
+    auto const control2 = boost::lexical_cast<bit_integer_type>(*++iter);
+    auto const target = boost::lexical_cast<bit_integer_type>(*++iter);
 
-    return boost::make_tuple(
+    return std::make_tuple(
       ket::make_control(ket::make_qubit<state_integer_type>(control1)),
       ket::make_control(ket::make_qubit<state_integer_type>(control2)),
       ket::make_qubit<state_integer_type>(target));
   }
 
-  BRA_BEGIN_STATEMENT_TYPE gates::read_begin_statement(gates::columns_type& columns) const
+  ::bra::begin_statement gates::read_begin_statement(gates::columns_type& columns) const
   {
-    std::size_t const column_size = boost::size(columns);
+    auto const column_size = boost::size(columns);
 
     if (column_size <= 1u or column_size >= 4u)
-      throw wrong_mnemonics_error(columns);
+      throw wrong_mnemonics_error{columns};
 
     if (column_size == 3u)
     {
-      boost::range_iterator<columns_type>::type iter = boost::begin(columns);
+      auto iter = std::begin(columns);
       boost::algorithm::to_upper(*++iter);
       if (*iter == "LEARNING")
       {
         boost::algorithm::to_upper(*++iter);
 
         if (*iter == "MACHINE")
-          return BRA_BEGIN_STATEMENT_VALUE(learning_machine);
+          return ::bra::begin_statement::learning_machine;
         else
-          throw wrong_mnemonics_error(columns);
+          throw wrong_mnemonics_error{columns};
       }
       else
-        throw wrong_mnemonics_error(columns);
+        throw wrong_mnemonics_error{columns};
     }
 
     // if (column_size == 2u)
-    boost::range_iterator<columns_type>::type iter = boost::begin(columns);
+    auto iter = std::begin(columns);
     boost::algorithm::to_upper(*++iter);
 
     if (*iter != "MEASUREMENT")
-      throw wrong_mnemonics_error(columns);
+      throw wrong_mnemonics_error{columns};
 
-    return BRA_BEGIN_STATEMENT_VALUE(measurement);
+    return ::bra::begin_statement::measurement;
   }
 
-  BRA_BIT_STATEMENT_TYPE gates::read_bit_statement(gates::columns_type& columns) const
+  ::bra::bit_statement gates::read_bit_statement(gates::columns_type& columns) const
   {
     if (boost::size(columns) <= 1u)
-      throw wrong_mnemonics_error(columns);
+      throw wrong_mnemonics_error{columns};
 
-    boost::range_iterator<columns_type>::type iter = boost::begin(columns);
+    auto iter = std::begin(columns);
     boost::algorithm::to_upper(*++iter);
 
     if (*iter != "ASSIGNMENT")
-      throw wrong_mnemonics_error(columns);
+      throw wrong_mnemonics_error{columns};
 
-    return BRA_BIT_STATEMENT_VALUE(assignment);
+    return ::bra::bit_statement::assignment;
   }
 
-  boost::tuple<gates::bit_integer_type, gates::state_integer_type, gates::state_integer_type>
+  std::tuple<gates::bit_integer_type, gates::state_integer_type, gates::state_integer_type>
   gates::read_shor_box(gates::columns_type const& columns) const
   {
     if (boost::size(columns) != 4u)
-      throw wrong_mnemonics_error(columns);
+      throw wrong_mnemonics_error{columns};
 
-    boost::range_iterator<columns_type const>::type iter = boost::begin(columns);
-    bit_integer_type const num_exponent_qubits = boost::lexical_cast<bit_integer_type>(*++iter);
-    state_integer_type const divisor = boost::lexical_cast<state_integer_type>(*++iter);
-    state_integer_type const base = boost::lexical_cast<state_integer_type>(*++iter);
+    auto iter = std::begin(columns);
+    auto const num_exponent_qubits = boost::lexical_cast<bit_integer_type>(*++iter);
+    auto const divisor = boost::lexical_cast<state_integer_type>(*++iter);
+    auto const base = boost::lexical_cast<state_integer_type>(*++iter);
 
-    return boost::make_tuple(num_exponent_qubits, divisor, base);
+    return std::make_tuple(num_exponent_qubits, divisor, base);
   }
 
-  boost::tuple<BRA_GENERATE_STATEMENT_TYPE, int, int> gates::read_generate_statement(gates::columns_type& columns) const
+  std::tuple< ::bra::generate_statement, int, int > gates::read_generate_statement(gates::columns_type& columns) const
   {
     if (boost::size(columns) != 4u)
-      throw wrong_mnemonics_error(columns);
+      throw wrong_mnemonics_error{columns};
 
-    boost::range_iterator<columns_type>::type iter = boost::begin(columns);
+    auto iter = std::begin(columns);
     boost::algorithm::to_upper(*++iter);
 
     if (*iter != "EVENTS")
-      throw wrong_mnemonics_error(columns);
+      throw wrong_mnemonics_error{columns};
 
-    int const num_events = boost::lexical_cast<int>(*++iter);
-    int const seed = boost::lexical_cast<int>(*++iter);
-    return boost::make_tuple(BRA_GENERATE_STATEMENT_VALUE(events), num_events, seed);
+    auto const num_events = boost::lexical_cast<int>(*++iter);
+    auto const seed = boost::lexical_cast<int>(*++iter);
+    return std::make_tuple(::bra::generate_statement::events, num_events, seed);
   }
 
-  boost::tuple<BRA_DEPOLARIZING_STATEMENT_TYPE, gates::real_type, gates::real_type, gates::real_type, int>
+  std::tuple< ::bra::depolarizing_statement, gates::real_type, gates::real_type, gates::real_type, int >
   gates::read_depolarizing_statement(gates::columns_type& columns) const
   {
     if (boost::size(columns) <= 2u)
-      throw wrong_mnemonics_error(columns);
+      throw wrong_mnemonics_error{columns};
 
-    typedef boost::range_iterator<columns_type const>::type column_const_iterator;
-    column_const_iterator iter = boost::begin(columns);
-    std::string present_string = *++iter; // present_string == "CHANNEL"
+    auto iter = columns.cbegin();
+    auto present_string = std::string{*++iter}; // present_string == "CHANNEL"
     boost::algorithm::to_upper(present_string);
 
     if (present_string != "CHANNEL")
-      throw wrong_mnemonics_error(columns);
+      throw wrong_mnemonics_error{columns};
 
-    real_type px, py, pz;
-    int seed = -1;
-    bool is_px_checked = false;
-    bool is_py_checked = false;
-    bool is_pz_checked = false;
-    bool is_seed_checked = false;
+    auto px = real_type{};
+    auto py = real_type{};
+    auto pz = real_type{};
+    auto seed = -1;
+    auto is_px_checked = false;
+    auto is_py_checked = false;
+    auto is_pz_checked = false;
+    auto is_seed_checked = false;
 
     present_string = *++iter; // present_string == "P_*" or "P_*=" or "P_*=0.xxx" or "P_*=0.xxx," or "P_*=0.xxx,..."
-    std::string probability_string = "    ";
-    column_const_iterator const last = boost::begin(columns);
+    auto probability_string = std::string{"    "};
+    auto const last = columns.cend();
     while (iter < last)
     {
-      std::string::iterator string_found = boost::find(present_string, '=');
-      probability_string.assign(boost::begin(present_string), string_found);
+      auto string_found = std::find(present_string.cbegin(), present_string.cend(), '=');
+      probability_string.assign(present_string.cbegin(), string_found);
       boost::algorithm::to_upper(probability_string);
       if (probability_string == "P_X")
       {
         if (is_px_checked)
-          throw wrong_mnemonics_error(columns);
+          throw wrong_mnemonics_error{columns};
 
         ::bra::gates_detail::read_depolarizing_statement(px, present_string, iter, string_found, columns);
         if (px < 0.0 or px > 1.0)
-          throw wrong_mnemonics_error(columns);
+          throw wrong_mnemonics_error{columns};
 
         is_px_checked = true;
       }
       else if (probability_string == "P_Y")
       {
         if (is_py_checked)
-          throw wrong_mnemonics_error(columns);
+          throw wrong_mnemonics_error{columns};
 
         ::bra::gates_detail::read_depolarizing_statement(py, present_string, iter, string_found, columns);
         if (py < 0.0 or py > 1.0)
-          throw wrong_mnemonics_error(columns);
+          throw wrong_mnemonics_error{columns};
 
         is_py_checked = true;
       }
       else if (probability_string == "P_Z")
       {
         if (is_pz_checked)
-          throw wrong_mnemonics_error(columns);
+          throw wrong_mnemonics_error{columns};
 
         ::bra::gates_detail::read_depolarizing_statement(pz, present_string, iter, string_found, columns);
         if (pz < 0.0 or pz > 1.0)
-          throw wrong_mnemonics_error(columns);
+          throw wrong_mnemonics_error{columns};
 
         is_pz_checked = true;
       }
       else if (probability_string == "SEED")
       {
         if (is_seed_checked)
-          throw wrong_mnemonics_error(columns);
+          throw wrong_mnemonics_error{columns};
 
         ::bra::gates_detail::read_depolarizing_statement(seed, present_string, iter, string_found, columns);
         is_seed_checked = true;
       }
       else
-        throw wrong_mnemonics_error(columns);
+        throw wrong_mnemonics_error{columns};
     }
 
     if (is_px_checked and is_py_checked and is_pz_checked and px + py + pz > 1.0)
-      throw wrong_mnemonics_error(columns);
+      throw wrong_mnemonics_error{columns};
     else if (is_px_checked and is_py_checked and not is_pz_checked and px + py < 1.0)
       pz = 1.0 - px - py;
     else if (is_px_checked and not is_py_checked and is_pz_checked and px + pz < 1.0)
@@ -992,12 +989,11 @@ namespace bra
     else if (not is_px_checked and is_py_checked and is_pz_checked and py + pz < 1.0)
       px = 1.0 - py - pz;
     else
-      throw wrong_mnemonics_error(columns);
+      throw wrong_mnemonics_error{columns};
 
-    return boost::make_tuple(BRA_DEPOLARIZING_STATEMENT_VALUE(channel), px, py, pz, seed);
+    return std::make_tuple(::bra::depolarizing_statement::channel, px, py, pz, seed);
   }
-}
+} // namespace bra
 
 
 # undef BRA_is_nothrow_swappable
-

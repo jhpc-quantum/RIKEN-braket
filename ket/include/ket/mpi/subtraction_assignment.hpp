@@ -1,14 +1,8 @@
 #ifndef KET_MPI_SUBTRACTION_ASSIGNMENT_HPP
 # define KET_MPI_SUBTRACTION_ASSIGNMENT_HPP
 
-# include <boost/config.hpp>
-
 # include <vector>
-# ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
-#   include <type_traits>
-# else
-#   include <boost/utility/enable_if.hpp>
-# endif
+# include <type_traits>
 
 # include <boost/range/value_type.hpp>
 
@@ -21,12 +15,6 @@
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
 
-# ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
-#   define KET_enable_if std::enable_if
-# else
-#   define KET_enable_if boost::enable_if_c
-# endif
-
 
 namespace ket
 {
@@ -38,7 +26,7 @@ namespace ket
       typename RandomAccessRange, typename Qubits, typename QubitsRange,
       typename PhaseCoefficientsAllocator,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     subtraction_assignment(
@@ -68,7 +56,7 @@ namespace ket
       typename PhaseCoefficientsAllocator,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator,
       typename DerivedDatatype>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     subtraction_assignment(
@@ -97,7 +85,7 @@ namespace ket
       typename RandomAccessRange, typename Qubits, typename QubitsRange,
       typename PhaseCoefficientsAllocator,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       (not ::ket::mpi::utility::policy::meta::is_mpi_policy<RandomAccessRange>::value)
         and (not ::ket::utility::policy::meta::is_loop_n_policy<RandomAccessRange>::value),
       RandomAccessRange&>::type
@@ -126,7 +114,7 @@ namespace ket
       typename PhaseCoefficientsAllocator,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator,
       typename DerivedDatatype>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       (not ::ket::mpi::utility::policy::meta::is_mpi_policy<RandomAccessRange>::value)
         and (not ::ket::utility::policy::meta::is_loop_n_policy<RandomAccessRange>::value),
       RandomAccessRange&>::type
@@ -156,7 +144,7 @@ namespace ket
       typename RandomAccessRange, typename Qubits, typename QubitsRange,
       typename PhaseCoefficientsAllocator,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
       RandomAccessRange&>::type
     subtraction_assignment(
@@ -186,7 +174,7 @@ namespace ket
       typename PhaseCoefficientsAllocator,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator,
       typename DerivedDatatype>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
       RandomAccessRange&>::type
     subtraction_assignment(
@@ -216,7 +204,7 @@ namespace ket
       typename MpiPolicy, typename ParallelPolicy,
       typename RandomAccessRange, typename Qubits, typename QubitsRange,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     subtraction_assignment(
@@ -242,7 +230,7 @@ namespace ket
       typename RandomAccessRange, typename Qubits, typename QubitsRange,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator,
       typename DerivedDatatype>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     subtraction_assignment(
@@ -267,7 +255,7 @@ namespace ket
     template <
       typename RandomAccessRange, typename Qubits, typename QubitsRange,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       (not ::ket::mpi::utility::policy::meta::is_mpi_policy<RandomAccessRange>::value)
         and (not ::ket::utility::policy::meta::is_loop_n_policy<RandomAccessRange>::value),
       RandomAccessRange&>::type
@@ -292,7 +280,7 @@ namespace ket
       typename RandomAccessRange, typename Qubits, typename QubitsRange,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator,
       typename DerivedDatatype>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       (not ::ket::mpi::utility::policy::meta::is_mpi_policy<RandomAccessRange>::value)
         and (not ::ket::utility::policy::meta::is_loop_n_policy<RandomAccessRange>::value),
       RandomAccessRange&>::type
@@ -318,7 +306,7 @@ namespace ket
       typename ParallelPolicy,
       typename RandomAccessRange, typename Qubits, typename QubitsRange,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
       RandomAccessRange&>::type
     subtraction_assignment(
@@ -344,7 +332,7 @@ namespace ket
       typename RandomAccessRange, typename Qubits, typename QubitsRange,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator,
       typename DerivedDatatype>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
       RandomAccessRange&>::type
     subtraction_assignment(
@@ -373,7 +361,7 @@ namespace ket
       typename RandomAccessRange, typename Qubits, typename QubitsRange,
       typename PhaseCoefficientsAllocator,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     adj_subtraction_assignment(
@@ -403,7 +391,7 @@ namespace ket
       typename PhaseCoefficientsAllocator,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator,
       typename DerivedDatatype>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     adj_subtraction_assignment(
@@ -432,7 +420,7 @@ namespace ket
       typename RandomAccessRange, typename Qubits, typename QubitsRange,
       typename PhaseCoefficientsAllocator,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       (not ::ket::mpi::utility::policy::meta::is_mpi_policy<RandomAccessRange>::value)
         and (not ::ket::utility::policy::meta::is_loop_n_policy<RandomAccessRange>::value),
       RandomAccessRange&>::type
@@ -461,7 +449,7 @@ namespace ket
       typename PhaseCoefficientsAllocator,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator,
       typename DerivedDatatype>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       (not ::ket::mpi::utility::policy::meta::is_mpi_policy<RandomAccessRange>::value)
         and (not ::ket::utility::policy::meta::is_loop_n_policy<RandomAccessRange>::value),
       RandomAccessRange&>::type
@@ -491,7 +479,7 @@ namespace ket
       typename RandomAccessRange, typename Qubits, typename QubitsRange,
       typename PhaseCoefficientsAllocator,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
       RandomAccessRange&>::type
     adj_subtraction_assignment(
@@ -521,7 +509,7 @@ namespace ket
       typename PhaseCoefficientsAllocator,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator,
       typename DerivedDatatype>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
       RandomAccessRange&>::type
     adj_subtraction_assignment(
@@ -551,7 +539,7 @@ namespace ket
       typename MpiPolicy, typename ParallelPolicy,
       typename RandomAccessRange, typename Qubits, typename QubitsRange,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     adj_subtraction_assignment(
@@ -577,7 +565,7 @@ namespace ket
       typename RandomAccessRange, typename Qubits, typename QubitsRange,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator,
       typename DerivedDatatype>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     adj_subtraction_assignment(
@@ -602,7 +590,7 @@ namespace ket
     template <
       typename RandomAccessRange, typename Qubits, typename QubitsRange,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       (not ::ket::mpi::utility::policy::meta::is_mpi_policy<RandomAccessRange>::value)
         and (not ::ket::utility::policy::meta::is_loop_n_policy<RandomAccessRange>::value),
       RandomAccessRange&>::type
@@ -627,7 +615,7 @@ namespace ket
       typename RandomAccessRange, typename Qubits, typename QubitsRange,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator,
       typename DerivedDatatype>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       (not ::ket::mpi::utility::policy::meta::is_mpi_policy<RandomAccessRange>::value)
         and (not ::ket::utility::policy::meta::is_loop_n_policy<RandomAccessRange>::value),
       RandomAccessRange&>::type
@@ -653,7 +641,7 @@ namespace ket
       typename ParallelPolicy,
       typename RandomAccessRange, typename Qubits, typename QubitsRange,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
       RandomAccessRange&>::type
     adj_subtraction_assignment(
@@ -679,7 +667,7 @@ namespace ket
       typename RandomAccessRange, typename Qubits, typename QubitsRange,
       typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator,
       typename DerivedDatatype>
-    inline typename KET_enable_if<
+    inline typename std::enable_if<
       ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
       RandomAccessRange&>::type
     adj_subtraction_assignment(
@@ -704,7 +692,4 @@ namespace ket
 } // namespace ket
 
 
-# undef KET_enable_if
-
-#endif
-
+#endif // KET_MPI_SUBTRACTION_ASSIGNMENT_HPP

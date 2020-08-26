@@ -1,5 +1,3 @@
-#include <boost/config.hpp>
-
 #include <string>
 #include <ios>
 #include <iomanip>
@@ -24,9 +22,9 @@ namespace bra
       complex_type const phase_coefficient,
       qubit_type const target_qubit,
       control_qubit_type const control_qubit)
-      : ::bra::gate::gate(),
-        phase_exponent_(phase_exponent), phase_coefficient_(phase_coefficient),
-        target_qubit_(target_qubit), control_qubit_(control_qubit)
+      : ::bra::gate::gate{},
+        phase_exponent_{phase_exponent}, phase_coefficient_{phase_coefficient},
+        target_qubit_{target_qubit}, control_qubit_{control_qubit}
     { }
 
     ::bra::state& controlled_phase_shift::do_apply(::bra::state& state) const
@@ -43,6 +41,5 @@ namespace bra
         << std::setw(parameter_width) << phase_exponent_;
       return repr_stream.str();
     }
-  }
-}
-
+  } // namespace gate
+} // namespace bra

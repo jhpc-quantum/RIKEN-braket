@@ -1,13 +1,9 @@
 #ifndef KET_UTILITY_META_ITERATOR_OF_HPP
 # define KET_UTILITY_META_ITERATOR_OF_HPP
 
-# include <boost/config.hpp>
-
 # ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
 #   include <vector>
-#   ifndef BOOST_NO_CXX11_HDR_ARRAY
-#     include <array>
-#   endif
+#   include <array>
 # endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
 
 # include <boost/range/iterator.hpp>
@@ -19,34 +15,31 @@ namespace ket
   {
     namespace meta
     {
-      template <typename T>
+      template <typename Range>
       struct iterator_of
-        : boost::range_iterator<T>
+        : boost::range_iterator<Range>
       { };
 
 # ifdef KET_PREFER_POINTER_TO_VECTOR_ITERATOR
       template <typename Value, typename Allocator>
-      struct iterator_of< std::vector<Value, Allocator> >
-      { typedef typename std::vector<Value, Allocator>::pointer type; };
+      struct iterator_of<std::vector<Value, Allocator>>
+      { using type = typename std::vector<Value, Allocator>::pointer; };
 
       template <typename Value, typename Allocator>
       struct iterator_of<std::vector<Value, Allocator> const>
-      { typedef typename std::vector<Value, Allocator>::const_pointer type; };
+      { using type = typename std::vector<Value, Allocator>::const_pointer; };
 
-#   ifndef BOOST_NO_CXX11_HDR_ARRAY
       template <typename Value, std::size_t num_elements>
-      struct iterator_of< std::array<Value, num_elements> >
-      { typedef typename std::array<Value, num_elements>::pointer type; };
+      struct iterator_of<std::array<Value, num_elements>>
+      { using type = typename std::array<Value, num_elements>::pointer; };
 
       template <typename Value, std::size_t num_elements>
       struct iterator_of<std::array<Value, num_elements> const>
-      { typedef typename std::array<Value, num_elements>::const_pointer type; };
-#   endif // BOOST_NO_CXX11_HDR_ARRAY
+      { using type = typename std::array<Value, num_elements>::const_pointer; };
 # endif // KET_PREFER_POINTER_TO_VECTOR_ITERATOR
-    }
-  }
-}
+    } // namespace meta
+  } // namespace utility
+} // namespace ket
 
 
-#endif
-
+#endif // KET_UTILITY_META_ITERATOR_OF_HPP

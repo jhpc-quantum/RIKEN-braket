@@ -1,8 +1,6 @@
 #ifndef KET_UTILTIY_META_REAL_OF_HPP
 # define KET_UTILTIY_META_REAL_OF_HPP
 
-# include <boost/config.hpp>
-
 # include <complex>
 
 
@@ -18,10 +16,9 @@ namespace ket
       template <typename T>
       struct real_of<std::complex<T> >
       { typedef typename std::complex<T>::value_type type; };
-    }
-  }
-}
+    } // namespace meta
+  } // namespace utility
+} // namespace ket
 
 
-#endif
-
+#endif // KET_UTILTIY_META_REAL_OF_HPP

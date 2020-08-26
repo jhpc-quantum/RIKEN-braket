@@ -1,1 +1,0 @@
-# undef KET_array

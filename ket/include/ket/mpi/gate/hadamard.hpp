@@ -13,5 +13,4 @@ KET_MPI_GATE_DETAIL_GENERATE_SINGLE_QUBIT_GATE(hadamard, Hadamard)
 
 # include <ket/mpi/gate/detail/after_generate_single_qubit_gate.hpp>
 
-# endif
-
+#endif // KET_MPI_GATE_HADAMARD_HPP

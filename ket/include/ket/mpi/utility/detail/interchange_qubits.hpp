@@ -1,16 +1,10 @@
 #ifndef KET_MPI_UTILITY_DETAIL_INTERCHANGE_QUBITS_HPP
 # define KET_MPI_UTILITY_DETAIL_INTERCHANGE_QUBITS_HPP
 
-# include <boost/config.hpp>
-
 # include <cassert>
 # include <vector>
 # include <utility>
-# ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
-#   include <type_traits>
-# else
-#   include <boost/type_traits/remove_cv.hpp>
-# endif
+# include <type_traits>
 
 # include <boost/range/value_type.hpp>
 
@@ -24,13 +18,6 @@
 
 # include <ket/utility/begin.hpp>
 # include <ket/utility/end.hpp>
-# include <ket/utility/meta/iterator_of.hpp>
-
-# ifndef BOOST_NO_CXX11_HDR_TYPE_TRAITS
-#   define KET_remove_cv std::remove_cv
-# else
-#   define KET_remove_cv boost::remove_cv
-# endif
 
 
 namespace ket
@@ -55,20 +42,15 @@ namespace ket
           {
             assert(source_local_last_index >= source_local_first_index);
 
-            typedef
-              typename ::ket::utility::meta::iterator_of<LocalState>::type
-              iterator;
-            iterator const first = ::ket::utility::begin(local_state)+source_local_first_index;
-            iterator const last = ::ket::utility::begin(local_state)+source_local_last_index;
+            auto const first = ::ket::utility::begin(local_state) + source_local_first_index;
+            auto const last = ::ket::utility::begin(local_state) + source_local_last_index;
 
             buffer.resize(source_local_last_index - source_local_first_index);
             yampi::algorithm::swap(
               yampi::ignore_status(),
               yampi::make_buffer(first, last),
-              yampi::make_buffer(
-                ::ket::utility::begin(buffer), ::ket::utility::end(buffer)),
-              target_rank,
-              communicator, environment);
+              yampi::make_buffer(::ket::utility::begin(buffer), ::ket::utility::end(buffer)),
+              target_rank, communicator, environment);
             std::copy(::ket::utility::begin(buffer), ::ket::utility::end(buffer), first);
           }
 
@@ -83,23 +65,18 @@ namespace ket
           {
             assert(source_local_last_index >= source_local_first_index);
 
-            typedef
-              typename ::ket::utility::meta::iterator_of<LocalState>::type
-              iterator;
-            iterator const first = ::ket::utility::begin(local_state)+source_local_first_index;
-            iterator const last = ::ket::utility::begin(local_state)+source_local_last_index;
+            auto const first = ::ket::utility::begin(local_state) + source_local_first_index;
+            auto const last = ::ket::utility::begin(local_state) + source_local_last_index;
 
             buffer.resize(source_local_last_index - source_local_first_index);
             yampi::algorithm::swap(
               yampi::ignore_status(),
               yampi::make_buffer(first, last, datatype),
-              yampi::make_buffer(
-                ::ket::utility::begin(buffer), ::ket::utility::end(buffer), datatype),
-              target_rank,
-              communicator, environment);
+              yampi::make_buffer(::ket::utility::begin(buffer), ::ket::utility::end(buffer), datatype),
+              target_rank, communicator, environment);
             std::copy(::ket::utility::begin(buffer), ::ket::utility::end(buffer), first);
           }
-        };
+        }; // struct interchange_qubits<LocalState_>
       } // namespace dispatch
 
       namespace detail
@@ -113,10 +90,8 @@ namespace ket
           yampi::rank const target_rank,
           yampi::communicator const& communicator, yampi::environment const& environment)
         {
-          typedef
-            ::ket::mpi::utility::dispatch::interchange_qubits<
-              typename KET_remove_cv<LocalState>::type>
-            interchange_qubits_;
+          using interchange_qubits_
+            = ::ket::mpi::utility::dispatch::interchange_qubits<typename std::remove_cv<LocalState>::type>;
           interchange_qubits_::call(
             local_state, buffer, source_local_first_index, source_local_last_index,
             target_rank, communicator, environment);
@@ -131,21 +106,16 @@ namespace ket
           yampi::datatype_base<DerivedDatatype> const& datatype, yampi::rank const target_rank,
           yampi::communicator const& communicator, yampi::environment const& environment)
         {
-          typedef
-            ::ket::mpi::utility::dispatch::interchange_qubits<
-              typename KET_remove_cv<LocalState>::type>
-            interchange_qubits_;
+          using interchange_qubits_
+            = ::ket::mpi::utility::dispatch::interchange_qubits<typename std::remove_cv<LocalState>::type>;
           interchange_qubits_::call(
             local_state, buffer, source_local_first_index, source_local_last_index,
             datatype, target_rank, communicator, environment);
         }
       } // namespace detail
-    }
-  }
-}
+    } // namespace utility
+  } // namespace mpi
+} // namespace ket
 
 
-# undef KET_remove_cv
-
-#endif
-
+#endif // KET_MPI_UTILITY_DETAIL_INTERCHANGE_QUBITS_HPP

@@ -1,15 +1,12 @@
 #ifndef KET_MPI_UTILITY_DEBUG_PRINT_DATA_HPP
 # define KET_MPI_UTILITY_DEBUG_PRINT_DATA_HPP
 
-# include <boost/config.hpp>
-
 # include <ostream>
 
 # include <yampi/environment.hpp>
 # include <yampi/communicator.hpp>
 
 # include <ket/utility/begin.hpp>
-# include <ket/utility/meta/const_iterator_of.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
 
@@ -34,35 +31,28 @@ namespace ket
           yampi::communicator const& communicator,
           yampi::environment const& environment)
         {
-          typedef
-            typename ::ket::utility::meta::const_iterator_of<RandomAccessRange const>::type
-            local_state_iterator;
-          local_state_iterator const local_state_first
-            = ::ket::utility::begin(local_state);
+          auto const local_state_first = ::ket::utility::begin(local_state);
+          auto const num_local_states = static_cast<StateInteger>(boost::size(local_state));
 
-          StateInteger const num_local_states
-            = static_cast<StateInteger>(boost::size(local_state));
-
-          for (StateInteger local_index = 0; local_index < num_local_states; ++local_index)
+          for (auto local_index = StateInteger{0u}; local_index < num_local_states; ++local_index)
           {
             using ket::mpi::inverse_permutate_bits;
             using ket::mpi::utility::rank_index_to_qubit_value;
-            StateInteger const qubit_value
+            auto const qubit_value
               = inverse_permutate_bits(
                   permutation,
                   rank_index_to_qubit_value(
                     mpi_policy, local_state, communicator.rank(environment), local_index));
 
-            output_stream << '[' << qubit_value << ": " << *(local_state_first+local_index) << "] ";
+            output_stream << '[' << qubit_value << ": " << *(local_state_first + local_index) << "] ";
           }
 
           return output_stream;
         }
-      }
-    }
-  }
-}
+      } // namespace debug
+    } // namespace utility
+  } // namespace mpi
+} // namespace ket
 
 
-#endif
-
+#endif // KET_MPI_UTILITY_DEBUG_PRINT_DATA_HPP

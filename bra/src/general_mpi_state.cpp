@@ -1,19 +1,9 @@
 #ifndef BRA_NO_MPI
-# include <boost/config.hpp>
-
 # include <vector>
-# ifndef BOOST_NO_CXX11_HDR_RANDOM
-#   include <random>
-# else
-#   include <boost/random/uniform_real_distribution.hpp>
-# endif
-
-# include <boost/range/algorithm_ext/iota.hpp>
 
 # include <yampi/communicator.hpp>
 # include <yampi/environment.hpp>
 
-# include <ket/qubit.hpp>
 # include <ket/mpi/gate/hadamard.hpp>
 # include <ket/mpi/gate/pauli_x.hpp>
 # include <ket/mpi/gate/pauli_y.hpp>
@@ -35,13 +25,6 @@
 
 # include <bra/general_mpi_state.hpp>
 # include <bra/state.hpp>
-# include <bra/utility/closest_floating_point_of.hpp>
-
-# ifndef BOOST_NO_CXX11_HDR_RANDOM
-#   define BRA_uniform_real_distribution std::uniform_real_distribution
-# else
-#   define BRA_uniform_real_distribution boost::random::uniform_real_distribution
-# endif
 
 
 namespace bra
@@ -60,12 +43,12 @@ namespace bra
     ::bra::state::seed_type const seed,
     yampi::communicator const& communicator,
     yampi::environment const& environment)
-    : ::bra::state(total_num_qubits, seed, communicator, environment),
-      parallel_policy_(num_threads_per_process),
-      mpi_policy_(),
-      data_(
+    : ::bra::state{total_num_qubits, seed, communicator, environment},
+      parallel_policy_{num_threads_per_process},
+      mpi_policy_{},
+      data_{
         mpi_policy_, num_local_qubits, initial_integer,
-        permutation_, communicator, environment)
+        permutation_, communicator, environment}
   { }
 
   general_mpi_state::general_mpi_state(
@@ -76,72 +59,64 @@ namespace bra
     ::bra::state::seed_type const seed,
     yampi::communicator const& communicator,
     yampi::environment const& environment)
-    : ::bra::state(initial_permutation, seed, communicator, environment),
-      parallel_policy_(num_threads_per_process),
-      mpi_policy_(),
-      data_(
+    : ::bra::state{initial_permutation, seed, communicator, environment},
+      parallel_policy_{num_threads_per_process},
+      mpi_policy_{},
+      data_{
         mpi_policy_, num_local_qubits, initial_integer,
-        permutation_, communicator, environment)
+        permutation_, communicator, environment}
   { }
 
-  void general_mpi_state::do_hadamard(
-    qubit_type const qubit)
+  void general_mpi_state::do_hadamard(qubit_type const qubit)
   {
     ket::mpi::gate::hadamard(
       mpi_policy_, parallel_policy_,
       data_, qubit, permutation_, buffer_, communicator_, environment_);
   }
 
-  void general_mpi_state::do_adj_hadamard(
-    qubit_type const qubit)
+  void general_mpi_state::do_adj_hadamard(qubit_type const qubit)
   {
     ket::mpi::gate::adj_hadamard(
       mpi_policy_, parallel_policy_,
       data_, qubit, permutation_, buffer_, communicator_, environment_);
   }
 
-  void general_mpi_state::do_pauli_x(
-    qubit_type const qubit)
+  void general_mpi_state::do_pauli_x(qubit_type const qubit)
   {
     ket::mpi::gate::pauli_x(
       mpi_policy_, parallel_policy_,
       data_, qubit, permutation_, buffer_, communicator_, environment_);
   }
 
-  void general_mpi_state::do_adj_pauli_x(
-    qubit_type const qubit)
+  void general_mpi_state::do_adj_pauli_x(qubit_type const qubit)
   {
     ket::mpi::gate::adj_pauli_x(
       mpi_policy_, parallel_policy_,
       data_, qubit, permutation_, buffer_, communicator_, environment_);
   }
 
-  void general_mpi_state::do_pauli_y(
-    qubit_type const qubit)
+  void general_mpi_state::do_pauli_y(qubit_type const qubit)
   {
     ket::mpi::gate::pauli_y(
       mpi_policy_, parallel_policy_,
       data_, qubit, permutation_, buffer_, communicator_, environment_);
   }
 
-  void general_mpi_state::do_adj_pauli_y(
-    qubit_type const qubit)
+  void general_mpi_state::do_adj_pauli_y(qubit_type const qubit)
   {
     ket::mpi::gate::adj_pauli_y(
       mpi_policy_, parallel_policy_,
       data_, qubit, permutation_, buffer_, communicator_, environment_);
   }
 
-  void general_mpi_state::do_pauli_z(
-    qubit_type const qubit)
+  void general_mpi_state::do_pauli_z(qubit_type const qubit)
   {
     ket::mpi::gate::pauli_z(
       mpi_policy_, parallel_policy_,
       data_, qubit, permutation_, buffer_, communicator_, environment_);
   }
 
-  void general_mpi_state::do_adj_pauli_z(
-    qubit_type const qubit)
+  void general_mpi_state::do_adj_pauli_z(qubit_type const qubit)
   {
     ket::mpi::gate::adj_pauli_z(
       mpi_policy_, parallel_policy_,
@@ -212,32 +187,28 @@ namespace bra
       data_, phase_coefficient, qubit, permutation_, buffer_, communicator_, environment_);
   }
 
-  void general_mpi_state::do_x_rotation_half_pi(
-    qubit_type const qubit)
+  void general_mpi_state::do_x_rotation_half_pi(qubit_type const qubit)
   {
     ket::mpi::gate::x_rotation_half_pi(
       mpi_policy_, parallel_policy_,
       data_, qubit, permutation_, buffer_, communicator_, environment_);
   }
 
-  void general_mpi_state::do_adj_x_rotation_half_pi(
-    qubit_type const qubit)
+  void general_mpi_state::do_adj_x_rotation_half_pi(qubit_type const qubit)
   {
     ket::mpi::gate::adj_x_rotation_half_pi(
       mpi_policy_, parallel_policy_,
       data_, qubit, permutation_, buffer_, communicator_, environment_);
   }
 
-  void general_mpi_state::do_y_rotation_half_pi(
-    qubit_type const qubit)
+  void general_mpi_state::do_y_rotation_half_pi(qubit_type const qubit)
   {
     ket::mpi::gate::y_rotation_half_pi(
       mpi_policy_, parallel_policy_,
       data_, qubit, permutation_, buffer_, communicator_, environment_);
   }
 
-  void general_mpi_state::do_adj_y_rotation_half_pi(
-    qubit_type const qubit)
+  void general_mpi_state::do_adj_y_rotation_half_pi(qubit_type const qubit)
   {
     ket::mpi::gate::adj_y_rotation_half_pi(
       mpi_policy_, parallel_policy_,
@@ -298,8 +269,7 @@ namespace bra
 
   void general_mpi_state::do_toffoli(
     qubit_type const target_qubit,
-    control_qubit_type const control_qubit1,
-    control_qubit_type const control_qubit2)
+    control_qubit_type const control_qubit1, control_qubit_type const control_qubit2)
   {
     ket::mpi::gate::toffoli(
       mpi_policy_, parallel_policy_,
@@ -308,15 +278,14 @@ namespace bra
 
   void general_mpi_state::do_adj_toffoli(
     qubit_type const target_qubit,
-    control_qubit_type const control_qubit1,
-    control_qubit_type const control_qubit2)
+    control_qubit_type const control_qubit1, control_qubit_type const control_qubit2)
   {
     ket::mpi::gate::adj_toffoli(
       mpi_policy_, parallel_policy_,
       data_, target_qubit, control_qubit1, control_qubit2, permutation_, buffer_, communicator_, environment_);
   }
 
-  KET_GATE_OUTCOME_TYPE general_mpi_state::do_projective_measurement(
+  ::ket::gate::outcome general_mpi_state::do_projective_measurement(
     qubit_type const qubit, yampi::rank const root)
   {
     return ket::mpi::gate::projective_measurement(
@@ -356,14 +325,10 @@ namespace bra
   }
 
   void general_mpi_state::do_shor_box(
-    bit_integer_type const num_exponent_qubits,
-    state_integer_type const divisor, state_integer_type const base)
+    state_integer_type const divisor, state_integer_type const base,
+    std::vector<qubit_type> const& exponent_qubits,
+    std::vector<qubit_type> const& modular_exponentiation_qubits)
   {
-    std::vector<qubit_type> exponent_qubits(num_exponent_qubits);
-    boost::iota(exponent_qubits, static_cast<qubit_type>(total_num_qubits_-num_exponent_qubits));
-    std::vector<qubit_type> modular_exponentiation_qubits(total_num_qubits_-num_exponent_qubits);
-    boost::iota(modular_exponentiation_qubits, static_cast<qubit_type>(0u));
-
     ket::mpi::shor_box(
       mpi_policy_, parallel_policy_,
       data_, base, divisor, exponent_qubits, modular_exponentiation_qubits,
@@ -383,42 +348,7 @@ namespace bra
       mpi_policy_, parallel_policy_,
       data_, qubit, permutation_, buffer_, communicator_, environment_);
   }
+} // namespace bra
 
-  void general_mpi_state::do_depolarizing_channel(real_type const px, real_type const py, real_type const pz, int const seed)
-  {
-    typedef typename ::bra::utility::closest_floating_point_of<real_type>::type floating_point;
-    BRA_uniform_real_distribution<floating_point> distribution(0.0, px + py + pz);
-    qubit_type const last_qubit = ket::make_qubit(total_num_qubits_);
-    if (seed < 0)
-      for (qubit_type qubit = ket::make_qubit(static_cast<bit_integer_type>(0u)); qubit < last_qubit; ++qubit)
-      {
-        real_type const probability = static_cast<real_type>(distribution(random_number_generator_));
-        if (probability < px)
-          do_pauli_x(qubit);
-        else if (probability < px + py)
-          do_pauli_y(qubit);
-        else
-          do_pauli_z(qubit);
-      }
-    else
-    {
-      random_number_generator_type temporal_random_number_generator(static_cast<seed_type>(seed));
-      for (qubit_type qubit = ket::make_qubit(static_cast<bit_integer_type>(0u)); qubit < last_qubit; ++qubit)
-      {
-        real_type const probability = static_cast<real_type>(distribution(temporal_random_number_generator));
-        if (probability < px)
-          do_pauli_x(qubit);
-        else if (probability < px + py)
-          do_pauli_y(qubit);
-        else
-          do_pauli_z(qubit);
-      }
-    }
-  }
-}
-
-
-# undef BRA_uniform_real_distribution
 
 #endif // BRA_NO_MPI
-

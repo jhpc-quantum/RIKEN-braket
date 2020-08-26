@@ -1,8 +1,6 @@
 #ifndef KET_MPI_UTILITY_UPPER_BOUND_HPP
 # define KET_MPI_UTILITY_UPPER_BOUND_HPP
 
-# include <boost/config.hpp>
-
 # include <boost/range/difference_type.hpp>
 
 # include <yampi/environment.hpp>
@@ -32,7 +30,7 @@ namespace ket
                 ::ket::utility::begin(local_state), ::ket::utility::end(local_state), value, compare)
               - ::ket::utility::begin(local_state);
           }
-        };
+        }; // struct upper_bound<LocalState_>
       } // namespace dispatch
 
       template <typename LocalState, typename Value, typename Compare>
@@ -48,5 +46,4 @@ namespace ket
 } // namespace ket
 
 
-#endif
-
+#endif // KET_MPI_UTILITY_UPPER_BOUND_HPP

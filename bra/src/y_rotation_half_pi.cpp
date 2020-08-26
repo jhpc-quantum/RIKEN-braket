@@ -1,5 +1,3 @@
-#include <boost/config.hpp>
-
 #include <string>
 #include <ios>
 #include <iomanip>
@@ -19,7 +17,7 @@ namespace bra
     std::string const y_rotation_half_pi::name_ = "+Y";
 
     y_rotation_half_pi::y_rotation_half_pi(qubit_type const qubit)
-      : ::bra::gate::gate(), qubit_(qubit)
+      : ::bra::gate::gate{}, qubit_{qubit}
     { }
 
     ::bra::state& y_rotation_half_pi::do_apply(::bra::state& state) const
@@ -34,6 +32,5 @@ namespace bra
         << std::setw(parameter_width) << qubit_;
       return repr_stream.str();
     }
-  }
-}
-
+  } // namespace gate
+} // namespace bra

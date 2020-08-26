@@ -4,11 +4,7 @@
 # include <boost/config.hpp>
 
 # include <vector>
-# ifndef BOOST_NO_CXX11_HDR_ARRAY
-#   include <array>
-# else
-#   include <boost/array.hpp>
-# endif
+# include <array>
 # include <ios>
 # include <sstream>
 
@@ -28,12 +24,6 @@
 # include <ket/mpi/utility/logger.hpp>
 # include <ket/mpi/gate/page/controlled_not.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
-
-# ifndef BOOST_NO_CXX11_HDR_ARRAY
-#   define KET_array std::array
-# else
-#   define KET_array boost::array
-# endif
 
 
 namespace ket
@@ -55,8 +45,8 @@ namespace ket
           call_controlled_not(
             ParallelPolicy const parallel_policy,
             TargetQubit const target_qubit, ControlQubit const control_qubit)
-            : parallel_policy_(parallel_policy),
-              target_qubit_(target_qubit), control_qubit_(control_qubit)
+            : parallel_policy_{parallel_policy},
+              target_qubit_{target_qubit}, control_qubit_{control_qubit}
           { }
 
           template <typename RandomAccessIterator>
@@ -67,7 +57,7 @@ namespace ket
             ::ket::gate::controlled_not(
               parallel_policy_, first, last, target_qubit_, control_qubit_);
           }
-        };
+        }; // struct call_controlled_not<ParallelPolicy, TargetQubit, ControlQubit>
 
         template <typename ParallelPolicy, typename TargetQubit, typename ControlQubit>
         inline call_controlled_not<ParallelPolicy, TargetQubit, ControlQubit>
@@ -75,8 +65,8 @@ namespace ket
           ParallelPolicy const parallel_policy,
           TargetQubit const target_qubit, ControlQubit const control_qubit)
         {
-          return call_controlled_not<ParallelPolicy, TargetQubit, ControlQubit>(
-            parallel_policy, target_qubit, control_qubit);
+          return call_controlled_not<ParallelPolicy, TargetQubit, ControlQubit>{
+            parallel_policy, target_qubit, control_qubit};
         }
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 
@@ -107,9 +97,8 @@ namespace ket
               target_qubit, control_qubit, permutation);
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
-          typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
-          qubit_type const permutated_target_qubit = permutation[target_qubit];
-          ::ket::control<qubit_type> const permutated_control_qubit
+          auto const permutated_target_qubit = permutation[target_qubit];
+          auto const permutated_control_qubit
             = ::ket::make_control(permutation[control_qubit.qubit()]);
           return ::ket::mpi::utility::for_each_local_range(
             mpi_policy, local_state,
@@ -145,16 +134,15 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        std::ostringstream output_string_stream("CNOT ", std::ios_base::ate);
+        auto output_string_stream = std::ostringstream{"CNOT ", std::ios_base::ate};
         output_string_stream << target_qubit << ' ' << control_qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
+        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
 
-        typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
-        KET_array<qubit_type, 2u> qubits = { target_qubit, control_qubit.qubit() };
+        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+        auto qubits = std::array<qubit_type, 2u>{target_qubit, control_qubit.qubit()};
         ::ket::mpi::utility::maybe_interchange_qubits(
           mpi_policy, parallel_policy,
-          local_state, qubits, permutation,
-          buffer, communicator, environment);
+          local_state, qubits, permutation, buffer, communicator, environment);
 
         return ::ket::mpi::gate::controlled_not_detail::controlled_not(
           mpi_policy, parallel_policy, local_state, target_qubit, control_qubit, permutation);
@@ -175,16 +163,15 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        std::ostringstream output_string_stream("CNOT ", std::ios_base::ate);
+        auto output_string_stream = std::ostringstream{"CNOT ", std::ios_base::ate};
         output_string_stream << target_qubit << ' ' << control_qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
+        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
 
-        typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
-        KET_array<qubit_type, 2u> qubits = { target_qubit, control_qubit.qubit() };
+        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+        auto qubits = std::array<qubit_type, 2u>{target_qubit, control_qubit.qubit()};
         ::ket::mpi::utility::maybe_interchange_qubits(
           mpi_policy, parallel_policy,
-          local_state, qubits, permutation,
-          buffer, datatype, communicator, environment);
+          local_state, qubits, permutation, buffer, datatype, communicator, environment);
 
         return ::ket::mpi::gate::controlled_not_detail::controlled_not(
           mpi_policy, parallel_policy, local_state, target_qubit, control_qubit, permutation);
@@ -286,8 +273,8 @@ namespace ket
           call_adj_controlled_not(
             ParallelPolicy const parallel_policy,
             TargetQubit const target_qubit, ControlQubit const control_qubit)
-            : parallel_policy_(parallel_policy),
-              target_qubit_(target_qubit), control_qubit_(control_qubit)
+            : parallel_policy_{parallel_policy},
+              target_qubit_{target_qubit}, control_qubit_{control_qubit}
           { }
 
           template <typename RandomAccessIterator>
@@ -298,7 +285,7 @@ namespace ket
             ::ket::gate::adj_controlled_not(
               parallel_policy_, first, last, target_qubit_, control_qubit_);
           }
-        };
+        }; // struct call_adj_controlled_not<ParallelPolicy, TargetQubit, ControlQubit>
 
         template <typename ParallelPolicy, typename TargetQubit, typename ControlQubit>
         inline call_adj_controlled_not<ParallelPolicy, TargetQubit, ControlQubit>
@@ -306,8 +293,8 @@ namespace ket
           ParallelPolicy const parallel_policy,
           TargetQubit const target_qubit, ControlQubit const control_qubit)
         {
-          return call_adj_controlled_not<ParallelPolicy, TargetQubit, ControlQubit>(
-            parallel_policy, target_qubit, control_qubit);
+          return call_adj_controlled_not<ParallelPolicy, TargetQubit, ControlQubit>{
+            parallel_policy, target_qubit, control_qubit};
         }
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 
@@ -338,9 +325,8 @@ namespace ket
               target_qubit, control_qubit, permutation);
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
-          typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
-          qubit_type const permutated_target_qubit = permutation[target_qubit];
-          ::ket::control<qubit_type> const permutated_control_qubit
+          auto const permutated_target_qubit = permutation[target_qubit];
+          auto const permutated_control_qubit
             = ::ket::make_control(permutation[control_qubit.qubit()]);
           return ::ket::mpi::utility::for_each_local_range(
             mpi_policy, local_state,
@@ -348,8 +334,7 @@ namespace ket
               auto const first, auto const last)
             {
               ::ket::gate::adj_controlled_not(
-                parallel_policy, first, last,
-                permutated_target_qubit, permutated_control_qubit);
+                parallel_policy, first, last, permutated_target_qubit, permutated_control_qubit);
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::utility::for_each_local_range(
@@ -360,7 +345,7 @@ namespace ket
               ::ket::make_control(permutation[control_qubit.qubit()])));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }
-      }
+      } // namespace controlled_not_detail
 
       template <
         typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange,
@@ -376,16 +361,15 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        std::ostringstream output_string_stream("Adj(CNOT) ", std::ios_base::ate);
+        auto output_string_stream = std::ostringstream{"Adj(CNOT) ", std::ios_base::ate};
         output_string_stream << target_qubit << ' ' << control_qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
+        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
 
-        typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
-        KET_array<qubit_type, 2u> qubits = { target_qubit, control_qubit.qubit() };
+        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+        auto qubits = std::array<qubit_type, 2u>{target_qubit, control_qubit.qubit()};
         ::ket::mpi::utility::maybe_interchange_qubits(
           mpi_policy, parallel_policy,
-          local_state, qubits, permutation,
-          buffer, communicator, environment);
+          local_state, qubits, permutation, buffer, communicator, environment);
 
         return ::ket::mpi::gate::controlled_not_detail::controlled_not(
           mpi_policy, parallel_policy, local_state, target_qubit, control_qubit, permutation);
@@ -406,16 +390,15 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        std::ostringstream output_string_stream("Adj(CNOT) ", std::ios_base::ate);
+        auto output_string_stream = std::ostringstream{"Adj(CNOT) ", std::ios_base::ate};
         output_string_stream << target_qubit << ' ' << control_qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
+        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
 
-        typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
-        KET_array<qubit_type, 2u> qubits = { target_qubit, control_qubit.qubit() };
+        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+        auto qubits = std::array<qubit_type, 2u>{target_qubit, control_qubit.qubit()};
         ::ket::mpi::utility::maybe_interchange_qubits(
           mpi_policy, parallel_policy,
-          local_state, qubits, permutation,
-          buffer, datatype, communicator, environment);
+          local_state, qubits, permutation, buffer, datatype, communicator, environment);
 
         return ::ket::mpi::gate::controlled_not_detail::controlled_not(
           mpi_policy, parallel_policy, local_state, target_qubit, control_qubit, permutation);
@@ -437,8 +420,7 @@ namespace ket
         return ::ket::mpi::gate::adj_controlled_not(
           ::ket::mpi::utility::policy::make_general_mpi(),
           ::ket::utility::policy::make_sequential(),
-          local_state, target_qubit, control_qubit, permutation,
-          buffer, communicator, environment);
+          local_state, target_qubit, control_qubit, permutation, buffer, communicator, environment);
       }
 
       template <
@@ -458,8 +440,7 @@ namespace ket
         return ::ket::mpi::gate::adj_controlled_not(
           ::ket::mpi::utility::policy::make_general_mpi(),
           ::ket::utility::policy::make_sequential(),
-          local_state, target_qubit, control_qubit, permutation,
-          buffer, datatype, communicator, environment);
+          local_state, target_qubit, control_qubit, permutation, buffer, datatype, communicator, environment);
       }
 
       template <
@@ -478,8 +459,7 @@ namespace ket
       {
         return ::ket::mpi::gate::adj_controlled_not(
           ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
-          local_state, target_qubit, control_qubit, permutation,
-          buffer, communicator, environment);
+          local_state, target_qubit, control_qubit, permutation, buffer, communicator, environment);
       }
 
       template <
@@ -499,15 +479,11 @@ namespace ket
       {
         return ::ket::mpi::gate::adj_controlled_not(
           ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
-          local_state, target_qubit, control_qubit, permutation,
-          buffer, datatype, communicator, environment);
+          local_state, target_qubit, control_qubit, permutation, buffer, datatype, communicator, environment);
       }
     } // namespace gate
   } // namespace mpi
 } // namespace ket
 
 
-# undef KET_array
-
-#endif
-
+#endif // KET_MPI_GATE_CONTROLLED_NOT_HPP

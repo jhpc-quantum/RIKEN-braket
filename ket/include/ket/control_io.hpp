@@ -1,7 +1,5 @@
 #ifndef KET_CONTROL_IO_HPP
-#define KET_CONTROL_IO_HPP
-
-# include <boost/config.hpp>
+# define KET_CONTROL_IO_HPP
 
 # include <istream>
 # include <ostream>
@@ -24,8 +22,7 @@ namespace ket
     std::basic_ostream<Character, CharacterTraits>& input_stream,
     ::ket::control<Qubit>& control_qubit)
   { return input_stream >> control_qubit.qubit(); }
-}
+} // namespace ket
 
 
-#endif
-
+#endif // KET_CONTROL_IO_HPP

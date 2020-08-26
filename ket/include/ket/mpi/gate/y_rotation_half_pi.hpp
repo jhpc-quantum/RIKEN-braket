@@ -13,5 +13,4 @@ KET_MPI_GATE_DETAIL_GENERATE_SINGLE_QUBIT_GATE(y_rotation_half_pi, Ypi)
 
 # include <ket/mpi/gate/detail/after_generate_single_qubit_gate.hpp>
 
-# endif
-
+#endif // KET_MPI_GATE_Y_ROTATION_HALF_PI_HPP

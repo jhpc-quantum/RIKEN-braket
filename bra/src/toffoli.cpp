@@ -1,5 +1,3 @@
-#include <boost/config.hpp>
-
 #include <string>
 #include <ios>
 #include <iomanip>
@@ -22,7 +20,7 @@ namespace bra
     toffoli::toffoli(
       qubit_type const target_qubit,
       control_qubit_type const control_qubit1, control_qubit_type const control_qubit2)
-      : ::bra::gate::gate(), target_qubit_(target_qubit), control_qubit1_(control_qubit1), control_qubit2_(control_qubit2)
+      : ::bra::gate::gate{}, target_qubit_{target_qubit}, control_qubit1_{control_qubit1}, control_qubit2_{control_qubit2}
     { }
 
     ::bra::state& toffoli::do_apply(::bra::state& state) const
@@ -39,6 +37,5 @@ namespace bra
         << std::setw(parameter_width) << target_qubit_;
       return repr_stream.str();
     }
-  }
-}
-
+  } // namespace gate
+} // namespace bra

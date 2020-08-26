@@ -1,26 +1,15 @@
 #ifndef KET_MPI_GATE_PROJECTIVE_MEASUREMENT_HPP
 # define KET_MPI_GATE_PROJECTIVE_MEASUREMENT_HPP
 
-# include <boost/config.hpp>
-
 # include <cmath>
 # include <complex>
 # include <ios>
 # include <sstream>
 # include <vector>
-# ifndef BOOST_NO_CXX11_HDR_ARRAY
-#   include <array>
-# else
-#   include <boost/array.hpp>
-# endif
+# include <array>
 # include <utility>
-# ifndef BOOST_NO_CXX11_ADDRESSOF
-#   include <memory>
-# else // BOOST_NO_CXX11_ADDRESSOF
-#   include <boost/core/addressof.hpp>
-# endif // BOOST_NO_CXX11_ADDRESSOF
+# include <memory>
 
-# include <boost/math/constants/constants.hpp>
 # include <boost/range/value_type.hpp>
 
 # include <yampi/environment.hpp>
@@ -35,23 +24,13 @@
 # include <ket/qubit.hpp>
 # include <ket/qubit_io.hpp>
 # include <ket/gate/projective_measurement.hpp>
+# include <ket/utility/begin.hpp>
+# include <ket/utility/end.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
 # include <ket/mpi/utility/logger.hpp>
 # include <ket/mpi/gate/page/projective_measurement.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
-
-# ifndef BOOST_NO_CXX11_HDR_ARRAY
-#   define KET_array std::array
-# else
-#   define KET_array boost::array
-# endif
-
-# ifndef BOOST_NO_CXX11_ADDRESSOF
-#   define KET_addressof std::addressof
-# else
-#   define KET_addressof boost::addressof
-# endif
 
 
 // TODO: implement vector-support (KET_PREFER_POINTER_TO_VECTOR_ITERATOR)
@@ -66,7 +45,7 @@ namespace ket
         typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger, typename RandomNumberGenerator,
         typename Allocator, typename BufferAllocator>
-      inline KET_GATE_OUTCOME_TYPE projective_measurement(
+      inline ::ket::gate::outcome projective_measurement(
         MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -78,35 +57,33 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        std::ostringstream output_string_stream("Measurement ", std::ios_base::ate);
+        auto output_string_stream = std::ostringstream{"Measurement ", std::ios_base::ate};
         output_string_stream << qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
+        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
 
-        typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
-        KET_array<qubit_type, 1u> qubits = { qubit };
+        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+        auto qubits = std::array<qubit_type, 1u>{qubit};
         ::ket::mpi::utility::maybe_interchange_qubits(
           mpi_policy, parallel_policy,
           local_state, qubits, permutation, buffer, communicator, environment);
 
-        bool const is_qubit_on_page
+        auto const is_qubit_on_page
           = ::ket::mpi::page::is_on_page(qubit, local_state, permutation);
 
-        typedef typename boost::range_value<RandomAccessRange>::type complex_type;
-        typedef typename ::ket::utility::meta::real_of<complex_type>::type real_type;
-        std::pair<real_type, real_type> zero_one_probabilities
+        auto zero_one_probabilities
           = is_qubit_on_page
             ? ::ket::mpi::gate::page::zero_one_probabilities(
                 mpi_policy, parallel_policy, local_state, qubit, permutation)
             : ::ket::gate::projective_measurement_detail::zero_one_probabilities(
-                parallel_policy, boost::begin(local_state), boost::end(local_state), qubit);
+                parallel_policy, ::ket::utility::begin(local_state), ::ket::utility::end(local_state), qubit);
 
         yampi::all_reduce(
           yampi::make_buffer(zero_one_probabilities, real_pair_datatype),
-          KET_addressof(zero_one_probabilities), yampi::binary_operation(yampi::plus_t()),
+          std::addressof(zero_one_probabilities), yampi::binary_operation(yampi::plus_t()),
           communicator, environment);
-        real_type const total_probability = zero_one_probabilities.first + zero_one_probabilities.second;
+        auto const total_probability = zero_one_probabilities.first + zero_one_probabilities.second;
 
-        int zero_or_one
+        auto zero_or_one
           = ::ket::utility::positive_random_value_upto(total_probability, random_number_generator)
               < zero_one_probabilities.first
             ? 0 : 1;
@@ -121,9 +98,9 @@ namespace ket
           else
             ::ket::gate::projective_measurement_detail::change_state_after_measuring_zero(
               parallel_policy,
-              boost::begin(local_state), boost::end(local_state), qubit, zero_one_probabilities.first);
+              ::ket::utility::begin(local_state), ::ket::utility::end(local_state), qubit, zero_one_probabilities.first);
 
-          return KET_GATE_OUTCOME_VALUE(zero);
+          return ::ket::gate::outcome::zero;
         }
 
         if (is_qubit_on_page)
@@ -133,16 +110,16 @@ namespace ket
         else
           ::ket::gate::projective_measurement_detail::change_state_after_measuring_one(
             parallel_policy,
-            boost::begin(local_state), boost::end(local_state), qubit, zero_one_probabilities.second);
+            ::ket::utility::begin(local_state), ::ket::utility::end(local_state), qubit, zero_one_probabilities.second);
 
-        return KET_GATE_OUTCOME_VALUE(one);
+        return ::ket::gate::outcome::one;
       }
 
       template <
         typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger, typename RandomNumberGenerator,
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>
-      inline KET_GATE_OUTCOME_TYPE projective_measurement(
+      inline ::ket::gate::outcome projective_measurement(
         MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -155,36 +132,33 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        std::ostringstream output_string_stream("Measurement ", std::ios_base::ate);
+        auto output_string_stream = std::ostringstream{"Measurement ", std::ios_base::ate};
         output_string_stream << qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print(output_string_stream.str(), environment);
+        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
 
-        typedef ::ket::qubit<StateInteger, BitInteger> qubit_type;
-        KET_array<qubit_type, 1u> qubits = { qubit };
+        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+        auto qubits = std::array<qubit_type, 1u>{qubit};
         ::ket::mpi::utility::maybe_interchange_qubits(
           mpi_policy, parallel_policy,
-          local_state, qubits, permutation,
-          buffer, complex_datatype, communicator, environment);
+          local_state, qubits, permutation, buffer, complex_datatype, communicator, environment);
 
-        bool const is_qubit_on_page
+        auto const is_qubit_on_page
           = ::ket::mpi::page::is_on_page(qubit, local_state, permutation);
 
-        typedef typename boost::range_value<RandomAccessRange>::type complex_type;
-        typedef typename ::ket::utility::meta::real_of<complex_type>::type real_type;
-        std::pair<real_type, real_type> zero_one_probabilities
+        auto zero_one_probabilities
           = is_qubit_on_page
             ? ::ket::mpi::gate::page::zero_one_probabilities(
                 mpi_policy, parallel_policy, local_state, qubit, permutation)
             : ::ket::gate::projective_measurement_detail::zero_one_probabilities(
-                parallel_policy, boost::begin(local_state), boost::end(local_state), qubit);
+                parallel_policy, ::ket::utility::begin(local_state), ::ket::utility::end(local_state), qubit);
 
         yampi::all_reduce(
           yampi::make_buffer(zero_one_probabilities, real_pair_datatype),
-          KET_addressof(zero_one_probabilities), yampi::binary_operation(yampi::plus_t()),
+          std::addressof(zero_one_probabilities), yampi::binary_operation(yampi::plus_t()),
           communicator, environment);
-        real_type const total_probability = zero_one_probabilities.first + zero_one_probabilities.second;
+        auto const total_probability = zero_one_probabilities.first + zero_one_probabilities.second;
 
-        int zero_or_one
+        auto zero_or_one
           = ::ket::utility::positive_random_value_upto(total_probability, random_number_generator)
               < zero_one_probabilities.first
             ? 0 : 1;
@@ -199,9 +173,9 @@ namespace ket
           else
             ::ket::gate::projective_measurement_detail::change_state_after_measuring_zero(
               parallel_policy,
-              boost::begin(local_state), boost::end(local_state), qubit, zero_one_probabilities.first);
+              ::ket::utility::begin(local_state), ::ket::utility::end(local_state), qubit, zero_one_probabilities.first);
 
-          return KET_GATE_OUTCOME_VALUE(zero);
+          return ::ket::gate::outcome::zero;
         }
 
         if (is_qubit_on_page)
@@ -211,16 +185,16 @@ namespace ket
         else
           ::ket::gate::projective_measurement_detail::change_state_after_measuring_one(
             parallel_policy,
-            boost::begin(local_state), boost::end(local_state), qubit, zero_one_probabilities.second);
+            ::ket::utility::begin(local_state), ::ket::utility::end(local_state), qubit, zero_one_probabilities.second);
 
-        return KET_GATE_OUTCOME_VALUE(one);
+        return ::ket::gate::outcome::one;
       }
 
       template <
         typename RandomAccessRange,
         typename StateInteger, typename BitInteger, typename RandomNumberGenerator,
         typename Allocator, typename BufferAllocator>
-      inline KET_GATE_OUTCOME_TYPE projective_measurement(
+      inline ::ket::gate::outcome projective_measurement(
         RandomAccessRange& local_state,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
         RandomNumberGenerator& random_number_generator,
@@ -242,7 +216,7 @@ namespace ket
         typename RandomAccessRange,
         typename StateInteger, typename BitInteger, typename RandomNumberGenerator,
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>
-      inline KET_GATE_OUTCOME_TYPE projective_measurement(
+      inline ::ket::gate::outcome projective_measurement(
         RandomAccessRange& local_state,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
         RandomNumberGenerator& random_number_generator,
@@ -265,7 +239,7 @@ namespace ket
         typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger, typename RandomNumberGenerator,
         typename Allocator, typename BufferAllocator>
-      inline KET_GATE_OUTCOME_TYPE projective_measurement(
+      inline ::ket::gate::outcome projective_measurement(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -287,7 +261,7 @@ namespace ket
         typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger, typename RandomNumberGenerator,
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>
-      inline KET_GATE_OUTCOME_TYPE projective_measurement(
+      inline ::ket::gate::outcome projective_measurement(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -310,8 +284,4 @@ namespace ket
 } // namespace ket
 
 
-# undef KET_addressof
-# undef KET_array
-
-#endif
-
+#endif // KET_MPI_GATE_PROJECTIVE_MEASUREMENT_HPP
