@@ -7,7 +7,7 @@ It contains an interpreter of "quantum assembler" *bra* and a C++ template libra
 
 ## Getting Started
 
-**braket** requires a MPI2-supported C++03 compliant compiler.
+**braket** requires a MPI2-supported C++11 compliant compiler.
 If you do not have any MPI libraries, get it by using a package manager of your \*nix environment.
 
 You can retrieve the current status of **braket** by cloning the repository:
@@ -29,9 +29,9 @@ The binary file `bra` is present on `bra/bin/` directory.
 If you would like to compile it by specified C++ version, type like:
 
 ```
-make release03
 make release11
 make release14
+make release17
 ```
 
 The files `bra/qcx/hadamards08.qcx` and `bra/qcx/adder6x2.qcx` are sample "quantum assembler" codes.
@@ -50,8 +50,6 @@ The results are output to `stdout`.
 #include <complex>
 #include <vector>
 
-#include <boost/cstdint.hpp>
-
 #include <ket/qubit.hpp>
 #include <ket/utility/integer_log2.hpp>
 #include <ket/mpi/state.hpp>
@@ -60,35 +58,31 @@ The results are output to `stdout`.
 
 #include <yampi/environment.hpp>
 #include <yampi/communicator.hpp>
-#include <yampi/rank.hpp>
-#include <yampi/basic_datatype_of.hpp>
 
 int main(int argc, char* argv[])
 {
   std::ios::sync_with_stdio(false);
 
-  typedef boost::uint64_t state_integer_type;
-  typedef unsigned int bit_integer_type;
-  typedef std::complex<double> complex_type;
+  using state_integer_type = std::uint64_t;
+  using bit_integer_type = unsigned int;
+  using complex_type = std::complex<double>;
 
-  yampi::environment environment(argc, argv);
-  yampi::world_communicator_t const world_communicator_tag;
-  yampi::communicator communicator(world_communicator_tag);
-  yampi::rank const rank = communicator.rank(environment);
-  bit_integer_type const num_gqubits = ket::utility::integer_log2<bit_integer_type>(communicator.size(environment));
-  bit_integer_type const num_qubits = 12u;
-  bit_integer_type const num_lqubits = num_qubits - num_gqubits;
-  state_integer_type const initial_state_value = 0;
+  yampi::environment environment{argc, argv};
+  yampi::communicator communicator{yampi::world_communicator()};
+  auto const rank = communicator.rank(environment);
+  auto const num_gqubits = ket::utility::integer_log2<bit_integer_type>(communicator.size(environment));
+  auto const num_qubits = bit_integer_type{12u};
+  auto const num_lqubits = num_qubits - num_gqubits;
+  auto const initial_state_value = state_integer_type{0};
 
-  ket::mpi::qubit_permutation<state_integer_type, bit_integer_type> permutation(num_qubits);
-  ket::mpi::state<complex_type> local_state(num_lqubits, initial_state_value, permutation, communicator, environment);
-  std::vector<complex_type> buffer;
+  auto permutation = ket::mpi::qubit_permutation<state_integer_type, bit_integer_type>{num_qubits};
+  auto local_state = ket::mpi::state<complex_type>{num_lqubits, initial_state_value, permutation, communicator, environment};
+  auto buffer = std::vector<complex_type>{};
 
-  typedef ket::qubit<state_integer_type, bit_integer_type> qubit_type;
-  for (bit_integer_type bit = 0; bit < num_qubits; ++bit)
-    ket::mpi::gate::hadamard(
-      local_state, static_cast<qubit_type>(bit), permutation,
-      buffer, yampi::basic_datatype_of<complex_type>::call(), communicator, environment);
+  using qubit_type = ket::qubit<state_integer_type, bit_integer_type>;
+  auto const last_qubit = qubit_type{num_qubits};
+  for (auto qubit = qubit_type{bit_integer_type{0}}; qubit < last_qubit; ++qubit)
+    ket::mpi::gate::hadamard(local_state, qubit, permutation, buffer, communicator, environment);
 }
 ```
 
