@@ -171,9 +171,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Toffoli ", std::ios_base::ate};
-        output_string_stream << target_qubit << ' ' << control_qubit1 << ' ' << control_qubit2;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Toffoli "}, target_qubit, ' ', control_qubit1, ' ', control_qubit2), environment};
 
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
         auto const qubits
@@ -202,9 +200,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Toffoli ", std::ios_base::ate};
-        output_string_stream << target_qubit << ' ' << control_qubit1 << ' ' << control_qubit2;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Toffoli "}, target_qubit, ' ', control_qubit1, ' ', control_qubit2), environment};
 
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
         auto const qubits
@@ -441,9 +437,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Adj(Toffoli) ", std::ios_base::ate};
-        output_string_stream << target_qubit << ' ' << control_qubit1 << ' ' << control_qubit2;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(Toffoli) "}, target_qubit, ' ', control_qubit1, ' ', control_qubit2), environment};
 
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
         auto const qubits
@@ -472,9 +466,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Adj(Toffoli) ", std::ios_base::ate};
-        output_string_stream << target_qubit << ' ' << control_qubit1 << ' ' << control_qubit2;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(Toffoli) "}, target_qubit, ' ', control_qubit1, ' ', control_qubit2), environment};
 
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
         auto const qubits

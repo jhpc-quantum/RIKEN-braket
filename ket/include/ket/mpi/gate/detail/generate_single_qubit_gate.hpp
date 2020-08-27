@@ -47,9 +47,7 @@ namespace ket\
         yampi::communicator const& communicator,\
         yampi::environment const& environment)\
       {\
-        auto output_string_stream = std::ostringstream{#gate_symbol " ", std::ios_base::ate};\
-        output_string_stream << qubit;\
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};\
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{#gate_symbol " "}, qubit), environment};\
 \
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;\
         auto qubits = std::array<qubit_type, 1u>{qubit};\
@@ -76,9 +74,7 @@ namespace ket\
         yampi::communicator const& communicator,\
         yampi::environment const& environment)\
       {\
-        auto output_string_stream = std::ostringstream{#gate_symbol " ", std::ios_base::ate};\
-        output_string_stream << qubit;\
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};\
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{#gate_symbol " "}, qubit), environment};\
 \
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;\
         auto qubits = std::array<qubit_type, 1u>{qubit};\
@@ -202,9 +198,7 @@ namespace ket\
         yampi::communicator const& communicator,\
         yampi::environment const& environment)\
       {\
-        auto output_string_stream = std::ostringstream{"Adj(" #gate_symbol ") ", std::ios_base::ate};\
-        output_string_stream << qubit;\
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};\
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(" #gate_symbol ") "}, qubit), environment};\
 \
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;\
         auto qubits = std::array<qubit_type, 1u>{qubit};\
@@ -231,9 +225,7 @@ namespace ket\
         yampi::communicator const& communicator,\
         yampi::environment const& environment)\
       {\
-        auto output_string_stream = std::ostringstream{"Adj(" #gate_symbol ") ", std::ios_base::ate};\
-        output_string_stream << qubit;\
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};\
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(" #gate_symbol ") "}, qubit), environment};\
 \
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;\
         auto qubits = std::array<qubit_type, 1u>{qubit};\
@@ -392,9 +384,7 @@ namespace ket\
         yampi::communicator const& communicator,\
         yampi::environment const& environment)\
       {\
-        auto output_string_stream = std::ostringstream{#gate_symbol " ", std::ios_base::ate};\
-        output_string_stream << qubit;\
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};\
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{#gate_symbol " "}, qubit), environment};\
 \
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;\
         auto qubits = std::array<qubit_type, 1u>{qubit};\
@@ -421,9 +411,7 @@ namespace ket\
         yampi::communicator const& communicator,\
         yampi::environment const& environment)\
       {\
-        std::ostringstream output_string_stream{#gate_symbol " ", std::ios_base::ate};\
-        output_string_stream << qubit;\
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};\
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{#gate_symbol " "}, qubit), environment};\
 \
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;\
         auto qubits = std::array<qubit_type, 1u>{qubit};\
@@ -572,9 +560,7 @@ namespace ket\
         yampi::communicator const& communicator,\
         yampi::environment const& environment)\
       {\
-        auto output_string_stream = std::ostringstream{"Adj(" #gate_symbol ") ", std::ios_base::ate};\
-        output_string_stream << qubit;\
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};\
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(" #gate_symbol ") "}, qubit), environment};\
 \
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;\
         auto qubits = std::array<qubit_type, 1u>{qubit};\
@@ -601,9 +587,7 @@ namespace ket\
         yampi::communicator const& communicator,\
         yampi::environment const& environment)\
       {\
-        auto output_string_stream = std::ostringstream{"Adj(" #gate_symbol ") ", std::ios_base::ate};\
-        output_string_stream << qubit;\
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};\
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(" #gate_symbol ") "}, qubit), environment};\
 \
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;\
         auto qubits = std::array<qubit_type, 1u>{qubit};\

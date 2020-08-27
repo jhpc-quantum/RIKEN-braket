@@ -2,7 +2,9 @@
 # define KET_MPI_UTILITY_LOGGER_HPP
 
 # include <iostream>
+# include <sstream>
 # include <string>
+# include <utility>
 
 # ifdef KET_PRINT_LOG
 #   include <boost/optional.hpp>
@@ -221,6 +223,29 @@ namespace ket
         log_with_time_guard(log_with_time_guard&&) = delete;
         log_with_time_guard& operator=(log_with_time_guard&&) = delete;
       }; // class log_with_time_guard<wchar_t, CharacterTraits, Allocator>
+
+      namespace logger_detail
+      {
+        template <typename Character, typename CharacterTraits, typename Allocator>
+        inline void insert(std::basic_ostringstream<Character, CharacterTraits, Allocator>&)
+        { }
+
+        template <typename Character, typename CharacterTraits, typename Allocator, typename Value, typename... Values>
+        inline void insert(std::basic_ostringstream<Character, CharacterTraits, Allocator>& output_string_stream, Value&& value, Values&&... values)
+        {
+          output_string_stream << std::forward<Value>(value);
+          ::ket::mpi::utility::logger_detail::insert(output_string_stream, std::forward<Values>(values)...);
+        }
+      } // namespace logger_detail
+
+      template <typename Character, typename CharacterTraits, typename Allocator, typename... Values>
+      inline std::basic_string<Character, CharacterTraits, Allocator>
+      generate_logger_string(std::basic_string<Character, CharacterTraits, Allocator> const& base_string, Values&&... values)
+      {
+        auto output_string_stream = std::basic_ostringstream<Character, CharacterTraits, Allocator>{base_string, std::ios_base::ate};
+        ::ket::mpi::utility::logger_detail::insert(output_string_stream, std::forward<Values>(values)...);
+        return output_string_stream.str();
+      }
 # else // KET_PRINT_LOG
       class logger
       {
@@ -299,6 +324,11 @@ namespace ket
         log_with_time_guard(log_with_time_guard&&) = delete;
         log_with_time_guard& operator=(log_with_time_guard&&) = delete;
       }; // class log_with_time_guard<Character, CharacterTraits, Allocator>
+
+      template <typename Character, typename CharacterTraits, typename Allocator, typename... Values>
+      inline std::basic_string<Character, CharacterTraits, Allocator>
+      generate_logger_string(std::basic_string<Character, CharacterTraits, Allocator> const& base_string, Values&&...)
+      { return base_string; }
 # endif // KET_PRINT_LOG
     } // namespace utility
   } // namespace mpi

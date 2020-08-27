@@ -135,9 +135,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Cphase(coeff) ", std::ios_base::ate};
-        output_string_stream << phase_coefficient << ' ' << target_qubit << ' ' << control_qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Cphase(coeff) "}, phase_coefficient, ' ', target_qubit, ' ', control_qubit), environment};
 
         return ::ket::mpi::gate::controlled_phase_shift_detail::controlled_phase_shift_coeff(
           mpi_policy, parallel_policy,
@@ -162,9 +160,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Cphase(coeff) ", std::ios_base::ate};
-        output_string_stream << phase_coefficient << ' ' << target_qubit << ' ' << control_qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Cphase(coeff) "}, phase_coefficient, ' ', target_qubit, ' ', control_qubit), environment};
 
         return ::ket::mpi::gate::controlled_phase_shift_detail::controlled_phase_shift_coeff(
           mpi_policy, parallel_policy,
@@ -298,9 +294,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Adj(Cphase(coeff)) ", std::ios_base::ate};
-        output_string_stream << phase_coefficient << ' ' << target_qubit << ' ' << control_qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(Cphase(coeff)) "}, phase_coefficient, ' ', target_qubit, ' ', control_qubit), environment};
 
         return ::ket::mpi::gate::controlled_phase_shift_detail::adj_controlled_phase_shift_coeff(
           mpi_policy, parallel_policy,
@@ -325,9 +319,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Adj(Cphase(coeff)) ", std::ios_base::ate};
-        output_string_stream << phase_coefficient << ' ' << target_qubit << ' ' << control_qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(Cphase(coeff)) "}, phase_coefficient, ' ', target_qubit, ' ', control_qubit), environment};
 
         return ::ket::mpi::gate::controlled_phase_shift_detail::adj_controlled_phase_shift_coeff(
           mpi_policy, parallel_policy,
@@ -463,9 +455,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Cphase ", std::ios_base::ate};
-        output_string_stream << phase << ' ' << target_qubit << ' ' << control_qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Cphase "}, phase, ' ', target_qubit, ' ', control_qubit), environment};
 
         return ::ket::mpi::gate::controlled_phase_shift_detail::controlled_phase_shift(
           mpi_policy, parallel_policy,
@@ -490,9 +480,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Cphase ", std::ios_base::ate};
-        output_string_stream << phase << ' ' << target_qubit << ' ' << control_qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Cphase "}, phase, ' ', target_qubit, ' ', control_qubit), environment};
 
         return ::ket::mpi::gate::controlled_phase_shift_detail::controlled_phase_shift(
           mpi_policy, parallel_policy,
@@ -625,9 +613,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Adj(Cphase) ", std::ios_base::ate};
-        output_string_stream << phase << ' ' << target_qubit << ' ' << control_qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(Cphase) "}, phase, ' ', target_qubit, ' ', control_qubit), environment};
 
         return ::ket::mpi::gate::controlled_phase_shift_detail::adj_controlled_phase_shift(
           mpi_policy, parallel_policy,
@@ -652,9 +638,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Adj(Cphase) ", std::ios_base::ate};
-        output_string_stream << phase << ' ' << target_qubit << ' ' << control_qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(Cphase) "}, phase, ' ', target_qubit, ' ', control_qubit), environment};
 
         return ::ket::mpi::gate::controlled_phase_shift_detail::adj_controlled_phase_shift(
           mpi_policy, parallel_policy,

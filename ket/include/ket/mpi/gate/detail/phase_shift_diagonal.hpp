@@ -120,9 +120,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Phase(coeff) ", std::ios_base::ate};
-        output_string_stream << phase_coefficient << ' ' << qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Phase(coeff) "}, phase_coefficient, ' ', qubit), environment};
 
         return ::ket::mpi::gate::phase_shift_detail::phase_shift_coeff(
           mpi_policy, parallel_policy,
@@ -145,9 +143,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Phase(coeff) ", std::ios_base::ate};
-        output_string_stream << phase_coefficient << ' ' << qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Phase(coeff) "}, phase_coefficient, ' ', qubit), environment};
 
         return ::ket::mpi::gate::phase_shift_detail::phase_shift_coeff(
           mpi_policy, parallel_policy,
@@ -274,9 +270,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Adj(Phase(coeff)) ", std::ios_base::ate};
-        output_string_stream << phase_coefficient << ' ' << qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(Phase(coeff)) "}, phase_coefficient, ' ', qubit), environment};
 
         return ::ket::mpi::gate::phase_shift_detail::adj_phase_shift_coeff(
           mpi_policy, parallel_policy,
@@ -299,9 +293,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Adj(Phase(coeff)) ", std::ios_base::ate};
-        output_string_stream << phase_coefficient << ' ' << qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(Phase(coeff)) "}, phase_coefficient, ' ', qubit), environment};
 
         return ::ket::mpi::gate::phase_shift_detail::adj_phase_shift_coeff(
           mpi_policy, parallel_policy,
@@ -429,9 +421,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Phase ", std::ios_base::ate};
-        output_string_stream << phase << ' ' << qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Phase "}, phase, ' ', qubit), environment};
 
         return ::ket::mpi::gate::phase_shift_detail::phase_shift(
           mpi_policy, parallel_policy,
@@ -454,9 +444,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Phase ", std::ios_base::ate};
-        output_string_stream << phase << ' ' << qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Phase "}, phase, ' ', qubit), environment};
 
         return ::ket::mpi::gate::phase_shift_detail::phase_shift(
           mpi_policy, parallel_policy,
@@ -579,9 +567,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Adj(Phase) ", std::ios_base::ate};
-        output_string_stream << phase << ' ' << qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(Phase) "}, phase, ' ', qubit), environment};
 
         return ::ket::mpi::gate::phase_shift_detail::adj_phase_shift(
           mpi_policy, parallel_policy,
@@ -604,9 +590,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Adj(Phase) ", std::ios_base::ate};
-        output_string_stream << phase << ' ' << qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(Phase) "}, phase, ' ', qubit), environment};
 
         return ::ket::mpi::gate::phase_shift_detail::adj_phase_shift(
           mpi_policy, parallel_policy,
@@ -835,9 +819,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Phase ", std::ios_base::ate};
-        output_string_stream << phase1 << ' ' << phase2 << ' ' << qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Phase "}, phase1, ' ', phase2, ' ', qubit), environment};
 
         return ::ket::mpi::gate::phase_shift_detail::phase_shift2(
           mpi_policy, parallel_policy,
@@ -861,9 +843,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Phase ", std::ios_base::ate};
-        output_string_stream << phase1 << ' ' << phase2 << ' ' << qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Phase "}, phase1, ' ', phase2, ' ', qubit), environment};
 
         return ::ket::mpi::gate::phase_shift_detail::phase_shift2(
           mpi_policy, parallel_policy,
@@ -1094,9 +1074,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Adj(Phase) ", std::ios_base::ate};
-        output_string_stream << phase1 << ' ' << phase2 << ' ' << qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(Phase) "}, phase1, ' ', phase2, ' ', qubit), environment};
 
         return ::ket::mpi::gate::phase_shift_detail::adj_phase_shift2(
           mpi_policy, parallel_policy,
@@ -1119,9 +1097,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Adj(Phase) ", std::ios_base::ate};
-        output_string_stream << phase1 << ' ' << phase2 << ' ' << qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(Phase) "}, phase1, ' ', phase2, ' ', qubit), environment};
 
         return ::ket::mpi::gate::phase_shift_detail::adj_phase_shift2(
           mpi_policy, parallel_policy,
@@ -1349,9 +1325,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Phase ", std::ios_base::ate};
-        output_string_stream << phase1 << ' ' << phase2 << ' ' << phase3 << ' ' << qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Phase "}, phase1, ' ', phase2, ' ', phase3, ' ', qubit), environment};
 
         return ::ket::mpi::gate::phase_shift_detail::phase_shift3(
           mpi_policy, parallel_policy,
@@ -1375,9 +1349,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Phase ", std::ios_base::ate};
-        output_string_stream << phase1 << ' ' << phase2 << ' ' << phase3 << ' ' << qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Phase "}, phase1, ' ', phase2, ' ', phase3, ' ', qubit), environment};
 
         return ::ket::mpi::gate::phase_shift_detail::phase_shift3(
           mpi_policy, parallel_policy,
@@ -1610,9 +1582,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Adj(Phase) ", std::ios_base::ate};
-        output_string_stream << phase1 << ' ' << phase2 << ' ' << phase3 << ' ' << qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(Phase) "}, phase1, ' ', phase2, ' ', phase3, ' ', qubit), environment};
 
         return ::ket::mpi::gate::phase_shift_detail::adj_phase_shift3(
           mpi_policy, parallel_policy,
@@ -1636,9 +1606,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Adj(Phase) ", std::ios_base::ate};
-        output_string_stream << phase1 << ' ' << phase2 << ' ' << phase3 << ' ' << qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(Phase) "}, phase1, ' ', phase2, ' ', phase3, ' ', qubit), environment};
 
         return ::ket::mpi::gate::phase_shift_detail::adj_phase_shift3(
           mpi_policy, parallel_policy,
