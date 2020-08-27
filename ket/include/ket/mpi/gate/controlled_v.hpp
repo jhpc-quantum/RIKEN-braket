@@ -202,9 +202,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Cv(coeff) ", std::ios_base::ate};
-        output_string_stream << phase_coefficient << ' ' << target_qubit << ' ' << control_qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Cv(coeff) "}, phase_coefficient, ' ', target_qubit, ' ', control_qubit), environment};
 
         return ::ket::mpi::gate::controlled_v_detail::controlled_v_coeff(
           mpi_policy, parallel_policy,
@@ -229,9 +227,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Cv(coeff) ", std::ios_base::ate};
-        output_string_stream << phase_coefficient << ' ' << target_qubit << ' ' << control_qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Cv(coeff) "}, phase_coefficient, ' ', target_qubit, ' ', control_qubit), environment};
 
         return ::ket::mpi::gate::controlled_v_detail::controlled_v_coeff(
           mpi_policy, parallel_policy,
@@ -391,9 +387,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Adj(Cv(coeff)) ", std::ios_base::ate};
-        output_string_stream << phase_coefficient << ' ' << target_qubit << ' ' << control_qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(Cv(coeff)) "}, phase_coefficient, ' ', target_qubit, ' ', control_qubit), environment};
 
         return ::ket::mpi::gate::controlled_v_detail::adj_controlled_v_coeff(
           mpi_policy, parallel_policy,
@@ -418,9 +412,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Adj(Cv(coeff)) ", std::ios_base::ate};
-        output_string_stream << phase_coefficient << ' ' << target_qubit << ' ' << control_qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(Cv(coeff)) "}, phase_coefficient, ' ', target_qubit, ' ', control_qubit), environment};
 
         return ::ket::mpi::gate::controlled_v_detail::adj_controlled_v_coeff(
           mpi_policy, parallel_policy,
@@ -583,9 +575,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Cv ", std::ios_base::ate};
-        output_string_stream << phase << ' ' << target_qubit << ' ' << control_qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Cv "}, phase, ' ', target_qubit, ' ', control_qubit), environment};
 
         return ::ket::mpi::gate::controlled_v_detail::controlled_v(
           mpi_policy, parallel_policy,
@@ -610,9 +600,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Cv ", std::ios_base::ate};
-        output_string_stream << phase << ' ' << target_qubit << ' ' << control_qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Cv "}, phase, ' ', target_qubit, ' ', control_qubit), environment};
 
         return ::ket::mpi::gate::controlled_v_detail::controlled_v(
           mpi_policy, parallel_policy,
@@ -770,9 +758,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Adj(Cv) ", std::ios_base::ate};
-        output_string_stream << phase << ' ' << target_qubit << ' ' << control_qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(Cv) "}, phase, ' ', target_qubit, ' ', control_qubit), environment};
 
         return ::ket::mpi::gate::controlled_v_detail::adj_controlled_v(
           mpi_policy, parallel_policy,
@@ -797,9 +783,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Adj(Cv) ", std::ios_base::ate};
-        output_string_stream << phase << ' ' << target_qubit << ' ' << control_qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(Cv) "}, phase, ' ', target_qubit, ' ', control_qubit), environment};
 
         return ::ket::mpi::gate::controlled_v_detail::adj_controlled_v(
           mpi_policy, parallel_policy,

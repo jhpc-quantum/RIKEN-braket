@@ -280,9 +280,7 @@ namespace ket
             yampi::environment const& environment,
             Function&& interchange_qubits)
           {
-            auto output_string_stream = std::ostringstream{"interchange_qubits<", std::ios_base::ate};
-            output_string_stream << num_qubits_of_operation << '>';
-            ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+            ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"interchange_qubits<"}, num_qubits_of_operation, '>'), environment};
 
 # ifndef NDEBUG
             auto const maybe_io_rank = yampi::lowest_io_process(environment);
@@ -353,9 +351,7 @@ namespace ket
               auto const source_local_last_index
                 = (source_local_first_index bitor prev_last_mask) + StateInteger{1u};
 
-              auto oss_swap = std::ostringstream{"interchange_qubits<", std::ios_base::ate};
-              oss_swap << num_qubits_of_operation << ">::swap";
-              ::ket::mpi::utility::log_with_time_guard<char> print{oss_swap.str(), environment};
+              ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"interchange_qubits<"}, num_qubits_of_operation, ">::swap"), environment};
 
               interchange_qubits(
                 local_state,

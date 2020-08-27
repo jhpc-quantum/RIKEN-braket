@@ -134,9 +134,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"CNOT ", std::ios_base::ate};
-        output_string_stream << target_qubit << ' ' << control_qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"CNOT "}, target_qubit, ' ', control_qubit), environment};
 
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
         auto qubits = std::array<qubit_type, 2u>{target_qubit, control_qubit.qubit()};
@@ -163,9 +161,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"CNOT ", std::ios_base::ate};
-        output_string_stream << target_qubit << ' ' << control_qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"CNOT "}, target_qubit, ' ', control_qubit), environment};
 
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
         auto qubits = std::array<qubit_type, 2u>{target_qubit, control_qubit.qubit()};
@@ -361,9 +357,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Adj(CNOT) ", std::ios_base::ate};
-        output_string_stream << target_qubit << ' ' << control_qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(CNOT) "}, target_qubit, ' ', control_qubit), environment};
 
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
         auto qubits = std::array<qubit_type, 2u>{target_qubit, control_qubit.qubit()};
@@ -390,9 +384,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
-        auto output_string_stream = std::ostringstream{"Adj(CNOT) ", std::ios_base::ate};
-        output_string_stream << target_qubit << ' ' << control_qubit;
-        ::ket::mpi::utility::log_with_time_guard<char> print{output_string_stream.str(), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(CNOT) "}, target_qubit, ' ', control_qubit), environment};
 
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
         auto qubits = std::array<qubit_type, 2u>{target_qubit, control_qubit.qubit()};
