@@ -76,6 +76,7 @@ namespace ket
             return;
 
           num_threads_ = num_threads;
+          omp_set_num_threads(static_cast<int>(num_threads_));
         }
 # else // defined(_OPENMP) && defined(KET_USE_OPENMP)
         void num_threads(NumThreads const num_threads) const noexcept
@@ -84,7 +85,6 @@ namespace ket
             return;
 
           num_threads_ = num_threads;
-          omp_set_num_threads(static_cast<int>(num_threads_));
         }
 # endif // defined(_OPENMP) && defined(KET_USE_OPENMP)
       }; // class parallel<NumThreads>

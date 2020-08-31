@@ -391,7 +391,7 @@ namespace ket
       yampi::communicator const& communicator,
       yampi::environment const& environment)
     {
-      uisng complex_type = typename boost::range_value<RandomAccessRange>::type;
+      using complex_type = typename boost::range_value<RandomAccessRange>::type;
       auto phase_coefficients
         = ::ket::utility::generate_phase_coefficients<complex_type>(boost::size(lhs_qubits));
 
