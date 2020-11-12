@@ -305,8 +305,10 @@ namespace bra
   namespace gates_detail
   {
     template <typename Value>
-    ::bra::depolarizing_statement read_value_in_depolarizing_statement(
-      Value& value, std::string& present_string, ::bra::gates::columns_type::const_iterator& column_iter,
+    void read_value_in_depolarizing_statement(
+      Value& value, std::string& present_string, // "xxx" or "xxx," or "xxx,..."
+      ::bra::gates::columns_type::const_iterator& column_iter,
+      ::bra::gates::columns_type::const_iterator const& column_last,
       ::bra::gates::columns_type const& columns)
     {
       auto string_found = std::find(present_string.cbegin(), present_string.cend(), ',');
@@ -314,12 +316,23 @@ namespace bra
 
       if (string_found == present_string.cend()) // present_string == "xxx"
       {
-        present_string = *++column_iter; // present_string == "," or ",..."
+        if (++column_iter == column_last)
+        {
+          present_string.clear();
+          return;
+        }
+
+        present_string = *column_iter; // present_string == "," or ",..."
         if (present_string[0] != ',')
           throw wrong_mnemonics_error{columns};
 
         if (present_string.size() == 1u) // present_string == ","
-          present_string = *++column_iter; // present_string == "..."
+        {
+          if (++column_iter == column_last)
+            throw wrong_mnemonics_error{columns};
+
+          present_string = *column_iter; // present_string == "..."
+        }
         else // present_string == ",..."
           present_string.assign(present_string, 1u, std::string::npos); // present_string == "..."
       }
@@ -327,25 +340,38 @@ namespace bra
       {
         present_string.assign(++string_found, present_string.cend()); // present_string == "" or "..."
         if (present_string.empty()) // present_string == ""
-          present_string = *++column_iter; // present_string == "..."
-      }
+        {
+          if (++column_iter == column_last)
+            throw wrong_mnemonics_error{columns};
 
-      return ::bra::depolarizing_statement::channel;
+          present_string = *column_iter; // present_string == "..."
+        }
+      }
     }
 
     template <typename Value>
-    ::bra::depolarizing_statement read_depolarizing_statement(
-      Value& value, std::string& present_string, ::bra::gates::columns_type::const_iterator& column_iter,
+    void read_depolarizing_statement(
+      Value& value, std::string& present_string,
+      ::bra::gates::columns_type::const_iterator& column_iter,
+      ::bra::gates::columns_type::const_iterator const& column_last,
       std::string::const_iterator string_found, ::bra::gates::columns_type const& columns)
     {
       if (string_found == present_string.cend()) // present_string == "XXX"
       {
-        present_string = *++column_iter; // present_string == "=" or "=xxx" or "=xxx," or "=xxx,..."
+        if (++column_iter == column_last)
+          throw wrong_mnemonics_error{columns};
+
+        present_string = *column_iter; // present_string == "=" or "=xxx" or "=xxx," or "=xxx,..."
         if (present_string[0] != '=')
           throw wrong_mnemonics_error{columns};
 
         if (present_string.size() == 1u) // present_string == "="
-          present_string = *++column_iter; // present_string == "xxx" or "xxx," or "xxx,..."
+        {
+          if (++column_iter == column_last)
+            throw wrong_mnemonics_error{columns};
+
+          present_string = *column_iter; // present_string == "xxx" or "xxx," or "xxx,..."
+        }
         else // presnet_string == "=xxx" or "=xxx," or "=xxx,..."
           present_string.assign(present_string, 1u, std::string::npos); // presnet_string == "xxx" or "xxx," or "xxx,..."
       }
@@ -353,10 +379,15 @@ namespace bra
       {
         present_string.assign(++string_found, present_string.cend()); // present_string == "" or "xxx" or "xxx," or "xxx,..."
         if (present_string.empty()) // present_string == ""
-          present_string = *++column_iter; // present_string == "xxx" or "xxx," or "xxx,..."
+        {
+          if (++column_iter == column_last)
+            throw wrong_mnemonics_error{columns};
+
+          present_string = *column_iter; // present_string == "xxx" or "xxx," or "xxx,..."
+        }
       }
 
-      return read_value_in_depolarizing_statement(value, present_string, column_iter, columns);
+      read_value_in_depolarizing_statement(value, present_string, column_iter, column_last, columns);
     }
   } // namespace gates_detail
 } // namespace bra

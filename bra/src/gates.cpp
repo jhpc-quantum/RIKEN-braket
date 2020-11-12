@@ -930,7 +930,7 @@ namespace bra
     present_string = *++iter; // present_string == "P_*" or "P_*=" or "P_*=0.xxx" or "P_*=0.xxx," or "P_*=0.xxx,..."
     auto probability_string = std::string{"    "};
     auto const last = columns.cend();
-    while (iter < last)
+    while (iter != last)
     {
       auto string_found = std::find(present_string.cbegin(), present_string.cend(), '=');
       probability_string.assign(present_string.cbegin(), string_found);
@@ -940,7 +940,7 @@ namespace bra
         if (is_px_checked)
           throw wrong_mnemonics_error{columns};
 
-        ::bra::gates_detail::read_depolarizing_statement(px, present_string, iter, string_found, columns);
+        ::bra::gates_detail::read_depolarizing_statement(px, present_string, iter, last, string_found, columns);
         if (px < 0.0 or px > 1.0)
           throw wrong_mnemonics_error{columns};
 
@@ -951,7 +951,7 @@ namespace bra
         if (is_py_checked)
           throw wrong_mnemonics_error{columns};
 
-        ::bra::gates_detail::read_depolarizing_statement(py, present_string, iter, string_found, columns);
+        ::bra::gates_detail::read_depolarizing_statement(py, present_string, iter, last, string_found, columns);
         if (py < 0.0 or py > 1.0)
           throw wrong_mnemonics_error{columns};
 
@@ -962,7 +962,7 @@ namespace bra
         if (is_pz_checked)
           throw wrong_mnemonics_error{columns};
 
-        ::bra::gates_detail::read_depolarizing_statement(pz, present_string, iter, string_found, columns);
+        ::bra::gates_detail::read_depolarizing_statement(pz, present_string, iter, last, string_found, columns);
         if (pz < 0.0 or pz > 1.0)
           throw wrong_mnemonics_error{columns};
 
@@ -973,7 +973,7 @@ namespace bra
         if (is_seed_checked)
           throw wrong_mnemonics_error{columns};
 
-        ::bra::gates_detail::read_depolarizing_statement(seed, present_string, iter, string_found, columns);
+        ::bra::gates_detail::read_depolarizing_statement(seed, present_string, iter, last, string_found, columns);
         is_seed_checked = true;
       }
       else
