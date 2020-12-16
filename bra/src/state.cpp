@@ -198,7 +198,7 @@ namespace bra
   ::bra::state& state::depolarizing_channel(real_type const px, real_type const py, real_type const pz, int const seed)
   {
     using floating_point_type = typename ::bra::utility::closest_floating_point_of<real_type>::type;
-    auto distribution = std::uniform_real_distribution<floating_point_type>{0.0, px + py + pz};
+    auto distribution = std::uniform_real_distribution<floating_point_type>{0.0, 1.0};
     auto const last_qubit = ket::make_qubit(total_num_qubits_);
     if (seed < 0)
       for (auto qubit = ket::make_qubit(bit_integer_type{0u}); qubit < last_qubit; ++qubit)
@@ -208,7 +208,7 @@ namespace bra
           pauli_x(qubit);
         else if (probability < px + py)
           pauli_y(qubit);
-        else
+        else if (probability < px + py + pz)
           pauli_z(qubit);
       }
     else
@@ -221,7 +221,7 @@ namespace bra
           pauli_x(qubit);
         else if (probability < px + py)
           pauli_y(qubit);
-        else
+        else if (probability < px + py + pz)
           pauli_z(qubit);
       }
     }
