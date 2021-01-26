@@ -94,6 +94,8 @@ namespace bra
     bit_integer_type num_qubits_;
 # ifndef BRA_NO_MPI
     bit_integer_type num_lqubits_;
+    bit_integer_type num_uqubits_;
+    unsigned int num_processes_per_unit_;
 # endif
     state_integer_type initial_state_value_;
 # ifndef BRA_NO_MPI
@@ -133,7 +135,9 @@ namespace bra
 
 # ifndef BRA_NO_MPI
     gates(
-      std::istream& input_stream, yampi::environment const& environment,
+      std::istream& input_stream,
+      bit_integer_type num_uqubits, unsigned int num_processes_per_unit,
+      yampi::environment const& environment,
       yampi::rank const root = yampi::rank{},
       yampi::communicator const& communicator = yampi::communicator{::yampi::world_communicator_t()},
       size_type const num_reserved_gates = size_type{0u});
@@ -147,6 +151,8 @@ namespace bra
     bit_integer_type const& num_qubits() const { return num_qubits_; }
 # ifndef BRA_NO_MPI
     bit_integer_type const& num_lqubits() const { return num_lqubits_; }
+    bit_integer_type const& num_uqubits() const { return num_uqubits_; }
+    unsigned int const& num_processes_per_unit() const { return num_processes_per_unit_; }
 # endif
     state_integer_type const& initial_state_value() const { return initial_state_value_; }
 # ifndef BRA_NO_MPI
