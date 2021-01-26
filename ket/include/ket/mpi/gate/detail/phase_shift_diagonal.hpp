@@ -728,7 +728,8 @@ namespace ket
           RandomAccessRange& local_state,
           Real const phase1, Real const phase2,
           ::ket::qubit<StateInteger, BitInteger> const qubit,
-          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation)
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          yampi::communicator const& communicator, yampi::environment const& environment)
         {
           if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))
             return ::ket::mpi::gate::page::phase_shift2(
@@ -737,7 +738,7 @@ namespace ket
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           auto const permutated_qubit = permutation[qubit];
           return ::ket::mpi::utility::for_each_local_range(
-            mpi_policy, local_state,
+            mpi_policy, local_state, communicator, environment,
             [parallel_policy, phase1, phase2, permutated_qubit](
               auto const first, auto const last)
             {
@@ -746,7 +747,7 @@ namespace ket
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::utility::for_each_local_range(
-            mpi_policy, local_state,
+            mpi_policy, local_state, communicator, environment,
             ::ket::mpi::gate::phase_shift_detail::make_call_phase_shift2(
               parallel_policy, phase1, phase2, permutation[qubit]));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -774,7 +775,7 @@ namespace ket
             local_state, qubits, permutation, buffer, communicator, environment);
 
           return ::ket::mpi::gate::phase_shift_detail::do_phase_shift2(
-            mpi_policy, parallel_policy, local_state, phase1, phase2, qubit, permutation);
+            mpi_policy, parallel_policy, local_state, phase1, phase2, qubit, permutation, communicator, environment);
         }
 
         template <
@@ -800,7 +801,7 @@ namespace ket
             local_state, qubits, permutation, buffer, datatype, communicator, environment);
 
           return ::ket::mpi::gate::phase_shift_detail::do_phase_shift2(
-            mpi_policy, parallel_policy, local_state, phase1, phase2, qubit, permutation);
+            mpi_policy, parallel_policy, local_state, phase1, phase2, qubit, permutation, communicator, environment);
         }
       } // namespace phase_shift_detail
 
@@ -983,7 +984,8 @@ namespace ket
           RandomAccessRange& local_state,
           Real const phase1, Real const phase2,
           ::ket::qubit<StateInteger, BitInteger> const qubit,
-          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation)
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          yampi::communicator const& communicator, yampi::environment const& environment)
         {
           if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))
             return ::ket::mpi::gate::page::adj_phase_shift2(
@@ -992,7 +994,7 @@ namespace ket
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           auto const permutated_qubit = permutation[qubit];
           return ::ket::mpi::utility::for_each_local_range(
-            mpi_policy, local_state,
+            mpi_policy, local_state, communicator, environment,
             [parallel_policy, phase1, phase2, permutated_qubit](
               auto const first, auto const last)
             {
@@ -1001,7 +1003,7 @@ namespace ket
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::utility::for_each_local_range(
-            mpi_policy, local_state,
+            mpi_policy, local_state, communicator, environment,
             ::ket::mpi::gate::phase_shift_detail::make_call_adj_phase_shift2(
               parallel_policy, phase1, phase2, permutation[qubit]));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -1029,7 +1031,7 @@ namespace ket
             local_state, qubits, permutation, buffer, communicator, environment);
 
           return ::ket::mpi::gate::phase_shift_detail::do_adj_phase_shift2(
-            mpi_policy, parallel_policy, local_state, phase1, phase2, qubit, permutation);
+            mpi_policy, parallel_policy, local_state, phase1, phase2, qubit, permutation, communicator, environment);
         }
 
         template <
@@ -1055,7 +1057,7 @@ namespace ket
             local_state, qubits, permutation, buffer, datatype, communicator, environment);
 
           return ::ket::mpi::gate::phase_shift_detail::do_adj_phase_shift2(
-            mpi_policy, parallel_policy, local_state, phase1, phase2, qubit, permutation);
+            mpi_policy, parallel_policy, local_state, phase1, phase2, qubit, permutation, communicator, environment);
         }
       } // namespace phase_shift_detail
 
@@ -1234,7 +1236,8 @@ namespace ket
           RandomAccessRange& local_state,
           Real const phase1, Real const phase2, Real const phase3,
           ::ket::qubit<StateInteger, BitInteger> const qubit,
-          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation)
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          yampi::communicator const& communicator, yampi::environment const& environment)
         {
           if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))
             return ::ket::mpi::gate::page::phase_shift3(
@@ -1243,7 +1246,7 @@ namespace ket
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           auto const permutated_qubit = permutation[qubit];
           return ::ket::mpi::utility::for_each_local_range(
-            mpi_policy, local_state,
+            mpi_policy, local_state, communicator, environment,
             [parallel_policy, phase1, phase2, phase3, permutated_qubit](
               auto const first, auto const last)
             {
@@ -1252,7 +1255,7 @@ namespace ket
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::utility::for_each_local_range(
-            mpi_policy, local_state,
+            mpi_policy, local_state, communicator, environment,
             ::ket::mpi::gate::phase_shift_detail::make_call_phase_shift3(
               parallel_policy, phase1, phase2, phase3, permutation[qubit]));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -1280,7 +1283,7 @@ namespace ket
             local_state, qubits, permutation, buffer, communicator, environment);
 
           return ::ket::mpi::gate::phase_shift_detail::do_phase_shift3(
-            mpi_policy, parallel_policy, local_state, phase1, phase2, phase3, qubit, permutation);
+            mpi_policy, parallel_policy, local_state, phase1, phase2, phase3, qubit, permutation, communicator, environment);
         }
 
         template <
@@ -1306,7 +1309,7 @@ namespace ket
             local_state, qubits, permutation, buffer, datatype, communicator, environment);
 
           return ::ket::mpi::gate::phase_shift_detail::do_phase_shift3(
-            mpi_policy, parallel_policy, local_state, phase1, phase2, phase3, qubit, permutation);
+            mpi_policy, parallel_policy, local_state, phase1, phase2, phase3, qubit, permutation, communicator, environment);
         }
       } // namespace phase_shift_detail
 
@@ -1491,7 +1494,8 @@ namespace ket
           RandomAccessRange& local_state,
           Real const phase1, Real const phase2, Real const phase3,
           ::ket::qubit<StateInteger, BitInteger> const qubit,
-          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation)
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          yampi::communicator const& communicator, yampi::environment const& environment)
         {
           if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))
             return ::ket::mpi::gate::page::adj_phase_shift3(
@@ -1500,7 +1504,7 @@ namespace ket
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           auto const permutated_qubit = permutation[qubit];
           return ::ket::mpi::utility::for_each_local_range(
-            mpi_policy, local_state,
+            mpi_policy, local_state, communicator, environment,
             [parallel_policy, phase1, phase2, phase3, permutated_qubit](
               auto const first, auto const last)
             {
@@ -1509,7 +1513,7 @@ namespace ket
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::utility::for_each_local_range(
-            mpi_policy, local_state,
+            mpi_policy, local_state, communicator, environment,
             ::ket::mpi::gate::phase_shift_detail::make_call_adj_phase_shift3(
               parallel_policy, phase1, phase2, phase3, permutation[qubit]));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -1537,7 +1541,7 @@ namespace ket
             local_state, qubits, permutation, buffer, communicator, environment);
 
           return ::ket::mpi::gate::phase_shift_detail::do_adj_phase_shift3(
-            mpi_policy, parallel_policy, local_state, phase1, phase2, phase3, qubit, permutation);
+            mpi_policy, parallel_policy, local_state, phase1, phase2, phase3, qubit, permutation, communicator, environment);
         }
 
         template <
@@ -1563,7 +1567,7 @@ namespace ket
             local_state, qubits, permutation, buffer, datatype, communicator, environment);
 
           return ::ket::mpi::gate::phase_shift_detail::do_adj_phase_shift3(
-            mpi_policy, parallel_policy, local_state, phase1, phase2, phase3, qubit, permutation);
+            mpi_policy, parallel_policy, local_state, phase1, phase2, phase3, qubit, permutation, communicator, environment);
         }
       } // namespace phase_shift_detail
 

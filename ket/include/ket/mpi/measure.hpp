@@ -123,12 +123,12 @@ namespace ket
               mpi_policy, local_state, result_rank, local_result);
 
         ::ket::mpi::utility::fill(
-          mpi_policy, parallel_policy, local_state, complex_type{real_type{0}}, environment);
+          mpi_policy, parallel_policy, local_state, complex_type{real_type{0}}, communicator, environment);
         ::ket::utility::begin(local_state)[local_result] = complex_type{real_type{1}};
       }
       else
         ::ket::mpi::utility::fill(
-          mpi_policy, parallel_policy, local_state, complex_type{real_type{0}}, environment);
+          mpi_policy, parallel_policy, local_state, complex_type{real_type{0}}, communicator, environment);
 
       yampi::broadcast(result_rank, communicator).call(
         yampi::make_buffer(permutated_result), environment);
@@ -227,12 +227,12 @@ namespace ket
               mpi_policy, local_state, result_rank, local_result);
 
         ::ket::mpi::utility::fill(
-          mpi_policy, parallel_policy, local_state, complex_type{real_type{0}}, environment);
+          mpi_policy, parallel_policy, local_state, complex_type{real_type{0}}, communicator, environment);
         ::ket::utility::begin(local_state)[local_result] = complex_type{real_type{1}};
       }
       else
         ::ket::mpi::utility::fill(
-          mpi_policy, parallel_policy, local_state, complex_type{real_type{0}}, environment);
+          mpi_policy, parallel_policy, local_state, complex_type{real_type{0}}, communicator, environment);
 
       yampi::broadcast(result_rank, communicator).call(
         yampi::make_buffer(permutated_result, state_integer_datatype), environment);
@@ -363,12 +363,12 @@ namespace ket
               mpi_policy, local_state, result_rank, local_result);
 
         ::ket::mpi::utility::fill(
-          mpi_policy, parallel_policy, local_state, complex_type{real_type{0}}, environment);
+          mpi_policy, parallel_policy, local_state, complex_type{real_type{0}}, communicator, environment);
         ::ket::utility::begin(local_state)[local_result] = complex_type{real_type{1}};
       }
       else
         ::ket::mpi::utility::fill(
-          mpi_policy, parallel_policy, local_state, complex_type{real_type{0}}, environment);
+          mpi_policy, parallel_policy, local_state, complex_type{real_type{0}}, communicator, environment);
 
       yampi::broadcast(result_rank, communicator).call(
         yampi::make_buffer(permutated_result), environment);
@@ -462,12 +462,12 @@ namespace ket
               mpi_policy, local_state, result_rank, local_result);
 
         ::ket::mpi::utility::fill(
-          mpi_policy, parallel_policy, local_state, complex_type{real_type{0}}, environment);
+          mpi_policy, parallel_policy, local_state, complex_type{real_type{0}}, communicator, environment);
         ::ket::utility::begin(local_state)[local_result] = complex_type{real_type{1}};
       }
       else
         ::ket::mpi::utility::fill(
-          mpi_policy, parallel_policy, local_state, complex_type{real_type{0}}, environment);
+          mpi_policy, parallel_policy, local_state, complex_type{real_type{0}}, communicator, environment);
 
       yampi::broadcast(result_rank, communicator).call(
         yampi::make_buffer(permutated_result, state_integer_datatype), environment);
