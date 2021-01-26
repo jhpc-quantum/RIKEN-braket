@@ -4,6 +4,7 @@
 # include <cassert>
 # include <vector>
 # include <algorithm>
+# include <iterator>
 # include <memory>
 # include <utility>
 # include <initializer_list>
@@ -265,7 +266,7 @@ namespace ket
         auto previous_qubit = permutation.front();
         auto const last = ::ket::utility::end(permutation);
 
-        for (auto iter = ++::ket::utility::begin(permutation); iter != last; ++iter)
+        for (auto iter = std::next(::ket::utility::begin(permutation)); iter != last; ++iter)
           if (*iter == previous_qubit)
             return false;
           else
