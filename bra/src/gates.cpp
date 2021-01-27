@@ -252,14 +252,6 @@ namespace bra
   void gates::assign(std::istream& input_stream, size_type const num_reserved_gates)
 #endif // BRA_NO_MPI
   {
-#ifndef BRA_NO_MPI
-    auto const num_gqubits
-      = ket::utility::integer_log2<bit_integer_type>(communicator.size(environment));
-    if (ket::utility::integer_exp2<bit_integer_type>(num_gqubits)
-        != static_cast<bit_integer_type>(communicator.size(environment)))
-      throw wrong_mpi_communicator_size_error{};
-
-#endif // BRA_NO_MPI
     data_.clear();
     data_.reserve(num_reserved_gates);
 
