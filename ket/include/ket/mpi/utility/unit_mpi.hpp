@@ -1399,10 +1399,10 @@ namespace ket
           }; // struct call_function_if_local<Function0, Function1, StateInteger>
 
           template <typename Function0, typename Function1>
-          static call_function_if_local<Function0, Function1, StateInteger>
+          static call_function_if_local<Function0, Function1>
           make_call_function_if_local(Function0&& function0, Function1&& function1, StateInteger const target_mask)
           {
-            return call_function_if_local<Function0, Function1, StateInteger>{
+            return call_function_if_local<Function0, Function1>{
               std::forward<Function0>(function0), std::forward<Function1>(function1), target_mask};
           }
 #   endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
