@@ -1276,7 +1276,8 @@ namespace ket
 #   else // BOOST_NO_CXX14_GENERIC_LAMBDAS
                 for_each(
                   parallel_policy, local_state, first_index, last_integer, local_permutated_control_qubits,
-                  make_call_function_if_local(std::forward<Function0>(function0), std::forward<Function1>(function1), mask));
+                  make_call_function_if_local(
+                    std::forward<Function0>(function0), std::forward<Function1>(function1), target_mask));
 #   endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
               }
             }
@@ -1378,7 +1379,7 @@ namespace ket
           }
 
 #   ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
-          template <typename Function0, typename Function1, typename StateInteger>
+          template <typename Function0, typename Function1>
           struct call_function_if_local
           {
             Function0 function0_;
@@ -1397,7 +1398,7 @@ namespace ket
             }
           }; // struct call_function_if_local<Function0, Function1, StateInteger>
 
-          template <typename Function0, typename Function1, typename StateInteger>
+          template <typename Function0, typename Function1>
           static call_function_if_local<Function0, Function1, StateInteger>
           make_call_function_if_local(Function0&& function0, Function1&& function1, StateInteger const target_mask)
           {
