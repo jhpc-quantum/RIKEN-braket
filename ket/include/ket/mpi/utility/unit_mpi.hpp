@@ -92,8 +92,9 @@ namespace ket
               expected_num_data_blocks_{
                 generate_expected_num_data_blocks(num_unit_qubits, num_processes_per_unit)}
           {
+            assert(num_unit_qubits >= BitInteger{1u});
             assert(
-              num_processes_per_unit > NumProcesses{0u}
+              num_processes_per_unit >= NumProcesses{1u}
               and num_processes_per_unit <= ::ket::utility::integer_exp2<NumProcesses>(num_unit_qubits));
           }
 
@@ -107,7 +108,7 @@ namespace ket
 
          private:
           StateInteger generate_expected_num_data_blocks(
-            BitInteger const num_unit_qubits, NumProcesses const num_processes_per_unit) noexcept
+            BitInteger const num_unit_qubits, NumProcesses const num_processes_per_unit) const noexcept
           {
             // k* = 2^K / n_u.
             auto const ideal_num_data_blocks
@@ -158,7 +159,7 @@ namespace ket
           ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
           yampi::rank const rank)
         {
-          assert(rank.mpi_rank() > mpi_policy.num_processes_per_unit());
+          assert(rank.mpi_rank() >= 0);
           return rank % mpi_policy.num_processes_per_unit();
         }
 
@@ -175,6 +176,7 @@ namespace ket
           ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
           StateInteger const unit_qubit_value)
         {
+          assert(unit_qubit_value < ::ket::mpi::utility::policy::num_unit_qubit_values(mpi_policy));
           auto const result
             = static_cast<int>(unit_qubit_value / mpi_policy.expected_num_data_blocks());
           assert(result < mpi_policy.num_processes_per_unit());
@@ -186,18 +188,9 @@ namespace ket
         inline StateInteger data_block_index(
           ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
           StateInteger const unit_qubit_value)
-        { return unit_qubit_value % mpi_policy.expected_num_data_blocks(); }
-
-        // u = k r_u + i_u.
-        template <typename StateInteger, typename BitInteger, typename NumProcesses>
-        inline StateInteger unit_qubit_value(
-          ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
-          StateInteger const data_block_index, yampi::rank const rank_in_unit)
         {
-          auto const result
-            = mpi_policy.expected_num_data_blocks() * rank_in_unit.mpi_rank() + data_block_index;
-          assert(result < ::ket::mpi::utility::policy::num_unit_qubit_values(mpi_policy));
-          return result;
+          assert(unit_qubit_value < ::ket::mpi::utility::policy::num_unit_qubit_values(mpi_policy));
+          return unit_qubit_value % mpi_policy.expected_num_data_blocks();
         }
 
         // k~
@@ -206,9 +199,7 @@ namespace ket
           ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
           yampi::rank const rank_in_unit)
         {
-          assert(
-            rank_in_unit.mpi_rank() >= 0
-            and rank_in_unit.mpi_rank() < mpi_policy.num_processes_per_unit());
+          assert(rank_in_unit.mpi_rank() >= 0 and rank_in_unit.mpi_rank() < mpi_policy.num_processes_per_unit());
 
           // k (if 0 <= r_u < n_u-1), 2^K - (n_u-1) k (if r_u = n_u-1)
           return rank_in_unit == yampi::rank{static_cast<int>(mpi_policy.num_processes_per_unit()) - 1}
@@ -229,6 +220,20 @@ namespace ket
             ::ket::mpi::utility::policy::rank_in_unit(mpi_policy, communicator, environment));
         }
 
+        // u = k r_u + i_u.
+        template <typename StateInteger, typename BitInteger, typename NumProcesses>
+        inline StateInteger unit_qubit_value(
+          ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
+          StateInteger const data_block_index, yampi::rank const rank_in_unit)
+        {
+          assert(rank_in_unit.mpi_rank() >= 0 and rank_in_unit.mpi_rank() < mpi_policy.num_processes_per_unit());
+          assert(data_block_index < ::ket::mpi::utility::policy::num_data_blocks(mpi_policy, rank_in_unit));
+          auto const result
+            = mpi_policy.expected_num_data_blocks() * rank_in_unit.mpi_rank() + data_block_index;
+          assert(result < ::ket::mpi::utility::policy::num_unit_qubit_values(mpi_policy));
+          return result;
+        }
+
         // 2^M
         template <typename StateInteger, typename BitInteger, typename NumProcesses>
         inline StateInteger num_units(
@@ -238,7 +243,9 @@ namespace ket
           auto const result
             = static_cast<StateInteger>(communicator.size(environment))
               / static_cast<StateInteger>(mpi_policy.num_processes_per_unit());
-          assert(result * mpi_policy.num_processes_per_unit() == communicator.size(environment));
+          assert(
+            result * mpi_policy.num_processes_per_unit() == communicator.size(environment)
+            and ::ket::utility::integer_exp2<StateInteger>(::ket::utility::integer_log2<BitInteger>(result)) == result);
           return result;
         }
 
@@ -248,8 +255,10 @@ namespace ket
           ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const&,
           StateInteger const num_units)
         {
-          assert(num_units > StateInteger{0u});
-          return ::ket::utility::integer_log2<BitInteger>(num_units);
+          assert(num_units >= StateInteger{2u});
+          auto const result = ::ket::utility::integer_log2<BitInteger>(num_units);
+          assert(::ket::utility::integer_exp2<StateInteger>(result) == num_units);
+          return result;
         }
 
         // M
@@ -269,6 +278,7 @@ namespace ket
           ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
           yampi::rank const rank)
         {
+          assert(rank.mpi_rank() >= 0);
           return
             static_cast<StateInteger>(rank.mpi_rank())
             / static_cast<StateInteger>(mpi_policy.num_processes_per_unit());
@@ -279,7 +289,12 @@ namespace ket
         inline StateInteger global_qubit_value(
           ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
           yampi::communicator const& communicator, yampi::environment const& environment)
-        { return ::ket::mpi::utility::policy::global_qubit_value(mpi_policy, communicator.rank(environment)); }
+        {
+          auto const result
+            = ::ket::mpi::utility::policy::global_qubit_value(mpi_policy, communicator.rank(environment));
+          assert(result < ::ket::mpi::utility::policy::num_units(mpi_policy, communicator, environment));
+          return result;
+        }
 
         // r = g n_u + r_u
         template <typename StateInteger, typename BitInteger, typename NumProcesses>
@@ -287,7 +302,7 @@ namespace ket
           ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
           StateInteger const global_qubit_value, yampi::rank const rank_in_unit)
         {
-          assert(rank_in_unit.mpi_rank() < mpi_policy.num_processes_per_unit());
+          assert(rank_in_unit.mpi_rank() >= 0 and rank_in_unit.mpi_rank() < mpi_policy.num_processes_per_unit());
           return global_qubit_value * mpi_policy.num_processes_per_unit() + rank_in_unit;
         }
 
@@ -298,6 +313,7 @@ namespace ket
           StateInteger const global_qubit_value,
           yampi::communicator const& communicator, yampi::environment const& environment)
         {
+          assert(global_qubit_value < ::ket::mpi::utility::policy::num_units(mpi_policy, communicator, environment));
           return ::ket::mpi::utility::policy::rank(
             mpi_policy, global_qubit_value,
             ::ket::mpi::utility::policy::rank_in_unit(mpi_policy, communicator, environment));
@@ -309,6 +325,7 @@ namespace ket
           ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
           LocalState const& local_state, yampi::rank const rank_in_unit)
         {
+          assert(rank_in_unit.mpi_rank() >= 0 and rank_in_unit.mpi_rank() < mpi_policy.num_processes_per_unit());
           assert(boost::size(local_state) % ::ket::mpi::utility::policy::num_data_blocks(mpi_policy, rank_in_unit) == 0u);
           auto const result
             = static_cast<StateInteger>(
@@ -335,6 +352,7 @@ namespace ket
           ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
           LocalState const& local_state, StateInteger const unit_qubit_value)
         {
+          assert(unit_qubit_value < ::ket::mpi::utility::policy::num_unit_qubit_values(mpi_policy));
           return ::ket::mpi::utility::policy::data_block_size(
             mpi_policy, local_state,
             ::ket::mpi::utility::policy::rank_in_unit(mpi_policy, unit_qubit_value));
@@ -346,8 +364,10 @@ namespace ket
           ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const&,
           StateInteger const data_block_size)
         {
-          assert(data_block_size > StateInteger{0u});
-          return ::ket::utility::integer_log2<BitInteger>(data_block_size);
+          assert(data_block_size >= StateInteger{2u});
+          auto const result = ::ket::utility::integer_log2<BitInteger>(data_block_size);
+          assert(::ket::utility::integer_exp2<StateInteger>(result) == data_block_size);
+          return result;
         }
 
         // L
@@ -356,6 +376,7 @@ namespace ket
           ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
           LocalState const& local_state, yampi::rank const rank_in_unit)
         {
+          assert(rank_in_unit.mpi_rank() >= 0 and rank_in_unit.mpi_rank() < mpi_policy.num_processes_per_unit());
           return ::ket::mpi::utility::policy::num_local_qubits(
             mpi_policy,
             ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, rank_in_unit));
@@ -379,6 +400,7 @@ namespace ket
           ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
           LocalState const& local_state, StateInteger const unit_qubit_value)
         {
+          assert(unit_qubit_value < ::ket::mpi::utility::policy::num_unit_qubit_values(mpi_policy));
           return ::ket::mpi::utility::policy::num_local_qubits(
             mpi_policy,
             ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, unit_qubit_value));
@@ -1154,14 +1176,15 @@ namespace ket
             auto unit_permutated_control_qubits = std::array<qubit_type, 0u>{};
             auto local_permutated_control_qubits = std::array<qubit_type, 0u>{};
 
-            auto const rank = communicator.rank(environment);
-            auto const rank_in_unit = ::ket::mpi::utility::policy::rank_in_unit(mpi_policy, rank);
+            auto const present_rank = communicator.rank(environment);
+            auto const present_rank_in_unit = ::ket::mpi::utility::policy::rank_in_unit(mpi_policy, present_rank);
             auto const least_unit_permutated_qubit
-              = qubit_type{::ket::mpi::utility::policy::num_local_qubits(mpi_policy, local_state, rank_in_unit)};
+              = qubit_type{::ket::mpi::utility::policy::num_local_qubits(mpi_policy, local_state, present_rank_in_unit)};
             auto const least_global_permutated_qubit = least_unit_permutated_qubit + mpi_policy.num_unit_qubits();
 
             call_impl(
-              mpi_policy, parallel_policy, local_state, permutation, rank, rank_in_unit,
+              mpi_policy, parallel_policy, local_state, permutation,
+              present_rank, present_rank_in_unit,
               least_unit_permutated_qubit, least_global_permutated_qubit, target_qubit,
               std::forward<Function0>(function0),
               std::forward<Function1>(function1),
@@ -1179,7 +1202,7 @@ namespace ket
             ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
             ParallelPolicy const parallel_policy, LocalState& local_state,
             ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const& permutation,
-            yampi::rank const rank, yampi::rank const rank_in_unit,
+            yampi::rank const present_rank, yampi::rank const present_rank_in_unit,
             ::ket::qubit<StateInteger, BitInteger> const least_unit_permutated_qubit,
             ::ket::qubit<StateInteger, BitInteger> const least_global_permutated_qubit,
             ::ket::qubit<StateInteger, BitInteger> const target_qubit,
@@ -1205,7 +1228,8 @@ namespace ket
               new_local_permutated_control_qubits.back() = permutated_control_qubit;
 
               call_impl(
-                mpi_policy, parallel_policy, local_state, permutation, rank, rank_in_unit,
+                mpi_policy, parallel_policy, local_state, permutation,
+                present_rank, present_rank_in_unit,
                 least_unit_permutated_qubit, least_global_permutated_qubit, target_qubit,
                 std::forward<Function0>(function0),
                 std::forward<Function1>(function1),
@@ -1224,7 +1248,8 @@ namespace ket
               new_unit_permutated_control_qubits.back() = permutated_control_qubit;
 
               call_impl(
-                mpi_policy, parallel_policy, local_state, permutation, rank, rank_in_unit,
+                mpi_policy, parallel_policy, local_state, permutation,
+                present_rank, present_rank_in_unit,
                 least_unit_permutated_qubit, least_global_permutated_qubit, target_qubit,
                 std::forward<Function0>(function0),
                 std::forward<Function1>(function1),
@@ -1239,9 +1264,10 @@ namespace ket
               auto const mask
                 = one_state_integer << (permutated_control_qubit - least_global_permutated_qubit);
 
-              if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, rank) bitand mask) != zero_state_integer)
+              if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand mask) != zero_state_integer)
                 call_impl(
-                  mpi_policy, parallel_policy, local_state, permutation, rank, rank_in_unit,
+                  mpi_policy, parallel_policy, local_state, permutation,
+                  present_rank, present_rank_in_unit,
                   least_unit_permutated_qubit, least_global_permutated_qubit, target_qubit,
                   std::forward<Function0>(function0),
                   std::forward<Function1>(function1),
@@ -1258,7 +1284,7 @@ namespace ket
             ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
             ParallelPolicy const parallel_policy, LocalState& local_state,
             ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const& permutation,
-            yampi::rank const rank, yampi::rank const rank_in_unit,
+            yampi::rank const present_rank, yampi::rank const present_rank_in_unit,
             ::ket::qubit<StateInteger, BitInteger> const least_unit_permutated_qubit,
             ::ket::qubit<StateInteger, BitInteger> const least_global_permutated_qubit,
             ::ket::qubit<StateInteger, BitInteger> const target_qubit,
@@ -1273,6 +1299,11 @@ namespace ket
             static constexpr auto zero_state_integer = StateInteger{0u};
             static constexpr auto one_state_integer = StateInteger{1u};
 
+            auto const num_data_blocks
+              = ::ket::mpi::utility::policy::num_data_blocks(mpi_policy, present_rank_in_unit);
+            auto const data_block_size
+              = ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, present_rank_in_unit);
+
             auto const last_integer
               = (one_state_integer << least_unit_permutated_qubit) >> num_local_control_qubits;
 
@@ -1280,13 +1311,11 @@ namespace ket
             {
               auto const target_mask = one_state_integer << permutated_target_qubit;
 
-              auto const data_block_size
-                = ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, rank_in_unit);
               for (auto data_block_index = StateInteger{0u};
-                   data_block_index < data_block_size; ++data_block_index)
+                   data_block_index < num_data_blocks; ++data_block_index)
               {
                 auto const unit_qubit_value
-                  = ::ket::mpi::utility::policy::unit_qubit_value(mpi_policy, data_block_index, rank_in_unit);
+                  = ::ket::mpi::utility::policy::unit_qubit_value(mpi_policy, data_block_index, present_rank_in_unit);
 
                 using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
                 if (std::any_of(
@@ -1294,14 +1323,12 @@ namespace ket
                       [unit_qubit_value, least_unit_permutated_qubit](qubit_type const& qubit)
                       {
                         return
-                          unit_qubit_value bitand (one_state_integer << (qubit - least_unit_permutated_qubit))
+                          (unit_qubit_value bitand (one_state_integer << (qubit - least_unit_permutated_qubit)))
                             == zero_state_integer;
                       }))
                   continue;
 
-                auto const first_index
-                  = data_block_index
-                    * ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, rank_in_unit);
+                auto const first_index = data_block_index * data_block_size;
 #   ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
                 for_each(
                   parallel_policy, local_state, first_index, last_integer, local_permutated_control_qubits,
@@ -1324,13 +1351,11 @@ namespace ket
             {
               auto const target_mask = one_state_integer << (permutated_target_qubit - least_unit_permutated_qubit);
 
-              auto const data_block_size
-                = ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, rank_in_unit);
               for (auto data_block_index = StateInteger{0u};
-                   data_block_index < data_block_size; ++data_block_index)
+                   data_block_index < num_data_blocks; ++data_block_index)
               {
                 auto const unit_qubit_value
-                  = ::ket::mpi::utility::policy::unit_qubit_value(mpi_policy, data_block_index, rank_in_unit);
+                  = ::ket::mpi::utility::policy::unit_qubit_value(mpi_policy, data_block_index, present_rank_in_unit);
 
                 using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
                 if (std::any_of(
@@ -1338,15 +1363,13 @@ namespace ket
                       [unit_qubit_value, least_unit_permutated_qubit](qubit_type const& qubit)
                       {
                         return
-                          unit_qubit_value bitand (one_state_integer << (qubit - least_unit_permutated_qubit))
+                          (unit_qubit_value bitand (one_state_integer << (qubit - least_unit_permutated_qubit)))
                             == zero_state_integer;
                       }))
                   continue;
 
-                auto const first_index
-                  = data_block_index
-                    * ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, rank_in_unit);
-                if (unit_qubit_value bitand target_mask == zero_state_integer)
+                auto const first_index = data_block_index * data_block_size;
+                if ((unit_qubit_value bitand target_mask) == zero_state_integer)
                   for_each(
                     parallel_policy, local_state, first_index, last_integer, local_permutated_control_qubits,
                     std::forward<Function0>(function0));
@@ -1360,16 +1383,13 @@ namespace ket
             {
               auto const target_mask = one_state_integer << (permutated_target_qubit - least_global_permutated_qubit);
 
-              auto const data_block_size
-                = ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, rank_in_unit);
-
-              if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, rank) bitand target_mask)
+              if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand target_mask)
                   == zero_state_integer)
                 for (auto data_block_index = StateInteger{0u};
-                     data_block_index < data_block_size; ++data_block_index)
+                     data_block_index < num_data_blocks; ++data_block_index)
                 {
                   auto const unit_qubit_value
-                    = ::ket::mpi::utility::policy::unit_qubit_value(mpi_policy, data_block_index, rank_in_unit);
+                    = ::ket::mpi::utility::policy::unit_qubit_value(mpi_policy, data_block_index, present_rank_in_unit);
 
                   using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
                   if (std::any_of(
@@ -1377,24 +1397,22 @@ namespace ket
                         [unit_qubit_value, least_unit_permutated_qubit](qubit_type const& qubit)
                         {
                           return
-                            unit_qubit_value bitand (one_state_integer << (qubit - least_unit_permutated_qubit))
+                            (unit_qubit_value bitand (one_state_integer << (qubit - least_unit_permutated_qubit)))
                               == zero_state_integer;
                         }))
                     continue;
 
-                  auto const first_index
-                    = data_block_index
-                      * ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, rank_in_unit);
+                  auto const first_index = data_block_index * data_block_size;
                   for_each(
                     parallel_policy, local_state, first_index, last_integer, local_permutated_control_qubits,
                     std::forward<Function0>(function0));
                 }
               else
                 for (auto data_block_index = StateInteger{0u};
-                     data_block_index < data_block_size; ++data_block_index)
+                     data_block_index < num_data_blocks; ++data_block_index)
                 {
                   auto const unit_qubit_value
-                    = ::ket::mpi::utility::policy::unit_qubit_value(mpi_policy, data_block_index, rank_in_unit);
+                    = ::ket::mpi::utility::policy::unit_qubit_value(mpi_policy, data_block_index, present_rank_in_unit);
 
                   using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
                   if (std::any_of(
@@ -1402,14 +1420,12 @@ namespace ket
                         [unit_qubit_value, least_unit_permutated_qubit](qubit_type const& qubit)
                         {
                           return
-                            unit_qubit_value bitand (one_state_integer << (qubit - least_unit_permutated_qubit))
+                            (unit_qubit_value bitand (one_state_integer << (qubit - least_unit_permutated_qubit)))
                               == zero_state_integer;
                         }))
                     continue;
 
-                  auto const first_index
-                    = data_block_index
-                      * ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, rank_in_unit);
+                  auto const first_index = data_block_index * data_block_size;
                   for_each(
                     parallel_policy, local_state, first_index, last_integer, local_permutated_control_qubits,
                     std::forward<Function1>(function1));
@@ -1424,6 +1440,12 @@ namespace ket
             Function0 function0_;
             Function1 function1_;
             StateInteger target_mask_;
+
+            call_function_if_local(Function0&& function0, Function1&& function1, StateInteger const target_mask)
+              : function0_{std::forward<Function0>(function0)},
+                function1_{std::forward<Function1>(function1)},
+                target_mask_{target_mask}
+            { }
 
             template <typename Iterator>
             void operator()(Iterator const iter, StateInteger const state_integer)
