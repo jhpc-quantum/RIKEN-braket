@@ -107,12 +107,12 @@ namespace bra
 
 #ifndef BRA_NO_MPI
   gates::gates()
-    : data_{}, num_qubits_{}, num_lqubits_{},
+    : data_{}, num_qubits_{}, num_lqubits_{}, num_uqubits_{}, num_processes_per_unit_{1u},
       initial_state_value_{}, initial_permutation_{}, phase_coefficients_{}, root_{}
   { }
 
   gates::gates(gates::allocator_type const& allocator)
-    : data_{allocator}, num_qubits_{}, num_lqubits_{},
+    : data_{allocator}, num_qubits_{}, num_lqubits_{}, num_uqubits_{}, num_processes_per_unit_{1u},
       initial_state_value_{}, initial_permutation_{}, phase_coefficients_{}, root_{}
   { }
 
@@ -120,6 +120,8 @@ namespace bra
       : data_{std::move(other.data_), allocator},
         num_qubits_{std::move(other.num_qubits_)},
         num_lqubits_{std::move(other.num_lqubits_)},
+        num_uqubits_{std::move(other.num_uqubits_)},
+        num_processes_per_unit_{std::move(other.num_processes_per_unit_)},
         initial_state_value_{std::move(other.initial_state_value_)},
         initial_permutation_{std::move(other.initial_permutation_)},
         phase_coefficients_{std::move(other.phase_coefficients_)},
@@ -146,12 +148,18 @@ namespace bra
 
 #ifndef BRA_NO_MPI
   gates::gates(
-    std::istream& input_stream, yampi::environment const& environment,
+    std::istream& input_stream,
+    bit_integer_type num_uqubits, unsigned int num_processes_per_unit,
+    yampi::environment const& environment,
     yampi::rank const root, yampi::communicator const& communicator,
     size_type const num_reserved_gates)
     : data_{}, num_qubits_{}, num_lqubits_{},
+      num_uqubits_{num_uqubits}, num_processes_per_unit_{num_processes_per_unit},
       initial_state_value_{}, initial_permutation_{}, phase_coefficients_{}, root_{root}
-  { assign(input_stream, environment, communicator, num_reserved_gates); }
+  {
+    assert(num_processes_per_unit >= 1u);
+    assign(input_stream, environment, communicator, num_reserved_gates);
+  }
 #else // BRA_NO_MPI
   gates::gates(std::istream& input_stream)
     : data_{}, num_qubits_{},
@@ -170,6 +178,8 @@ namespace bra
     return data_ == other.data_
       and num_qubits_ == other.num_qubits_
       and num_lqubits_ == other.num_lqubits_
+      and num_uqubits_ == other.num_uqubits_
+      and num_processes_per_unit_ == other.num_processes_per_unit_
       and initial_state_value_ == other.initial_state_value_
       and initial_permutation_ == other.initial_permutation_
       and phase_coefficients_ == other.phase_coefficients_
@@ -188,8 +198,9 @@ namespace bra
     yampi::communicator const& communicator, yampi::environment const& environment)
   {
     auto const num_gqubits
-      = ket::utility::integer_log2<bit_integer_type>(communicator.size(environment));
-    set_num_qubits_params(new_num_qubits - num_gqubits, num_gqubits, communicator, environment);
+      = ket::utility::integer_log2<bit_integer_type>(
+          communicator.size(environment) / num_processes_per_unit_);
+    set_num_qubits_params(new_num_qubits - num_gqubits - num_uqubits_, num_gqubits, communicator, environment);
   }
 
   void gates::num_lqubits(
@@ -198,7 +209,8 @@ namespace bra
   {
     set_num_qubits_params(
       new_num_lqubits,
-      ket::utility::integer_log2<bit_integer_type>(communicator.size(environment)),
+      ket::utility::integer_log2<bit_integer_type>(
+        communicator.size(environment) / num_processes_per_unit_),
       communicator, environment);
   }
 #else // BRA_NO_MPI
@@ -211,12 +223,12 @@ namespace bra
     bit_integer_type const new_num_lqubits, bit_integer_type const num_gqubits,
     yampi::communicator const& communicator, yampi::environment const& environment)
   {
-    if (ket::utility::integer_exp2<bit_integer_type>(num_gqubits)
+    if (ket::utility::integer_exp2<bit_integer_type>(num_gqubits) * num_processes_per_unit_
         != static_cast<bit_integer_type>(communicator.size(environment)))
       throw wrong_mpi_communicator_size_error{};
 
     num_lqubits_ = new_num_lqubits;
-    num_qubits_ = new_num_lqubits + num_gqubits;
+    num_qubits_ = new_num_lqubits + num_uqubits_ + num_gqubits;
     ket::utility::generate_phase_coefficients(phase_coefficients_, num_qubits_);
 
     initial_permutation_.clear();
@@ -240,14 +252,6 @@ namespace bra
   void gates::assign(std::istream& input_stream, size_type const num_reserved_gates)
 #endif // BRA_NO_MPI
   {
-#ifndef BRA_NO_MPI
-    auto const num_gqubits
-      = ket::utility::integer_log2<bit_integer_type>(communicator.size(environment));
-    if (ket::utility::integer_exp2<bit_integer_type>(num_gqubits)
-        != static_cast<bit_integer_type>(communicator.size(environment)))
-      throw wrong_mpi_communicator_size_error{};
-
-#endif // BRA_NO_MPI
     data_.clear();
     data_.reserve(num_reserved_gates);
 

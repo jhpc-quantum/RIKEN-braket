@@ -88,7 +88,8 @@ namespace ket
           Complex const& phase_coefficient,
           ::ket::qubit<StateInteger, BitInteger> const target_qubit,
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit,
-          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation)
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          yampi::communicator const& communicator, yampi::environment const& environment)
         {
           if (::ket::mpi::page::is_on_page(target_qubit, local_state, permutation))
           {
@@ -112,7 +113,7 @@ namespace ket
           auto const permutated_control_qubit
             = ::ket::make_control(permutation[control_qubit.qubit()]);
           return ::ket::mpi::utility::for_each_local_range(
-            mpi_policy, local_state,
+            mpi_policy, local_state, communicator, environment,
             [parallel_policy, &phase_coefficient, permutated_target_qubit, permutated_control_qubit](
               auto const first, auto const last)
             {
@@ -122,7 +123,7 @@ namespace ket
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::utility::for_each_local_range(
-            mpi_policy, local_state,
+            mpi_policy, local_state, communicator, environment,
             ::ket::mpi::gate::controlled_phase_shift_detail::make_call_controlled_phase_shift_coeff(
               parallel_policy, phase_coefficient,
               permutation[target_qubit],
@@ -154,7 +155,7 @@ namespace ket
 
           return ::ket::mpi::gate::controlled_phase_shift_detail::do_controlled_phase_shift_coeff(
             mpi_policy, parallel_policy,
-            local_state, phase_coefficient, target_qubit, control_qubit, permutation);
+            local_state, phase_coefficient, target_qubit, control_qubit, permutation, communicator, environment);
         }
 
         template <
@@ -182,7 +183,7 @@ namespace ket
 
           return ::ket::mpi::gate::controlled_phase_shift_detail::do_controlled_phase_shift_coeff(
             mpi_policy, parallel_policy,
-            local_state, phase_coefficient, target_qubit, control_qubit, permutation);
+            local_state, phase_coefficient, target_qubit, control_qubit, permutation, communicator, environment);
         }
       } // namespace controlled_phase_shift_detail
 

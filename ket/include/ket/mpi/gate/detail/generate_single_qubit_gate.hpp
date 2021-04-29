@@ -19,7 +19,8 @@ namespace ket\
           MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,\
           RandomAccessRange& local_state,\
           ::ket::qubit<StateInteger, BitInteger> const qubit,\
-          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation)\
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,\
+          yampi::communicator const& communicator, yampi::environment const& environment)\
         {\
           if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))\
             return ::ket::mpi::gate::page::gate_name(\
@@ -27,7 +28,7 @@ namespace ket\
 \
           auto const permutated_qubit = permutation[qubit];\
           return ::ket::mpi::utility::for_each_local_range(\
-            mpi_policy, local_state,\
+            mpi_policy, local_state, communicator, environment,\
             [parallel_policy, permutated_qubit](auto const first, auto const last)\
             { ::ket::gate::gate_name(parallel_policy, first, last, permutated_qubit); });\
         }\
@@ -56,7 +57,7 @@ namespace ket\
           local_state, qubits, permutation, buffer, communicator, environment);\
 \
         return ::ket::mpi::gate::gate_name ## _detail::gate_name(\
-          mpi_policy, parallel_policy, local_state, qubit, permutation);\
+          mpi_policy, parallel_policy, local_state, qubit, permutation, communicator, environment);\
       }\
 \
       template <\
@@ -83,7 +84,7 @@ namespace ket\
           local_state, qubits, permutation, buffer, datatype, communicator, environment);\
 \
         return ::ket::mpi::gate::gate_name ## _detail::gate_name(\
-          mpi_policy, parallel_policy, local_state, qubit, permutation);\
+          mpi_policy, parallel_policy, local_state, qubit, permutation, communicator, environment);\
       }\
 \
       template <\
@@ -170,7 +171,8 @@ namespace ket\
           MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,\
           RandomAccessRange& local_state,\
           ::ket::qubit<StateInteger, BitInteger> const qubit,\
-          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation)\
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,\
+          yampi::communicator const& communicator, yampi::environment const& environment)\
         {\
           if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))\
             return ::ket::mpi::gate::page::adj_ ## gate_name(\
@@ -178,7 +180,7 @@ namespace ket\
 \
           auto const permutated_qubit = permutation[qubit];\
           return ::ket::mpi::utility::for_each_local_range(\
-            mpi_policy, local_state,\
+            mpi_policy, local_state, communicator, environment,\
             [parallel_policy, permutated_qubit](auto const first, auto const last)\
             { ::ket::gate::adj_ ## gate_name(parallel_policy, first, last, permutated_qubit); });\
         }\
@@ -207,7 +209,7 @@ namespace ket\
           local_state, qubits, permutation, buffer, communicator, environment);\
 \
         return ::ket::mpi::gate::gate_name ## _detail::adj_ ## gate_name(\
-          mpi_policy, parallel_policy, local_state, qubit, permutation);\
+          mpi_policy, parallel_policy, local_state, qubit, permutation, communicator, environment);\
       }\
 \
       template <\
@@ -234,7 +236,7 @@ namespace ket\
           local_state, qubits, permutation, buffer, datatype, communicator, environment);\
 \
         return ::ket::mpi::gate::gate_name ## _detail::adj_ ## gate_name(\
-          mpi_policy, parallel_policy, local_state, qubit, permutation);\
+          mpi_policy, parallel_policy, local_state, qubit, permutation, communicator, environment);\
       }\
 \
       template <\
@@ -357,14 +359,15 @@ namespace ket\
           MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,\
           RandomAccessRange& local_state,\
           ::ket::qubit<StateInteger, BitInteger> const qubit,\
-          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation)\
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,\
+          yampi::communicator const& communicator, yampi::environment const& environment)\
         {\
           if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))\
             return ::ket::mpi::gate::page::gate_name(\
               mpi_policy, parallel_policy, local_state, qubit, permutation);\
 \
           return ::ket::mpi::utility::for_each_local_range(\
-            mpi_policy, local_state,\
+            mpi_policy, local_state, communicator, environment,\
             ::ket::mpi::gate::gate_name ## _detail::make_call_ ## gate_name(\
               parallel_policy, permutation[qubit]));\
         }\
@@ -393,7 +396,7 @@ namespace ket\
           local_state, qubits, permutation, buffer, communicator, environment);\
 \
         return ::ket::mpi::gate::gate_name ## _detail::gate_name(\
-          mpi_policy, parallel_policy, local_state, qubit, permutation);\
+          mpi_policy, parallel_policy, local_state, qubit, permutation, communicator, environment);\
       }\
 \
       template <\
@@ -420,7 +423,7 @@ namespace ket\
           local_state, qubits, permutation, buffer, datatype, communicator, environment);\
 \
         return ::ket::mpi::gate::gate_name ## _detail::gate_name(\
-          mpi_policy, parallel_policy, local_state, qubit, permutation);\
+          mpi_policy, parallel_policy, local_state, qubit, permutation, communicator, environment);\
       }\
 \
       template <\
@@ -533,14 +536,15 @@ namespace ket\
           MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,\
           RandomAccessRange& local_state,\
           ::ket::qubit<StateInteger, BitInteger> const qubit,\
-          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation)\
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,\
+          yampi::communicator const& communicator, yampi::environment const& environment)\
         {\
           if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))\
             return ::ket::mpi::gate::page::adj_ ## gate_name(\
               mpi_policy, parallel_policy, local_state, qubit, permutation);\
 \
           return ::ket::mpi::utility::for_each_local_range(\
-            mpi_policy, local_state,\
+            mpi_policy, local_state, communicator, environment,\
             ::ket::mpi::gate::gate_name ## _detail::make_call_adj_ ## gate_name(\
               parallel_policy, permutation[qubit]));\
         }\
@@ -569,7 +573,7 @@ namespace ket\
           local_state, qubits, permutation, buffer, communicator, environment);\
 \
         return ::ket::mpi::gate::gate_name ## _detail::adj_ ## gate_name(\
-          mpi_policy, parallel_policy, local_state, qubit, permutation);\
+          mpi_policy, parallel_policy, local_state, qubit, permutation, communicator, environment);\
       }\
 \
       template <\
@@ -596,7 +600,7 @@ namespace ket\
           local_state, qubits, permutation, buffer, datatype, communicator, environment);\
 \
         return ::ket::mpi::gate::gate_name ## _detail::adj_ ## gate_name(\
-          mpi_policy, parallel_policy, local_state, qubit, permutation);\
+          mpi_policy, parallel_policy, local_state, qubit, permutation, communicator, environment);\
       }\
 \
       template <\

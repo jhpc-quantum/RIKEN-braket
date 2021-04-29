@@ -3,6 +3,7 @@
 
 # include <boost/config.hpp>
 
+# include <yampi/communicator.hpp>
 # include <yampi/environment.hpp>
 
 # include <ket/utility/loop_n.hpp>
@@ -48,16 +49,17 @@ namespace ket
       inline LocalState& fill(
         MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
         LocalState& local_state, Value const& value,
+        yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
         return ::ket::mpi::utility::for_each_local_range(
-          mpi_policy, local_state,
+          mpi_policy, local_state, communicator, environment,
           [parallel_policy, &value](auto const first, auto const last)
           { ::ket::utility::fill(parallel_policy, first, last, value); });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
         return ::ket::mpi::utility::for_each_local_range(
-          mpi_policy, local_state,
+          mpi_policy, local_state, communicator, environment,
           ::ket::mpi::utility::fill_detail::make_fill(parallel_policy, value));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
       }
@@ -65,12 +67,13 @@ namespace ket
       template <typename LocalState, typename Value>
       inline LocalState& fill(
         LocalState& local_state, Value const& value,
+        yampi::communicator const& communicator,
         yampi::environment const& environment)
       {
         return ::ket::mpi::utility::fill(
           ::ket::mpi::utility::policy::make_general_mpi(),
           ::ket::utility::policy::make_sequential(),
-          local_state, value, environment);
+          local_state, value, communicator, environment);
       }
     } // namespace utility
   } // namespace mpi

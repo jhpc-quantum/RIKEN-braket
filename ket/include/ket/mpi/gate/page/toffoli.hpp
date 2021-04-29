@@ -730,12 +730,12 @@ namespace ket
         // tccp: all of target qubit and two control qubits are on page
         template <
           typename MpiPolicy, typename ParallelPolicy,
-          typename Complex, int num_page_qubits_, typename StateAllocator,
+          typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename PermutationAllocator>
-        inline ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>&
+        inline RandomAccessRange&
         adj_toffoli_tccp(
           MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
-          ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>& local_state,
+          RandomAccessRange& local_state,
           ::ket::qubit<StateInteger, BitInteger> const target_qubit,
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
@@ -750,12 +750,12 @@ namespace ket
         // tcp: target qubit and one of two control qubits are on page
         template <
           typename MpiPolicy, typename ParallelPolicy,
-          typename Complex, int num_page_qubits_, typename StateAllocator,
+          typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename PermutationAllocator>
-        inline ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>&
+        inline RandomAccessRange&
         adj_toffoli_tcp(
           MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
-          ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>& local_state,
+          RandomAccessRange& local_state,
           ::ket::qubit<StateInteger, BitInteger> const target_qubit,
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const& page_control_qubit,
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const& nonpage_control_qubit,
@@ -770,12 +770,12 @@ namespace ket
         // ccp: two control qubits are on page
         template <
           typename MpiPolicy, typename ParallelPolicy,
-          typename Complex, int num_page_qubits_, typename StateAllocator,
+          typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename PermutationAllocator>
-        inline ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>&
+        inline RandomAccessRange&
         adj_toffoli_ccp(
           MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
-          ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>& local_state,
+          RandomAccessRange& local_state,
           ::ket::qubit<StateInteger, BitInteger> const target_qubit,
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
@@ -790,12 +790,12 @@ namespace ket
         // tp: only target qubit is on page
         template <
           typename MpiPolicy, typename ParallelPolicy,
-          typename Complex, int num_page_qubits_, typename StateAllocator,
+          typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename PermutationAllocator>
-        inline ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>&
+        inline RandomAccessRange&
         adj_toffoli_tp(
           MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
-          ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>& local_state,
+          RandomAccessRange& local_state,
           ::ket::qubit<StateInteger, BitInteger> const target_qubit,
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
@@ -810,12 +810,12 @@ namespace ket
         // cp: only one of control qubit is on page
         template <
           typename MpiPolicy, typename ParallelPolicy,
-          typename Complex, int num_page_qubits_, typename StateAllocator,
+          typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename PermutationAllocator>
-        inline ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>&
+        inline RandomAccessRange&
         adj_toffoli_cp(
           MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
-          ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>& local_state,
+          RandomAccessRange& local_state,
           ::ket::qubit<StateInteger, BitInteger> const target_qubit,
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const& page_control_qubit,
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const& nonpage_control_qubit,

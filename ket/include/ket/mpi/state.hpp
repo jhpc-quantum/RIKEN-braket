@@ -41,7 +41,7 @@
 # include <ket/mpi/utility/transform_inclusive_scan.hpp>
 # include <ket/mpi/utility/transform_inclusive_scan_self.hpp>
 # include <ket/mpi/utility/upper_bound.hpp>
-# include <ket/mpi/utility/detail/swap_local_qubits.hpp>
+# include <ket/mpi/utility/detail/swap_permutated_local_qubits.hpp>
 
 # if __cplusplus >= 201703L
 #   define KET_is_nothrow_swappable std::is_nothrow_swappable
@@ -387,7 +387,8 @@ namespace ket
         using ::ket::mpi::permutate_bits;
         auto const rank_index
           = ::ket::mpi::utility::qubit_value_to_rank_index(
-              mpi_policy, result, permutate_bits(permutation, initial_integer));
+              mpi_policy, result, permutate_bits(permutation, initial_integer),
+              communicator, environment);
 
         if (communicator.rank(environment) == rank_index.first)
           result[rank_index.second] = value_type{1};
@@ -547,16 +548,18 @@ namespace ket
       }
 
       template <int num_page_qubits>
-      struct swap_local_qubits
+      struct swap_permutated_local_qubits
       {
         template <
-          typename ParallelPolicy, typename Complex, typename Allocator,
+          typename MpiPolicy, typename ParallelPolicy, typename Complex, typename Allocator,
           typename StateInteger, typename BitInteger>
         static void call(
+          MpiPolicy const mpi_policy,
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, num_page_qubits, Allocator>& local_state,
           ::ket::qubit<StateInteger, BitInteger> const permutated_qubit1,
-          ::ket::qubit<StateInteger, BitInteger> const permutated_qubit2)
+          ::ket::qubit<StateInteger, BitInteger> const permutated_qubit2,
+          yampi::communicator const& communicator, yampi::environment const& environment)
         {
           static_assert(num_page_qubits >= 2, "num_page_qubits should be at least 2 if using this function");
           if (local_state.is_page_qubit(permutated_qubit1))
@@ -573,25 +576,26 @@ namespace ket
               parallel_policy, local_state, permutated_qubit2, permutated_qubit1);
           else
           {
-            // In the process of "make_local_swap_qubit_swappable, it should not come to this clause
+            // In the process of "make_local_swap_qubit, it should not come to this clause
             typedef std::vector<Complex, Allocator> dummy_local_state_type;
-            ::ket::mpi::utility::dispatch::swap_local_qubits<dummy_local_state_type>::call(
-              parallel_policy, local_state, permutated_qubit1, permutated_qubit2);
+            ::ket::mpi::utility::dispatch::swap_permutated_local_qubits<MpiPolicy, dummy_local_state_type>::call(
+              mpi_policy, parallel_policy, local_state, permutated_qubit1, permutated_qubit2, communicator, environment);
           }
         }
-      }; // struct swap_local_qubits<num_page_qubits>
+      }; // struct swap_permutated_local_qubits<num_page_qubits>
 
       template <>
-      struct swap_local_qubits<1>
+      struct swap_permutated_local_qubits<1>
       {
         template <
-          typename ParallelPolicy, typename Complex, typename Allocator,
+          typename MpiPolicy, typename ParallelPolicy, typename Complex, typename Allocator,
           typename StateInteger, typename BitInteger>
         static void call(
-          ParallelPolicy const parallel_policy,
+          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, 1, Allocator>& local_state,
           ::ket::qubit<StateInteger, BitInteger> const permutated_qubit1,
-          ::ket::qubit<StateInteger, BitInteger> const permutated_qubit2)
+          ::ket::qubit<StateInteger, BitInteger> const permutated_qubit2,
+          yampi::communicator const& communicator, yampi::environment const& environment)
         {
           if (local_state.is_page_qubit(permutated_qubit1))
             ::ket::mpi::state_detail::swap_page_and_nonpage_qubits(
@@ -601,13 +605,13 @@ namespace ket
               parallel_policy, local_state, permutated_qubit2, permutated_qubit1);
           else
           {
-            // In the process of "make_local_swap_qubit_swappable, it should not come to this clause
+            // In the process of "make_local_swap_qubit, it should not come to this clause
             typedef std::vector<Complex, Allocator> dummy_local_state_type;
-            ::ket::mpi::utility::dispatch::swap_local_qubits<dummy_local_state_type>::call(
-              parallel_policy, local_state, permutated_qubit1, permutated_qubit2);
+            ::ket::mpi::utility::dispatch::swap_permutated_local_qubits<MpiPolicy, dummy_local_state_type>::call(
+              mpi_policy, parallel_policy, local_state, permutated_qubit1, permutated_qubit2, communicator, environment);
           }
         }
-      }; // struct swap_local_qubits<1>
+      }; // struct swap_permutated_local_qubits<1>
 
       template <int num_page_qubits>
       struct interchange_qubits
@@ -728,7 +732,9 @@ namespace ket
           typename Complex, typename Allocator,
           typename Function>
         static ::ket::mpi::state<Complex, num_page_qubits, Allocator>& call(
+          ::ket::mpi::utility::policy::general_mpi const,
           ::ket::mpi::state<Complex, num_page_qubits, Allocator>& local_state,
+          yampi::communicator const&, yampi::environment const&,
           Function&& function)
         {
           // Gates should not be on page qubits
@@ -745,7 +751,9 @@ namespace ket
           typename Complex, typename Allocator,
           typename Function>
         static ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& call(
+          ::ket::mpi::utility::policy::general_mpi const,
           ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state,
+          yampi::communicator const&, yampi::environment const&,
           Function&& function)
         {
           // Gates should not be on page qubits
@@ -768,6 +776,7 @@ namespace ket
           typename StateInteger, typename BitInteger, typename PermutationAllocator,
           typename Function0, typename Function1, typename... ControlQubits>
         static void call(
+          ::ket::mpi::utility::policy::general_mpi const,
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, num_page_qubits, Allocator>& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, PermutationAllocator> const& permutation,
@@ -2180,7 +2189,8 @@ namespace ket
         using ::ket::mpi::permutate_bits;
         auto const rank_index
           = ::ket::mpi::utility::qubit_value_to_rank_index(
-              mpi_policy, result, permutate_bits(permutation, initial_integer));
+              mpi_policy, result, permutate_bits(permutation, initial_integer),
+              communicator, environment);
 
         if (communicator.rank(environment) == rank_index.first)
           result[rank_index.second] = value_type{1};
@@ -2225,21 +2235,22 @@ namespace ket
     namespace state_detail
     {
       template <>
-      struct swap_local_qubits<0>
+      struct swap_permutated_local_qubits<0>
       {
         template <
-          typename ParallelPolicy, typename Complex, typename Allocator,
+          typename MpiPolicy, typename ParallelPolicy, typename Complex, typename Allocator,
           typename StateInteger, typename BitInteger>
         static void call(
-          ParallelPolicy const parallel_policy,
+          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, 0, Allocator>& local_state,
           ::ket::qubit<StateInteger, BitInteger> const permutated_qubit1,
-          ::ket::qubit<StateInteger, BitInteger> const permutated_qubit2)
+          ::ket::qubit<StateInteger, BitInteger> const permutated_qubit2,
+          yampi::communicator const& communicator, yampi::environment const& environment)
         {
-          ::ket::mpi::utility::detail::swap_local_qubits(
-            parallel_policy, local_state.data(), permutated_qubit1, permutated_qubit2);
+          ::ket::mpi::utility::detail::swap_permutated_local_qubits(
+            mpi_policy, parallel_policy, local_state.data(), permutated_qubit1, permutated_qubit2, communicator, environment);
         }
-      }; // struct swap_local_qubits<0>
+      }; // struct swap_permutated_local_qubits<0>
 
       template <>
       struct interchange_qubits<0>
@@ -2283,14 +2294,17 @@ namespace ket
           typename Complex, typename Allocator,
           typename Function>
         static ::ket::mpi::state<Complex, 0, Allocator>& call(
-          ::ket::mpi::state<Complex, 0, Allocator>& local_state, Function&& function)
+          ::ket::mpi::utility::policy::general_mpi const mpi_policy,
+          ::ket::mpi::state<Complex, 0, Allocator>& local_state,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          Function&& function)
         {
           using dummy_local_state_type = std::vector<Complex, Allocator>;
           using for_each_local_range_type
             = ::ket::mpi::utility::dispatch::for_each_local_range<
                 ::ket::mpi::utility::policy::general_mpi, dummy_local_state_type>;
           for_each_local_range_type::call(
-            local_state.data(), std::forward<Function>(function));
+            mpi_policy, local_state.data(), communicator, environment, std::forward<Function>(function));
           return local_state;
         }
 
@@ -2298,14 +2312,17 @@ namespace ket
           typename Complex, typename Allocator,
           typename Function>
         static ::ket::mpi::state<Complex, 0, Allocator> const& call(
-          ::ket::mpi::state<Complex, 0, Allocator> const& local_state, Function&& function)
+          ::ket::mpi::utility::policy::general_mpi const mpi_policy,
+          ::ket::mpi::state<Complex, 0, Allocator> const& local_state,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          Function&& function)
         {
           using dummy_local_state_type = std::vector<Complex, Allocator>;
           using for_each_local_range_type
             = ::ket::mpi::utility::dispatch::for_each_local_range<
                 ::ket::mpi::utility::policy::general_mpi, dummy_local_state_type>;
           for_each_local_range_type::call(
-            local_state.data(), std::forward<Function>(function));
+            mpi_policy, local_state.data(), communicator, environment, std::forward<Function>(function));
           return local_state;
         }
       }; // struct for_each_local_range<0>
@@ -2319,6 +2336,7 @@ namespace ket
           typename StateInteger, typename BitInteger, typename PermutationAllocator,
           typename Function0, typename Function1, typename... ControlQubits>
         static void call(
+          ::ket::mpi::utility::policy::general_mpi const mpi_policy,
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, 0, Allocator>& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, PermutationAllocator> const& permutation,
@@ -2333,7 +2351,7 @@ namespace ket
             = ::ket::mpi::utility::dispatch::diagonal_loop<
                 ::ket::mpi::utility::policy::general_mpi, dummy_local_state_type>;
           diagonal_loop_type::call(
-            parallel_policy, local_state.data(), permutation, communicator, environment,
+            mpi_policy, parallel_policy, local_state.data(), permutation, communicator, environment,
             target_qubit,
             std::forward<Function0>(function0), std::forward<Function1>(function1),
             control_qubits...);
@@ -2433,25 +2451,27 @@ namespace ket
     {
       namespace dispatch
       {
-        template <typename LocalState_>
-        struct swap_local_qubits;
+        template <typename MpiPolicy, typename LocalState_>
+        struct swap_permutated_local_qubits;
 
         template <typename Complex, int num_page_qubits, typename Allocator>
-        struct swap_local_qubits< ::ket::mpi::state<Complex, num_page_qubits, Allocator> >
+        struct swap_permutated_local_qubits< ::ket::mpi::utility::policy::general_mpi, ::ket::mpi::state<Complex, num_page_qubits, Allocator> >
         {
           template <
             typename ParallelPolicy,
             typename StateInteger, typename BitInteger>
           static void call(
+            ::ket::mpi::utility::policy::general_mpi const mpi_policy,
             ParallelPolicy const parallel_policy,
             ::ket::mpi::state<Complex, num_page_qubits, Allocator>& local_state,
             ::ket::qubit<StateInteger, BitInteger> const permutated_qubit1,
-            ::ket::qubit<StateInteger, BitInteger> const permutated_qubit2)
+            ::ket::qubit<StateInteger, BitInteger> const permutated_qubit2,
+            yampi::communicator const& communicator, yampi::environment const& environment)
           {
-            ::ket::mpi::state_detail::swap_local_qubits<num_page_qubits>::call(
-              parallel_policy, local_state, permutated_qubit1, permutated_qubit2);
+            ::ket::mpi::state_detail::swap_permutated_local_qubits<num_page_qubits>::call(
+              mpi_policy, parallel_policy, local_state, permutated_qubit1, permutated_qubit2, communicator, environment);
           }
-        }; // struct swap_local_qubits< ::ket::mpi::state<Complex, num_page_qubits, Allocator> >
+        }; // struct swap_permutated_local_qubits< ::ket::mpi::utility::policy::general_mpi, ::ket::mpi::state<Complex, num_page_qubits, Allocator> >
 
         template <typename LocalState_>
         struct interchange_qubits;
@@ -2498,22 +2518,28 @@ namespace ket
         {
           template <typename Function>
           static ::ket::mpi::state<Complex, num_page_qubits, Allocator>& call(
-            ::ket::mpi::state<Complex, num_page_qubits, Allocator>& local_state, Function&& function)
+            ::ket::mpi::utility::policy::general_mpi const mpi_policy,
+            ::ket::mpi::state<Complex, num_page_qubits, Allocator>& local_state,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Function&& function)
           {
             using for_each_local_range_type
               = ::ket::mpi::state_detail::for_each_local_range<num_page_qubits>;
             return for_each_local_range_type::call(
-              local_state, std::forward<Function>(function));
+              mpi_policy, local_state, communicator, environment, std::forward<Function>(function));
           }
 
           template <typename Function>
           static ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& call(
-            ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state, Function&& function)
+            ::ket::mpi::utility::policy::general_mpi const mpi_policy,
+            ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Function&& function)
           {
             using for_each_local_range_type
               = ::ket::mpi::state_detail::for_each_local_range<num_page_qubits>;
             return for_each_local_range_type::call(
-              local_state, std::forward<Function>(function));
+              mpi_policy, local_state, communicator, environment, std::forward<Function>(function));
           }
         }; // struct for_each_local_range< ::ket::mpi::utility::policy::general_mpi, ::ket::mpi::state<Complex, num_page_qubits, Allocator> >
 
@@ -2531,6 +2557,7 @@ namespace ket
             typename StateInteger, typename BitInteger, typename PermutationAllocator,
             typename Function0, typename Function1, typename... ControlQubits>
           static void call(
+            ::ket::mpi::utility::policy::general_mpi const mpi_policy,
             ParallelPolicy const parallel_policy,
             ::ket::mpi::state<Complex, num_page_qubits, Allocator>& local_state,
             ::ket::mpi::qubit_permutation<StateInteger, BitInteger, PermutationAllocator> const& permutation,
@@ -2543,7 +2570,7 @@ namespace ket
             using diagonal_loop_type
               = ::ket::mpi::state_detail::diagonal_loop<num_page_qubits>;
             diagonal_loop_type::call(
-              parallel_policy, local_state, permutation, communicator, environment,
+              mpi_policy, parallel_policy, local_state, permutation, communicator, environment,
               target_qubit,
               std::forward<Function0>(function0), std::forward<Function1>(function1),
               control_qubits...);

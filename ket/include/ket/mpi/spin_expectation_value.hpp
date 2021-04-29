@@ -118,7 +118,7 @@ namespace ket
       {
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
         ::ket::mpi::utility::for_each_local_range(
-          mpi_policy, local_state,
+          mpi_policy, local_state, communicator, environment,
           [parallel_policy, qubit, &permutation, &spin](auto const first, auto const last)
           {
             auto const local_spin
@@ -129,7 +129,7 @@ namespace ket
           });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
         ::ket::mpi::utility::for_each_local_range(
-          mpi_policy, local_state,
+          mpi_policy, local_state, communicator, environment,
           ::ket::mpi::spin_expectation_value_detail::make_call_spin_expectation_value(
             parallel_policy, permutation[qubit], spin));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -187,7 +187,7 @@ namespace ket
       {
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
         ::ket::mpi::utility::for_each_local_range(
-          mpi_policy, local_state,
+          mpi_policy, local_state, communicator, environment,
           [parallel_policy, qubit, &permutation, &spin](auto const first, auto const last)
           {
             auto const local_spin
@@ -198,7 +198,7 @@ namespace ket
           });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
         ::ket::mpi::utility::for_each_local_range(
-          mpi_policy, local_state,
+          mpi_policy, local_state, communicator, environment,
           ::ket::mpi::spin_expectation_value_detail::make_call_spin_expectation_value(
             parallel_policy, permutation[qubit], spin));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -361,7 +361,7 @@ namespace ket
       {
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
         ::ket::mpi::utility::for_each_local_range(
-          mpi_policy, local_state,
+          mpi_policy, local_state, communicator, environment,
           [parallel_policy, qubit, &permutation, &spin](auto const first, auto const last)
           {
             auto const local_spin
@@ -372,7 +372,7 @@ namespace ket
           });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
         ::ket::mpi::utility::for_each_local_range(
-          mpi_policy, local_state,
+          mpi_policy, local_state, communicator, environment,
           ::ket::mpi::spin_expectation_value_detail::make_call_spin_expectation_value(
             parallel_policy, permutation[qubit], spin));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -435,7 +435,7 @@ namespace ket
       {
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
         ::ket::mpi::utility::for_each_local_range(
-          mpi_policy, local_state,
+          mpi_policy, local_state, communicator, environment,
           [parallel_policy, qubit, &permutation, &spin](auto const first, auto const last)
           {
             auto const local_spin
@@ -446,7 +446,7 @@ namespace ket
           });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
         ::ket::mpi::utility::for_each_local_range(
-          mpi_policy, local_state,
+          mpi_policy, local_state, communicator, environment,
           ::ket::mpi::spin_expectation_value_detail::make_call_spin_expectation_value(
             parallel_policy, permutation[qubit], spin));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS

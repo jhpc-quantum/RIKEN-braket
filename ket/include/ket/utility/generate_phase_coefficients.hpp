@@ -31,6 +31,7 @@ namespace ket
             two_pi<real_type>()
             / static_cast<real_type>(::ket::utility::integer_exp2<std::size_t>(phase_exponent))));
       }
+      phase_coefficients.resize(num_qubits+1);
     }
 
     template <typename Complex, typename Allocator>

@@ -24,6 +24,7 @@
 #include <bra/state.hpp>
 #ifndef BRA_NO_MPI
 # include <bra/make_general_mpi_state.hpp>
+# include <bra/make_unit_mpi_state.hpp>
 #else
 # include <bra/nompi_state.hpp>
 #endif
@@ -81,49 +82,114 @@ int main(int argc, char* argv[])
       std::cerr << "multithread environment is required" << std::endl;
     return EXIT_FAILURE;
   }
-
-  auto const num_gqubits
-    = ket::utility::integer_log2<bit_integer_type>(communicator.size(environment));
-
-  if (ket::utility::integer_exp2<bit_integer_type>(num_gqubits)
-      != static_cast<bit_integer_type>(communicator.size(environment)))
-  {
-    if (is_io_root_rank)
-      std::cerr << "wrong number of MPI processes" << std::endl;
-    return EXIT_FAILURE;
-  }
 #endif // BRA_NO_MPI
 
 #ifndef BRA_NO_MPI
-  if (argc < 2 or argc > 5)
+  if (argc < 3 or argc > 7)
   {
     if (is_io_root_rank)
-      std::cerr << "wrong number of arguments: bra qcxfile [num_threads_per_process [num_page_qubits [seed]]]" << std::endl;
+      std::cerr
+        << "wrong number of arguments: bra general <qcxfile> [<num_threads_per_process> [<num_page_qubits> [<seed>]]]\n"
+           "                           bra unit <qcxfile> <num_unit_qubits> <num_processes_per_unit> [<num_threads_per_process> [<seed>]]\n"
+           "  default values are: num_threads_per_process=1, num_page_qubits=2, seed=1\n"
+        << std::flush;
     return EXIT_FAILURE;
   }
 #else // BRA_NO_MPI
   if (argc < 2 or argc > 4)
   {
-    std::cerr << "wrong number of arguments: bra qcxfile [num_threads_per_process [seed]]" << std::endl;
+    std::cerr
+      << "wrong number of arguments: bra qcxfile [num_threads_per_process [seed]]\n"
+         "  default values are: num_threads_per_process=1, seed=1\n"
+      << std::flush;
     return EXIT_FAILURE;
   }
 #endif // BRA_NO_MPI
 
-  auto const filename = std::string{argv[1]};
 #ifndef BRA_NO_MPI
-  auto const num_threads_per_process
-    = argc >= 3
-      ? boost::lexical_cast<unsigned int>(argv[2])
-      : 1u;
-  auto const num_page_qubits
-    = argc >= 4
-      ? boost::lexical_cast<unsigned int>(argv[3])
-      : 2u;
-  auto const seed
-    = argc == 5
-      ? boost::lexical_cast<seed_type>(argv[4])
-      : seed_type{1};
+  auto const mpi_policy_string = std::string{argv[1]};
+  auto const filename = std::string{argv[2]};
+
+  auto num_threads_per_process = 1u;
+  auto num_page_qubits = 2u;
+  auto seed = seed_type{1u};
+
+  auto num_unit_qubits = 0u;
+  auto num_processes_per_unit = 1u;
+
+  if (mpi_policy_string == "general")
+  {
+    if (argc > 6)
+    {
+      if (is_io_root_rank)
+        std::cerr
+          << "wrong number of arguments: bra general <qcxfile> [<num_threads_per_process> [<num_page_qubits> [<seed>]]]\n"
+             "                           bra unit <qcxfile> <num_unit_qubits> <num_processes_per_unit> [<num_threads_per_process> [<seed>]]\n"
+             "  default values are: num_threads_per_process=1, num_page_qubits=2, seed=1\n"
+          << std::flush;
+      return EXIT_FAILURE;
+    }
+
+    num_threads_per_process
+      = argc >= 4
+        ? boost::lexical_cast<unsigned int>(argv[3])
+        : 1u;
+    num_page_qubits
+      = argc >= 5
+        ? boost::lexical_cast<unsigned int>(argv[4])
+        : 2u;
+    seed
+      = argc == 6
+        ? boost::lexical_cast<seed_type>(argv[5])
+        : seed_type{1};
+  }
+  else if (mpi_policy_string == "unit")
+  {
+    if (argc < 5)
+    {
+      if (is_io_root_rank)
+        std::cerr
+          << "wrong number of arguments: bra general <qcxfile> [<num_threads_per_process> [<num_page_qubits> [<seed>]]]\n"
+             "                           bra unit <qcxfile> <num_unit_qubits> <num_processes_per_unit> [<num_threads_per_process> [<seed>]]\n"
+             "  default values are: num_threads_per_process=1, num_page_qubits=2, seed=1\n"
+          << std::flush;
+      return EXIT_FAILURE;
+    }
+
+    num_unit_qubits = boost::lexical_cast<unsigned int>(argv[3]);
+    num_processes_per_unit = boost::lexical_cast<unsigned int>(argv[4]);
+    if (num_processes_per_unit == 0u)
+    {
+      if (is_io_root_rank)
+        std::cerr
+          << "wrong argument: bra general <qcxfile> [<num_threads_per_process> [<num_page_qubits> [<seed>]]]\n"
+             "                bra unit <qcxfile> <num_unit_qubits> <num_processes_per_unit> [<num_threads_per_process> [<seed>]]\n"
+             "  default values are: num_thread_per_process=1, num_page_qubits=2, seed=1\n"
+          << std::flush;
+      return EXIT_FAILURE;
+    }
+
+    num_threads_per_process
+      = argc >= 6
+        ? boost::lexical_cast<unsigned int>(argv[5])
+        : 1u;
+    seed
+      = argc == 7
+        ? boost::lexical_cast<seed_type>(argv[6])
+        : seed_type{1};
+  }
+  else
+  {
+    if (is_io_root_rank)
+      std::cerr
+        << "wrong argument: bra general <qcxfile> [<num_threads_per_process> [<num_page_qubits> [<seed>]]]\n"
+           "                bra unit <qcxfile> <num_unit_qubits> <num_processes_per_unit> [<num_threads_per_process> [<seed>]]\n"
+           "  default values are: num_thread_per_process=1, num_page_qubits=2, seed=1\n"
+        << std::flush;
+    return EXIT_FAILURE;
+  }
 #else // BRA_NO_MPI
+  auto const filename = std::string{argv[1]};
   auto const num_threads
     = argc >= 3
       ? boost::lexical_cast<unsigned int>(argv[2])
@@ -147,11 +213,15 @@ int main(int argc, char* argv[])
   }
 
 #ifndef BRA_NO_MPI
-  auto gates = bra::gates{file_stream, environment, root_rank, communicator};
+  auto gates = bra::gates{file_stream, num_unit_qubits, num_processes_per_unit, environment, root_rank, communicator};
   auto state_ptr
-    = bra::make_general_mpi_state(
-        num_page_qubits, gates.initial_state_value(), gates.num_lqubits(), gates.initial_permutation(),
-        num_threads_per_process, seed, communicator, environment);
+    = mpi_policy_string == "unit"
+      ? bra::make_unit_mpi_state(
+          gates.initial_state_value(), gates.num_lqubits(), num_unit_qubits, gates.initial_permutation(),
+          num_threads_per_process, num_processes_per_unit, seed, communicator, environment)
+      : bra::make_general_mpi_state(
+          num_page_qubits, gates.initial_state_value(), gates.num_lqubits(), gates.initial_permutation(),
+          num_threads_per_process, seed, communicator, environment);
 #else // BRA_NO_MPI
   auto gates = bra::gates{file_stream};
   auto state_ptr

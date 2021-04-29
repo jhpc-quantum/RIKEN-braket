@@ -27,6 +27,7 @@
 # include <ket/utility/meta/real_of.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
+# include <ket/mpi/utility/fill.hpp>
 # include <ket/mpi/utility/logger.hpp>
 
 
@@ -34,32 +35,6 @@ namespace ket
 {
   namespace mpi
   {
-    namespace shor_box_detail
-    {
-# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
-      template <typename ParallelPolicy>
-      struct call_fill
-      {
-        ParallelPolicy parallel_policy_;
-
-        explicit call_fill(ParallelPolicy const parallel_policy) : parallel_policy_(parallel_policy) { }
-
-        template <typename RandomAccessIterator>
-        void operator()(
-          RandomAccessIterator const first, RandomAccessIterator const last) const
-        {
-          using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
-          using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
-          ::ket::utility::fill(parallel_policy_, first, last, complex_type{real_type{0}});
-        }
-      }; // struct call_fill
-
-      template <typename ParallelPolicy>
-      inline call_fill<ParallelPolicy> make_call_fill(ParallelPolicy const parallel_policy)
-      { return call_fill<ParallelPolicy>{parallel_policy}; }
-# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
-    } // namespace shor_box_detail
-
     template <
       typename MpiPolicy, typename ParallelPolicy,
       typename RandomAccessRange, typename StateInteger, typename Qubits,
@@ -92,16 +67,9 @@ namespace ket
 
       using complex_type = typename boost::range_value<RandomAccessRange>::type;
       using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
-# ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
-      ::ket::mpi::utility::for_each_local_range(
-        mpi_policy, local_state,
-        [parallel_policy](auto const first, auto const last)
-        { ::ket::utility::fill(parallel_policy, first, last, complex_type{real_type{0}}); });
-# else // BOOST_NO_CXX14_GENERIC_LAMBDAS
-      ::ket::mpi::utility::for_each_local_range(
-        mpi_policy, local_state,
-        ::ket::mpi::shor_box_detail::make_call_fill(parallel_policy));
-# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+      ::ket::mpi::utility::fill(
+        mpi_policy, parallel_policy, local_state, complex_type{real_type{0}},
+        communicator, environment);
 
       auto const num_exponent_qubits = static_cast<BitInteger>(boost::size(exponent_qubits));
       auto const num_exponents = ::ket::utility::integer_exp2<StateInteger>(num_exponent_qubits);
@@ -123,7 +91,8 @@ namespace ket
         using ::ket::mpi::permutate_bits;
         auto const rank_index
           = ::ket::mpi::utility::qubit_value_to_rank_index(
-              mpi_policy, local_state, permutate_bits(permutation, qubit_value));
+              mpi_policy, local_state, permutate_bits(permutation, qubit_value),
+              communicator, environment);
 
         if (rank_index.first == present_rank)
           *(first + rank_index.second) = constant_coefficient;
