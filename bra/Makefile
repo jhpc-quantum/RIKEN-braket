@@ -39,19 +39,17 @@ endif
 
 .PHONY: release
 ifneq ($(findstring fn01sv,$(nodename)),)
-release: common_flags += -Nclang,libomp -Kfast -std=c++11
-else
-release: common_flags += -O3 -std=c++17
+release: common_flags += -Nclang
 endif
+release: common_flags += -Ofast
 release: macros += NDEBUG
 release: $(bin_dir)/$(target)
 
 .PHONY: debug
 ifneq ($(findstring fn01sv,$(nodename)),)
-debug: common_flags += -Nclang,libomp -O2 -std=c++11
-else
-debug: common_flags += -O0 -std=c++17
+debug: common_flags += -Nclang
 endif
+debug: common_flags += -O0
 debug: $(bin_dir)/$(target)
 
 .PHONY: nompi
@@ -59,37 +57,33 @@ nompi: nompi-release
 
 .PHONY: nompi-release
 ifneq ($(findstring fn01sv,$(nodename)),)
-nompi-release: common_flags += -Nclang,libomp -Kfast -std=c++11
-else
-nompi-release: common_flags += -O3 -std=c++17
+nompi-release: common_flags += -Nclang
 endif
+nompi-release: common_flags += -Ofast
 nompi-release: macros += NDEBUG BRA_NO_MPI
 nompi-release: $(bin_dir)/$(target)
 
 .PHONY: nompi-debug
 ifneq ($(findstring fn01sv,$(nodename)),)
-nompi-debug: common_flags += -Nclang,libomp -O2 -std=c++11
-else
-nompi-debug: common_flags += -O0 -std=c++17
+nompi-debug: common_flags += -Nclang
 endif
+nompi-debug: common_flags += -O0
 nompi-debug: macros += BRA_NO_MPI
 nompi-debug: $(bin_dir)/$(target)
 
 .PHONY: release-float
 ifneq ($(findstring fn01sv,$(nodename)),)
-release-float: common_flags += -Nclang,libomp -Kfast -std=c++11
-else
-release-float: common_flags += -O3 -std=c++17
+release-float: common_flags += -Nclang
 endif
+release-float: common_flags += -Ofast
 release-float: macros += NDEBUG BRA_REAL_TYPE=2
 release-float: $(bin_dir)/$(target)
 
 .PHONY: debug-float
 ifneq ($(findstring fn01sv,$(nodename)),)
-debug-float: common_flags += -Nclang,libomp -O2 -std=c++11
-else
-debug-float: common_flags += -O0 -std=c++17
+debug-float: common_flags += -Nclang
 endif
+debug-float: common_flags += -O0
 debug-float: macros += BRA_REAL_TYPE=2
 debug-float: $(bin_dir)/$(target)
 
@@ -98,37 +92,33 @@ nompi-float: nompi-release-float
 
 .PHONY: nompi-release-float
 ifneq ($(findstring fn01sv,$(nodename)),)
-nompi-release-float: common_flags += -Nclang,libomp -Kfast -std=c++11
-else
-nompi-release-float: common_flags += -O3 -std=c++17
+nompi-release-float: common_flags += -Nclang
 endif
+nompi-release-float: common_flags += -Ofast
 nompi-release-float: macros += NDEBUG BRA_NO_MPI BRA_REAL_TYPE=2
 nompi-release-float: $(bin_dir)/$(target)
 
 .PHONY: nompi-debug-float
 ifneq ($(findstring fn01sv,$(nodename)),)
-nompi-debug-float: common_flags += -Nclang,libomp -O2 -std=c++11
-else
-nompi-debug-float: common_flags += -O0 -std=c++17
+nompi-debug-float: common_flags += -Nclang
 endif
+nompi-debug-float: common_flags += -O0
 nompi-debug-float: macros += BRA_NO_MPI BRA_REAL_TYPE=2
 nompi-debug-float: $(bin_dir)/$(target)
 
 .PHONY: release-long
 ifneq ($(findstring fn01sv,$(nodename)),)
-release-long: common_flags += -Nclang,libomp -Kfast -std=c++11
-else
-release-long: common_flags += -O3 -std=c++17
+release-long: common_flags += -Nclang
 endif
+release-long: common_flags += -Ofast
 release-long: macros += NDEBUG BRA_REAL_TYPE=0
 release-long: $(bin_dir)/$(target)
 
 .PHONY: debug-long
 ifneq ($(findstring fn01sv,$(nodename)),)
-debug-long: common_flags += -Nclang,libomp -O2 -std=c++11
-else
-debug-long: common_flags += -O0 -std=c++17
+debug-long: common_flags += -Nclang
 endif
+debug-long: common_flags += -O0
 debug-long: macros += BRA_REAL_TYPE=0
 debug-long: $(bin_dir)/$(target)
 
@@ -137,29 +127,27 @@ nompi-long: nompi-release-long
 
 .PHONY: nompi-release-long
 ifneq ($(findstring fn01sv,$(nodename)),)
-nompi-release-long: common_flags += -Nclang,libomp -Kfast -std=c++11
-else
-nompi-release-long: common_flags += -O3 -std=c++17
+nompi-release-long: common_flags += -Nclang
 endif
+nompi-release-long: common_flags += -Ofast
 nompi-release-long: macros += NDEBUG BRA_NO_MPI BRA_REAL_TYPE=0
 nompi-release-long: $(bin_dir)/$(target)
 
 .PHONY: nompi-debug-long
 ifneq ($(findstring fn01sv,$(nodename)),)
-nompi-debug-long: common_flags += -Nclang,libomp -O2 -std=c++11
-else
-nompi-debug-long: common_flags += -O0 -std=c++17
+nompi-debug-long: common_flags += -Nclang
 endif
+nompi-debug-long: common_flags += -O0
 nompi-debug-long: macros += BRA_NO_MPI BRA_REAL_TYPE=0
 nompi-debug-long: $(bin_dir)/$(target)
 
 ifneq ($(findstring fn01sv,$(nodename)),)
   CXX = mpiFCCpx
-  common_flags = -Kopenmp
+  common_flags = -fopenmp -std=c++17 -stdlib=libc++
   cxx_flags =
 else
   CXX = mpiCC
-  common_flags = -fopenmp
+  common_flags = -fopenmp -std=c++17
   cxx_flags =
 endif
 
