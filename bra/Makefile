@@ -143,7 +143,7 @@ nompi-debug-long: $(bin_dir)/$(target)
 
 ifneq ($(findstring fn01sv,$(nodename)),)
   CXX = mpiFCCpx
-  common_flags = -fopenmp -std=c++17 -stdlib=libc++
+  common_flags = -fopenmp -std=c++17
   cxx_flags =
 else
   CXX = mpiCC
