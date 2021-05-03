@@ -58,13 +58,13 @@ namespace ket
               : zero_probability_{zero_probability}
             { }
 
-            template <typename Iterator>
-            void operator()(Iterator const zero_iter, Iterator const one_iter) const
+            template <typename Iterator, typename StateInteger>
+            void operator()(Iterator const zero_first, Iterator const one_first, StateInteger const index) const
             {
-              *one_iter = Complex{0};
+              *(one_first + index) = Complex{0};
 
               using std::norm;
-              zero_probability_ += norm(*zero_iter);
+              zero_probability_ += norm(*(zero_first + index));
             }
           }; // struct clear1<Complex, Real>
 
@@ -82,9 +82,9 @@ namespace ket
               : multiplier_{multiplier}
             { }
 
-            template <typename Iterator>
-            void operator()(Iterator const zero_iter, Iterator const) const
-            { *zero_iter *= multiplier_; }
+            template <typename Iterator, typename StateInteger>
+            void operator()(Iterator const zero_first, Iterator const, StateInteger const index) const
+            { *(zero_first + index) *= multiplier_; }
           }; // struct clear2<Complex, Real>
 
           template <typename Real>
@@ -111,17 +111,17 @@ namespace ket
           auto zero_probability = real_type{0};
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
-          ::ket::mpi::gate::page::detail::one_page_qubit_gate(
+          ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
-            [&zero_probability](auto const zero_iter, auto const one_iter)
+            [&zero_probability](auto const zero_first, auto const one_first, StateInteger const index)
             {
-              *one_iter = Complex{0};
+              *(one_first + index) = Complex{0};
 
               using std::norm;
-              zero_probability += norm(*zero_iter);
+              zero_probability += norm(*(zero_first + index));
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
-          ::ket::mpi::gate::page::detail::one_page_qubit_gate(
+          ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
             ::ket::mpi::gate::page::clear_detail::make_clear1<Complex>(zero_probability));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -131,12 +131,12 @@ namespace ket
           auto const multiplier = pow(zero_probability, -half<real_type>());
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
-          return ::ket::mpi::gate::page::detail::one_page_qubit_gate(
+          return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
-            [multiplier](auto const zero_iter, auto const)
-            { *zero_iter *= multiplier; });
+            [multiplier](auto const zero_first, auto const, StateInteger const index)
+            { *(zero_first + index) *= multiplier; });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
-          return ::ket::mpi::gate::page::detail::one_page_qubit_gate(
+          return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
             ::ket::mpi::gate::page::clear_detail::make_clear2(multiplier));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS

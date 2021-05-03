@@ -25,9 +25,9 @@ namespace ket
           template <typename Real>
           struct pauli_z
           {
-            template <typename Iterator>
-            void operator()(Iterator const, Iterator const one_iter) const
-            { *one_iter *= Real{-1}; }
+            template <typename Iterator, typename StateInteger>
+            void operator()(Iterator const, Iterator const one_first, StateInteger const index) const
+            { *(one_first + index) *= Real{-1}; }
           }; // struct pauli_z<Real>
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         } // namespace pauli_z_detail
@@ -46,12 +46,12 @@ namespace ket
           using real_type = typename ::ket::utility::meta::real_of<typename boost::range_value<RandomAccessRange>::type>::type;
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
-          return ::ket::mpi::gate::page::detail::one_page_qubit_gate(
+          return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
-            [](auto const, auto const one_iter)
-            { *one_iter *= real_type{-1}; });
+            [](auto const, auto const one_first, StateInteger const index)
+            { *(one_first + index) *= real_type{-1}; });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
-          return ::ket::mpi::gate::page::detail::one_page_qubit_gate(
+          return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
             ::ket::mpi::gate::page::pauli_z_detail::pauli_z<real_type>{});
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS

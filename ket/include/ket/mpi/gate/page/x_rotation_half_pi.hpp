@@ -27,9 +27,11 @@ namespace ket
           template <typename Complex, typename Real>
           struct x_rotation_half_pi
           {
-            template <typename Iterator>
-            void operator()(Iterator const zero_iter, Iterator const one_iter) const
+            template <typename Iterator, typename StateInteger>
+            void operator()(Iterator const zero_first, Iterator const one_first, StateInteger const index) const
             {
+              auto const zero_iter = zero_first + index;
+              auto const one_iter = one_first + index;
               auto const zero_iter_value = *zero_iter;
 
               using boost::math::constants::one_div_root_two;
@@ -57,10 +59,12 @@ namespace ket
           using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
-          return ::ket::mpi::gate::page::detail::one_page_qubit_gate(
+          return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
-            [](auto const zero_iter, auto const one_iter)
+            [](auto const zero_first, auto const one_first, StateInteger const index)
             {
+              auto const zero_iter = zero_first + index;
+              auto const one_iter = one_first + index;
               auto const zero_iter_value = *zero_iter;
 
               using boost::math::constants::one_div_root_two;
@@ -70,7 +74,7 @@ namespace ket
               *one_iter *= one_div_root_two<real_type>();
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
-          return ::ket::mpi::gate::page::detail::one_page_qubit_gate(
+          return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
             ::ket::mpi::gate::page::x_rotation_half_pi_detail::x_rotation_half_pi<complex_type, real_type>{});
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -82,9 +86,11 @@ namespace ket
           template <typename Complex, typename Real>
           struct adj_x_rotation_half_pi
           {
-            template <typename Iterator>
-            void operator()(Iterator const zero_iter, Iterator const one_iter) const
+            template <typename Iterator, typename StateInteger>
+            void operator()(Iterator const zero_first, Iterator const one_first, StateInteger const index) const
             {
+              auto const zero_iter = zero_first + index;
+              auto const one_iter = one_first + index;
               auto const zero_iter_value = *zero_iter;
 
               using boost::math::constants::one_div_root_two;
@@ -112,10 +118,12 @@ namespace ket
           using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
-          return ::ket::mpi::gate::page::detail::one_page_qubit_gate(
+          return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
-            [](auto const zero_iter, auto const one_iter)
+            [](auto const zero_first, auto const one_first, StateInteger const index)
             {
+              auto const zero_iter = zero_first + index;
+              auto const one_iter = one_first + index;
               auto const zero_iter_value = *zero_iter;
 
               using boost::math::constants::one_div_root_two;
@@ -125,7 +133,7 @@ namespace ket
               *one_iter *= one_div_root_two<real_type>();
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
-          return ::ket::mpi::gate::page::detail::one_page_qubit_gate(
+          return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
             ::ket::mpi::gate::page::x_rotation_half_pi_detail::adj_x_rotation_half_pi<complex_type, real_type>{});
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS

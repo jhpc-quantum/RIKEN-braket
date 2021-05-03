@@ -1,18 +1,17 @@
 #ifndef KET_MPI_GATE_PAGE_SET_HPP
 # define KET_MPI_GATE_PAGE_SET_HPP
 
+# include <boost/config.hpp>
+
 # include <cassert>
 
 # include <boost/math/constants/constants.hpp>
-# include <boost/range/size.hpp>
 
 # include <ket/qubit.hpp>
-# include <ket/utility/loop_n.hpp>
-# include <ket/utility/integer_exp2.hpp>
-# include <ket/utility/begin.hpp>
 # include <ket/utility/meta/real_of.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/state.hpp>
+# include <ket/mpi/gate/page/detail/one_page_qubit_gate.hpp>
 
 
 namespace ket
@@ -59,13 +58,13 @@ namespace ket
               : one_probability_{one_probability}
             { }
 
-            template <typename Iterator>
-            void operator()(Iterator const zero_iter, Iterator const one_iter) const
+            template <typename Iterator, typename StateInteger>
+            void operator()(Iterator const zero_first, Iterator const one_first, StateInteger const index) const
             {
-              *zero_iter = Complex{0};
+              *(zero_first + index) = Complex{0};
 
               using std::norm;
-              one_probability_ += norm(*one_iter);
+              one_probability_ += norm(*(one_first + index));
             }
           }; // struct set1<Complex, Real>
 
@@ -83,9 +82,9 @@ namespace ket
               : multiplier_{multiplier}
             { }
 
-            template <typename Iterator>
-            void operator()(Iterator const, Iterator const one_iter) const
-            { *one_iter *= multiplier_; }
+            template <typename Iterator, typename StateInteger>
+            void operator()(Iterator const, Iterator const one_first, StateInteger const index) const
+            { *(one_first + index) *= multiplier_; }
           }; // struct set2<Complex, Real>
 
           template <typename Real>
@@ -112,17 +111,17 @@ namespace ket
           auto one_probability = real_type{0};
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
-          ::ket::mpi::gate::page::detail::one_page_qubit_gate(
+          ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
-            [&one_probability](auto const zero_iter, auto const one_iter)
+            [&one_probability](auto const zero_first, auto const one_first, StateInteger const index)
             {
-              *zero_iter = Complex{0};
+              *(zero_first + index) = Complex{0};
 
               using std::norm;
-              one_probability += norm(*one_iter);
+              one_probability += norm(*(one_first + index));
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
-          ::ket::mpi::gate::page::detail::one_page_qubit_gate(
+          ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
             ::ket::mpi::gate::page::set_detail::make_set1<Complex>(one_probability));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -132,12 +131,12 @@ namespace ket
           auto const multiplier = pow(one_probability, -half<real_type>());
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
-          return ::ket::mpi::gate::page::detail::one_page_qubit_gate(
+          return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
-            [multiplier](auto const, auto const one_iter)
-            { *one_iter *= multiplier; });
+            [multiplier](auto const, auto const one_first, StateInteger const index)
+            { *(one_first + index) *= multiplier; });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
-          return ::ket::mpi::gate::page::detail::one_page_qubit_gate(
+          return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
             ::ket::mpi::gate::page::set_detail::make_set2(multiplier));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS

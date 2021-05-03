@@ -84,12 +84,12 @@ namespace ket
                 one_probability_{one_probability}
             { }
 
-            template <typename Iterator>
-            void operator()(Iterator const zero_iter, Iterator const one_iter) const
+            template <typename Iterator, typename StateInteger>
+            void operator()(Iterator const zero_first, Iterator const one_first, StateInteger const index) const
             {
               using std::norm;
-              zero_probability_ += static_cast<long double>(norm(*zero_iter));
-              one_probability_ += static_cast<long double>(norm(*one_iter));
+              zero_probability_ += static_cast<long double>(norm(*(zero_first + index)));
+              one_probability_ += static_cast<long double>(norm(*(one_first + index)));
             }
           }; // struct zero_one_probabilities
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -116,17 +116,17 @@ namespace ket
           auto one_probability = 0.0l;
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
-          ::ket::mpi::gate::page::detail::one_page_qubit_gate(
+          ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
             [&zero_probability, &one_probability](
-              auto const zero_iter, auto const one_iter)
+              auto const zero_first, auto const one_first, StateInteger const index)
             {
               using std::norm;
-              zero_probability += static_cast<long double>(norm(*zero_iter));
-              one_probability += static_cast<long double>(norm(*one_iter));
+              zero_probability += static_cast<long double>(norm(*(zero_first + index)));
+              one_probability += static_cast<long double>(norm(*(one_first + index)));
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
-          ::ket::mpi::gate::page::detail::one_page_qubit_gate(
+          ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
             ::ket::mpi::gate::page::projective_measurement_detail::zero_one_probabilities{
               zero_probability, one_probability});
@@ -174,11 +174,11 @@ namespace ket
               : multiplier_{multiplier}
             { }
 
-            template <typename Iterator>
-            void operator()(Iterator const zero_iter, Iterator const one_iter) const
+            template <typename Iterator, typename StateInteger>
+            void operator()(Iterator const zero_first, Iterator const one_first, StateInteger const index) const
             {
-              *zero_iter *= multiplier_;
-              *one_iter = Complex{Real{0}};
+              *(zero_first + index) *= multiplier_;
+              *(one_first + index) = Complex{Real{0}};
             }
           }; // struct change_state_after_measuring_zero<Complex, Real>
 
@@ -208,15 +208,15 @@ namespace ket
           auto const multiplier = pow(zero_probability, -half<Real>());
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
-          ::ket::mpi::gate::page::detail::one_page_qubit_gate(
+          ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
-            [multiplier](auto const zero_iter, auto const one_iter)
+            [multiplier](auto const zero_first, auto const one_first, StateInteger const index)
             {
-              *zero_iter *= multiplier;
-              *one_iter = Complex{Real{0}};
+              *(zero_first + index) *= multiplier;
+              *(one_first + index) = Complex{Real{0}};
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
-          ::ket::mpi::gate::page::detail::one_page_qubit_gate(
+          ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
             ::ket::mpi::gate::page::projective_measurement_detail::make_change_state_after_measuring_zero<Complex>(multiplier));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -259,11 +259,11 @@ namespace ket
               : multiplier_{multiplier}
             { }
 
-            template <typename Iterator>
-            void operator()(Iterator const zero_iter, Iterator const one_iter) const
+            template <typename Iterator, typename StateInteger>
+            void operator()(Iterator const zero_first, Iterator const one_first, StateInteger const index) const
             {
-              *zero_iter = Complex{Real{0}};
-              *one_iter *= multiplier_;
+              *(zero_first + index) = Complex{Real{0}};
+              *(one_first + index) *= multiplier_;
             }
           }; // struct change_state_after_measuring_one<Complex, Real>
 
@@ -293,15 +293,15 @@ namespace ket
           auto const multiplier = pow(one_probability, -half<Real>());
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
-          ::ket::mpi::gate::page::detail::one_page_qubit_gate(
+          ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
-            [multiplier](auto const zero_iter, auto const one_iter)
+            [multiplier](auto const zero_first, auto const one_first, StateInteger const index)
             {
-              *zero_iter = Complex{Real{0}};
-              *one_iter *= multiplier;
+              *(zero_first + index) = Complex{Real{0}};
+              *(one_first + index) *= multiplier;
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
-          ::ket::mpi::gate::page::detail::one_page_qubit_gate(
+          ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
             ::ket::mpi::gate::page::projective_measurement_detail::make_change_state_after_measuring_one<Complex>(multiplier));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS

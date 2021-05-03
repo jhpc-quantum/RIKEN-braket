@@ -36,9 +36,9 @@ namespace ket
               : phase_coefficient_{phase_coefficient}
             { }
 
-            template <typename Iterator>
-            void operator()(Iterator const, Iterator const one_iter) const
-            { *one_iter *= phase_coefficient_; }
+            template <typename Iterator, typename StateInteger>
+            void operator()(Iterator const, Iterator const one_first, StateInteger const index) const
+            { *(one_first + index) *= phase_coefficient_; }
           }; // struct phase_shift_coeff<Complex>
 
           template <typename Complex>
@@ -61,12 +61,12 @@ namespace ket
             StateInteger, BitInteger, Allocator> const& permutation)
         {
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
-          return ::ket::mpi::gate::page::detail::one_page_qubit_gate(
+          return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
-            [phase_coefficient](auto const, auto const one_iter)
-            { *one_iter *= phase_coefficient; });
+            [phase_coefficient](auto const, auto const one_first, StateInteger const index)
+            { *(one_first + index) *= phase_coefficient; });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
-          return ::ket::mpi::gate::page::detail::one_page_qubit_gate(
+          return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
             ::ket::mpi::gate::page::phase_shift_detail::make_phase_shift_coeff(phase_coefficient));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -89,9 +89,11 @@ namespace ket
                 phase_coefficient2_{phase_coefficient2}
             { }
 
-            template <typename Iterator>
-            void operator()(Iterator const zero_iter, Iterator const one_iter) const
+            template <typename Iterator, typename StateInteger>
+            void operator()(Iterator const zero_first, Iterator const one_first, StateInteger const index) const
             {
+              auto const zero_iter = zero_first + index;
+              auto const one_iter = one_first + index;
               auto const zero_iter_value = *zero_iter;
 
               using real_type = typename ::ket::utility::meta::real_of<Complex>::type;
@@ -135,10 +137,12 @@ namespace ket
           auto const modified_phase_coefficient1 = one_div_root_two<Real>() * phase_coefficient1;
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
-          return ::ket::mpi::gate::page::detail::one_page_qubit_gate(
+          return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
-            [modified_phase_coefficient1, phase_coefficient2](auto const zero_iter, auto const one_iter)
+            [modified_phase_coefficient1, phase_coefficient2](auto const zero_first, auto const one_first, StateInteger const index)
             {
+              auto const zero_iter = zero_first + index;
+              auto const one_iter = one_first + index;
               auto const zero_iter_value = *zero_iter;
 
               *zero_iter -= phase_coefficient2 * *one_iter;
@@ -148,7 +152,7 @@ namespace ket
               *one_iter *= modified_phase_coefficient1;
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
-          return ::ket::mpi::gate::page::detail::one_page_qubit_gate(
+          return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
             ::ket::mpi::gate::page::phase_shift_detail::make_phase_shift2(modified_phase_coefficient1, phase_coefficient2));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -170,9 +174,11 @@ namespace ket
                 modified_phase_coefficient2_{modified_phase_coefficient2}
             { }
 
-            template <typename Iterator>
-            void operator()(Iterator const zero_iter, Iterator const one_iter) const
+            template <typename Iterator, typename StateInteger>
+            void operator()(Iterator const zero_first, Iterator const one_first, StateInteger const index) const
             {
+              auto const zero_iter = zero_first + index;
+              auto const one_iter = one_first + index;
               auto const zero_iter_value = *zero_iter;
 
               using real_type = typename ::ket::utility::meta::real_of<Complex>::type;
@@ -216,10 +222,12 @@ namespace ket
           auto const modified_phase_coefficient2 = one_div_root_two<Real>() * phase_coefficient2;
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
-          return ::ket::mpi::gate::page::detail::one_page_qubit_gate(
+          return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
-            [phase_coefficient1, modified_phase_coefficient2](auto const zero_iter, auto const one_iter)
+            [phase_coefficient1, modified_phase_coefficient2](auto const zero_first, auto const one_first, StateInteger const index)
             {
+              auto const zero_iter = zero_first + index;
+              auto const one_iter = one_first + index;
               auto const zero_iter_value = *zero_iter;
 
               *zero_iter += phase_coefficient1 * *one_iter;
@@ -229,7 +237,7 @@ namespace ket
               *one_iter *= modified_phase_coefficient2;
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
-          return ::ket::mpi::gate::page::detail::one_page_qubit_gate(
+          return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
             ::ket::mpi::gate::page::phase_shift_detail::make_adj_phase_shift2(phase_coefficient1, modified_phase_coefficient2));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -259,9 +267,11 @@ namespace ket
                 cosine_phase_coefficient3_{cosine_phase_coefficient3}
             { }
 
-            template <typename Iterator>
-            void operator()(Iterator const zero_iter, Iterator const one_iter) const
+            template <typename Iterator, typename StateInteger>
+            void operator()(Iterator const zero_first, Iterator const one_first, StateInteger const index) const
             {
+              auto const zero_iter = zero_first + index;
+              auto const one_iter = one_first + index;
               auto const zero_iter_value = *zero_iter;
 
               *zero_iter *= cosine_;
@@ -313,12 +323,14 @@ namespace ket
           auto const cosine_phase_coefficient3 = cosine * phase_coefficient3;
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
-          return ::ket::mpi::gate::page::detail::one_page_qubit_gate(
+          return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
             [sine, cosine, phase_coefficient2,
              sine_phase_coefficient3, cosine_phase_coefficient3](
-              auto const zero_iter, auto const one_iter)
+              auto const zero_first, auto const one_first, StateInteger const index)
             {
+              auto const zero_iter = zero_first + index;
+              auto const one_iter = one_first + index;
               auto const zero_iter_value = *zero_iter;
 
               *zero_iter *= cosine;
@@ -328,7 +340,7 @@ namespace ket
               *one_iter *= phase_coefficient2;
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
-          return ::ket::mpi::gate::page::detail::one_page_qubit_gate(
+          return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
             ::ket::mpi::gate::page::phase_shift_detail::make_phase_shift3(
               sine, cosine, phase_coefficient2,
@@ -360,9 +372,11 @@ namespace ket
                 phase_coefficient3_{phase_coefficient3}
             { }
 
-            template <typename Iterator>
-            void operator()(Iterator const zero_iter, Iterator const one_iter) const
+            template <typename Iterator, typename StateInteger>
+            void operator()(Iterator const zero_first, Iterator const one_first, StateInteger const index) const
             {
+              auto const zero_iter = zero_first + index;
+              auto const one_iter = one_first + index;
               auto const zero_iter_value = *zero_iter;
 
               *zero_iter *= cosine_;
@@ -414,12 +428,14 @@ namespace ket
           auto const cosine_phase_coefficient2 = cosine * phase_coefficient2;
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
-          return ::ket::mpi::gate::page::detail::one_page_qubit_gate(
+          return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
             [sine, cosine, sine_phase_coefficient2, cosine_phase_coefficient2,
              phase_coefficient3](
-              auto const zero_iter, auto const one_iter)
+              auto const zero_first, auto const one_first, StateInteger const index)
             {
+              auto const zero_iter = zero_first + index;
+              auto const one_iter = one_first + index;
               auto const zero_iter_value = *zero_iter;
 
               *zero_iter *= cosine;
@@ -429,7 +445,7 @@ namespace ket
               *one_iter *= phase_coefficient3;
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
-          return ::ket::mpi::gate::page::detail::one_page_qubit_gate(
+          return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
             ::ket::mpi::gate::page::phase_shift_detail::make_adj_phase_shift3(
               sine, cosine, sine_phase_coefficient2, cosine_phase_coefficient2,
