@@ -47,12 +47,60 @@ namespace ket
             StateInteger, BitInteger, PermutationAllocator> const&)
         { return local_state; }
 
+        namespace set_detail
+        {
+# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
+          template <typename Complex, typename Real>
+          struct set1
+          {
+            Real& one_probability_;
+
+            explicit set1(Real& one_probability)
+              : one_probability_{one_probability}
+            { }
+
+            template <typename Iterator>
+            void operator()(Iterator const zero_iter, Iterator const one_iter) const
+            {
+              *zero_iter = Complex{0};
+
+              using std::norm;
+              one_probability_ += norm(*one_iter);
+            }
+          }; // struct set1<Complex, Real>
+
+          template <typename Complex, typename Real>
+          inline ::ket::mpi::gate::page::set_detail::set1<Complex, Real>
+          make_set1(Real& one_probability)
+          { return ::ket::mpi::gate::page::set_detail::set1<Complex, Real>{one_probability}; }
+
+          template <typename Real>
+          struct set2
+          {
+            Real multiplier_;
+
+            explicit set2(Real const multiplier)
+              : multiplier_{multiplier}
+            { }
+
+            template <typename Iterator>
+            void operator()(Iterator const, Iterator const one_iter) const
+            { *one_iter *= multiplier_; }
+          }; // struct set2<Complex, Real>
+
+          template <typename Real>
+          inline ::ket::mpi::gate::page::set_detail::set2<Real>
+          make_set2(Real const multiplier)
+          { return ::ket::mpi::gate::page::set_detail::set2<Real>{multiplier}; }
+# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+        } // namespace set_detail
+
         template <
           typename ParallelPolicy,
           typename Complex, int num_page_qubits_, typename StateAllocator,
           typename StateInteger, typename BitInteger, typename PermutationAllocator>
         inline ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>& set(
-          ::ket::mpi::utility::policy::general_mpi const,
+          ::ket::mpi::utility::policy::general_mpi const mpi_policy,
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>& local_state,
           ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -60,77 +108,39 @@ namespace ket
             StateInteger, BitInteger, PermutationAllocator> const&
             permutation)
         {
-          assert(local_state.is_page_qubit(permutation[qubit]));
-
-          auto const num_nonpage_qubits
-            = static_cast<BitInteger>(local_state.num_local_qubits() - num_page_qubits_);
-          auto const qubit_mask
-            = ::ket::utility::integer_exp2<StateInteger>(
-                permutation[qubit] - static_cast<BitInteger>(num_nonpage_qubits));
-          auto const lower_bits_mask = qubit_mask - StateInteger{1u};
-          auto const upper_bits_mask = compl lower_bits_mask;
-
           using real_type = typename ::ket::utility::meta::real_of<Complex>::type;
           auto one_probability = real_type{0};
 
-          static constexpr auto num_pages
-            = ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>::num_pages;
-          for (auto base_page_id = std::size_t{0u};
-               base_page_id < num_pages / 2u; ++base_page_id)
-          {
-            // x0x
-            auto const zero_page_id
-              = ((base_page_id bitand upper_bits_mask) << 1u)
-                bitor (base_page_id bitand lower_bits_mask);
-            // x1x
-            auto const one_page_id = zero_page_id bitor qubit_mask;
+# ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
+          ::ket::mpi::gate::page::detail::one_page_qubit_gate(
+            mpi_policy, parallel_policy, local_state, qubit, permutation,
+            [&one_probability](auto const zero_iter, auto const one_iter)
+            {
+              *zero_iter = Complex{0};
 
-            auto zero_page_range = local_state.page_range(zero_page_id);
-            auto one_page_range = local_state.page_range(one_page_id);
-            assert(boost::size(zero_page_range) == boost::size(one_page_range));
-
-            auto const zero_first = ::ket::utility::begin(zero_page_range);
-            auto const one_first = ::ket::utility::begin(one_page_range);
-
-            using ::ket::utility::loop_n;
-            loop_n(
-              parallel_policy,
-              boost::size(zero_page_range),
-              [&one_probability, zero_first, one_first](StateInteger const index, int const)
-              {
-                *(zero_first + index) = Complex{0};
-
-                using std::norm;
-                one_probability += norm(*(one_first + index));
-              });
-          }
+              using std::norm;
+              one_probability += norm(*one_iter);
+            });
+# else // BOOST_NO_CXX14_GENERIC_LAMBDAS
+          ::ket::mpi::gate::page::detail::one_page_qubit_gate(
+            mpi_policy, parallel_policy, local_state, qubit, permutation,
+            ::ket::mpi::gate::page::set_detail::make_set1<Complex>(one_probability));
+# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 
           using std::pow;
           using boost::math::constants::half;
           auto const multiplier = pow(one_probability, -half<real_type>());
 
-          for (auto base_page_id = std::size_t{0u};
-               base_page_id < num_pages / 2u; ++base_page_id)
-          {
-            // x0x
-            auto const zero_page_id
-              = ((base_page_id bitand upper_bits_mask) << 1u)
-                bitor (base_page_id bitand lower_bits_mask);
-            // x1x
-            auto const one_page_id = zero_page_id bitor qubit_mask;
-
-            auto one_page_range = local_state.page_range(one_page_id);
-            auto const one_first = ::ket::utility::begin(one_page_range);
-
-            using ::ket::utility::loop_n;
-            loop_n(
-              parallel_policy,
-              boost::size(one_page_range),
-              [one_first, multiplier](StateInteger const index, int const)
-              { *(one_first + index) *= multiplier; });
-          }
-
-          return local_state;
+# ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
+          return ::ket::mpi::gate::page::detail::one_page_qubit_gate(
+            mpi_policy, parallel_policy, local_state, qubit, permutation,
+            [multiplier](auto const, auto const one_iter)
+            { *one_iter *= multiplier; });
+# else // BOOST_NO_CXX14_GENERIC_LAMBDAS
+          return ::ket::mpi::gate::page::detail::one_page_qubit_gate(
+            mpi_policy, parallel_policy, local_state, qubit, permutation,
+            ::ket::mpi::gate::page::set_detail::make_set2(multiplier));
+# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }
       } // namespace page
     } // namespace gate
