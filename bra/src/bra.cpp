@@ -65,7 +65,6 @@ int main(int argc, char* argv[])
 {
   std::ios::sync_with_stdio(false);
 
-  using bit_integer_type = unsigned int;
   using rng_type = std::mt19937_64;
   using seed_type = rng_type::result_type;
 
