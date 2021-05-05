@@ -13,6 +13,7 @@
 # include <ket/utility/integer_log2.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/state.hpp>
+# include <ket/mpi/gate/page/unsupported_page_gate_operation.hpp>
 # include <ket/mpi/gate/page/detail/one_page_qubit_gate.hpp>
 
 
@@ -188,7 +189,7 @@ namespace ket
             typename MpiPolicy, typename ParallelPolicy,
             typename RandomAccessRange, typename Complex,
             typename StateInteger, typename BitInteger, typename PermutationAllocator>
-          inline RandomAccessRange& controlled_phase_shift_coeff_cp(
+          [[noreturn]] inline RandomAccessRange& controlled_phase_shift_coeff_cp(
             MpiPolicy const, ParallelPolicy const,
             RandomAccessRange& local_state,
             Complex const&,
@@ -197,13 +198,13 @@ namespace ket
             ::ket::mpi::qubit_permutation<
               StateInteger, BitInteger, PermutationAllocator> const&,
             yampi::rank const)
-          { return local_state; }
+          { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<0, false>{"controlled_phase_shift_coeff_cp"}; }
 
           template <
             typename ParallelPolicy,
             typename Complex, typename StateAllocator,
             typename StateInteger, typename BitInteger, typename PermutationAllocator>
-          inline ::ket::mpi::state<Complex, 0, StateAllocator>&
+          [[noreturn]] inline ::ket::mpi::state<Complex, 0, StateAllocator>&
           controlled_phaes_shift_coeff_cp(
             ::ket::mpi::utility::policy::general_mpi const, ParallelPolicy const,
             ::ket::mpi::state<Complex, 0, StateAllocator>& local_state,
@@ -213,7 +214,7 @@ namespace ket
             ::ket::mpi::qubit_permutation<
               StateInteger, BitInteger, PermutationAllocator> const&,
             yampi::rank const)
-          { return local_state; }
+          { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<0>{"controlled_phase_shift_coeff_cp"}; }
 
           template <
             typename ParallelPolicy,

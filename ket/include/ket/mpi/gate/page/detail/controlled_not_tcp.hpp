@@ -11,6 +11,7 @@
 # include <ket/utility/integer_exp2.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/state.hpp>
+# include <ket/mpi/gate/page/unsupported_page_gate_operation.hpp>
 
 
 namespace ket
@@ -27,40 +28,40 @@ namespace ket
             typename MpiPolicy, typename ParallelPolicy,
             typename RandomAccessRange,
             typename StateInteger, typename BitInteger, typename Allocator>
-          inline RandomAccessRange& controlled_not_tcp(
+          [[noreturn]] inline RandomAccessRange& controlled_not_tcp(
             MpiPolicy const, ParallelPolicy const,
             RandomAccessRange& local_state,
             ::ket::qubit<StateInteger, BitInteger> const,
             ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const,
             ::ket::mpi::qubit_permutation<
               StateInteger, BitInteger, Allocator> const&)
-          { return local_state; }
+          { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<0, false>{"controlled_not_tcp"}; }
 
           template <
             typename ParallelPolicy,
             typename Complex, typename StateAllocator,
             typename StateInteger, typename BitInteger, typename PermutationAllocator>
-          inline ::ket::mpi::state<Complex, 0, StateAllocator>& controlled_not_tcp(
+          [[noreturn]] inline ::ket::mpi::state<Complex, 0, StateAllocator>& controlled_not_tcp(
             ::ket::mpi::utility::policy::general_mpi const, ParallelPolicy const,
             ::ket::mpi::state<Complex, 0, StateAllocator>& local_state,
             ::ket::qubit<StateInteger, BitInteger> const,
             ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const,
             ::ket::mpi::qubit_permutation<
               StateInteger, BitInteger, PermutationAllocator> const&)
-          { return local_state; }
+          { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<0>{"controlled_not_tcp"}; }
 
           template <
             typename ParallelPolicy,
             typename Complex, typename StateAllocator,
             typename StateInteger, typename BitInteger, typename PermutationAllocator>
-          inline ::ket::mpi::state<Complex, 1, StateAllocator>& controlled_not_tcp(
+          [[noreturn]] inline ::ket::mpi::state<Complex, 1, StateAllocator>& controlled_not_tcp(
             ::ket::mpi::utility::policy::general_mpi const, ParallelPolicy const,
             ::ket::mpi::state<Complex, 1, StateAllocator>& local_state,
             ::ket::qubit<StateInteger, BitInteger> const,
             ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const,
             ::ket::mpi::qubit_permutation<
               StateInteger, BitInteger, PermutationAllocator> const&)
-          { return local_state; }
+          { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<1>{"controlled_not_tcp"}; }
 
           template <
             typename ParallelPolicy,

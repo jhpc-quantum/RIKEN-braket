@@ -17,6 +17,7 @@
 # include <ket/utility/begin.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/state.hpp>
+# include <ket/mpi/gate/page/unsupported_page_gate_operation.hpp>
 
 
 namespace ket
@@ -35,7 +36,7 @@ namespace ket
             typename RandomAccessRange,
             typename StateInteger, typename BitInteger, typename Allocator,
             typename Function>
-          inline RandomAccessRange& two_page_qubits_gate(
+          [[noreturn]] inline RandomAccessRange& two_page_qubits_gate(
             MpiPolicy const, ParallelPolicy const,
             RandomAccessRange& local_state,
             ::ket::qubit<StateInteger, BitInteger> const,
@@ -43,7 +44,7 @@ namespace ket
             ::ket::mpi::qubit_permutation<
               StateInteger, BitInteger, Allocator> const&,
             Function&&)
-          { return local_state; }
+          { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<0, false>{"two_page_qubits_gate"}; }
 
           template <
             std::size_t num_nonpage_qubits,
@@ -51,7 +52,7 @@ namespace ket
             typename RandomAccessRange,
             typename StateInteger, typename BitInteger, typename Allocator,
             typename Function>
-          inline RandomAccessRange& two_page_qubits_gate(
+          [[noreturn]] inline RandomAccessRange& two_page_qubits_gate(
             MpiPolicy const, ParallelPolicy const,
             RandomAccessRange& local_state,
             ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const,
@@ -59,7 +60,7 @@ namespace ket
             ::ket::mpi::qubit_permutation<
               StateInteger, BitInteger, Allocator> const&,
             Function&&)
-          { return local_state; }
+          { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<0, false>{"two_page_qubits_gate"}; }
 
           template <
             std::size_t num_nonpage_qubits,
@@ -67,7 +68,7 @@ namespace ket
             typename Complex, typename StateAllocator,
             typename StateInteger, typename BitInteger, typename PermutationAllocator,
             typename Function>
-          inline ::ket::mpi::state<Complex, 0, StateAllocator>& two_page_qubits_gate(
+          [[noreturn]] inline ::ket::mpi::state<Complex, 0, StateAllocator>& two_page_qubits_gate(
             ::ket::mpi::utility::policy::general_mpi const, ParallelPolicy const,
             ::ket::mpi::state<Complex, 0, StateAllocator>& local_state,
             ::ket::qubit<StateInteger, BitInteger> const,
@@ -75,7 +76,7 @@ namespace ket
             ::ket::mpi::qubit_permutation<
               StateInteger, BitInteger, PermutationAllocator> const&,
             Function&&)
-          { return local_state; }
+          { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<0>{"two_page_qubits_gate"}; }
 
           template <
             std::size_t num_nonpage_qubits,
@@ -83,7 +84,7 @@ namespace ket
             typename Complex, typename StateAllocator,
             typename StateInteger, typename BitInteger, typename PermutationAllocator,
             typename Function>
-          inline ::ket::mpi::state<Complex, 0, StateAllocator>& two_page_qubits_gate(
+          [[noreturn]] inline ::ket::mpi::state<Complex, 0, StateAllocator>& two_page_qubits_gate(
             ::ket::mpi::utility::policy::general_mpi const, ParallelPolicy const,
             ::ket::mpi::state<Complex, 0, StateAllocator>& local_state,
             ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const,
@@ -91,7 +92,7 @@ namespace ket
             ::ket::mpi::qubit_permutation<
               StateInteger, BitInteger, PermutationAllocator> const&,
             Function&&)
-          { return local_state; }
+          { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<0>{"two_page_qubits_gate"}; }
 
           template <
             std::size_t num_nonpage_qubits,
@@ -99,7 +100,7 @@ namespace ket
             typename Complex, typename StateAllocator,
             typename StateInteger, typename BitInteger, typename PermutationAllocator,
             typename Function>
-          inline ::ket::mpi::state<Complex, 1, StateAllocator>& two_page_qubits_gate(
+          [[noreturn]] inline ::ket::mpi::state<Complex, 1, StateAllocator>& two_page_qubits_gate(
             ::ket::mpi::utility::policy::general_mpi const, ParallelPolicy const,
             ::ket::mpi::state<Complex, 1, StateAllocator>& local_state,
             ::ket::qubit<StateInteger, BitInteger> const,
@@ -107,7 +108,7 @@ namespace ket
             ::ket::mpi::qubit_permutation<
               StateInteger, BitInteger, PermutationAllocator> const&,
             Function&&)
-          { return local_state; }
+          { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<1>{"two_page_qubits_gate"}; }
 
           template <
             std::size_t num_nonpage_qubits,
@@ -115,7 +116,7 @@ namespace ket
             typename Complex, typename StateAllocator,
             typename StateInteger, typename BitInteger, typename PermutationAllocator,
             typename Function>
-          inline ::ket::mpi::state<Complex, 1, StateAllocator>& two_page_qubits_gate(
+          [[noreturn]] inline ::ket::mpi::state<Complex, 1, StateAllocator>& two_page_qubits_gate(
             ::ket::mpi::utility::policy::general_mpi const, ParallelPolicy const,
             ::ket::mpi::state<Complex, 1, StateAllocator>& local_state,
             ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const,
@@ -123,7 +124,7 @@ namespace ket
             ::ket::mpi::qubit_permutation<
               StateInteger, BitInteger, PermutationAllocator> const&,
             Function&&)
-          { return local_state; }
+          { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<1>{"two_page_qubits_gate"}; }
 
           namespace two_page_qubits_gate_detail
           {

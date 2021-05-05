@@ -11,6 +11,7 @@
 # include <ket/utility/meta/real_of.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/state.hpp>
+# include <ket/mpi/gate/page/unsupported_page_gate_operation.hpp>
 # include <ket/mpi/gate/page/detail/one_page_qubit_gate.hpp>
 
 
@@ -26,25 +27,25 @@ namespace ket
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename Allocator>
-        inline RandomAccessRange& clear(
+        [[noreturn]] inline RandomAccessRange& clear(
           MpiPolicy const, ParallelPolicy const,
           RandomAccessRange& local_state,
           ::ket::qubit<StateInteger, BitInteger> const,
           ::ket::mpi::qubit_permutation<
             StateInteger, BitInteger, Allocator> const&)
-        { return local_state; }
+        { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<0, false>{"clear"}; }
 
         template <
           typename ParallelPolicy,
           typename Complex, typename StateAllocator,
           typename StateInteger, typename BitInteger, typename PermutationAllocator>
-        inline ::ket::mpi::state<Complex, 0, StateAllocator>& clear(
+        [[noreturn]] inline ::ket::mpi::state<Complex, 0, StateAllocator>& clear(
           ::ket::mpi::utility::policy::general_mpi const, ParallelPolicy const,
           ::ket::mpi::state<Complex, 0, StateAllocator>& local_state,
           ::ket::qubit<StateInteger, BitInteger> const,
           ::ket::mpi::qubit_permutation<
             StateInteger, BitInteger, PermutationAllocator> const&)
-        { return local_state; }
+        { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<0>{"clear"}; }
 
         namespace clear_detail
         {

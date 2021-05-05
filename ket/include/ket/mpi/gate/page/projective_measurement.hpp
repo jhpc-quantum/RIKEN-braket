@@ -13,6 +13,7 @@
 # include <ket/utility/meta/real_of.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/state.hpp>
+# include <ket/mpi/gate/page/unsupported_page_gate_operation.hpp>
 # include <ket/mpi/gate/page/detail/one_page_qubit_gate.hpp>
 
 
@@ -29,7 +30,7 @@ namespace ket
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename Allocator>
-        inline
+        [[noreturn]] inline
         std::pair<
           typename ::ket::utility::meta::real_of<
             typename boost::range_value<RandomAccessRange>::type>::type,
@@ -41,19 +42,13 @@ namespace ket
           ::ket::qubit<StateInteger, BitInteger> const,
           ::ket::mpi::qubit_permutation<
             StateInteger, BitInteger, Allocator> const&)
-        {
-          typedef
-            typename ::ket::utility::meta::real_of<
-              typename boost::range_value<RandomAccessRange>::type>::type
-            result_type;
-          return std::make_pair(result_type(0), result_type(0));
-        }
+        { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<0, false>{"zero_one_probabilities"}; }
 
         template <
           typename ParallelPolicy,
           typename Complex, typename StateAllocator,
           typename StateInteger, typename BitInteger, typename PermutationAllocator>
-        inline
+        [[noreturn]] inline
         std::pair<
           typename ::ket::utility::meta::real_of<Complex>::type,
           typename ::ket::utility::meta::real_of<Complex>::type>
@@ -63,12 +58,7 @@ namespace ket
           ::ket::qubit<StateInteger, BitInteger> const,
           ::ket::mpi::qubit_permutation<
             StateInteger, BitInteger, PermutationAllocator> const&)
-        {
-          typedef
-            typename ::ket::utility::meta::real_of<Complex>::type
-            result_type;
-          return std::make_pair(result_type(0), result_type(0));
-        }
+        { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<0>{"zero_one_probabilities"}; }
 
         namespace projective_measurement_detail
         {
@@ -142,25 +132,25 @@ namespace ket
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename Real, typename Allocator>
-        inline void change_state_after_measuring_zero(
+        [[noreturn]] inline void change_state_after_measuring_zero(
           MpiPolicy const, ParallelPolicy const,
           RandomAccessRange& local_state,
           ::ket::qubit<StateInteger, BitInteger> const, Real const,
           ::ket::mpi::qubit_permutation<
             StateInteger, BitInteger, Allocator> const&)
-        { }
+        { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<0, false>{"change_state_after_measuring_zero"}; }
 
         template <
           typename ParallelPolicy,
           typename Complex, typename StateAllocator,
           typename StateInteger, typename BitInteger, typename Real, typename PermutationAllocator>
-        inline void change_state_after_measuring_zero(
+        [[noreturn]] inline void change_state_after_measuring_zero(
           ::ket::mpi::utility::policy::general_mpi const, ParallelPolicy const,
           ::ket::mpi::state<Complex, 0, StateAllocator>& local_state,
           ::ket::qubit<StateInteger, BitInteger> const, Real const,
           ::ket::mpi::qubit_permutation<
             StateInteger, BitInteger, PermutationAllocator> const&)
-        { }
+        { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<0>{"change_state_after_measuring_zero"}; }
 
         namespace projective_measurement_detail
         {
@@ -227,25 +217,25 @@ namespace ket
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename Real, typename Allocator>
-        inline void change_state_after_measuring_one(
+        [[noreturn]] inline void change_state_after_measuring_one(
           MpiPolicy const, ParallelPolicy const,
           RandomAccessRange& local_state,
           ::ket::qubit<StateInteger, BitInteger> const, Real const,
           ::ket::mpi::qubit_permutation<
             StateInteger, BitInteger, Allocator> const&)
-        { }
+        { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<0, false>{"change_state_after_measuring_one"}; }
 
         template <
           typename ParallelPolicy,
           typename Complex, typename StateAllocator,
           typename StateInteger, typename BitInteger, typename Real, typename PermutationAllocator>
-        inline void change_state_after_measuring_one(
+        [[noreturn]] inline void change_state_after_measuring_one(
           ::ket::mpi::utility::policy::general_mpi const, ParallelPolicy const,
           ::ket::mpi::state<Complex, 0, StateAllocator>& local_state,
           ::ket::qubit<StateInteger, BitInteger> const, Real const,
           ::ket::mpi::qubit_permutation<
             StateInteger, BitInteger, PermutationAllocator> const&)
-        { }
+        { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<0>{"change_state_after_measuring_one"}; }
 
         namespace projective_measurement_detail
         {
