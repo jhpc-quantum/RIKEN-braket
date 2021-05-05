@@ -36,7 +36,7 @@ namespace ket
             template <typename Iterator, typename StateInteger>
             void operator()(
               Iterator const, Iterator const, Iterator const, Iterator const first_11,
-              StateInteger const index) const
+              StateInteger const index, int const) const
             { *(first_11 + index) *= phase_coefficient_; }
           }; // struct controlled_phase_shift_coeff_tcp<Complex>
 
@@ -66,7 +66,7 @@ namespace ket
             target_qubit, control_qubit, permutation,
             [phase_coefficient](
               auto const, auto const, auto const, auto const first_11,
-              StateInteger const index)
+              StateInteger const index, int const)
             { *(first_11 + index) *= phase_coefficient; });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::two_page_qubits_gate<0u>(

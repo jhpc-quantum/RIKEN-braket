@@ -60,7 +60,7 @@ namespace ket
             { }
 
             template <typename Iterator, typename StateInteger>
-            void operator()(Iterator const zero_first, Iterator const one_first, StateInteger const index) const
+            void operator()(Iterator const zero_first, Iterator const one_first, StateInteger const index, int const) const
             {
               *(zero_first + index) = Complex{0};
 
@@ -84,7 +84,7 @@ namespace ket
             { }
 
             template <typename Iterator, typename StateInteger>
-            void operator()(Iterator const, Iterator const one_first, StateInteger const index) const
+            void operator()(Iterator const, Iterator const one_first, StateInteger const index, int const) const
             { *(one_first + index) *= multiplier_; }
           }; // struct set2<Complex, Real>
 
@@ -114,7 +114,7 @@ namespace ket
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
-            [&one_probability](auto const zero_first, auto const one_first, StateInteger const index)
+            [&one_probability](auto const zero_first, auto const one_first, StateInteger const index, int const)
             {
               *(zero_first + index) = Complex{0};
 
@@ -134,7 +134,7 @@ namespace ket
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
-            [multiplier](auto const, auto const one_first, StateInteger const index)
+            [multiplier](auto const, auto const one_first, StateInteger const index, int const)
             { *(one_first + index) *= multiplier; });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(

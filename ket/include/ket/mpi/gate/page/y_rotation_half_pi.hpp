@@ -27,7 +27,7 @@ namespace ket
           struct y_rotation_half_pi
           {
             template <typename Iterator, typename StateInteger>
-            void operator()(Iterator const zero_first, Iterator const one_first, StateInteger const index) const
+            void operator()(Iterator const zero_first, Iterator const one_first, StateInteger const index, int const) const
             {
               auto const zero_iter = zero_first + index;
               auto const one_iter = one_first + index;
@@ -59,7 +59,7 @@ namespace ket
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
-            [](auto const zero_first, auto const one_first, StateInteger const index)
+            [](auto const zero_first, auto const one_first, StateInteger const index, int const)
             {
               auto const zero_iter = zero_first + index;
               auto const one_iter = one_first + index;
@@ -85,7 +85,7 @@ namespace ket
           struct adj_y_rotation_half_pi
           {
             template <typename Iterator, typename StateInteger>
-            void operator()(Iterator const zero_first, Iterator const one_first, StateInteger const index) const
+            void operator()(Iterator const zero_first, Iterator const one_first, StateInteger const index, int const) const
             {
               auto const zero_iter = zero_first + index;
               auto const one_iter = one_first + index;
@@ -117,7 +117,7 @@ namespace ket
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
-            [](auto const zero_first, auto const one_first, StateInteger const index)
+            [](auto const zero_first, auto const one_first, StateInteger const index, int const)
             {
               auto const zero_iter = zero_first + index;
               auto const one_iter = one_first + index;

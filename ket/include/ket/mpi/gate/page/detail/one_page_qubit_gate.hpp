@@ -110,8 +110,8 @@ namespace ket
               loop_n(
                 parallel_policy,
                 boost::size(zero_page_range) >> num_nonpage_qubits,
-                [zero_first, one_first, &function](StateInteger const index_wo_nonpage_qubits, int const)
-                { function(zero_first, one_first, index_wo_nonpage_qubits); });
+                [zero_first, one_first, &function](StateInteger const index_wo_nonpage_qubits, int const thread_index)
+                { function(zero_first, one_first, index_wo_nonpage_qubits, thread_index); });
             }
 
             return local_state;

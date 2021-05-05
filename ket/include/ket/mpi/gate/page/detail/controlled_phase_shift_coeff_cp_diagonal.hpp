@@ -53,7 +53,7 @@ namespace ket
               template <typename Iterator>
               void operator()(
                 Iterator const, Iterator const one_first,
-                StateInteger const index_wo_nonpage_qubit) const
+                StateInteger const index_wo_nonpage_qubit, int const) const
               {
                 auto const zero_index
                   = ((index_wo_nonpage_qubit bitand nonpage_upper_bits_mask_) << 1u)
@@ -99,7 +99,7 @@ namespace ket
                 mpi_policy, parallel_policy,
                 local_state, control_qubit.qubit(), permutation,
                 [phase_coefficient, target_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask](
-                  auto const, auto const one_first, StateInteger const index_wo_nonpage_qubit)
+                  auto const, auto const one_first, StateInteger const index_wo_nonpage_qubit, int const)
                 {
                   auto const zero_index
                     = ((index_wo_nonpage_qubit bitand nonpage_upper_bits_mask) << 1u)
@@ -130,7 +130,7 @@ namespace ket
 
               template <typename Iterator, typename StateInteger>
               void operator()(
-                Iterator const, Iterator const one_first, StateInteger const index) const
+                Iterator const, Iterator const one_first, StateInteger const index, int const) const
               { *(one_first + index) *= phase_coefficient_; }
             }; // struct do_controlled_phase_shift_coeff_cp_tg<Complex>
 
@@ -174,7 +174,7 @@ namespace ket
                 mpi_policy, parallel_policy,
                 local_state, control_qubit.qubit(), permutation,
                 [phase_coefficient](
-                  auto const, auto const one_first, StateInteger const index)
+                  auto const, auto const one_first, StateInteger const index, int const)
                 { *(one_first + index) *= phase_coefficient; });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
               return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(

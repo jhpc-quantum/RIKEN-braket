@@ -203,8 +203,8 @@ namespace ket
                 loop_n(
                   parallel_policy,
                   boost::size(page_range_11) >> num_nonpage_qubits,
-                  [first_00, first_01, first_10, first_11, &function](StateInteger const index_wo_nonpage_qubits, int const)
-                  { function(first_00, first_01, first_10, first_11, index_wo_nonpage_qubits); });
+                  [first_00, first_01, first_10, first_11, &function](StateInteger const index_wo_nonpage_qubits, int const thread_index)
+                  { function(first_00, first_01, first_10, first_11, index_wo_nonpage_qubits, thread_index); });
               }
 
               return local_state;

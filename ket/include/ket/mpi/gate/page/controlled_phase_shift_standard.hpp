@@ -37,7 +37,7 @@ namespace ket
             template <typename Iterator, typename StateInteger>
             void operator()(
               Iterator const, Iterator const, Iterator const, Iterator const first_11,
-              StateInteger const index) const
+              StateInteger const index, int const) const
             { *(first_11 + index) *= phase_coefficient_; }
           }; // struct controlled_phase_shift_coeff_tcp<Complex>
 
@@ -67,7 +67,7 @@ namespace ket
             target_qubit, control_qubit, permutation,
             [phase_coefficient](
               auto const, auto const, auto const, auto const first_11,
-              StateInteger const index)
+              StateInteger const index, int const)
             { *(first_11 + index) *= phase_coefficient; });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::two_page_qubits_gate<0u>(
@@ -103,7 +103,7 @@ namespace ket
             template <typename Iterator>
             void operator()(
               Iterator const, Iterator const one_first,
-              StateInteger const index_wo_nonpage_qubit) const
+              StateInteger const index_wo_nonpage_qubit, int const) const
             {
               auto const zero_index
                 = ((index_wo_nonpage_qubit bitand nonpage_upper_bits_mask_) << 1u)
@@ -147,7 +147,7 @@ namespace ket
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
             mpi_policy, parallel_policy, local_state, target_qubit, permutation,
             [phase_coefficient, control_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask](
-              auto const, auto const one_first, StateInteger const index_wo_nonpage_qubit)
+              auto const, auto const one_first, StateInteger const index_wo_nonpage_qubit, int const)
             {
               auto const zero_index
                 = ((index_wo_nonpage_qubit bitand nonpage_upper_bits_mask) << 1u)
@@ -190,7 +190,7 @@ namespace ket
             template <typename Iterator>
             void operator()(
               Iterator const, Iterator const one_first,
-              StateInteger const index_wo_nonpage_qubit) const
+              StateInteger const index_wo_nonpage_qubit, int const) const
             {
               auto const zero_index
                 = ((index_wo_nonpage_qubit bitand nonpage_upper_bits_mask_) << 1u)
@@ -234,7 +234,7 @@ namespace ket
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
             mpi_policy, parallel_policy, local_state, control_qubit.qubit(), permutation,
             [phase_coefficient, target_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask](
-              auto const, auto const one_first, StateInteger const index_wo_nonpage_qubit)
+              auto const, auto const one_first, StateInteger const index_wo_nonpage_qubit, int const)
             {
               auto const zero_index
                 = ((index_wo_nonpage_qubit bitand nonpage_upper_bits_mask) << 1u)

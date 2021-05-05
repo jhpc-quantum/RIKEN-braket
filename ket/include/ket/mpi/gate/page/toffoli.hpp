@@ -67,7 +67,7 @@ namespace ket
             void operator()(
               Iterator const, Iterator const,
               Iterator const first_10, Iterator const first_11,
-              StateInteger const index_wo_nonpage_qubit) const
+              StateInteger const index_wo_nonpage_qubit, int const) const
             {
               auto const zero_index
                 = ((index_wo_nonpage_qubit bitand nonpage_upper_bits_mask_) << 1u)
@@ -112,7 +112,7 @@ namespace ket
             target_qubit, page_control_qubit, permutation,
             [nonpage_control_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask](
               auto const, auto const, auto const first_10, auto const first_11,
-              StateInteger const index_wo_nonpage_qubit)
+              StateInteger const index_wo_nonpage_qubit, int const)
             {
               auto const zero_index
                 = ((index_wo_nonpage_qubit bitand nonpage_upper_bits_mask) << 1u)
@@ -153,7 +153,7 @@ namespace ket
             template <typename Iterator>
             void operator()(
               Iterator const, Iterator const, Iterator const, Iterator const first_11,
-              StateInteger const index_wo_nonpage_qubit) const
+              StateInteger const index_wo_nonpage_qubit, int const) const
             {
               auto const zero_index
                 = ((index_wo_nonpage_qubit bitand nonpage_upper_bits_mask_) << 1u)
@@ -198,7 +198,7 @@ namespace ket
             control_qubit1, control_qubit2, permutation,
             [target_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask](
               auto const, auto const, auto const, auto const first_11,
-              StateInteger const index_wo_nonpage_qubit)
+              StateInteger const index_wo_nonpage_qubit, int const)
             {
               auto const zero_index
                 = ((index_wo_nonpage_qubit bitand nonpage_upper_bits_mask) << 1u)
@@ -241,7 +241,7 @@ namespace ket
             template <typename Iterator>
             void operator()(
               Iterator const zero_first, Iterator const one_first,
-              StateInteger const index_wo_nonpage_qubits) const
+              StateInteger const index_wo_nonpage_qubits, int const) const
             {
               auto const index_00
                 = ((index_wo_nonpage_qubits bitand nonpage_upper_bits_mask_) << 2u)
@@ -306,7 +306,7 @@ namespace ket
             mpi_policy, parallel_policy, local_state, target_qubit, permutation,
             [control_qubits_mask, nonpage_lower_bits_mask, nonpage_middle_bits_mask, nonpage_upper_bits_mask](
               auto const zero_first, auto const one_first,
-              StateInteger const index_wo_nonpage_qubits)
+              StateInteger const index_wo_nonpage_qubits, int const)
             {
               auto const index_00
                 = ((index_wo_nonpage_qubits bitand nonpage_upper_bits_mask) << 2u)
@@ -353,7 +353,7 @@ namespace ket
             template <typename Iterator>
             void operator()(
               Iterator const, Iterator const one_first,
-              StateInteger const index_wo_nonpage_qubits) const
+              StateInteger const index_wo_nonpage_qubits, int const) const
             {
               auto const base_index
                 = ((index_wo_nonpage_qubits bitand nonpage_upper_bits_mask_) << 2u)
@@ -421,7 +421,7 @@ namespace ket
             mpi_policy, parallel_policy, local_state, page_control_qubit.qubit(), permutation,
             [target_qubit_mask, nonpage_control_qubit_mask,
              nonpage_lower_bits_mask, nonpage_middle_bits_mask, nonpage_upper_bits_mask](
-              auto const, auto const one_first, StateInteger const index_wo_nonpage_qubits)
+              auto const, auto const one_first, StateInteger const index_wo_nonpage_qubits, int const)
             {
               auto const base_index
                 = ((index_wo_nonpage_qubits bitand nonpage_upper_bits_mask) << 2u)

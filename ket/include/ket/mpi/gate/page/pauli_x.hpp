@@ -24,7 +24,7 @@ namespace ket
           struct pauli_x
           {
             template <typename Iterator, typename StateInteger>
-            void operator()(Iterator const zero_first, Iterator const one_first, StateInteger const index) const
+            void operator()(Iterator const zero_first, Iterator const one_first, StateInteger const index, int const) const
             { std::iter_swap(zero_first + index, one_first + index); }
           }; // struct pauli_x
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -44,7 +44,7 @@ namespace ket
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
-            [](auto const zero_first, auto const one_first, StateInteger const index)
+            [](auto const zero_first, auto const one_first, StateInteger const index, int const)
             { std::iter_swap(zero_first + index, one_first + index); });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(

@@ -37,7 +37,7 @@ namespace ket
             { }
 
             template <typename Iterator, typename StateInteger>
-            void operator()(Iterator const, Iterator const one_first, StateInteger const index) const
+            void operator()(Iterator const, Iterator const one_first, StateInteger const index, int const) const
             { *(one_first + index) *= phase_coefficient_; }
           }; // struct phase_shift_coeff<Complex>
 
@@ -63,7 +63,7 @@ namespace ket
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
-            [phase_coefficient](auto const, auto const one_first, StateInteger const index)
+            [phase_coefficient](auto const, auto const one_first, StateInteger const index, int const)
             { *(one_first + index) *= phase_coefficient; });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
@@ -90,7 +90,7 @@ namespace ket
             { }
 
             template <typename Iterator, typename StateInteger>
-            void operator()(Iterator const zero_first, Iterator const one_first, StateInteger const index) const
+            void operator()(Iterator const zero_first, Iterator const one_first, StateInteger const index, int const) const
             {
               auto const zero_iter = zero_first + index;
               auto const one_iter = one_first + index;
@@ -136,7 +136,7 @@ namespace ket
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
-            [modified_phase_coefficient1, phase_coefficient2](auto const zero_first, auto const one_first, StateInteger const index)
+            [modified_phase_coefficient1, phase_coefficient2](auto const zero_first, auto const one_first, StateInteger const index, int const)
             {
               auto const zero_iter = zero_first + index;
               auto const one_iter = one_first + index;
@@ -172,7 +172,7 @@ namespace ket
             { }
 
             template <typename Iterator, typename StateInteger>
-            void operator()(Iterator const zero_first, Iterator const one_first, StateInteger const index) const
+            void operator()(Iterator const zero_first, Iterator const one_first, StateInteger const index, int const) const
             {
               auto const zero_iter = zero_first + index;
               auto const one_iter = one_first + index;
@@ -218,7 +218,7 @@ namespace ket
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             mpi_policy, parallel_policy, local_state, qubit, permutation,
-            [phase_coefficient1, modified_phase_coefficient2](auto const zero_first, auto const one_first, StateInteger const index)
+            [phase_coefficient1, modified_phase_coefficient2](auto const zero_first, auto const one_first, StateInteger const index, int const)
             {
               auto const zero_iter = zero_first + index;
               auto const one_iter = one_first + index;
@@ -262,7 +262,7 @@ namespace ket
             { }
 
             template <typename Iterator, typename StateInteger>
-            void operator()(Iterator const zero_first, Iterator const one_first, StateInteger const index) const
+            void operator()(Iterator const zero_first, Iterator const one_first, StateInteger const index, int const) const
             {
               auto const zero_iter = zero_first + index;
               auto const one_iter = one_first + index;
@@ -321,7 +321,7 @@ namespace ket
             mpi_policy, parallel_policy, local_state, qubit, permutation,
             [sine, cosine, phase_coefficient2,
              sine_phase_coefficient3, cosine_phase_coefficient3](
-              auto const zero_first, auto const one_first, StateInteger const index)
+              auto const zero_first, auto const one_first, StateInteger const index, int const)
             {
               auto const zero_iter = zero_first + index;
               auto const one_iter = one_first + index;
@@ -367,7 +367,7 @@ namespace ket
             { }
 
             template <typename Iterator, typename StateInteger>
-            void operator()(Iterator const zero_first, Iterator const one_first, StateInteger const index) const
+            void operator()(Iterator const zero_first, Iterator const one_first, StateInteger const index, int const) const
             {
               auto const zero_iter = zero_first + index;
               auto const one_iter = one_first + index;
@@ -426,7 +426,7 @@ namespace ket
             mpi_policy, parallel_policy, local_state, qubit, permutation,
             [sine, cosine, sine_phase_coefficient2, cosine_phase_coefficient2,
              phase_coefficient3](
-              auto const zero_first, auto const one_first, StateInteger const index)
+              auto const zero_first, auto const one_first, StateInteger const index, int const)
             {
               auto const zero_iter = zero_first + index;
               auto const one_iter = one_first + index;
