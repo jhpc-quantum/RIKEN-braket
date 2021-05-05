@@ -66,10 +66,7 @@ namespace ket
           make_controlled_v_coeff_tcp(
             Complex const& one_plus_phase_coefficient,
             Complex const& one_minus_phase_coefficient)
-          {
-            return ::ket::mpi::gate::page::controlled_v_detail::controlled_v_coeff_tcp<Complex>{
-              one_plus_phase_coefficient, one_minus_phase_coefficient};
-          }
+          { return {one_plus_phase_coefficient, one_minus_phase_coefficient}; }
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         } // namespace controlled_v_detail
 

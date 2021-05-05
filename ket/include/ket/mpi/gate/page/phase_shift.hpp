@@ -110,10 +110,7 @@ namespace ket
           inline ::ket::mpi::gate::page::phase_shift_detail::phase_shift2<Complex>
           make_phase_shift2(
             Complex const& modified_phase_coefficient1, Complex const& phase_coefficient2)
-          {
-            return ::ket::mpi::gate::page::phase_shift_detail::phase_shift2<Complex>{
-              modified_phase_coefficient1, phase_coefficient2};
-          }
+          { return {modified_phase_coefficient1, phase_coefficient2}; }
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         } // namespace phase_shift_detail
 
@@ -195,10 +192,7 @@ namespace ket
           inline ::ket::mpi::gate::page::phase_shift_detail::adj_phase_shift2<Complex>
           make_adj_phase_shift2(
             Complex const& phase_coefficient1, Complex const& modified_phase_coefficient2)
-          {
-            return ::ket::mpi::gate::page::phase_shift_detail::adj_phase_shift2<Complex>{
-              phase_coefficient1, modified_phase_coefficient2};
-          }
+          { return {phase_coefficient1, modified_phase_coefficient2}; }
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         } // namespace phase_shift_detail
 
@@ -290,7 +284,7 @@ namespace ket
             Complex const& sine_phase_coefficient3,
             Complex const& cosine_phase_coefficient3)
           {
-            return ::ket::mpi::gate::page::phase_shift_detail::phase_shift3<Real, Complex>{
+            return {
               sine, cosine, phase_coefficient2,
               sine_phase_coefficient3, cosine_phase_coefficient3};
           }
@@ -395,7 +389,7 @@ namespace ket
             Complex const& cosine_phase_coefficient2,
             Complex const& phase_coefficient3)
           {
-            return ::ket::mpi::gate::page::phase_shift_detail::adj_phase_shift3<Real, Complex>{
+            return {
               sine, cosine, sine_phase_coefficient2, cosine_phase_coefficient2,
               phase_coefficient3};
           }
