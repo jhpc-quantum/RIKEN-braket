@@ -1,26 +1,22 @@
 #ifndef KET_MPI_PAGE_SPIN_EXPECTATION_VALUE_HPP
 # define KET_MPI_PAGE_SPIN_EXPECTATION_VALUE_HPP
 
-# include <cassert>
 # include <vector>
 # include <array>
-# include <iterator>
 # include <numeric>
-# include <utility>
 
 # include <boost/math/constants/constants.hpp>
 # include <boost/range/value_type.hpp>
-# include <boost/range/size.hpp>
 
 # include <ket/qubit.hpp>
-# include <ket/utility/loop_n.hpp>
-# include <ket/utility/integer_exp2.hpp>
 # include <ket/utility/begin.hpp>
 # include <ket/utility/end.hpp>
 # include <ket/utility/meta/real_of.hpp>
 # include <ket/mpi/state.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
+# include <ket/mpi/gate/page/unsupported_page_gate_operation.hpp>
+# include <ket/mpi/gate/page/detail/one_page_qubit_gate.hpp>
 
 
 namespace ket
@@ -33,7 +29,7 @@ namespace ket
         typename MpiPolicy, typename ParallelPolicy,
         typename RandomAccessRange,
         typename StateInteger, typename BitInteger, typename Allocator>
-      inline
+      [[noreturn]] inline
       std::array<
         typename ::ket::utility::meta::real_of<
           typename boost::range_value<RandomAccessRange>::type>::type, 3u>
@@ -43,22 +39,13 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const,
         ::ket::mpi::qubit_permutation<
           StateInteger, BitInteger, Allocator>&)
-      {
-        using complex_type = typename boost::range_value<RandomAccessRange>::type;
-        using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
-        static constexpr auto zero_value = real_type{0};
-
-        using spin_type = std::array<real_type, 3u>;
-        constexpr auto result = spin_type{zero_value, zero_value, zero_value};
-
-        return result;
-      }
+      { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<0, false>{"spin_expectation_value"}; }
 
       template <
         typename ParallelPolicy,
         typename Complex, typename StateAllocator,
         typename StateInteger, typename BitInteger, typename PermutationAllocator>
-      inline
+      [[noreturn]] inline
       std::array<typename ::ket::utility::meta::real_of<Complex>::type, 3u>
       spin_expectation_value(
         ::ket::mpi::utility::policy::general_mpi const, ParallelPolicy const,
@@ -66,15 +53,44 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const,
         ::ket::mpi::qubit_permutation<
           StateInteger, BitInteger, PermutationAllocator>&)
+      { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<0>{"spin_expectation_value"}; }
+
+      namespace spin_expectation_value_detail
       {
-        using real_type = typename ::ket::utility::meta::real_of<Complex>::type;
-        static constexpr auto zero_value = real_type{0};
+# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
+        template <typename HdSpin>
+        struct spin_expectation_value
+        {
+          std::vector<HdSpin>& spins_in_threads_;
 
-        using spin_type = std::array<real_type, 3u>;
-        constexpr auto result = spin_type{zero_value, zero_value, zero_value};
+          explicit spin_expectation_value(std::vector<HdSpin>& spins_in_threads)
+            : spins_in_threads_{spins_in_threads}
+          { }
 
-        return result;
-      }
+          template <typename Iterator, typename StateInteger>
+          void operator()(Iterator const zero_first, Iterator const one_first, StateInteger const index, int const thread_index) const
+          {
+            using std::conj;
+            auto const conj_zero_value = conj(*(zero_first + index));
+            auto const one_value = *(one_first + index);
+            auto const conj_zero_times_one = conj_zero_value * one_value;
+
+            using std::real;
+            spins_in_threads_[thread_index][0u] += static_cast<long double>(real(conj_zero_times_one));
+            using std::imag;
+            spins_in_threads_[thread_index][1u] += static_cast<long double>(imag(conj_zero_times_one));
+            using std::norm;
+            spins_in_threads_[thread_index][2u]
+              += static_cast<long double>(norm(conj_zero_value)) - static_cast<long double>(norm(one_value));
+          }
+        }; // struct spin_expectation_value<Complex, Real>
+
+        template <typename HdSpin>
+        inline ::ket::mpi::page::spin_expectation_value_detail::spin_expectation_value<HdSpin>
+        make_spin_expectation_value(std::vector<HdSpin>& spins_in_threads)
+        { return ::ket::mpi::page::spin_expectation_value_detail::spin_expectation_value<HdSpin>{spins_in_threads}; }
+# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+      } // namespace spin_expectation_value_detail
 
       template <
         typename ParallelPolicy,
@@ -83,68 +99,43 @@ namespace ket
       inline
       std::array<typename ::ket::utility::meta::real_of<Complex>::type, 3u>
       spin_expectation_value(
-        ::ket::mpi::utility::policy::general_mpi const,
+        ::ket::mpi::utility::policy::general_mpi const mpi_policy,
         ParallelPolicy const parallel_policy,
         ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>& local_state,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
         ::ket::mpi::qubit_permutation<
           StateInteger, BitInteger, PermutationAllocator>& permutation)
       {
-        assert(local_state.is_page_qubit(permutation[qubit]));
-
-        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-
-        auto const num_nonpage_qubits
-          = static_cast<BitInteger>(local_state.num_local_qubits() - num_page_qubits_);
-        auto const qubit_mask
-          = ::ket::utility::integer_exp2<StateInteger>(
-              permutation[qubit] - static_cast<qubit_type>(num_nonpage_qubits));
-        auto const lower_bits_mask = qubit_mask - StateInteger{1u};
-        auto const upper_bits_mask = compl lower_bits_mask;
-
         using hd_spin_type = std::array<long double, 3u>;
         constexpr auto zero_spin = hd_spin_type{ };
         auto spins_in_threads
           = std::vector<hd_spin_type>(::ket::utility::num_threads(parallel_policy), zero_spin);
 
-        static constexpr auto num_pages
-          = ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>::num_pages;
-        for (auto base_page_id = std::size_t{0u}; base_page_id < num_pages/2u; ++base_page_id)
-        {
-          // x0x
-          auto const zero_page_id
-            = ((base_page_id bitand upper_bits_mask) << 1u)
-              bitor (base_page_id bitand lower_bits_mask);
-          // x1x
-          auto const one_page_id = zero_page_id bitor qubit_mask;
+# ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
+        ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
+          mpi_policy, parallel_policy, local_state, qubit, permutation,
+          [&spins_in_threads](auto const zero_first, auto const one_first, StateInteger const index, int const thread_index)
+          {
+            using std::conj;
+            auto const conj_zero_value = conj(*(zero_first + index));
+            auto const one_value = *(one_first + index);
+            auto const conj_zero_times_one = conj_zero_value * one_value;
 
-          auto zero_page_range = local_state.page_range(zero_page_id);
-          auto one_page_range = local_state.page_range(one_page_id);
-          assert(boost::size(zero_page_range) == boost::size(one_page_range));
+            using std::real;
+            spins_in_threads[thread_index][0u] += static_cast<long double>(real(conj_zero_times_one));
+            using std::imag;
+            spins_in_threads[thread_index][1u] += static_cast<long double>(imag(conj_zero_times_one));
+            using std::norm;
+            spins_in_threads[thread_index][2u]
+              += static_cast<long double>(norm(conj_zero_value)) - static_cast<long double>(norm(one_value));
+          });
+# else // BOOST_NO_CXX14_GENERIC_LAMBDAS
+        ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
+          mpi_policy, parallel_policy, local_state, qubit, permutation,
+          ::ket::mpi::page::spin_expectation_value_detail::make_spin_expectation_value<hd_spin_type>(spins_in_threads));
+# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 
-          using ::ket::utility::loop_n;
-          loop_n(
-            parallel_policy,
-            boost::size(zero_page_range),
-            [&zero_page_range, &one_page_range, &spins_in_threads](
-              StateInteger const index, int const thread_index)
-            {
-              using std::conj;
-              auto const conj_zero_value = conj(*(::ket::utility::begin(zero_page_range) + index));
-              auto const one_value = *(::ket::utility::begin(one_page_range) + index);
-              auto const conj_zero_times_one = conj_zero_value * one_value;
-
-              using std::real;
-              spins_in_threads[thread_index][0u] += static_cast<long double>(real(conj_zero_times_one));
-              using std::imag;
-              spins_in_threads[thread_index][1u] += static_cast<long double>(imag(conj_zero_times_one));
-              using std::norm;
-              spins_in_threads[thread_index][2u]
-                += static_cast<long double>(norm(conj_zero_value)) - static_cast<long double>(norm(one_value));
-            });
-        }
-
-        auto hd_spin
+        auto const hd_spin
           = std::accumulate(
               ::ket::utility::begin(spins_in_threads), ::ket::utility::end(spins_in_threads), zero_spin,
               [](hd_spin_type accumulated_spin, hd_spin_type const& spin)
