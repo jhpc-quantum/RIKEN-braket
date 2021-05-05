@@ -48,7 +48,7 @@ namespace ket
           : num_threads_(
               num_threads <= NumThreads{0}
               ? NumThreads{1}
-              : num_threads > omp_get_max_threads()
+              : num_threads > static_cast<NumThreads>(omp_get_max_threads())
                 ? static_cast<NumThreads>(omp_get_max_threads())
                 : num_threads)
         { omp_set_num_threads(static_cast<int>(num_threads_)); }

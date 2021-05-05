@@ -50,8 +50,6 @@ namespace ket
             ::ket::utility::integer_log2<BitInteger>(last - first))
           == static_cast<StateInteger>(last - first));
 
-        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-
         auto const minmax_qubits = std::minmax(target_qubit, control_qubit.qubit());
         auto const target_qubit_mask
           = ::ket::utility::integer_exp2<StateInteger>(target_qubit);
