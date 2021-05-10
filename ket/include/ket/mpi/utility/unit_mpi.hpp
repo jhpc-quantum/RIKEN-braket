@@ -32,6 +32,8 @@
 # include <ket/utility/end.hpp>
 # include <ket/utility/meta/const_iterator_of.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
+# include <ket/mpi/page/is_on_page.hpp>
+# include <ket/mpi/utility/general_mpi.hpp>
 # include <ket/mpi/utility/detail/make_local_swap_qubit.hpp>
 # include <ket/mpi/utility/detail/swap_permutated_local_qubits.hpp>
 # include <ket/mpi/utility/detail/interchange_qubits.hpp>
@@ -1304,8 +1306,7 @@ namespace ket
             auto const data_block_size
               = ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, present_rank_in_unit);
 
-            auto const last_integer
-              = (one_state_integer << least_unit_permutated_qubit) >> num_local_control_qubits;
+            auto const last_local_qubit_value = one_state_integer << least_unit_permutated_qubit;
 
             if (permutated_target_qubit < least_unit_permutated_qubit)
             {
@@ -1330,8 +1331,8 @@ namespace ket
 
                 auto const first_index = data_block_index * data_block_size;
 #   ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
-                for_each(
-                  parallel_policy, local_state, first_index, last_integer, local_permutated_control_qubits,
+                ::ket::mpi::utility::for_each_in_diagonal_loop(
+                  mpi_policy, parallel_policy, local_state, first_index, last_local_qubit_value, local_permutated_control_qubits,
                   [&function0, &function1, target_mask](auto const iter, StateInteger const state_integer)
                   {
                     if ((state_integer bitand target_mask) == zero_state_integer)
@@ -1340,8 +1341,8 @@ namespace ket
                       function1(iter, state_integer);
                   });
 #   else // BOOST_NO_CXX14_GENERIC_LAMBDAS
-                for_each(
-                  parallel_policy, local_state, first_index, last_integer, local_permutated_control_qubits,
+                ::ket::mpi::utility::for_each_in_diagonal_loop(
+                  mpi_policy, parallel_policy, local_state, first_index, last_local_qubit_value, local_permutated_control_qubits,
                   make_call_function_if_local(
                     std::forward<Function0>(function0), std::forward<Function1>(function1), target_mask));
 #   endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -1370,12 +1371,12 @@ namespace ket
 
                 auto const first_index = data_block_index * data_block_size;
                 if ((unit_qubit_value bitand target_mask) == zero_state_integer)
-                  for_each(
-                    parallel_policy, local_state, first_index, last_integer, local_permutated_control_qubits,
+                  ::ket::mpi::utility::for_each_in_diagonal_loop(
+                    mpi_policy, parallel_policy, local_state, first_index, last_local_qubit_value, local_permutated_control_qubits,
                     std::forward<Function0>(function0));
                 else
-                  for_each(
-                    parallel_policy, local_state, first_index, last_integer, local_permutated_control_qubits,
+                  ::ket::mpi::utility::for_each_in_diagonal_loop(
+                    mpi_policy, parallel_policy, local_state, first_index, last_local_qubit_value, local_permutated_control_qubits,
                     std::forward<Function1>(function1));
               }
             }
@@ -1403,8 +1404,8 @@ namespace ket
                     continue;
 
                   auto const first_index = data_block_index * data_block_size;
-                  for_each(
-                    parallel_policy, local_state, first_index, last_integer, local_permutated_control_qubits,
+                  ::ket::mpi::utility::for_each_in_diagonal_loop(
+                    mpi_policy, parallel_policy, local_state, first_index, last_local_qubit_value, local_permutated_control_qubits,
                     std::forward<Function0>(function0));
                 }
               else
@@ -1426,8 +1427,8 @@ namespace ket
                     continue;
 
                   auto const first_index = data_block_index * data_block_size;
-                  for_each(
-                    parallel_policy, local_state, first_index, last_integer, local_permutated_control_qubits,
+                  ::ket::mpi::utility::for_each_in_diagonal_loop(
+                    mpi_policy, parallel_policy, local_state, first_index, last_local_qubit_value, local_permutated_control_qubits,
                     std::forward<Function1>(function1));
                 }
             }
@@ -1467,79 +1468,6 @@ namespace ket
               std::forward<Function0>(function0), std::forward<Function1>(function1), target_mask};
           }
 #   endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
-
-          template <
-            typename ParallelPolicy, typename LocalState,
-            std::size_t num_local_control_qubits, typename Function>
-          static void for_each(
-            ParallelPolicy const parallel_policy,
-            LocalState& local_state,
-            StateInteger const first_index, StateInteger const last_integer,
-            std::array< ::ket::qubit<StateInteger, BitInteger>, num_local_control_qubits > const&
-              local_permutated_control_qubits,
-            Function&& function)
-          {
-            auto sorted_local_permutated_control_qubits = local_permutated_control_qubits;
-            std::sort(
-              ::ket::utility::begin(sorted_local_permutated_control_qubits),
-              ::ket::utility::end(sorted_local_permutated_control_qubits));
-
-            for_each_impl(
-              parallel_policy, local_state, first_index, last_integer,
-              sorted_local_permutated_control_qubits,
-              std::forward<Function>(function));
-          }
-
-          template <
-            typename ParallelPolicy, typename LocalState,
-            std::size_t num_local_control_qubits, typename Function>
-          static void for_each_impl(
-            ParallelPolicy const parallel_policy,
-            LocalState& local_state,
-            StateInteger const first_index, StateInteger const last_integer,
-            std::array< ::ket::qubit<StateInteger, BitInteger>, num_local_control_qubits > const&
-              sorted_local_permutated_control_qubits,
-            Function&& function)
-          {
-            static constexpr auto zero_state_integer = StateInteger{0u};
-
-            using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-            // 000101000100
-            auto const mask
-              = std::accumulate(
-                  ::ket::utility::begin(sorted_local_permutated_control_qubits),
-                  ::ket::utility::end(sorted_local_permutated_control_qubits),
-                  zero_state_integer,
-                  [](StateInteger const& partial_mask, qubit_type const& control_qubit)
-                  {
-                    static constexpr auto one_state_integer = StateInteger{1u};
-                    return partial_mask bitor (one_state_integer << control_qubit);
-                  });
-
-            auto const first = ::ket::utility::begin(local_state);
-            using ::ket::utility::loop_n;
-            loop_n(
-              parallel_policy, last_integer,
-              [&function, &sorted_local_permutated_control_qubits, mask, first, first_index](StateInteger state_integer, int const)
-              {
-                static constexpr auto one_state_integer = StateInteger{1u};
-
-                // xxx0x0xxx0xx
-                for (qubit_type const& qubit: sorted_local_permutated_control_qubits)
-                {
-                  auto const lower_mask = (one_state_integer << qubit) - one_state_integer;
-                  auto const upper_mask = compl lower_mask;
-                  state_integer
-                    = (state_integer bitand lower_mask)
-                      bitor ((state_integer bitand upper_mask) << 1u);
-                }
-
-                // xxx1x1xxx1xx
-                state_integer |= mask;
-
-                function(first + first_index + state_integer, first_index + state_integer);
-              });
-          }
         }; // struct diagonal_loop< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses>, LocalState_ >
 # endif // KET_USE_DIAGONAL_LOOP
       } // namespace dispatch
@@ -1668,6 +1596,9 @@ namespace ket
         Function0&& function0, Function1&& function1,
         ControlQubits... control_qubits)
       {
+        assert(not ::ket::mpi::page::is_on_page(target_qubit, local_state, permutation));
+        assert(::ket::mpi::utility::general_mpi_detail::are_on_nonpage(local_state, permutation, control_qubits...));
+
         return ::ket::mpi::utility::dispatch::diagonal_loop<
           ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses>, LocalState >::call(
             mpi_policy, parallel_policy, local_state, permutation, communicator, environment,

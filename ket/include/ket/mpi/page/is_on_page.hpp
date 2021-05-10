@@ -3,7 +3,6 @@
 
 # include <ket/qubit.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
-# include <ket/mpi/state.hpp>
 
 
 namespace ket
@@ -18,26 +17,6 @@ namespace ket
         LocalState const& local_state,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const& permutation)
       { return false; }
-
-      template <
-        typename StateInteger, typename BitInteger,
-        typename Complex, typename StateAllocator,
-        typename PermutationAllocator>
-      inline constexpr bool is_on_page(
-        ::ket::qubit<StateInteger, BitInteger> const qubit,
-        ::ket::mpi::state<Complex, 0, StateAllocator> const& local_state,
-        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, PermutationAllocator> const& permutation)
-      { return false; }
-
-      template <
-        typename StateInteger, typename BitInteger,
-        typename Complex, int num_page_qubits_, typename StateAllocator,
-        typename PermutationAllocator>
-      inline bool is_on_page(
-        ::ket::qubit<StateInteger, BitInteger> const qubit,
-        ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator> const& local_state,
-        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, PermutationAllocator> const& permutation)
-      { return local_state.is_page_qubit(permutation[qubit]); }
     } // namespace page
   } // namespace mpi
 } // namespace ket
