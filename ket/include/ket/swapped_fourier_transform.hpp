@@ -19,8 +19,6 @@
 # ifndef NDEBUG
 #   include <ket/utility/is_unique_if_sorted.hpp>
 # endif
-# include <ket/utility/begin.hpp>
-# include <ket/utility/end.hpp>
 # include <ket/utility/generate_phase_coefficients.hpp>
 
 
@@ -53,7 +51,7 @@ namespace ket
         <= static_cast<typename ::ket::meta::state_integer_of<qubit_type>::type>(boost::size(state))
       and ::ket::utility::ranges::is_unique_if_sorted(qubits));
 
-    auto const qubits_first = ::ket::utility::begin(qubits);
+    auto const qubits_first = std::begin(qubits);
 
     for (auto index = std::size_t{0u}; index < num_qubits; ++index)
     {
@@ -132,7 +130,7 @@ namespace ket
     {
       ::ket::swapped_fourier_transform(
         parallel_policy,
-        ::ket::utility::begin(state), ::ket::utility::end(state), qubits, phase_coefficients);
+        std::begin(state), std::end(state), qubits, phase_coefficients);
       return state;
     }
 
@@ -147,7 +145,7 @@ namespace ket
         PhaseCoefficientsAllocator>& phase_coefficients)
     {
       ::ket::swapped_fourier_transform(
-        ::ket::utility::begin(state), ::ket::utility::end(state), qubits, phase_coefficients);
+        std::begin(state), std::end(state), qubits, phase_coefficients);
       return state;
     }
 
@@ -161,7 +159,7 @@ namespace ket
       Qubits const& qubits)
     {
       ::ket::swapped_fourier_transform(
-        parallel_policy, ::ket::utility::begin(state), ::ket::utility::end(state), qubits);
+        parallel_policy, std::begin(state), std::end(state), qubits);
       return state;
     }
 
@@ -169,7 +167,7 @@ namespace ket
     inline RandomAccessRange& swapped_fourier_transform(
       RandomAccessRange& state, Qubits const& qubits)
     {
-      ::ket::swapped_fourier_transform(::ket::utility::begin(state), ::ket::utility::end(state), qubits);
+      ::ket::swapped_fourier_transform(std::begin(state), std::end(state), qubits);
       return state;
     }
   } // namespace ranges
@@ -202,7 +200,7 @@ namespace ket
         <= static_cast<typename ::ket::meta::state_integer_of<qubit_type>::type>(boost::size(state))
       and ::ket::utility::ranges::is_unique_if_sorted(qubits));
 
-    auto const qubits_first = ::ket::utility::begin(qubits);
+    auto const qubits_first = std::begin(qubits);
 
     for (auto target_bit = std::size_t{0u}; target_bit < num_qubits; ++target_bit)
     {
@@ -279,7 +277,7 @@ namespace ket
     {
       ::ket::adj_swapped_fourier_transform(
         parallel_policy,
-        ::ket::utility::begin(state), ::ket::utility::end(state), qubits, phase_coefficients);
+        std::begin(state), std::end(state), qubits, phase_coefficients);
       return state;
     }
 
@@ -294,7 +292,7 @@ namespace ket
         PhaseCoefficientsAllocator>& phase_coefficients)
     {
       ::ket::adj_swapped_fourier_transform(
-        ::ket::utility::begin(state), ::ket::utility::end(state), qubits, phase_coefficients);
+        std::begin(state), std::end(state), qubits, phase_coefficients);
       return state;
     }
 
@@ -308,7 +306,7 @@ namespace ket
       Qubits const& qubits)
     {
       ::ket::adj_swapped_fourier_transform(
-        parallel_policy, ::ket::utility::begin(state), ::ket::utility::end(state), qubits);
+        parallel_policy, std::begin(state), std::end(state), qubits);
       return state;
     }
 
@@ -316,7 +314,7 @@ namespace ket
     inline RandomAccessRange& adj_swapped_fourier_transform(
       RandomAccessRange& state, Qubits const& qubits)
     {
-      ::ket::adj_swapped_fourier_transform(::ket::utility::begin(state), ::ket::utility::end(state), qubits);
+      ::ket::adj_swapped_fourier_transform(std::begin(state), std::end(state), qubits);
       return state;
     }
   } // namespace ranges

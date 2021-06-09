@@ -3,6 +3,7 @@
 
 # include <cmath>
 # include <vector>
+# include <iterator>
 
 # include <boost/range/size.hpp>
 # include <boost/range/value_type.hpp>
@@ -19,8 +20,6 @@
 
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/positive_random_value_upto.hpp>
-# include <ket/utility/begin.hpp>
-# include <ket/utility/end.hpp>
 # include <ket/utility/meta/real_of.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
@@ -77,11 +76,11 @@ namespace ket
 
       yampi::gather(root_rank, communicator).call(
         yampi::make_buffer(total_probability),
-        ::ket::utility::begin(total_probabilities), environment);
+        std::begin(total_probabilities), environment);
 
       if (present_rank == root_rank)
         ::ket::utility::ranges::inclusive_scan(
-          total_probabilities, ::ket::utility::begin(total_probabilities));
+          total_probabilities, std::begin(total_probabilities));
 
       for (auto event_index = 0; event_index < num_events; ++event_index)
       {
@@ -95,9 +94,9 @@ namespace ket
           result_rank
             = static_cast<yampi::rank>(static_cast<StateInteger>(
                 std::upper_bound(
-                  ::ket::utility::begin(total_probabilities),
-                  ::ket::utility::end(total_probabilities), random_value)
-                - ::ket::utility::begin(total_probabilities)));
+                  std::begin(total_probabilities),
+                  std::end(total_probabilities), random_value)
+                - std::begin(total_probabilities)));
         }
 
         auto result_mpi_rank = result_rank.mpi_rank();
@@ -184,12 +183,12 @@ namespace ket
 
       yampi::gather(root_rank, communicator).call(
         yampi::make_buffer(total_probability, real_datatype),
-        ::ket::utility::begin(total_probabilities),
+        std::begin(total_probabilities),
         environment);
 
       if (present_rank == root_rank)
         ::ket::utility::ranges::inclusive_scan(
-          total_probabilities, ::ket::utility::begin(total_probabilities));
+          total_probabilities, std::begin(total_probabilities));
 
       for (auto event_index = 0; event_index < num_events; ++event_index)
       {
@@ -203,9 +202,9 @@ namespace ket
           result_rank
             = static_cast<yampi::rank>(static_cast<StateInteger>(
                 std::upper_bound(
-                  ::ket::utility::begin(total_probabilities),
-                  ::ket::utility::end(total_probabilities), random_value)
-                - ::ket::utility::begin(total_probabilities)));
+                  std::begin(total_probabilities),
+                  std::end(total_probabilities), random_value)
+                - std::begin(total_probabilities)));
         }
 
         auto result_mpi_rank = result_rank.mpi_rank();

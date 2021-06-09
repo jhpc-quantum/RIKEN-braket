@@ -34,9 +34,6 @@
 # include <ket/qubit.hpp>
 # include <ket/utility/integer_exp2.hpp>
 # include <ket/utility/loop_n.hpp>
-# include <ket/utility/begin.hpp>
-# include <ket/utility/end.hpp>
-# include <ket/utility/meta/iterator_of.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
@@ -133,7 +130,7 @@ namespace ket
 
      public:
       using page_range_type
-        = boost::iterator_range<typename ::ket::utility::meta::iterator_of<data_type>::type>;
+        = boost::iterator_range<typename boost::range_iterator<data_type>::type>;
 
      private:
       std::size_t num_local_qubits_;
@@ -281,8 +278,8 @@ namespace ket
 
         using std::swap;
         swap(
-          ::ket::utility::begin(page_ranges_[state::page_range_index(data_block_page_nonpage_indices1)])[std::get<2u>(data_block_page_nonpage_indices1)],
-          ::ket::utility::begin(page_ranges_[state::page_range_index(data_block_page_nonpage_indices2)])[std::get<2u>(data_block_page_nonpage_indices2)]);
+          std::begin(page_ranges_[state::page_range_index(data_block_page_nonpage_indices1)])[std::get<2u>(data_block_page_nonpage_indices1)],
+          std::begin(page_ranges_[state::page_range_index(data_block_page_nonpage_indices2)])[std::get<2u>(data_block_page_nonpage_indices2)]);
       }
 
       template <typename DataBlockIndex, typename PageIndex>
@@ -316,34 +313,34 @@ namespace ket
       reference at(size_type const index)
       {
         return data_.at(
-          (::ket::utility::begin(page_ranges_[state::page_range_index(get_data_block_page_indices(index))]) - ::ket::utility::begin(data_))
+          (std::begin(page_ranges_[state::page_range_index(get_data_block_page_indices(index))]) - std::begin(data_))
           + get_nonpage_index(index));
       }
 
       const_reference at(size_type const index) const
       {
         return data_.at(
-          (::ket::utility::begin(page_ranges_[state::page_range_index(get_data_block_page_indices(index))]) - ::ket::utility::begin(data_))
+          (std::begin(page_ranges_[state::page_range_index(get_data_block_page_indices(index))]) - std::begin(data_))
           + get_nonpage_index(index));
       }
 
       reference operator[](size_type const index)
       {
         assert(index < ::ket::utility::integer_exp2<size_type>(num_local_qubits_) * num_data_blocks_);
-        return ::ket::utility::begin(page_ranges_[state::page_range_index(get_data_block_page_indices(index))])[get_nonpage_index(index)];
+        return std::begin(page_ranges_[state::page_range_index(get_data_block_page_indices(index))])[get_nonpage_index(index)];
       }
 
       const_reference operator[](size_type const index) const
       {
         assert(index < ::ket::utility::integer_exp2<size_type>(num_local_qubits_) * num_data_blocks_);
-        return ::ket::utility::begin(page_ranges_[state::page_range_index(get_data_block_page_indices(index))])[get_nonpage_index(index)];
+        return std::begin(page_ranges_[state::page_range_index(get_data_block_page_indices(index))])[get_nonpage_index(index)];
       }
 
-      reference front() { return *::ket::utility::begin(page_ranges_[state::page_range_index(get_data_block_page_indices(0u))]); }
-      const_reference front() const { return *::ket::utility::begin(page_ranges_[state::page_range_index(get_data_block_page_indices(0u))]); }
+      reference front() { return *std::begin(page_ranges_[state::page_range_index(get_data_block_page_indices(0u))]); }
+      const_reference front() const { return *std::begin(page_ranges_[state::page_range_index(get_data_block_page_indices(0u))]); }
 
-      reference back() { return *--::ket::utility::end(page_ranges_[state::page_range_index(get_data_block_page_indices((1u << num_local_qubits_) - 1u))]); }
-      const_reference back() const { return *--::ket::utility::end(page_ranges_[state::page_range_index(get_data_block_page_indices((1u << num_local_qubits_) - 1u))]); }
+      reference back() { return *--std::end(page_ranges_[state::page_range_index(get_data_block_page_indices((1u << num_local_qubits_) - 1u))]); }
+      const_reference back() const { return *--std::end(page_ranges_[state::page_range_index(get_data_block_page_indices((1u << num_local_qubits_) - 1u))]); }
 
       // Iterators
       iterator begin() noexcept { return iterator(*this, 0); }
@@ -455,8 +452,8 @@ namespace ket
         for (auto page_range_index = std::size_t{0u}; page_range_index < num_pages * num_data_blocks; ++page_range_index)
           result.push_back(
             boost::make_iterator_range(
-              ::ket::utility::begin(data) + page_range_index * page_size,
-              ::ket::utility::begin(data) + (page_range_index + 1u) * page_size));
+              std::begin(data) + page_range_index * page_size,
+              std::begin(data) + (page_range_index + 1u) * page_size));
 
         return result;
       }
@@ -467,8 +464,8 @@ namespace ket
         auto const page_size = static_cast<size_type>(data.size() / (num_pages * num_data_blocks + 1u));
 
         return boost::make_iterator_range(
-          ::ket::utility::begin(data) + num_pages * num_data_blocks * page_size,
-          ::ket::utility::begin(data) + (num_pages * num_data_blocks + 1u) * page_size);
+          std::begin(data) + num_pages * num_data_blocks * page_size,
+          std::begin(data) + (num_pages * num_data_blocks + 1u) * page_size);
       }
 
      public:
@@ -743,7 +740,7 @@ namespace ket
           using page_range_type
             = typename ::ket::mpi::state<Complex, num_page_qubits, Allocator>::page_range_type;
           using page_iterator
-            = typename ::ket::utility::meta::iterator_of<page_range_type>::type;
+            = typename boost::range_iterator<page_range_type>::type;
           do_call(
             local_state, data_block_index, data_block_size,
             source_local_first_index, source_local_last_index,
@@ -774,7 +771,7 @@ namespace ket
           using page_range_type
             = typename ::ket::mpi::state<Complex, num_page_qubits, Allocator>::page_range_type;
           using page_iterator
-            = typename ::ket::utility::meta::iterator_of<page_range_type>::type;
+            = typename boost::range_iterator<page_range_type>::type;
           do_call(
             local_state, data_block_index, data_block_size,
             source_local_first_index, source_local_last_index,
@@ -819,9 +816,9 @@ namespace ket
             auto page_range = local_state.page_range(std::make_pair(data_block_index, page_index));
             auto const page_size = boost::size(page_range);
 
-            auto const page_first = ::ket::utility::begin(page_range);
-            auto const page_last = ::ket::utility::end(page_range);
-            auto const buffer_first = ::ket::utility::begin(local_state.buffer_range());
+            auto const page_first = std::begin(page_range);
+            auto const page_last = std::end(page_range);
+            auto const buffer_first = std::begin(local_state.buffer_range());
 
             auto const first_index
               = page_index == front_page_index
@@ -864,8 +861,8 @@ namespace ket
           for (auto data_block_index = std::size_t{0u}; data_block_index < num_data_blocks; ++data_block_index)
             for (auto page_index = std::size_t{0u}; page_index < num_pages; ++page_index)
               function(
-                ::ket::utility::begin(local_state.page_range(std::make_pair(data_block_index, page_index))),
-                ::ket::utility::end(local_state.page_range(std::make_pair(data_block_index, page_index))));
+                std::begin(local_state.page_range(std::make_pair(data_block_index, page_index))),
+                std::end(local_state.page_range(std::make_pair(data_block_index, page_index))));
           return local_state;
         }
 
@@ -883,8 +880,8 @@ namespace ket
           for (auto data_block_index = std::size_t{0u}; data_block_index < num_data_blocks; ++data_block_index)
             for (auto page_index = std::size_t{0u}; page_index < num_pages; ++page_index)
               function(
-                ::ket::utility::begin(local_state.page_range(std::make_pair(data_block_index, page_index))),
-                ::ket::utility::end(local_state.page_range(std::make_pair(data_block_index, page_index))));
+                std::begin(local_state.page_range(std::make_pair(data_block_index, page_index))),
+                std::end(local_state.page_range(std::make_pair(data_block_index, page_index))));
           return local_state;
         }
       }; // struct for_each_local_range<num_page_qubits>
@@ -917,9 +914,9 @@ namespace ket
             auto page_range2 = local_state.page_range(std::make_pair(data_block_index2, page_index2));
             auto const page_size = boost::size(page_range1);
 
-            auto const page_first1 = ::ket::utility::begin(page_range1);
-            auto const page_last1 = ::ket::utility::end(page_range1);
-            auto const page_first2 = ::ket::utility::begin(page_range2);
+            auto const page_first1 = std::begin(page_range1);
+            auto const page_last1 = std::end(page_range1);
+            auto const page_first2 = std::begin(page_range2);
 
             auto const first_index1
               = page_index1 == front_page_index1
@@ -971,8 +968,8 @@ namespace ket
           Function&& function)
         {
           std::sort(
-            ::ket::utility::begin(local_permutated_control_qubits),
-            ::ket::utility::end(local_permutated_control_qubits));
+            std::begin(local_permutated_control_qubits),
+            std::end(local_permutated_control_qubits));
 
           impl(
             parallel_policy, local_state,
@@ -1002,8 +999,8 @@ namespace ket
           // 000101000100
           auto const mask
             = std::accumulate(
-                ::ket::utility::begin(sorted_local_permutated_control_qubits),
-                ::ket::utility::end(sorted_local_permutated_control_qubits),
+                std::begin(sorted_local_permutated_control_qubits),
+                std::end(sorted_local_permutated_control_qubits),
                 zero_state_integer,
                 [](StateInteger const& partial_mask, qubit_type const& control_qubit)
                 {
@@ -1018,7 +1015,7 @@ namespace ket
             = ::ket::mpi::state<Complex, num_page_qubits, Allocator>::num_pages;
           for (auto page_index = std::size_t{0u}; page_index < num_pages; ++page_index)
           {
-            auto const first = ::ket::utility::begin(local_state.page_range(std::make_pair(data_block_index, page_index)));
+            auto const first = std::begin(local_state.page_range(std::make_pair(data_block_index, page_index)));
             using ::ket::utility::loop_n;
             loop_n(
               parallel_policy, last_integer,
@@ -1088,7 +1085,7 @@ namespace ket
             for (auto data_block_index = std::size_t{0u}; data_block_index < local_state_.data_block_index(); ++data_block_index)
               for (auto page_index = std::size_t{0u}; page_index < LocalState::num_pages; ++page_index)
               {
-                auto const first = ::ket::utility::begin(local_state_.page_range(std::make_pair(data_block_index, page_index)));
+                auto const first = std::begin(local_state_.page_range(std::make_pair(data_block_index, page_index)));
                 auto d_iter = d_page_first;
                 auto is_called = false;
                 auto const page_range_index = LocalState::page_range_index(std::make_pair(data_block_index, page_index));
@@ -1182,7 +1179,7 @@ namespace ket
             for (auto data_block_index = std::size_t{0u}; data_block_index < local_state_.num_data_blocks(); ++data_block_index)
               for (auto page_index = std::size_t{0u}; page_index < LocalState::num_pages; ++page_index)
               {
-                auto const first = ::ket::utility::begin(local_state_.page_range(std::make_pair(data_block_index, page_index)));
+                auto const first = std::begin(local_state_.page_range(std::make_pair(data_block_index, page_index)));
                 auto d_iter = d_page_first;
                 auto is_called = false;
                 auto const page_range_index = LocalState::page_range_index(std::make_pair(data_block_index, page_index));
@@ -1272,7 +1269,7 @@ namespace ket
               for (auto data_block_index = std::size_t{0u}; data_block_index < num_data_blocks; ++data_block_index)
                 for (auto page_index = std::size_t{0u}; page_index < num_pages; ++page_index)
                 {
-                  auto const first = ::ket::utility::begin(local_state.page_range(std::make_pair(data_block_index, page_index)));
+                  auto const first = std::begin(local_state.page_range(std::make_pair(data_block_index, page_index)));
                   auto d_iter = d_page_first;
                   auto is_called = false;
                   auto const page_range_index
@@ -1350,7 +1347,7 @@ namespace ket
               for (auto data_block_index = std::size_t{0u}; data_block_index < num_data_blocks; ++data_block_index)
                 for (auto page_index = std::size_t{0u}; page_index < num_pages; ++page_index)
                 {
-                  auto const first = ::ket::utility::begin(local_state.page_range(std::make_pair(data_block_index, page_index)));
+                  auto const first = std::begin(local_state.page_range(std::make_pair(data_block_index, page_index)));
                   auto d_iter = d_page_first;
                   auto is_called = false;
                   auto const page_range_index
@@ -1420,8 +1417,8 @@ namespace ket
             [&partial_sums, binary_operation]
             {
               std::partial_sum(
-                ::ket::utility::begin(partial_sums), ::ket::utility::end(partial_sums),
-                ::ket::utility::begin(partial_sums), binary_operation);
+                std::begin(partial_sums), std::end(partial_sums),
+                std::begin(partial_sums), binary_operation);
             });
 
           auto d_page_first = d_first;
@@ -1684,7 +1681,7 @@ namespace ket
             for (auto data_block_index = std::size_t{0u}; data_block_index < local_state_.num_data_blocks(); ++data_block_index)
               for (auto page_index = std::size_t{0u}; page_index < LocalState::num_pages; ++page_index)
               {
-                auto const first = ::ket::utility::begin(local_state_.page_range(std::make_pair(data_block_index, page_index)));
+                auto const first = std::begin(local_state_.page_range(std::make_pair(data_block_index, page_index)));
                 auto is_called = false;
                 auto const page_range_index
                   = LocalState::page_range_index(std::make_pair(data_block_index, page_index));
@@ -1765,7 +1762,7 @@ namespace ket
             for (auto data_block_index = std::size_t{0u}; data_block_index < local_state_.num_data_blocks(); ++data_block_index)
               for (auto page_index = std::size_t{0u}; page_index < LocalState::num_pages; ++page_index)
               {
-                auto const first = ::ket::utility::begin(local_state_.page_range(std::make_pair(data_block_index, page_index)));
+                auto const first = std::begin(local_state_.page_range(std::make_pair(data_block_index, page_index)));
                 auto is_called = false;
                 auto const page_range_index
                   = LocalState::page_range_index(std::make_pair(data_block_index, page_index));
@@ -1844,7 +1841,7 @@ namespace ket
               for (auto data_block_index = std::size_t{0u}; data_block_index < num_data_blocks; ++data_block_index)
                 for (auto page_index = std::size_t{0u}; page_index < num_pages; ++page_index)
                 {
-                  auto const first = ::ket::utility::begin(local_state.page_range(std::make_pair(data_block_index, page_index)));
+                  auto const first = std::begin(local_state.page_range(std::make_pair(data_block_index, page_index)));
                   bool is_called = false;
                   auto const page_range_index
                     = ::ket::mpi::state<Complex, num_page_qubits, Allocator>::page_range_index(
@@ -1914,7 +1911,7 @@ namespace ket
               for (auto data_block_index = std::size_t{0u}; data_block_index < num_data_blocks; ++data_block_index)
                 for (auto page_index = std::size_t{0u}; page_index < num_pages; ++page_index)
                 {
-                  auto const first = ::ket::utility::begin(local_state.page_range(std::make_pair(data_block_index, page_index)));
+                  auto const first = std::begin(local_state.page_range(std::make_pair(data_block_index, page_index)));
                   auto is_called = false;
                   auto const page_range_index
                     = ::ket::mpi::state<Complex, num_page_qubits, Allocator>::page_range_index(
@@ -1980,8 +1977,8 @@ namespace ket
             [&partial_sums, binary_operation]
             {
               std::partial_sum(
-                ::ket::utility::begin(partial_sums), ::ket::utility::end(partial_sums),
-                ::ket::utility::begin(partial_sums), binary_operation);
+                std::begin(partial_sums), std::end(partial_sums),
+                std::begin(partial_sums), binary_operation);
             });
 
           auto const num_threads = static_cast<unsigned int>(::ket::utility::num_threads(parallel_policy));
@@ -1992,7 +1989,7 @@ namespace ket
           for (auto data_block_index = std::size_t{0u}; data_block_index < num_data_blocks; ++data_block_index)
             for (auto page_index = std::size_t{0u}; page_index < num_pages; ++page_index)
             {
-              auto const first = ::ket::utility::begin(local_state.page_range(std::make_pair(data_block_index, page_index)));
+              auto const first = std::begin(local_state.page_range(std::make_pair(data_block_index, page_index)));
               auto const page_range_index
                 = ::ket::mpi::state<Complex, num_page_qubits, Allocator>::page_range_index(
                     std::make_pair(data_block_index, page_index));
@@ -2027,9 +2024,9 @@ namespace ket
           ::ket::utility::ranges::transform_inclusive_scan(
             parallel_policy,
             local_state.page_range(std::make_pair(0u, 0u)),
-            ::ket::utility::begin(local_state.page_range(std::make_pair(0u, 0u))),
+            std::begin(local_state.page_range(std::make_pair(0u, 0u))),
             binary_operation, unary_operation);
-          auto partial_sum = *std::prev(::ket::utility::end(local_state.page_range(std::make_pair(0u, 0u))));
+          auto partial_sum = *std::prev(std::end(local_state.page_range(std::make_pair(0u, 0u))));
 
           static constexpr auto num_pages
             = ::ket::mpi::state<Complex, num_page_qubits, Allocator>::num_pages;
@@ -2042,9 +2039,9 @@ namespace ket
             ::ket::utility::ranges::transform_inclusive_scan(
               parallel_policy,
               local_state.page_range(data_block_page_indices),
-              ::ket::utility::begin(local_state.page_range(data_block_page_indices)),
+              std::begin(local_state.page_range(data_block_page_indices)),
               binary_operation, unary_operation, partial_sum);
-            partial_sum = *std::prev(::ket::utility::end(local_state.page_range(data_block_page_indices)));
+            partial_sum = *std::prev(std::end(local_state.page_range(data_block_page_indices)));
           }
 
           return partial_sum;
@@ -2071,9 +2068,9 @@ namespace ket
               ::ket::utility::ranges::transform_inclusive_scan(
                 parallel_policy,
                 local_state.page_range(std::make_pair(data_block_index, page_index)),
-                ::ket::utility::begin(local_state.page_range(std::make_pair(data_block_index, page_index))),
+                std::begin(local_state.page_range(std::make_pair(data_block_index, page_index))),
                 binary_operation, unary_operation, partial_sum);
-              partial_sum = *std::prev(::ket::utility::end(local_state.page_range(std::make_pair(data_block_index, page_index))));
+              partial_sum = *std::prev(std::end(local_state.page_range(std::make_pair(data_block_index, page_index))));
             }
 
           return partial_sum;
@@ -2099,12 +2096,12 @@ namespace ket
             for (auto page_index = std::size_t{0u}; page_index < num_pages; ++page_index)
             {
               auto const page_range = local_state.page_range(std::make_pair(data_block_index, page_index));
-              if (not compare(value, *std::prev(::ket::utility::end(page_range))))
+              if (not compare(value, *std::prev(std::end(page_range))))
                 continue;
 
               auto index_in_page
-                = std::upper_bound(::ket::utility::begin(page_range), ::ket::utility::end(page_range), value, compare)
-                  - ::ket::utility::begin(page_range);
+                = std::upper_bound(std::begin(page_range), std::end(page_range), value, compare)
+                  - std::begin(page_range);
 
               auto const num_nonpage_local_qubits = local_state.num_local_qubits() - num_page_qubits;
               return static_cast<difference_type>((data_block_index << local_state.num_local_qubits()) bitor (page_index << num_nonpage_local_qubits) bitor index_in_page);

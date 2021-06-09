@@ -20,8 +20,6 @@
 # ifndef NDEBUG
 #   include <ket/utility/integer_log2.hpp>
 # endif
-# include <ket/utility/begin.hpp>
-# include <ket/utility/end.hpp>
 # include <ket/utility/meta/real_of.hpp>
 
 
@@ -90,7 +88,7 @@ namespace ket
 
     hd_spin_type hd_spin
       = std::accumulate(
-          ::ket::utility::begin(spins_in_threads), ::ket::utility::end(spins_in_threads), zero_spin,
+          std::begin(spins_in_threads), std::end(spins_in_threads), zero_spin,
           [](hd_spin_type accumulated_spin, hd_spin_type const& spin)
           {
             accumulated_spin[0u] += spin[0u];
@@ -140,7 +138,7 @@ namespace ket
       ParallelPolicy const parallel_policy,
       RandomAccessRange const& state,
       ::ket::qubit<StateInteger, BitInteger> const qubit)
-    { return ::ket::spin_expectation_value(parallel_policy, ::ket::utility::begin(state), ::ket::utility::end(state), qubit); }
+    { return ::ket::spin_expectation_value(parallel_policy, std::begin(state), std::end(state), qubit); }
 
     template <typename RandomAccessRange, typename StateInteger, typename BitInteger>
     inline
@@ -150,7 +148,7 @@ namespace ket
     spin_expectation_value(
       RandomAccessRange const& state,
       ::ket::qubit<StateInteger, BitInteger> const qubit)
-    { return ::ket::spin_expectation_value(::ket::utility::begin(state), ::ket::utility::end(state), qubit); }
+    { return ::ket::spin_expectation_value(std::begin(state), std::end(state), qubit); }
   } // namespace ranges
 } // namespace ket
 

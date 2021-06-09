@@ -17,7 +17,6 @@
 # include <ket/qubit_io.hpp>
 # include <ket/control_io.hpp>
 # include <ket/gate/controlled_phase_shift.hpp>
-# include <ket/utility/begin.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
 # include <ket/mpi/utility/logger.hpp>

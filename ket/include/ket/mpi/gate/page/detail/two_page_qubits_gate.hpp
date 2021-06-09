@@ -6,6 +6,7 @@
 # include <cstddef>
 # include <cassert>
 # include <algorithm>
+# include <iterator>
 # include <utility>
 
 # include <boost/range/size.hpp>
@@ -14,7 +15,6 @@
 # include <ket/control.hpp>
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/integer_exp2.hpp>
-# include <ket/utility/begin.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/state.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
@@ -193,13 +193,13 @@ namespace ket
                   auto const page_index_11 = page_index_10 bitor qubit1_mask;
 
                   auto page_range_00 = local_state.page_range(std::make_pair(data_block_index, page_index_00));
-                  auto const first_00 = ::ket::utility::begin(page_range_00);
+                  auto const first_00 = std::begin(page_range_00);
                   auto page_range_01 = local_state.page_range(std::make_pair(data_block_index, page_index_01));
-                  auto const first_01 = ::ket::utility::begin(page_range_01);
+                  auto const first_01 = std::begin(page_range_01);
                   auto page_range_10 = local_state.page_range(std::make_pair(data_block_index, page_index_10));
-                  auto const first_10 = ::ket::utility::begin(page_range_10);
+                  auto const first_10 = std::begin(page_range_10);
                   auto page_range_11 = local_state.page_range(std::make_pair(data_block_index, page_index_11));
-                  auto const first_11 = ::ket::utility::begin(page_range_11);
+                  auto const first_11 = std::begin(page_range_11);
 
                   using ::ket::utility::loop_n;
                   loop_n(

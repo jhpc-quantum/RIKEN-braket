@@ -4,13 +4,12 @@
 # include <cstddef>
 # include <cassert>
 # include <algorithm>
+# include <iterator>
 # include <utility>
 
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
 # include <ket/utility/integer_exp2.hpp>
-# include <ket/utility/begin.hpp>
-# include <ket/utility/end.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/state.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
@@ -128,8 +127,8 @@ namespace ket
                   permutated_target_qubit,
                   permutated_control_qubit1, permutated_control_qubit2};
             std::sort(
-              ::ket::utility::begin(sorted_permutated_qubits),
-              ::ket::utility::end(sorted_permutated_qubits));
+              std::begin(sorted_permutated_qubits),
+              std::end(sorted_permutated_qubits));
 
             auto bits_mask = std::array<StateInteger, 4u>{};
             bits_mask[0u]

@@ -2,6 +2,7 @@
 # define KET_MPI_UTILITY_DETAIL_MAKE_LOCAL_SWAP_QUBIT_HPP
 
 # include <algorithm>
+# include <iterator>
 # include <type_traits>
 
 # include <boost/range/value_type.hpp>
@@ -10,8 +11,6 @@
 # include <yampi/environment.hpp>
 
 # include <ket/qubit.hpp>
-# include <ket/utility/begin.hpp>
-# include <ket/utility/end.hpp>
 # include <ket/utility/contains.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/detail/swap_permutated_local_qubits.hpp>
@@ -50,7 +49,7 @@ namespace ket
           auto const local_swap_qubit = inverse(permutation)[permutated_local_swap_qubit];
 
           if (not ::ket::utility::contains(
-                ::ket::utility::begin(unswappable_qubits), ::ket::utility::end(unswappable_qubits),
+                std::begin(unswappable_qubits), std::end(unswappable_qubits),
                 local_swap_qubit))
             return local_swap_qubit;
 
@@ -64,7 +63,7 @@ namespace ket
           }
           while (
             ::ket::utility::contains(
-              ::ket::utility::begin(unswappable_qubits), ::ket::utility::end(unswappable_qubits),
+              std::begin(unswappable_qubits), std::end(unswappable_qubits),
               other_qubit));
 
           ::ket::mpi::utility::detail::swap_permutated_local_qubits(

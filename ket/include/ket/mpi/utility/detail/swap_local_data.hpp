@@ -2,9 +2,8 @@
 # define KET_MPI_UTILITY_DETAIL_SWAP_LOCAL_DATA_HPP
 
 # include <algorithm>
+# include <iterator>
 # include <type_traits>
-
-# include <ket/utility/begin.hpp>
 
 
 namespace ket
@@ -26,11 +25,11 @@ namespace ket
             StateInteger const data_block_size)
           {
             auto const first1
-              = ::ket::utility::begin(local_state) + data_block_index1 * data_block_size + local_first_index1;
+              = std::begin(local_state) + data_block_index1 * data_block_size + local_first_index1;
             auto const last1
-              = ::ket::utility::begin(local_state) + data_block_index1 * data_block_size + local_last_index1;
+              = std::begin(local_state) + data_block_index1 * data_block_size + local_last_index1;
             auto const first2
-              = ::ket::utility::begin(local_state) + data_block_index2 * data_block_size + local_first_index2;
+              = std::begin(local_state) + data_block_index2 * data_block_size + local_first_index2;
 
             std::swap_ranges(first1, last1, first2);
           }

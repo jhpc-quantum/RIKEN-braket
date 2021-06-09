@@ -2,6 +2,7 @@
 # define KET_MPI_UTILITY_DETAIL_SWAP_PERMUTATED_LOCAL_QUBITS_HPP
 
 # include <algorithm>
+# include <iterator>
 # include <type_traits>
 
 # include <yampi/communicator.hpp>
@@ -11,7 +12,6 @@
 # include <ket/utility/integer_exp2.hpp>
 # include <ket/utility/integer_log2.hpp>
 # include <ket/utility/loop_n.hpp>
-# include <ket/utility/begin.hpp>
 
 
 namespace ket
@@ -46,7 +46,7 @@ namespace ket
             auto const middle_bits_mask
               = ::ket::utility::integer_exp2<StateInteger>(minmax_qubits.second - minmax_qubits.first) - StateInteger{1u};
 
-            auto const local_state_first = ::ket::utility::begin(local_state);
+            auto const local_state_first = std::begin(local_state);
             auto const num_local_qubits = ::ket::utility::integer_log2<BitInteger>(data_block_size);
             for (auto data_block_index = StateInteger{0u}; data_block_index < num_data_blocks; ++data_block_index)
             {

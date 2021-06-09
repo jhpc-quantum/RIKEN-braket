@@ -2,11 +2,10 @@
 # define KET_MPI_UTILITY_FOR_EACH_LOCAL_RANGE_HPP
 
 # include <cstddef>
+# include <iterator>
 # include <utility>
 
 # include <boost/range/size.hpp>
-
-# include <ket/utility/begin.hpp>
 
 # include <yampi/communicator.hpp>
 # include <yampi/environment.hpp>
@@ -34,7 +33,7 @@ namespace ket
             auto const num_data_blocks
               = ::ket::mpi::utility::policy::num_data_blocks(mpi_policy, communicator, environment);
 
-            auto const first = ::ket::utility::begin(local_state);
+            auto const first = std::begin(local_state);
             for (auto data_block_index = decltype(num_data_blocks){0u}; data_block_index < num_data_blocks; ++data_block_index)
               function(
                 first + data_block_index * data_block_size,
@@ -54,7 +53,7 @@ namespace ket
             auto const num_data_blocks
               = ::ket::mpi::utility::policy::num_data_blocks(mpi_policy, communicator, environment);
 
-            auto const first = ::ket::utility::begin(local_state);
+            auto const first = std::begin(local_state);
             for (auto data_block_index = decltype(num_data_blocks){0u}; data_block_index < num_data_blocks; ++data_block_index)
               function(
                 first + data_block_index * data_block_size,

@@ -5,13 +5,13 @@
 
 # include <cstddef>
 # include <cassert>
+# include <iterator>
 
 # include <boost/range/size.hpp>
 
 # include <ket/qubit.hpp>
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/integer_exp2.hpp>
-# include <ket/utility/begin.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/state.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
@@ -104,8 +104,8 @@ namespace ket
                 assert(boost::size(zero_page_range) == boost::size(one_page_range));
                 assert(::ket::utility::integer_exp2<std::size_t>(::ket::utility::integer_log2<std::size_t>(boost::size(zero_page_range))) == boost::size(zero_page_range));
 
-                auto const zero_first = ::ket::utility::begin(zero_page_range);
-                auto const one_first = ::ket::utility::begin(one_page_range);
+                auto const zero_first = std::begin(zero_page_range);
+                auto const one_first = std::begin(one_page_range);
 
                 using ::ket::utility::loop_n;
                 loop_n(

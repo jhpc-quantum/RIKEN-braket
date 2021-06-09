@@ -3,6 +3,7 @@
 
 # include <cassert>
 # include <cstddef>
+# include <iterator>
 # include <type_traits>
 # include <vector>
 
@@ -17,8 +18,6 @@
 # include <ket/control.hpp>
 # include <ket/utility/generate_phase_coefficients.hpp>
 # include <ket/utility/loop_n.hpp>
-# include <ket/utility/begin.hpp>
-# include <ket/utility/meta/const_iterator_of.hpp>
 # include <ket/utility/meta/real_of.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/gate/hadamard.hpp>
@@ -67,7 +66,7 @@ namespace ket
       auto const num_qubits = boost::size(qubits);
       ::ket::utility::generate_phase_coefficients(phase_coefficients, num_qubits);
 
-      auto const qubits_first = ::ket::utility::begin(qubits);
+      auto const qubits_first = std::begin(qubits);
 
       for (auto index = decltype(num_qubits){0u}; index < num_qubits; ++index)
       {
@@ -130,7 +129,7 @@ namespace ket
       auto const num_qubits = boost::size(qubits);
       ::ket::utility::generate_phase_coefficients(phase_coefficients, num_qubits);
 
-      auto const qubits_first = ::ket::utility::begin(qubits);
+      auto const qubits_first = std::begin(qubits);
 
       for (auto index = decltype(num_qubits){0u}; index < num_qubits; ++index)
       {
@@ -472,7 +471,7 @@ namespace ket
       auto const num_qubits = boost::size(qubits);
       ::ket::utility::generate_phase_coefficients(phase_coefficients, num_qubits);
 
-      auto const qubits_first = ::ket::utility::begin(qubits);
+      auto const qubits_first = std::begin(qubits);
 
       for (auto target_bit = decltype(num_qubits){0u}; target_bit < num_qubits; ++target_bit)
       {
@@ -533,7 +532,7 @@ namespace ket
       auto const num_qubits = boost::size(qubits);
       ::ket::utility::generate_phase_coefficients(phase_coefficients, num_qubits);
 
-      auto const qubits_first = ::ket::utility::begin(qubits);
+      auto const qubits_first = std::begin(qubits);
 
       for (auto target_bit = decltype(num_qubits){0u}; target_bit < num_qubits; ++target_bit)
       {

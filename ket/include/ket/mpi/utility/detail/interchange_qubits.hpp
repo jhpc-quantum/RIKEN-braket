@@ -3,6 +3,7 @@
 
 # include <cassert>
 # include <vector>
+# include <iterator>
 # include <utility>
 # include <type_traits>
 
@@ -15,9 +16,6 @@
 # include <yampi/rank.hpp>
 # include <yampi/status.hpp>
 # include <yampi/algorithm/swap.hpp>
-
-# include <ket/utility/begin.hpp>
-# include <ket/utility/end.hpp>
 
 
 namespace ket
@@ -43,16 +41,16 @@ namespace ket
           {
             assert(source_local_last_index >= source_local_first_index);
 
-            auto const first = ::ket::utility::begin(local_state) + data_block_index * data_block_size + source_local_first_index;
-            auto const last = ::ket::utility::begin(local_state) + data_block_index * data_block_size + source_local_last_index;
+            auto const first = std::begin(local_state) + data_block_index * data_block_size + source_local_first_index;
+            auto const last = std::begin(local_state) + data_block_index * data_block_size + source_local_last_index;
 
             buffer.resize(source_local_last_index - source_local_first_index);
             yampi::algorithm::swap(
               yampi::ignore_status(),
               yampi::make_buffer(first, last),
-              yampi::make_buffer(::ket::utility::begin(buffer), ::ket::utility::end(buffer)),
+              yampi::make_buffer(std::begin(buffer), std::end(buffer)),
               target_rank, communicator, environment);
-            std::copy(::ket::utility::begin(buffer), ::ket::utility::end(buffer), first);
+            std::copy(std::begin(buffer), std::end(buffer), first);
           }
 
           template <typename LocalState, typename Allocator, typename StateInteger, typename DerivedDatatype>
@@ -67,16 +65,16 @@ namespace ket
           {
             assert(source_local_last_index >= source_local_first_index);
 
-            auto const first = ::ket::utility::begin(local_state) + data_block_index * data_block_size + source_local_first_index;
-            auto const last = ::ket::utility::begin(local_state) + data_block_index * data_block_size + source_local_last_index;
+            auto const first = std::begin(local_state) + data_block_index * data_block_size + source_local_first_index;
+            auto const last = std::begin(local_state) + data_block_index * data_block_size + source_local_last_index;
 
             buffer.resize(source_local_last_index - source_local_first_index);
             yampi::algorithm::swap(
               yampi::ignore_status(),
               yampi::make_buffer(first, last, datatype),
-              yampi::make_buffer(::ket::utility::begin(buffer), ::ket::utility::end(buffer), datatype),
+              yampi::make_buffer(std::begin(buffer), std::end(buffer), datatype),
               target_rank, communicator, environment);
-            std::copy(::ket::utility::begin(buffer), ::ket::utility::end(buffer), first);
+            std::copy(std::begin(buffer), std::end(buffer), first);
           }
         }; // struct interchange_qubits<LocalState_>
       } // namespace dispatch

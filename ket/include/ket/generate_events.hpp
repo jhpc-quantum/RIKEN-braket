@@ -7,8 +7,6 @@
 # include <algorithm>
 
 # include <ket/utility/positive_random_value_upto.hpp>
-# include <ket/utility/begin.hpp>
-# include <ket/utility/end.hpp>
 
 
 namespace ket
@@ -114,7 +112,7 @@ namespace ket
     {
       ::ket::generate_events(
         parallel_policy,
-        result, ::ket::utility::begin(state), ::ket::utility::end(state), num_events, random_number_generator);
+        result, std::begin(state), std::end(state), num_events, random_number_generator);
     }
 
     template <typename ParallelPolicy, typename StateInteger, typename Allocator, typename RandomAccessRange, typename RandomNumberGenerator>
@@ -128,7 +126,7 @@ namespace ket
     {
       ::ket::generate_events(
         parallel_policy,
-        result, ::ket::utility::begin(state), ::ket::utility::end(state),
+        result, std::begin(state), std::end(state),
         num_events, random_number_generator, seed);
     }
 
@@ -140,7 +138,7 @@ namespace ket
       RandomNumberGenerator& random_number_generator)
     {
       ::ket::generate_events(
-        result, ::ket::utility::begin(state), ::ket::utility::end(state), num_events, random_number_generator);
+        result, std::begin(state), std::end(state), num_events, random_number_generator);
     }
 
     template <typename StateInteger, typename Allocator, typename RandomAccessRange, typename RandomNumberGenerator>
@@ -152,7 +150,7 @@ namespace ket
       typename RandomNumberGenerator::result_type const seed)
     {
       ::ket::generate_events(
-        result, ::ket::utility::begin(state), ::ket::utility::end(state),
+        result, std::begin(state), std::end(state),
         num_events, random_number_generator, seed);
     }
   } // namespace ranges
