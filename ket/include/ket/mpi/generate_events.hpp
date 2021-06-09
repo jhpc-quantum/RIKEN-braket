@@ -41,7 +41,7 @@ namespace ket
       typename LocalState, typename RandomNumberGenerator,
       typename StateInteger, typename BitInteger, typename Allocator>
     inline void generate_events(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       std::vector<StateInteger, ResultAllocator>& result,
       LocalState& local_state,
       int const num_events,
@@ -146,7 +146,7 @@ namespace ket
       typename StateInteger, typename BitInteger, typename Allocator,
       typename DerivedDatatype1, typename DerivedDatatype2>
     inline void generate_events(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       std::vector<StateInteger, ResultAllocator>& result,
       LocalState& local_state,
       int const num_events,
@@ -254,7 +254,7 @@ namespace ket
       typename LocalState, typename RandomNumberGenerator,
       typename StateInteger, typename BitInteger, typename Allocator>
     inline void generate_events(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       std::vector<StateInteger, ResultAllocator>& result,
       LocalState& local_state,
       int const num_events,
@@ -279,7 +279,7 @@ namespace ket
       typename StateInteger, typename BitInteger, typename Allocator,
       typename DerivedDatatype1, typename DerivedDatatype2>
     inline void generate_events(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       std::vector<StateInteger, ResultAllocator>& result,
       LocalState& local_state,
       int const num_events,

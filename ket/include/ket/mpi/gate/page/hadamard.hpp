@@ -44,11 +44,11 @@ namespace ket
         } // namespace hadamard_detail
 
         template <
-          typename MpiPolicy, typename ParallelPolicy,
+          typename ParallelPolicy,
           typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename Allocator>
         inline RandomAccessRange& hadamard(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+          ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::qubit<StateInteger, BitInteger> const qubit,
           ::ket::mpi::qubit_permutation<
@@ -58,7 +58,7 @@ namespace ket
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-            mpi_policy, parallel_policy, local_state, qubit, permutation,
+            parallel_policy, local_state, qubit, permutation,
             [](auto const zero_first, auto const one_first, StateInteger const index, int const)
             {
               auto const zero_iter = zero_first + index;
@@ -73,25 +73,22 @@ namespace ket
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-            mpi_policy, parallel_policy, local_state, qubit, permutation,
+            parallel_policy, local_state, qubit, permutation,
             ::ket::mpi::gate::page::hadamard_detail::hadamard<real_type>{});
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }
 
         template <
-          typename MpiPolicy, typename ParallelPolicy,
+          typename ParallelPolicy,
           typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename Allocator>
         inline RandomAccessRange& adj_hadamard(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+          ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::qubit<StateInteger, BitInteger> const qubit,
           ::ket::mpi::qubit_permutation<
             StateInteger, BitInteger, Allocator> const& permutation)
-        {
-          return ::ket::mpi::gate::page::hadamard(
-            mpi_policy, parallel_policy, local_state, qubit, permutation);
-        }
+        { return ::ket::mpi::gate::page::hadamard(parallel_policy, local_state, qubit, permutation); }
       } // namespace page
     } // namespace gate
   } // namespace mpi

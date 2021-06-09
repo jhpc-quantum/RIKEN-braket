@@ -8,6 +8,7 @@
 
 # include <ket/utility/loop_n.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
+# include <ket/mpi/utility/for_each_local_range.hpp>
 
 
 namespace ket
@@ -47,7 +48,7 @@ namespace ket
 
       template <typename MpiPolicy, typename ParallelPolicy, typename LocalState, typename Value>
       inline LocalState& fill(
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         LocalState& local_state, Value const& value,
         yampi::communicator const& communicator,
         yampi::environment const& environment)

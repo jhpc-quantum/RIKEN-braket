@@ -94,7 +94,6 @@ namespace ket
           typename ::ket::utility::meta::real_of<Complex>::type,
           typename ::ket::utility::meta::real_of<Complex>::type>
         zero_one_probabilities(
-          ::ket::mpi::utility::policy::general_mpi const mpi_policy,
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>& local_state,
           ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -107,7 +106,7 @@ namespace ket
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-            mpi_policy, parallel_policy, local_state, qubit, permutation,
+            parallel_policy, local_state, qubit, permutation,
             [&zero_probability, &one_probability](
               auto const zero_first, auto const one_first, StateInteger const index, int const)
             {
@@ -117,7 +116,7 @@ namespace ket
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-            mpi_policy, parallel_policy, local_state, qubit, permutation,
+            parallel_policy, local_state, qubit, permutation,
             ::ket::mpi::gate::page::projective_measurement_detail::zero_one_probabilities{
               zero_probability, one_probability});
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -184,7 +183,6 @@ namespace ket
           typename Complex, int num_page_qubits_, typename StateAllocator,
           typename StateInteger, typename BitInteger, typename Real, typename PermutationAllocator>
         inline void change_state_after_measuring_zero(
-          ::ket::mpi::utility::policy::general_mpi const mpi_policy,
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>& local_state,
           ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -199,7 +197,7 @@ namespace ket
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-            mpi_policy, parallel_policy, local_state, qubit, permutation,
+            parallel_policy, local_state, qubit, permutation,
             [multiplier](auto const zero_first, auto const one_first, StateInteger const index, int const)
             {
               *(zero_first + index) *= multiplier;
@@ -207,7 +205,7 @@ namespace ket
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-            mpi_policy, parallel_policy, local_state, qubit, permutation,
+            parallel_policy, local_state, qubit, permutation,
             ::ket::mpi::gate::page::projective_measurement_detail::make_change_state_after_measuring_zero<Complex>(multiplier));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }
@@ -269,7 +267,6 @@ namespace ket
           typename Complex, int num_page_qubits_, typename StateAllocator,
           typename StateInteger, typename BitInteger, typename Real, typename PermutationAllocator>
         inline void change_state_after_measuring_one(
-          ::ket::mpi::utility::policy::general_mpi const mpi_policy,
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>& local_state,
           ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -284,7 +281,7 @@ namespace ket
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-            mpi_policy, parallel_policy, local_state, qubit, permutation,
+            parallel_policy, local_state, qubit, permutation,
             [multiplier](auto const zero_first, auto const one_first, StateInteger const index, int const)
             {
               *(zero_first + index) = Complex{Real{0}};
@@ -292,7 +289,7 @@ namespace ket
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-            mpi_policy, parallel_policy, local_state, qubit, permutation,
+            parallel_policy, local_state, qubit, permutation,
             ::ket::mpi::gate::page::projective_measurement_detail::make_change_state_after_measuring_one<Complex>(multiplier));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }

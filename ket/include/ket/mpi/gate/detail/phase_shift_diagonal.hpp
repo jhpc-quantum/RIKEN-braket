@@ -21,6 +21,7 @@
 # include <ket/utility/begin.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
+# include <ket/mpi/utility/for_each_local_range.hpp>
 # include <ket/mpi/utility/logger.hpp>
 # include <ket/mpi/gate/page/phase_shift.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
@@ -75,7 +76,7 @@ namespace ket
           typename RandomAccessRange, typename Complex,
           typename StateInteger, typename BitInteger, typename Allocator>
         inline RandomAccessRange& phase_shift_coeff(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           Complex const& phase_coefficient,
           ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -85,7 +86,7 @@ namespace ket
         {
           if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))
             return ::ket::mpi::gate::page::phase_shift_coeff(
-              mpi_policy, parallel_policy, local_state, phase_coefficient, qubit, permutation);
+              parallel_policy, local_state, phase_coefficient, qubit, permutation);
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           ::ket::mpi::utility::diagonal_loop(
@@ -111,7 +112,7 @@ namespace ket
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator>
       inline RandomAccessRange& phase_shift_coeff(
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         Complex const& phase_coefficient,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -133,7 +134,7 @@ namespace ket
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>
       inline RandomAccessRange& phase_shift_coeff(
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         Complex const& phase_coefficient,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -239,7 +240,7 @@ namespace ket
           typename RandomAccessRange, typename Complex,
           typename StateInteger, typename BitInteger, typename Allocator>
         inline RandomAccessRange& adj_phase_shift_coeff(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           Complex const& phase_coefficient,
           ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -261,7 +262,7 @@ namespace ket
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator>
       inline RandomAccessRange& adj_phase_shift_coeff(
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         Complex const& phase_coefficient,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -283,7 +284,7 @@ namespace ket
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>
       inline RandomAccessRange& adj_phase_shift_coeff(
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         Complex const& phase_coefficient,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -390,7 +391,7 @@ namespace ket
           typename RandomAccessRange, typename Real,
           typename StateInteger, typename BitInteger, typename Allocator>
         inline RandomAccessRange& phase_shift(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           Real const phase,
           ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -412,7 +413,7 @@ namespace ket
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator>
       inline RandomAccessRange& phase_shift(
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         Real const phase,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -434,7 +435,7 @@ namespace ket
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>
       inline RandomAccessRange& phase_shift(
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         Real const phase,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -538,7 +539,7 @@ namespace ket
           typename RandomAccessRange, typename Real,
           typename StateInteger, typename BitInteger, typename Allocator>
         inline RandomAccessRange& adj_phase_shift(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           Real const phase,
           ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -558,7 +559,7 @@ namespace ket
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator>
       inline RandomAccessRange& adj_phase_shift(
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         Real const phase,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -580,7 +581,7 @@ namespace ket
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>
       inline RandomAccessRange& adj_phase_shift(
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         Real const phase,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -724,7 +725,7 @@ namespace ket
           typename RandomAccessRange, typename Real,
           typename StateInteger, typename BitInteger, typename Allocator>
         inline RandomAccessRange& do_phase_shift2(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           Real const phase1, Real const phase2,
           ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -733,7 +734,7 @@ namespace ket
         {
           if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))
             return ::ket::mpi::gate::page::phase_shift2(
-              mpi_policy, parallel_policy, local_state, phase1, phase2, qubit, permutation);
+              parallel_policy, local_state, phase1, phase2, qubit, permutation);
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           auto const permutated_qubit = permutation[qubit];
@@ -759,7 +760,7 @@ namespace ket
           typename StateInteger, typename BitInteger,
           typename Allocator, typename BufferAllocator>
         inline RandomAccessRange& phase_shift2(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           Real const phase1, Real const phase2,
           ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -784,7 +785,7 @@ namespace ket
           typename StateInteger, typename BitInteger,
           typename Allocator, typename BufferAllocator, typename DerivedDatatype>
         inline RandomAccessRange& phase_shift2(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           Real const phase1, Real const phase2,
           ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -811,7 +812,7 @@ namespace ket
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator>
       inline RandomAccessRange& phase_shift2(
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         Real const phase1, Real const phase2,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -834,7 +835,7 @@ namespace ket
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>
       inline RandomAccessRange& phase_shift2(
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         Real const phase1, Real const phase2,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -980,7 +981,7 @@ namespace ket
           typename RandomAccessRange, typename Real,
           typename StateInteger, typename BitInteger, typename Allocator>
         inline RandomAccessRange& do_adj_phase_shift2(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           Real const phase1, Real const phase2,
           ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -989,7 +990,7 @@ namespace ket
         {
           if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))
             return ::ket::mpi::gate::page::adj_phase_shift2(
-              mpi_policy, parallel_policy, local_state, phase1, phase2, qubit, permutation);
+              parallel_policy, local_state, phase1, phase2, qubit, permutation);
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           auto const permutated_qubit = permutation[qubit];
@@ -1015,7 +1016,7 @@ namespace ket
           typename StateInteger, typename BitInteger,
           typename Allocator, typename BufferAllocator>
         inline RandomAccessRange& adj_phase_shift2(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           Real const phase1, Real const phase2,
           ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -1040,7 +1041,7 @@ namespace ket
           typename StateInteger, typename BitInteger,
           typename Allocator, typename BufferAllocator, typename DerivedDatatype>
         inline RandomAccessRange& adj_phase_shift2(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           Real const phase1, Real const phase2,
           ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -1067,7 +1068,7 @@ namespace ket
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator>
       inline RandomAccessRange& adj_phase_shift2(
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         Real const phase1, Real const phase2,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -1089,7 +1090,7 @@ namespace ket
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>
       inline RandomAccessRange& adj_phase_shift2(
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         Real const phase1, Real const phase2,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -1232,7 +1233,7 @@ namespace ket
           typename RandomAccessRange, typename Real,
           typename StateInteger, typename BitInteger, typename Allocator>
         inline RandomAccessRange& do_phase_shift3(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           Real const phase1, Real const phase2, Real const phase3,
           ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -1241,7 +1242,7 @@ namespace ket
         {
           if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))
             return ::ket::mpi::gate::page::phase_shift3(
-              mpi_policy, parallel_policy, local_state, phase1, phase2, phase3, qubit, permutation);
+              parallel_policy, local_state, phase1, phase2, phase3, qubit, permutation);
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           auto const permutated_qubit = permutation[qubit];
@@ -1267,7 +1268,7 @@ namespace ket
           typename StateInteger, typename BitInteger,
           typename Allocator, typename BufferAllocator>
         inline RandomAccessRange& phase_shift3(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           Real const phase1, Real const phase2, Real const phase3,
           ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -1292,7 +1293,7 @@ namespace ket
           typename StateInteger, typename BitInteger,
           typename Allocator, typename BufferAllocator, typename DerivedDatatype>
         inline RandomAccessRange& phase_shift3(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           Real const phase1, Real const phase2, Real const phase3,
           ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -1319,7 +1320,7 @@ namespace ket
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator>
       inline RandomAccessRange& phase_shift3(
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         Real const phase1, Real const phase2, Real const phase3,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -1342,7 +1343,7 @@ namespace ket
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>
       inline RandomAccessRange& phase_shift3(
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         Real const phase1, Real const phase2, Real const phase3,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -1490,7 +1491,7 @@ namespace ket
           typename RandomAccessRange, typename Real,
           typename StateInteger, typename BitInteger, typename Allocator>
         inline RandomAccessRange& do_adj_phase_shift3(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           Real const phase1, Real const phase2, Real const phase3,
           ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -1499,7 +1500,7 @@ namespace ket
         {
           if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))
             return ::ket::mpi::gate::page::adj_phase_shift3(
-              mpi_policy, parallel_policy, local_state, phase1, phase2, phase3, qubit, permutation);
+              parallel_policy, local_state, phase1, phase2, phase3, qubit, permutation);
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           auto const permutated_qubit = permutation[qubit];
@@ -1525,7 +1526,7 @@ namespace ket
           typename StateInteger, typename BitInteger,
           typename Allocator, typename BufferAllocator>
         inline RandomAccessRange& adj_phase_shift3(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           Real const phase1, Real const phase2, Real const phase3,
           ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -1550,7 +1551,7 @@ namespace ket
           typename StateInteger, typename BitInteger,
           typename Allocator, typename BufferAllocator, typename DerivedDatatype>
         inline RandomAccessRange& adj_phase_shift3(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           Real const phase1, Real const phase2, Real const phase3,
           ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -1577,7 +1578,7 @@ namespace ket
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator>
       inline RandomAccessRange& adj_phase_shift3(
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         Real const phase1, Real const phase2, Real const phase3,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -1600,7 +1601,7 @@ namespace ket
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>
       inline RandomAccessRange& adj_phase_shift3(
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         Real const phase1, Real const phase2, Real const phase3,
         ::ket::qubit<StateInteger, BitInteger> const qubit,

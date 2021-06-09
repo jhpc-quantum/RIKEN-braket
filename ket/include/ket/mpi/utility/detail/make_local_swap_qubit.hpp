@@ -36,6 +36,7 @@ namespace ket
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
           UnswappableQubits const& unswappable_qubits,
           ::ket::qubit<StateInteger, BitInteger> const permutated_local_swap_qubit,
+          StateInteger const num_data_blocks, StateInteger const data_block_size,
           yampi::communicator const& communicator, yampi::environment const& environment)
         {
           using qubit_type = ket::qubit<StateInteger, BitInteger>;
@@ -69,7 +70,7 @@ namespace ket
           ::ket::mpi::utility::detail::swap_permutated_local_qubits(
             mpi_policy, parallel_policy, local_state,
             permutated_local_swap_qubit, permutated_other_qubit,
-            communicator, environment);
+            num_data_blocks, data_block_size, communicator, environment);
           using ::ket::mpi::permutate;
           permutate(permutation, local_swap_qubit, other_qubit);
 

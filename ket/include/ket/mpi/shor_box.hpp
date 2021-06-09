@@ -40,7 +40,7 @@ namespace ket
       typename RandomAccessRange, typename StateInteger, typename Qubits,
       typename BitInteger, typename Allocator>
     inline RandomAccessRange& shor_box(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       RandomAccessRange& local_state,
       StateInteger const base, StateInteger const divisor,
       Qubits const& exponent_qubits, Qubits const& modular_exponentiation_qubits,

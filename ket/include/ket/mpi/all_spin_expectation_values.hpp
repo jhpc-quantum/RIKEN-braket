@@ -37,7 +37,7 @@ namespace ket
           typename ::ket::utility::meta::real_of<
             typename boost::range_value<LocalState>::type>::type, 3u>, SpinsAllocator> >::type
     all_spin_expectation_values(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       LocalState& local_state,
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,
@@ -76,7 +76,7 @@ namespace ket
           typename ::ket::utility::meta::real_of<
             typename boost::range_value<LocalState>::type>::type, 3u>, SpinsAllocator> >::type
     all_spin_expectation_values(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       LocalState& local_state,
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,
@@ -231,7 +231,7 @@ namespace ket
           typename ::ket::utility::meta::real_of<
             typename boost::range_value<LocalState>::type>::type, 3u> > >::type
     all_spin_expectation_values(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       LocalState& local_state,
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,
@@ -261,7 +261,7 @@ namespace ket
           typename ::ket::utility::meta::real_of<
             typename boost::range_value<LocalState>::type>::type, 3u> > >::type
     all_spin_expectation_values(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       LocalState& local_state,
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,
@@ -407,7 +407,7 @@ namespace ket
             typename ::ket::utility::meta::real_of<
               typename boost::range_value<LocalState>::type>::type, 3u>, SpinsAllocator> > >::type
     all_spin_expectation_values(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       LocalState& local_state,
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,
@@ -459,7 +459,7 @@ namespace ket
             typename ::ket::utility::meta::real_of<
               typename boost::range_value<LocalState>::type>::type, 3u>, SpinsAllocator> > >::type
     all_spin_expectation_values(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       LocalState& local_state,
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,
@@ -635,7 +635,7 @@ namespace ket
             typename ::ket::utility::meta::real_of<
               typename boost::range_value<LocalState>::type>::type, 3u> > > >::type
     all_spin_expectation_values(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       LocalState& local_state,
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,
@@ -668,7 +668,7 @@ namespace ket
             typename ::ket::utility::meta::real_of<
               typename boost::range_value<LocalState>::type>::type, 3u> > > >::type
     all_spin_expectation_values(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       LocalState& local_state,
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,

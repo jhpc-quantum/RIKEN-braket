@@ -37,7 +37,7 @@ namespace ket
         typename PhaseCoefficientsAllocator,
         typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator>
       inline void do_addition_assignment(
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         Iterator1 const lhs_qubits_first, Iterator2 const rhs_qubits_first,
         std::size_t const num_qubits,
@@ -80,7 +80,7 @@ namespace ket
         typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator,
         typename DerivedDatatype>
       inline void do_addition_assignment(
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         Iterator1 const lhs_qubits_first, Iterator2 const rhs_qubits_first,
         std::size_t const num_qubits,
@@ -127,7 +127,7 @@ namespace ket
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     addition_assignment(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       RandomAccessRange& local_state,
       Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range,
       std::vector<
@@ -181,7 +181,7 @@ namespace ket
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     addition_assignment(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       RandomAccessRange& local_state,
       Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range,
       std::vector<
@@ -351,7 +351,7 @@ namespace ket
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     addition_assignment(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       RandomAccessRange& local_state,
       Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range,
       ::ket::mpi::qubit_permutation<
@@ -380,7 +380,7 @@ namespace ket
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     addition_assignment(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       RandomAccessRange& local_state,
       Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range,
       ::ket::mpi::qubit_permutation<
@@ -526,7 +526,7 @@ namespace ket
         typename PhaseCoefficientsAllocator,
         typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator>
       inline void do_adj_addition_assignment(
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         Iterator1 const lhs_qubits_first, Iterator2 const rhs_qubits_first,
         std::size_t const num_qubits,
@@ -570,7 +570,7 @@ namespace ket
         typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator,
         typename DerivedDatatype>
       inline void do_adj_addition_assignment(
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         Iterator1 const lhs_qubits_first, Iterator2 const rhs_qubits_first,
         std::size_t const num_qubits,
@@ -619,7 +619,7 @@ namespace ket
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     adj_addition_assignment(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       RandomAccessRange& local_state,
       Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range,
       std::vector<
@@ -673,7 +673,7 @@ namespace ket
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     adj_addition_assignment(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       RandomAccessRange& local_state,
       Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range,
       std::vector<
@@ -845,7 +845,7 @@ namespace ket
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     adj_addition_assignment(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       RandomAccessRange& local_state,
       Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range,
       ::ket::mpi::qubit_permutation<
@@ -874,7 +874,7 @@ namespace ket
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     adj_addition_assignment(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       RandomAccessRange& local_state,
       Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range,
       ::ket::mpi::qubit_permutation<

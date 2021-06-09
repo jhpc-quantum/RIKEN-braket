@@ -23,7 +23,7 @@ namespace ket
           typename MpiPolicy, typename Character, typename CharacterTraits, typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename Allocator>
         std::basic_ostream<Character, CharacterTraits>& print_data(
-          MpiPolicy const mpi_policy,
+          MpiPolicy const& mpi_policy,
           std::basic_ostream<Character, CharacterTraits>& output_stream,
           RandomAccessRange const& local_state,
           ::ket::mpi::qubit_permutation<

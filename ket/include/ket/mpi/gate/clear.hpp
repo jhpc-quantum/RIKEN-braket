@@ -19,6 +19,7 @@
 # include <ket/gate/clear.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
+# include <ket/mpi/utility/for_each_local_range.hpp>
 # include <ket/mpi/utility/logger.hpp>
 # include <ket/mpi/gate/page/clear.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
@@ -61,15 +62,14 @@ namespace ket
           typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename Allocator>
         inline RandomAccessRange& clear(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::qubit<StateInteger, BitInteger> const qubit,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
           yampi::communicator const& communicator, yampi::environment const& environment)
         {
           if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))
-            return ::ket::mpi::gate::page::clear(
-              mpi_policy, parallel_policy, local_state, qubit, permutation);
+            return ::ket::mpi::gate::page::clear(parallel_policy, local_state, qubit, permutation);
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           auto const permutated_qubit = permutation[qubit];
@@ -91,7 +91,7 @@ namespace ket
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator>
       inline RandomAccessRange& clear(
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -117,7 +117,7 @@ namespace ket
         typename Allocator, typename BufferAllocator,
         typename DerivedDatatype>
       inline RandomAccessRange& clear(
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,

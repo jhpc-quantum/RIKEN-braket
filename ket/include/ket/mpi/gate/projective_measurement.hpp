@@ -44,7 +44,7 @@ namespace ket
         typename StateInteger, typename BitInteger, typename RandomNumberGenerator,
         typename Allocator, typename BufferAllocator>
       inline ::ket::gate::outcome projective_measurement(
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
         RandomNumberGenerator& random_number_generator,
@@ -68,8 +68,7 @@ namespace ket
 
         auto zero_one_probabilities
           = is_qubit_on_page
-            ? ::ket::mpi::gate::page::zero_one_probabilities(
-                mpi_policy, parallel_policy, local_state, qubit, permutation)
+            ? ::ket::mpi::gate::page::zero_one_probabilities(parallel_policy, local_state, qubit, permutation)
             : ::ket::gate::projective_measurement_detail::zero_one_probabilities(
                 parallel_policy, ::ket::utility::begin(local_state), ::ket::utility::end(local_state), qubit);
 
@@ -90,7 +89,7 @@ namespace ket
         {
           if (is_qubit_on_page)
             ::ket::mpi::gate::page::change_state_after_measuring_zero(
-              mpi_policy, parallel_policy, local_state, qubit, zero_one_probabilities.first, permutation);
+              parallel_policy, local_state, qubit, zero_one_probabilities.first, permutation);
           else
             ::ket::gate::projective_measurement_detail::change_state_after_measuring_zero(
               parallel_policy,
@@ -101,8 +100,7 @@ namespace ket
 
         if (is_qubit_on_page)
           ::ket::mpi::gate::page::change_state_after_measuring_one(
-            mpi_policy, parallel_policy,
-            local_state, qubit, zero_one_probabilities.second, permutation);
+            parallel_policy, local_state, qubit, zero_one_probabilities.second, permutation);
         else
           ::ket::gate::projective_measurement_detail::change_state_after_measuring_one(
             parallel_policy,
@@ -116,7 +114,7 @@ namespace ket
         typename StateInteger, typename BitInteger, typename RandomNumberGenerator,
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>
       inline ::ket::gate::outcome projective_measurement(
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
         RandomNumberGenerator& random_number_generator,
@@ -141,8 +139,7 @@ namespace ket
 
         auto zero_one_probabilities
           = is_qubit_on_page
-            ? ::ket::mpi::gate::page::zero_one_probabilities(
-                mpi_policy, parallel_policy, local_state, qubit, permutation)
+            ? ::ket::mpi::gate::page::zero_one_probabilities(parallel_policy, local_state, qubit, permutation)
             : ::ket::gate::projective_measurement_detail::zero_one_probabilities(
                 parallel_policy, ::ket::utility::begin(local_state), ::ket::utility::end(local_state), qubit);
 
@@ -163,7 +160,7 @@ namespace ket
         {
           if (is_qubit_on_page)
             ::ket::mpi::gate::page::change_state_after_measuring_zero(
-              mpi_policy, parallel_policy, local_state, qubit, zero_one_probabilities.first, permutation);
+              parallel_policy, local_state, qubit, zero_one_probabilities.first, permutation);
           else
             ::ket::gate::projective_measurement_detail::change_state_after_measuring_zero(
               parallel_policy,
@@ -174,8 +171,7 @@ namespace ket
 
         if (is_qubit_on_page)
           ::ket::mpi::gate::page::change_state_after_measuring_one(
-            mpi_policy, parallel_policy,
-            local_state, qubit, zero_one_probabilities.second, permutation);
+            parallel_policy, local_state, qubit, zero_one_probabilities.second, permutation);
         else
           ::ket::gate::projective_measurement_detail::change_state_after_measuring_one(
             parallel_policy,

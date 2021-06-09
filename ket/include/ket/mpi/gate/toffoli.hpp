@@ -21,6 +21,7 @@
 # include <ket/gate/toffoli.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
+# include <ket/mpi/utility/for_each_local_range.hpp>
 # include <ket/mpi/utility/logger.hpp>
 # include <ket/mpi/gate/page/toffoli.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
@@ -83,7 +84,7 @@ namespace ket
           typename StateInteger, typename BitInteger,
           typename Allocator>
         inline RandomAccessRange& toffoli(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::qubit<StateInteger, BitInteger> const target_qubit,
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
@@ -97,38 +98,31 @@ namespace ket
             {
               if (::ket::mpi::page::is_on_page(control_qubit2.qubit(), local_state, permutation))
                 return ::ket::mpi::gate::page::toffoli_tccp(
-                  mpi_policy, parallel_policy, local_state,
-                  target_qubit, control_qubit1, control_qubit2, permutation);
+                  parallel_policy, local_state, target_qubit, control_qubit1, control_qubit2, permutation);
 
               return ::ket::mpi::gate::page::toffoli_tcp(
-                mpi_policy, parallel_policy, local_state,
-                target_qubit, control_qubit1, control_qubit2, permutation);
+                parallel_policy, local_state, target_qubit, control_qubit1, control_qubit2, permutation);
             }
 
             if (::ket::mpi::page::is_on_page(control_qubit2.qubit(), local_state, permutation))
               return ::ket::mpi::gate::page::toffoli_tcp(
-                mpi_policy, parallel_policy, local_state,
-                target_qubit, control_qubit2, control_qubit1, permutation);
+                parallel_policy, local_state, target_qubit, control_qubit2, control_qubit1, permutation);
 
             return ::ket::mpi::gate::page::toffoli_tp(
-              mpi_policy, parallel_policy, local_state,
-              target_qubit, control_qubit1, control_qubit2, permutation);
+              parallel_policy, local_state, target_qubit, control_qubit1, control_qubit2, permutation);
           }
           else if(::ket::mpi::page::is_on_page(control_qubit1.qubit(), local_state, permutation))
           {
             if (::ket::mpi::page::is_on_page(control_qubit2.qubit(), local_state, permutation))
               return ::ket::mpi::gate::page::toffoli_ccp(
-                mpi_policy, parallel_policy, local_state,
-                target_qubit, control_qubit1, control_qubit2, permutation);
+                parallel_policy, local_state, target_qubit, control_qubit1, control_qubit2, permutation);
 
             return ::ket::mpi::gate::page::toffoli_cp(
-              mpi_policy, parallel_policy, local_state,
-              target_qubit, control_qubit1, control_qubit2, permutation);
+              parallel_policy, local_state, target_qubit, control_qubit1, control_qubit2, permutation);
           }
           else if (::ket::mpi::page::is_on_page(control_qubit2.qubit(), local_state, permutation))
             return ::ket::mpi::gate::page::toffoli_cp(
-              mpi_policy, parallel_policy, local_state,
-              target_qubit, control_qubit2, control_qubit1, permutation);
+              parallel_policy, local_state, target_qubit, control_qubit2, control_qubit1, permutation);
 
           auto permutated_target_qubit = permutation[target_qubit];
           auto permutated_control_qubit1
@@ -162,7 +156,7 @@ namespace ket
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator>
       inline RandomAccessRange& toffoli(
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
@@ -190,7 +184,7 @@ namespace ket
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>
       inline RandomAccessRange& toffoli(
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
@@ -350,7 +344,7 @@ namespace ket
           typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename Allocator>
         inline RandomAccessRange& adj_toffoli(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::qubit<StateInteger, BitInteger> const target_qubit,
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
@@ -364,38 +358,31 @@ namespace ket
             {
               if (::ket::mpi::page::is_on_page(control_qubit2.qubit(), local_state, permutation))
                 return ::ket::mpi::gate::page::adj_toffoli_tccp(
-                  mpi_policy, parallel_policy, local_state,
-                  target_qubit, control_qubit1, control_qubit2, permutation);
+                  parallel_policy, local_state, target_qubit, control_qubit1, control_qubit2, permutation);
 
               return ::ket::mpi::gate::page::adj_toffoli_tcp(
-                mpi_policy, parallel_policy, local_state,
-                target_qubit, control_qubit1, control_qubit2, permutation);
+                parallel_policy, local_state, target_qubit, control_qubit1, control_qubit2, permutation);
             }
 
             if (::ket::mpi::page::is_on_page(control_qubit2.qubit(), local_state, permutation))
               return ::ket::mpi::gate::page::adj_toffoli_tcp(
-                mpi_policy, parallel_policy, local_state,
-                target_qubit, control_qubit2, control_qubit1, permutation);
+                parallel_policy, local_state, target_qubit, control_qubit2, control_qubit1, permutation);
 
             return ::ket::mpi::gate::page::adj_toffoli_tp(
-              mpi_policy, parallel_policy, local_state,
-              target_qubit, control_qubit1, control_qubit2, permutation);
+              parallel_policy, local_state, target_qubit, control_qubit1, control_qubit2, permutation);
           }
           else if(::ket::mpi::page::is_on_page(control_qubit1.qubit(), local_state, permutation))
           {
             if (::ket::mpi::page::is_on_page(control_qubit2.qubit(), local_state, permutation))
               return ::ket::mpi::gate::page::adj_toffoli_ccp(
-                mpi_policy, parallel_policy, local_state,
-                target_qubit, control_qubit1, control_qubit2, permutation);
+                parallel_policy, local_state, target_qubit, control_qubit1, control_qubit2, permutation);
 
             return ::ket::mpi::gate::page::adj_toffoli_cp(
-              mpi_policy, parallel_policy, local_state,
-              target_qubit, control_qubit1, control_qubit2, permutation);
+              parallel_policy, local_state, target_qubit, control_qubit1, control_qubit2, permutation);
           }
           else if (::ket::mpi::page::is_on_page(control_qubit2.qubit(), local_state, permutation))
             return ::ket::mpi::gate::page::adj_toffoli_cp(
-              mpi_policy, parallel_policy, local_state,
-              target_qubit, control_qubit2, control_qubit1, permutation);
+              parallel_policy, local_state, target_qubit, control_qubit2, control_qubit1, permutation);
 
           auto permutated_target_qubit = permutation[target_qubit];
           auto permutated_control_qubit1
@@ -429,7 +416,7 @@ namespace ket
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator>
       inline RandomAccessRange& adj_toffoli(
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
@@ -457,7 +444,7 @@ namespace ket
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>
       inline RandomAccessRange& adj_toffoli(
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,

@@ -33,11 +33,11 @@ namespace ket
         } // namespace pauli_z_detail
 
         template <
-          typename MpiPolicy, typename ParallelPolicy,
+          typename ParallelPolicy,
           typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename Allocator>
         inline RandomAccessRange& pauli_z(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+          ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::qubit<StateInteger, BitInteger> const qubit,
           ::ket::mpi::qubit_permutation<
@@ -47,30 +47,27 @@ namespace ket
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
-            mpi_policy, parallel_policy, local_state, qubit, permutation,
+            parallel_policy, local_state, qubit, permutation,
             [](auto const, auto const one_first, StateInteger const index, int const)
             { *(one_first + index) *= real_type{-1}; });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
-            mpi_policy, parallel_policy, local_state, qubit, permutation,
+            parallel_policy, local_state, qubit, permutation,
             ::ket::mpi::gate::page::pauli_z_detail::pauli_z<real_type>{});
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }
 
         template <
-          typename MpiPolicy, typename ParallelPolicy,
+          typename ParallelPolicy,
           typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename Allocator>
         inline RandomAccessRange& adj_pauli_z(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+          ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::qubit<StateInteger, BitInteger> const qubit,
           ::ket::mpi::qubit_permutation<
             StateInteger, BitInteger, Allocator> const& permutation)
-        {
-          return ::ket::mpi::gate::page::pauli_z(
-            mpi_policy, parallel_policy, local_state, qubit, permutation);
-        }
+        { return ::ket::mpi::gate::page::pauli_z(parallel_policy, local_state, qubit, permutation); }
       } // namespace page
     } // namespace gate
   } // namespace mpi
