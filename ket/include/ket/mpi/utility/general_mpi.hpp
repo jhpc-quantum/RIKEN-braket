@@ -28,9 +28,6 @@
 # include <ket/utility/integer_exp2.hpp>
 # include <ket/utility/integer_log2.hpp>
 # include <ket/utility/loop_n.hpp>
-# include <ket/utility/begin.hpp>
-# include <ket/utility/end.hpp>
-# include <ket/utility/meta/const_iterator_of.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
 # include <ket/mpi/utility/detail/make_local_swap_qubit.hpp>
@@ -411,15 +408,15 @@ namespace ket
             using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
             auto new_qubits = std::array<qubit_type, num_qubits_of_operation - 1u>{};
             std::copy(
-              ::ket::utility::begin(qubits) + new_unswappable_qubit_index + 1u, ::ket::utility::end(qubits),
+              std::begin(qubits) + new_unswappable_qubit_index + 1u, std::end(qubits),
               std::copy(
-                ::ket::utility::begin(qubits), ::ket::utility::begin(qubits) + new_unswappable_qubit_index,
-                ::ket::utility::begin(new_qubits)));
+                std::begin(qubits), std::begin(qubits) + new_unswappable_qubit_index,
+                std::begin(new_qubits)));
 
             auto new_unswappable_qubits = std::array<qubit_type, num_unswappable_qubits + 1u>{};
             std::copy(
-              ::ket::utility::begin(unswappable_qubits), ::ket::utility::end(unswappable_qubits),
-              ::ket::utility::begin(new_unswappable_qubits));
+              std::begin(unswappable_qubits), std::end(unswappable_qubits),
+              std::begin(new_unswappable_qubits));
             new_unswappable_qubits.back() = qubits[new_unswappable_qubit_index];
 
             using lower_maybe_interchange_qubits
@@ -455,15 +452,15 @@ namespace ket
             using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
             auto new_qubits = std::array<qubit_type, num_qubits_of_operation - 1u>{};
             std::copy(
-              ::ket::utility::begin(qubits) + new_unswappable_qubit_index + 1u, ::ket::utility::end(qubits),
+              std::begin(qubits) + new_unswappable_qubit_index + 1u, std::end(qubits),
               std::copy(
-                ::ket::utility::begin(qubits), ::ket::utility::begin(qubits) + new_unswappable_qubit_index,
-                ::ket::utility::begin(new_qubits)));
+                std::begin(qubits), std::begin(qubits) + new_unswappable_qubit_index,
+                std::begin(new_qubits)));
 
             auto new_unswappable_qubits = std::array<qubit_type, num_unswappable_qubits + 1u>{};
             std::copy(
-              ::ket::utility::begin(unswappable_qubits), ::ket::utility::end(unswappable_qubits),
-              ::ket::utility::begin(new_unswappable_qubits));
+              std::begin(unswappable_qubits), std::end(unswappable_qubits),
+              std::begin(new_unswappable_qubits));
             new_unswappable_qubits.back() = qubits[new_unswappable_qubit_index];
 
             using lower_maybe_interchange_qubits
@@ -634,9 +631,9 @@ namespace ket
               auto new_local_permutated_control_qubits
                 = std::array<qubit_type, num_local_control_qubits + 1u>{};
               std::copy(
-                ::ket::utility::begin(local_permutated_control_qubits),
-                ::ket::utility::end(local_permutated_control_qubits),
-                ::ket::utility::begin(new_local_permutated_control_qubits));
+                std::begin(local_permutated_control_qubits),
+                std::end(local_permutated_control_qubits),
+                std::begin(new_local_permutated_control_qubits));
               new_local_permutated_control_qubits.back() = permutated_control_qubit;
 
               call_impl(

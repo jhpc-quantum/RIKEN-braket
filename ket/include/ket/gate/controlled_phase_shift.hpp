@@ -16,8 +16,6 @@
 #   include <ket/utility/integer_log2.hpp>
 # endif
 # include <ket/utility/exp_i.hpp>
-# include <ket/utility/begin.hpp>
-# include <ket/utility/end.hpp>
 
 
 namespace ket
@@ -129,7 +127,7 @@ namespace ket
       {
         ::ket::gate::controlled_phase_shift_detail::controlled_phase_shift_coeff_impl(
           ::ket::utility::policy::make_sequential(),
-          ::ket::utility::begin(state), ::ket::utility::end(state), phase_coefficient, target_qubit, control_qubit);
+          std::begin(state), std::end(state), phase_coefficient, target_qubit, control_qubit);
         return state;
       }
 
@@ -144,7 +142,7 @@ namespace ket
       {
         ::ket::gate::controlled_phase_shift_detail::controlled_phase_shift_coeff_impl(
           parallel_policy,
-          ::ket::utility::begin(state), ::ket::utility::end(state), phase_coefficient, target_qubit, control_qubit);
+          std::begin(state), std::end(state), phase_coefficient, target_qubit, control_qubit);
         return state;
       }
     } // namespace ranges

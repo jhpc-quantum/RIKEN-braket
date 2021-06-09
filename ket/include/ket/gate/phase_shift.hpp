@@ -16,8 +16,6 @@
 #   include <ket/utility/integer_log2.hpp>
 # endif
 # include <ket/utility/exp_i.hpp>
-# include <ket/utility/begin.hpp>
-# include <ket/utility/end.hpp>
 # include <ket/utility/meta/real_of.hpp>
 
 
@@ -110,7 +108,7 @@ namespace ket
       {
         ::ket::gate::phase_shift_detail::phase_shift_coeff_impl(
           ::ket::utility::policy::make_sequential(),
-          ::ket::utility::begin(state), ::ket::utility::end(state), phase_coefficient, qubit);
+          std::begin(state), std::end(state), phase_coefficient, qubit);
         return state;
       }
 
@@ -124,7 +122,7 @@ namespace ket
       {
         ::ket::gate::phase_shift_detail::phase_shift_coeff_impl(
           parallel_policy,
-          ::ket::utility::begin(state), ::ket::utility::end(state), phase_coefficient, qubit);
+          std::begin(state), std::end(state), phase_coefficient, qubit);
         return state;
       }
     } // namespace ranges
@@ -379,7 +377,7 @@ namespace ket
       {
         ::ket::gate::phase_shift_detail::phase_shift2_impl(
           ::ket::utility::policy::make_sequential(),
-          ::ket::utility::begin(state), ::ket::utility::end(state), phase1, phase2, qubit);
+          std::begin(state), std::end(state), phase1, phase2, qubit);
         return state;
       }
 
@@ -393,7 +391,7 @@ namespace ket
       {
         ::ket::gate::phase_shift_detail::phase_shift2_impl(
           parallel_policy,
-          ::ket::utility::begin(state), ::ket::utility::end(state), phase1, phase2, qubit);
+          std::begin(state), std::end(state), phase1, phase2, qubit);
         return state;
       }
     } // namespace ranges
@@ -502,7 +500,7 @@ namespace ket
       {
         ::ket::gate::phase_shift_detail::adj_phase_shift2_impl(
           ::ket::utility::policy::make_sequential(),
-          ::ket::utility::begin(state), ::ket::utility::end(state), phase1, phase2, qubit);
+          std::begin(state), std::end(state), phase1, phase2, qubit);
         return state;
       }
 
@@ -516,7 +514,7 @@ namespace ket
       {
         ::ket::gate::phase_shift_detail::adj_phase_shift2_impl(
           parallel_policy,
-          ::ket::utility::begin(state), ::ket::utility::end(state), phase1, phase2, qubit);
+          std::begin(state), std::end(state), phase1, phase2, qubit);
         return state;
       }
     } // namespace ranges
@@ -632,7 +630,7 @@ namespace ket
       {
         ::ket::gate::phase_shift_detail::phase_shift3_impl(
           ::ket::utility::policy::make_sequential(),
-          ::ket::utility::begin(state), ::ket::utility::end(state), phase1, phase2, phase3, qubit);
+          std::begin(state), std::end(state), phase1, phase2, phase3, qubit);
         return state;
       }
 
@@ -646,7 +644,7 @@ namespace ket
       {
         ::ket::gate::phase_shift_detail::phase_shift3_impl(
           parallel_policy,
-          ::ket::utility::begin(state), ::ket::utility::end(state), phase1, phase2, phase3, qubit);
+          std::begin(state), std::end(state), phase1, phase2, phase3, qubit);
         return state;
       }
     } // namespace ranges
@@ -762,7 +760,7 @@ namespace ket
       {
         ::ket::gate::phase_shift_detail::adj_phase_shift3_impl(
           ::ket::utility::policy::make_sequential(),
-          ::ket::utility::begin(state), ::ket::utility::end(state), phase1, phase2, phase3, qubit);
+          std::begin(state), std::end(state), phase1, phase2, phase3, qubit);
         return state;
       }
 
@@ -776,7 +774,7 @@ namespace ket
       {
         ::ket::gate::phase_shift_detail::adj_phase_shift3_impl(
           parallel_policy,
-          ::ket::utility::begin(state), ::ket::utility::end(state), phase1, phase2, phase3, qubit);
+          std::begin(state), std::end(state), phase1, phase2, phase3, qubit);
         return state;
       }
     } // namespace ranges

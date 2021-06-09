@@ -5,9 +5,6 @@
 
 # include <yampi/environment.hpp>
 
-# include <ket/utility/begin.hpp>
-# include <ket/utility/end.hpp>
-
 
 namespace ket
 {
@@ -27,8 +24,8 @@ namespace ket
           {
             return
               std::upper_bound(
-                ::ket::utility::begin(local_state), ::ket::utility::end(local_state), value, compare)
-              - ::ket::utility::begin(local_state);
+                std::begin(local_state), std::end(local_state), value, compare)
+              - std::begin(local_state);
           }
         }; // struct upper_bound<LocalState_>
       } // namespace dispatch

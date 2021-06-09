@@ -13,8 +13,6 @@
 # include <ket/meta/state_integer_of.hpp>
 # include <ket/meta/bit_integer_of.hpp>
 # include <ket/utility/integer_exp2.hpp>
-# include <ket/utility/begin.hpp>
-# include <ket/utility/end.hpp>
 # include <ket/utility/meta/real_of.hpp>
 
 
@@ -38,7 +36,7 @@ namespace ket
     inline UnsignedInteger make_filtered_integer(UnsignedInteger const unsigned_integer, Qubits const& qubits)
     {
       auto const num_qubits = boost::size(qubits);
-      auto const qubits_first = ::ket::utility::begin(qubits);
+      auto const qubits_first = std::begin(qubits);
 
       auto result = UnsignedInteger{0u};
       for (auto index = decltype(num_qubits){0u}; index < num_qubits; ++index)
@@ -188,7 +186,7 @@ namespace ket
       Qubits const& exponent_qubits, Qubits const& modular_exponentiation_qubits)
     {
       ::ket::shor_box(
-        parallel_policy, ::ket::utility::begin(state), ::ket::utility::end(state),
+        parallel_policy, std::begin(state), std::end(state),
         base, divisor, exponent_qubits, modular_exponentiation_qubits);
       return state;
     }
@@ -201,7 +199,7 @@ namespace ket
     {
       ::ket::shor_box(
         ::ket::utility::policy::make_sequential(),
-        ::ket::utility::begin(state), ::ket::utility::end(state),
+        std::begin(state), std::end(state),
         base, divisor, exponent_qubits, modular_exponentiation_qubits);
       return state;
     }

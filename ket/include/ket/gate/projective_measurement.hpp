@@ -17,8 +17,6 @@
 #   include <ket/utility/integer_log2.hpp>
 # endif
 # include <ket/utility/positive_random_value_upto.hpp>
-# include <ket/utility/begin.hpp>
-# include <ket/utility/end.hpp>
 # include <ket/utility/meta/real_of.hpp>
 
 
@@ -243,7 +241,7 @@ namespace ket
       {
         return ::ket::gate::projective_measurement_detail::projective_measurement(
           ::ket::utility::policy::make_sequential(),
-          ::ket::utility::begin(state), ::ket::utility::end(state), qubit, random_number_generator);
+          std::begin(state), std::end(state), qubit, random_number_generator);
       }
 
       template <
@@ -256,7 +254,7 @@ namespace ket
       {
         return ::ket::gate::projective_measurement_detail::projective_measurement(
           parallel_policy,
-          ::ket::utility::begin(state), ::ket::utility::end(state), qubit, random_number_generator);
+          std::begin(state), std::end(state), qubit, random_number_generator);
       }
     } // namespace ranges
   } // namespace gate

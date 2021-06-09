@@ -3,6 +3,7 @@
 
 # include <cassert>
 # include <cstddef>
+# include <iterator>
 # include <type_traits>
 # include <vector>
 
@@ -16,7 +17,6 @@
 # include <ket/control.hpp>
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/generate_phase_coefficients.hpp>
-# include <ket/utility/begin.hpp>
 # include <ket/mpi/swapped_fourier_transform.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/gate/controlled_phase_shift.hpp>
@@ -159,7 +159,7 @@ namespace ket
       for (auto const& rhs_qubits: rhs_qubits_range)
         ::ket::mpi::addition_assignment_detail::do_addition_assignment(
           mpi_policy, parallel_policy, local_state,
-          ::ket::utility::begin(lhs_qubits), ::ket::utility::begin(rhs_qubits), num_qubits, phase_coefficients,
+          std::begin(lhs_qubits), std::begin(rhs_qubits), num_qubits, phase_coefficients,
           permutation, buffer, communicator, environment);
 
       using ::ket::mpi::adj_swapped_fourier_transform;
@@ -214,7 +214,7 @@ namespace ket
       for (auto const& rhs_qubits: rhs_qubits_range)
         ::ket::mpi::addition_assignment_detail::do_addition_assignment(
           mpi_policy, parallel_policy, local_state,
-          ::ket::utility::begin(lhs_qubits), ::ket::utility::begin(rhs_qubits), num_qubits, phase_coefficients,
+          std::begin(lhs_qubits), std::begin(rhs_qubits), num_qubits, phase_coefficients,
           permutation, buffer, datatype, communicator, environment);
 
       using ::ket::mpi::adj_swapped_fourier_transform;
@@ -651,7 +651,7 @@ namespace ket
       for (auto const& rhs_qubits: rhs_qubits_range)
         ::ket::mpi::addition_assignment_detail::do_adj_addition_assignment(
           mpi_policy, parallel_policy, local_state,
-          ::ket::utility::begin(lhs_qubits), ::ket::utility::begin(rhs_qubits), num_qubits, phase_coefficients,
+          std::begin(lhs_qubits), std::begin(rhs_qubits), num_qubits, phase_coefficients,
           permutation, buffer, communicator, environment);
 
       using ::ket::mpi::adj_swapped_fourier_transform;
@@ -706,7 +706,7 @@ namespace ket
       for (auto const& rhs_qubits: rhs_qubits_range)
         ::ket::mpi::addition_assignment_detail::do_adj_addition_assignment(
           mpi_policy, parallel_policy, local_state,
-          ::ket::utility::begin(lhs_qubits), ::ket::utility::begin(rhs_qubits), num_qubits, phase_coefficients,
+          std::begin(lhs_qubits), std::begin(rhs_qubits), num_qubits, phase_coefficients,
           permutation, buffer, datatype, communicator, environment);
 
       using ::ket::mpi::adj_swapped_fourier_transform;

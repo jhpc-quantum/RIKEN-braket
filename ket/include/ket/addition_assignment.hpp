@@ -14,8 +14,6 @@
 # include <ket/gate/controlled_phase_shift.hpp>
 # include <ket/meta/state_integer_of.hpp>
 # include <ket/meta/bit_integer_of.hpp>
-# include <ket/utiltiy/begin.hpp>
-# include <ket/utiltiy/end.hpp>
 # include <ket/utility/generate_phase_coefficients.hpp>
 
 
@@ -71,12 +69,12 @@ namespace ket
       typename std::iterator_traits<RandomAccessIterator>::value_type,
       PhaseCoefficientsAllocator>& phase_coefficients)
   {
-    auto const num_qubits = std::distance(::ket::utility::begin(lhs_qubits), ::ket::utility::end(rhs_qubits));
+    auto const num_qubits = std::distance(std::begin(lhs_qubits), std::end(rhs_qubits));
     assert(
       std::all_of(
-        ::ket::utility::begin(rhs_qubits_range), ::ket::utility::end(rhs_qubits_range),
+        std::begin(rhs_qubits_range), std::end(rhs_qubits_range),
         [num_qubits](typename boost::range_value<QubitsRange const>::type const& rhs_qubits)
-        { return num_qubits == std::distance(::ket::utility::begin(rhs_qubits), ::ket::utility::end(rhs_qubits)); }));
+        { return num_qubits == std::distance(std::begin(rhs_qubits), std::end(rhs_qubits)); }));
 
     ::ket::utility::generate_phase_coefficients(phase_coefficients, num_qubits);
 
@@ -93,7 +91,7 @@ namespace ket
     for (auto const& rhs_qubits: rhs_qubits_range)
       ::ket::addition_assignment_detail::addition_assignment(
         parallel_policy,
-        first, last, ::ket::utility::begin(lhs_qubits), ::ket::utility::begin(rhs_qubits), num_qubits, phase_coefficients);
+        first, last, std::begin(lhs_qubits), std::begin(rhs_qubits), num_qubits, phase_coefficients);
 
     ::ket::adj_swapped_fourier_transform(parallel_policy, first, last, lhs_qubits, phase_coefficients);
   }
@@ -130,7 +128,7 @@ namespace ket
     using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
     auto phase_coefficients
       = ::ket::utility::generate_phase_coefficients<complex_type>(
-          std::distance(::ket::utility::begin(lhs_qubits), ::ket::utility::end(lhs_qubits)));
+          std::distance(std::begin(lhs_qubits), std::end(lhs_qubits)));
 
     ::ket::addition_assignment(
       parallel_policy,
@@ -164,7 +162,7 @@ namespace ket
     {
       ::ket::addition_assignment(
         parallel_policy,
-        ::ket::utility::begin(state), ::ket::utility::end(state),
+        std::begin(state), std::end(state),
         lhs_qubits, rhs_qubits_range, phase_coefficients);
       return state;
     }
@@ -183,7 +181,7 @@ namespace ket
         PhaseCoefficientsAllocator>& phase_coefficients)
     {
       ::ket::addition_assignment(
-        ::ket::utility::begin(state), ::ket::utility::end(state),
+        std::begin(state), std::end(state),
         lhs_qubits, rhs_qubits_range, phase_coefficients);
       return state;
     }
@@ -200,7 +198,7 @@ namespace ket
     {
       ::ket::addition_assignment(
         parallel_policy,
-        ::ket::utility::begin(state), ::ket::utility::end(state), lhs_qubits, rhs_qubits_range);
+        std::begin(state), std::end(state), lhs_qubits, rhs_qubits_range);
       return state;
     }
 
@@ -211,7 +209,7 @@ namespace ket
       Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range)
     {
       ::ket::addition_assignment(
-        ::ket::utility::begin(state), ::ket::utility::end(state), lhs_qubits, rhs_qubits_range);
+        std::begin(state), std::end(state), lhs_qubits, rhs_qubits_range);
       return state;
     }
   } // namespace ranges
@@ -266,12 +264,12 @@ namespace ket
       typename boost::range_value<RandomAccessRange>::type,
       PhaseCoefficientsAllocator>& phase_coefficients)
   {
-    auto const num_qubits = std::distance(::ket::utility::begin(lhs_qubits), ::ket::utility::end(rhs_qubits));
+    auto const num_qubits = std::distance(std::begin(lhs_qubits), std::end(rhs_qubits));
     assert(
       std::all_of(
-        ::ket::utility::begin(rhs_qubits_range), ::ket::utility::end(rhs_qubits_range),
+        std::begin(rhs_qubits_range), std::end(rhs_qubits_range),
         [num_qubits](typename boost::range_value<QubitsRange const>::type const& rhs_qubits)
-        { return num_qubits == std::distance(::ket::utility::begin(rhs_qubits), ::ket::utility::end(rhs_qubits)); }));
+        { return num_qubits == std::distance(std::begin(rhs_qubits), std::end(rhs_qubits)); }));
 
     ::ket::utility::generate_phase_coefficients(phase_coefficients, num_qubits);
 
@@ -288,7 +286,7 @@ namespace ket
     for (auto const& rhs_qubits: rhs_qubits_range)
       ::ket::addition_assignment_detail::adj_addition_assignment(
         parallel_policy,
-        first, last, ::ket::utility::begin(lhs_qubits), ::ket::utility::begin(rhs_qubits), num_qubits, phase_coefficients);
+        first, last, std::begin(lhs_qubits), std::begin(rhs_qubits), num_qubits, phase_coefficients);
 
     ::ket::adj_swapped_fourier_transform(parallel_policy, first, last, lhs_qubits, phase_coefficients);
   }
@@ -326,7 +324,7 @@ namespace ket
     using complex_type = std::iterator_traits<RandomAccessIterator>::value_type;
     auto phase_coefficients
       = ::ket::utility::generate_phase_coefficients<complex_type>(
-          std::distance(::ket::utility::begin(lhs_qubits), ::ket::utility::end(lhs_qubits)));
+          std::distance(std::begin(lhs_qubits), std::end(lhs_qubits)));
 
     ::ket::adj_addition_assignment(
       parallel_policy,
@@ -360,7 +358,7 @@ namespace ket
     {
       ::ket::adj_addition_assignment(
         parallel_policy,
-        ::ket::utility::begin(state), ::ket::utility::end(state),
+        std::begin(state), std::end(state),
         lhs_qubits, rhs_qubits_range, phase_coefficients);
       return state;
     }
@@ -377,7 +375,7 @@ namespace ket
         PhaseCoefficientsAllocator>& phase_coefficients)
     {
       ::ket::adj_addition_assignment(
-        ::ket::utility::begin(state), ::ket::utility::end(state),
+        std::begin(state), std::end(state),
         lhs_qubits, rhs_qubits_range, phase_coefficients);
       return state;
     }
@@ -394,7 +392,7 @@ namespace ket
     {
       ::ket::adj_addition_assignment(
         parallel_policy,
-        ::ket::utility::begin(state), ::ket::utility::end(state), lhs_qubits, rhs_qubits_range);
+        std::begin(state), std::end(state), lhs_qubits, rhs_qubits_range);
       return state;
     }
 
@@ -404,7 +402,7 @@ namespace ket
       Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range)
     {
       ::ket::adj_addition_assignment(
-        ::ket::utility::begin(state), ::ket::utility::end(state), lhs_qubits, rhs_qubits_range);
+        std::begin(state), std::end(state), lhs_qubits, rhs_qubits_range);
       return state;
     }
   } // namespace ranges

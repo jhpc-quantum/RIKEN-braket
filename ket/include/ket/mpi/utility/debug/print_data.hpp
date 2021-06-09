@@ -2,11 +2,11 @@
 # define KET_MPI_UTILITY_DEBUG_PRINT_DATA_HPP
 
 # include <ostream>
+# include <iterator>
 
 # include <yampi/environment.hpp>
 # include <yampi/communicator.hpp>
 
-# include <ket/utility/begin.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
 
@@ -31,7 +31,7 @@ namespace ket
           yampi::communicator const& communicator,
           yampi::environment const& environment)
         {
-          auto const local_state_first = ::ket::utility::begin(local_state);
+          auto const local_state_first = std::begin(local_state);
           auto const num_local_states = static_cast<StateInteger>(boost::size(local_state));
 
           for (auto local_index = StateInteger{0u}; local_index < num_local_states; ++local_index)

@@ -15,8 +15,6 @@
 # ifndef NDEBUG
 #   include <ket/utility/integer_log2.hpp>
 # endif
-# include <ket/utility/begin.hpp>
-# include <ket/utility/end.hpp>
 
 
 namespace ket
@@ -57,7 +55,7 @@ namespace ket
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
         auto sorted_qubits
           = std::array<qubit_type, 3u>{target_qubit, control_qubit1.qubit(), control_qubit2.qubit()};
-        std::sort(::ket::utility::begin(sorted_qubits), ::ket::utility::end(sorted_qubits));
+        std::sort(std::begin(sorted_qubits), std::end(sorted_qubits));
 
         auto const target_qubit_mask
           = ::ket::utility::integer_exp2<StateInteger>(target_qubit);
@@ -144,7 +142,7 @@ namespace ket
       {
         ::ket::gate::toffoli_detail::toffoli_impl(
           ::ket::utility::policy::make_sequential(),
-          ::ket::utility::begin(state), ::ket::utility::end(state), target_qubit, control_qubit1, control_qubit2);
+          std::begin(state), std::end(state), target_qubit, control_qubit1, control_qubit2);
         return state;
       }
 
@@ -159,7 +157,7 @@ namespace ket
       {
         ::ket::gate::toffoli_detail::toffoli_impl(
           parallel_policy,
-          ::ket::utility::begin(state), ::ket::utility::end(state), target_qubit, control_qubit1, control_qubit2);
+          std::begin(state), std::end(state), target_qubit, control_qubit1, control_qubit2);
         return state;
       }
     } // namespace ranges

@@ -6,6 +6,7 @@
 # include <array>
 # include <ios>
 # include <sstream>
+# include <iterator>
 # include <type_traits>
 
 # include <boost/optional.hpp>
@@ -23,8 +24,6 @@
 # include <ket/spin_expectation_value.hpp>
 # include <ket/qubit.hpp>
 # include <ket/utility/loop_n.hpp>
-# include <ket/utility/begin.hpp>
-# include <ket/utility/end.hpp>
 # include <ket/utility/meta/real_of.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
@@ -138,8 +137,8 @@ namespace ket
 
       auto result = spin_type{};
       yampi::all_reduce(
-        yampi::make_buffer(::ket::utility::begin(spin), ::ket::utility::end(spin)),
-        ::ket::utility::begin(result), yampi::binary_operation(::yampi::plus_t()),
+        yampi::make_buffer(std::begin(spin), std::end(spin)),
+        std::begin(result), yampi::binary_operation(::yampi::plus_t()),
         communicator, environment);
 
       return result;
@@ -207,8 +206,8 @@ namespace ket
 
       auto result = spin_type{};
       yampi::all_reduce(
-        yampi::make_buffer(::ket::utility::begin(spin), ::ket::utility::end(spin), real_datatype),
-        ::ket::utility::begin(result), yampi::binary_operation(::yampi::plus_t()),
+        yampi::make_buffer(std::begin(spin), std::end(spin), real_datatype),
+        std::begin(result), yampi::binary_operation(::yampi::plus_t()),
         communicator, environment);
 
       return result;
@@ -381,8 +380,8 @@ namespace ket
 
       auto result = spin_type{};
       yampi::reduce(root, communicator).call(
-        yampi::make_buffer(::ket::utility::begin(spin), ::ket::utility::end(spin)),
-        ::ket::utility::begin(result), yampi::binary_operation(yampi::plus_t()),
+        yampi::make_buffer(std::begin(spin), std::end(spin)),
+        std::begin(result), yampi::binary_operation(yampi::plus_t()),
         environment);
 
       if (communicator.rank(environment) != root)
@@ -455,8 +454,8 @@ namespace ket
 
       auto result = spin_type{};
       yampi::reduce(root, communicator).call(
-        yampi::make_buffer(::ket::utility::begin(spin), ::ket::utility::end(spin), real_datatype),
-        ::ket::utility::begin(result), yampi::binary_operation(yampi::plus_t()),
+        yampi::make_buffer(std::begin(spin), std::end(spin), real_datatype),
+        std::begin(result), yampi::binary_operation(yampi::plus_t()),
         environment);
 
       if (communicator.rank(environment) != root)

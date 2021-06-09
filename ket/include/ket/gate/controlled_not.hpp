@@ -14,8 +14,6 @@
 # ifndef NDEBUG
 #   include <ket/utility/integer_log2.hpp>
 # endif
-# include <ket/utility/begin.hpp>
-# include <ket/utility/end.hpp>
 
 
 namespace ket
@@ -127,7 +125,7 @@ namespace ket
       {
         ::ket::gate::controlled_not_detail::controlled_not_impl(
           ::ket::utility::policy::make_sequential(),
-          ::ket::utility::begin(state), ::ket::utility::end(state), target_qubit, control_qubit);
+          std::begin(state), std::end(state), target_qubit, control_qubit);
         return state;
       }
 
@@ -142,7 +140,7 @@ namespace ket
       {
         ::ket::gate::controlled_not_detail::controlled_not_impl(
           parallel_policy,
-          ::ket::utility::begin(state), ::ket::utility::end(state), target_qubit, control_qubit);
+          std::begin(state), std::end(state), target_qubit, control_qubit);
         return state;
       }
     } // namespace ranges

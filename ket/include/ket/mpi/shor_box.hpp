@@ -23,7 +23,6 @@
 # include <ket/meta/bit_integer_of.hpp>
 # include <ket/utility/is_unique_if_sorted.hpp>
 # include <ket/utility/integer_exp2.hpp>
-# include <ket/utility/begin.hpp>
 # include <ket/utility/meta/real_of.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
@@ -80,7 +79,7 @@ namespace ket
         = static_cast<complex_type>(static_cast<real_type>(pow(static_cast<real_type>(num_exponents), -0.5)));
 
       auto const present_rank = communicator.rank(environment);
-      auto const first = ::ket::utility::begin(local_state);
+      auto const first = std::begin(local_state);
       for (auto exponent = StateInteger{0u}; exponent < num_exponents; ++exponent)
       {
         auto const qubit_value

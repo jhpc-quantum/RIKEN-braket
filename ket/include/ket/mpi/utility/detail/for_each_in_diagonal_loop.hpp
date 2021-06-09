@@ -6,12 +6,11 @@
 #   include <array>
 #   include <algorithm>
 #   include <numeric>
+#   include <iterator>
 #   include <utility>
 #   include <type_traits>
 
 #   include <ket/qubit.hpp>
-#   include <ket/utility/begin.hpp>
-#   include <ket/utility/end.hpp>
 #   include <ket/utility/loop_n.hpp>
 
 
@@ -41,8 +40,8 @@ namespace ket
             Function&& function)
           {
             std::sort(
-              ::ket::utility::begin(local_permutated_control_qubits),
-              ::ket::utility::end(local_permutated_control_qubits));
+              std::begin(local_permutated_control_qubits),
+              std::end(local_permutated_control_qubits));
 
             impl(
               parallel_policy, std::forward<LocalState>(local_state),
@@ -71,8 +70,8 @@ namespace ket
             // 000101000100
             auto const mask
               = std::accumulate(
-                  ::ket::utility::begin(sorted_local_permutated_control_qubits),
-                  ::ket::utility::end(sorted_local_permutated_control_qubits),
+                  std::begin(sorted_local_permutated_control_qubits),
+                  std::end(sorted_local_permutated_control_qubits),
                   zero_state_integer,
                   [](StateInteger const& partial_mask, qubit_type const& control_qubit)
                   {
@@ -83,7 +82,7 @@ namespace ket
             auto const last_integer
               = last_local_qubit_value >> num_local_control_qubits;
 
-            auto const first = ::ket::utility::begin(local_state);
+            auto const first = std::begin(local_state);
             auto const first_index = data_block_index * data_block_size;
             using ::ket::utility::loop_n;
             loop_n(

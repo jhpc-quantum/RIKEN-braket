@@ -7,9 +7,6 @@
 # include <utility>
 # include <type_traits>
 
-# include <ket/utility/begin.hpp>
-# include <ket/utility/end.hpp>
-
 
 namespace ket
 {
@@ -304,14 +301,14 @@ namespace ket
       inline ForwardRange& fill(
         ParallelPolicy const parallel_policy, ForwardRange& range, Value const& value)
       {
-        ::ket::utility::fill(parallel_policy, ::ket::utility::begin(range), ::ket::utility::end(range), value);
+        ::ket::utility::fill(parallel_policy, std::begin(range), std::end(range), value);
         return range;
       }
 
       template <typename ForwardRange, typename Value>
       inline ForwardRange& fill(ForwardRange& range, Value const& value)
       {
-        ::ket::utility::fill(::ket::utility::begin(range), ::ket::utility::end(range), value);
+        ::ket::utility::fill(std::begin(range), std::end(range), value);
         return range;
       }
     } // namespace ranges
@@ -496,7 +493,7 @@ namespace ket
         ForwardRange const& range, ForwardIterator const first)
       {
         return ::ket::utility::inclusive_scan(
-          parallel_policy, ::ket::utility::begin(range), ::ket::utility::end(range), first);
+          parallel_policy, std::begin(range), std::end(range), first);
       }
 
       template <typename ForwardRange, typename ForwardIterator>
@@ -504,7 +501,7 @@ namespace ket
         ForwardRange const& range, ForwardIterator const first)
       {
         return ::ket::utility::inclusive_scan(
-          ::ket::utility::begin(range), ::ket::utility::end(range), first);
+          std::begin(range), std::end(range), first);
       }
 
       template <
@@ -520,7 +517,7 @@ namespace ket
       {
         return ::ket::utility::inclusive_scan(
           parallel_policy,
-          ::ket::utility::begin(range), ::ket::utility::end(range), first, binary_operation);
+          std::begin(range), std::end(range), first, binary_operation);
       }
 
       template <
@@ -533,7 +530,7 @@ namespace ket
         BinaryOperation binary_operation)
       {
         return ::ket::utility::inclusive_scan(
-          ::ket::utility::begin(range), ::ket::utility::end(range), first, binary_operation);
+          std::begin(range), std::end(range), first, binary_operation);
       }
 
       template <
@@ -547,7 +544,7 @@ namespace ket
       {
         return ::ket::utility::inclusive_scan(
           parallel_policy,
-          ::ket::utility::begin(range), ::ket::utility::end(range), first,
+          std::begin(range), std::end(range), first,
           binary_operation, initial_value);
       }
 
@@ -562,7 +559,7 @@ namespace ket
         BinaryOperation binary_operation, Value const initial_value)
       {
         return ::ket::utility::inclusive_scan(
-          ::ket::utility::begin(range), ::ket::utility::end(range), first,
+          std::begin(range), std::end(range), first,
           binary_operation, initial_value);
       }
     } // namespace ranges
@@ -745,7 +742,7 @@ namespace ket
       {
         return ::ket::utility::transform_inclusive_scan(
           parallel_policy,
-          ::ket::utility::begin(range), ::ket::utility::end(range), first,
+          std::begin(range), std::end(range), first,
           binary_operation, unary_operation);
       }
 
@@ -757,7 +754,7 @@ namespace ket
         BinaryOperation binary_operation, UnaryOperation unary_operation)
       {
         return ::ket::utility::transform_inclusive_scan(
-          ::ket::utility::begin(range), ::ket::utility::end(range), first,
+          std::begin(range), std::end(range), first,
           binary_operation, unary_operation);
       }
 
@@ -773,7 +770,7 @@ namespace ket
       {
         return ::ket::utility::transform_inclusive_scan(
           parallel_policy,
-          ::ket::utility::begin(range), ::ket::utility::end(range), first,
+          std::begin(range), std::end(range), first,
           binary_operation, unary_operation, initial_value);
       }
 
@@ -789,7 +786,7 @@ namespace ket
         Value const initial_value)
       {
         return ::ket::utility::transform_inclusive_scan(
-          ::ket::utility::begin(range), ::ket::utility::end(range), first,
+          std::begin(range), std::end(range), first,
           binary_operation, unary_operation, initial_value);
       }
     } // namespace ranges

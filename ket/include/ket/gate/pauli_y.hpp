@@ -14,8 +14,6 @@
 #   include <ket/utility/integer_log2.hpp>
 # endif
 # include <ket/utility/imaginary_unit.hpp>
-# include <ket/utility/begin.hpp>
-# include <ket/utility/end.hpp>
 
 
 namespace ket
@@ -107,7 +105,7 @@ namespace ket
       {
         ::ket::gate::pauli_y_detail::pauli_y_impl(
           ::ket::utility::policy::make_sequential(),
-          ::ket::utility::begin(state), ::ket::utility::end(state), qubit);
+          std::begin(state), std::end(state), qubit);
         return state;
       }
 
@@ -119,7 +117,7 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const qubit)
       {
         ::ket::gate::pauli_y_detail::pauli_y_impl(
-          parallel_policy, ::ket::utility::begin(state), ::ket::utility::end(state), qubit);
+          parallel_policy, std::begin(state), std::end(state), qubit);
         return state;
       }
     } // namespace ranges

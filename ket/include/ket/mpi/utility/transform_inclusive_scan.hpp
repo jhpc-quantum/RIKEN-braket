@@ -9,7 +9,6 @@
 # include <yampi/environment.hpp>
 
 # include <ket/utility/loop_n.hpp>
-# include <ket/utility/end.hpp>
 
 
 namespace ket
@@ -36,7 +35,7 @@ namespace ket
             ::ket::utility::ranges::transform_inclusive_scan(
               parallel_policy,
               local_state, d_first, binary_operation, unary_operation);
-            return *std::prev(::ket::utility::end(local_state));
+            return *std::prev(std::end(local_state));
           }
 
           template <
@@ -54,7 +53,7 @@ namespace ket
               parallel_policy,
               local_state, d_first,
               binary_operation, unary_operation, initial_value);
-            return *std::prev(::ket::utility::end(local_state));
+            return *std::prev(std::end(local_state));
           }
         }; // struct transform_inclusive_scan<LocalState_>
       } // namespace dispatch

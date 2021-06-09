@@ -4,6 +4,7 @@
 # include <boost/config.hpp>
 
 # include <cassert>
+# include <iterator>
 # include <utility>
 
 # include <boost/range/size.hpp>
@@ -12,7 +13,6 @@
 # include <ket/control.hpp>
 # include <ket/utility/integer_exp2.hpp>
 # include <ket/utility/integer_log2.hpp>
-# include <ket/utility/begin.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/state.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
@@ -192,7 +192,7 @@ namespace ket
                   auto const one_page_index = zero_page_index bitor target_qubit_mask;
 
                   auto one_page_range = local_state.page_range(std::make_pair(data_block_index, one_page_index));
-                  auto const one_first = ::ket::utility::begin(one_page_range);
+                  auto const one_first = std::begin(one_page_range);
 
                   using ::ket::utility::loop_n;
                   loop_n(

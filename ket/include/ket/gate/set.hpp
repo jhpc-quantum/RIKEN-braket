@@ -15,8 +15,6 @@
 # ifndef NDEBUG
 #   include <ket/utility/integer_log2.hpp>
 # endif
-# include <ket/utility/begin.hpp>
-# include <ket/utility/end.hpp>
 # include <ket/utility/meta/real_of.hpp>
 
 
@@ -128,7 +126,7 @@ namespace ket
       {
         ::ket::gate::set_detail::set_impl(
           ::ket::utility::policy::make_sequential(),
-          ::ket::utility::begin(state), ::ket::utility::end(state), qubit);
+          std::begin(state), std::end(state), qubit);
         return state;
       }
 
@@ -140,7 +138,7 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const qubit)
       {
         ::ket::gate::set_detail::set_impl(
-          parallel_policy, ::ket::utility::begin(state), ::ket::utility::end(state), qubit);
+          parallel_policy, std::begin(state), std::end(state), qubit);
         return state;
       }
     } // namespace ranges

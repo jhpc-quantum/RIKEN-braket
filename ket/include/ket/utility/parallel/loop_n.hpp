@@ -23,8 +23,6 @@
 # endif // defined(_OPENMP) && defined(KET_USE_OPENMP)
 
 # include <ket/utility/loop_n.hpp>
-# include <ket/utility/begin.hpp>
-# include <ket/utility/end.hpp>
 
 
 namespace ket
@@ -500,8 +498,8 @@ namespace ket
                 static_cast<int>(false));
           auto iters
             = std::vector<ForwardIterator>(::ket::utility::num_threads(parallel_policy));
-          auto is_calleds_first = ::ket::utility::begin(is_calleds);
-          auto iters_first = ::ket::utility::begin(iters);
+          auto is_calleds_first = std::begin(is_calleds);
+          auto iters_first = std::begin(iters);
 
           using ::ket::utility::loop_n;
           using difference_type
@@ -552,14 +550,14 @@ namespace ket
         std::vector<Value, Allocator2>& partial_sums,
         std::vector<ForwardIterator, Allocator3>& outs)
       {
-        auto is_calleds_first = ::ket::utility::begin(is_calleds);
-        auto partial_sums_first = ::ket::utility::begin(partial_sums);
-        auto outs_first = ::ket::utility::begin(outs);
+        auto is_calleds_first = std::begin(is_calleds);
+        auto partial_sums_first = std::begin(partial_sums);
+        auto outs_first = std::begin(outs);
 
-        std::fill(is_calleds_first, ::ket::utility::end(is_calleds), static_cast<int>(false));
+        std::fill(is_calleds_first, std::end(is_calleds), static_cast<int>(false));
 
         std::partial_sum(
-          partial_sums_first, ::ket::utility::end(partial_sums),
+          partial_sums_first, std::end(partial_sums),
           partial_sums_first, binary_operation);
 
         using ::ket::utility::loop_n;
@@ -593,10 +591,10 @@ namespace ket
         RangeSize const range_size, RandomAccessIterator d_first, BinaryOperation binary_operation,
         std::vector<Value, Allocator>& partial_sums)
       {
-        auto partial_sums_first = ::ket::utility::begin(partial_sums);
+        auto partial_sums_first = std::begin(partial_sums);
 
         std::partial_sum(
-          partial_sums_first, ::ket::utility::end(partial_sums),
+          partial_sums_first, std::end(partial_sums),
           partial_sums_first, binary_operation);
 
         using ::ket::utility::loop_n;
@@ -637,10 +635,10 @@ namespace ket
           auto partial_sums
             = std::vector<value_type>(::ket::utility::num_threads(parallel_policy));
 
-          auto is_calleds_first = ::ket::utility::begin(is_calleds);
-          auto iters_first = ::ket::utility::begin(iters);
-          auto outs_first = ::ket::utility::begin(outs);
-          auto partial_sums_first = ::ket::utility::begin(partial_sums);
+          auto is_calleds_first = std::begin(is_calleds);
+          auto iters_first = std::begin(iters);
+          auto outs_first = std::begin(outs);
+          auto partial_sums_first = std::begin(partial_sums);
 
           using ::ket::utility::loop_n;
           using difference_type
@@ -667,9 +665,9 @@ namespace ket
             });
 
           std::partial_sum(
-            partial_sums_first, ::ket::utility::end(partial_sums), partial_sums_first);
+            partial_sums_first, std::end(partial_sums), partial_sums_first);
           std::fill(
-            is_calleds_first, ::ket::utility::end(is_calleds), static_cast<int>(false));
+            is_calleds_first, std::end(is_calleds), static_cast<int>(false));
 
           loop_n(
             parallel_policy, std::distance(first, last),
@@ -705,7 +703,7 @@ namespace ket
             = std::vector<value_type>(
                 ::ket::utility::num_threads(parallel_policy), value_type{0});
 
-          auto partial_sums_first = ::ket::utility::begin(partial_sums);
+          auto partial_sums_first = std::begin(partial_sums);
 
           using ::ket::utility::loop_n;
           using difference_type
@@ -720,7 +718,7 @@ namespace ket
             });
 
           std::partial_sum(
-            partial_sums_first, ::ket::utility::end(partial_sums), partial_sums_first);
+            partial_sums_first, std::end(partial_sums), partial_sums_first);
 
           loop_n(
             parallel_policy, last - first,
@@ -757,10 +755,10 @@ namespace ket
           auto partial_sums
             = std::vector<value_type>(::ket::utility::num_threads(parallel_policy));
 
-          auto is_calleds_first = ::ket::utility::begin(is_calleds);
-          auto iters_first = ::ket::utility::begin(iters);
-          auto outs_first = ::ket::utility::begin(outs);
-          auto partial_sums_first = ::ket::utility::begin(partial_sums);
+          auto is_calleds_first = std::begin(is_calleds);
+          auto iters_first = std::begin(iters);
+          auto outs_first = std::begin(outs);
+          auto partial_sums_first = std::begin(partial_sums);
 
           using ::ket::utility::loop_n;
           using difference_type
@@ -814,8 +812,8 @@ namespace ket
           auto partial_sums
             = std::vector<value_type>(::ket::utility::num_threads(parallel_policy));
 
-          auto is_calleds_first = ::ket::utility::begin(is_calleds);
-          auto partial_sums_first = ::ket::utility::begin(partial_sums);
+          auto is_calleds_first = std::begin(is_calleds);
+          auto partial_sums_first = std::begin(partial_sums);
 
           using ::ket::utility::loop_n;
           using difference_type
@@ -864,10 +862,10 @@ namespace ket
           auto partial_sums
             = std::vector<value_type>(::ket::utility::num_threads(parallel_policy));
 
-          auto is_calleds_first = ::ket::utility::begin(is_calleds);
-          auto iters_first = ::ket::utility::begin(iters);
-          auto outs_first = ::ket::utility::begin(outs);
-          auto partial_sums_first = ::ket::utility::begin(partial_sums);
+          auto is_calleds_first = std::begin(is_calleds);
+          auto iters_first = std::begin(iters);
+          auto outs_first = std::begin(outs);
+          auto partial_sums_first = std::begin(partial_sums);
 
           using ::ket::utility::loop_n;
           using difference_type
@@ -923,8 +921,8 @@ namespace ket
           auto partial_sums
             = std::vector<value_type>(::ket::utility::num_threads(parallel_policy));
 
-          auto is_calleds_first = ::ket::utility::begin(is_calleds);
-          auto partial_sums_first = ::ket::utility::begin(partial_sums);
+          auto is_calleds_first = std::begin(is_calleds);
+          auto partial_sums_first = std::begin(partial_sums);
 
           using ::ket::utility::loop_n;
           using difference_type
@@ -985,10 +983,10 @@ namespace ket
           auto partial_sums
             = std::vector<value_type>(::ket::utility::num_threads(parallel_policy));
 
-          auto is_calleds_first = ::ket::utility::begin(is_calleds);
-          auto iters_first = ::ket::utility::begin(iters);
-          auto outs_first = ::ket::utility::begin(outs);
-          auto partial_sums_first = ::ket::utility::begin(partial_sums);
+          auto is_calleds_first = std::begin(is_calleds);
+          auto iters_first = std::begin(iters);
+          auto outs_first = std::begin(outs);
+          auto partial_sums_first = std::begin(partial_sums);
 
           using ::ket::utility::loop_n;
           using difference_type
@@ -1043,8 +1041,8 @@ namespace ket
           auto partial_sums
             = std::vector<value_type>(::ket::utility::num_threads(parallel_policy));
 
-          auto is_calleds_first = ::ket::utility::begin(is_calleds);
-          auto partial_sums_first = ::ket::utility::begin(partial_sums);
+          auto is_calleds_first = std::begin(is_calleds);
+          auto partial_sums_first = std::begin(partial_sums);
 
           using ::ket::utility::loop_n;
           using difference_type
@@ -1096,10 +1094,10 @@ namespace ket
           auto partial_sums
             = std::vector<value_type>(::ket::utility::num_threads(parallel_policy));
 
-          auto is_calleds_first = ::ket::utility::begin(is_calleds);
-          auto iters_first = ::ket::utility::begin(iters);
-          auto outs_first = ::ket::utility::begin(outs);
-          auto partial_sums_first = ::ket::utility::begin(partial_sums);
+          auto is_calleds_first = std::begin(is_calleds);
+          auto iters_first = std::begin(iters);
+          auto outs_first = std::begin(outs);
+          auto partial_sums_first = std::begin(partial_sums);
 
           using ::ket::utility::loop_n;
           typedef
@@ -1159,8 +1157,8 @@ namespace ket
           auto partial_sums
             = std::vector<value_type>(::ket::utility::num_threads(parallel_policy));
 
-          auto is_calleds_first = ::ket::utility::begin(is_calleds);
-          auto partial_sums_first = ::ket::utility::begin(partial_sums);
+          auto is_calleds_first = std::begin(is_calleds);
+          auto partial_sums_first = std::begin(partial_sums);
 
           using ::ket::utility::loop_n;
           using difference_type

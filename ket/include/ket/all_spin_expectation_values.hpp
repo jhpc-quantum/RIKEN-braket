@@ -4,6 +4,7 @@
 # include <cassert>
 # include <vector>
 # include <array>
+# include <iterator>
 
 # include <boost/range/value_type.hpp>
 
@@ -13,8 +14,6 @@
 # ifndef NDEBUG
 #   include <ket/utility/integer_exp2.hpp>
 # endif
-# include <ket/utility/begin.hpp>
-# include <ket/utility/end.hpp>
 # include <ket/utility/meta/real_of.hpp>
 
 
@@ -75,7 +74,7 @@ namespace ket
       ParallelPolicy const parallel_policy, RandomAccessRange const& state)
     {
       return ::ket::all_spin_expectation_values<Qubit>(
-        parallel_policy, ::ket::utility::begin(state), ::ket::utility::end(state));
+        parallel_policy, std::begin(state), std::end(state));
     }
 
     template <typename Qubit, typename RandomAccessRange>
@@ -85,7 +84,7 @@ namespace ket
         typename ::ket::utility::meta::real_of<
           typename boost::range_value<RandomAccessRange>::type>::type, 3u>>
     all_spin_expectation_values(RandomAccessRange const& state)
-    { return ::ket::all_spin_expectation_values<Qubit>(::ket::utility::begin(state), ::ket::utility::end(state)); }
+    { return ::ket::all_spin_expectation_values<Qubit>(std::begin(state), std::end(state)); }
   } // namespace ranges
 } // namespace ket
 

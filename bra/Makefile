@@ -23,7 +23,6 @@ objects = $(sources:$(src_dir)/%.cpp=$(build_dir)/%.o)
 macros = KET_PRINT_LOG
 macros += KET_USE_OPENMP
 #macros += KET_USE_PARALLEL_EXECUTE_FOR_TRANSFORM_INCLUSIVE_SCAN
-macros += KET_PREFER_POINTER_TO_VECTOR_ITERATOR
 macros += KET_USE_DIAGONAL_LOOP
 libraries =
 

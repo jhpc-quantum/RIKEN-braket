@@ -8,8 +8,6 @@
 # include <boost/range/difference_type.hpp>
 
 # include <ket/utility/positive_random_value_upto.hpp>
-# include <ket/utility/begin.hpp>
-# include <ket/utility/end.hpp>
 # include <ket/utility/meta/real_of.hpp>
 
 
@@ -65,7 +63,7 @@ namespace ket
       RandomAccessRange& state, RandomNumberGenerator& random_number_generator)
     {
       return ::ket::measure(
-        parallel_policy, ::ket::utility::begin(state), ::ket::utility::end(state), random_number_generator);
+        parallel_policy, std::begin(state), std::end(state), random_number_generator);
     }
 
     template <typename RandomAccessRange, typename RandomNumberGenerator>
@@ -73,7 +71,7 @@ namespace ket
       RandomAccessRange& state, RandomNumberGenerator& random_number_generator)
     {
       return ::ket::measure(
-        ::ket::utility::begin(state), ::ket::utility::end(state), random_number_generator);
+        std::begin(state), std::end(state), random_number_generator);
     }
   } // namespace ranges
 } // namespace ket

@@ -15,8 +15,6 @@
 
 # include <ket/qubit.hpp>
 # include <ket/meta/bit_integer_of.hpp>
-# include <ket/utility/begin.hpp>
-# include <ket/utility/end.hpp>
 
 # if __cplusplus >= 201703L
 #   define KET_is_nothrow_swappable std::is_nothrow_swappable
@@ -241,7 +239,7 @@ namespace ket
       data_type generate_identity_permutation(size_type const size)
       {
         auto result = data_type(size);
-        std::iota(::ket::utility::begin(result), ::ket::utility::end(result), value_type{0u});
+        std::iota(std::begin(result), std::end(result), value_type{0u});
         return result;
       }
 
@@ -261,12 +259,12 @@ namespace ket
       bool is_valid_permutation(data_type permutation) const
       {
         std::sort(
-          ::ket::utility::begin(permutation), ::ket::utility::end(permutation));
+          std::begin(permutation), std::end(permutation));
 
         auto previous_qubit = permutation.front();
-        auto const last = ::ket::utility::end(permutation);
+        auto const last = std::end(permutation);
 
-        for (auto iter = std::next(::ket::utility::begin(permutation)); iter != last; ++iter)
+        for (auto iter = std::next(std::begin(permutation)); iter != last; ++iter)
           if (*iter == previous_qubit)
             return false;
           else
