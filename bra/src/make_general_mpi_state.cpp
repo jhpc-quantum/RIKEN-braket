@@ -1,7 +1,4 @@
 #ifndef BRA_NO_MPI
-# include <string>
-# include <sstream>
-# include <ios>
 # include <vector>
 # include <memory>
 
@@ -14,17 +11,11 @@
 # include <bra/general_mpi_1page_state.hpp>
 # include <bra/general_mpi_2page_state.hpp>
 # include <bra/general_mpi_3page_state.hpp>
+# include <bra/unsupported_num_pages_error.hpp>
 
 
 namespace bra
 {
-  std::string unsupported_num_pages_error::generate_what_string(unsigned int const num_pages)
-  {
-    auto output_stream = std::ostringstream{"num_pages=", std::ios_base::ate};
-    output_stream << num_pages << " is not supported";
-    return output_stream.str();
-  }
-
   std::unique_ptr< ::bra::state > make_general_mpi_state(
     unsigned int const num_page_qubits,
     ::bra::state::state_integer_type const initial_integer,

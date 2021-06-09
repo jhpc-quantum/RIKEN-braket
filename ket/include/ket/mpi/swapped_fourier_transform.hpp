@@ -43,7 +43,7 @@ namespace ket
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     swapped_fourier_transform(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       RandomAccessRange& local_state,
       Qubits const& qubits,
       std::vector<
@@ -105,7 +105,7 @@ namespace ket
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     swapped_fourier_transform(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       RandomAccessRange& local_state,
       Qubits const& qubits,
       std::vector<
@@ -278,7 +278,7 @@ namespace ket
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     swapped_fourier_transform(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       RandomAccessRange& local_state,
       Qubits const& qubits,
       ::ket::mpi::qubit_permutation<
@@ -307,7 +307,7 @@ namespace ket
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     swapped_fourier_transform(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       RandomAccessRange& local_state,
       Qubits const& qubits,
       ::ket::mpi::qubit_permutation<
@@ -448,7 +448,7 @@ namespace ket
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     adj_swapped_fourier_transform(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       RandomAccessRange& local_state,
       Qubits const& qubits,
       std::vector<
@@ -508,7 +508,7 @@ namespace ket
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     adj_swapped_fourier_transform(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       RandomAccessRange& local_state,
       Qubits const& qubits,
       std::vector<
@@ -679,7 +679,7 @@ namespace ket
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     adj_swapped_fourier_transform(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       RandomAccessRange& local_state,
       Qubits const& qubits,
       ::ket::mpi::qubit_permutation<
@@ -708,7 +708,7 @@ namespace ket
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     adj_swapped_fourier_transform(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       RandomAccessRange& local_state,
       Qubits const& qubits,
       ::ket::mpi::qubit_permutation<

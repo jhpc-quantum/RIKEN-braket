@@ -30,7 +30,7 @@ namespace ket
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     subtraction_assignment(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       RandomAccessRange& local_state,
       Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range,
       std::vector<
@@ -60,7 +60,7 @@ namespace ket
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     subtraction_assignment(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       RandomAccessRange& local_state,
       Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range,
       std::vector<
@@ -208,7 +208,7 @@ namespace ket
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     subtraction_assignment(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       RandomAccessRange& local_state,
       Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range,
       ::ket::mpi::qubit_permutation<
@@ -234,7 +234,7 @@ namespace ket
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     subtraction_assignment(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       RandomAccessRange& local_state,
       Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range,
       ::ket::mpi::qubit_permutation<
@@ -365,7 +365,7 @@ namespace ket
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     adj_subtraction_assignment(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       RandomAccessRange& local_state,
       Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range,
       std::vector<
@@ -395,7 +395,7 @@ namespace ket
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     adj_subtraction_assignment(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       RandomAccessRange& local_state,
       Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range,
       std::vector<
@@ -543,7 +543,7 @@ namespace ket
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     adj_subtraction_assignment(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       RandomAccessRange& local_state,
       Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range,
       ::ket::mpi::qubit_permutation<
@@ -569,7 +569,7 @@ namespace ket
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
       RandomAccessRange&>::type
     adj_subtraction_assignment(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       RandomAccessRange& local_state,
       Qubits const& lhs_qubits, QubitsRange const& rhs_qubits_range,
       ::ket::mpi::qubit_permutation<

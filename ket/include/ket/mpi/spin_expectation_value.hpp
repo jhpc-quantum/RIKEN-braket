@@ -30,6 +30,7 @@
 # include <ket/mpi/page/is_on_page.hpp>
 # include <ket/mpi/page/spin_expectation_value.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
+# include <ket/mpi/utility/for_each_local_range.hpp>
 # include <ket/mpi/utility/logger.hpp>
 
 
@@ -88,7 +89,7 @@ namespace ket
         typename ::ket::utility::meta::real_of<
           typename boost::range_value<LocalState>::type>::type, 3u>>::type
     spin_expectation_value(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       LocalState& local_state,
       ::ket::qubit<StateInteger, BitInteger> const qubit,
       ::ket::mpi::qubit_permutation<
@@ -113,7 +114,7 @@ namespace ket
       if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))
         spin
           = ::ket::mpi::page::spin_expectation_value(
-              mpi_policy, parallel_policy, local_state, qubit, permutation);
+              parallel_policy, local_state, qubit, permutation);
       else
       {
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -155,7 +156,7 @@ namespace ket
         typename ::ket::utility::meta::real_of<
           typename boost::range_value<LocalState>::type>::type, 3u>>::type
     spin_expectation_value(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       LocalState& local_state,
       ::ket::qubit<StateInteger, BitInteger> const qubit,
       ::ket::mpi::qubit_permutation<
@@ -182,7 +183,7 @@ namespace ket
       if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))
         spin
           = ::ket::mpi::page::spin_expectation_value(
-              mpi_policy, parallel_policy, local_state, qubit, permutation);
+              parallel_policy, local_state, qubit, permutation);
       else
       {
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -330,7 +331,7 @@ namespace ket
           typename ::ket::utility::meta::real_of<
             typename boost::range_value<LocalState>::type>::type, 3u>>>::type
     spin_expectation_value(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       LocalState& local_state,
       ::ket::qubit<StateInteger, BitInteger> const qubit,
       ::ket::mpi::qubit_permutation<
@@ -356,7 +357,7 @@ namespace ket
       if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))
         spin
           = ::ket::mpi::page::spin_expectation_value(
-              mpi_policy, parallel_policy, local_state, qubit, permutation);
+              parallel_policy, local_state, qubit, permutation);
       else
       {
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -402,7 +403,7 @@ namespace ket
           typename ::ket::utility::meta::real_of<
             typename boost::range_value<LocalState>::type>::type, 3u>>>::type
     spin_expectation_value(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       LocalState& local_state,
       ::ket::qubit<StateInteger, BitInteger> const qubit,
       ::ket::mpi::qubit_permutation<
@@ -430,7 +431,7 @@ namespace ket
       if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))
         spin
           = ::ket::mpi::page::spin_expectation_value(
-              mpi_policy, parallel_policy, local_state, qubit, permutation);
+              parallel_policy, local_state, qubit, permutation);
       else
       {
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS

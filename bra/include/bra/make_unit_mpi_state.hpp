@@ -2,8 +2,6 @@
 # define BRA_MAKE_UNIT_MPI_STATE_HPP
 
 # ifndef BRA_NO_MPI
-#   include <string>
-#   include <stdexcept>
 #   include <vector>
 #   include <memory>
 
@@ -12,11 +10,13 @@
 
 #   include <bra/state.hpp>
 #   include <bra/gates.hpp>
+#   include <bra/unsupported_num_pages_error.hpp>
 
 
 namespace bra
 {
   std::unique_ptr< ::bra::state > make_unit_mpi_state(
+    unsigned int const num_pages,
     ::bra::state::state_integer_type const initial_integer,
     ::bra::state::bit_integer_type const num_local_qubits,
     ::bra::state::bit_integer_type const num_unit_qubits,
@@ -28,6 +28,7 @@ namespace bra
     yampi::environment const& environment);
 
   std::unique_ptr< ::bra::state > make_unit_mpi_state(
+    unsigned int const num_pages,
     ::bra::state::state_integer_type const initial_integer,
     ::bra::state::bit_integer_type const num_local_qubits,
     ::bra::state::bit_integer_type const num_unit_qubits,

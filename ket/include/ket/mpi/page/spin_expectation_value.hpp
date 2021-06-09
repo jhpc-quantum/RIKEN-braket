@@ -26,7 +26,7 @@ namespace ket
     namespace page
     {
       template <
-        typename MpiPolicy, typename ParallelPolicy,
+        typename ParallelPolicy,
         typename RandomAccessRange,
         typename StateInteger, typename BitInteger, typename Allocator>
       [[noreturn]] inline
@@ -34,7 +34,7 @@ namespace ket
         typename ::ket::utility::meta::real_of<
           typename boost::range_value<RandomAccessRange>::type>::type, 3u>
       spin_expectation_value(
-        MpiPolicy const, ParallelPolicy const,
+        ParallelPolicy const,
         RandomAccessRange&,
         ::ket::qubit<StateInteger, BitInteger> const,
         ::ket::mpi::qubit_permutation<
@@ -48,7 +48,7 @@ namespace ket
       [[noreturn]] inline
       std::array<typename ::ket::utility::meta::real_of<Complex>::type, 3u>
       spin_expectation_value(
-        ::ket::mpi::utility::policy::general_mpi const, ParallelPolicy const,
+        ParallelPolicy const,
         ::ket::mpi::state<Complex, 0, StateAllocator>&,
         ::ket::qubit<StateInteger, BitInteger> const,
         ::ket::mpi::qubit_permutation<
@@ -99,7 +99,6 @@ namespace ket
       inline
       std::array<typename ::ket::utility::meta::real_of<Complex>::type, 3u>
       spin_expectation_value(
-        ::ket::mpi::utility::policy::general_mpi const mpi_policy,
         ParallelPolicy const parallel_policy,
         ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>& local_state,
         ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -113,7 +112,7 @@ namespace ket
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
         ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-          mpi_policy, parallel_policy, local_state, qubit, permutation,
+          parallel_policy, local_state, qubit, permutation,
           [&spins_in_threads](auto const zero_first, auto const one_first, StateInteger const index, int const thread_index)
           {
             using std::conj;
@@ -131,7 +130,7 @@ namespace ket
           });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
         ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-          mpi_policy, parallel_policy, local_state, qubit, permutation,
+          parallel_policy, local_state, qubit, permutation,
           ::ket::mpi::page::spin_expectation_value_detail::make_spin_expectation_value<hd_spin_type>(spins_in_threads));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 

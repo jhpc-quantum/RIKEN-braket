@@ -100,7 +100,6 @@ namespace ket
           typename Complex, int num_page_qubits_, typename StateAllocator,
           typename StateInteger, typename BitInteger, typename PermutationAllocator>
         inline ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>& set(
-          ::ket::mpi::utility::policy::general_mpi const mpi_policy,
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>& local_state,
           ::ket::qubit<StateInteger, BitInteger> const qubit,
@@ -113,7 +112,7 @@ namespace ket
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-            mpi_policy, parallel_policy, local_state, qubit, permutation,
+            parallel_policy, local_state, qubit, permutation,
             [&one_probability](auto const zero_first, auto const one_first, StateInteger const index, int const)
             {
               *(zero_first + index) = Complex{0};
@@ -123,7 +122,7 @@ namespace ket
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-            mpi_policy, parallel_policy, local_state, qubit, permutation,
+            parallel_policy, local_state, qubit, permutation,
             ::ket::mpi::gate::page::set_detail::make_set1<Complex>(one_probability));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 
@@ -133,12 +132,12 @@ namespace ket
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-            mpi_policy, parallel_policy, local_state, qubit, permutation,
+            parallel_policy, local_state, qubit, permutation,
             [multiplier](auto const, auto const one_first, StateInteger const index, int const)
             { *(one_first + index) *= multiplier; });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-            mpi_policy, parallel_policy, local_state, qubit, permutation,
+            parallel_policy, local_state, qubit, permutation,
             ::ket::mpi::gate::page::set_detail::make_set2(multiplier));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }

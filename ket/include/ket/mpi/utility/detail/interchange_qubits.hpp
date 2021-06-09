@@ -33,8 +33,9 @@ namespace ket
         {
           template <typename LocalState, typename Allocator, typename StateInteger>
           static void call(
-            LocalState& local_state,
+            LocalState&& local_state,
             std::vector<typename boost::range_value<LocalState>::type, Allocator>& buffer,
+            StateInteger const data_block_index, StateInteger const data_block_size,
             StateInteger const source_local_first_index,
             StateInteger const source_local_last_index,
             yampi::rank const target_rank,
@@ -42,8 +43,8 @@ namespace ket
           {
             assert(source_local_last_index >= source_local_first_index);
 
-            auto const first = ::ket::utility::begin(local_state) + source_local_first_index;
-            auto const last = ::ket::utility::begin(local_state) + source_local_last_index;
+            auto const first = ::ket::utility::begin(local_state) + data_block_index * data_block_size + source_local_first_index;
+            auto const last = ::ket::utility::begin(local_state) + data_block_index * data_block_size + source_local_last_index;
 
             buffer.resize(source_local_last_index - source_local_first_index);
             yampi::algorithm::swap(
@@ -56,8 +57,9 @@ namespace ket
 
           template <typename LocalState, typename Allocator, typename StateInteger, typename DerivedDatatype>
           static void call(
-            LocalState& local_state,
+            LocalState&& local_state,
             std::vector<typename boost::range_value<LocalState>::type, Allocator>& buffer,
+            StateInteger const data_block_index, StateInteger const data_block_size,
             StateInteger const source_local_first_index,
             StateInteger const source_local_last_index,
             yampi::datatype_base<DerivedDatatype> const& datatype, yampi::rank const target_rank,
@@ -65,8 +67,8 @@ namespace ket
           {
             assert(source_local_last_index >= source_local_first_index);
 
-            auto const first = ::ket::utility::begin(local_state) + source_local_first_index;
-            auto const last = ::ket::utility::begin(local_state) + source_local_last_index;
+            auto const first = ::ket::utility::begin(local_state) + data_block_index * data_block_size + source_local_first_index;
+            auto const last = ::ket::utility::begin(local_state) + data_block_index * data_block_size + source_local_last_index;
 
             buffer.resize(source_local_last_index - source_local_first_index);
             yampi::algorithm::swap(
@@ -83,33 +85,39 @@ namespace ket
       {
         template <typename LocalState, typename Allocator, typename StateInteger>
         inline void interchange_qubits(
-          LocalState& local_state,
+          LocalState&& local_state,
           std::vector<typename boost::range_value<LocalState>::type, Allocator>& buffer,
+          StateInteger const data_block_index, StateInteger const data_block_size,
           StateInteger const source_local_first_index,
           StateInteger const source_local_last_index,
           yampi::rank const target_rank,
           yampi::communicator const& communicator, yampi::environment const& environment)
         {
           using interchange_qubits_
-            = ::ket::mpi::utility::dispatch::interchange_qubits<typename std::remove_cv<LocalState>::type>;
+            = ::ket::mpi::utility::dispatch::interchange_qubits<typename std::remove_cv<typename std::remove_reference<LocalState>::type>::type>;
           interchange_qubits_::call(
-            local_state, buffer, source_local_first_index, source_local_last_index,
+            std::forward<LocalState>(local_state), buffer,
+            data_block_index, data_block_size,
+            source_local_first_index, source_local_last_index,
             target_rank, communicator, environment);
         }
 
         template <typename LocalState, typename Allocator, typename StateInteger, typename DerivedDatatype>
         inline void interchange_qubits(
-          LocalState& local_state,
+          LocalState&& local_state,
           std::vector<typename boost::range_value<LocalState>::type, Allocator>& buffer,
+          StateInteger const data_block_index, StateInteger const data_block_size,
           StateInteger const source_local_first_index,
           StateInteger const source_local_last_index,
           yampi::datatype_base<DerivedDatatype> const& datatype, yampi::rank const target_rank,
           yampi::communicator const& communicator, yampi::environment const& environment)
         {
           using interchange_qubits_
-            = ::ket::mpi::utility::dispatch::interchange_qubits<typename std::remove_cv<LocalState>::type>;
+            = ::ket::mpi::utility::dispatch::interchange_qubits<typename std::remove_cv<typename std::remove_reference<LocalState>::type>::type>;
           interchange_qubits_::call(
-            local_state, buffer, source_local_first_index, source_local_last_index,
+            std::forward<LocalState>(local_state), buffer,
+            data_block_index, data_block_size,
+            source_local_first_index, source_local_last_index,
             datatype, target_rank, communicator, environment);
         }
       } // namespace detail

@@ -61,6 +61,21 @@ double duration_to_second(
   std::chrono::time_point<Clock, Duration> const& to)
 { return 0.000001 * std::chrono::duration_cast<std::chrono::microseconds>(to - from).count(); }
 
+std::string error_message(std::string const& error)
+{
+#ifndef BRA_NO_MPI
+  auto const tab_like_spaces = std::string(error.size() + 2u, ' ');
+  return
+    error + ": bra general <qcxfile> [<num_threads_per_process> [<num_page_qubits> [<seed>]]]\n"
+    + tab_like_spaces + "bra unit <qcxfile> <num_unit_qubits> <num_processes_per_unit> [<num_threads_per_process> [<num_page_qubits> [<seed>]]]\n"
+    + "  default values are: num_threads_per_process=1, num_page_qubits=2, seed=1\n";
+#else // BRA_NO_MPI
+  return
+    error + ": bra qcxfile [num_threads_per_process [seed]]\n"
+    + "  default values are: num_threads_per_process=1, seed=1\n";
+#endif // BRA_NO_MPI
+}
+
 int main(int argc, char* argv[])
 {
   std::ios::sync_with_stdio(false);
@@ -84,23 +99,16 @@ int main(int argc, char* argv[])
 #endif // BRA_NO_MPI
 
 #ifndef BRA_NO_MPI
-  if (argc < 3 or argc > 7)
+  if (argc < 3 or argc > 8)
   {
     if (is_io_root_rank)
-      std::cerr
-        << "wrong number of arguments: bra general <qcxfile> [<num_threads_per_process> [<num_page_qubits> [<seed>]]]\n"
-           "                           bra unit <qcxfile> <num_unit_qubits> <num_processes_per_unit> [<num_threads_per_process> [<seed>]]\n"
-           "  default values are: num_threads_per_process=1, num_page_qubits=2, seed=1\n"
-        << std::flush;
+      std::cerr << error_message("wrong number of arguments") << std::flush;
     return EXIT_FAILURE;
   }
 #else // BRA_NO_MPI
   if (argc < 2 or argc > 4)
   {
-    std::cerr
-      << "wrong number of arguments: bra qcxfile [num_threads_per_process [seed]]\n"
-         "  default values are: num_threads_per_process=1, seed=1\n"
-      << std::flush;
+    std::cerr << error_message("wrong number of arguments") << std::flush;
     return EXIT_FAILURE;
   }
 #endif // BRA_NO_MPI
@@ -121,11 +129,7 @@ int main(int argc, char* argv[])
     if (argc > 6)
     {
       if (is_io_root_rank)
-        std::cerr
-          << "wrong number of arguments: bra general <qcxfile> [<num_threads_per_process> [<num_page_qubits> [<seed>]]]\n"
-             "                           bra unit <qcxfile> <num_unit_qubits> <num_processes_per_unit> [<num_threads_per_process> [<seed>]]\n"
-             "  default values are: num_threads_per_process=1, num_page_qubits=2, seed=1\n"
-          << std::flush;
+        std::cerr << error_message("wrong number of arguments") << std::flush;
       return EXIT_FAILURE;
     }
 
@@ -147,11 +151,7 @@ int main(int argc, char* argv[])
     if (argc < 5)
     {
       if (is_io_root_rank)
-        std::cerr
-          << "wrong number of arguments: bra general <qcxfile> [<num_threads_per_process> [<num_page_qubits> [<seed>]]]\n"
-             "                           bra unit <qcxfile> <num_unit_qubits> <num_processes_per_unit> [<num_threads_per_process> [<seed>]]\n"
-             "  default values are: num_threads_per_process=1, num_page_qubits=2, seed=1\n"
-          << std::flush;
+        std::cerr << error_message("wrong number of arguments") << std::flush;
       return EXIT_FAILURE;
     }
 
@@ -160,11 +160,7 @@ int main(int argc, char* argv[])
     if (num_processes_per_unit == 0u)
     {
       if (is_io_root_rank)
-        std::cerr
-          << "wrong argument: bra general <qcxfile> [<num_threads_per_process> [<num_page_qubits> [<seed>]]]\n"
-             "                bra unit <qcxfile> <num_unit_qubits> <num_processes_per_unit> [<num_threads_per_process> [<seed>]]\n"
-             "  default values are: num_thread_per_process=1, num_page_qubits=2, seed=1\n"
-          << std::flush;
+        std::cerr << error_message("wrong argument") << std::flush;
       return EXIT_FAILURE;
     }
 
@@ -172,19 +168,19 @@ int main(int argc, char* argv[])
       = argc >= 6
         ? boost::lexical_cast<unsigned int>(argv[5])
         : 1u;
+    num_page_qubits
+      = argc >= 7
+        ? boost::lexical_cast<unsigned int>(argv[6])
+        : 2u;
     seed
-      = argc == 7
-        ? boost::lexical_cast<seed_type>(argv[6])
+      = argc == 8
+        ? boost::lexical_cast<seed_type>(argv[7])
         : seed_type{1};
   }
   else
   {
     if (is_io_root_rank)
-      std::cerr
-        << "wrong argument: bra general <qcxfile> [<num_threads_per_process> [<num_page_qubits> [<seed>]]]\n"
-           "                bra unit <qcxfile> <num_unit_qubits> <num_processes_per_unit> [<num_threads_per_process> [<seed>]]\n"
-           "  default values are: num_thread_per_process=1, num_page_qubits=2, seed=1\n"
-        << std::flush;
+      std::cerr << error_message("wrong argument") << std::flush;
     return EXIT_FAILURE;
   }
 #else // BRA_NO_MPI
@@ -216,7 +212,7 @@ int main(int argc, char* argv[])
   auto state_ptr
     = mpi_policy_string == "unit"
       ? bra::make_unit_mpi_state(
-          gates.initial_state_value(), gates.num_lqubits(), num_unit_qubits, gates.initial_permutation(),
+          num_page_qubits, gates.initial_state_value(), gates.num_lqubits(), num_unit_qubits, gates.initial_permutation(),
           num_threads_per_process, num_processes_per_unit, seed, communicator, environment)
       : bra::make_general_mpi_state(
           num_page_qubits, gates.initial_state_value(), gates.num_lqubits(), gates.initial_permutation(),

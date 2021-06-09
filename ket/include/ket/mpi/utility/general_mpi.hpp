@@ -34,8 +34,8 @@
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
 # include <ket/mpi/utility/detail/make_local_swap_qubit.hpp>
-# include <ket/mpi/utility/detail/swap_permutated_local_qubits.hpp>
 # include <ket/mpi/utility/detail/interchange_qubits.hpp>
+# include <ket/mpi/utility/detail/for_each_in_diagonal_loop.hpp>
 # include <ket/mpi/utility/logger.hpp>
 # ifndef NDEBUG
 #   include <ket/qubit_io.hpp>
@@ -71,63 +71,62 @@ namespace ket
             : std::true_type
           { }; // struct is_mpi_policy< ::ket::mpi::utility::policy::general_mpi >
         } // namespace meta
+
+        inline std::size_t num_data_blocks(
+          ::ket::mpi::utility::policy::general_mpi const&,
+          yampi::communicator const&, yampi::environment const&)
+        { return 1u; }
+
+        inline std::size_t num_global_qubits(
+          ::ket::mpi::utility::policy::general_mpi const&,
+          yampi::communicator const& communicator, yampi::environment const& environment)
+        {
+          auto const num_processes = communicator.size(environment);
+          auto const result = ::ket::utility::integer_log2<std::size_t>(num_processes);
+          assert(::ket::utility::integer_exp2<decltype(num_processes)>(result) == num_processes);
+          return result;
+        }
+
+        inline std::size_t global_qubit_value(
+          ::ket::mpi::utility::policy::general_mpi const&, yampi::rank const rank)
+        { return static_cast<std::size_t>(rank.mpi_rank()); }
+
+        inline std::size_t global_qubit_value(
+          ::ket::mpi::utility::policy::general_mpi const& mpi_policy,
+          yampi::communicator const& communicator, yampi::environment const& environment)
+        { return ::ket::mpi::utility::policy::global_qubit_value(mpi_policy, communicator.rank(environment)); }
+
+        template <typename LocalState>
+        inline auto data_block_size(
+          ::ket::mpi::utility::policy::general_mpi const&,
+          LocalState const& local_state, yampi::communicator const&, yampi::environment const&)
+          -> decltype(boost::size(local_state))
+        {
+          auto const result = boost::size(local_state);
+          assert(::ket::utility::integer_exp2<decltype(result)>(::ket::utility::integer_log2<std::size_t>(result)) == result);
+          return result;
+        }
+
+        template <typename StateInteger>
+        inline std::size_t num_local_qubits(
+          ::ket::mpi::utility::policy::general_mpi const& mpi_policy,
+          StateInteger const data_block_size)
+        { return ::ket::utility::integer_log2<std::size_t>(data_block_size); }
+
+        template <typename LocalState>
+        inline std::size_t num_local_qubits(
+          ::ket::mpi::utility::policy::general_mpi const& mpi_policy,
+          LocalState const& local_state,
+          yampi::communicator const& communicator, yampi::environment const& environment)
+        {
+          return ::ket::mpi::utility::policy::num_local_qubits(
+            mpi_policy,
+            ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment));
+        }
       } // namespace policy
 
       namespace dispatch
       {
-        template <typename MpiPolicy, typename LocalState_>
-        struct swap_permutated_local_qubits;
-
-        template <typename LocalState_>
-        struct swap_permutated_local_qubits< ::ket::mpi::utility::policy::general_mpi, LocalState_ >
-        {
-          template <
-            typename ParallelPolicy, typename LocalState,
-            typename StateInteger, typename BitInteger>
-          static void call(
-            ::ket::mpi::utility::policy::general_mpi const,
-            ParallelPolicy const parallel_policy,
-            LocalState& local_state,
-            ket::qubit<StateInteger, BitInteger> const permutated_qubit1,
-            ket::qubit<StateInteger, BitInteger> const permutated_qubit2,
-            yampi::communicator const&, yampi::environment const&)
-          {
-            auto const minmax_qubits = std::minmax(permutated_qubit1, permutated_qubit2);
-            // 00000001000
-            auto const min_qubit_mask = ket::utility::integer_exp2<StateInteger>(minmax_qubits.first);
-            // 00010000000
-            auto const max_qubit_mask = ket::utility::integer_exp2<StateInteger>(minmax_qubits.second);
-            // 000|111|
-            auto const middle_bits_mask
-              = ket::utility::integer_exp2<StateInteger>(minmax_qubits.second - minmax_qubits.first) - StateInteger{1u};
-
-            auto const local_state_first = ::ket::utility::begin(local_state);
-            using ket::utility::loop_n;
-            loop_n(
-              parallel_policy,
-              (static_cast<StateInteger>(boost::size(local_state)) >> minmax_qubits.first) >> 2u,
-              [local_state_first, &minmax_qubits,
-               min_qubit_mask, max_qubit_mask, middle_bits_mask](
-                // xxx|xxx|
-                StateInteger const value_wo_qubits, int const)
-              {
-                // xxx0xxx0000
-                auto const base_index
-                  = ((value_wo_qubits bitand middle_bits_mask) << (minmax_qubits.first + BitInteger{1u}))
-                    bitor ((value_wo_qubits bitand compl middle_bits_mask) << (minmax_qubits.first + BitInteger{2u}));
-                // xxx1xxx0000
-                auto const index1 = base_index bitor max_qubit_mask;
-                // xxx0xxx1000
-                auto const index2 = base_index bitor min_qubit_mask;
-
-                std::swap_ranges(
-                  local_state_first + index1,
-                  local_state_first + (index1 bitor min_qubit_mask),
-                  local_state_first + index2);
-              });
-          }
-        }; // struct swap_permutated_local_qubits< ::ket::mpi::utility::policy::general_mpi, LocalState_ >
-
         template <std::size_t num_qubits_of_operation, typename MpiPolicy>
         struct maybe_interchange_qubits;
 
@@ -189,13 +188,16 @@ namespace ket
               qubits, unswappable_qubits, permutation, communicator, environment,
               [&buffer](
                 LocalState& local_state,
+                StateInteger const data_block_index, StateInteger const data_block_size,
                 StateInteger const source_local_first_index, StateInteger const source_local_last_index,
-                StateInteger const target_global_index,
+                yampi::rank const target_rank,
                 yampi::communicator const& communicator, yampi::environment const& environment)
               {
                 ::ket::mpi::utility::detail::interchange_qubits(
-                  local_state, buffer, source_local_first_index, source_local_last_index,
-                  static_cast<yampi::rank>(target_global_index), communicator, environment);
+                  local_state, buffer,
+                  data_block_index, data_block_size,
+                  source_local_first_index, source_local_last_index,
+                  target_rank, communicator, environment);
               });
           }
 
@@ -255,14 +257,16 @@ namespace ket
               qubits, unswappable_qubits, permutation, communicator, environment,
               [&buffer, &datatype](
                 LocalState& local_state,
+                StateInteger const data_block_index, StateInteger const data_block_size,
                 StateInteger const source_local_first_index, StateInteger const source_local_last_index,
-                StateInteger const target_global_index,
+                yampi::rank const target_rank,
                 yampi::communicator const& communicator, yampi::environment const& environment)
               {
                 ::ket::mpi::utility::detail::interchange_qubits(
-                  local_state, buffer, source_local_first_index, source_local_last_index,
-                  datatype, static_cast<yampi::rank>(target_global_index),
-                  communicator, environment);
+                  local_state, buffer,
+                  data_block_index, data_block_size,
+                  source_local_first_index, source_local_last_index,
+                  datatype, target_rank, communicator, environment);
               });
           }
 
@@ -317,6 +321,8 @@ namespace ket
                 = ::ket::mpi::utility::detail::make_local_swap_qubit(
                     mpi_policy, parallel_policy, local_state, permutation,
                     unswappable_qubits, permutated_local_swap_qubits[index],
+                    ::ket::mpi::utility::policy::num_data_blocks(mpi_policy, communicator, environment),
+                    ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment),
                     communicator, environment);
             }
 
@@ -365,8 +371,10 @@ namespace ket
 
               interchange_qubits(
                 local_state,
-                source_local_first_index, source_local_last_index, target_global_index,
-                communicator, environment);
+                StateInteger{0u},
+                ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment),
+                source_local_first_index, source_local_last_index,
+                yampi::rank{static_cast<int>(target_global_index)}, communicator, environment);
             }
 
             using ::ket::mpi::permutate;
@@ -500,50 +508,6 @@ namespace ket
           { }
         }; // struct maybe_interchange_qubits<0u, ::ket::mpi::utility::policy::general_mpi>
 
-        template <typename MpiPolicy, typename LocalState_>
-        struct for_each_local_range
-        {
-          template <typename LocalState, typename Function>
-          static LocalState& call(
-            MpiPolicy const mpi_policy, LocalState& local_state,
-            yampi::communicator const& communicator, yampi::environment const& environment,
-            Function&& function);
-
-          template <typename LocalState, typename Function>
-          static LocalState const& call(
-            MpiPolicy const mpi_policy, LocalState const& local_state,
-            yampi::communicator const& communicator, yampi::environment const& environment,
-            Function&& function);
-        }; // struct for_each_local_range<MpiPolicy, LocalState_>
-
-        template <typename LocalState_>
-        struct for_each_local_range< ::ket::mpi::utility::policy::general_mpi, LocalState_ >
-        {
-          template <typename LocalState, typename Function>
-          static LocalState& call(
-            ::ket::mpi::utility::policy::general_mpi const,
-            LocalState& local_state,
-            yampi::communicator const&, yampi::environment const&,
-            Function&& function)
-          {
-            std::forward<Function>(function)(
-              ::ket::utility::begin(local_state), ::ket::utility::end(local_state));
-            return local_state;
-          }
-
-          template <typename LocalState, typename Function>
-          static LocalState const& call(
-            ::ket::mpi::utility::policy::general_mpi const,
-            LocalState const& local_state,
-            yampi::communicator const&, yampi::environment const&,
-            Function&& function)
-          {
-            std::forward<Function>(function)(
-              ::ket::utility::begin(local_state), ::ket::utility::end(local_state));
-            return local_state;
-          }
-        }; // struct for_each_local_range< ::ket::mpi::utility::policy::general_mpi. LocalState_ >
-
         template <typename MpiPolicy>
         struct rank_index_to_qubit_value
         {
@@ -589,119 +553,12 @@ namespace ket
               qubit_value % boost::size(local_state));
           }
         }; // struct qubit_value_to_rank_index< ::ket::mpi::utility::policy::general_mpi >
-
-# ifdef KET_USE_DIAGONAL_LOOP
-        template <typename MpiPolicy, typename LocalState_>
-        struct for_each_in_diagonal_loop
-        {
-          template <
-            typename ParallelPolicy, typename LocalState,
-            typename StateInteger, typename BitInteger,
-            std::size_t num_local_control_qubits, typename Function>
-          static void call(
-            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
-            LocalState& local_state,
-            StateInteger const first_index, StateInteger const last_local_qubit_value,
-            std::array<
-              ::ket::qubit<StateInteger, BitInteger>,
-              num_local_control_qubits> local_permutated_control_qubits,
-            Function&& function)
-          {
-            std::sort(
-              ::ket::utility::begin(local_permutated_control_qubits),
-              ::ket::utility::end(local_permutated_control_qubits));
-
-            impl(
-              mpi_policy, parallel_policy, local_state,
-              first_index, last_local_qubit_value, local_permutated_control_qubits,
-              std::forward<Function>(function));
-          }
-
-         private:
-          template <
-            typename ParallelPolicy, typename LocalState,
-            typename StateInteger, typename BitInteger,
-            std::size_t num_local_control_qubits, typename Function>
-          static void impl(
-            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
-            LocalState& local_state,
-            StateInteger const first_index, StateInteger const last_local_qubit_value,
-            std::array<
-              ::ket::qubit<StateInteger, BitInteger>,
-              num_local_control_qubits> const& sorted_local_permutated_control_qubits,
-            Function&& function)
-          {
-            static constexpr auto zero_state_integer = StateInteger{0u};
-
-            using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-            // 000101000100
-            auto const mask
-              = std::accumulate(
-                  ::ket::utility::begin(sorted_local_permutated_control_qubits),
-                  ::ket::utility::end(sorted_local_permutated_control_qubits),
-                  zero_state_integer,
-                  [](StateInteger const& partial_mask, qubit_type const& control_qubit)
-                  {
-                    static constexpr auto one_state_integer = StateInteger{1u};
-                    return partial_mask bitor (one_state_integer << control_qubit);
-                  });
-
-            auto const last_integer
-              = last_local_qubit_value >> num_local_control_qubits;
-
-            auto const first = ::ket::utility::begin(local_state);
-            using ::ket::utility::loop_n;
-            loop_n(
-              parallel_policy, last_integer,
-              [&function, &sorted_local_permutated_control_qubits, mask, first, first_index](
-                StateInteger state_integer, int const)
-              {
-                static constexpr auto one_state_integer = StateInteger{1u};
-
-                // xxx0x0xxx0xx
-                for (qubit_type const& qubit: sorted_local_permutated_control_qubits)
-                {
-                  auto const lower_mask = (one_state_integer << qubit) - one_state_integer;
-                  auto const upper_mask = compl lower_mask;
-                  state_integer
-                    = (state_integer bitand lower_mask)
-                      bitor ((state_integer bitand upper_mask) << 1u);
-                }
-
-                // xxx1x1xxx1xx
-                state_integer |= mask;
-
-                function(first + first_index + state_integer, first_index + state_integer);
-              });
-          }
-        }; // struct for_each_in_diagonal_loop<MpiPolicy, LocalState_>
-# endif // KET_USE_DIAGONAL_LOOP
       } // namespace dispatch
-
-# ifdef KET_USE_DIAGONAL_LOOP
-      template <
-        typename MpiPolicy, typename ParallelPolicy, typename LocalState,
-        typename StateInteger, typename BitInteger, std::size_t num_local_control_qubits,
-        typename Function>
-      inline void for_each_in_diagonal_loop(
-        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
-        LocalState& local_state,
-        StateInteger const first_index, StateInteger const last_local_qubit_value,
-        std::array<
-          ::ket::qubit<StateInteger, BitInteger>,
-          num_local_control_qubits> const& local_permutated_control_qubits,
-        Function&& function)
-      {
-        return ::ket::mpi::utility::dispatch::for_each_in_diagonal_loop<MpiPolicy, LocalState>::call(
-          mpi_policy, parallel_policy, local_state, first_index, last_local_qubit_value,
-          local_permutated_control_qubits, std::forward<Function>(function));
-      }
-# endif // KET_USE_DIAGONAL_LOOP
 
       namespace dispatch
       {
 # ifdef KET_USE_DIAGONAL_LOOP
-        template <typename MpiPolicy, typename LocalState_>
+        template <typename MpiPolicy>
         struct diagonal_loop
         {
           template <
@@ -709,18 +566,17 @@ namespace ket
             typename StateInteger, typename BitInteger, typename Allocator,
             typename Function0, typename Function1, typename... ControlQubits>
           static void call(
-            ::ket::mpi::utility::policy::general_mpi const,
-            ParallelPolicy const, LocalState& local_state,
+            MpiPolicy const&, ParallelPolicy const, LocalState& local_state,
             ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const& permutation,
             yampi::communicator const& communicator,
             yampi::environment const& environment,
             ::ket::qubit<StateInteger, BitInteger> const target_qubit,
             Function0&& function0, Function1&& function1,
             ControlQubits... control_qubits);
-        }; // struct diagonal_loop<MpiPolicy, LocalState_>
+        }; // struct diagonal_loop<MpiPolicy>
 
-        template <typename LocalState_>
-        struct diagonal_loop< ::ket::mpi::utility::policy::general_mpi, LocalState_ >
+        template <>
+        struct diagonal_loop< ::ket::mpi::utility::policy::general_mpi >
         {
           template <
             typename ParallelPolicy, typename LocalState,
@@ -836,8 +692,8 @@ namespace ket
               auto const mask = one_state_integer << permutated_target_qubit;
 
 #   ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
-              ::ket::mpi::utility::for_each_in_diagonal_loop(
-                mpi_policy, parallel_policy, local_state, StateInteger{0u}, last_local_qubit_value, local_permutated_control_qubits,
+              ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                parallel_policy, local_state, StateInteger{0u}, boost::size(local_state), last_local_qubit_value, local_permutated_control_qubits,
                 [&function0, &function1, mask](auto const iter, StateInteger const state_integer)
                 {
                   static constexpr auto zero_state_integer = StateInteger{0u};
@@ -848,8 +704,8 @@ namespace ket
                     function1(iter, state_integer);
                 });
 #   else // BOOST_NO_CXX14_GENERIC_LAMBDAS
-              ::ket::mpi::utility::for_each_in_diagonal_loop(
-                mpi_policy, parallel_policy, local_state, StateInteger{0u}, last_local_qubit_value, local_permutated_control_qubits,
+              ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                parallel_policy, local_state, StateInteger{0u}, boost::size(local_state), last_local_qubit_value, local_permutated_control_qubits,
                 make_call_function_if_local(std::forward<Function0>(function0), std::forward<Function1>(function1), mask));
 #   endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
             }
@@ -861,12 +717,12 @@ namespace ket
               static constexpr auto zero_state_integer = StateInteger{0u};
 
               if ((static_cast<StateInteger>(rank.mpi_rank()) bitand mask) == zero_state_integer)
-                ::ket::mpi::utility::for_each_in_diagonal_loop(
-                  mpi_policy, parallel_policy, local_state, StateInteger{0u}, last_local_qubit_value, local_permutated_control_qubits,
+                ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                  parallel_policy, local_state, StateInteger{0u}, boost::size(local_state), last_local_qubit_value, local_permutated_control_qubits,
                   std::forward<Function0>(function0));
               else
-                ::ket::mpi::utility::for_each_in_diagonal_loop(
-                  mpi_policy, parallel_policy, local_state, StateInteger{0u}, last_local_qubit_value, local_permutated_control_qubits,
+                ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                  parallel_policy, local_state, StateInteger{0u}, boost::size(local_state), last_local_qubit_value, local_permutated_control_qubits,
                   std::forward<Function1>(function1));
             }
           }
@@ -896,7 +752,7 @@ namespace ket
           make_call_function_if_local(Function0&& function0, Function1&& function1, StateInteger const mask)
           { return call_function_if_local<Function0, Function1, StateInteger>{std::forward<Function0>(function0), std::forward<Function1>(function1), mask}; }
 #   endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
-        }; // struct diagonal_loop< ::ket::mpi::utility::policy::general_mpi, LocalState_ >
+        }; // struct diagonal_loop< ::ket::mpi::utility::policy::general_mpi >
 # endif // KET_USE_DIAGONAL_LOOP
       } // namespace dispatch
 
@@ -1036,28 +892,6 @@ namespace ket
           local_state, qubits, permutation, buffer, datatype, communicator, environment);
       }
 
-      template <typename LocalState, typename Function>
-      inline LocalState& for_each_local_range(
-        ::ket::mpi::utility::policy::general_mpi const mpi_policy,
-        LocalState& local_state,
-        yampi::communicator const& communicator, yampi::environment const& environment,
-        Function&& function)
-      {
-        return ::ket::mpi::utility::dispatch::for_each_local_range< ::ket::mpi::utility::policy::general_mpi, LocalState >::call(
-          mpi_policy, local_state, communicator, environment, std::forward<Function>(function));
-      }
-
-      template <typename LocalState, typename Function>
-      inline LocalState const& for_each_local_range(
-        ::ket::mpi::utility::policy::general_mpi const mpi_policy,
-        LocalState const& local_state,
-        yampi::communicator const& communicator, yampi::environment const& environment,
-        Function&& function)
-      {
-        return ::ket::mpi::utility::dispatch::for_each_local_range< ::ket::mpi::utility::policy::general_mpi, LocalState >::call(
-          mpi_policy, local_state, communicator, environment, std::forward<Function>(function));
-      }
-
       template <typename LocalState, typename StateInteger>
       inline StateInteger rank_index_to_qubit_value(
         ::ket::mpi::utility::policy::general_mpi const mpi_policy,
@@ -1081,6 +915,12 @@ namespace ket
 # ifdef KET_USE_DIAGONAL_LOOP
       namespace general_mpi_detail
       {
+        template <typename LocalState, typename StateInteger, typename BitInteger, typename Allocator>
+        inline constexpr bool are_on_nonpage(
+          LocalState const& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const& permutation)
+        { return true; }
+
         template <typename LocalState, typename StateInteger, typename BitInteger, typename Allocator, typename... ControlQubits>
         inline constexpr bool are_on_nonpage(
           LocalState const& local_state,
@@ -1092,12 +932,6 @@ namespace ket
             (not ::ket::mpi::page::is_on_page(control_qubit.qubit(), local_state, permutation))
             and ::ket::mpi::utility::general_mpi_detail::are_on_nonpage(local_state, permutation, control_qubits...);
         }
-
-        template <typename LocalState, typename StateInteger, typename BitInteger, typename Allocator>
-        inline constexpr bool are_on_nonpage(
-          LocalState const& local_state,
-          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const& permutation)
-        { return true; }
       } // namespace general_mpi_detail
 
       template <
@@ -1118,7 +952,7 @@ namespace ket
         assert(not ::ket::mpi::page::is_on_page(target_qubit, local_state, permutation));
         assert(::ket::mpi::utility::general_mpi_detail::are_on_nonpage(local_state, permutation, control_qubits...));
 
-        return ::ket::mpi::utility::dispatch::diagonal_loop< ::ket::mpi::utility::policy::general_mpi, LocalState >::call(
+        return ::ket::mpi::utility::dispatch::diagonal_loop< ::ket::mpi::utility::policy::general_mpi >::call(
           mpi_policy, parallel_policy, local_state, permutation, communicator, environment,
           target_qubit,
           std::forward<Function0>(function0), std::forward<Function1>(function1),

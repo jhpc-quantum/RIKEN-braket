@@ -16,15 +16,14 @@ namespace ket\
           typename RandomAccessRange,\
           typename StateInteger, typename BitInteger, typename Allocator>\
         inline RandomAccessRange& gate_name(\
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,\
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,\
           RandomAccessRange& local_state,\
           ::ket::qubit<StateInteger, BitInteger> const qubit,\
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,\
           yampi::communicator const& communicator, yampi::environment const& environment)\
         {\
           if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))\
-            return ::ket::mpi::gate::page::gate_name(\
-              mpi_policy, parallel_policy, local_state, qubit, permutation);\
+            return ::ket::mpi::gate::page::gate_name(parallel_policy, local_state, qubit, permutation);\
 \
           auto const permutated_qubit = permutation[qubit];\
           return ::ket::mpi::utility::for_each_local_range(\
@@ -40,7 +39,7 @@ namespace ket\
         typename StateInteger, typename BitInteger,\
         typename Allocator, typename BufferAllocator>\
       inline RandomAccessRange& gate_name(\
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,\
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,\
         RandomAccessRange& local_state,\
         ::ket::qubit<StateInteger, BitInteger> const qubit,\
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,\
@@ -66,7 +65,7 @@ namespace ket\
         typename StateInteger, typename BitInteger,\
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>\
       inline RandomAccessRange& gate_name(\
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,\
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,\
         RandomAccessRange& local_state,\
         ::ket::qubit<StateInteger, BitInteger> const qubit,\
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,\
@@ -168,15 +167,14 @@ namespace ket\
           typename RandomAccessRange,\
           typename StateInteger, typename BitInteger, typename Allocator>\
         inline RandomAccessRange& adj_ ## gate_name(\
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,\
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,\
           RandomAccessRange& local_state,\
           ::ket::qubit<StateInteger, BitInteger> const qubit,\
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,\
           yampi::communicator const& communicator, yampi::environment const& environment)\
         {\
           if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))\
-            return ::ket::mpi::gate::page::adj_ ## gate_name(\
-              mpi_policy, parallel_policy, local_state, qubit, permutation);\
+            return ::ket::mpi::gate::page::adj_ ## gate_name(parallel_policy, local_state, qubit, permutation);\
 \
           auto const permutated_qubit = permutation[qubit];\
           return ::ket::mpi::utility::for_each_local_range(\
@@ -192,7 +190,7 @@ namespace ket\
         typename StateInteger, typename BitInteger,\
         typename Allocator, typename BufferAllocator>\
       inline RandomAccessRange& adj_ ## gate_name(\
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,\
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,\
         RandomAccessRange& local_state,\
         ::ket::qubit<StateInteger, BitInteger> const qubit,\
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,\
@@ -218,7 +216,7 @@ namespace ket\
         typename StateInteger, typename BitInteger,\
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>\
       inline RandomAccessRange& adj_ ## gate_name(\
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,\
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,\
         RandomAccessRange& local_state,\
         ::ket::qubit<StateInteger, BitInteger> const qubit,\
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,\
@@ -356,15 +354,14 @@ namespace ket\
           typename RandomAccessRange,\
           typename StateInteger, typename BitInteger, typename Allocator>\
         inline RandomAccessRange& gate_name(\
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,\
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,\
           RandomAccessRange& local_state,\
           ::ket::qubit<StateInteger, BitInteger> const qubit,\
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,\
           yampi::communicator const& communicator, yampi::environment const& environment)\
         {\
           if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))\
-            return ::ket::mpi::gate::page::gate_name(\
-              mpi_policy, parallel_policy, local_state, qubit, permutation);\
+            return ::ket::mpi::gate::page::gate_name(parallel_policy, local_state, qubit, permutation);\
 \
           return ::ket::mpi::utility::for_each_local_range(\
             mpi_policy, local_state, communicator, environment,\
@@ -379,7 +376,7 @@ namespace ket\
         typename StateInteger, typename BitInteger,\
         typename Allocator, typename BufferAllocator>\
       inline RandomAccessRange& gate_name(\
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,\
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,\
         RandomAccessRange& local_state,\
         ::ket::qubit<StateInteger, BitInteger> const qubit,\
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,\
@@ -405,7 +402,7 @@ namespace ket\
         typename StateInteger, typename BitInteger,\
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>\
       inline RandomAccessRange& gate_name(\
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,\
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,\
         RandomAccessRange& local_state,\
         ::ket::qubit<StateInteger, BitInteger> const qubit,\
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,\
@@ -533,15 +530,14 @@ namespace ket\
           typename RandomAccessRange,\
           typename StateInteger, typename BitInteger, typename Allocator>\
         inline RandomAccessRange& adj_ ## gate_name(\
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,\
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,\
           RandomAccessRange& local_state,\
           ::ket::qubit<StateInteger, BitInteger> const qubit,\
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,\
           yampi::communicator const& communicator, yampi::environment const& environment)\
         {\
           if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))\
-            return ::ket::mpi::gate::page::adj_ ## gate_name(\
-              mpi_policy, parallel_policy, local_state, qubit, permutation);\
+            return ::ket::mpi::gate::page::adj_ ## gate_name(parallel_policy, local_state, qubit, permutation);\
 \
           return ::ket::mpi::utility::for_each_local_range(\
             mpi_policy, local_state, communicator, environment,\
@@ -556,7 +552,7 @@ namespace ket\
         typename StateInteger, typename BitInteger,\
         typename Allocator, typename BufferAllocator>\
       inline RandomAccessRange& adj_ ## gate_name(\
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,\
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,\
         RandomAccessRange& local_state,\
         ::ket::qubit<StateInteger, BitInteger> const qubit,\
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,\
@@ -582,7 +578,7 @@ namespace ket\
         typename StateInteger, typename BitInteger,\
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>\
       inline RandomAccessRange& adj_ ## gate_name(\
-        MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,\
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,\
         RandomAccessRange& local_state,\
         ::ket::qubit<StateInteger, BitInteger> const qubit,\
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,\

@@ -11,6 +11,7 @@
 # include <ket/utility/integer_exp2.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/state.hpp>
+# include <ket/mpi/page/is_on_page.hpp>
 # include <ket/mpi/gate/page/detail/controlled_not_tcp.hpp>
 # include <ket/mpi/gate/page/detail/one_page_qubit_gate.hpp>
 
@@ -25,11 +26,11 @@ namespace ket
       {
         // tcp: both of target qubit and control qubit are on page
         template <
-          typename MpiPolicy, typename ParallelPolicy,
+          typename ParallelPolicy,
           typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename PermutationAllocator>
         inline RandomAccessRange& controlled_not_tcp(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+          ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::qubit<StateInteger, BitInteger> const target_qubit,
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit,
@@ -37,7 +38,7 @@ namespace ket
             StateInteger, BitInteger, PermutationAllocator> const& permutation)
         {
           return ::ket::mpi::gate::page::detail::controlled_not_tcp(
-            mpi_policy, parallel_policy, local_state, target_qubit, control_qubit, permutation);
+            parallel_policy, local_state, target_qubit, control_qubit, permutation);
         }
 
         // tp: only target qubit is on page
@@ -84,18 +85,18 @@ namespace ket
         } // namespace controlled_not_detail
 
         template <
-          typename MpiPolicy, typename ParallelPolicy,
+          typename ParallelPolicy,
           typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename PermutationAllocator>
         inline RandomAccessRange& controlled_not_tp(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+          ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::qubit<StateInteger, BitInteger> const target_qubit,
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit,
           ::ket::mpi::qubit_permutation<
             StateInteger, BitInteger, PermutationAllocator> const& permutation)
         {
-          assert(not local_state.is_page_qubit(permutation[control_qubit.qubit()]));
+          assert(not ::ket::mpi::page::is_on_page(control_qubit.qubit(), local_state, permutation));
           auto const control_qubit_mask
             = ::ket::utility::integer_exp2<StateInteger>(permutation[control_qubit.qubit()]);
           auto const nonpage_lower_bits_mask = control_qubit_mask - StateInteger{1u};
@@ -103,7 +104,7 @@ namespace ket
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
-            mpi_policy, parallel_policy, local_state, target_qubit, permutation,
+            parallel_policy, local_state, target_qubit, permutation,
             [control_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask](
               auto const zero_first, auto const one_first, StateInteger const index_wo_nonpage_qubit, int const)
             {
@@ -115,7 +116,7 @@ namespace ket
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
-            mpi_policy, parallel_policy, local_state, target_qubit, permutation,
+            parallel_policy, local_state, target_qubit, permutation,
             ::ket::mpi::gate::page::controlled_not_detail::make_controlled_not_tp(
               control_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -165,18 +166,18 @@ namespace ket
         } // namespace controlled_not_detail
 
         template <
-          typename MpiPolicy, typename ParallelPolicy,
+          typename ParallelPolicy,
           typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename PermutationAllocator>
         inline RandomAccessRange& controlled_not_cp(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+          ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::qubit<StateInteger, BitInteger> const target_qubit,
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit,
           ::ket::mpi::qubit_permutation<
             StateInteger, BitInteger, PermutationAllocator> const& permutation)
         {
-          assert(not local_state.is_page_qubit(permutation[target_qubit]));
+          assert(not ::ket::mpi::page::is_on_page(target_qubit, local_state, permutation));
 
           auto const target_qubit_mask
             = ::ket::utility::integer_exp2<StateInteger>(permutation[target_qubit]);
@@ -185,7 +186,7 @@ namespace ket
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
-            mpi_policy, parallel_policy, local_state, control_qubit.qubit(), permutation,
+            parallel_policy, local_state, control_qubit.qubit(), permutation,
             [target_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask](
               auto const, auto const one_first, StateInteger const index_wo_nonpage_qubit, int const)
             {
@@ -197,7 +198,7 @@ namespace ket
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
-            mpi_policy, parallel_policy, local_state, control_qubit.qubit(), permutation,
+            parallel_policy, local_state, control_qubit.qubit(), permutation,
             ::ket::mpi::gate::page::controlled_not_detail::make_controlled_not_cp(
               target_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -205,11 +206,11 @@ namespace ket
 
         // tcp: both of target qubit and control qubit are on page
         template <
-          typename MpiPolicy, typename ParallelPolicy,
+          typename ParallelPolicy,
           typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename Allocator>
         inline RandomAccessRange& adj_controlled_not_tcp(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+          ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::qubit<StateInteger, BitInteger> const target_qubit,
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit,
@@ -217,17 +218,16 @@ namespace ket
             StateInteger, BitInteger, Allocator> const& permutation)
         {
           return ::ket::mpi::gate::page::controlled_not_tcp(
-            mpi_policy, parallel_policy, local_state,
-            target_qubit, control_qubit, permutation);
+            parallel_policy, local_state, target_qubit, control_qubit, permutation);
         }
 
         // tp: only target qubit is on page
         template <
-          typename MpiPolicy, typename ParallelPolicy,
+          typename ParallelPolicy,
           typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename Allocator>
         inline RandomAccessRange& adj_controlled_not_tp(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+          ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::qubit<StateInteger, BitInteger> const target_qubit,
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit,
@@ -235,17 +235,16 @@ namespace ket
             StateInteger, BitInteger, Allocator> const& permutation)
         {
           return ::ket::mpi::gate::page::controlled_not_tp(
-            mpi_policy, parallel_policy, local_state,
-            target_qubit, control_qubit, permutation);
+            parallel_policy, local_state, target_qubit, control_qubit, permutation);
         }
 
         // cp: only control qubit is on page
         template <
-          typename MpiPolicy, typename ParallelPolicy,
+          typename ParallelPolicy,
           typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename Allocator>
         inline RandomAccessRange& adj_controlled_not_cp(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+          ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::qubit<StateInteger, BitInteger> const target_qubit,
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit,
@@ -253,8 +252,7 @@ namespace ket
             StateInteger, BitInteger, Allocator> const& permutation)
         {
           return ::ket::mpi::gate::page::controlled_not_cp(
-            mpi_policy, parallel_policy, local_state,
-            target_qubit, control_qubit, permutation);
+            parallel_policy, local_state, target_qubit, control_qubit, permutation);
         }
       } // namespace page
     } // namespace gate

@@ -41,7 +41,7 @@ namespace ket
       typename LocalState, typename RandomNumberGenerator,
       typename StateInteger, typename BitInteger, typename Allocator>
     inline StateInteger measure(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       LocalState& local_state, RandomNumberGenerator& random_number_generator,
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,
@@ -143,7 +143,7 @@ namespace ket
       typename StateInteger, typename BitInteger, typename Allocator,
       typename DerivedDatatype1, typename DerivedDatatype2>
     inline StateInteger measure(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       LocalState& local_state, RandomNumberGenerator& random_number_generator,
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,
@@ -285,7 +285,7 @@ namespace ket
       typename LocalState, typename RandomNumberGenerator,
       typename StateInteger, typename BitInteger, typename Allocator>
     inline StateInteger fast_measure(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       LocalState& local_state, RandomNumberGenerator& random_number_generator,
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,
@@ -383,7 +383,7 @@ namespace ket
       typename StateInteger, typename BitInteger, typename Allocator,
       typename DerivedDatatype1, typename DerivedDatatype2>
     inline StateInteger fast_measure(
-      MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+      MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       LocalState& local_state, RandomNumberGenerator& random_number_generator,
       ::ket::mpi::qubit_permutation<
         StateInteger, BitInteger, Allocator>& permutation,

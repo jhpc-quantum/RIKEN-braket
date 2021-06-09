@@ -13,6 +13,7 @@
 # include <ket/utility/end.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/state.hpp>
+# include <ket/mpi/page/is_on_page.hpp>
 # include <ket/mpi/gate/page/unsupported_page_gate_operation.hpp>
 
 
@@ -27,11 +28,11 @@ namespace ket
         namespace detail
         {
           template <
-            typename MpiPolicy, typename ParallelPolicy,
+            typename ParallelPolicy,
             typename RandomAccessRange,
             typename StateInteger, typename BitInteger, typename Allocator>
           [[noreturn]] inline RandomAccessRange& toffoli_tccp(
-            MpiPolicy const, ParallelPolicy const,
+            ParallelPolicy const,
             RandomAccessRange& local_state,
             ::ket::qubit<StateInteger, BitInteger> const,
             ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const,
@@ -45,7 +46,7 @@ namespace ket
             typename Complex, typename StateAllocator,
             typename StateInteger, typename BitInteger, typename PermutationAllocator>
           [[noreturn]] inline ::ket::mpi::state<Complex, 0, StateAllocator>& toffoli_tccp(
-            ::ket::mpi::utility::policy::general_mpi const, ParallelPolicy const,
+            ParallelPolicy const,
             ::ket::mpi::state<Complex, 0, StateAllocator>& local_state,
             ::ket::qubit<StateInteger, BitInteger> const,
             ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const,
@@ -59,7 +60,7 @@ namespace ket
             typename Complex, typename StateAllocator,
             typename StateInteger, typename BitInteger, typename PermutationAllocator>
           [[noreturn]] inline ::ket::mpi::state<Complex, 1, StateAllocator>& toffoli_tccp(
-            ::ket::mpi::utility::policy::general_mpi const, ParallelPolicy const,
+            ParallelPolicy const,
             ::ket::mpi::state<Complex, 1, StateAllocator>& local_state,
             ::ket::qubit<StateInteger, BitInteger> const,
             ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const,
@@ -73,7 +74,7 @@ namespace ket
             typename Complex, typename StateAllocator,
             typename StateInteger, typename BitInteger, typename PermutationAllocator>
           [[noreturn]] inline ::ket::mpi::state<Complex, 2, StateAllocator>& toffoli_tccp(
-            ::ket::mpi::utility::policy::general_mpi const, ParallelPolicy const,
+            ParallelPolicy const,
             ::ket::mpi::state<Complex, 2, StateAllocator>& local_state,
             ::ket::qubit<StateInteger, BitInteger> const,
             ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const,
@@ -88,7 +89,6 @@ namespace ket
             typename StateInteger, typename BitInteger, typename PermutationAllocator>
           inline ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>&
           toffoli_tccp(
-            ::ket::mpi::utility::policy::general_mpi const,
             ParallelPolicy const parallel_policy,
             ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>& local_state,
             ::ket::qubit<StateInteger, BitInteger> const target_qubit,
@@ -101,13 +101,13 @@ namespace ket
             static_assert(
               num_page_qubits_ >= 3,
               "num_page_qubits_ should be greater than or equal to 3");
+            assert(::ket::mpi::page::is_on_page(target_qubit, local_state, permutation));
+            assert(::ket::mpi::page::is_on_page(control_qubit1.qubit(), local_state, permutation));
+            assert(::ket::mpi::page::is_on_page(control_qubit2.qubit(), local_state, permutation));
 
             auto const permutated_target_qubit = permutation[target_qubit];
             auto const permutated_control_qubit1 = permutation[control_qubit1.qubit()];
             auto const permutated_control_qubit2 = permutation[control_qubit2.qubit()];
-            assert(local_state.is_page_qubit(permutated_target_qubit));
-            assert(local_state.is_page_qubit(permutated_control_qubit1));
-            assert(local_state.is_page_qubit(permutated_control_qubit2));
 
             auto const num_nonpage_local_qubits
               = static_cast<BitInteger>(local_state.num_local_qubits() - num_page_qubits_);
@@ -148,22 +148,26 @@ namespace ket
 
             static constexpr auto num_pages
               = ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>::num_pages;
-            for (auto page_id_wo_qubits = std::size_t{0u};
-                 page_id_wo_qubits < num_pages / 8u; ++page_id_wo_qubits)
-            {
-              // x0_cx0_tx0_cx
-              auto const base_page_id
-                = ((page_id_wo_qubits bitand bits_mask[3u]) << 3u)
-                  bitor ((page_id_wo_qubits bitand bits_mask[2u]) << 2u)
-                  bitor ((page_id_wo_qubits bitand bits_mask[1u]) << 1u)
-                  bitor (page_id_wo_qubits bitand bits_mask[0u]);
-              // x1_cx0_tx1_cx
-              auto const control_on_page_id = base_page_id bitor control_qubits_mask;
-              // x1_cx1_tx1_cx
-              auto const target_control_on_page_id = control_on_page_id bitor target_qubit_mask;
+            auto const num_data_blocks = local_state.num_data_blocks();
+            for (auto data_block_index = std::size_t{0u}; data_block_index < num_data_blocks; ++data_block_index)
+              for (auto page_index_wo_qubits = std::size_t{0u};
+                   page_index_wo_qubits < num_pages / 8u; ++page_index_wo_qubits)
+              {
+                // x0_cx0_tx0_cx
+                auto const base_page_index
+                  = ((page_index_wo_qubits bitand bits_mask[3u]) << 3u)
+                    bitor ((page_index_wo_qubits bitand bits_mask[2u]) << 2u)
+                    bitor ((page_index_wo_qubits bitand bits_mask[1u]) << 1u)
+                    bitor (page_index_wo_qubits bitand bits_mask[0u]);
+                // x1_cx0_tx1_cx
+                auto const control_on_page_index = base_page_index bitor control_qubits_mask;
+                // x1_cx1_tx1_cx
+                auto const target_control_on_page_index = control_on_page_index bitor target_qubit_mask;
 
-              local_state.swap_pages(control_on_page_id, target_control_on_page_id);
-            }
+                local_state.swap_pages(
+                  std::make_pair(data_block_index, control_on_page_index),
+                  std::make_pair(data_block_index, target_control_on_page_index));
+              }
 
             return local_state;
           }

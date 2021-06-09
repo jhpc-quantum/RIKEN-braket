@@ -9,6 +9,7 @@
 # include <ket/control.hpp>
 # include <ket/utility/integer_exp2.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
+# include <ket/mpi/page/is_on_page.hpp>
 # include <ket/mpi/gate/page/detail/two_page_qubits_gate.hpp>
 # include <ket/mpi/gate/page/detail/one_page_qubit_gate.hpp>
 
@@ -71,11 +72,11 @@ namespace ket
         } // namespace controlled_v_detail
 
         template <
-          typename MpiPolicy, typename ParallelPolicy,
+          typename ParallelPolicy,
           typename RandomAccessRange, typename Complex,
           typename StateInteger, typename BitInteger, typename PermutationAllocator>
         inline RandomAccessRange& controlled_v_coeff_tcp(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+          ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           Complex const& phase_coefficient,
           ::ket::qubit<StateInteger, BitInteger> const target_qubit,
@@ -89,8 +90,7 @@ namespace ket
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::two_page_qubits_gate<0u>(
-            mpi_policy, parallel_policy, local_state,
-            target_qubit, control_qubit, permutation,
+            parallel_policy, local_state, target_qubit, control_qubit, permutation,
             [one_plus_phase_coefficient, one_minus_phase_coefficient](
               auto const, auto const, auto const first_10, auto const first_11,
               StateInteger const index, int const)
@@ -111,8 +111,7 @@ namespace ket
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::two_page_qubits_gate<0u>(
-            mpi_policy, parallel_policy, local_state,
-            target_qubit, control_qubit, permutation,
+            parallel_policy, local_state, target_qubit, control_qubit, permutation,
             ::ket::mpi::gate::page::controlled_v_detail::make_controlled_v_coeff_tcp(
               one_plus_phase_coefficient, one_minus_phase_coefficient));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -188,11 +187,11 @@ namespace ket
         } // namespace controlled_v_detail
 
         template <
-          typename MpiPolicy, typename ParallelPolicy,
+          typename ParallelPolicy,
           typename RandomAccessRange, typename Complex,
           typename StateInteger, typename BitInteger, typename PermutationAllocator>
         inline RandomAccessRange& controlled_v_coeff_tp(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+          ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           Complex const& phase_coefficient,
           ::ket::qubit<StateInteger, BitInteger> const target_qubit,
@@ -200,7 +199,7 @@ namespace ket
           ::ket::mpi::qubit_permutation<
             StateInteger, BitInteger, PermutationAllocator> const& permutation)
         {
-          assert(not local_state.is_page_qubit(permutation[control_qubit.qubit()]));
+          assert(not ::ket::mpi::page::is_on_page(control_qubit.qubit(), local_state, permutation));
 
           using real_type = typename ::ket::utility::meta::real_of<Complex>::type;
           auto const one_plus_phase_coefficient = real_type{1} + phase_coefficient;
@@ -213,7 +212,7 @@ namespace ket
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
-            mpi_policy, parallel_policy, local_state, target_qubit, permutation,
+            parallel_policy, local_state, target_qubit, permutation,
             [one_plus_phase_coefficient, one_minus_phase_coefficient,
              control_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask](
               auto const zero_first, auto const one_first, StateInteger const index_wo_nonpage_qubit, int const)
@@ -239,7 +238,7 @@ namespace ket
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
-            mpi_policy, parallel_policy, local_state, target_qubit, permutation,
+            parallel_policy, local_state, target_qubit, permutation,
             ::ket::mpi::gate::page::controlled_v_detail::make_controlled_v_coeff_tp(
               one_plus_phase_coefficient, one_minus_phase_coefficient,
               control_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask));
@@ -316,11 +315,11 @@ namespace ket
         } // namespace controlled_v_detail
 
         template <
-          typename MpiPolicy, typename ParallelPolicy,
+          typename ParallelPolicy,
           typename RandomAccessRange, typename Complex,
           typename StateInteger, typename BitInteger, typename PermutationAllocator>
         inline RandomAccessRange& controlled_v_coeff_cp(
-          MpiPolicy const mpi_policy, ParallelPolicy const parallel_policy,
+          ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           Complex const& phase_coefficient,
           ::ket::qubit<StateInteger, BitInteger> const target_qubit,
@@ -328,7 +327,7 @@ namespace ket
           ::ket::mpi::qubit_permutation<
             StateInteger, BitInteger, PermutationAllocator> const& permutation)
         {
-          assert(not local_state.is_page_qubit(permutation[target_qubit]));
+          assert(not ::ket::mpi::page::is_on_page(target_qubit, local_state, permutation));
 
           using real_type = typename ::ket::utility::meta::real_of<Complex>::type;
           auto const one_plus_phase_coefficient = real_type{1} + phase_coefficient;
@@ -341,7 +340,7 @@ namespace ket
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
-            mpi_policy, parallel_policy, local_state, control_qubit.qubit(), permutation,
+            parallel_policy, local_state, control_qubit.qubit(), permutation,
             [one_plus_phase_coefficient, one_minus_phase_coefficient,
              target_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask](
               auto const, auto const one_first, StateInteger const index_wo_nonpage_qubit, int const)
@@ -367,7 +366,7 @@ namespace ket
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
-            mpi_policy, parallel_policy, local_state, control_qubit.qubit(), permutation,
+            parallel_policy, local_state, control_qubit.qubit(), permutation,
             ::ket::mpi::gate::page::controlled_v_detail::make_controlled_v_coeff_cp(
               one_plus_phase_coefficient, one_minus_phase_coefficient,
               target_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask));
