@@ -6,8 +6,6 @@
 # include <complex>
 # include <vector>
 # include <array>
-# include <ios>
-# include <sstream>
 
 # include <boost/range/value_type.hpp>
 
@@ -16,8 +14,11 @@
 # include <yampi/communicator.hpp>
 
 # include <ket/qubit.hpp>
-# include <ket/qubit_io.hpp>
+# ifdef KET_PRINT_LOG
+#   include <ket/qubit_io.hpp>
+# endif // KET_PRINT_LOG
 # include <ket/gate/phase_shift.hpp>
+# include <ket/mpi/permutated.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
 # include <ket/mpi/utility/for_each_local_range.hpp>
@@ -83,9 +84,10 @@ namespace ket
           yampi::communicator const& communicator,
           yampi::environment const& environment)
         {
-          if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))
+          auto const permutated_qubit = permutation[qubit];
+          if (::ket::mpi::page::is_on_page(permutated_qubit, local_state))
             return ::ket::mpi::gate::page::phase_shift_coeff(
-              parallel_policy, local_state, phase_coefficient, qubit, permutation);
+              parallel_policy, local_state, phase_coefficient, permutated_qubit);
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           ::ket::mpi::utility::diagonal_loop(
@@ -687,24 +689,24 @@ namespace ket
           ParallelPolicy parallel_policy_;
           Real phase1_;
           Real phase2_;
-          Qubit qubit_;
+          ::ket::mpi::permutated<Qubit> permutated_qubit_;
 
           call_phase_shift2(
             ParallelPolicy const parallel_policy,
-            Real const phase1, Real const phase2, Qubit const qubit)
+            Real const phase1, Real const phase2,
+            ::ket::mpi::permutated<Qubit> const permutated_qubit)
             : parallel_policy_{parallel_policy},
               phase1_{phase1},
               phase2_{phase2},
-              qubit_{qubit}
+              permutated_qubit_{permutated_qubit}
           { }
 
           template <typename RandomAccessIterator>
           void operator()(
-            RandomAccessIterator const first,
-            RandomAccessIterator const last) const
+            RandomAccessIterator const first, RandomAccessIterator const last) const
           {
             ::ket::gate::phase_shift2(
-              parallel_policy_, first, last, phase1_, phase2_, qubit_);
+              parallel_policy_, first, last, phase1_, phase2_, permutated_qubit_.qubit());
           }
         }; // struct call_phase_shift2<ParallelPolicy, Real, Qubit>
 
@@ -712,11 +714,8 @@ namespace ket
         inline call_phase_shift2<ParallelPolicy, Real, Qubit>
         make_call_phase_shift2(
           ParallelPolicy const parallel_policy,
-          Real const phase1, Real const phase2, Qubit const qubit)
-        {
-          return call_phase_shift2<ParallelPolicy, Real, Qubit>{
-            parallel_policy, phase1, phase2, qubit};
-        }
+          Real const phase1, Real const phase2, ::ket::mpi::permutated<Qubit> const permutated_qubit)
+        { return {parallel_policy, phase1, phase2, permutated_qubit}; }
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 
         template <
@@ -731,25 +730,25 @@ namespace ket
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
           yampi::communicator const& communicator, yampi::environment const& environment)
         {
-          if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))
+          auto const permutated_qubit = permutation[qubit];
+          if (::ket::mpi::page::is_on_page(permutated_qubit, local_state))
             return ::ket::mpi::gate::page::phase_shift2(
-              parallel_policy, local_state, phase1, phase2, qubit, permutation);
+              parallel_policy, local_state, phase1, phase2, permutated_qubit);
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
-          auto const permutated_qubit = permutation[qubit];
           return ::ket::mpi::utility::for_each_local_range(
             mpi_policy, local_state, communicator, environment,
             [parallel_policy, phase1, phase2, permutated_qubit](
               auto const first, auto const last)
             {
               ::ket::gate::phase_shift2(
-                parallel_policy, first, last, phase1, phase2, permutated_qubit);
+                parallel_policy, first, last, phase1, phase2, permutated_qubit.qubit());
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::utility::for_each_local_range(
             mpi_policy, local_state, communicator, environment,
             ::ket::mpi::gate::phase_shift_detail::make_call_phase_shift2(
-              parallel_policy, phase1, phase2, permutation[qubit]));
+              parallel_policy, phase1, phase2, permutated_qubit));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }
 
@@ -943,24 +942,24 @@ namespace ket
           ParallelPolicy parallel_policy_;
           Real phase1_;
           Real phase2_;
-          Qubit qubit_;
+          ::ket::mpi::permutated<Qubit> permutated_qubit_;
 
           call_adj_phase_shift2(
             ParallelPolicy const parallel_policy,
-            Real const phase1, Real const phase2, Qubit const qubit)
+            Real const phase1, Real const phase2,
+            ::ket::mpi::permutated<Qubit> const permutated_qubit)
             : parallel_policy_{parallel_policy},
               phase1_{phase1},
               phase2_{phase2},
-              qubit_{qubit}
+              permutated_qubit_{permutated_qubit}
           { }
 
           template <typename RandomAccessIterator>
           void operator()(
-            RandomAccessIterator const first,
-            RandomAccessIterator const last) const
+            RandomAccessIterator const first, RandomAccessIterator const last) const
           {
             ::ket::gate::adj_phase_shift2(
-              parallel_policy_, first, last, phase1_, phase2_, qubit_);
+              parallel_policy_, first, last, phase1_, phase2_, permutated_qubit_.qubit());
           }
         }; // struct call_adj_phase_shift2<ParallelPolicy, Real, Qubit>
 
@@ -968,11 +967,8 @@ namespace ket
         inline call_adj_phase_shift2<ParallelPolicy, Real, Qubit>
         make_call_adj_phase_shift2(
           ParallelPolicy const parallel_policy,
-          Real const phase1, Real const phase2, Qubit const qubit)
-        {
-          return call_adj_phase_shift2<ParallelPolicy, Real, Qubit>{
-            parallel_policy, phase1, phase2, qubit};
-        }
+          Real const phase1, Real const phase2, ::ket::mpi::permutated<Qubit> const permutated_qubit)
+        { return {parallel_policy, phase1, phase2, permutated_qubit}; }
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 
         template <
@@ -987,25 +983,25 @@ namespace ket
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
           yampi::communicator const& communicator, yampi::environment const& environment)
         {
-          if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))
+          auto const permutated_qubit = permutation[qubit];
+          if (::ket::mpi::page::is_on_page(permutated_qubit, local_state))
             return ::ket::mpi::gate::page::adj_phase_shift2(
-              parallel_policy, local_state, phase1, phase2, qubit, permutation);
+              parallel_policy, local_state, phase1, phase2, permutated_qubit);
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
-          auto const permutated_qubit = permutation[qubit];
           return ::ket::mpi::utility::for_each_local_range(
             mpi_policy, local_state, communicator, environment,
             [parallel_policy, phase1, phase2, permutated_qubit](
               auto const first, auto const last)
             {
               ::ket::gate::adj_phase_shift2(
-                parallel_policy, first, last, phase1, phase2, permutated_qubit);
+                parallel_policy, first, last, phase1, phase2, permutated_qubit.qubit());
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::utility::for_each_local_range(
             mpi_policy, local_state, communicator, environment,
             ::ket::mpi::gate::phase_shift_detail::make_call_adj_phase_shift2(
-              parallel_policy, phase1, phase2, permutation[qubit]));
+              parallel_policy, phase1, phase2, permutated_qubit));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }
 
@@ -1194,25 +1190,25 @@ namespace ket
           Real phase1_;
           Real phase2_;
           Real phase3_;
-          Qubit qubit_;
+          ::ket::mpi::permutated<Qubit> permutated_qubit_;
 
           call_phase_shift3(
             ParallelPolicy const parallel_policy,
-            Real const phase1, Real const phase2, Real const phase3, Qubit const qubit)
+            Real const phase1, Real const phase2, Real const phase3,
+            ::ket::mpi::permutated<Qubit> const permutated_qubit)
             : parallel_policy_{parallel_policy},
               phase1_{phase1},
               phase2_{phase2},
               phase3_{phase3},
-              qubit_{qubit}
+              permutated_qubit_{permutated_qubit}
           { }
 
           template <typename RandomAccessIterator>
           void operator()(
-            RandomAccessIterator const first,
-            RandomAccessIterator const last) const
+            RandomAccessIterator const first, RandomAccessIterator const last) const
           {
             ::ket::gate::phase_shift3(
-              parallel_policy_, first, last, phase1_, phase2_, phase3_, qubit_);
+              parallel_policy_, first, last, phase1_, phase2_, phase3_, permutated_qubit_.qubit());
           }
         }; // struct call_phase_shift3<ParallelPolicy, Real, Qubit>
 
@@ -1220,11 +1216,9 @@ namespace ket
         inline call_phase_shift3<ParallelPolicy, Real, Qubit>
         make_call_phase_shift3(
           ParallelPolicy const parallel_policy,
-          Real const phase1, Real const phase2, Real const phase3, Qubit const qubit)
-        {
-          return call_phase_shift3<ParallelPolicy, Real, Qubit>{
-            parallel_policy, phase1, phase2, phase3, qubit};
-        }
+          Real const phase1, Real const phase2, Real const phase3,
+          ::ket::mpi::permutated<Qubit> const permutated_qubit)
+        { return {parallel_policy, phase1, phase2, phase3, permutated_qubit}; }
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 
         template <
@@ -1239,25 +1233,25 @@ namespace ket
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
           yampi::communicator const& communicator, yampi::environment const& environment)
         {
-          if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))
+          auto const permutated_qubit = permutation[qubit];
+          if (::ket::mpi::page::is_on_page(permutated_qubit, local_state))
             return ::ket::mpi::gate::page::phase_shift3(
-              parallel_policy, local_state, phase1, phase2, phase3, qubit, permutation);
+              parallel_policy, local_state, phase1, phase2, phase3, permutated_qubit);
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
-          auto const permutated_qubit = permutation[qubit];
           return ::ket::mpi::utility::for_each_local_range(
             mpi_policy, local_state, communicator, environment,
             [parallel_policy, phase1, phase2, phase3, permutated_qubit](
               auto const first, auto const last)
             {
               ::ket::gate::phase_shift3(
-                parallel_policy, first, last, phase1, phase2, phase3, permutated_qubit);
+                parallel_policy, first, last, phase1, phase2, phase3, permutated_qubit.qubit());
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::utility::for_each_local_range(
             mpi_policy, local_state, communicator, environment,
             ::ket::mpi::gate::phase_shift_detail::make_call_phase_shift3(
-              parallel_policy, phase1, phase2, phase3, permutation[qubit]));
+              parallel_policy, phase1, phase2, phase3, permutated_qubit));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }
 
@@ -1452,25 +1446,25 @@ namespace ket
           Real phase1_;
           Real phase2_;
           Real phase3_;
-          Qubit qubit_;
+          ::ket::mpi::permutated<Qubit> permutated_qubit_;
 
           call_adj_phase_shift3(
             ParallelPolicy const parallel_policy,
-            Real const phase1, Real const phase2, Real const phase3, Qubit const qubit)
+            Real const phase1, Real const phase2, Real const phase3,
+            ::ket::mpi::permutated<Qubit> const permutated_qubit)
             : parallel_policy_{parallel_policy},
               phase1_{phase1},
               phase2_{phase2},
               phase3_{phase3},
-              qubit_{qubit}
+              permutated_qubit_{permutated_qubit}
           { }
 
           template <typename RandomAccessIterator>
           void operator()(
-            RandomAccessIterator const first,
-            RandomAccessIterator const last) const
+            RandomAccessIterator const first, RandomAccessIterator const last) const
           {
             ::ket::gate::adj_phase_shift3(
-              parallel_policy_, first, last, phase1_, phase2_, phase3_, qubit_);
+              parallel_policy_, first, last, phase1_, phase2_, phase3_, permutated_qubit_.qubit());
           }
         }; // struct call_adj_phase_shift3<ParallelPolicy, Real, Qubit>
 
@@ -1478,11 +1472,9 @@ namespace ket
         inline call_adj_phase_shift3<ParallelPolicy, Real, Qubit>
         make_call_adj_phase_shift3(
           ParallelPolicy const parallel_policy,
-          Real const phase1, Real const phase2, Real const phase3, Qubit const qubit)
-        {
-          return call_adj_phase_shift3<ParallelPolicy, Real, Qubit>{
-            parallel_policy, phase1, phase2, phase3, qubit};
-        }
+          Real const phase1, Real const phase2, Real const phase3,
+          ::ket::mpi::permutated<Qubit> const permutated_qubit)
+        { return {parallel_policy, phase1, phase2, phase3, permutated_qubit}; }
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 
         template <
@@ -1497,25 +1489,25 @@ namespace ket
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
           yampi::communicator const& communicator, yampi::environment const& environment)
         {
-          if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))
+          auto const permutated_qubit = permutation[qubit];
+          if (::ket::mpi::page::is_on_page(permutated_qubit, local_state))
             return ::ket::mpi::gate::page::adj_phase_shift3(
-              parallel_policy, local_state, phase1, phase2, phase3, qubit, permutation);
+              parallel_policy, local_state, phase1, phase2, phase3, permutated_qubit);
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
-          auto const permutated_qubit = permutation[qubit];
           return ::ket::mpi::utility::for_each_local_range(
             mpi_policy, local_state, communicator, environment,
             [parallel_policy, phase1, phase2, phase3, permutated_qubit](
               auto const first, auto const last)
             {
               ::ket::gate::adj_phase_shift3(
-                parallel_policy, first, last, phase1, phase2, phase3, permutated_qubit);
+                parallel_policy, first, last, phase1, phase2, phase3, permutated_qubit.qubit());
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::utility::for_each_local_range(
             mpi_policy, local_state, communicator, environment,
             ::ket::mpi::gate::phase_shift_detail::make_call_adj_phase_shift3(
-              parallel_policy, phase1, phase2, phase3, permutation[qubit]));
+              parallel_policy, phase1, phase2, phase3, permutated_qubit));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }
 

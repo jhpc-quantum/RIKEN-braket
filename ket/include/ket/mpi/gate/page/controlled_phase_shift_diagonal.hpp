@@ -5,7 +5,7 @@
 
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
-# include <ket/mpi/qubit_permutation.hpp>
+# include <ket/mpi/permutated.hpp>
 # include <ket/mpi/state.hpp>
 # include <ket/mpi/gate/page/detail/two_page_qubits_gate.hpp>
 # include <ket/mpi/gate/page/detail/controlled_phase_shift_coeff_tp_diagonal.hpp>
@@ -49,27 +49,24 @@ namespace ket
 
         template <
           typename ParallelPolicy,
-          typename RandomAccessRange, typename Complex,
-          typename StateInteger, typename BitInteger, typename PermutationAllocator>
+          typename RandomAccessRange, typename Complex, typename StateInteger, typename BitInteger>
         inline RandomAccessRange& controlled_phase_shift_coeff_tcp(
           ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           Complex const& phase_coefficient,
-          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-          ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit,
-          ::ket::mpi::qubit_permutation<
-            StateInteger, BitInteger, PermutationAllocator> const& permutation)
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
+          ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit)
         {
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::two_page_qubits_gate<0u>(
-            parallel_policy, local_state, target_qubit, control_qubit, permutation,
+            parallel_policy, local_state, permutated_target_qubit, permutated_control_qubit,
             [phase_coefficient](
               auto const, auto const, auto const, auto const first_11,
               StateInteger const index, int const)
             { *(first_11 + index) *= phase_coefficient; });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::two_page_qubits_gate<0u>(
-            parallel_policy, local_state, target_qubit, control_qubit, permutation,
+            parallel_policy, local_state, permutated_target_qubit, permutated_control_qubit,
             ::ket::mpi::gate::page::controlled_phase_shift_detail::make_controlled_phase_shift_coeff_tcp(phase_coefficient));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }
@@ -77,43 +74,37 @@ namespace ket
         // tp: only target qubit is on page
         template <
           typename MpiPolicy, typename ParallelPolicy,
-          typename RandomAccessRange, typename Complex,
-          typename StateInteger, typename BitInteger, typename PermutationAllocator>
+          typename RandomAccessRange, typename Complex, typename StateInteger, typename BitInteger>
         inline RandomAccessRange& controlled_phase_shift_coeff_tp(
           MpiPolicy const& mpi_policy,
           ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           Complex const& phase_coefficient,
-          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-          ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit,
-          ::ket::mpi::qubit_permutation<
-            StateInteger, BitInteger, PermutationAllocator> const& permutation,
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
+          ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit,
           yampi::rank const rank)
         {
           return ::ket::mpi::gate::page::detail::controlled_phase_shift_coeff_tp(
-            mpi_policy, parallel_policy, local_state, phase_coefficient, target_qubit, control_qubit,
-            permutation, rank);
+            mpi_policy, parallel_policy, local_state,
+            phase_coefficient, permutated_target_qubit, permutated_control_qubit, rank);
         }
 
         // cp: only control qubit is on page
         template <
           typename MpiPolicy, typename ParallelPolicy,
-          typename RandomAccessRange, typename Complex,
-          typename StateInteger, typename BitInteger, typename PermutationAllocator>
+          typename RandomAccessRange, typename Complex, typename StateInteger, typename BitInteger>
         inline RandomAccessRange& controlled_phase_shift_coeff_cp(
           MpiPolicy const& mpi_policy,
           ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           Complex const& phase_coefficient,
-          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-          ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit,
-          ::ket::mpi::qubit_permutation<
-            StateInteger, BitInteger, PermutationAllocator> const& permutation,
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
+          ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit,
           yampi::rank const rank)
         {
           return ::ket::mpi::gate::page::detail::controlled_phase_shift_coeff_cp(
-            mpi_policy, parallel_policy, local_state, phase_coefficient, target_qubit, control_qubit,
-            permutation, rank);
+            mpi_policy, parallel_policy, local_state,
+            phase_coefficient, permutated_target_qubit, permutated_control_qubit, rank);
         }
       } // namespace page
     } // namespage gate

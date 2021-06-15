@@ -50,9 +50,9 @@ namespace ket
         assert(
           ::ket::utility::integer_exp2<StateInteger>(target_qubit)
             < static_cast<StateInteger>(last - first)
-          and ::ket::utility::integer_exp2<StateInteger>(control_qubit.qubit())
+          and ::ket::utility::integer_exp2<StateInteger>(control_qubit)
                 < static_cast<StateInteger>(last - first)
-          and target_qubit != control_qubit.qubit());
+          and target_qubit != control_qubit);
         assert(
           ::ket::utility::integer_exp2<StateInteger>(
             ::ket::utility::integer_log2<BitInteger>(last - first))
@@ -64,8 +64,7 @@ namespace ket
 
         auto const minmax_qubits = std::minmax(target_qubit, control_qubit.qubit());
         auto const target_qubit_mask = ::ket::utility::integer_exp2<StateInteger>(target_qubit);
-        auto const control_qubit_mask
-          = ::ket::utility::integer_exp2<StateInteger>(control_qubit.qubit());
+        auto const control_qubit_mask = ::ket::utility::integer_exp2<StateInteger>(control_qubit);
         auto const lower_bits_mask
           = ::ket::utility::integer_exp2<StateInteger>(minmax_qubits.first) - StateInteger{1u};
         auto const middle_bits_mask

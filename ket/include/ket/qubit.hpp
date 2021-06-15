@@ -16,11 +16,11 @@ namespace ket
     using bit_integer_type = BitInteger;
     using state_integer_type = StateInteger;
 
-    constexpr qubit() noexcept : bit_(0u) { }
+    constexpr qubit() noexcept : bit_{0u} { }
 
     template <typename BitInteger_>
     explicit constexpr qubit(BitInteger_ const bit) noexcept
-      : bit_(static_cast<BitInteger>(bit))
+      : bit_{static_cast<BitInteger>(bit)}
     { }
 
     explicit operator BitInteger() const { return bit_; }
@@ -28,14 +28,14 @@ namespace ket
     qubit& operator++() noexcept { ++bit_; return *this; }
     qubit operator++(int) noexcept
     {
-      qubit result = *this;
+      auto result = *this;
       ++(*this);
       return result;
     }
     qubit& operator--() noexcept { --bit_; return *this; }
     qubit operator--(int) noexcept
     {
-      qubit result = *this;
+      auto result = *this;
       --(*this);
       return result;
     }

@@ -5,7 +5,6 @@
 
 # include <array>
 # include <ios>
-# include <sstream>
 # include <iterator>
 # include <type_traits>
 
@@ -44,23 +43,21 @@ namespace ket
       struct call_spin_expectation_value
       {
         ParallelPolicy parallel_policy_;
-        Qubit qubit_;
+        ::ket::mpi::permutated<Qubit> permutated_qubit_;
         Spin& spin_;
 
         call_spin_expectation_value(
-          ParallelPolicy const parallel_policy, Qubit const qubit, Spin& spin)
-          : parallel_policy_(parallel_policy),
-            qubit_(qubit),
-            spin_(spin)
+          ParallelPolicy const parallel_policy, ::ket::mpi::permutated<Qubit> const permutated_qubit, Spin& spin)
+          : parallel_policy_{parallel_policy},
+            permutated_qubit_{permutated_qubit},
+            spin_{spin}
         { }
 
         template <typename RandomAccessIterator>
-        void operator()(
-          RandomAccessIterator const first,
-          RandomAccessIterator const last) const
+        void operator()(RandomAccessIterator const first, RandomAccessIterator const last) const
         {
           auto const local_spin
-            = ::ket::spin_expectation_value(parallel_policy_, first, last, qubit_);
+            = ::ket::spin_expectation_value(parallel_policy_, first, last, permutated_qubit_.qubit());
           spin_[0u] += local_spin[0u];
           spin_[1u] += local_spin[1u];
           spin_[2u] += local_spin[2u];
@@ -69,11 +66,8 @@ namespace ket
 
       template <typename ParallelPolicy, typename Qubit, typename Spin>
       inline call_spin_expectation_value<ParallelPolicy, Qubit, Spin> make_call_spin_expectation_value(
-        ParallelPolicy const parallel_policy, Qubit const qubit, Spin& spin)
-      {
-        return call_spin_expectation_value<ParallelPolicy, Qubit, Spin>{
-          parallel_policy, qubit, spin};
-      }
+        ParallelPolicy const parallel_policy, ::ket::mpi::permutated<Qubit> const permutated_qubit, Spin& spin)
+      { return call_spin_expectation_value<ParallelPolicy, Qubit, Spin>{parallel_policy, permutated_qubit, spin}; }
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
     } // namespace spin_expectation_value_detail
 
@@ -110,19 +104,19 @@ namespace ket
       using spin_type = std::array<real_type, 3u>;
       auto spin = spin_type{};
 
-      if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))
+      auto const permutated_qubit = permutation[qubit];
+      if (::ket::mpi::page::is_on_page(permutated_qubit, local_state))
         spin
-          = ::ket::mpi::page::spin_expectation_value(
-              parallel_policy, local_state, qubit, permutation);
+          = ::ket::mpi::page::spin_expectation_value(parallel_policy, local_state, permutated_qubit);
       else
       {
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
         ::ket::mpi::utility::for_each_local_range(
           mpi_policy, local_state, communicator, environment,
-          [parallel_policy, qubit, &permutation, &spin](auto const first, auto const last)
+          [parallel_policy, permutated_qubit, &spin](auto const first, auto const last)
           {
             auto const local_spin
-              = ::ket::spin_expectation_value(parallel_policy, first, last, permutation[qubit]);
+              = ::ket::spin_expectation_value(parallel_policy, first, last, permutated_qubit.qubit());
             spin[0u] += local_spin[0u];
             spin[1u] += local_spin[1u];
             spin[2u] += local_spin[2u];
@@ -131,7 +125,7 @@ namespace ket
         ::ket::mpi::utility::for_each_local_range(
           mpi_policy, local_state, communicator, environment,
           ::ket::mpi::spin_expectation_value_detail::make_call_spin_expectation_value(
-            parallel_policy, permutation[qubit], spin));
+            parallel_policy, permutated_qubit, spin));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
       }
 
@@ -179,19 +173,20 @@ namespace ket
       using spin_type = std::array<real_type, 3u>;
       auto spin = spin_type{};
 
-      if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))
+      auto const permutated_qubit = permutation[qubit];
+      if (::ket::mpi::page::is_on_page(permutated_qubit, local_state))
         spin
           = ::ket::mpi::page::spin_expectation_value(
-              parallel_policy, local_state, qubit, permutation);
+              parallel_policy, local_state, permutated_qubit);
       else
       {
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
         ::ket::mpi::utility::for_each_local_range(
           mpi_policy, local_state, communicator, environment,
-          [parallel_policy, qubit, &permutation, &spin](auto const first, auto const last)
+          [parallel_policy, permutated_qubit, &spin](auto const first, auto const last)
           {
             auto const local_spin
-              = ::ket::spin_expectation_value(parallel_policy, first, last, permutation[qubit]);
+              = ::ket::spin_expectation_value(parallel_policy, first, last, permutated_qubit.qubit());
             spin[0u] += local_spin[0u];
             spin[1u] += local_spin[1u];
             spin[2u] += local_spin[2u];
@@ -200,7 +195,7 @@ namespace ket
         ::ket::mpi::utility::for_each_local_range(
           mpi_policy, local_state, communicator, environment,
           ::ket::mpi::spin_expectation_value_detail::make_call_spin_expectation_value(
-            parallel_policy, permutation[qubit], spin));
+            parallel_policy, permutated_qubit, spin));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
       }
 
@@ -353,19 +348,19 @@ namespace ket
       using spin_type = std::array<real_type, 3u>;
       auto spin = spin_type{};
 
-      if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))
+      auto const permutated_qubit = permutation[qubit];
+      if (::ket::mpi::page::is_on_page(permutated_qubit, local_state))
         spin
-          = ::ket::mpi::page::spin_expectation_value(
-              parallel_policy, local_state, qubit, permutation);
+          = ::ket::mpi::page::spin_expectation_value(parallel_policy, local_state, permutated_qubit);
       else
       {
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
         ::ket::mpi::utility::for_each_local_range(
           mpi_policy, local_state, communicator, environment,
-          [parallel_policy, qubit, &permutation, &spin](auto const first, auto const last)
+          [parallel_policy, permutated_qubit, &spin](auto const first, auto const last)
           {
             auto const local_spin
-              = ::ket::spin_expectation_value(parallel_policy, first, last, permutation[qubit]);
+              = ::ket::spin_expectation_value(parallel_policy, first, last, permutated_qubit.qubit());
             spin[0u] += local_spin[0u];
             spin[1u] += local_spin[1u];
             spin[2u] += local_spin[2u];
@@ -374,7 +369,7 @@ namespace ket
         ::ket::mpi::utility::for_each_local_range(
           mpi_policy, local_state, communicator, environment,
           ::ket::mpi::spin_expectation_value_detail::make_call_spin_expectation_value(
-            parallel_policy, permutation[qubit], spin));
+            parallel_policy, permutated_qubit, spin));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
       }
 
@@ -427,19 +422,19 @@ namespace ket
       using spin_type = std::array<real_type, 3u>;
       auto spin = spin_type{};
 
-      if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))
+      auto const permutated_qubit = permutation[qubit];
+      if (::ket::mpi::page::is_on_page(permutated_qubit, local_state))
         spin
-          = ::ket::mpi::page::spin_expectation_value(
-              parallel_policy, local_state, qubit, permutation);
+          = ::ket::mpi::page::spin_expectation_value(parallel_policy, local_state, permutated_qubit);
       else
       {
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
         ::ket::mpi::utility::for_each_local_range(
           mpi_policy, local_state, communicator, environment,
-          [parallel_policy, qubit, &permutation, &spin](auto const first, auto const last)
+          [parallel_policy, permutated_qubit, &spin](auto const first, auto const last)
           {
             auto const local_spin
-              = ::ket::spin_expectation_value(parallel_policy, first, last, permutation[qubit]);
+              = ::ket::spin_expectation_value(parallel_policy, first, last, permutated_qubit.qubit());
             spin[0u] += local_spin[0u];
             spin[1u] += local_spin[1u];
             spin[2u] += local_spin[2u];
@@ -448,7 +443,7 @@ namespace ket
         ::ket::mpi::utility::for_each_local_range(
           mpi_policy, local_state, communicator, environment,
           ::ket::mpi::spin_expectation_value_detail::make_call_spin_expectation_value(
-            parallel_policy, permutation[qubit], spin));
+            parallel_policy, permutated_qubit, spin));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
       }
 

@@ -1,20 +1,25 @@
 #ifndef KET_MPI_UTILITY_LOGGER_HPP
 # define KET_MPI_UTILITY_LOGGER_HPP
 
-# include <iostream>
-# include <sstream>
+# ifdef KET_PRINT_LOG
+#   include <iostream>
+#   include <sstream>
+#   include <utility>
+# endif // KET_PRINT_LOG
 # include <string>
-# include <utility>
+# include <memory>
 
 # ifdef KET_PRINT_LOG
 #   include <boost/optional.hpp>
 # endif // KET_PRINT_LOG
 
 # include <yampi/environment.hpp>
-# include <yampi/rank.hpp>
-# include <yampi/communicator.hpp>
-# include <yampi/wall_clock.hpp>
-# include <yampi/lowest_io_process.hpp>
+# ifdef KET_PRINT_LOG
+#   include <yampi/rank.hpp>
+#   include <yampi/communicator.hpp>
+#   include <yampi/wall_clock.hpp>
+#   include <yampi/lowest_io_process.hpp>
+# endif // KET_PRINT_LOG
 
 
 namespace ket
@@ -327,8 +332,8 @@ namespace ket
 
       template <typename Character, typename CharacterTraits, typename Allocator, typename... Values>
       inline std::basic_string<Character, CharacterTraits, Allocator>
-      generate_logger_string(std::basic_string<Character, CharacterTraits, Allocator> const& base_string, Values&&...)
-      { return base_string; }
+      generate_logger_string(std::basic_string<Character, CharacterTraits, Allocator> const&, Values&&...)
+      { return {}; }
 # endif // KET_PRINT_LOG
     } // namespace utility
   } // namespace mpi

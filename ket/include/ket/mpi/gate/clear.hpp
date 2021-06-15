@@ -5,8 +5,6 @@
 
 # include <vector>
 # include <array>
-# include <ios>
-# include <sstream>
 
 # include <boost/range/value_type.hpp>
 
@@ -15,8 +13,11 @@
 # include <yampi/communicator.hpp>
 
 # include <ket/qubit.hpp>
-# include <ket/qubit_io.hpp>
+# ifdef KET_PRINT_LOG
+#   include <ket/qubit_io.hpp>
+# endif // KET_PRINT_LOG
 # include <ket/gate/clear.hpp>
+# include <ket/mpi/permutated.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
 # include <ket/mpi/utility/for_each_local_range.hpp>
@@ -38,24 +39,24 @@ namespace ket
         struct call_clear
         {
           ParallelPolicy parallel_policy_;
-          Qubit qubit_;
+          ::ket::mpi::permutated<Qubit> permutated_qubit_;
 
-          call_clear(ParallelPolicy const parallel_policy, Qubit const qubit)
+          call_clear(ParallelPolicy const parallel_policy, ::ket::mpi::permutated<Qubit> const permutated_qubit)
             : parallel_policy_{parallel_policy},
-              qubit_{qubit}
+              permutated_qubit_{permutated_qubit}
           { }
 
           template <typename RandomAccessIterator>
           void operator()(
             RandomAccessIterator const first,
             RandomAccessIterator const last) const
-          { ::ket::gate::clear(parallel_policy_, first, last, qubit_); }
+          { ::ket::gate::clear(parallel_policy_, first, last, permutated_qubit_.qubit()); }
         }; // struct call_clear<ParallelPolicy, Qubit>
 
         template <typename ParallelPolicy, typename Qubit>
         inline call_clear<ParallelPolicy, Qubit> make_call_clear(
-          ParallelPolicy const parallel_policy, Qubit const qubit)
-        { return call_clear<ParallelPolicy, Qubit>{parallel_policy, qubit}; }
+          ParallelPolicy const parallel_policy, ::ket::mpi::permutated<Qubit> const permutated_qubit)
+        { return {parallel_policy, permutated_qubit}; }
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 
         template <
@@ -68,20 +69,19 @@ namespace ket
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
           yampi::communicator const& communicator, yampi::environment const& environment)
         {
-          if (::ket::mpi::page::is_on_page(qubit, local_state, permutation))
-            return ::ket::mpi::gate::page::clear(parallel_policy, local_state, qubit, permutation);
+          auto const permutated_qubit = permutation[qubit];
+          if (::ket::mpi::page::is_on_page(permutated_qubit, local_state))
+            return ::ket::mpi::gate::page::clear(parallel_policy, local_state, permutated_qubit);
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
-          auto const permutated_qubit = permutation[qubit];
           return ::ket::mpi::utility::for_each_local_range(
             mpi_policy, local_state, communicator, environment,
             [parallel_policy, permutated_qubit](auto const first, auto const last)
-            { ::ket::gate::clear(parallel_policy, first, last, permutated_qubit); });
+            { ::ket::gate::clear(parallel_policy, first, last, permutated_qubit.qubit()); });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::utility::for_each_local_range(
             mpi_policy, local_state, communicator, environment,
-            ::ket::mpi::gate::clear_detail::make_call_clear(
-              parallel_policy, permutation[qubit]));
+            ::ket::mpi::gate::clear_detail::make_call_clear(parallel_policy, permutated_qubit));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }
       } // namespace clear_detail

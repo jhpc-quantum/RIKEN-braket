@@ -40,13 +40,13 @@ namespace ket
         assert(
           ::ket::utility::integer_exp2<StateInteger>(target_qubit)
             < static_cast<StateInteger>(last - first)
-          and ::ket::utility::integer_exp2<StateInteger>(control_qubit1.qubit())
+          and ::ket::utility::integer_exp2<StateInteger>(control_qubit1)
                 < static_cast<StateInteger>(last - first)
-          and ::ket::utility::integer_exp2<StateInteger>(control_qubit2.qubit())
+          and ::ket::utility::integer_exp2<StateInteger>(control_qubit2)
                 < static_cast<StateInteger>(last - first)
-          and target_qubit != control_qubit1.qubit()
-          and target_qubit != control_qubit2.qubit()
-          and control_qubit1.qubit() != control_qubit2.qubit());
+          and target_qubit != control_qubit1
+          and target_qubit != control_qubit2
+          and control_qubit1 != control_qubit2);
         assert(
           ::ket::utility::integer_exp2<StateInteger>(
             ::ket::utility::integer_log2<BitInteger>(last - first))
@@ -60,8 +60,8 @@ namespace ket
         auto const target_qubit_mask
           = ::ket::utility::integer_exp2<StateInteger>(target_qubit);
         auto const control_qubits_mask
-          = ::ket::utility::integer_exp2<StateInteger>(control_qubit1.qubit())
-            bitor ::ket::utility::integer_exp2<StateInteger>(control_qubit2.qubit());
+          = ::ket::utility::integer_exp2<StateInteger>(control_qubit1)
+            bitor ::ket::utility::integer_exp2<StateInteger>(control_qubit2);
 
         auto bits_mask = std::array<StateInteger, 4u>{};
         bits_mask[0u]

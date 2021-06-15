@@ -5,6 +5,7 @@
 
 # include <ket/qubit.hpp>
 # include <ket/qubit_io.hpp>
+# include <ket/mpi/permutated_io.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 
 

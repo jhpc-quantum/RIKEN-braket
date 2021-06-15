@@ -12,6 +12,7 @@
 
 # include <ket/qubit.hpp>
 # include <ket/utility/contains.hpp>
+# include <ket/mpi/permutated.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/detail/swap_permutated_local_qubits.hpp>
 
@@ -34,7 +35,7 @@ namespace ket
           LocalState& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
           UnswappableQubits const& unswappable_qubits,
-          ::ket::qubit<StateInteger, BitInteger> const permutated_local_swap_qubit,
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_local_swap_qubit,
           StateInteger const num_data_blocks, StateInteger const data_block_size,
           yampi::communicator const& communicator, yampi::environment const& environment)
         {

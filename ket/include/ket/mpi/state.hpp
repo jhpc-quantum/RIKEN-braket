@@ -32,8 +32,10 @@
 # include <yampi/algorithm/swap.hpp>
 
 # include <ket/qubit.hpp>
+# include <ket/control.hpp>
 # include <ket/utility/integer_exp2.hpp>
 # include <ket/utility/loop_n.hpp>
+# include <ket/mpi/permutated.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
@@ -296,13 +298,6 @@ namespace ket
       page_range_type const& buffer_range() const
       { return buffer_range_; }
 
-      template <typename StateInteger, typename BitInteger>
-      bool is_page_qubit(::ket::qubit<StateInteger, BitInteger> const permutated_qubit) const
-      {
-        return static_cast<BitInteger>(permutated_qubit) >= num_local_qubits_ - num_page_qubits
-          and static_cast<BitInteger>(permutated_qubit) < num_local_qubits_;
-      }
-
       std::size_t num_local_qubits() const { return num_local_qubits_; }
       std::size_t num_data_blocks() const { return num_data_blocks_; }
 
@@ -490,6 +485,23 @@ namespace ket
       }
     }; // class state<Complex, num_page_qubits, Allocator>
 
+    template <typename StateInteger, typename BitInteger, typename Complex, int num_page_qubits, typename Allocator>
+    inline bool is_page_qubit(
+      ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit,
+      ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state)
+    {
+      auto const num_local_qubits = static_cast<BitInteger>(local_state.num_local_qubits());
+      return
+        permutated_qubit >= ::ket::mpi::make_permutated(::ket::make_qubit<StateInteger>(num_local_qubits - static_cast<BitInteger>(num_page_qubits)))
+        and permutated_qubit < ::ket::mpi::make_permutated(::ket::make_qubit<StateInteger>(num_local_qubits));
+    }
+
+    template <typename StateInteger, typename BitInteger, typename Complex, int num_page_qubits, typename Allocator>
+    inline bool is_page_qubit(
+      ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit,
+      ::ket::mpi::state<Complex, num_page_qubits, Allocator> const& local_state)
+    { return ::ket::mpi::is_page_qubit(::ket::mpi::remove_control(permutated_control_qubit), local_state); }
+
     namespace state_detail
     {
       template <
@@ -497,27 +509,25 @@ namespace ket
         typename StateInteger, typename BitInteger>
       void interpage_swap(
         ::ket::mpi::state<Complex, num_page_qubits, Allocator>& local_state,
-        ::ket::qubit<StateInteger, BitInteger> const permutated_qubit1,
-        ::ket::qubit<StateInteger, BitInteger> const permutated_qubit2)
+        ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit1,
+        ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit2)
       {
         static_assert(num_page_qubits >= 2, "num_page_qubits should be at least 2 if using this function");
-        assert(local_state.is_page_qubit(permutated_qubit1) and local_state.is_page_qubit(permutated_qubit2));
+        assert(::ket::mpi::is_page_qubit(permutated_qubit1, local_state) and ::ket::mpi::is_page_qubit(permutated_qubit2, local_state));
         assert(permutated_qubit1 != permutated_qubit2);
 
         auto const num_nonpage_local_qubits
           = static_cast<BitInteger>(local_state.num_local_qubits() - num_page_qubits);
-        auto const minmax_qubits = std::minmax(permutated_qubit1, permutated_qubit2);
-        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+        auto const minmax_permutated_qubits = std::minmax(permutated_qubit1, permutated_qubit2);
         auto const lower_bits_mask
-          = ::ket::utility::integer_exp2<StateInteger>(minmax_qubits.first - static_cast<qubit_type>(num_nonpage_local_qubits))
+          = ::ket::utility::integer_exp2<StateInteger>(minmax_permutated_qubits.first - num_nonpage_local_qubits)
             - StateInteger{1u};
         auto const middle_bits_mask
           = (::ket::utility::integer_exp2<StateInteger>(
-               minmax_qubits.second - static_cast<qubit_type>(num_nonpage_local_qubits + 1u))
+               minmax_permutated_qubits.second - (num_nonpage_local_qubits + BitInteger{1u}))
              - StateInteger{1u})
             xor lower_bits_mask;
-        auto const upper_bits_mask
-          = compl (lower_bits_mask bitor middle_bits_mask);
+        auto const upper_bits_mask = compl (lower_bits_mask bitor middle_bits_mask);
 
         for (auto value_wo_qubits = StateInteger{0u};
              value_wo_qubits < ::ket::utility::integer_exp2<StateInteger>(static_cast<StateInteger>(num_page_qubits - 2));
@@ -528,13 +538,9 @@ namespace ket
               bitor ((value_wo_qubits bitand middle_bits_mask) << 1u)
               bitor (value_wo_qubits bitand lower_bits_mask);
           auto const page_index1
-            = base_page_index
-              bitor (StateInteger{1u}
-                     << (permutated_qubit1 - static_cast<qubit_type>(num_nonpage_local_qubits)));
+            = base_page_index bitor (StateInteger{1u} << (permutated_qubit1 - num_nonpage_local_qubits));
           auto const page_index2
-            = base_page_index
-              bitor (StateInteger{1u}
-                     << (permutated_qubit2 - static_cast<qubit_type>(num_nonpage_local_qubits)));
+            = base_page_index bitor (StateInteger{1u} << (permutated_qubit2 - num_nonpage_local_qubits));
 
           for (auto data_block_index = StateInteger{0u};
                data_block_index < local_state.num_data_blocks(); ++data_block_index)
@@ -550,27 +556,29 @@ namespace ket
       void swap_page_and_nonpage_qubits(
         ParallelPolicy const parallel_policy,
         ::ket::mpi::state<Complex, num_page_qubits, Allocator>& local_state,
-        ::ket::qubit<StateInteger, BitInteger> const permutated_qubit1,
-        ::ket::qubit<StateInteger, BitInteger> const permutated_qubit2)
+        ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit1,
+        ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit2)
       {
         static_assert(num_page_qubits >= 1, "num_page_qubits should be at least 1 if using this function");
         assert(
-          (local_state.is_page_qubit(permutated_qubit1) and (not local_state.is_page_qubit(permutated_qubit2)))
-          or ((not local_state.is_page_qubit(permutated_qubit1)) and local_state.is_page_qubit(permutated_qubit2)));
-        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-        assert(permutated_qubit1 < static_cast<qubit_type>(local_state.num_local_qubits()));
-        assert(permutated_qubit2 < static_cast<qubit_type>(local_state.num_local_qubits()));
+          (::ket::mpi::is_page_qubit(permutated_qubit1, local_state) and (not ::ket::mpi::is_page_qubit(permutated_qubit2, local_state)))
+          or ((not ::ket::mpi::is_page_qubit(permutated_qubit1, local_state)) and ::ket::mpi::is_page_qubit(permutated_qubit2, local_state)));
+# ifndef NDEBUG
+        using permutated_qubit_type = ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >;
+# endif
+        assert(permutated_qubit1 < permutated_qubit_type{local_state.num_local_qubits()});
+        assert(permutated_qubit2 < permutated_qubit_type{local_state.num_local_qubits()});
 
         auto const num_nonpage_local_qubits
           = static_cast<BitInteger>(local_state.num_local_qubits() - num_page_qubits);
-        auto const minmax_qubits = std::minmax(permutated_qubit1, permutated_qubit2);
+        auto const minmax_permutated_qubits = std::minmax(permutated_qubit1, permutated_qubit2);
         auto const nonpage_lower_bits_mask
-          = ::ket::utility::integer_exp2<StateInteger>(minmax_qubits.first) - StateInteger{1u};
+          = ::ket::utility::integer_exp2<StateInteger>(minmax_permutated_qubits.first) - StateInteger{1u};
         auto const nonpage_upper_bits_mask
           = (::ket::utility::integer_exp2<StateInteger>(num_nonpage_local_qubits - 1u) - StateInteger{1u})
             xor nonpage_lower_bits_mask;
         auto const page_lower_bits_mask
-          = ::ket::utility::integer_exp2<StateInteger>(minmax_qubits.second - static_cast<qubit_type>(num_nonpage_local_qubits))
+          = ::ket::utility::integer_exp2<StateInteger>(minmax_permutated_qubits.second - num_nonpage_local_qubits)
             - StateInteger{1u};
         auto const page_upper_bits_mask
           = (::ket::utility::integer_exp2<StateInteger>(num_page_qubits - 1u) - StateInteger{1u})
@@ -584,7 +592,7 @@ namespace ket
             = ((page_value_wo_qubits bitand page_upper_bits_mask) << 1u)
               bitor (page_value_wo_qubits bitand page_lower_bits_mask);
           auto const page_index1
-            = (StateInteger{1u} << (minmax_qubits.second - static_cast<qubit_type>(num_nonpage_local_qubits)))
+            = (StateInteger{1u} << (minmax_permutated_qubits.second - num_nonpage_local_qubits))
               bitor page_index0;
 
           for (auto nonpage_value_wo_qubits = StateInteger{0u};
@@ -595,7 +603,7 @@ namespace ket
               = ((nonpage_value_wo_qubits bitand nonpage_upper_bits_mask) << 1u)
                 bitor (nonpage_value_wo_qubits bitand nonpage_lower_bits_mask);
             auto const nonpage_index1
-              = nonpage_index0 bitor (StateInteger{1u} << minmax_qubits.first);
+              = nonpage_index0 bitor (StateInteger{1u} << minmax_permutated_qubits.first);
 
             for (auto data_block_index = StateInteger{0u};
                  data_block_index < local_state.num_data_blocks(); ++data_block_index)
@@ -612,17 +620,17 @@ namespace ket
       void swap_nonpage_qubits(
         ParallelPolicy const parallel_policy,
         ::ket::mpi::state<Complex, num_page_qubits, Allocator>& local_state,
-        ::ket::qubit<StateInteger, BitInteger> const permutated_qubit1,
-        ::ket::qubit<StateInteger, BitInteger> const permutated_qubit2,
+        ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit1,
+        ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit2,
         yampi::communicator const& communicator, yampi::environment const& environment)
       {
         static_assert(num_page_qubits >= 1, "num_page_qubits should be at least 1 if using this function");
-        assert((not local_state.is_page_qubit(permutated_qubit1)) and (not local_state.is_page_qubit(permutated_qubit2)));
+        assert((not ::ket::mpi::is_page_qubit(permutated_qubit1, local_state)) and (not ::ket::mpi::is_page_qubit(permutated_qubit2, local_state)));
 # ifndef NDEBUG
-        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+        using permutated_qubit_type = ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >;
 # endif
-        assert(permutated_qubit1 < static_cast<qubit_type>(local_state.num_local_qubits()));
-        assert(permutated_qubit2 < static_cast<qubit_type>(local_state.num_local_qubits()));
+        assert(permutated_qubit1 < permutated_qubit_type{local_state.num_local_qubits()});
+        assert(permutated_qubit2 < permutated_qubit_type{local_state.num_local_qubits()});
 
         static auto constexpr num_pages = ::ket::mpi::state<Complex, num_page_qubits, Allocator>::num_pages;
         auto const num_data_blocks = local_state.num_data_blocks();
@@ -655,28 +663,28 @@ namespace ket
           MpiPolicy const& mpi_policy,
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, num_page_qubits, Allocator>& local_state,
-          ::ket::qubit<StateInteger, BitInteger> const permutated_qubit1,
-          ::ket::qubit<StateInteger, BitInteger> const permutated_qubit2,
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit1,
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit2,
           StateInteger const, StateInteger const,
           yampi::communicator const& communicator, yampi::environment const& environment)
         {
           static_assert(num_page_qubits >= 2, "num_page_qubits should be at least 2 if using this function");
 # ifndef NDEBUG
-          using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+          using permutated_qubit_type = ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >;
 # endif
-          assert(permutated_qubit1 < static_cast<qubit_type>(local_state.num_local_qubits()));
-          assert(permutated_qubit2 < static_cast<qubit_type>(local_state.num_local_qubits()));
+          assert(permutated_qubit1 < permutated_qubit_type{local_state.num_local_qubits()});
+          assert(permutated_qubit2 < permutated_qubit_type{local_state.num_local_qubits()});
 
-          if (local_state.is_page_qubit(permutated_qubit1))
+          if (::ket::mpi::is_page_qubit(permutated_qubit1, local_state))
           {
-            if (local_state.is_page_qubit(permutated_qubit2))
+            if (::ket::mpi::is_page_qubit(permutated_qubit2, local_state))
               ::ket::mpi::state_detail::interpage_swap(
                 local_state, permutated_qubit1, permutated_qubit2);
             else
               ::ket::mpi::state_detail::swap_page_and_nonpage_qubits(
                 parallel_policy, local_state, permutated_qubit1, permutated_qubit2);
           }
-          else if (local_state.is_page_qubit(permutated_qubit2))
+          else if (::ket::mpi::is_page_qubit(permutated_qubit2, local_state))
             ::ket::mpi::state_detail::swap_page_and_nonpage_qubits(
               parallel_policy, local_state, permutated_qubit2, permutated_qubit1);
           else
@@ -695,21 +703,21 @@ namespace ket
         static void call(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, 1, Allocator>& local_state,
-          ::ket::qubit<StateInteger, BitInteger> const permutated_qubit1,
-          ::ket::qubit<StateInteger, BitInteger> const permutated_qubit2,
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit1,
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit2,
           StateInteger const, StateInteger const,
           yampi::communicator const& communicator, yampi::environment const& environment)
         {
 # ifndef NDEBUG
-          using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+          using permutated_qubit_type = ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >;
 # endif
-          assert(permutated_qubit1 < static_cast<qubit_type>(local_state.num_local_qubits()));
-          assert(permutated_qubit2 < static_cast<qubit_type>(local_state.num_local_qubits()));
+          assert(permutated_qubit1 < permutated_qubit_type{local_state.num_local_qubits()});
+          assert(permutated_qubit2 < permutated_qubit_type{local_state.num_local_qubits()});
 
-          if (local_state.is_page_qubit(permutated_qubit1))
+          if (::ket::mpi::is_page_qubit(permutated_qubit1, local_state))
             ::ket::mpi::state_detail::swap_page_and_nonpage_qubits(
               parallel_policy, local_state, permutated_qubit1, permutated_qubit2);
-          else if (local_state.is_page_qubit(permutated_qubit2))
+          else if (::ket::mpi::is_page_qubit(permutated_qubit2, local_state))
             ::ket::mpi::state_detail::swap_page_and_nonpage_qubits(
               parallel_policy, local_state, permutated_qubit2, permutated_qubit1);
           else
@@ -963,7 +971,7 @@ namespace ket
           StateInteger const data_block_index, StateInteger const,
           StateInteger const last_local_qubit_value,
           std::array<
-            ::ket::qubit<StateInteger, BitInteger>,
+            ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >,
             num_local_control_qubits> local_permutated_control_qubits,
           Function&& function)
         {
@@ -989,23 +997,24 @@ namespace ket
           StateInteger const data_block_index,
           StateInteger const last_local_qubit_value,
           std::array<
-            ::ket::qubit<StateInteger, BitInteger>,
+            ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >,
             num_local_control_qubits> const& sorted_local_permutated_control_qubits,
           Function&& function)
         {
           static constexpr auto zero_state_integer = StateInteger{0u};
 
-          using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+          using permutated_control_qubit_type
+            = ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >;
           // 000101000100
           auto const mask
             = std::accumulate(
                 std::begin(sorted_local_permutated_control_qubits),
                 std::end(sorted_local_permutated_control_qubits),
                 zero_state_integer,
-                [](StateInteger const& partial_mask, qubit_type const& control_qubit)
+                [](StateInteger const& partial_mask, permutated_control_qubit_type const& permutated_control_qubit)
                 {
                   static constexpr auto one_state_integer = StateInteger{1u};
-                  return partial_mask bitor (one_state_integer << control_qubit);
+                  return partial_mask bitor (one_state_integer << permutated_control_qubit);
                 });
 
           auto const last_integer
@@ -1024,9 +1033,9 @@ namespace ket
                 static constexpr auto one_state_integer = StateInteger{1u};
 
                 // xxx0x0xxx0xx
-                for (qubit_type const& qubit: sorted_local_permutated_control_qubits)
+                for (permutated_control_qubit_type const& permutated_control_qubit: sorted_local_permutated_control_qubits)
                 {
-                  auto const lower_mask = (one_state_integer << qubit) - one_state_integer;
+                  auto const lower_mask = (one_state_integer << permutated_control_qubit) - one_state_integer;
                   auto const upper_mask = compl lower_mask;
                   state_integer
                     = (state_integer bitand lower_mask)
@@ -2325,8 +2334,8 @@ namespace ket
         static void call(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, 0, Allocator>& local_state,
-          ::ket::qubit<StateInteger, BitInteger> const permutated_qubit1,
-          ::ket::qubit<StateInteger, BitInteger> const permutated_qubit2,
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit1,
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit2,
           StateInteger const num_data_blocks, StateInteger const data_block_size,
           yampi::communicator const& communicator, yampi::environment const& environment)
         {
@@ -2451,7 +2460,7 @@ namespace ket
           StateInteger const data_block_index, StateInteger const data_block_size,
           StateInteger const last_local_qubit_value,
           std::array<
-            ::ket::qubit<StateInteger, BitInteger>,
+            ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >,
             num_local_control_qubits> local_permutated_control_qubits,
           Function&& function)
         {
@@ -2558,23 +2567,35 @@ namespace ket
     {
       template <
         typename StateInteger, typename BitInteger,
-        typename Complex, typename StateAllocator,
-        typename PermutationAllocator>
+        typename Complex, typename Allocator>
       inline constexpr bool is_on_page(
-        ::ket::qubit<StateInteger, BitInteger> const qubit,
-        ::ket::mpi::state<Complex, 0, StateAllocator> const& local_state,
-        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, PermutationAllocator> const& permutation)
+        ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit,
+        ::ket::mpi::state<Complex, 0, Allocator> const& local_state)
       { return false; }
 
       template <
         typename StateInteger, typename BitInteger,
-        typename Complex, int num_page_qubits_, typename StateAllocator,
-        typename PermutationAllocator>
+        typename Complex, typename Allocator>
+      inline constexpr bool is_on_page(
+        ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit,
+        ::ket::mpi::state<Complex, 0, Allocator> const& local_state)
+      { return false; }
+
+      template <
+        typename StateInteger, typename BitInteger,
+        typename Complex, int num_page_qubits_, typename Allocator>
       inline bool is_on_page(
-        ::ket::qubit<StateInteger, BitInteger> const qubit,
-        ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator> const& local_state,
-        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, PermutationAllocator> const& permutation)
-      { return local_state.is_page_qubit(permutation[qubit]); }
+        ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit,
+        ::ket::mpi::state<Complex, num_page_qubits_, Allocator> const& local_state)
+      { return ::ket::mpi::is_page_qubit(permutated_qubit, local_state); }
+
+      template <
+        typename StateInteger, typename BitInteger,
+        typename Complex, int num_page_qubits_, typename Allocator>
+      inline bool is_on_page(
+        ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit,
+        ::ket::mpi::state<Complex, num_page_qubits_, Allocator> const& local_state)
+      { return ::ket::mpi::is_page_qubit(permutated_control_qubit, local_state); }
     } // namespace page
 
     namespace utility
@@ -2594,8 +2615,8 @@ namespace ket
             MpiPolicy const& mpi_policy,
             ParallelPolicy const parallel_policy,
             ::ket::mpi::state<Complex, num_page_qubits, Allocator>& local_state,
-            ::ket::qubit<StateInteger, BitInteger> const permutated_qubit1,
-            ::ket::qubit<StateInteger, BitInteger> const permutated_qubit2,
+            ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit1,
+            ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit2,
             StateInteger const num_data_blocks, StateInteger const data_block_size,
             yampi::communicator const& communicator, yampi::environment const& environment)
           {
@@ -2716,7 +2737,7 @@ namespace ket
             StateInteger const data_block_index, StateInteger const data_block_size,
             StateInteger const last_local_qubit_value,
             std::array<
-              ::ket::qubit<StateInteger, BitInteger>,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >,
               num_local_control_qubits> const& local_permutated_control_qubits,
             Function&& function)
           {

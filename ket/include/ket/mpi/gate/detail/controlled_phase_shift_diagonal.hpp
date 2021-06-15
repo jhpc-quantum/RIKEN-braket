@@ -3,8 +3,6 @@
 
 # include <complex>
 # include <vector>
-# include <ios>
-# include <sstream>
 
 # include <boost/range/value_type.hpp>
 
@@ -14,8 +12,10 @@
 
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
-# include <ket/qubit_io.hpp>
-# include <ket/control_io.hpp>
+# ifdef KET_PRINT_LOG
+#   include <ket/qubit_io.hpp>
+#   include <ket/control_io.hpp>
+# endif // KET_PRINT_LOG
 # include <ket/gate/controlled_phase_shift.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
@@ -79,21 +79,25 @@ namespace ket
           yampi::communicator const& communicator,
           yampi::environment const& environment)
         {
-          if (::ket::mpi::page::is_on_page(target_qubit, local_state, permutation))
+          auto const permutated_target_qubit = permutation[target_qubit];
+          auto const permutated_control_qubit = permutation[control_qubit];
+          if (::ket::mpi::page::is_on_page(permutated_target_qubit, local_state))
           {
-            if (::ket::mpi::page::is_on_page(control_qubit.qubit(), local_state, permutation))
+            if (::ket::mpi::page::is_on_page(permutated_control_qubit, local_state))
               return ::ket::mpi::gate::page::controlled_phase_shift_coeff_tcp(
-                parallel_policy, local_state, phase_coefficient, target_qubit, control_qubit,
-                permutation);
+                parallel_policy, local_state, phase_coefficient,
+                permutated_target_qubit, permutated_control_qubit);
 
             return ::ket::mpi::gate::page::controlled_phase_shift_coeff_tp(
-              mpi_policy, parallel_policy, local_state, phase_coefficient, target_qubit, control_qubit,
-              permutation, communicator.rank(environment));
+              mpi_policy, parallel_policy, local_state, phase_coefficient,
+              permutated_target_qubit, permutated_control_qubit,
+              communicator.rank(environment));
           }
-          else if (::ket::mpi::page::is_on_page(control_qubit.qubit(), local_state, permutation))
+          else if (::ket::mpi::page::is_on_page(permutated_control_qubit, local_state))
             return ::ket::mpi::gate::page::controlled_phase_shift_coeff_cp(
-              mpi_policy, parallel_policy, local_state, phase_coefficient, target_qubit, control_qubit,
-              permutation, communicator.rank(environment));
+              mpi_policy, parallel_policy, local_state, phase_coefficient,
+              permutated_target_qubit, permutated_control_qubit,
+              communicator.rank(environment));
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           ::ket::mpi::utility::diagonal_loop(

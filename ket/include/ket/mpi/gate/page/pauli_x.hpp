@@ -6,7 +6,7 @@
 # include <algorithm>
 
 # include <ket/qubit.hpp>
-# include <ket/mpi/qubit_permutation.hpp>
+# include <ket/mpi/permutated.hpp>
 # include <ket/mpi/gate/page/detail/one_page_qubit_gate.hpp>
 
 
@@ -32,38 +32,32 @@ namespace ket
 
         template <
           typename ParallelPolicy,
-          typename RandomAccessRange,
-          typename StateInteger, typename BitInteger, typename Allocator>
+          typename RandomAccessRange, typename StateInteger, typename BitInteger>
         inline RandomAccessRange& pauli_x(
           ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
-          ::ket::qubit<StateInteger, BitInteger> const qubit,
-          ::ket::mpi::qubit_permutation<
-            StateInteger, BitInteger, Allocator> const& permutation)
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit)
         {
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-            parallel_policy, local_state, qubit, permutation,
+            parallel_policy, local_state, permutated_qubit,
             [](auto const zero_first, auto const one_first, StateInteger const index, int const)
             { std::iter_swap(zero_first + index, one_first + index); });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-            parallel_policy, local_state, qubit, permutation,
+            parallel_policy, local_state, permutated_qubit,
             ::ket::mpi::gate::page::pauli_x_detail::pauli_x{});
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }
 
         template <
           typename ParallelPolicy,
-          typename RandomAccessRange,
-          typename StateInteger, typename BitInteger, typename Allocator>
+          typename RandomAccessRange, typename StateInteger, typename BitInteger>
         inline RandomAccessRange& adj_pauli_x(
           ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
-          ::ket::qubit<StateInteger, BitInteger> const qubit,
-          ::ket::mpi::qubit_permutation<
-            StateInteger, BitInteger, Allocator> const& permutation)
-        { return ::ket::mpi::gate::page::pauli_x(parallel_policy, local_state, qubit, permutation); }
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit)
+        { return ::ket::mpi::gate::page::pauli_x(parallel_policy, local_state, permutated_qubit); }
       } // namespace page
     } // namespace gate
   } // namespace mpi

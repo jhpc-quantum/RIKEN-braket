@@ -12,7 +12,7 @@
 # ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
 #   include <ket/utility/meta/real_of.hpp>
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
-# include <ket/mpi/qubit_permutation.hpp>
+# include <ket/mpi/permutated.hpp>
 # include <ket/mpi/gate/page/detail/one_page_qubit_gate.hpp>
 
 
@@ -50,24 +50,21 @@ namespace ket
 
         template <
           typename ParallelPolicy,
-          typename RandomAccessRange, typename Complex,
-          typename StateInteger, typename BitInteger, typename Allocator>
+          typename RandomAccessRange, typename Complex, typename StateInteger, typename BitInteger>
         inline RandomAccessRange& phase_shift_coeff(
           ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           Complex const& phase_coefficient,
-          ::ket::qubit<StateInteger, BitInteger> const qubit,
-          ::ket::mpi::qubit_permutation<
-            StateInteger, BitInteger, Allocator> const& permutation)
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit)
         {
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-            parallel_policy, local_state, qubit, permutation,
+            parallel_policy, local_state, permutated_qubit,
             [phase_coefficient](auto const, auto const one_first, StateInteger const index, int const)
             { *(one_first + index) *= phase_coefficient; });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-            parallel_policy, local_state, qubit, permutation,
+            parallel_policy, local_state, permutated_qubit,
             ::ket::mpi::gate::page::phase_shift_detail::make_phase_shift_coeff(phase_coefficient));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }
@@ -116,15 +113,12 @@ namespace ket
 
         template <
           typename ParallelPolicy,
-          typename RandomAccessRange, typename Real,
-          typename StateInteger, typename BitInteger, typename Allocator>
+          typename RandomAccessRange, typename Real, typename StateInteger, typename BitInteger>
         inline RandomAccessRange& phase_shift2(
           ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           Real const phase1, Real const phase2,
-          ::ket::qubit<StateInteger, BitInteger> const qubit,
-          ::ket::mpi::qubit_permutation<
-            StateInteger, BitInteger, Allocator> const& permutation)
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit)
         {
           using complex_type = typename boost::range_value<RandomAccessRange>::type;
           auto const phase_coefficient1 = ::ket::utility::exp_i<complex_type>(phase1);
@@ -135,7 +129,7 @@ namespace ket
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-            parallel_policy, local_state, qubit, permutation,
+            parallel_policy, local_state, permutated_qubit,
             [modified_phase_coefficient1, phase_coefficient2](auto const zero_first, auto const one_first, StateInteger const index, int const)
             {
               auto const zero_iter = zero_first + index;
@@ -150,7 +144,7 @@ namespace ket
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-            parallel_policy, local_state, qubit, permutation,
+            parallel_policy, local_state, permutated_qubit,
             ::ket::mpi::gate::page::phase_shift_detail::make_phase_shift2(modified_phase_coefficient1, phase_coefficient2));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }
@@ -198,15 +192,12 @@ namespace ket
 
         template <
           typename ParallelPolicy,
-          typename RandomAccessRange, typename Real,
-          typename StateInteger, typename BitInteger, typename Allocator>
+          typename RandomAccessRange, typename Real, typename StateInteger, typename BitInteger>
         inline RandomAccessRange& adj_phase_shift2(
           ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           Real const phase1, Real const phase2,
-          ::ket::qubit<StateInteger, BitInteger> const qubit,
-          ::ket::mpi::qubit_permutation<
-            StateInteger, BitInteger, Allocator> const& permutation)
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit)
         {
           using complex_type = typename boost::range_value<RandomAccessRange>::type;
           auto const phase_coefficient1 = ::ket::utility::exp_i<complex_type>(-phase1);
@@ -217,7 +208,7 @@ namespace ket
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-            parallel_policy, local_state, qubit, permutation,
+            parallel_policy, local_state, permutated_qubit,
             [phase_coefficient1, modified_phase_coefficient2](auto const zero_first, auto const one_first, StateInteger const index, int const)
             {
               auto const zero_iter = zero_first + index;
@@ -232,7 +223,7 @@ namespace ket
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-            parallel_policy, local_state, qubit, permutation,
+            parallel_policy, local_state, permutated_qubit,
             ::ket::mpi::gate::page::phase_shift_detail::make_adj_phase_shift2(phase_coefficient1, modified_phase_coefficient2));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }
@@ -293,15 +284,12 @@ namespace ket
 
         template <
           typename ParallelPolicy,
-          typename RandomAccessRange, typename Real,
-          typename StateInteger, typename BitInteger, typename Allocator>
+          typename RandomAccessRange, typename Real, typename StateInteger, typename BitInteger>
         inline RandomAccessRange& phase_shift3(
           ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           Real const phase1, Real const phase2, Real const phase3,
-          ::ket::qubit<StateInteger, BitInteger> const qubit,
-          ::ket::mpi::qubit_permutation<
-            StateInteger, BitInteger, Allocator> const& permutation)
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit)
         {
           using std::cos;
           using std::sin;
@@ -318,7 +306,7 @@ namespace ket
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-            parallel_policy, local_state, qubit, permutation,
+            parallel_policy, local_state, permutated_qubit,
             [sine, cosine, phase_coefficient2,
              sine_phase_coefficient3, cosine_phase_coefficient3](
               auto const zero_first, auto const one_first, StateInteger const index, int const)
@@ -335,7 +323,7 @@ namespace ket
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-            parallel_policy, local_state, qubit, permutation,
+            parallel_policy, local_state, permutated_qubit,
             ::ket::mpi::gate::page::phase_shift_detail::make_phase_shift3(
               sine, cosine, phase_coefficient2,
               sine_phase_coefficient3, cosine_phase_coefficient3));
@@ -398,15 +386,12 @@ namespace ket
 
         template <
           typename ParallelPolicy,
-          typename RandomAccessRange, typename Real,
-          typename StateInteger, typename BitInteger, typename Allocator>
+          typename RandomAccessRange, typename Real, typename StateInteger, typename BitInteger>
         inline RandomAccessRange& adj_phase_shift3(
           ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           Real const phase1, Real const phase2, Real const phase3,
-          ::ket::qubit<StateInteger, BitInteger> const qubit,
-          ::ket::mpi::qubit_permutation<
-            StateInteger, BitInteger, Allocator> const& permutation)
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit)
         {
           using std::cos;
           using std::sin;
@@ -423,7 +408,7 @@ namespace ket
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-            parallel_policy, local_state, qubit, permutation,
+            parallel_policy, local_state, permutated_qubit,
             [sine, cosine, sine_phase_coefficient2, cosine_phase_coefficient2,
              phase_coefficient3](
               auto const zero_first, auto const one_first, StateInteger const index, int const)
@@ -440,7 +425,7 @@ namespace ket
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-            parallel_policy, local_state, qubit, permutation,
+            parallel_policy, local_state, permutated_qubit,
             ::ket::mpi::gate::page::phase_shift_detail::make_adj_phase_shift3(
               sine, cosine, sine_phase_coefficient2, cosine_phase_coefficient2,
               phase_coefficient3));

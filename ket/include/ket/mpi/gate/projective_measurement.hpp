@@ -3,8 +3,6 @@
 
 # include <cmath>
 # include <complex>
-# include <ios>
-# include <sstream>
 # include <vector>
 # include <array>
 # include <iterator>
@@ -23,8 +21,11 @@
 # include <yampi/broadcast.hpp>
 
 # include <ket/qubit.hpp>
-# include <ket/qubit_io.hpp>
+# ifdef KET_PRINT_LOG
+#   include <ket/qubit_io.hpp>
+# endif // KET_PRINT_LOG
 # include <ket/gate/projective_measurement.hpp>
+# include <ket/mpi/permutated.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
 # include <ket/mpi/utility/logger.hpp>
@@ -62,14 +63,14 @@ namespace ket
           mpi_policy, parallel_policy,
           local_state, qubits, permutation, buffer, communicator, environment);
 
-        auto const is_qubit_on_page
-          = ::ket::mpi::page::is_on_page(qubit, local_state, permutation);
+        auto const permutated_qubit = permutation[qubit];
+        auto const is_qubit_on_page = ::ket::mpi::page::is_on_page(permutated_qubit, local_state);
 
         auto zero_one_probabilities
           = is_qubit_on_page
-            ? ::ket::mpi::gate::page::zero_one_probabilities(parallel_policy, local_state, qubit, permutation)
+            ? ::ket::mpi::gate::page::zero_one_probabilities(parallel_policy, local_state, permutated_qubit)
             : ::ket::gate::projective_measurement_detail::zero_one_probabilities(
-                parallel_policy, std::begin(local_state), std::end(local_state), qubit);
+                parallel_policy, std::begin(local_state), std::end(local_state), permutated_qubit.qubit());
 
         yampi::all_reduce(
           yampi::make_buffer(zero_one_probabilities, real_pair_datatype),
@@ -88,22 +89,22 @@ namespace ket
         {
           if (is_qubit_on_page)
             ::ket::mpi::gate::page::change_state_after_measuring_zero(
-              parallel_policy, local_state, qubit, zero_one_probabilities.first, permutation);
+              parallel_policy, local_state, permutated_qubit, zero_one_probabilities.first);
           else
             ::ket::gate::projective_measurement_detail::change_state_after_measuring_zero(
               parallel_policy,
-              std::begin(local_state), std::end(local_state), qubit, zero_one_probabilities.first);
+              std::begin(local_state), std::end(local_state), permutated_qubit.qubit(), zero_one_probabilities.first);
 
           return ::ket::gate::outcome::zero;
         }
 
         if (is_qubit_on_page)
           ::ket::mpi::gate::page::change_state_after_measuring_one(
-            parallel_policy, local_state, qubit, zero_one_probabilities.second, permutation);
+            parallel_policy, local_state, permutated_qubit, zero_one_probabilities.second);
         else
           ::ket::gate::projective_measurement_detail::change_state_after_measuring_one(
             parallel_policy,
-            std::begin(local_state), std::end(local_state), qubit, zero_one_probabilities.second);
+            std::begin(local_state), std::end(local_state), permutated_qubit.qubit(), zero_one_probabilities.second);
 
         return ::ket::gate::outcome::one;
       }
@@ -133,14 +134,14 @@ namespace ket
           mpi_policy, parallel_policy,
           local_state, qubits, permutation, buffer, complex_datatype, communicator, environment);
 
-        auto const is_qubit_on_page
-          = ::ket::mpi::page::is_on_page(qubit, local_state, permutation);
+        auto const permutated_qubit = permutation[qubit];
+        auto const is_qubit_on_page = ::ket::mpi::page::is_on_page(permutated_qubit, local_state);
 
         auto zero_one_probabilities
           = is_qubit_on_page
-            ? ::ket::mpi::gate::page::zero_one_probabilities(parallel_policy, local_state, qubit, permutation)
+            ? ::ket::mpi::gate::page::zero_one_probabilities(parallel_policy, local_state, permutated_qubit)
             : ::ket::gate::projective_measurement_detail::zero_one_probabilities(
-                parallel_policy, std::begin(local_state), std::end(local_state), qubit);
+                parallel_policy, std::begin(local_state), std::end(local_state), permutated_qubit.qubit());
 
         yampi::all_reduce(
           yampi::make_buffer(zero_one_probabilities, real_pair_datatype),
@@ -159,22 +160,22 @@ namespace ket
         {
           if (is_qubit_on_page)
             ::ket::mpi::gate::page::change_state_after_measuring_zero(
-              parallel_policy, local_state, qubit, zero_one_probabilities.first, permutation);
+              parallel_policy, local_state, permutated_qubit, zero_one_probabilities.first);
           else
             ::ket::gate::projective_measurement_detail::change_state_after_measuring_zero(
               parallel_policy,
-              std::begin(local_state), std::end(local_state), qubit, zero_one_probabilities.first);
+              std::begin(local_state), std::end(local_state), permutated_qubit.qubit(), zero_one_probabilities.first);
 
           return ::ket::gate::outcome::zero;
         }
 
         if (is_qubit_on_page)
           ::ket::mpi::gate::page::change_state_after_measuring_one(
-            parallel_policy, local_state, qubit, zero_one_probabilities.second, permutation);
+            parallel_policy, local_state, permutated_qubit, zero_one_probabilities.second);
         else
           ::ket::gate::projective_measurement_detail::change_state_after_measuring_one(
             parallel_policy,
-            std::begin(local_state), std::end(local_state), qubit, zero_one_probabilities.second);
+            std::begin(local_state), std::end(local_state), permutated_qubit.qubit(), zero_one_probabilities.second);
 
         return ::ket::gate::outcome::one;
       }

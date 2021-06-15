@@ -52,7 +52,7 @@ namespace ket
         auto const target_qubit_mask
           = ::ket::utility::integer_exp2<StateInteger>(target_qubit);
         auto const control_qubit_mask
-          = ::ket::utility::integer_exp2<StateInteger>(control_qubit.qubit());
+          = ::ket::utility::integer_exp2<StateInteger>(control_qubit);
         auto const lower_bits_mask
           = ::ket::utility::integer_exp2<StateInteger>(minmax_qubits.first) - StateInteger{1u};
         auto const middle_bits_mask
