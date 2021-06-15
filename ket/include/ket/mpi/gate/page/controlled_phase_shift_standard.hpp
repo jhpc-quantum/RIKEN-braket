@@ -8,7 +8,7 @@
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
 # include <ket/utility/integer_exp2.hpp>
-# include <ket/mpi/qubit_permutation.hpp>
+# include <ket/mpi/permutated.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
 # include <ket/mpi/gate/page/detail/two_page_qubits_gate.hpp>
 # include <ket/mpi/gate/page/detail/one_page_qubit_gate.hpp>
@@ -51,27 +51,24 @@ namespace ket
 
         template <
           typename ParallelPolicy,
-          typename RandomAccessRange, typename Complex,
-          typename StateInteger, typename BitInteger, typename PermutationAllocator>
+          typename RandomAccessRange, typename Complex, typename StateInteger, typename BitInteger>
         inline RandomAccessRange& controlled_phase_shift_coeff_tcp(
           ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           Complex const& phase_coefficient,
-          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-          ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit,
-          ::ket::mpi::qubit_permutation<
-            StateInteger, BitInteger, PermutationAllocator> const& permutation)
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
+          ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit)
         {
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::two_page_qubits_gate<0u>(
-            parallel_policy, local_state, target_qubit, control_qubit, permutation,
+            parallel_policy, local_state, permutated_target_qubit, permutated_control_qubit,
             [phase_coefficient](
               auto const, auto const, auto const, auto const first_11,
               StateInteger const index, int const)
             { *(first_11 + index) *= phase_coefficient; });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::two_page_qubits_gate<0u>(
-            parallel_policy, local_state, target_qubit, control_qubit, permutation,
+            parallel_policy, local_state, permutated_target_qubit, permutated_control_qubit,
             ::ket::mpi::gate::page::controlled_phase_shift_detail::make_controlled_phase_shift_coeff_tcp(phase_coefficient));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }
@@ -84,17 +81,17 @@ namespace ket
           struct controlled_phase_shift_coeff_tp
           {
             Complex phase_coefficient_;
-            StateInteger control_qubit_mask_;
+            StateInteger permutated_control_qubit_mask_;
             StateInteger nonpage_lower_bits_mask_;
             StateInteger nonpage_upper_bits_mask_;
 
             controlled_phase_shift_coeff_tp(
               Complex const& phase_coefficient,
-              StateInteger const control_qubit_mask,
+              StateInteger const permutated_control_qubit_mask,
               StateInteger const nonpage_lower_bits_mask,
               StateInteger const nonpage_upper_bits_mask) noexcept
               : phase_coefficient_{phase_coefficient},
-                control_qubit_mask_{control_qubit_mask},
+                permutated_control_qubit_mask_{permutated_control_qubit_mask},
                 nonpage_lower_bits_mask_{nonpage_lower_bits_mask},
                 nonpage_upper_bits_mask_{nonpage_upper_bits_mask}
             { }
@@ -107,7 +104,7 @@ namespace ket
               auto const zero_index
                 = ((index_wo_nonpage_qubit bitand nonpage_upper_bits_mask_) << 1u)
                   bitor (index_wo_nonpage_qubit bitand nonpage_lower_bits_mask_);
-              auto const one_index = zero_index bitor control_qubit_mask_;
+              auto const one_index = zero_index bitor permutated_control_qubit_mask_;
               *(one_first + one_index) *= phase_coefficient_;
             }
           }; // struct controlled_phase_shift_coeff_tp<Complex, StateInteger>
@@ -116,50 +113,47 @@ namespace ket
           inline ::ket::mpi::gate::page::controlled_phase_shift_detail::controlled_phase_shift_coeff_tp<Complex, StateInteger>
           make_controlled_phase_shift_coeff_tp(
             Complex const& phase_coefficient,
-            StateInteger const control_qubit_mask,
+            StateInteger const permutated_control_qubit_mask,
             StateInteger const nonpage_lower_bits_mask,
             StateInteger const nonpage_upper_bits_mask)
-          { return {phase_coefficient, control_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask}; }
+          { return {phase_coefficient, permutated_control_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask}; }
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         } // namespace controlled_phase_shift_detail
 
         template <
           typename ParallelPolicy,
-          typename RandomAccessRange, typename Complex,
-          typename StateInteger, typename BitInteger, typename PermutationAllocator>
+          typename RandomAccessRange, typename Complex, typename StateInteger, typename BitInteger>
         inline RandomAccessRange& controlled_phase_shift_coeff_tp(
           ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           Complex const& phase_coefficient,
-          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-          ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit,
-          ::ket::mpi::qubit_permutation<
-            StateInteger, BitInteger, PermutationAllocator> const& permutation)
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
+          ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit)
         {
-          assert(not ::ket::mpi::page::is_on_page(control_qubit.qubit(), local_state, permutation));
-          auto const control_qubit_mask
-            = ::ket::utility::integer_exp2<StateInteger>(permutation[control_qubit.qubit()]);
-          auto const nonpage_lower_bits_mask = control_qubit_mask - StateInteger{1u};
+          assert(not ::ket::mpi::page::is_on_page(permutated_control_qubit, local_state));
+          auto const permutated_control_qubit_mask
+            = ::ket::utility::integer_exp2<StateInteger>(permutated_control_qubit);
+          auto const nonpage_lower_bits_mask = permutated_control_qubit_mask - StateInteger{1u};
           auto const nonpage_upper_bits_mask = compl nonpage_lower_bits_mask;
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
-            parallel_policy, local_state, target_qubit, permutation,
-            [phase_coefficient, control_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask](
+            parallel_policy, local_state, permutated_target_qubit,
+            [phase_coefficient, permutated_control_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask](
               auto const, auto const one_first, StateInteger const index_wo_nonpage_qubit, int const)
             {
               auto const zero_index
                 = ((index_wo_nonpage_qubit bitand nonpage_upper_bits_mask) << 1u)
                   bitor (index_wo_nonpage_qubit bitand nonpage_lower_bits_mask);
-              auto const one_index = zero_index bitor control_qubit_mask;
+              auto const one_index = zero_index bitor permutated_control_qubit_mask;
               *(one_first + one_index) *= phase_coefficient;
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
-            parallel_policy, local_state, target_qubit, permutation,
+            parallel_policy, local_state, permutated_target_qubit,
             ::ket::mpi::gate::page::controlled_phase_shift_detail::make_controlled_phase_shift_coeff_tp(
               phase_coefficient,
-              control_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask));
+              permutated_control_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }
 
@@ -171,17 +165,17 @@ namespace ket
           struct controlled_phase_shift_coeff_cp
           {
             Complex phase_coefficient_;
-            StateInteger target_qubit_mask_;
+            StateInteger permutated_target_qubit_mask_;
             StateInteger nonpage_lower_bits_mask_;
             StateInteger nonpage_upper_bits_mask_;
 
             controlled_phase_shift_coeff_cp(
               Complex const& phase_coefficient,
-              StateInteger const target_qubit_mask,
+              StateInteger const permutated_target_qubit_mask,
               StateInteger const nonpage_lower_bits_mask,
               StateInteger const nonpage_upper_bits_mask) noexcept
               : phase_coefficient_{phase_coefficient},
-                target_qubit_mask_{target_qubit_mask},
+                permutated_target_qubit_mask_{permutated_target_qubit_mask},
                 nonpage_lower_bits_mask_{nonpage_lower_bits_mask},
                 nonpage_upper_bits_mask_{nonpage_upper_bits_mask}
             { }
@@ -194,7 +188,7 @@ namespace ket
               auto const zero_index
                 = ((index_wo_nonpage_qubit bitand nonpage_upper_bits_mask_) << 1u)
                   bitor (index_wo_nonpage_qubit bitand nonpage_lower_bits_mask_);
-              auto const one_index = zero_index bitor target_qubit_mask_;
+              auto const one_index = zero_index bitor permutated_target_qubit_mask_;
               *(one_first + one_index) *= phase_coefficient_;
             }
           }; // struct controlled_phase_shift_coeff_cp<Complex, StateInteger>
@@ -203,50 +197,47 @@ namespace ket
           inline ::ket::mpi::gate::page::controlled_phase_shift_detail::controlled_phase_shift_coeff_cp<Complex, StateInteger>
           make_controlled_phase_shift_coeff_cp(
             Complex const& phase_coefficient,
-            StateInteger const target_qubit_mask,
+            StateInteger const permutated_target_qubit_mask,
             StateInteger const nonpage_lower_bits_mask,
             StateInteger const nonpage_upper_bits_mask)
-          { return {phase_coefficient, target_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask}; }
+          { return {phase_coefficient, permutated_target_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask}; }
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         } // namespace controlled_phase_shift_detail
 
         template <
           typename ParallelPolicy,
-          typename RandomAccessRange, typename Complex,
-          typename StateInteger, typename BitInteger, typename PermutationAllocator>
+          typename RandomAccessRange, typename Complex, typename StateInteger, typename BitInteger>
         inline RandomAccessRange& controlled_phase_shift_coeff_cp(
           ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           Complex const& phase_coefficient,
-          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-          ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit,
-          ::ket::mpi::qubit_permutation<
-            StateInteger, BitInteger, PermutationAllocator> const& permutation)
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
+          ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit)
         {
-          assert(not ::ket::mpi::page::is_on_page(target_qubit, local_state, permutation));
-          auto const target_qubit_mask
-            = ::ket::utility::integer_exp2<StateInteger>(permutation[target_qubit]);
-          auto const nonpage_lower_bits_mask = target_qubit_mask - StateInteger{1u};
+          assert(not ::ket::mpi::page::is_on_page(permutated_target_qubit, local_state));
+          auto const permutated_target_qubit_mask
+            = ::ket::utility::integer_exp2<StateInteger>(permutated_target_qubit);
+          auto const nonpage_lower_bits_mask = permutated_target_qubit_mask - StateInteger{1u};
           auto const nonpage_upper_bits_mask = compl nonpage_lower_bits_mask;
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
-            parallel_policy, local_state, control_qubit.qubit(), permutation,
-            [phase_coefficient, target_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask](
+            parallel_policy, local_state, permutated_control_qubit,
+            [phase_coefficient, permutated_target_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask](
               auto const, auto const one_first, StateInteger const index_wo_nonpage_qubit, int const)
             {
               auto const zero_index
                 = ((index_wo_nonpage_qubit bitand nonpage_upper_bits_mask) << 1u)
                   bitor (index_wo_nonpage_qubit bitand nonpage_lower_bits_mask);
-              auto const one_index = zero_index bitor target_qubit_mask;
+              auto const one_index = zero_index bitor permutated_target_qubit_mask;
               *(one_first + one_index) *= phase_coefficient;
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
-            parallel_policy, local_state, control_qubit.qubit(), permutation,
+            parallel_policy, local_state, permutated_control_qubit,
             ::ket::mpi::gate::page::controlled_phase_shift_detail::make_controlled_phase_shift_coeff_cp(
               phase_coefficient,
-              target_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask));
+              permutated_target_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }
       } // namespace page

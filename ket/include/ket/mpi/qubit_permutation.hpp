@@ -14,7 +14,9 @@
 # endif
 
 # include <ket/qubit.hpp>
+# include <ket/control.hpp>
 # include <ket/meta/bit_integer_of.hpp>
+# include <ket/mpi/permutated.hpp>
 
 # if __cplusplus >= 201703L
 #   define KET_is_nothrow_swappable std::is_nothrow_swappable
@@ -31,7 +33,7 @@ namespace ket
     //   permutation[unpermutated_qubit]: get permutated qubit corresponding to unpermutated qubit unpermutated_qubit
     //   inverse(permutation): get inverse view of permutation
     //   inverse(permutation)[permutated_qubit]: get unpermutated qubit corresponding to permutated qubit permutated_qubit
-    //   permutate(permutation, from1, from2): permutate qubits from1 and from2
+    //   permutate(permutation, unpermutated_qubit1, unpermutated_qubit2): permutate qubits unpermutated_qubit1 and unpermutated_qubit2
     //   permutate_bits(permutation, unsigned_integer): convert unpermutated value unsigned_integer to permutated value
     //   inverse_permutate_bits(permutation, unsigned_integer): convert permutated value unsigned_integer to unpermutated value
     template <
@@ -42,9 +44,14 @@ namespace ket
     class qubit_permutation
     {
       using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+      using control_qubit_type = ::ket::control<qubit_type>;
+      using permutated_qubit_type = ::ket::mpi::permutated<qubit_type>;
+      using permutated_control_qubit_type = ::ket::mpi::permutated<control_qubit_type>;
+
       using data_type
+        = std::vector<permutated_qubit_type, typename Allocator::template rebind<qubit_type>::other>;
+      using inverse_data_type
         = std::vector<qubit_type, typename Allocator::template rebind<qubit_type>::other>;
-      using inverse_data_type = data_type;
 
       data_type data_;
       inverse_data_type inverse_data_;
@@ -64,46 +71,45 @@ namespace ket
       using allocator_type = typename data_type::allocator_type;
 
       qubit_permutation() noexcept
-        : data_(Allocator()), inverse_data_(Allocator())
+        : data_{Allocator()}, inverse_data_{Allocator()}
       { }
 
       explicit qubit_permutation(Allocator const& allocator) noexcept
-        : data_(allocator), inverse_data_(allocator)
+        : data_{allocator}, inverse_data_{allocator}
       { }
 
       explicit qubit_permutation(size_type const num_qubits)
-        : data_(generate_identity_permutation(num_qubits)),
-          inverse_data_(data_to_inverse_data(data_))
+        : data_{generate_identity_permutation(num_qubits)},
+          inverse_data_{data_to_inverse_data(data_)}
       { }
 
       template <typename InputIterator>
       qubit_permutation(
         InputIterator const first, InputIterator const last,
         Allocator const& allocator = Allocator())
-        : data_(first, last, allocator),
-          inverse_data_(data_to_inverse_data(data_, allocator))
+        : data_{first, last, allocator},
+          inverse_data_{data_to_inverse_data(data_, allocator)}
       { assert(is_valid_permutation(data_)); }
 
       qubit_permutation(
         qubit_permutation const& other, Allocator const& allocator)
-        : data_(other.data_, allocator),
-          inverse_data_(other.inverse_data_, allocator)
+        : data_{other.data_, allocator},
+          inverse_data_{other.inverse_data_, allocator}
       { }
 
       qubit_permutation(qubit_permutation&& other, Allocator const& allocator)
-        : data_(std::move(other.data_), allocator),
-          inverse_data_(std::move(other.inverse_data_), allocator)
+        : data_{std::move(other.data_), allocator},
+          inverse_data_{std::move(other.inverse_data_), allocator}
       { }
 
       qubit_permutation(
         std::initializer_list<value_type> initializer_list,
         Allocator const& allocator = Allocator{})
-        : data_(initializer_list, allocator),
-          inverse_data_(data_to_inverse_data_(data_, allocator))
+        : data_{initializer_list, allocator},
+          inverse_data_{data_to_inverse_data_(data_, allocator)}
       { assert(is_valid_permutation(data_)); }
 
-      qubit_permutation& operator=(
-        std::initializer_list<value_type> initializer_list)
+      qubit_permutation& operator=(std::initializer_list<value_type> initializer_list)
       {
         data_ = initializer_list;
         assert(is_valid_permutation(data_));
@@ -154,11 +160,15 @@ namespace ket
       void shrink_to_fit()
       { data_.shrink_to_fit(); inverse_data_.shrink_to_fit(); }
 
-      const_reference operator[](value_type const from) const
+      const_reference operator[](qubit_type const from) const
       { return data_[static_cast<BitInteger>(from)]; }
+      permutated_control_qubit_type operator[](control_qubit_type const from) const
+      { return ::ket::mpi::make_permutated(::ket::make_control(data_[static_cast<BitInteger>(from.qubit())].qubit())); }
 
-      const_reference at(value_type const from) const
+      const_reference at(qubit_type const from) const
       { return data_.at(static_cast<BitInteger>(from)); }
+      permutated_control_qubit_type at(control_qubit_type const from) const
+      { return ::ket::mpi::make_permutated(::ket::make_control(data_.at(static_cast<BitInteger>(from.qubit())).qubit())); }
 
       const_reference front() const { return data_.front(); }
       const_reference back() const { return data_.back(); }
@@ -179,30 +189,34 @@ namespace ket
         inverse_view(inverse_view&&) = default;
 
         inverse_view(inverse_data_type& inverse_data)
-          : inverse_data_(inverse_data)
+          : inverse_data_{inverse_data}
         { }
 
-        const_iterator begin() const noexcept { return inverse_data_.begin(); }
-        const_iterator end() const noexcept { return inverse_data_.end(); }
-        const_reverse_iterator rbegin() const noexcept { return inverse_data_.rbegin(); }
-        const_reverse_iterator rend() const noexcept { return inverse_data_.rend(); }
+        typename inverse_data_type::const_iterator begin() const noexcept { return inverse_data_.begin(); }
+        typename inverse_data_type::const_iterator end() const noexcept { return inverse_data_.end(); }
+        typename inverse_data_type::const_reverse_iterator rbegin() const noexcept { return inverse_data_.rbegin(); }
+        typename inverse_data_type::const_reverse_iterator rend() const noexcept { return inverse_data_.rend(); }
 
-        const_iterator cbegin() const noexcept { return inverse_data_.cbegin(); }
-        const_iterator cend() const noexcept { return inverse_data_.cend(); }
-        const_reverse_iterator crbegin() const noexcept { return inverse_data_.crbegin(); }
-        const_reverse_iterator crend() const noexcept { return inverse_data_.crend(); }
+        typename inverse_data_type::const_iterator cbegin() const noexcept { return inverse_data_.cbegin(); }
+        typename inverse_data_type::const_iterator cend() const noexcept { return inverse_data_.cend(); }
+        typename inverse_data_type::const_reverse_iterator crbegin() const noexcept { return inverse_data_.crbegin(); }
+        typename inverse_data_type::const_reverse_iterator crend() const noexcept { return inverse_data_.crend(); }
 
-        const_reference operator[](value_type const to) const
-        { return inverse_data_[static_cast<BitInteger>(to)]; }
+        typename inverse_data_type::const_reference operator[](permutated_qubit_type const to) const
+        { return inverse_data_[static_cast<BitInteger>(to.qubit())]; }
+        control_qubit_type operator[](permutated_control_qubit_type const to) const
+        { return ::ket::make_control(inverse_data_[static_cast<BitInteger>(to.qubit().qubit())]); }
 
-        const_reference at(value_type const to) const
-        { return inverse_data_.at(static_cast<BitInteger>(to)); }
+        typename inverse_data_type::const_reference at(permutated_qubit_type const to) const
+        { return inverse_data_.at(static_cast<BitInteger>(to.qubit())); }
+        control_qubit_type at(permutated_control_qubit_type const to) const
+        { return ::ket::make_control(inverse_data_.at(static_cast<BitInteger>(to.qubit().qubit()))); }
 
-        const_reference front() const { return inverse_data_.front(); }
-        const_reference back() const { return inverse_data_.back(); }
+        typename inverse_data_type::const_reference front() const { return inverse_data_.front(); }
+        typename inverse_data_type::const_reference back() const { return inverse_data_.back(); }
 
-        value_type* data() noexcept { return inverse_data_.data(); }
-        value_type const* data() const noexcept { return inverse_data_.data(); }
+        typename inverse_data_type::value_type* data() noexcept { return inverse_data_.data(); }
+        typename inverse_data_type::value_type const* data() const noexcept { return inverse_data_.data(); }
       }; // class inverse_view
 
       inverse_view inverse() { return inverse_view(inverse_data_); }
@@ -223,17 +237,24 @@ namespace ket
 
       void clear() noexcept { data_.clear(); inverse_data_.clear(); }
 
-      void permutate(value_type const from1, value_type const from2)
+      void permutate(qubit_type const qubit1, qubit_type const qubit2)
       {
-        assert(from1 != from2);
+        assert(qubit1 != qubit2);
         using std::swap;
         swap(
-          inverse_data_[static_cast<BitInteger>(data_[static_cast<BitInteger>(from1)])],
-          inverse_data_[static_cast<BitInteger>(data_[static_cast<BitInteger>(from2)])]);
+          inverse_data_[static_cast<BitInteger>(data_[static_cast<BitInteger>(qubit1)].qubit())],
+          inverse_data_[static_cast<BitInteger>(data_[static_cast<BitInteger>(qubit2)].qubit())]);
         swap(
-          data_[static_cast<BitInteger>(from1)],
-          data_[static_cast<BitInteger>(from2)]);
+          data_[static_cast<BitInteger>(qubit1)],
+          data_[static_cast<BitInteger>(qubit2)]);
       }
+
+      void permutate(control_qubit_type const control_qubit, qubit_type const qubit)
+      { permutate(control_qubit.qubit(), qubit); }
+      void permutate(qubit_type const qubit, control_qubit_type const control_qubit)
+      { permutate(qubit, control_qubit.qubit()); }
+      void permutate(control_qubit_type const control_qubit1, control_qubit_type const control_qubit2)
+      { permutate(control_qubit1.qubit(), control_qubit2.qubit()); }
 
      private:
       data_type generate_identity_permutation(size_type const size)
@@ -246,20 +267,19 @@ namespace ket
       inverse_data_type data_to_inverse_data(
         data_type const& data, Allocator const& allocator = Allocator())
       {
-        auto result = inverse_data_type(data.begin(), data.end(), allocator);
-
         auto const data_size = data.size();
+        auto result = inverse_data_type(data_size, qubit_type{}, allocator);
+
         for (auto index = size_type{0u}; index < data_size; ++index)
-          result[static_cast<typename ::ket::meta::bit_integer_of<value_type>::type>(data[index])]
-            = static_cast<value_type>(index);
+          result[static_cast<typename ::ket::meta::bit_integer_of<value_type>::type>(data[index].qubit())]
+            = qubit_type{index};
 
         return result;
       }
 
       bool is_valid_permutation(data_type permutation) const
       {
-        std::sort(
-          std::begin(permutation), std::end(permutation));
+        std::sort(std::begin(permutation), std::end(permutation));
 
         auto previous_qubit = permutation.front();
         auto const last = std::end(permutation);
@@ -284,18 +304,15 @@ namespace ket
     { lhs.swap(rhs); }
 
     template <typename StateInteger, typename BitInteger, typename Allocator>
-    inline typename ::ket::mpi::qubit_permutation<
-      StateInteger, BitInteger, Allocator>::inverse_view
+    inline typename ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>::inverse_view
     inverse(::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const& permutation)
     { return permutation.inverse(); }
 
-    template <
-      typename StateInteger, typename BitInteger, typename Allocator>
+    template <typename StateInteger, typename BitInteger, typename Allocator, typename AnyQubit1, typename AnyQubit2>
     inline void permutate(
       ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
-      ::ket::qubit<StateInteger, BitInteger> const from1,
-      ::ket::qubit<StateInteger, BitInteger> const from2)
-    { permutation.permutate(from1, from2); }
+      AnyQubit1 const any_qubit1, AnyQubit2 const any_qubit2)
+    { permutation.permutate(any_qubit1, any_qubit2); }
 
     namespace permutate_bits_detail
     {
@@ -341,7 +358,7 @@ namespace ket
               auto const previous_bit = present_bit;
               // 00000b00000
               auto const previous_bit_value = present_bit_value;
-              present_bit = permutation[previous_bit];
+              present_bit = permutation[previous_bit].qubit();
               // 00a00000000
               present_bit_value
                 = unsigned_integer bitand (UnsignedInteger{1u} << present_bit);
@@ -401,7 +418,7 @@ namespace ket
               auto const previous_bit = present_bit;
               // 00000b00000
               auto const previous_bit_value = present_bit_value;
-              present_bit = ::ket::mpi::inverse(permutation)[previous_bit];
+              present_bit = ::ket::mpi::inverse(permutation)[::ket::mpi::make_permutated(previous_bit)];
               // 00a00000000
               present_bit_value
                 = unsigned_integer bitand (UnsignedInteger{1u} << present_bit);

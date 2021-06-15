@@ -2,6 +2,7 @@
 # define KET_CONTROL_HPP
 
 # include <cstdint>
+# include <type_traits>
 
 # include <ket/qubit.hpp>
 
@@ -15,62 +16,184 @@ namespace ket
     qubit_type qubit_;
 
    public:
-    constexpr control() noexcept : qubit_() { }
+    using bit_integer_type = typename qubit_type::bit_integer_type;
+    using state_integer_type = typename qubit_type::state_integer_type;
+
+    constexpr control() noexcept : qubit_{} { }
 
     explicit constexpr control(Qubit const qubit) noexcept
-      : qubit_(qubit)
+      : qubit_{qubit}
     { }
 
     template <typename BitInteger_>
     explicit constexpr control(BitInteger_ const bit) noexcept
-      : qubit_(bit)
+      : qubit_{bit}
     { }
 
     qubit_type& qubit() { return qubit_; }
     qubit_type const& qubit() const { return qubit_; }
+
+    control& operator++() noexcept { ++qubit_; return *this; }
+    control operator++(int) noexcept
+    {
+      auto result = *this;
+      ++(*this);
+      return result;
+    }
+    control& operator--() noexcept { --qubit_; return *this; }
+    control operator--(int) noexcept
+    {
+      auto result = *this;
+      --(*this);
+      return result;
+    }
+    control& operator+=(bit_integer_type const bit) noexcept
+    { qubit_ += bit; return *this; }
+    control& operator-=(bit_integer_type const bit) noexcept
+    { qubit_ -= bit; return *this; }
   }; // class control<Qubit>
 
   template <typename Qubit>
   inline constexpr bool operator==(
-    ::ket::control<Qubit> const control_qubit1,
-    ::ket::control<Qubit> const control_qubit2)
-    noexcept
+    ::ket::control<Qubit> const control_qubit1, ::ket::control<Qubit> const control_qubit2) noexcept
   { return control_qubit1.qubit() == control_qubit2.qubit(); }
 
   template <typename Qubit>
+  inline constexpr bool operator==(
+    ::ket::control<Qubit> const control_qubit, Qubit const qubit) noexcept
+  { return control_qubit.qubit() == qubit; }
+
+  template <typename Qubit>
+  inline constexpr bool operator==(
+    Qubit const qubit, ::ket::control<Qubit> const control_qubit) noexcept
+  { return qubit == control_qubit.qubit(); }
+
+  template <typename Qubit>
   inline constexpr bool operator!=(
-    ::ket::control<Qubit> const control_qubit1,
-    ::ket::control<Qubit> const control_qubit2)
-    noexcept
+    ::ket::control<Qubit> const control_qubit1, ::ket::control<Qubit> const control_qubit2) noexcept
   { return control_qubit1.qubit() != control_qubit2.qubit(); }
 
   template <typename Qubit>
+  inline constexpr bool operator!=(
+    ::ket::control<Qubit> const control_qubit, Qubit const qubit) noexcept
+  { return control_qubit.qubit() != qubit; }
+
+  template <typename Qubit>
+  inline constexpr bool operator!=(
+    Qubit const qubit, ::ket::control<Qubit> const control_qubit) noexcept
+  { return qubit != control_qubit.qubit(); }
+
+  template <typename Qubit>
   inline constexpr bool operator<(
-    ::ket::control<Qubit> const control_qubit1,
-    ::ket::control<Qubit> const control_qubit2)
-    noexcept
+    ::ket::control<Qubit> const control_qubit1, ::ket::control<Qubit> const control_qubit2) noexcept
   { return control_qubit1.qubit() < control_qubit2.qubit(); }
 
   template <typename Qubit>
+  inline constexpr bool operator<(
+    ::ket::control<Qubit> const control_qubit, Qubit const qubit) noexcept
+  { return control_qubit.qubit() < qubit; }
+
+  template <typename Qubit>
+  inline constexpr bool operator<(
+    Qubit const qubit, ::ket::control<Qubit> const control_qubit) noexcept
+  { return qubit < control_qubit.qubit(); }
+
+  template <typename Qubit>
   inline constexpr bool operator>(
-    ::ket::control<Qubit> const control_qubit1,
-    ::ket::control<Qubit> const control_qubit2)
-    noexcept
+    ::ket::control<Qubit> const control_qubit1, ::ket::control<Qubit> const control_qubit2) noexcept
   { return control_qubit1.qubit() > control_qubit2.qubit(); }
 
   template <typename Qubit>
+  inline constexpr bool operator>(
+    ::ket::control<Qubit> const control_qubit, Qubit const qubit) noexcept
+  { return control_qubit.qubit() > qubit; }
+
+  template <typename Qubit>
+  inline constexpr bool operator>(
+    Qubit const qubit, ::ket::control<Qubit> const control_qubit) noexcept
+  { return qubit > control_qubit.qubit(); }
+
+  template <typename Qubit>
   inline constexpr bool operator<=(
-    ::ket::control<Qubit> const control_qubit1,
-    ::ket::control<Qubit> const control_qubit2)
-    noexcept
+    ::ket::control<Qubit> const control_qubit1, ::ket::control<Qubit> const control_qubit2) noexcept
   { return control_qubit1.qubit() <= control_qubit2.qubit(); }
 
   template <typename Qubit>
+  inline constexpr bool operator<=(
+    ::ket::control<Qubit> const control_qubit, Qubit const qubit) noexcept
+  { return control_qubit.qubit() <= qubit; }
+
+  template <typename Qubit>
+  inline constexpr bool operator<=(
+    Qubit const qubit, ::ket::control<Qubit> const control_qubit) noexcept
+  { return qubit <= control_qubit.qubit(); }
+
+  template <typename Qubit>
   inline constexpr bool operator>=(
-    ::ket::control<Qubit> const control_qubit1,
-    ::ket::control<Qubit> const control_qubit2)
-    noexcept
+    ::ket::control<Qubit> const control_qubit1, ::ket::control<Qubit> const control_qubit2) noexcept
   { return control_qubit1.qubit() >= control_qubit2.qubit(); }
+
+  template <typename Qubit>
+  inline constexpr bool operator>=(
+    ::ket::control<Qubit> const control_qubit, Qubit const qubit) noexcept
+  { return control_qubit.qubit() >= qubit; }
+
+  template <typename Qubit>
+  inline constexpr bool operator>=(
+    Qubit const qubit, ::ket::control<Qubit> const control_qubit) noexcept
+  { return qubit >= control_qubit.qubit(); }
+
+  template <typename Qubit>
+  inline constexpr ::ket::control<Qubit> operator+(
+    ::ket::control<Qubit> control_qubit, typename ::ket::control<Qubit>::bit_integer_type const bit) noexcept
+  { return control_qubit += bit; }
+
+  template <typename Qubit>
+  inline constexpr ::ket::control<Qubit> operator+(
+    typename ::ket::control<Qubit>::bit_integer_type const bit, ::ket::control<Qubit> const control_qubit) noexcept
+  { return control_qubit + bit; }
+
+  template <typename Qubit1, typename Qubit2>
+  inline ::ket::control<Qubit1> operator+(
+    ::ket::control<Qubit1> const control_qubit1,
+    ::ket::control<Qubit2> const control_qubit2)
+  = delete;
+
+  template <typename Qubit>
+  inline constexpr ::ket::control<Qubit> operator-(
+    ::ket::control<Qubit> control_qubit, typename ::ket::control<Qubit>::bit_integer_type const bit) noexcept
+  { return control_qubit -= bit; }
+
+  template <typename Qubit>
+  inline constexpr auto operator-(
+    ::ket::control<Qubit> const control_qubit1,
+    ::ket::control<Qubit> const control_qubit2) noexcept
+  -> decltype(control_qubit1.qubit() - control_qubit2.qubit())
+  { return control_qubit1.qubit() - control_qubit2.qubit(); }
+
+  template <typename Qubit>
+  inline constexpr auto operator-(
+    ::ket::control<Qubit> const control_qubit, Qubit const qubit) noexcept
+  -> decltype(control_qubit.qubit() - qubit)
+  { return control_qubit.qubit() - qubit; }
+
+  template <typename Qubit>
+  inline constexpr auto operator-(
+    Qubit const qubit, ::ket::control<Qubit> const control_qubit) noexcept
+  -> decltype(qubit - control_qubit.qubit())
+  { return qubit - control_qubit.qubit(); }
+
+  template <typename Value, typename Qubit>
+  inline constexpr
+  typename std::enable_if<std::is_integral<Value>::value, Value>::type
+  operator<<(Value const value, ::ket::control<Qubit> const control_qubit) noexcept
+  { return value << control_qubit.qubit(); }
+
+  template <typename Value, typename Qubit>
+  inline constexpr
+  typename std::enable_if<std::is_integral<Value>::value, Value>::type
+  operator>>(Value const value, ::ket::control<Qubit> const control_qubit) noexcept
+  { return value >> control_qubit.qubit(); }
 
 
   template <typename Qubit>

@@ -9,7 +9,7 @@
 # include <ket/qubit.hpp>
 # include <ket/utility/imaginary_unit.hpp>
 # include <ket/utility/meta/real_of.hpp>
-# include <ket/mpi/qubit_permutation.hpp>
+# include <ket/mpi/permutated.hpp>
 # include <ket/mpi/gate/page/detail/one_page_qubit_gate.hpp>
 
 
@@ -46,21 +46,18 @@ namespace ket
 
         template <
           typename ParallelPolicy,
-          typename RandomAccessRange,
-          typename StateInteger, typename BitInteger, typename Allocator>
+          typename RandomAccessRange, typename StateInteger, typename BitInteger>
         inline RandomAccessRange& x_rotation_half_pi(
           ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
-          ::ket::qubit<StateInteger, BitInteger> const qubit,
-          ::ket::mpi::qubit_permutation<
-            StateInteger, BitInteger, Allocator> const& permutation)
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit)
         {
           using complex_type = typename boost::range_value<RandomAccessRange>::type;
           using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-            parallel_policy, local_state, qubit, permutation,
+            parallel_policy, local_state, permutated_qubit,
             [](auto const zero_first, auto const one_first, StateInteger const index, int const)
             {
               auto const zero_iter = zero_first + index;
@@ -75,7 +72,7 @@ namespace ket
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-            parallel_policy, local_state, qubit, permutation,
+            parallel_policy, local_state, permutated_qubit,
             ::ket::mpi::gate::page::x_rotation_half_pi_detail::x_rotation_half_pi<complex_type, real_type>{});
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }
@@ -105,21 +102,18 @@ namespace ket
 
         template <
           typename ParallelPolicy,
-          typename RandomAccessRange,
-          typename StateInteger, typename BitInteger, typename Allocator>
+          typename RandomAccessRange, typename StateInteger, typename BitInteger>
         inline RandomAccessRange& adj_x_rotation_half_pi(
           ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
-          ::ket::qubit<StateInteger, BitInteger> const qubit,
-          ::ket::mpi::qubit_permutation<
-            StateInteger, BitInteger, Allocator> const& permutation)
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit)
         {
           using complex_type = typename boost::range_value<RandomAccessRange>::type;
           using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-            parallel_policy, local_state, qubit, permutation,
+            parallel_policy, local_state, permutated_qubit,
             [](auto const zero_first, auto const one_first, StateInteger const index, int const)
             {
               auto const zero_iter = zero_first + index;
@@ -134,7 +128,7 @@ namespace ket
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-            parallel_policy, local_state, qubit, permutation,
+            parallel_policy, local_state, permutated_qubit,
             ::ket::mpi::gate::page::x_rotation_half_pi_detail::adj_x_rotation_half_pi<complex_type, real_type>{});
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }

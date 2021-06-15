@@ -12,7 +12,7 @@
 # include <ket/qubit.hpp>
 # include <ket/utility/meta/real_of.hpp>
 # include <ket/mpi/state.hpp>
-# include <ket/mpi/qubit_permutation.hpp>
+# include <ket/mpi/permutated.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
 # include <ket/mpi/gate/page/unsupported_page_gate_operation.hpp>
 # include <ket/mpi/gate/page/detail/one_page_qubit_gate.hpp>
@@ -26,8 +26,7 @@ namespace ket
     {
       template <
         typename ParallelPolicy,
-        typename RandomAccessRange,
-        typename StateInteger, typename BitInteger, typename Allocator>
+        typename RandomAccessRange, typename StateInteger, typename BitInteger>
       [[noreturn]] inline
       std::array<
         typename ::ket::utility::meta::real_of<
@@ -35,23 +34,18 @@ namespace ket
       spin_expectation_value(
         ParallelPolicy const,
         RandomAccessRange&,
-        ::ket::qubit<StateInteger, BitInteger> const,
-        ::ket::mpi::qubit_permutation<
-          StateInteger, BitInteger, Allocator>&)
+        ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const)
       { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<0, false>{"spin_expectation_value"}; }
 
       template <
         typename ParallelPolicy,
-        typename Complex, typename StateAllocator,
-        typename StateInteger, typename BitInteger, typename PermutationAllocator>
+        typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
       [[noreturn]] inline
       std::array<typename ::ket::utility::meta::real_of<Complex>::type, 3u>
       spin_expectation_value(
         ParallelPolicy const,
-        ::ket::mpi::state<Complex, 0, StateAllocator>&,
-        ::ket::qubit<StateInteger, BitInteger> const,
-        ::ket::mpi::qubit_permutation<
-          StateInteger, BitInteger, PermutationAllocator>&)
+        ::ket::mpi::state<Complex, 0, Allocator>&,
+        ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const)
       { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<0>{"spin_expectation_value"}; }
 
       namespace spin_expectation_value_detail
@@ -93,16 +87,14 @@ namespace ket
 
       template <
         typename ParallelPolicy,
-        typename Complex, int num_page_qubits_, typename StateAllocator,
-        typename StateInteger, typename BitInteger, typename PermutationAllocator>
+        typename Complex, int num_page_qubits_, typename Allocator,
+        typename StateInteger, typename BitInteger>
       inline
       std::array<typename ::ket::utility::meta::real_of<Complex>::type, 3u>
       spin_expectation_value(
         ParallelPolicy const parallel_policy,
-        ::ket::mpi::state<Complex, num_page_qubits_, StateAllocator>& local_state,
-        ::ket::qubit<StateInteger, BitInteger> const qubit,
-        ::ket::mpi::qubit_permutation<
-          StateInteger, BitInteger, PermutationAllocator>& permutation)
+        ::ket::mpi::state<Complex, num_page_qubits_, Allocator>& local_state,
+        ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit)
       {
         using hd_spin_type = std::array<long double, 3u>;
         constexpr auto zero_spin = hd_spin_type{ };
@@ -111,7 +103,7 @@ namespace ket
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
         ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-          parallel_policy, local_state, qubit, permutation,
+          parallel_policy, local_state, permutated_qubit,
           [&spins_in_threads](auto const zero_first, auto const one_first, StateInteger const index, int const thread_index)
           {
             using std::conj;
@@ -129,7 +121,7 @@ namespace ket
           });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
         ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-          parallel_policy, local_state, qubit, permutation,
+          parallel_policy, local_state, permutated_qubit,
           ::ket::mpi::page::spin_expectation_value_detail::make_spin_expectation_value<hd_spin_type>(spins_in_threads));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 

@@ -11,7 +11,9 @@
 #   include <type_traits>
 
 #   include <ket/qubit.hpp>
+#   include <ket/control.hpp>
 #   include <ket/utility/loop_n.hpp>
+#   include <ket/mpi/permutated.hpp>
 
 
 namespace ket
@@ -35,7 +37,7 @@ namespace ket
             StateInteger const data_block_index, StateInteger const data_block_size,
             StateInteger const last_local_qubit_value,
             std::array<
-              ::ket::qubit<StateInteger, BitInteger>,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >,
               num_local_control_qubits> local_permutated_control_qubits,
             Function&& function)
           {
@@ -60,27 +62,27 @@ namespace ket
             StateInteger const data_block_index, StateInteger const data_block_size,
             StateInteger const last_local_qubit_value,
             std::array<
-              ::ket::qubit<StateInteger, BitInteger>,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >,
               num_local_control_qubits> const& sorted_local_permutated_control_qubits,
             Function&& function)
           {
             static constexpr auto zero_state_integer = StateInteger{0u};
 
-            using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+            using permutated_control_qubit_type
+              = ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >;
             // 000101000100
             auto const mask
               = std::accumulate(
                   std::begin(sorted_local_permutated_control_qubits),
                   std::end(sorted_local_permutated_control_qubits),
                   zero_state_integer,
-                  [](StateInteger const& partial_mask, qubit_type const& control_qubit)
+                  [](StateInteger const& partial_mask, permutated_control_qubit_type const& permutated_control_qubit)
                   {
                     static constexpr auto one_state_integer = StateInteger{1u};
-                    return partial_mask bitor (one_state_integer << control_qubit);
+                    return partial_mask bitor (one_state_integer << permutated_control_qubit);
                   });
 
-            auto const last_integer
-              = last_local_qubit_value >> num_local_control_qubits;
+            auto const last_integer = last_local_qubit_value >> num_local_control_qubits;
 
             auto const first = std::begin(local_state);
             auto const first_index = data_block_index * data_block_size;
@@ -93,9 +95,9 @@ namespace ket
                 static constexpr auto one_state_integer = StateInteger{1u};
 
                 // xxx0x0xxx0xx
-                for (qubit_type const& qubit: sorted_local_permutated_control_qubits)
+                for (permutated_control_qubit_type const& permutated_control_qubit: sorted_local_permutated_control_qubits)
                 {
-                  auto const lower_mask = (one_state_integer << qubit) - one_state_integer;
+                  auto const lower_mask = (one_state_integer << permutated_control_qubit) - one_state_integer;
                   auto const upper_mask = compl lower_mask;
                   state_integer
                     = (state_integer bitand lower_mask)
@@ -123,7 +125,7 @@ namespace ket
           StateInteger const data_block_index, StateInteger const data_block_size,
           StateInteger const last_local_qubit_value,
           std::array<
-            ::ket::qubit<StateInteger, BitInteger>,
+            ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >,
             num_local_control_qubits> const& local_permutated_control_qubits,
           Function&& function)
         {
