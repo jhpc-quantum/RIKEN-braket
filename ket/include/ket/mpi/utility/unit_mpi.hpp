@@ -724,15 +724,18 @@ namespace ket
                    nonlocal_qubit_value_wo_qubits < last_nonlocal_qubit_value_wo_qubits;
                    ++nonlocal_qubit_value_wo_qubits)
               {
+                // xx0xx0xx0xxx
                 auto nonlocal_qubit_value_base = StateInteger{0u};
                 for (auto index = std::size_t{0u}; index < num_qubits_of_operation + std::size_t{1u}; ++index)
                   nonlocal_qubit_value_base
                     |= (nonlocal_qubit_value_wo_qubits bitand nonlocal_qubit_value_masks[index]) << index;
 
                 auto const last_qubit_mask = ::ket::utility::integer_exp2<StateInteger>(num_qubits_of_operation);
+                // 000, 001, 010, 011, 100, 101, 110
                 for (auto qubit_mask1 = StateInteger{0u};
                      qubit_mask1 < last_qubit_mask - StateInteger{1u}; ++qubit_mask1)
                 {
+                  // xxbxxb'xxb''xxx
                   auto nonlocal_qubit_value1 = nonlocal_qubit_value_base;
                   for (auto index = BitInteger{0u}; index < num_qubits_of_operation; ++index)
                     nonlocal_qubit_value1
@@ -754,9 +757,11 @@ namespace ket
                       >> mpi_policy.num_unit_qubits();
                   auto const rank1 = global_qubit_value1 * mpi_policy.num_processes_per_unit() + rank_in_unit1;
 
+                  // (qubit_mask1 + 1), ..., 111
                   for (auto qubit_mask2 = qubit_mask1 + StateInteger{1u};
                        qubit_mask2 < last_qubit_mask; ++qubit_mask2)
                   {
+                    // xxcxxc'xxc''xxx
                     auto nonlocal_qubit_value2 = nonlocal_qubit_value_base;
                     for (auto index = BitInteger{0u}; index < num_qubits_of_operation; ++index)
                       nonlocal_qubit_value2
@@ -780,6 +785,7 @@ namespace ket
 
                     if (rank2 == present_rank)
                     {
+                      // (0000000|0000|)bb'b''00000
                       auto local_first_index2 = StateInteger{0u};
                       for (auto index = std::size_t{0u}; index < num_qubits_of_operation; ++index)
                         local_first_index2
@@ -788,6 +794,7 @@ namespace ket
 
                       if (rank1 == present_rank)
                       {
+                        // (0000000|0000|)cc'c''00000
                         auto local_first_index1 = StateInteger{0u};
                         for (auto index = std::size_t{0u}; index < num_qubits_of_operation; ++index)
                           local_first_index1
@@ -826,6 +833,7 @@ namespace ket
                     }
                     else if (rank1 == present_rank) // rank2 != present_rank
                     {
+                      // (0000000|0000|)cc'c''00000
                       auto local_first_index1 = StateInteger{0u};
                       for (auto index = std::size_t{0u}; index < num_qubits_of_operation; ++index)
                         local_first_index1

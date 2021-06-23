@@ -813,6 +813,8 @@ namespace ket
             = local_state.get_data_block_page_indices(data_block_index * data_block_size + source_local_first_index);
           auto const back_data_block_page_indices
             = local_state.get_data_block_page_indices(data_block_index * data_block_size + source_local_last_index - 1u);
+          assert(front_data_block_page_indices.first == data_block_index);
+          assert(back_data_block_page_indices.first == data_block_index);
 
           auto const front_page_index
             = static_cast<StateInteger>(front_data_block_page_indices.second);
@@ -904,54 +906,108 @@ namespace ket
           StateInteger const data_block_index2, StateInteger const local_first_index2,
           StateInteger const data_block_size)
         {
-          auto const front_data_block_page_indices1
-            = local_state.get_data_block_page_indices(data_block_index1 * data_block_size + local_first_index1);
-          auto const back_data_block_page_indices1
-            = local_state.get_data_block_page_indices(data_block_index1 * data_block_size + local_last_index1 - 1u);
-          auto const front_data_block_page_indices2
-            = local_state.get_data_block_page_indices(data_block_index2 * data_block_size + local_first_index2);
+          auto const first_index1 = data_block_index1 * data_block_size + local_first_index1;
+          auto const last_index1 = first_index1 + (local_last_index1 - local_first_index1);
+          auto const first_index2 = data_block_index2 * data_block_size + local_first_index2;
+          auto const last_index2 = first_index2 + (local_last_index1 - local_first_index1);
+
+          auto const front_data_block_page_indices1 = local_state.get_data_block_page_indices(first_index1);
+          auto const back_data_block_page_indices1 = local_state.get_data_block_page_indices(last_index1 - StateInteger{1u});
+          auto const front_data_block_page_indices2 = local_state.get_data_block_page_indices(first_index2);
+          auto const back_data_block_page_indices2 = local_state.get_data_block_page_indices(last_index2 - StateInteger{1u});
+          assert(static_cast<StateInteger>(front_data_block_page_indices1.first) == data_block_index1);
+          assert(static_cast<StateInteger>(back_data_block_page_indices1.first) == data_block_index1);
+          assert(static_cast<StateInteger>(front_data_block_page_indices2.first) == data_block_index2);
+          assert(static_cast<StateInteger>(back_data_block_page_indices2.first) == data_block_index2);
 
           auto const front_page_index1 = static_cast<StateInteger>(front_data_block_page_indices1.second);
           auto const back_page_index1 = static_cast<StateInteger>(back_data_block_page_indices1.second);
           auto const front_page_index2 = static_cast<StateInteger>(front_data_block_page_indices2.second);
+          auto const back_page_index2 = static_cast<StateInteger>(back_data_block_page_indices2.second);
 
-          for (auto page_index1 = front_page_index1, page_index2 = front_page_index2;
-               page_index1 <= back_page_index1; ++page_index1, ++page_index2)
+          auto const nonpage_first_index1 = static_cast<StateInteger>(local_state.get_nonpage_index(first_index1));
+          auto const nonpage_last_index1 = static_cast<StateInteger>(local_state.get_nonpage_index(last_index1 - StateInteger{1u})) + StateInteger{1u};
+          auto const nonpage_first_index2 = static_cast<StateInteger>(local_state.get_nonpage_index(first_index2));
+          auto const nonpage_last_index2 = static_cast<StateInteger>(local_state.get_nonpage_index(last_index2 - StateInteger{1u})) + StateInteger{1u};
+
+          auto const first1 = std::begin(local_state.page_range(front_data_block_page_indices1)) + nonpage_first_index1;
+          auto const last1 = std::begin(local_state.page_range(back_data_block_page_indices1)) + nonpage_last_index1;
+          auto const last2 = std::begin(local_state.page_range(back_data_block_page_indices2)) + nonpage_last_index2;
+
+          if (nonpage_first_index1 == nonpage_first_index2)
           {
-            auto page_range1 = local_state.page_range(std::make_pair(data_block_index1, page_index1));
-            auto page_range2 = local_state.page_range(std::make_pair(data_block_index2, page_index2));
-            auto const page_size = boost::size(page_range1);
+            assert(nonpage_last_index1 == nonpage_last_index2);
 
-            auto const page_first1 = std::begin(page_range1);
-            auto const page_last1 = std::end(page_range1);
-            auto const page_first2 = std::begin(page_range2);
+            for (auto page_index1 = front_page_index1, page_index2 = front_page_index2;
+                 page_index1 <= back_page_index1; ++page_index1, ++page_index2)
+            {
+              assert(page_index2 <= back_page_index2);
 
-            auto const first_index1
-              = page_index1 == front_page_index1
-                ? static_cast<StateInteger>(local_state.get_nonpage_index(data_block_index1 * data_block_size + local_first_index1))
-                : StateInteger{0u};
-            auto const last_index1
-              = page_index1 == back_page_index1
-                ? static_cast<StateInteger>(local_state.get_nonpage_index(data_block_index1 * data_block_size + local_last_index1 - 1u) + 1u)
-                : static_cast<StateInteger>(page_size);
-# ifndef NDEBUG
-            auto const first_index2
-              = page_index2 == front_page_index2
-                ? static_cast<StateInteger>(local_state.get_nonpage_index(data_block_index2 * data_block_size + local_first_index2))
-                : StateInteger{0u};
-# endif // NDEBUG
-            assert(first_index1 == first_index2);
+              auto const data_block_page_indices1 = std::make_pair(data_block_index1, page_index1);
+              auto const data_block_page_indices2 = std::make_pair(data_block_index2, page_index2);
 
-            auto const first1 = page_first1 + first_index1;
-            auto const last1 = page_first1 + last_index1;
-            auto const last2 = page_first2 + last_index1;
+              auto page_range1 = local_state.page_range(data_block_page_indices1);
+              auto page_range2 = local_state.page_range(data_block_page_indices2);
 
-            std::swap_ranges(page_first1, first1, page_first2);
-            std::swap_ranges(last1, page_last1, last2);
+              if (page_index1 == front_page_index1)
+                std::swap_ranges(std::begin(page_range1), first1, std::begin(page_range2));
 
-            local_state.swap_pages(
-              std::make_pair(data_block_index1, page_index1),
-              std::make_pair(data_block_index2, page_index2));
+              if (page_index1 == back_page_index1)
+              {
+                assert(page_index2 == back_page_index2);
+                std::swap_ranges(last1, std::end(page_range1), last2);
+              }
+
+              local_state.swap_pages(data_block_page_indices1, data_block_page_indices2);
+            }
+          }
+          else // nonpage_first_index1 != nonpage_first_index2
+          {
+            auto page_index1 = front_page_index1;
+            auto page_index2 = front_page_index2;
+            auto the_first1 = first1;
+            auto the_first2 = std::begin(local_state.page_range(front_data_block_page_indices2)) + nonpage_first_index2;
+
+            while (true)
+            {
+              auto page_range1 = local_state.page_range(std::make_pair(data_block_index1, page_index1));
+              auto page_range2 = local_state.page_range(std::make_pair(data_block_index2, page_index2));
+
+              auto const the_last1 = page_index1 == back_page_index1 ? last1 : std::end(page_range1);
+              auto const the_last2 = page_index2 == back_page_index2 ? last2 : std::end(page_range2);
+
+              auto const size1 = the_last1 - the_first1;
+              auto const size2 = the_last2 - the_first2;
+              if (size1 == size2)
+              {
+                assert(the_last1 == last1 and the_last2 == last2);
+                std::swap_ranges(the_first1, the_last1, the_first2);
+                break;
+              }
+
+              else if (size1 > size2)
+              {
+                assert(the_last2 != last2);
+                std::swap_ranges(the_first2, the_last2, the_first1);
+
+                std::advance(the_first1, size2);
+                the_first2 = the_last2;
+
+                ++page_index2;
+                the_first2 = std::begin(local_state.page_range(std::make_pair(data_block_index2, page_index2)));
+              }
+              else // size1 < size2
+              {
+                assert(the_last1 != last1);
+                std::swap_ranges(the_first1, the_last1, the_first2);
+
+                std::advance(the_first2, size1);
+                the_first1 = the_last1;
+
+                ++page_index1;
+                the_first1 = std::begin(local_state.page_range(std::make_pair(data_block_index1, page_index1)));
+              }
+            }
           }
         }
       }; // struct swap_local_data<num_page_qubits>

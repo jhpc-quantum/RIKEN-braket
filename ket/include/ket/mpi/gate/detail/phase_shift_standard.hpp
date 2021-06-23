@@ -819,7 +819,7 @@ namespace ket
             RandomAccessIterator const first, RandomAccessIterator const last) const
           {
             ::ket::gate::phase_shift2(
-              parallel_policy_, first, last, phase1_, phase2_, permutated_qubit_);
+              parallel_policy_, first, last, phase1_, phase2_, permutated_qubit_.qubit());
           }
         }; // struct call_phase_shift2<ParallelPolicy, Real, Qubit>
 
@@ -1325,7 +1325,7 @@ namespace ket
         inline call_phase_shift3<ParallelPolicy, Real, Qubit>
         make_call_phase_shift3(
           ParallelPolicy const parallel_policy,
-          Real const phase1, Real const phase2, Real const phase3, Qubit const permutated_qubit)
+          Real const phase1, Real const phase2, Real const phase3, ::ket::mpi::permutated<Qubit> const permutated_qubit)
         { return {parallel_policy, phase1, phase2, phase3, permutated_qubit}; }
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 
