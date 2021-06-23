@@ -75,8 +75,8 @@ namespace ket
         inline call_controlled_phase_shift_coeff<ParallelPolicy, Complex, TargetQubit, ControlQubit>
         make_call_controlled_phase_shift_coeff(
           ParallelPolicy const parallel_policy, Complex const& phase_coefficient,
-          ::ket::mpi::permutated<TargetQubit> const target_qubit,
-          ::ket::mpi::permutated<ControlQubit> const control_qubit)
+          ::ket::mpi::permutated<TargetQubit> const permutated_target_qubit,
+          ::ket::mpi::permutated<ControlQubit> const permutated_control_qubit)
         { return {parallel_policy, phase_coefficient, permutated_target_qubit, permutated_control_qubit}; }
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 

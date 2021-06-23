@@ -327,7 +327,7 @@ namespace ket\
         struct call_ ## gate_name\
         {\
           ParallelPolicy parallel_policy_;\
-          ::ket::mpi::Permutated<Qubit> permutated_qubit_;\
+          ::ket::mpi::permutated<Qubit> permutated_qubit_;\
 \
           call_ ## gate_name(ParallelPolicy const parallel_policy, ::ket::mpi::permutated<Qubit> const permutated_qubit)\
             : parallel_policy_{parallel_policy},\
