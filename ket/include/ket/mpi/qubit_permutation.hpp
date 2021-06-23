@@ -40,7 +40,7 @@ namespace ket
       typename StateInteger = std::uint64_t,
       typename BitInteger = unsigned int,
       typename Allocator
-        = std::allocator< ::ket::qubit<StateInteger, BitInteger> > >
+        = std::allocator< ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > > >
     class qubit_permutation
     {
       using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
@@ -49,7 +49,7 @@ namespace ket
       using permutated_control_qubit_type = ::ket::mpi::permutated<control_qubit_type>;
 
       using data_type
-        = std::vector<permutated_qubit_type, typename Allocator::template rebind<qubit_type>::other>;
+        = std::vector<permutated_qubit_type, typename Allocator::template rebind<permutated_qubit_type>::other>;
       using inverse_data_type
         = std::vector<qubit_type, typename Allocator::template rebind<qubit_type>::other>;
 
