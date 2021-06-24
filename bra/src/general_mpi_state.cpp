@@ -54,7 +54,7 @@ namespace bra
   general_mpi_state::general_mpi_state(
     ::bra::state::state_integer_type const initial_integer,
     unsigned int const num_local_qubits,
-    std::vector<qubit_type> const& initial_permutation,
+    std::vector<permutated_qubit_type> const& initial_permutation,
     unsigned int num_threads_per_process,
     ::bra::state::seed_type const seed,
     yampi::communicator const& communicator,

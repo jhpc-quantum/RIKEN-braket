@@ -58,7 +58,7 @@ namespace bra
     ::bra::state::state_integer_type const initial_integer,
     unsigned int const num_local_qubits,
     unsigned int const num_unit_qubits,
-    std::vector<qubit_type> const& initial_permutation,
+    std::vector<permutated_qubit_type> const& initial_permutation,
     unsigned int const num_threads_per_process,
     unsigned int const num_processes_per_unit,
     ::bra::state::seed_type const seed,

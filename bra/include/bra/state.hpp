@@ -18,6 +18,7 @@
 # include <ket/control.hpp>
 # include <ket/gate/projective_measurement.hpp>
 # ifndef BRA_NO_MPI
+#   include <ket/mpi/permutated.hpp>
 #   include <ket/mpi/qubit_permutation.hpp>
 
 #   include <yampi/allocator.hpp>
@@ -46,6 +47,10 @@ namespace bra
     using bit_integer_type = unsigned int;
     using qubit_type = ket::qubit<state_integer_type, bit_integer_type>;
     using control_qubit_type = ket::control<qubit_type>;
+# ifndef BRA_NO_MPI
+    using permutated_qubit_type = ket::mpi::permutated<qubit_type>;
+    using permutated_control_qubit_type = ket::mpi::permutated<control_qubit_type>;
+# endif // BRA_NO_MPI
 
 # ifdef BRA_REAL_TYPE
 #   if BRA_REAL_TYPE == 0
@@ -75,7 +80,7 @@ namespace bra
 # ifndef BRA_NO_MPI
     using permutation_type
       = ket::mpi::qubit_permutation<
-          state_integer_type, bit_integer_type, yampi::allocator<qubit_type>>;
+          state_integer_type, bit_integer_type, yampi::allocator<permutated_qubit_type>>;
 # endif // BRA_NO_MPI
 
     using time_and_process_type
@@ -108,7 +113,7 @@ namespace bra
       yampi::environment const& environment);
 
     state(
-      std::vector<qubit_type> const& initial_permutation,
+      std::vector<permutated_qubit_type> const& initial_permutation,
       seed_type const seed,
       yampi::communicator const& communicator,
       yampi::environment const& environment);
@@ -122,7 +127,6 @@ namespace bra
     state(state&&) = delete;
     state& operator=(state&&) = delete;
 
-   public:
     bit_integer_type const& total_num_qubits() const { return total_num_qubits_; }
 
     bool is_measured(qubit_type const qubit) const

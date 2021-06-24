@@ -29,7 +29,7 @@ namespace bra
     unsigned int const num_pages,
     ::bra::state::state_integer_type const initial_integer,
     ::bra::state::bit_integer_type const num_local_qubits,
-    std::vector< ::bra::state::qubit_type > const& initial_permutation,
+    std::vector< ::bra::state::permutated_qubit_type > const& initial_permutation,
     unsigned int const num_threads_per_process,
     ::bra::state::seed_type const seed,
     yampi::communicator const& communicator,

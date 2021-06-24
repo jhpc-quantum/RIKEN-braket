@@ -48,7 +48,7 @@ namespace bra
   { finish_times_and_processes_.reserve(2u); }
 
   state::state(
-    std::vector<qubit_type> const& initial_permutation,
+    std::vector<permutated_qubit_type> const& initial_permutation,
     seed_type const seed,
     yampi::communicator const& communicator,
     yampi::environment const& environment)

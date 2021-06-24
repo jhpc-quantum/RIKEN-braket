@@ -234,7 +234,7 @@ namespace bra
     initial_permutation_.clear();
     initial_permutation_.reserve(num_qubits_);
     for (auto bit = bit_integer_type{0u}; bit < num_qubits_; ++bit)
-      initial_permutation_.push_back(qubit_type{bit});
+      initial_permutation_.push_back(permutated_qubit_type{bit});
   }
 #else // BRA_NO_MPI
   void gates::set_num_qubits_params(bit_integer_type const new_num_qubits)
@@ -700,10 +700,10 @@ namespace bra
   }
 
 #ifndef BRA_NO_MPI
-  std::vector<gates::qubit_type>
+  std::vector<gates::permutated_qubit_type>
   gates::read_initial_permutation(gates::columns_type const& columns) const
   {
-    auto result = std::vector<qubit_type>{};
+    auto result = std::vector<permutated_qubit_type>{};
     result.reserve(boost::size(columns)-2u);
 
     auto iter = std::begin(columns);
@@ -712,7 +712,7 @@ namespace bra
 
     auto const last = std::end(columns);
     for (; iter != last; ++iter)
-      result.push_back(static_cast<qubit_type>(boost::lexical_cast<bit_integer_type>(*iter)));
+      result.push_back(static_cast<permutated_qubit_type>(boost::lexical_cast<bit_integer_type>(*iter)));
 
     return result;
   }

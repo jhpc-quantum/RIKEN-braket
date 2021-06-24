@@ -85,6 +85,10 @@ namespace bra
     using state_integer_type = ::bra::state::state_integer_type;
     using qubit_type = ::bra::state::qubit_type;
     using control_qubit_type = ::bra::state::control_qubit_type;
+# ifndef BRA_NO_MPI
+    using permutated_qubit_type = ::bra::state::permutated_qubit_type;
+    using permutated_control_qubit_type = ::bra::state::permutated_control_qubit_type;
+# endif
 
     using real_type = ::bra::state::real_type;
 
@@ -99,7 +103,7 @@ namespace bra
 # endif
     state_integer_type initial_state_value_;
 # ifndef BRA_NO_MPI
-    std::vector<qubit_type> initial_permutation_;
+    std::vector<permutated_qubit_type> initial_permutation_;
 # endif
 
     using complex_type = ::bra::state::complex_type;
@@ -156,7 +160,7 @@ namespace bra
 # endif
     state_integer_type const& initial_state_value() const { return initial_state_value_; }
 # ifndef BRA_NO_MPI
-    std::vector<qubit_type> const& initial_permutation() const { return initial_permutation_; }
+    std::vector<permutated_qubit_type> const& initial_permutation() const { return initial_permutation_; }
 # endif
 
 # ifndef BRA_NO_MPI
@@ -251,7 +255,7 @@ namespace bra
     bit_integer_type read_num_mpi_processes(columns_type const& columns) const;
     state_integer_type read_mpi_buffer_size(columns_type const& columns) const;
 # ifndef BRA_NO_MPI
-    std::vector<qubit_type> read_initial_permutation(columns_type const& columns) const;
+    std::vector<permutated_qubit_type> read_initial_permutation(columns_type const& columns) const;
 # endif
 
     qubit_type read_target(columns_type const& columns) const;
