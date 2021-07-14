@@ -384,8 +384,10 @@ namespace ket
           auto const nonpage_permutated_control_qubit_mask
             = ::ket::utility::integer_exp2<StateInteger>(nonpage_permutated_control_qubit);
 
+          using permutated_qubit_type = ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >;
           auto const minmax_nonpage_permutated_qubits
-            = std::minmax(permutated_target_qubit, ::ket::mpi::remove_control(nonpage_permutated_control_qubit));
+            = static_cast<std::pair<permutated_qubit_type, permutated_qubit_type>>(
+                std::minmax(permutated_target_qubit, ::ket::mpi::remove_control(nonpage_permutated_control_qubit)));
           auto const nonpage_lower_bits_mask
             = ::ket::utility::integer_exp2<StateInteger>(minmax_nonpage_permutated_qubits.first)
               - StateInteger{1u};

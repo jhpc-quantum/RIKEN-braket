@@ -90,9 +90,13 @@ namespace ket
             auto const num_nonpage_local_qubits
               = static_cast<bit_integer_type>(local_state.num_local_qubits() - num_page_qubits_);
 
+            using permutated_qubit_type = decltype(::ket::mpi::remove_control(permutated_qubit1));
+            static_assert(
+              std::is_same<permutated_qubit_type, decltype(::ket::mpi::remove_control(permutated_qubit2))>::value,
+              "Qubit1 and Qubit2 should become the same after removing ket::control");
             auto const minmax_permutated_qubits
-              = std::minmax(
-                  ::ket::mpi::remove_control(permutated_qubit1), ::ket::mpi::remove_control(permutated_qubit2));
+              = static_cast<std::pair<permutated_qubit_type, permutated_qubit_type>>(
+                  std::minmax(::ket::mpi::remove_control(permutated_qubit1), ::ket::mpi::remove_control(permutated_qubit2)));
             auto const permutated_qubit1_mask
               = ::ket::utility::integer_exp2<state_integer_type>(
                   permutated_qubit1 - static_cast<bit_integer_type>(num_nonpage_local_qubits));
