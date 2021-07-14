@@ -8,10 +8,7 @@
 # include <bra/make_general_mpi_state.hpp>
 # include <bra/state.hpp>
 # include <bra/general_mpi_state.hpp>
-# include <bra/general_mpi_1page_state.hpp>
-# include <bra/general_mpi_2page_state.hpp>
-# include <bra/general_mpi_3page_state.hpp>
-# include <bra/unsupported_num_pages_error.hpp>
+# include <bra/paged_general_mpi_state.hpp>
 
 
 namespace bra
@@ -26,36 +23,15 @@ namespace bra
     yampi::communicator const& communicator,
     yampi::environment const& environment)
   {
-    switch (num_page_qubits)
-    {
-     case 0u:
-      break;
-
-     case 1u:
+    if (num_page_qubits == 0u)
       return std::unique_ptr< ::bra::state >{
-        new ::bra::general_mpi_1page_state{
+        new ::bra::general_mpi_state{
           initial_integer, num_local_qubits, total_num_qubits,
           num_threads_per_process, seed, communicator, environment}};
-
-     case 2u:
-      return std::unique_ptr< ::bra::state >{
-        new ::bra::general_mpi_2page_state{
-          initial_integer, num_local_qubits, total_num_qubits,
-          num_threads_per_process, seed, communicator, environment}};
-
-     case 3u:
-      return std::unique_ptr< ::bra::state >{
-        new ::bra::general_mpi_3page_state{
-          initial_integer, num_local_qubits, total_num_qubits,
-          num_threads_per_process, seed, communicator, environment}};
-
-     default:
-      throw ::bra::unsupported_num_pages_error{num_page_qubits};
-    }
 
     return std::unique_ptr< ::bra::state >{
-      new ::bra::general_mpi_state{
-        initial_integer, num_local_qubits, total_num_qubits,
+      new ::bra::paged_general_mpi_state{
+        initial_integer, num_local_qubits, total_num_qubits, num_page_qubits,
         num_threads_per_process, seed, communicator, environment}};
   }
 
@@ -69,36 +45,15 @@ namespace bra
     yampi::communicator const& communicator,
     yampi::environment const& environment)
   {
-    switch (num_page_qubits)
-    {
-     case 0u:
-      break;
-
-     case 1u:
+    if (num_page_qubits == 0u)
       return std::unique_ptr< ::bra::state >{
-        new ::bra::general_mpi_1page_state{
+        new ::bra::general_mpi_state{
           initial_integer, num_local_qubits, initial_permutation,
           num_threads_per_process, seed, communicator, environment}};
-
-     case 2u:
-      return std::unique_ptr< ::bra::state >{
-        new ::bra::general_mpi_2page_state{
-          initial_integer, num_local_qubits, initial_permutation,
-          num_threads_per_process, seed, communicator, environment}};
-
-     case 3u:
-      return std::unique_ptr< ::bra::state >{
-        new ::bra::general_mpi_3page_state{
-          initial_integer, num_local_qubits, initial_permutation,
-          num_threads_per_process, seed, communicator, environment}};
-
-     default:
-      throw ::bra::unsupported_num_pages_error{num_page_qubits};
-    }
 
     return std::unique_ptr< ::bra::state >{
-      new ::bra::general_mpi_state{
-        initial_integer, num_local_qubits, initial_permutation,
+      new ::bra::paged_general_mpi_state{
+        initial_integer, num_local_qubits, initial_permutation, num_page_qubits,
         num_threads_per_process, seed, communicator, environment}};
   }
 } // namespace bra

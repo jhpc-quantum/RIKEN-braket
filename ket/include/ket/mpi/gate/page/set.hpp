@@ -24,22 +24,22 @@ namespace ket
       namespace page
       {
         template <
-          typename MpiPolicy, typename ParallelPolicy,
+          typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger>
         [[noreturn]] inline RandomAccessRange& set(
-          MpiPolicy const, ParallelPolicy const,
+          ParallelPolicy const,
           RandomAccessRange& local_state,
           ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const)
-        { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<0, false>{"set"}; }
+        { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"set"}; }
 
         template <
           typename ParallelPolicy,
           typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
-        [[noreturn]] inline ::ket::mpi::state<Complex, 0, Allocator>& set(
-          ::ket::mpi::utility::policy::general_mpi const, ParallelPolicy const,
-          ::ket::mpi::state<Complex, 0, Allocator>& local_state,
+        [[noreturn]] inline ::ket::mpi::state<Complex, false, Allocator>& set(
+          ParallelPolicy const,
+          ::ket::mpi::state<Complex, false, Allocator>& local_state,
           ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const)
-        { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<0>{"set"}; }
+        { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"set"}; }
 
         namespace set_detail
         {
@@ -91,11 +91,10 @@ namespace ket
 
         template <
           typename ParallelPolicy,
-          typename Complex, int num_page_qubits_, typename Allocator,
-          typename StateInteger, typename BitInteger>
-        inline ::ket::mpi::state<Complex, num_page_qubits_, Allocator>& set(
+          typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
+        inline ::ket::mpi::state<Complex, true, Allocator>& set(
           ParallelPolicy const parallel_policy,
-          ::ket::mpi::state<Complex, num_page_qubits_, Allocator>& local_state,
+          ::ket::mpi::state<Complex, true, Allocator>& local_state,
           ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit)
         {
           using real_type = typename ::ket::utility::meta::real_of<Complex>::type;

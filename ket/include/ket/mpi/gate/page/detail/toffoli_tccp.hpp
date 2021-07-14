@@ -35,62 +35,37 @@ namespace ket
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const,
             ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const,
             ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const)
-          { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<0, false>{"toffoli_tccp"}; }
+          { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"toffoli_tccp"}; }
 
           template <
             typename ParallelPolicy,
             typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
-          [[noreturn]] inline ::ket::mpi::state<Complex, 0, Allocator>& toffoli_tccp(
+          [[noreturn]] inline ::ket::mpi::state<Complex, false, Allocator>& toffoli_tccp(
             ParallelPolicy const,
-            ::ket::mpi::state<Complex, 0, Allocator>& local_state,
+            ::ket::mpi::state<Complex, false, Allocator>& local_state,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const,
             ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const,
             ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const)
-          { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<0>{"toffoli_tccp"}; }
+          { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"toffoli_tccp"}; }
 
           template <
             typename ParallelPolicy,
             typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
-          [[noreturn]] inline ::ket::mpi::state<Complex, 1, Allocator>& toffoli_tccp(
-            ParallelPolicy const,
-            ::ket::mpi::state<Complex, 1, Allocator>& local_state,
-            ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const,
-            ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const,
-            ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const)
-          { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<1>{"toffoli_tccp"}; }
-
-          template <
-            typename ParallelPolicy,
-            typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
-          [[noreturn]] inline ::ket::mpi::state<Complex, 2, Allocator>& toffoli_tccp(
-            ParallelPolicy const,
-            ::ket::mpi::state<Complex, 2, Allocator>& local_state,
-            ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const,
-            ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const,
-            ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const)
-          { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<2>{"toffoli_tccp"}; }
-
-          template <
-            typename ParallelPolicy,
-            typename Complex, int num_page_qubits_, typename Allocator,
-            typename StateInteger, typename BitInteger>
-          inline ::ket::mpi::state<Complex, num_page_qubits_, Allocator>&
+          inline ::ket::mpi::state<Complex, true, Allocator>&
           toffoli_tccp(
             ParallelPolicy const parallel_policy,
-            ::ket::mpi::state<Complex, num_page_qubits_, Allocator>& local_state,
+            ::ket::mpi::state<Complex, true, Allocator>& local_state,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
             ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit1,
             ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit2)
           {
-            static_assert(
-              num_page_qubits_ >= 3,
-              "num_page_qubits_ should be greater than or equal to 3");
+            assert(local_state.num_page_qubits() >= std::size_t{3u});
             assert(::ket::mpi::page::is_on_page(permutated_target_qubit, local_state));
             assert(::ket::mpi::page::is_on_page(permutated_control_qubit1, local_state));
             assert(::ket::mpi::page::is_on_page(permutated_control_qubit2, local_state));
 
             auto const num_nonpage_local_qubits
-              = static_cast<BitInteger>(local_state.num_local_qubits() - num_page_qubits_);
+              = static_cast<BitInteger>(local_state.num_local_qubits() - local_state.num_page_qubits());
 
             auto const permutated_target_qubit_mask
               = ::ket::utility::integer_exp2<StateInteger>(
@@ -124,8 +99,7 @@ namespace ket
                 xor (bits_mask[0u] bitor bits_mask[1u]);
             bits_mask[3u] = compl (bits_mask[0u] bitor bits_mask[1u] bitor bits_mask[2u]);
 
-            static constexpr auto num_pages
-              = ::ket::mpi::state<Complex, num_page_qubits_, Allocator>::num_pages;
+            auto const num_pages = local_state.num_pages();
             auto const num_data_blocks = local_state.num_data_blocks();
             for (auto data_block_index = std::size_t{0u}; data_block_index < num_data_blocks; ++data_block_index)
               for (auto page_index_wo_qubits = std::size_t{0u};

@@ -35,7 +35,7 @@ namespace ket
         ParallelPolicy const,
         RandomAccessRange&,
         ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const)
-      { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<0, false>{"spin_expectation_value"}; }
+      { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"spin_expectation_value"}; }
 
       template <
         typename ParallelPolicy,
@@ -44,9 +44,9 @@ namespace ket
       std::array<typename ::ket::utility::meta::real_of<Complex>::type, 3u>
       spin_expectation_value(
         ParallelPolicy const,
-        ::ket::mpi::state<Complex, 0, Allocator>&,
+        ::ket::mpi::state<Complex, false, Allocator>&,
         ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const)
-      { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<0>{"spin_expectation_value"}; }
+      { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"spin_expectation_value"}; }
 
       namespace spin_expectation_value_detail
       {
@@ -87,13 +87,12 @@ namespace ket
 
       template <
         typename ParallelPolicy,
-        typename Complex, int num_page_qubits_, typename Allocator,
-        typename StateInteger, typename BitInteger>
+        typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
       inline
       std::array<typename ::ket::utility::meta::real_of<Complex>::type, 3u>
       spin_expectation_value(
         ParallelPolicy const parallel_policy,
-        ::ket::mpi::state<Complex, num_page_qubits_, Allocator>& local_state,
+        ::ket::mpi::state<Complex, true, Allocator>& local_state,
         ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit)
       {
         using hd_spin_type = std::array<long double, 3u>;

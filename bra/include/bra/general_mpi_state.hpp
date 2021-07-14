@@ -25,7 +25,7 @@ namespace bra
     ket::utility::policy::parallel<unsigned int> parallel_policy_;
     ket::mpi::utility::policy::general_mpi mpi_policy_;
 
-    using data_type = ket::mpi::state<complex_type, 0, yampi::allocator<complex_type>>;
+    using data_type = ket::mpi::state<complex_type, false, yampi::allocator<complex_type>>;
     data_type data_;
 
    public:

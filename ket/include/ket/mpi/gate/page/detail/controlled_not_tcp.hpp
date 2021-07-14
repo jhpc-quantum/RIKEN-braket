@@ -33,46 +33,34 @@ namespace ket
             RandomAccessRange& local_state,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const,
             ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const)
-          { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<0, false>{"controlled_not_tcp"}; }
+          { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"controlled_not_tcp"}; }
 
           template <
             typename ParallelPolicy,
             typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
-          [[noreturn]] inline ::ket::mpi::state<Complex, 0, Allocator>& controlled_not_tcp(
+          [[noreturn]] inline ::ket::mpi::state<Complex, false, Allocator>& controlled_not_tcp(
             ParallelPolicy const,
-            ::ket::mpi::state<Complex, 0, Allocator>& local_state,
+            ::ket::mpi::state<Complex, false, Allocator>& local_state,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const,
             ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const)
-          { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<0>{"controlled_not_tcp"}; }
+          { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"controlled_not_tcp"}; }
 
           template <
             typename ParallelPolicy,
             typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
-          [[noreturn]] inline ::ket::mpi::state<Complex, 1, Allocator>& controlled_not_tcp(
-            ParallelPolicy const,
-            ::ket::mpi::state<Complex, 1, Allocator>& local_state,
-            ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const,
-            ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const)
-          { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<1>{"controlled_not_tcp"}; }
-
-          template <
-            typename ParallelPolicy,
-            typename Complex, int num_page_qubits_, typename Allocator,
-            typename StateInteger, typename BitInteger>
-          inline ::ket::mpi::state<Complex, num_page_qubits_, Allocator>& controlled_not_tcp(
+          inline ::ket::mpi::state<Complex, true, Allocator>& controlled_not_tcp(
             ParallelPolicy const parallel_policy,
-            ::ket::mpi::state<Complex, num_page_qubits_, Allocator>& local_state,
+            ::ket::mpi::state<Complex, true, Allocator>& local_state,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
             ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit)
           {
-            static_assert(
-              num_page_qubits_ >= 2,
-              "num_page_qubits_ should be greater than or equal to 2");
+            assert(local_state.num_page_qubits() >= std::size_t{2u});
+
             assert(::ket::mpi::page::is_on_page(permutated_target_qubit, local_state));
             assert(::ket::mpi::page::is_on_page(permutated_control_qubit, local_state));
 
             auto const num_nonpage_qubits
-              = static_cast<BitInteger>(local_state.num_local_qubits() - num_page_qubits_);
+              = static_cast<BitInteger>(local_state.num_local_qubits() - local_state.num_page_qubits());
 
             using permutated_qubit_type = ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >;
             auto const minmax_permutated_qubits
@@ -93,8 +81,7 @@ namespace ket
                 xor lower_bits_mask;
             auto const upper_bits_mask = compl (lower_bits_mask bitor middle_bits_mask);
 
-            static constexpr auto num_pages
-              = ::ket::mpi::state<Complex, num_page_qubits_, Allocator>::num_pages;
+            auto const num_pages = local_state.num_pages();
             auto const num_data_blocks = local_state.num_data_blocks();
             for (auto data_block_index = std::size_t{0u}; data_block_index < num_data_blocks; ++data_block_index)
               for (auto page_index_wo_qubits = std::size_t{0u};
