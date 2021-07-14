@@ -125,6 +125,15 @@ namespace ket
             mpi_policy,
             ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment));
         }
+
+        template <typename LocalState>
+        inline std::size_t num_qubits(
+          ::ket::mpi::utility::policy::general_mpi const& mpi_policy,
+          LocalState const& local_state,
+          yampi::communicator const& communicator, yampi::environment const& environment)
+        {
+          return ::ket::mpi::utility::policy::num_local_qubits(mpi_policy, local_state, communicator, environment) + ::ket::mpi::utility::policy::num_global_qubits(mpi_policy, communicator, environment);
+        }
       } // namespace policy
 
       namespace dispatch
