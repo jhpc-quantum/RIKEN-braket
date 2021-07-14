@@ -30,16 +30,16 @@ namespace ket
           ParallelPolicy const,
           RandomAccessRange& local_state,
           ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const)
-        { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<0, false>{"clear"}; }
+        { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"clear"}; }
 
         template <
           typename ParallelPolicy,
           typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
-        [[noreturn]] inline ::ket::mpi::state<Complex, 0, Allocator>& clear(
+        [[noreturn]] inline ::ket::mpi::state<Complex, false, Allocator>& clear(
           ParallelPolicy const,
-          ::ket::mpi::state<Complex, 0, Allocator>& local_state,
+          ::ket::mpi::state<Complex, false, Allocator>& local_state,
           ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const)
-        { throw ::ket::mpi::gate::page::unsupported_page_gate_operation<0>{"clear"}; }
+        { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"clear"}; }
 
         namespace clear_detail
         {
@@ -91,11 +91,10 @@ namespace ket
 
         template <
           typename ParallelPolicy,
-          typename Complex, int num_page_qubits_, typename Allocator,
-          typename StateInteger, typename BitInteger>
-        inline ::ket::mpi::state<Complex, num_page_qubits_, Allocator>& clear(
+          typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
+        inline ::ket::mpi::state<Complex, true, Allocator>& clear(
           ParallelPolicy const parallel_policy,
-          ::ket::mpi::state<Complex, num_page_qubits_, Allocator>& local_state,
+          ::ket::mpi::state<Complex, true, Allocator>& local_state,
           ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit)
         {
           using real_type = typename ::ket::utility::meta::real_of<Complex>::type;

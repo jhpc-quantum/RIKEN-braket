@@ -6,6 +6,10 @@
 
 # include <yampi/environment.hpp>
 # include <yampi/communicator.hpp>
+# include <yampi/rank.hpp>
+# include <yampi/tag.hpp>
+# include <yampi/send.hpp>
+# include <yampi/receive.hpp>
 
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
@@ -28,23 +32,36 @@ namespace ket
           RandomAccessRange const& local_state,
           ::ket::mpi::qubit_permutation<
             StateInteger, BitInteger, Allocator> const& permutation,
+          yampi::rank const root,
           yampi::communicator const& communicator,
           yampi::environment const& environment)
         {
-          auto const local_state_first = std::begin(local_state);
-          auto const num_local_states = static_cast<StateInteger>(boost::size(local_state));
+          auto const first = std::begin(local_state);
+          auto const present_rank = communicator.rank(environment);
 
-          for (auto local_index = StateInteger{0u}; local_index < num_local_states; ++local_index)
+          auto const num_qubits = ::ket::mpi::utility::policy::num_qubits(mpi_policy, local_state, communicator, environment);
+          auto const last_qubit_value = StateInteger{1u} << num_qubits;
+          for (auto qubit_value = StateInteger{0u}; qubit_value < last_qubit_value; ++qubit_value)
           {
-            using ket::mpi::inverse_permutate_bits;
-            using ket::mpi::utility::rank_index_to_qubit_value;
-            auto const qubit_value
-              = inverse_permutate_bits(
-                  permutation,
-                  rank_index_to_qubit_value(
-                    mpi_policy, local_state, communicator.rank(environment), local_index));
+            using ket::mpi::utility::qubit_value_to_rank_index;
+            using ket::mpi::permutate_bits;
+            auto const rank_index
+              = qubit_value_to_rank_index(
+                  mpi_policy, local_state, permutate_bits(permutation, qubit_value), communicator, environment);
 
-            output_stream << '[' << qubit_value << ": " << *(local_state_first + local_index) << "] ";
+            if (present_rank == root)
+            {
+              auto coefficient = *first;
+
+              if (present_rank == rank_index.first)
+                coefficient = *(first + rank_index.second);
+              else
+                yampi::receive(yampi::ignore_status(), yampi::make_buffer(coefficient), rank_index.first, yampi::tag{static_cast<int>(rank_index.second)}, communicator, environment);
+
+              output_stream << '[' << qubit_value << ": " << coefficient << "] ";
+            }
+            else if (present_rank == rank_index.first)
+              yampi::send(yampi::make_buffer(*(first + rank_index.second)), root, yampi::tag{static_cast<int>(rank_index.second)}, communicator, environment);
           }
 
           return output_stream;

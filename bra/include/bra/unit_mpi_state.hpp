@@ -27,7 +27,7 @@ namespace bra
       = ket::mpi::utility::policy::unit_mpi< ::bra::state::state_integer_type, ::bra::state::bit_integer_type, unsigned int >;
     unit_mpi_policy_type mpi_policy_;
 
-    using data_type = ket::mpi::state<complex_type, 0, yampi::allocator<complex_type>>;
+    using data_type = ket::mpi::state<complex_type, false, yampi::allocator<complex_type>>;
     data_type data_;
 
    public:

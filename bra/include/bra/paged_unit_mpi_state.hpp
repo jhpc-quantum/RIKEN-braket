@@ -1,5 +1,5 @@
-#ifndef BRA_UNIT_MPI_2PAGE_STATE_HPP
-# define BRA_UNIT_MPI_2PAGE_STATE_HPP
+#ifndef BRA_PAGED_UNIT_MPI_STATE_HPP
+# define BRA_PAGED_UNIT_MPI_STATE_HPP
 
 # ifndef BRA_NO_MPI
 #   include <vector>
@@ -19,7 +19,7 @@
 
 namespace bra
 {
-  class unit_mpi_2page_state final
+  class paged_unit_mpi_state final
     : public ::bra::state
   {
     ket::utility::policy::parallel<unsigned int> parallel_policy_;
@@ -27,37 +27,39 @@ namespace bra
       = ket::mpi::utility::policy::unit_mpi< ::bra::state::state_integer_type, ::bra::state::bit_integer_type, unsigned int >;
     unit_mpi_policy_type mpi_policy_;
 
-    using data_type = ket::mpi::state<complex_type, 2, yampi::allocator<complex_type>>;
+    using data_type = ket::mpi::state<complex_type, true, yampi::allocator<complex_type>>;
     data_type data_;
 
    public:
-    unit_mpi_2page_state(
+    paged_unit_mpi_state(
       ::bra::state::state_integer_type const initial_integer,
       unsigned int const num_local_qubits,
       unsigned int const num_unit_qubits,
       unsigned int const total_num_qubits,
+      unsigned int const num_page_qubits,
       unsigned int const num_threads_per_process,
       unsigned int const num_processes_per_unit,
       ::bra::state::seed_type const seed,
       yampi::communicator const& communicator,
       yampi::environment const& environment);
 
-    unit_mpi_2page_state(
+    paged_unit_mpi_state(
       ::bra::state::state_integer_type const initial_integer,
       unsigned int const num_local_qubits,
       unsigned int const num_unit_qubits,
       std::vector<permutated_qubit_type> const& initial_permutation,
+      unsigned int const num_page_qubits,
       unsigned int const num_threads_per_process,
       unsigned int const num_processes_per_unit,
       ::bra::state::seed_type const seed,
       yampi::communicator const& communicator,
       yampi::environment const& environment);
 
-    ~unit_mpi_2page_state() = default;
-    unit_mpi_2page_state(unit_mpi_2page_state const&) = delete;
-    unit_mpi_2page_state& operator=(unit_mpi_2page_state const&) = delete;
-    unit_mpi_2page_state(unit_mpi_2page_state&&) = delete;
-    unit_mpi_2page_state& operator=(unit_mpi_2page_state&&) = delete;
+    ~paged_unit_mpi_state() = default;
+    paged_unit_mpi_state(paged_unit_mpi_state const&) = delete;
+    paged_unit_mpi_state& operator=(paged_unit_mpi_state const&) = delete;
+    paged_unit_mpi_state(paged_unit_mpi_state&&) = delete;
+    paged_unit_mpi_state& operator=(paged_unit_mpi_state&&) = delete;
 
    private:
     unsigned int do_num_page_qubits() const override;
@@ -134,10 +136,10 @@ namespace bra
       std::vector<qubit_type> const& modular_exponentiation_qubits) override;
     void do_clear(qubit_type const qubit) override;
     void do_set(qubit_type const qubit) override;
-  }; // class unit_mpi_2page_state
+  }; // class paged_unit_mpi_state
 } // namespace bra
 
 
 # endif // BRA_NO_MPI
 
-#endif // BRA_UNIT_MPI_2PAGE_STATE_HPP
+#endif // BRA_PAGED_UNIT_MPI_STATE_HPP

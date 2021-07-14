@@ -10,13 +10,12 @@
 
 #   include <bra/state.hpp>
 #   include <bra/gates.hpp>
-#   include <bra/unsupported_num_pages_error.hpp>
 
 
 namespace bra
 {
   std::unique_ptr< ::bra::state > make_general_mpi_state(
-    unsigned int const num_pages,
+    unsigned int const num_page_qubits,
     ::bra::state::state_integer_type const initial_integer,
     ::bra::state::bit_integer_type const num_local_qubits,
     ::bra::state::bit_integer_type const total_num_qubits,
@@ -26,7 +25,7 @@ namespace bra
     yampi::environment const& environment);
 
   std::unique_ptr< ::bra::state > make_general_mpi_state(
-    unsigned int const num_pages,
+    unsigned int const num_page_qubits,
     ::bra::state::state_integer_type const initial_integer,
     ::bra::state::bit_integer_type const num_local_qubits,
     std::vector< ::bra::state::permutated_qubit_type > const& initial_permutation,
