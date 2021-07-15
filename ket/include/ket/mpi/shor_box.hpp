@@ -1,8 +1,6 @@
 #ifndef KET_MPI_SHOR_BOX_HPP
 # define KET_MPI_SHOR_BOX_HPP
 
-# include <boost/config.hpp>
-
 # include <cassert>
 # include <iterator>
 # include <type_traits>
