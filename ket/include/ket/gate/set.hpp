@@ -3,7 +3,9 @@
 
 # include <cassert>
 # include <cmath>
+# include <vector>
 # include <iterator>
+# include <numeric>
 # include <utility>
 # include <type_traits>
 
@@ -24,10 +26,8 @@ namespace ket
   {
     namespace set_detail
     {
-      template <
-        typename ParallelPolicy, typename RandomAccessIterator,
-        typename StateInteger, typename BitInteger>
-      inline void set_impl(
+      template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger>
+      inline void set(
         ParallelPolicy const parallel_policy,
         RandomAccessIterator const first, RandomAccessIterator const last,
         ::ket::qubit<StateInteger, BitInteger> const qubit)
@@ -50,14 +50,14 @@ namespace ket
 
         using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
         using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
-        auto one_probability = static_cast<real_type>(0);
+        auto one_probabilities = std::vector<real_type>(::ket::utility::num_threads(parallel_policy), real_type{0});
 
         using ::ket::utility::loop_n;
         loop_n(
           parallel_policy,
           static_cast<StateInteger>(last - first) / 2u,
-          [&one_probability, first, qubit_mask, lower_bits_mask, upper_bits_mask](
-            StateInteger const value_wo_qubit, int const)
+          [&one_probabilities, first, qubit_mask, lower_bits_mask, upper_bits_mask](
+            StateInteger const value_wo_qubit, int const thread_index)
           {
             // xxxxx0xxxxxx
             auto const zero_index
@@ -68,12 +68,12 @@ namespace ket
             *(first + zero_index) = complex_type{0};
 
             using std::norm;
-            one_probability += norm(*(first + one_index));
+            one_probabilities[thread_index] += norm(*(first + one_index));
           });
 
         using std::pow;
         using boost::math::constants::half;
-        auto const multiplier = pow(one_probability, -half<real_type>());
+        auto const multiplier = pow(std::accumulate(std::begin(one_probabilities), std::end(one_probabilities), real_type{0}), -half<real_type>());
 
         loop_n(
           parallel_policy,
@@ -90,57 +90,33 @@ namespace ket
             *(first + one_index) *= multiplier;
           });
       }
-    }
+    } // namespace set_detail
 
-    template <
-      typename RandomAccessIterator,
-      typename StateInteger, typename BitInteger>
-    inline void set(
-      RandomAccessIterator const first, RandomAccessIterator const last,
-      ::ket::qubit<StateInteger, BitInteger> const qubit)
-    {
-      ::ket::gate::set_detail::set_impl(
-        ::ket::utility::policy::make_sequential(), first, last, qubit);
-    }
-
-    template <
-      typename ParallelPolicy, typename RandomAccessIterator,
-      typename StateInteger, typename BitInteger>
+    template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger>
     inline void set(
       ParallelPolicy const parallel_policy,
-      RandomAccessIterator const first, RandomAccessIterator const last,
-      ::ket::qubit<StateInteger, BitInteger> const qubit)
-    {
-      ::ket::gate::set_detail::set_impl(
-        parallel_policy, first, last, qubit);
-    }
+      RandomAccessIterator const first, RandomAccessIterator const last, ::ket::qubit<StateInteger, BitInteger> const qubit)
+    { ::ket::gate::set_detail::set(parallel_policy, first, last, qubit); }
+
+    template <typename RandomAccessIterator, typename StateInteger, typename BitInteger>
+    inline void set(
+      RandomAccessIterator const first, RandomAccessIterator const last, ::ket::qubit<StateInteger, BitInteger> const qubit)
+    { ::ket::gate::set(::ket::utility::policy::make_sequential(), first, last, qubit); }
 
     namespace ranges
     {
-      template <
-        typename RandomAccessRange,
-        typename StateInteger, typename BitInteger>
+      template <typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger>
       inline RandomAccessRange& set(
-        RandomAccessRange& state,
-        ::ket::qubit<StateInteger, BitInteger> const qubit)
+        ParallelPolicy const parallel_policy, RandomAccessRange& state, ::ket::qubit<StateInteger, BitInteger> const qubit)
       {
-        ::ket::gate::set_detail::set_impl(
-          ::ket::utility::policy::make_sequential(),
-          std::begin(state), std::end(state), qubit);
+        ::ket::gate::set(parallel_policy, std::begin(state), std::end(state), qubit);
         return state;
       }
 
-      template <
-        typename ParallelPolicy, typename RandomAccessRange,
-        typename StateInteger, typename BitInteger>
+      template <typename RandomAccessRange, typename StateInteger, typename BitInteger>
       inline RandomAccessRange& set(
-        ParallelPolicy const parallel_policy, RandomAccessRange& state,
-        ::ket::qubit<StateInteger, BitInteger> const qubit)
-      {
-        ::ket::gate::set_detail::set_impl(
-          parallel_policy, std::begin(state), std::end(state), qubit);
-        return state;
-      }
+        RandomAccessRange& state, ::ket::qubit<StateInteger, BitInteger> const qubit)
+      { return ::ket::gate::ranges::set(::ket::utility::policy::make_sequential(), state, qubit); }
     } // namespace ranges
   } // namespace gate
 } // namespace ket
