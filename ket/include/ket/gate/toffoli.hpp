@@ -30,9 +30,9 @@ namespace ket
         [](RandomAccessIterator const first, std::array<StateInteger, 8u> const& indices, int const)
         {
 # ifndef BOOST_NO_CXX14_BINARY_LITERALS
-          std::iter_swap(first + indices[0b011u], first + indices[0b111u]);
+          std::iter_swap(first + indices[0b110u], first + indices[0b111u]);
 # else // BOOST_NO_CXX14_BINARY_LITERALS
-          std::iter_swap(first + indices[3u], first + indices[7u]);
+          std::iter_swap(first + indices[6u], first + indices[7u]);
 # endif // BOOST_NO_CXX14_BINARY_LITERALS
         },
         target_qubit, control_qubit1, control_qubit2);

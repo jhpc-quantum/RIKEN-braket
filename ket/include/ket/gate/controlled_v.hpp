@@ -40,10 +40,10 @@ namespace ket
         [&one_plus_phase_coefficient, &one_minus_phase_coefficient](RandomAccessIterator const first, std::array<StateInteger, 4u> const& indices, int const)
         {
 # ifndef BOOST_NO_CXX14_BINARY_LITERALS
-          auto const control_on_iter = first + indices[0b01u];
+          auto const control_on_iter = first + indices[0b10u];
           auto const target_control_on_iter = first + indices[0b11u];
 # else // BOOST_NO_CXX14_BINARY_LITERALS
-          auto const control_on_iter = first + indices[1u];
+          auto const control_on_iter = first + indices[2u];
           auto const target_control_on_iter = first + indices[3u];
 # endif // BOOST_NO_CXX14_BINARY_LITERALS
           auto const control_on_iter_value = *control_on_iter;
