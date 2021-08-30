@@ -34,7 +34,7 @@
 # include <ket/mpi/qubit_permutation.hpp>
 # ifndef NDEBUG
 #   include <ket/mpi/page/is_on_page.hpp>
-#   include <ket/mpi/page/are_on_nonpage.hpp>
+#   include <ket/mpi/page/none_on_page.hpp>
 # endif
 # include <ket/mpi/utility/general_mpi.hpp>
 # include <ket/mpi/utility/detail/make_local_swap_qubit.hpp>
@@ -1480,7 +1480,7 @@ namespace ket
         ControlQubits... control_qubits)
       {
         assert(not ::ket::mpi::page::is_on_page(permutation[target_qubit], local_state));
-        assert(::ket::mpi::page::are_on_nonpage(local_state, permutation, control_qubits...));
+        assert(::ket::mpi::page::none_on_page(permutation[control_qubits]..., local_state));
 
         return ::ket::mpi::utility::dispatch::diagonal_loop<
           ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >::call(
