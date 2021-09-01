@@ -1,16 +1,21 @@
 #ifndef KET_GATE_HADAMARD_HPP
 # define KET_GATE_HADAMARD_HPP
 
-# include <boost/config.hpp>
-
-# include <array>
+# include <cassert>
 # include <iterator>
+# include <utility>
+# ifndef NDEBUG
+#   include <type_traits>
+# endif
 
 # include <boost/math/constants/constants.hpp>
 
 # include <ket/qubit.hpp>
-# include <ket/gate/gate.hpp>
 # include <ket/utility/loop_n.hpp>
+# include <ket/utility/integer_exp2.hpp>
+# ifndef NDEBUG
+#   include <ket/utility/integer_log2.hpp>
+# endif
 # include <ket/utility/meta/real_of.hpp>
 
 
@@ -24,28 +29,41 @@ namespace ket
       RandomAccessIterator const first, RandomAccessIterator const last,
       ::ket::qubit<StateInteger, BitInteger> const qubit)
     {
-      ::ket::gate::gate(
-        parallel_policy, first, last,
-        [](RandomAccessIterator const first, std::array<StateInteger, 2u> const& indices, int const)
-        {
-# ifndef BOOST_NO_CXX14_BINARY_LITERALS
-          auto const zero_iter = first + indices[0b0u];
-          auto const one_iter = first + indices[0b1u];
-# else // BOOST_NO_CXX14_BINARY_LITERALS
-          auto const zero_iter = first + indices[0u];
-          auto const one_iter = first + indices[1u];
-# endif // BOOST_NO_CXX14_BINARY_LITERALS
-          auto const zero_iter_value = *zero_iter;
+        static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+        static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
+        assert(::ket::utility::integer_exp2<StateInteger>(qubit) < static_cast<StateInteger>(last - first));
+        assert(
+          ::ket::utility::integer_exp2<StateInteger>(::ket::utility::integer_log2<BitInteger>(last - first))
+          == static_cast<StateInteger>(last - first));
 
-          using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
-          using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
-          using boost::math::constants::one_div_root_two;
-          *zero_iter += *one_iter;
-          *zero_iter *= one_div_root_two<real_type>();
-          *one_iter = zero_iter_value - *one_iter;
-          *one_iter *= one_div_root_two<real_type>();
-        },
-        qubit);
+        auto const qubit_mask = ::ket::utility::integer_exp2<StateInteger>(qubit);
+        auto const lower_bits_mask = qubit_mask - StateInteger{1u};
+        auto const upper_bits_mask = compl lower_bits_mask;
+
+        using ::ket::utility::loop_n;
+        loop_n(
+          parallel_policy,
+          static_cast<StateInteger>(last - first) >> 1u,
+          [first, qubit_mask, lower_bits_mask, upper_bits_mask](StateInteger const value_wo_qubit, int const)
+          {
+            // xxxxx0xxxxxx
+            auto const zero_index
+              = ((value_wo_qubit bitand upper_bits_mask) << 1u)
+                bitor (value_wo_qubit bitand lower_bits_mask);
+            // xxxxx1xxxxxx
+            auto const one_index = zero_index bitor qubit_mask;
+            auto const zero_iter = first + zero_index;
+            auto const one_iter = first + one_index;
+            auto const zero_iter_value = *zero_iter;
+
+            using complex_type = typename std::remove_const<decltype(zero_iter_value)>::type;
+            using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
+            using boost::math::constants::one_div_root_two;
+            *zero_iter += *one_iter;
+            *zero_iter *= one_div_root_two<real_type>();
+            *one_iter = zero_iter_value - *one_iter;
+            *one_iter *= one_div_root_two<real_type>();
+          });
     }
 
     template <typename RandomAccessIterator, typename StateInteger, typename BitInteger>

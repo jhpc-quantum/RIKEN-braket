@@ -149,6 +149,26 @@ namespace ket
       }
     } // namespace gate_detail
 
+    // USAGE:
+    // - for Hadamard gate
+    //   ::ket::gate::gate(parallel_policy, first, last,
+    //     [](auto const first, auto const& indices, int const)
+    //     {
+    //       auto const zero_iter = first + indices[0b0u];
+    //       auto const one_iter = first + indices[0b1u];
+    //       auto const zero_iter_value = *zero_iter;
+    //
+    //       *zero_iter += *one_iter;
+    //       *zero_iter *= one_div_root_two;
+    //       *one_iter = zero_iter_value - *one_iter;
+    //       *one_iter *= one_div_root_two;
+    //     },
+    //     qubit);
+    // - for CNOT gate
+    //   ::ket::gate::gate(parallel_policy, first, last,
+    //     [](auto const first, auto const& indices, int const)
+    //     { std::iter_swap(first + indices[0b10u], first + indices[0b11u]); },
+    //     target_qubit, control_qubit);
     template <typename ParallelPolicy, typename RandomAccessIterator, typename Function, typename Qubit, typename... Qubits>
     inline void gate(
       ParallelPolicy const parallel_policy,
