@@ -1,17 +1,22 @@
 #ifndef KET_GATE_CONTROLLED_PHASE_SHIFT_HPP
 # define KET_GATE_CONTROLLED_PHASE_SHIFT_HPP
 
-# include <boost/config.hpp>
-
+# include <cassert>
 # include <complex>
-# include <array>
 # include <iterator>
+# include <algorithm>
+# include <utility>
+# include <type_traits>
 
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
-# include <ket/gate/gate.hpp>
 # include <ket/utility/loop_n.hpp>
+# include <ket/utility/integer_exp2.hpp>
+# ifndef NDEBUG
+#   include <ket/utility/integer_log2.hpp>
+# endif
 # include <ket/utility/exp_i.hpp>
+# include <ket/utility/meta/real_of.hpp>
 
 
 namespace ket
@@ -27,17 +32,45 @@ namespace ket
       ::ket::qubit<StateInteger, BitInteger> const target_qubit,
       ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit)
     {
-      ::ket::gate::gate(
-        parallel_policy, first, last,
-        [&phase_coefficient](RandomAccessIterator const first, std::array<StateInteger, 4u> const& indices, int const)
+      static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+      static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
+      static_assert(
+        (std::is_same<Complex, typename std::iterator_traits<RandomAccessIterator>::value_type>::value),
+        "Complex must be the same to value_type of RandomAccessIterator");
+
+      assert(
+        ::ket::utility::integer_exp2<StateInteger>(target_qubit) < static_cast<StateInteger>(last - first)
+        and ::ket::utility::integer_exp2<StateInteger>(control_qubit) < static_cast<StateInteger>(last - first)
+        and target_qubit != control_qubit);
+      assert(
+        ::ket::utility::integer_exp2<StateInteger>(::ket::utility::integer_log2<BitInteger>(last - first))
+        == static_cast<StateInteger>(last - first));
+
+      auto const minmax_qubits = std::minmax(target_qubit, control_qubit.qubit());
+      auto const target_qubit_mask = ::ket::utility::integer_exp2<StateInteger>(target_qubit);
+      auto const control_qubit_mask = ::ket::utility::integer_exp2<StateInteger>(control_qubit);
+      auto const lower_bits_mask = ::ket::utility::integer_exp2<StateInteger>(minmax_qubits.first) - StateInteger{1u};
+      auto const middle_bits_mask
+        = (::ket::utility::integer_exp2<StateInteger>(minmax_qubits.second - BitInteger{1u}) - StateInteger{1u})
+          xor lower_bits_mask;
+      auto const upper_bits_mask = compl (lower_bits_mask bitor middle_bits_mask);
+
+      using ::ket::utility::loop_n;
+      loop_n(
+        parallel_policy,
+        static_cast<StateInteger>(last - first) >> 2u,
+        [first, &phase_coefficient, target_qubit_mask, control_qubit_mask, lower_bits_mask, middle_bits_mask, upper_bits_mask](
+          StateInteger const value_wo_qubits, int const)
         {
-# ifndef BOOST_NO_CXX14_BINARY_LITERALS
-          *(first + indices[0b11u]) *= phase_coefficient;
-# else // BOOST_NO_CXX14_BINARY_LITERALS
-          *(first + indices[3u]) *= phase_coefficient;
-# endif // BOOST_NO_CXX14_BINARY_LITERALS
-        },
-        target_qubit, control_qubit);
+          // xxx0_txxx0_cxxx
+          auto const base_index
+            = ((value_wo_qubits bitand upper_bits_mask) << 2u)
+              bitor ((value_wo_qubits bitand middle_bits_mask) << 1u)
+              bitor (value_wo_qubits bitand lower_bits_mask);
+          // xxx1_txxx1_cxxx
+          *(first + (base_index bitor control_qubit_mask bitor target_qubit_mask))
+            *= phase_coefficient;
+        });
     }
 
     template <typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger>
