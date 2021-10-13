@@ -48,7 +48,7 @@ namespace bra
     yampi::environment const& environment)
     : ::bra::state{total_num_qubits, seed, communicator, environment},
       parallel_policy_{num_threads_per_process},
-      mpi_policy_{num_unit_qubits, num_processes_per_unit, communicator, environment},
+      mpi_policy_{num_unit_qubits, num_processes_per_unit},
       data_{
         mpi_policy_, num_local_qubits, initial_integer,
         permutation_, communicator, environment}
@@ -66,7 +66,7 @@ namespace bra
     yampi::environment const& environment)
     : ::bra::state{initial_permutation, seed, communicator, environment},
       parallel_policy_{num_threads_per_process},
-      mpi_policy_{num_unit_qubits, num_processes_per_unit, communicator, environment},
+      mpi_policy_{num_unit_qubits, num_processes_per_unit},
       data_{
         mpi_policy_, num_local_qubits, initial_integer,
         permutation_, communicator, environment}
