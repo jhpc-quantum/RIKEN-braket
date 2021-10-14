@@ -7,13 +7,13 @@ It contains an interpreter of "quantum assembler" *bra* and a C++ template libra
 
 ## Getting Started
 
-**braket** requires a MPI2-supported C++11 compliant compiler.
-If you do not have any MPI libraries, get it by using a package manager of your \*nix environment.
+**braket** requires a C++11 compliant compiler and [Boost C++ library](https://www.boost.org/).
+Any [MPI](https://www.mpi-forum.org/) libaries are also required if you would like to use **braket** in massively parallel supercomputers.
 
 You can retrieve the current status of **braket** by cloning the repository:
 
 ```bash
-git clone --recursive https://github.com/naoki-yoshioka/braket.git
+$ git clone --recursive https://github.com/naoki-yoshioka/braket.git
 ```
 
 ## Using *bra*
@@ -21,27 +21,34 @@ git clone --recursive https://github.com/naoki-yoshioka/braket.git
 On the `bra/` directory, you can compile *bra* via:
 
 ```
-make
+$ cd braket/bra
+$ make nompi
 ```
 
-The binary file `bra` is present on `bra/bin/` directory.
+The binary file `bra` is present on `bin/` directory.
 
-If you would like to compile it by specified C++ version, type like:
+If you would like to compile MPI-supported bra, then just make without any options:
 
 ```
-make release11
-make release14
-make release17
+$ make
 ```
 
-The files `bra/qcx/hadamards08.qcx` and `bra/qcx/adder6x2.qcx` are sample "quantum assembler" codes.
+The files `qcx/hadamards08.qcx` and `qcx/adder6x2.qcx` are sample "quantum assembler" codes.
 You can test those assembler codes via:
 
 ```
-mpiexec -np 2 ./bin/bra qcx/hadamards08.qcx 1> stdout 2> stderr
+$ ./bin/bra qcx/hadamards08.qcx 1> stdout 2> stderr # 1.
+$ mpiexec -np 4 ./bin/bra general qcx/hadamards08.qcx 1> stdout 2> stderr # 2.
+$ mpiexec -np 6 ./bin/bra unit qcx/hadamards08.qcx 3 3 1> stdout 2> stderr # 3.
 ```
 
-The results are output to `stdout`.
+Each command corresponds to:
+
+1. In the case of non-MPI environment, operate 8 Hadamard gates to qubits.
+2. In the case of MPI environment, operate 8 Hadamard gates to qubits that includes 2 global qubits and 6 local qubits.
+3. In the case of MPI environment, operate 8 Hadamard gates to qubits that includes 1 global qubit, 3 unit qubits and 4 local qubits.
+
+The results are output to `stdout`, and the detailed log is written to `stderr`.
 
 ## Using *ket*
 
@@ -67,8 +74,8 @@ int main(int argc, char* argv[])
   using bit_integer_type = unsigned int;
   using complex_type = std::complex<double>;
 
-  yampi::environment environment{argc, argv};
-  yampi::communicator communicator{yampi::world_communicator()};
+  yampi::environment environment{argc, argv, yampi::thread_support::funneled};
+  auto communicator = yampi::communicator{yampi::tags::world_communicator()};
   auto const rank = communicator.rank(environment);
   auto const num_gqubits = ket::utility::integer_log2<bit_integer_type>(communicator.size(environment));
   auto const num_qubits = bit_integer_type{12u};
@@ -87,6 +94,6 @@ int main(int argc, char* argv[])
 ```
 
 ```bash
-mpiCC -Iket/include -Iyampi/include -DKET_PRINT_LOG -DNDEBUG -O3 test.cpp
+$ mpiCC -I${HOME}/braket/ket/include -I${HOME}/braket/yampi/include -DKET_PRINT_LOG -DNDEBUG -O3 test.cpp
 ```
 
