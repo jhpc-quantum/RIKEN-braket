@@ -24,6 +24,7 @@ macros = KET_PRINT_LOG
 macros += KET_USE_OPENMP
 #macros += KET_USE_PARALLEL_EXECUTE_FOR_TRANSFORM_INCLUSIVE_SCAN
 macros += KET_USE_DIAGONAL_LOOP
+macros += KET_USE_BARRIER
 libraries =
 
 CPPFLAGS = $(addprefix -I,$(idirs)) $(addprefix -D,$(macros))

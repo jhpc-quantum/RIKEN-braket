@@ -24,6 +24,9 @@
 # ifndef NDEBUG
 #   include <yampi/lowest_io_process.hpp>
 # endif
+# ifdef KET_USE_BARRIER
+#   include <yampi/barrier.hpp>
+# endif // KET_USE_BARRIER
 
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
@@ -585,6 +588,10 @@ namespace ket
             yampi::environment const& environment,
             Function&& interchange_qubits)
           {
+# ifdef KET_USE_BARRIER
+            ::yampi::barrier(communicator, environment);
+# endif // KET_USE_BARRIER
+
             ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"interchange_qubits<"}, num_qubits_of_operation, '>'), environment};
 
 # ifndef NDEBUG
@@ -862,6 +869,10 @@ namespace ket
             if (maybe_io_rank && my_rank == *maybe_io_rank)
               std::clog << "[permutation after changing local/global qubits] " << permutation << std::endl;
 # endif // NDEBUG
+
+# ifdef KET_USE_BARRIER
+            ::yampi::barrier(communicator, environment);
+# endif // KET_USE_BARRIER
           }
 
           template <
