@@ -110,7 +110,7 @@ namespace ket
           ::ket::mpi::utility::policy::general_mpi const&, StateInteger const global_qubit_value,
           yampi::communicator const& communicator, yampi::environment const& environment)
         {
-          assert(global_qubit_value < communicator.size(environment));
+          assert(global_qubit_value < static_cast<StateInteger>(communicator.size(environment)));
           return yampi::rank{static_cast<int>(global_qubit_value)};
         }
 
