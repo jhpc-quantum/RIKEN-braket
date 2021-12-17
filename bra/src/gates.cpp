@@ -317,6 +317,8 @@ namespace bra
         throw unsupported_mnemonic_error{first_mnemonic};
       else if (first_mnemonic == "RANDOM") // RANDOM PERMUTATION
         throw unsupported_mnemonic_error{first_mnemonic};
+      else if (first_mnemonic == "I")
+        continue;
       else if (first_mnemonic == "H")
         data_.push_back(
           std::unique_ptr< ::bra::gate::gate >{

@@ -1,16 +1,5 @@
-#ifndef KET_MPI_GATE_PAULI_Z_HPP
-# define KET_MPI_GATE_PAULI_Z_HPP
-
-# include <boost/config.hpp>
-
-# include <ket/gate/pauli_z.hpp>
-# include <ket/mpi/gate/page/pauli_z.hpp>
-
-# include <ket/mpi/gate/detail/before_generate_single_qubit_gate.hpp>
-# include <ket/mpi/gate/detail/generate_single_qubit_gate.hpp>
-
-KET_MPI_GATE_DETAIL_GENERATE_SINGLE_QUBIT_GATE(pauli_z, Z)
-
-# include <ket/mpi/gate/detail/after_generate_single_qubit_gate.hpp>
-
-#endif // KET_MPI_GATE_PAULI_Z_HPP
+#ifndef KET_USE_DIAGONAL_LOOP
+# include <ket/mpi/gate/detail/pauli_z_standard.hpp>
+#else // KET_USE_DIAGONAL_LOOP
+# include <ket/mpi/gate/detail/pauli_z_diagonal.hpp>
+#endif // KET_USE_DIAGONAL_LOOP
