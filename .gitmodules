@@ -109,3 +109,6 @@
 [submodule "boost/system"]
 	path = boost/system
 	url = https://github.com/boostorg/system.git
+[submodule "cxxopts"]
+	path = cxxopts
+	url = git@github.com:jarro2783/cxxopts.git

@@ -9,6 +9,10 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/format.hpp>
 
+#ifndef BRA_USE_DEPRECATED_CLI
+# include <cxxopts.hpp>
+#endif // BRA_USE_DEPRECATED_CLI
+
 #ifndef BRA_NO_MPI
 # include <yampi/environment.hpp>
 # include <yampi/thread_support.hpp>
@@ -61,20 +65,22 @@ double duration_to_second(
   std::chrono::time_point<Clock, Duration> const& to)
 { return 0.000001 * std::chrono::duration_cast<std::chrono::microseconds>(to - from).count(); }
 
+#ifdef BRA_USE_DEPRECATED_CLI
 std::string error_message(std::string const& error)
 {
-#ifndef BRA_NO_MPI
+# ifndef BRA_NO_MPI
   auto const tab_like_spaces = std::string(error.size() + 2u, ' ');
   return
     error + ": bra general <qcxfile> [<num_threads_per_process> [<num_page_qubits> [<seed>]]]\n"
     + tab_like_spaces + "bra unit <qcxfile> <num_unit_qubits> <num_processes_per_unit> [<num_threads_per_process> [<num_page_qubits> [<seed>]]]\n"
     + "  default values are: num_threads_per_process=1, num_page_qubits=2, seed=1\n";
-#else // BRA_NO_MPI
+# else // BRA_NO_MPI
   return
     error + ": bra qcxfile [num_threads_per_process [seed]]\n"
     + "  default values are: num_threads_per_process=1, seed=1\n";
-#endif // BRA_NO_MPI
+# endif // BRA_NO_MPI
 }
+#endif // BRA_USE_DEPRECATED_CLI
 
 int main(int argc, char* argv[])
 {
@@ -94,26 +100,120 @@ int main(int argc, char* argv[])
   {
     if (is_io_root_rank)
       std::cerr << "multithread environment is required" << std::endl;
-    return EXIT_FAILURE;
+    std::exit(EXIT_FAILURE);
   }
 #endif // BRA_NO_MPI
 
-#ifndef BRA_NO_MPI
+#ifndef BRA_USE_DEPRECATED_CLI
+# ifndef BRA_NO_MPI
+  auto options = cxxopts::Options{"bra", "Massively parallel full-state simulator of quantum circuits"};
+  options.add_options()
+    ("m,mode", "set mode, \"general\" or \"unit\"", cxxopts::value<std::string>()->default_value("general"))
+    ("f,file", "set the name of input qcx file, or read from standard input if this option is unspecified", cxxopts::value<std::string>())
+    ("unit-qubits", "set the number of unit qubits (meaningful only for unit mode)", cxxopts::value<unsigned int>())
+    ("unit-processes", "set the number of MPI processes for each unit (meaningful only for unit mode)", cxxopts::value<unsigned int>())
+    ("threads", "set the number of threads per process", cxxopts::value<unsigned int>()->default_value("1"))
+    ("page-qubits", "set the number of page qubits", cxxopts::value<unsigned int>()->default_value("2"))
+    ("seed", "set seed of random number generator", cxxopts::value<seed_type>()->default_value("1"))
+    ("h,help", "print this information")
+    ;
+# else // BRA_NO_MPI
+  auto options = cxxopts::Options{"bra", "Full-state simulator of quantum circuits (single-process ver.)"};
+  options.add_options()
+    ("f,file", "set the name of input qcx file, or read from standard input if this option is unspecified", cxxopts::value<std::string>())
+    ("threads", "set the number of threads", cxxopts::value<unsigned int>()->default_value("1"))
+    ("seed", "set seed of random number generator", cxxopts::value<seed_type>()->default_value("1"))
+    ("h,help", "print this information")
+    ;
+# endif // BRA_NO_MPI
+
+  auto parse_result = options.parse(argc, argv);
+
+  if (parse_result.count("help"))
+  {
+# ifndef BRA_NO_MPI
+    if (is_io_root_rank)
+      std::cout << options.help() << std::endl;
+# else // BRA_NO_MPI
+    std::cout << options.help() << std::endl;
+# endif // BRA_NO_MPI
+    std::exit(EXIT_SUCCESS);
+  }
+
+# ifndef BRA_NO_MPI
+  auto const mpi_mode = parse_result["mode"].as<std::string>();
+  auto const is_general = mpi_mode == "general";
+  auto const is_unit = mpi_mode == "unit";
+  if (is_unit and ((not parse_result.count("unit-qubits")) or (not parse_result.count("unit-processes"))))
+  {
+    if (is_io_root_rank)
+      std::cerr << "Error: wrong number of arguments\n" << options.help() << std::endl;
+    std::exit(EXIT_FAILURE);
+  }
+
+  auto const num_page_qubits = parse_result["page-qubits"].as<unsigned int>();
+  auto num_unit_qubits = 0u;
+  auto num_processes_per_unit = 1u;
+
+  if (is_unit)
+  {
+    num_unit_qubits = parse_result["unit-qubits"].as<unsigned int>();
+    num_processes_per_unit = parse_result["unit-processes"].as<unsigned int>();
+
+    if (num_processes_per_unit == 0u)
+    {
+      if (is_io_root_rank)
+        std::cerr << "Error: wrong argument\n" << options.help() << std::flush;
+      std::exit(EXIT_FAILURE);
+    }
+  }
+  else if (not is_general)
+  {
+    if (is_io_root_rank)
+      std::cerr << "Error: wrong argument\n" << options.help() << std::flush;
+    std::exit(EXIT_FAILURE);
+  }
+# endif // BRA_NO_MPI
+
+  auto const num_threads_per_process = parse_result["threads"].as<unsigned int>();
+  auto const seed = parse_result["seed"].as<seed_type>();
+
+  std::ifstream possible_input_stream;
+  if (parse_result.count("file"))
+  {
+    auto const filename = parse_result["file"].as<std::string>();
+    if (not filename.empty())
+    {
+      possible_input_stream.open(filename);
+      if (not possible_input_stream)
+      {
+# ifndef BRA_NO_MPI
+        if (is_io_root_rank)
+          std::cerr << "ERROR: cannot open an input file " << filename << '\n' << options.help() << std::endl;
+# else // BRA_NO_MPI
+        std::cerr << "ERROR: cannot open an input file " << filename << '\n' << options.help() << std::endl;
+# endif // BRA_NO_MPI
+        std::exit(EXIT_FAILURE);
+      }
+    }
+  }
+#else // BRA_USE_DEPRECATED_CLI
+# ifndef BRA_NO_MPI
   if (argc < 3 or argc > 8)
   {
     if (is_io_root_rank)
       std::cerr << error_message("wrong number of arguments") << std::flush;
-    return EXIT_FAILURE;
+    std::exit(EXIT_FAILURE);
   }
-#else // BRA_NO_MPI
+# else // BRA_NO_MPI
   if (argc < 2 or argc > 4)
   {
     std::cerr << error_message("wrong number of arguments") << std::flush;
-    return EXIT_FAILURE;
+    std::exit(EXIT_FAILURE);
   }
-#endif // BRA_NO_MPI
+# endif // BRA_NO_MPI
 
-#ifndef BRA_NO_MPI
+# ifndef BRA_NO_MPI
   auto const mpi_policy_string = std::string{argv[1]};
   auto const filename = std::string{argv[2]};
 
@@ -130,7 +230,7 @@ int main(int argc, char* argv[])
     {
       if (is_io_root_rank)
         std::cerr << error_message("wrong number of arguments") << std::flush;
-      return EXIT_FAILURE;
+      std::exit(EXIT_FAILURE);
     }
 
     num_threads_per_process
@@ -152,7 +252,7 @@ int main(int argc, char* argv[])
     {
       if (is_io_root_rank)
         std::cerr << error_message("wrong number of arguments") << std::flush;
-      return EXIT_FAILURE;
+      std::exit(EXIT_FAILURE);
     }
 
     num_unit_qubits = boost::lexical_cast<unsigned int>(argv[3]);
@@ -161,7 +261,7 @@ int main(int argc, char* argv[])
     {
       if (is_io_root_rank)
         std::cerr << error_message("wrong argument") << std::flush;
-      return EXIT_FAILURE;
+      std::exit(EXIT_FAILURE);
     }
 
     num_threads_per_process
@@ -181,9 +281,9 @@ int main(int argc, char* argv[])
   {
     if (is_io_root_rank)
       std::cerr << error_message("wrong argument") << std::flush;
-    return EXIT_FAILURE;
+    std::exit(EXIT_FAILURE);
   }
-#else // BRA_NO_MPI
+# else // BRA_NO_MPI
   auto const filename = std::string{argv[1]};
   auto const num_threads
     = argc >= 3
@@ -193,21 +293,33 @@ int main(int argc, char* argv[])
     = argc == 4
       ? boost::lexical_cast<seed_type>(argv[3])
       : seed_type{1};
-#endif // BRA_NO_MPI
+# endif // BRA_NO_MPI
 
   auto file_stream = std::ifstream{filename.c_str()};
   if (!file_stream)
   {
-#ifndef BRA_NO_MPI
+# ifndef BRA_NO_MPI
     if (is_io_root_rank)
       std::cerr << "cannot open an input file " << filename << std::endl;
-#else // BRA_NO_MPI
+# else // BRA_NO_MPI
     std::cerr << "cannot open an input file " << filename << std::endl;
-#endif // BRA_NO_MPI
-    return EXIT_FAILURE;
+# endif // BRA_NO_MPI
+    std::exit(EXIT_FAILURE);
   }
+#endif // BRA_USE_DEPRECATED_CLI
 
 #ifndef BRA_NO_MPI
+# ifndef BRA_USE_DEPRECATED_CLI
+  auto gates = bra::gates{parse_result.count("file") ? possible_input_stream : std::cin, num_unit_qubits, num_processes_per_unit, environment, root_rank, communicator};
+  auto state_ptr
+    = is_unit
+      ? bra::make_unit_mpi_state(
+          num_page_qubits, gates.initial_state_value(), gates.num_lqubits(), num_unit_qubits, gates.initial_permutation(),
+          num_threads_per_process, num_processes_per_unit, seed, communicator, environment)
+      : bra::make_general_mpi_state(
+          num_page_qubits, gates.initial_state_value(), gates.num_lqubits(), gates.initial_permutation(),
+          num_threads_per_process, seed, communicator, environment);
+# else // BRA_USE_DEPRECATED_CLI
   auto gates = bra::gates{file_stream, num_unit_qubits, num_processes_per_unit, environment, root_rank, communicator};
   auto state_ptr
     = mpi_policy_string == "unit"
@@ -217,8 +329,13 @@ int main(int argc, char* argv[])
       : bra::make_general_mpi_state(
           num_page_qubits, gates.initial_state_value(), gates.num_lqubits(), gates.initial_permutation(),
           num_threads_per_process, seed, communicator, environment);
+# endif // BRA_USE_DEPRECATED_CLI
 #else // BRA_NO_MPI
+# ifndef BRA_USE_DEPRECATED_CLI
+  auto gates = bra::gates{parse_result.count("file") ? possible_input_stream : std::cin};
+# else // BRA_USE_DEPRECATED_CLI
   auto gates = bra::gates{file_stream};
+# endif // BRA_USE_DEPRECATED_CLI
   auto state_ptr
     = bra::make_nompi_state(gates.initial_state_value(), gates.num_qubits(), num_threads, seed);
 #endif // BRA_NO_MPI
@@ -301,8 +418,6 @@ int main(int argc, char* argv[])
       break;
     }
   }
-
-  return EXIT_SUCCESS;
 }
 
 

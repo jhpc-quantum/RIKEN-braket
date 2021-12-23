@@ -3,6 +3,7 @@ SHELL = /bin/sh
 
 KET_DIR = $(pwd)/../ket
 YAMPI_DIR = $(pwd)/../yampi
+CXXOPTS_DIR = $(pwd)/../cxxopts
 
 target = bra
 nodename := $(shell uname -n)
@@ -13,7 +14,7 @@ include_dir = $(pwd)/include
 build_dir = $(pwd)/build
 bin_dir = $(pwd)/bin
 
-library_dirs = $(KET_DIR) $(YAMPI_DIR)
+library_dirs = $(KET_DIR) $(YAMPI_DIR) $(CXXOPTS_DIR)
 idirs = $(include_dir) $(addsuffix /include,$(library_dirs))
 ldirs = $(addsuffix /lib,$(library_dirs))
 
@@ -25,6 +26,7 @@ macros += KET_USE_OPENMP
 #macros += KET_USE_PARALLEL_EXECUTE_FOR_TRANSFORM_INCLUSIVE_SCAN
 macros += KET_USE_DIAGONAL_LOOP
 macros += KET_USE_BARRIER
+#macros += BRA_USE_DEPRECATED_CLI
 libraries =
 
 CPPFLAGS = $(addprefix -I,$(idirs)) $(addprefix -D,$(macros))
