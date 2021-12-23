@@ -37,9 +37,9 @@ The files `qcx/hadamards08.qcx` and `qcx/adder6x2.qcx` are sample "quantum assem
 You can test those assembler codes via:
 
 ```
-$ ./bin/bra qcx/hadamards08.qcx 1> stdout 2> stderr # 1.
-$ mpiexec -np 4 ./bin/bra general qcx/hadamards08.qcx 1> stdout 2> stderr # 2.
-$ mpiexec -np 6 ./bin/bra unit qcx/hadamards08.qcx 3 3 1> stdout 2> stderr # 3.
+$ ./bin/bra -f qcx/hadamards08.qcx 1> stdout 2> stderr # 1.
+$ mpiexec -np 4 ./bin/bra --mode general --file qcx/hadamards08.qcx 1> stdout 2> stderr # 2.
+$ mpiexec -np 6 ./bin/bra --mode unit --file qcx/hadamards08.qcx --unit-qubits 3 --unit-processes 3 1> stdout 2> stderr # 3.
 ```
 
 Each command corresponds to:
