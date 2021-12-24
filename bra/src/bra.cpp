@@ -108,7 +108,7 @@ int main(int argc, char* argv[])
 # ifndef BRA_NO_MPI
   auto options = cxxopts::Options{"bra", "Massively parallel full-state simulator of quantum circuits"};
   options.add_options()
-    ("m,mode", "set mode, \"general\" or \"unit\"", cxxopts::value<std::string>()->default_value("general"))
+    ("m,mode", "set mode, \"simple\" or \"unit\"", cxxopts::value<std::string>()->default_value("simple"))
     ("f,file", "set the name of input qcx file, or read from standard input if this option is unspecified", cxxopts::value<std::string>())
     ("unit-qubits", "set the number of unit qubits (meaningful only for unit mode)", cxxopts::value<unsigned int>())
     ("unit-processes", "set the number of MPI processes for each unit (meaningful only for unit mode)", cxxopts::value<unsigned int>())
@@ -142,7 +142,7 @@ int main(int argc, char* argv[])
 
 # ifndef BRA_NO_MPI
   auto const mpi_mode = parse_result["mode"].as<std::string>();
-  auto const is_general = mpi_mode == "general";
+  auto const is_simple = mpi_mode == "simple";
   auto const is_unit = mpi_mode == "unit";
   if (is_unit and ((not parse_result.count("unit-qubits")) or (not parse_result.count("unit-processes"))))
   {
@@ -167,7 +167,7 @@ int main(int argc, char* argv[])
       std::exit(EXIT_FAILURE);
     }
   }
-  else if (not is_general)
+  else if (not is_simple)
   {
     if (is_io_root_rank)
       std::cerr << "Error: wrong argument\n" << options.help() << std::flush;
