@@ -111,4 +111,4 @@
 	url = https://github.com/boostorg/system.git
 [submodule "cxxopts"]
 	path = cxxopts
-	url = git@github.com:jarro2783/cxxopts.git
+	url = https://github.com/jarro2783/cxxopts.git
