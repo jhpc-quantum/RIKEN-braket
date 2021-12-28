@@ -675,7 +675,7 @@ namespace ket
               ::ket::mpi::utility::policy::make_general_mpi(),
               parallel_policy, local_state.page_range(data_block_page_indices),
               permutated_qubit1, permutated_qubit2,
-              StateInteger{1u}, boost::size(local_state.page_range(data_block_page_indices)), 
+              StateInteger{1u}, static_cast<StateInteger>(boost::size(local_state.page_range(data_block_page_indices))),
               communicator, environment);
           }
       }

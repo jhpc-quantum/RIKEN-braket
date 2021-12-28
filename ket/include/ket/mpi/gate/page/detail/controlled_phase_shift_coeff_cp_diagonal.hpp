@@ -309,7 +309,7 @@ namespace ket
             assert(not ::ket::mpi::page::is_on_page(permutated_target_qubit, local_state));
 
             using permutated_qubit_type = ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >;
-            auto const least_permutated_global_qubit = permutated_qubit_type{local_state.num_local_qubits()};
+            auto const least_permutated_global_qubit = permutated_qubit_type{static_cast<BitInteger>(local_state.num_local_qubits())};
 
             if (permutated_target_qubit < least_permutated_global_qubit)
               return ::ket::mpi::gate::page::detail::controlled_phase_shift_coeff_cp_detail::controlled_phase_shift_coeff_cp_tl(
@@ -319,7 +319,7 @@ namespace ket
               parallel_policy,
               local_state, phase_coefficient, permutated_target_qubit, permutated_control_qubit,
               rank, least_permutated_global_qubit,
-              ::ket::mpi::utility::policy::global_qubit_value(mpi_policy, rank));
+              static_cast<StateInteger>(::ket::mpi::utility::policy::global_qubit_value(mpi_policy, rank)));
           }
 
           template <
@@ -338,8 +338,8 @@ namespace ket
             assert(not ::ket::mpi::page::is_on_page(permutated_target_qubit, local_state));
 
             using permutated_qubit_type = ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >;
-            auto const least_permutated_unit_qubit = permutated_qubit_type{local_state.num_local_qubits()};
-            auto const least_permutated_global_qubit = least_permutated_unit_qubit + mpi_policy.num_unit_qubits();
+            auto const least_permutated_unit_qubit = permutated_qubit_type{static_cast<BitInteger>(local_state.num_local_qubits())};
+            auto const least_permutated_global_qubit = least_permutated_unit_qubit + static_cast<BitInteger>(mpi_policy.num_unit_qubits());
 
             if (permutated_target_qubit < least_permutated_unit_qubit)
               return ::ket::mpi::gate::page::detail::controlled_phase_shift_coeff_cp_detail::controlled_phase_shift_coeff_cp_tl(
@@ -355,7 +355,7 @@ namespace ket
               parallel_policy,
               local_state, phase_coefficient, permutated_target_qubit, permutated_control_qubit,
               rank, least_permutated_global_qubit,
-              ::ket::mpi::utility::policy::global_qubit_value(mpi_policy, rank));
+              static_cast<StateInteger>(::ket::mpi::utility::policy::global_qubit_value(mpi_policy, rank)));
           }
         } // namespace detail
       } // namespace page

@@ -189,7 +189,7 @@ namespace ket
             assert(
               ::ket::utility::integer_exp2<StateInteger>(
                 ::ket::utility::integer_log2<BitInteger>(boost::size(local_state)))
-              == boost::size(local_state));
+              == static_cast<StateInteger>(boost::size(local_state)));
 
             using permutated_qubit_type = ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >;
             auto const least_global_permutated_qubit
@@ -258,7 +258,7 @@ namespace ket
             assert(
               ::ket::utility::integer_exp2<StateInteger>(
                 ::ket::utility::integer_log2<BitInteger>(boost::size(local_state)))
-              == boost::size(local_state));
+              == static_cast<StateInteger>(boost::size(local_state)));
 
             using permutated_qubit_type = ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >;
             auto const least_global_permutated_qubit

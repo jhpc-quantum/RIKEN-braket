@@ -81,7 +81,7 @@ namespace ket
                 auto const zero_page_range = local_state.page_range(std::make_pair(data_block_index, zero_page_index));
                 auto const one_page_range = local_state.page_range(std::make_pair(data_block_index, one_page_index));
                 assert(boost::size(zero_page_range) == boost::size(one_page_range));
-                assert(::ket::utility::integer_exp2<std::size_t>(::ket::utility::integer_log2<std::size_t>(boost::size(zero_page_range))) == boost::size(zero_page_range));
+                assert(::ket::utility::integer_exp2<std::size_t>(::ket::utility::integer_log2<std::size_t>(boost::size(zero_page_range))) == static_cast<std::size_t>(boost::size(zero_page_range)));
 
                 auto const zero_first = std::begin(zero_page_range);
                 auto const one_first = std::begin(one_page_range);
