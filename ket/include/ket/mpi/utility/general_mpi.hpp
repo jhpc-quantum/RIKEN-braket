@@ -733,7 +733,7 @@ namespace ket
 
 #   ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
               ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
-                parallel_policy, local_state, StateInteger{0u}, boost::size(local_state), last_local_qubit_value, local_permutated_control_qubits,
+                parallel_policy, local_state, StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
                 [&function0, &function1, mask](auto const iter, StateInteger const state_integer)
                 {
                   static constexpr auto zero_state_integer = StateInteger{0u};
@@ -745,7 +745,7 @@ namespace ket
                 });
 #   else // BOOST_NO_CXX14_GENERIC_LAMBDAS
               ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
-                parallel_policy, local_state, StateInteger{0u}, boost::size(local_state), last_local_qubit_value, local_permutated_control_qubits,
+                parallel_policy, local_state, StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
                 make_call_function_if_local(std::forward<Function0>(function0), std::forward<Function1>(function1), mask));
 #   endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
             }
@@ -758,11 +758,11 @@ namespace ket
 
               if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand mask) == zero_state_integer)
                 ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
-                  parallel_policy, local_state, StateInteger{0u}, boost::size(local_state), last_local_qubit_value, local_permutated_control_qubits,
+                  parallel_policy, local_state, StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
                   std::forward<Function0>(function0));
               else
                 ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
-                  parallel_policy, local_state, StateInteger{0u}, boost::size(local_state), last_local_qubit_value, local_permutated_control_qubits,
+                  parallel_policy, local_state, StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
                   std::forward<Function1>(function1));
             }
           }
