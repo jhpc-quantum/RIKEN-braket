@@ -113,11 +113,11 @@ namespace bra
     void do_measure() override;
     void do_generate_events(int const num_events, int const seed) override;
     void do_shor_box(
-      bit_integer_type const num_exponent_qubits,
-      state_integer_type const divisor, state_integer_type const base) override;
+      state_integer_type const divisor, state_integer_type const base,
+      std::vector<qubit_type> const& exponent_qubits,
+      std::vector<qubit_type> const& modular_exponentiation_qubits) override;
     void do_clear(qubit_type const qubit) override;
     void do_set(qubit_type const qubit) override;
-    void do_depolarizing_channel(real_type const px, real_type const py, real_type const pz, int const seed) override;
   }; // class nompi_state
 
   inline std::unique_ptr< ::bra::state > make_nompi_state(

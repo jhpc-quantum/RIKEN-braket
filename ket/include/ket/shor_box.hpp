@@ -80,7 +80,7 @@ namespace ket
     ::ket::utility::fill(
       parallel_policy, first, last, complex_type{real_type{0}});
 
-    auto const num_exponent_qubits = bit_integer_type{boost::size(exponent_qubits)};
+    auto const num_exponent_qubits = static_cast<bit_integer_type>(boost::size(exponent_qubits));
     auto const num_exponents = ::ket::utility::integer_exp2<StateInteger>(num_exponent_qubits);
     auto modular_exponentiation_value = StateInteger{1u};
 

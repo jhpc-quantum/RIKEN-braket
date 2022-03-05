@@ -183,10 +183,6 @@ namespace ket
             ::ket::utility::integer_log2<BitInteger>(last - first))
           == static_cast<StateInteger>(last - first));
 
-        auto const qubit_mask = ::ket::utility::integer_exp2<StateInteger>(qubit);
-        auto const lower_bits_mask = qubit_mask - StateInteger{1u};
-        auto const upper_bits_mask = compl lower_bits_mask;
-
         auto const zero_one_probabilities
           = ::ket::gate::projective_measurement_detail::zero_one_probabilities(
               parallel_policy, first, last, qubit);

@@ -285,7 +285,7 @@ int main(int argc, char* argv[])
   }
 # else // BRA_NO_MPI
   auto const filename = std::string{argv[1]};
-  auto const num_threads
+  auto const num_threads_per_process
     = argc >= 3
       ? boost::lexical_cast<unsigned int>(argv[2])
       : 1u;
@@ -337,7 +337,7 @@ int main(int argc, char* argv[])
   auto gates = bra::gates{file_stream};
 # endif // BRA_USE_DEPRECATED_CLI
   auto state_ptr
-    = bra::make_nompi_state(gates.initial_state_value(), gates.num_qubits(), num_threads, seed);
+    = bra::make_nompi_state(gates.initial_state_value(), gates.num_qubits(), num_threads_per_process, seed);
 #endif // BRA_NO_MPI
 
 #ifndef BRA_NO_MPI
