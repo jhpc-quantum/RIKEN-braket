@@ -83,7 +83,7 @@ namespace ket
               < zero_one_probabilities.first
             ? 0 : 1;
 
-        yampi::broadcast(root, communicator).call(yampi::make_buffer(zero_or_one), environment);
+        yampi::broadcast(yampi::make_buffer(zero_or_one), root, communicator, environment);
 
         if (zero_or_one == 0)
         {
@@ -154,7 +154,7 @@ namespace ket
               < zero_one_probabilities.first
             ? 0 : 1;
 
-        yampi::broadcast(root, communicator).call(yampi::make_buffer(zero_or_one), environment);
+        yampi::broadcast(yampi::make_buffer(zero_or_one), root, communicator, environment);
 
         if (zero_or_one == 0)
         {
