@@ -2,6 +2,7 @@
 # define KET_GATE_EXPONENTIAL_SWAP_HPP
 
 # include <cassert>
+# include <cmath>
 # include <complex>
 # include <iterator>
 # include <algorithm>
@@ -14,6 +15,7 @@
 # ifndef NDEBUG
 #   include <ket/utility/integer_log2.hpp>
 # endif
+# include <ket/utility/imaginary_unit.hpp>
 # include <ket/utility/exp_i.hpp>
 
 

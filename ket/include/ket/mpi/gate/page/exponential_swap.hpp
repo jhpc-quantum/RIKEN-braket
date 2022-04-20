@@ -4,9 +4,11 @@
 # include <boost/config.hpp>
 
 # include <cassert>
+# include <cmath>
 
 # include <ket/qubit.hpp>
 # include <ket/utility/integer_exp2.hpp>
+# include <ket/utility/imaginary_unit.hpp>
 # include <ket/mpi/permutated.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
 # include <ket/mpi/gate/page/detail/two_page_qubits_gate.hpp>
@@ -190,7 +192,7 @@ namespace ket
               auto const zero_index
                 = ((index_wo_nonpage_qubit bitand nonpage_upper_bits_mask) << 1u)
                   bitor (index_wo_nonpage_qubit bitand nonpage_lower_bits_mask);
-              auto const one_index = zero_index bitor permutated_control_qubit_mask;
+              auto const one_index = zero_index bitor nonpage_permutated_qubit_mask;
 
               auto const iter_00 = zero_first + zero_index;
               auto const iter_01 = zero_first + one_index;
