@@ -115,11 +115,6 @@ namespace ket
   { return value >> static_cast<BitInteger>(qubit); }
 
 
-  template <typename BitInteger>
-  inline constexpr ::ket::qubit<std::uint64_t, BitInteger>
-  make_qubit(BitInteger const bit) noexcept
-  { return ::ket::qubit<std::uint64_t, BitInteger>(bit); }
-
   template <typename StateInteger, typename BitInteger>
   inline constexpr ::ket::qubit<StateInteger, BitInteger>
   make_qubit(BitInteger const bit) noexcept

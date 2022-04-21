@@ -199,9 +199,9 @@ namespace bra
   {
     using floating_point_type = typename ::bra::utility::closest_floating_point_of<real_type>::type;
     auto distribution = std::uniform_real_distribution<floating_point_type>{0.0, 1.0};
-    auto const last_qubit = ket::make_qubit(total_num_qubits_);
+    auto const last_qubit = ket::make_qubit<state_integer_type>(total_num_qubits_);
     if (seed < 0)
-      for (auto qubit = ket::make_qubit(bit_integer_type{0u}); qubit < last_qubit; ++qubit)
+      for (auto qubit = ket::make_qubit<state_integer_type>(bit_integer_type{0u}); qubit < last_qubit; ++qubit)
       {
         auto const probability = static_cast<real_type>(distribution(random_number_generator_));
         if (probability < px)
@@ -214,7 +214,7 @@ namespace bra
     else
     {
       auto temporal_random_number_generator = random_number_generator_type{static_cast<seed_type>(seed)};
-      for (auto qubit = ket::make_qubit(static_cast<bit_integer_type>(0u)); qubit < last_qubit; ++qubit)
+      for (auto qubit = ket::make_qubit<state_integer_type>(static_cast<bit_integer_type>(0u)); qubit < last_qubit; ++qubit)
       {
         auto const probability = static_cast<real_type>(distribution(temporal_random_number_generator));
         if (probability < px)
