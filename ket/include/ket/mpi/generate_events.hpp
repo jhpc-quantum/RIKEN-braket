@@ -74,9 +74,9 @@ namespace ket
       if (present_rank == root_rank)
         total_probabilities.resize(communicator.size(environment));
 
-      yampi::gather(root_rank, communicator).call(
-        yampi::make_buffer(total_probability),
-        std::begin(total_probabilities), environment);
+      yampi::gather(
+        yampi::make_buffer(total_probability), std::begin(total_probabilities),
+        root_rank, communicator, environment);
 
       if (present_rank == root_rank)
         ::ket::utility::ranges::inclusive_scan(
@@ -100,8 +100,7 @@ namespace ket
         }
 
         auto result_mpi_rank = result_rank.mpi_rank();
-        yampi::broadcast(root_rank, communicator).call(
-          yampi::make_buffer(result_mpi_rank), environment);
+        yampi::broadcast(yampi::make_buffer(result_mpi_rank), root_rank, communicator, environment);
         result_rank = static_cast<yampi::rank>(result_mpi_rank);
 
         yampi::algorithm::transform(
@@ -130,8 +129,7 @@ namespace ket
                 mpi_policy, local_state, result_rank, local_result);
         }
 
-        yampi::broadcast(result_rank, communicator).call(
-          yampi::make_buffer(permutated_result), environment);
+        yampi::broadcast(yampi::make_buffer(permutated_result), result_rank, communicator, environment);
 
         using ::ket::mpi::inverse_permutate_bits;
         result.push_back(inverse_permutate_bits(permutation, permutated_result));
@@ -181,10 +179,9 @@ namespace ket
       if (present_rank == root_rank)
         total_probabilities.resize(communicator.size(environment));
 
-      yampi::gather(root_rank, communicator).call(
-        yampi::make_buffer(total_probability, real_datatype),
-        std::begin(total_probabilities),
-        environment);
+      yampi::gather(
+        yampi::make_buffer(total_probability, real_datatype), std::begin(total_probabilities),
+        root_rank, communicator, environment);
 
       if (present_rank == root_rank)
         ::ket::utility::ranges::inclusive_scan(
@@ -208,9 +205,7 @@ namespace ket
         }
 
         auto result_mpi_rank = result_rank.mpi_rank();
-        yampi::broadcast(root_rank, communicator).call(
-          yampi::make_buffer(result_mpi_rank),
-          environment);
+        yampi::broadcast(yampi::make_buffer(result_mpi_rank), root_rank, communicator, environment);
         result_rank = static_cast<yampi::rank>(result_mpi_rank);
 
         yampi::algorithm::transform(
@@ -239,8 +234,7 @@ namespace ket
                 mpi_policy, local_state, result_rank, local_result);
         }
 
-        yampi::broadcast(result_rank, communicator).call(
-          yampi::make_buffer(permutated_result, state_integer_datatype), environment);
+        yampi::broadcast(yampi::make_buffer(permutated_result, state_integer_datatype), result_rank, communicator, environment);
 
         using ::ket::mpi::inverse_permutate_bits;
         result.push_back(inverse_permutate_bits(permutation, permutated_result));

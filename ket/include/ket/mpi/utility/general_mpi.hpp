@@ -77,81 +77,196 @@ namespace ket
           { }; // struct is_mpi_policy< ::ket::mpi::utility::policy::general_mpi >
         } // namespace meta
 
-        inline std::size_t num_data_blocks(
-          ::ket::mpi::utility::policy::general_mpi const&,
-          yampi::communicator const&, yampi::environment const&)
-        { return 1u; }
+        namespace dispatch
+        {
+          template <typename MpiPolicy>
+          struct num_data_blocks;
+
+          template <>
+          struct num_data_blocks< ::ket::mpi::utility::policy::general_mpi >
+          {
+            static std::size_t call(
+              ::ket::mpi::utility::policy::general_mpi const,
+              yampi::communicator const&, yampi::environment const&)
+            { return 1u; }
+          }; // struct num_data_blocks< ::ket::mpi::utility::policy::general_mpi >
+
+          // M
+          template <typename MpiPolicy>
+          struct num_global_qubits;
+
+          template <>
+          struct num_global_qubits< ::ket::mpi::utility::policy::general_mpi >
+          {
+            static std::size_t call(
+              ::ket::mpi::utility::policy::general_mpi const,
+              yampi::communicator const& communicator, yampi::environment const& environment)
+            {
+              auto const num_processes = communicator.size(environment);
+              auto const result = ::ket::utility::integer_log2<std::size_t>(num_processes);
+              assert(::ket::utility::integer_exp2<decltype(num_processes)>(result) == num_processes);
+              return result;
+            }
+          }; // struct num_global_qubits< ::ket::mpi::utility::policy::general_mpi >
+
+          // g
+          template <typename MpiPolicy>
+          struct global_qubit_value;
+
+          template <>
+          struct global_qubit_value< ::ket::mpi::utility::policy::general_mpi >
+          {
+            static std::size_t call(
+              ::ket::mpi::utility::policy::general_mpi const, yampi::rank const rank)
+            { return static_cast<std::size_t>(rank.mpi_rank()); }
+
+            static std::size_t call(
+              ::ket::mpi::utility::policy::general_mpi const mpi_policy,
+              yampi::communicator const& communicator, yampi::environment const& environment)
+            { return call(mpi_policy, communicator.rank(environment)); }
+          }; // struct global_qubit_value< ::ket::mpi::utility::policy::general_mpi >
+
+          // r
+          template <typename MpiPolicy>
+          struct rank;
+
+          template <>
+          struct rank< ::ket::mpi::utility::policy::general_mpi >
+          {
+            template <typename StateInteger>
+            static yampi::rank call(
+              ::ket::mpi::utility::policy::general_mpi const, StateInteger const global_qubit_value,
+              yampi::communicator const& communicator, yampi::environment const& environment)
+            {
+              assert(global_qubit_value < static_cast<StateInteger>(communicator.size(environment)));
+              return yampi::rank{static_cast<int>(global_qubit_value)};
+            }
+          }; // struct rank< ::ket::mpi::utility::policy::general_mpi >
+
+          // 2^L
+          template <typename MpiPolicy>
+          struct data_block_size;
+
+          template <>
+          struct data_block_size< ::ket::mpi::utility::policy::general_mpi >
+          {
+            template <typename LocalState>
+            static auto call(
+              ::ket::mpi::utility::policy::general_mpi const, LocalState const& local_state,
+              yampi::communicator const& communicator, yampi::environment const& environment)
+              -> decltype(boost::size(local_state))
+            {
+              auto const result = boost::size(local_state);
+              assert(::ket::utility::integer_exp2<decltype(result)>(::ket::utility::integer_log2<std::size_t>(result)) == result);
+              return result;
+            }
+          }; // struct data_block_size< ::ket::mpi::utility::policy::general_mpi >
+
+          // L
+          template <typename MpiPolicy>
+          struct num_local_qubits;
+
+          template <>
+          struct num_local_qubits< ::ket::mpi::utility::policy::general_mpi >
+          {
+            template <typename StateInteger>
+            static std::size_t call(::ket::mpi::utility::policy::general_mpi const, StateInteger const data_block_size)
+            { return ::ket::utility::integer_log2<std::size_t>(data_block_size); }
+
+            template <typename LocalState>
+            static std::size_t call(
+              ::ket::mpi::utility::policy::general_mpi const mpi_policy, LocalState const& local_state,
+              yampi::communicator const& communicator, yampi::environment const& environment)
+            {
+              return call(
+                mpi_policy,
+                ::ket::mpi::utility::policy::dispatch::data_block_size< ::ket::mpi::utility::policy::general_mpi >::call(
+                  mpi_policy, local_state, communicator, environment));
+            }
+          }; // struct num_local_qubits< ::ket::mpi::utility::policy::general_mpi >
+
+          // N = L + M
+          template <typename MpiPolicy>
+          struct num_qubits;
+
+          template <>
+          struct num_qubits< ::ket::mpi::utility::policy::general_mpi >
+          {
+            template <typename LocalState>
+            static std::size_t call(
+              ::ket::mpi::utility::policy::general_mpi const mpi_policy, LocalState const& local_state,
+              yampi::communicator const& communicator, yampi::environment const& environment)
+            {
+              return ::ket::mpi::utility::policy::dispatch::num_local_qubits< ::ket::mpi::utility::policy::general_mpi >::call(mpi_policy, local_state, communicator, environment)
+                + ::ket::mpi::utility::policy::dispatch::num_global_qubits< ::ket::mpi::utility::policy::general_mpi >::call(mpi_policy, communicator, environment);
+            }
+          }; // struct num_qubits< ::ket::mpi::utility::policy::general_mpi >
+        } // namespace dispatch
+
+        template <typename MpiPolicy>
+        inline auto num_data_blocks(
+          MpiPolicy const& mpi_policy,
+          yampi::communicator const& communicator, yampi::environment const& environment)
+          -> decltype(::ket::mpi::utility::policy::dispatch::num_data_blocks<MpiPolicy>::call(mpi_policy, communicator, environment))
+        { return ::ket::mpi::utility::policy::dispatch::num_data_blocks<MpiPolicy>::call(mpi_policy, communicator, environment); }
+
 
         // M
-        inline std::size_t num_global_qubits(
-          ::ket::mpi::utility::policy::general_mpi const&,
+        template <typename MpiPolicy>
+        inline auto num_global_qubits(
+          MpiPolicy const& mpi_policy,
           yampi::communicator const& communicator, yampi::environment const& environment)
-        {
-          auto const num_processes = communicator.size(environment);
-          auto const result = ::ket::utility::integer_log2<std::size_t>(num_processes);
-          assert(::ket::utility::integer_exp2<decltype(num_processes)>(result) == num_processes);
-          return result;
-        }
+          -> decltype(::ket::mpi::utility::policy::dispatch::num_global_qubits<MpiPolicy>::call(mpi_policy, communicator, environment))
+        { return ::ket::mpi::utility::policy::dispatch::num_global_qubits<MpiPolicy>::call(mpi_policy, communicator, environment); }
 
         // g
-        inline std::size_t global_qubit_value(
-          ::ket::mpi::utility::policy::general_mpi const&, yampi::rank const rank)
-        { return static_cast<std::size_t>(rank.mpi_rank()); }
+        template <typename MpiPolicy>
+        inline auto global_qubit_value(MpiPolicy const& mpi_policy, yampi::rank const rank)
+          -> decltype(::ket::mpi::utility::policy::dispatch::global_qubit_value<MpiPolicy>::call(mpi_policy, rank))
+        { return ::ket::mpi::utility::policy::dispatch::global_qubit_value<MpiPolicy>::call(mpi_policy, rank); }
 
         // g
-        inline std::size_t global_qubit_value(
-          ::ket::mpi::utility::policy::general_mpi const& mpi_policy,
-          yampi::communicator const& communicator, yampi::environment const& environment)
-        { return ::ket::mpi::utility::policy::global_qubit_value(mpi_policy, communicator.rank(environment)); }
+        template <typename MpiPolicy>
+        inline auto global_qubit_value(
+          MpiPolicy const& mpi_policy, yampi::communicator const& communicator, yampi::environment const& environment)
+          -> decltype(::ket::mpi::utility::policy::dispatch::global_qubit_value<MpiPolicy>::call(mpi_policy, communicator, environment))
+        { return ::ket::mpi::utility::policy::dispatch::global_qubit_value<MpiPolicy>::call(mpi_policy, communicator, environment); }
 
         // r
-        template <typename StateInteger>
+        template <typename MpiPolicy, typename StateInteger>
         inline yampi::rank rank(
-          ::ket::mpi::utility::policy::general_mpi const&, StateInteger const global_qubit_value,
+          MpiPolicy const& mpi_policy, StateInteger const global_qubit_value,
           yampi::communicator const& communicator, yampi::environment const& environment)
-        {
-          assert(global_qubit_value < static_cast<StateInteger>(communicator.size(environment)));
-          return yampi::rank{static_cast<int>(global_qubit_value)};
-        }
+        { return ::ket::mpi::utility::policy::dispatch::rank<MpiPolicy>::call(mpi_policy, global_qubit_value, communicator, environment); }
 
         // 2^L
-        template <typename LocalState>
+        template <typename MpiPolicy, typename LocalState>
         inline auto data_block_size(
-          ::ket::mpi::utility::policy::general_mpi const&,
-          LocalState const& local_state, yampi::communicator const&, yampi::environment const&)
-          -> decltype(boost::size(local_state))
-        {
-          auto const result = boost::size(local_state);
-          assert(::ket::utility::integer_exp2<decltype(result)>(::ket::utility::integer_log2<std::size_t>(result)) == result);
-          return result;
-        }
+          MpiPolicy const& mpi_policy, LocalState const& local_state, yampi::communicator const& communicator, yampi::environment const& environment)
+          -> decltype(::ket::mpi::utility::policy::dispatch::data_block_size<MpiPolicy>::call(mpi_policy, local_state, communicator, environment))
+        { return ::ket::mpi::utility::policy::dispatch::data_block_size<MpiPolicy>::call(mpi_policy, local_state, communicator, environment); }
 
         // L
-        template <typename StateInteger>
-        inline std::size_t num_local_qubits(
-          ::ket::mpi::utility::policy::general_mpi const&, StateInteger const data_block_size)
-        { return ::ket::utility::integer_log2<std::size_t>(data_block_size); }
+        template <typename MpiPolicy, typename StateInteger>
+        inline auto num_local_qubits(MpiPolicy const& mpi_policy, StateInteger const data_block_size)
+          -> decltype(::ket::mpi::utility::policy::dispatch::num_local_qubits<MpiPolicy>::call(mpi_policy, data_block_size))
+        { return ::ket::mpi::utility::policy::dispatch::num_local_qubits<MpiPolicy>::call(mpi_policy, data_block_size); }
 
         // L
-        template <typename LocalState>
-        inline std::size_t num_local_qubits(
-          ::ket::mpi::utility::policy::general_mpi const& mpi_policy,
-          LocalState const& local_state,
+        template <typename MpiPolicy, typename LocalState>
+        inline auto num_local_qubits(
+          MpiPolicy const& mpi_policy, LocalState const& local_state,
           yampi::communicator const& communicator, yampi::environment const& environment)
-        {
-          return ::ket::mpi::utility::policy::num_local_qubits(
-            mpi_policy,
-            ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment));
-        }
+          -> decltype(::ket::mpi::utility::policy::dispatch::num_local_qubits<MpiPolicy>::call(mpi_policy, local_state, communicator, environment))
+        { return ::ket::mpi::utility::policy::dispatch::num_local_qubits<MpiPolicy>::call(mpi_policy, local_state, communicator, environment); }
 
-        template <typename LocalState>
-        inline std::size_t num_qubits(
-          ::ket::mpi::utility::policy::general_mpi const& mpi_policy,
-          LocalState const& local_state,
+        // N = L + M
+        template <typename MpiPolicy, typename LocalState>
+        inline auto num_qubits(
+          MpiPolicy const& mpi_policy, LocalState const& local_state,
           yampi::communicator const& communicator, yampi::environment const& environment)
-        {
-          return ::ket::mpi::utility::policy::num_local_qubits(mpi_policy, local_state, communicator, environment) + ::ket::mpi::utility::policy::num_global_qubits(mpi_policy, communicator, environment);
-        }
+          -> decltype(::ket::mpi::utility::policy::dispatch::num_qubits<MpiPolicy>::call(mpi_policy, local_state, communicator, environment))
+        { return ::ket::mpi::utility::policy::dispatch::num_qubits<MpiPolicy>::call(mpi_policy, local_state, communicator, environment); }
       } // namespace policy
 
       namespace dispatch
@@ -797,12 +912,11 @@ namespace ket
       } // namespace dispatch
 
       template <
-        typename ParallelPolicy, typename LocalState,
+        typename MpiPolicy, typename ParallelPolicy, typename LocalState,
         typename StateInteger, typename BitInteger, std::size_t num_qubits_of_operation,
         typename Allocator, typename BufferAllocator>
       void maybe_interchange_qubits(
-        ::ket::mpi::utility::policy::general_mpi const mpi_policy,
-        ParallelPolicy const parallel_policy,
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         LocalState& local_state,
         std::array< ::ket::qubit<StateInteger, BitInteger>, num_qubits_of_operation > const& qubits,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -811,7 +925,7 @@ namespace ket
         yampi::environment const& environment)
       {
         using maybe_interchange_qubits_impl
-          = ::ket::mpi::utility::dispatch::maybe_interchange_qubits<num_qubits_of_operation, ::ket::mpi::utility::policy::general_mpi>;
+          = ::ket::mpi::utility::dispatch::maybe_interchange_qubits<num_qubits_of_operation, MpiPolicy>;
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
 
         auto unswappable_qubits = std::array<qubit_type, 0u>{};
@@ -822,12 +936,11 @@ namespace ket
       }
 
       template <
-        typename ParallelPolicy, typename LocalState,
+        typename MpiPolicy, typename ParallelPolicy, typename LocalState,
         typename StateInteger, typename BitInteger, std::size_t num_qubits_of_operation,
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>
       void maybe_interchange_qubits(
-        ::ket::mpi::utility::policy::general_mpi const mpi_policy,
-        ParallelPolicy const parallel_policy,
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         LocalState& local_state,
         std::array< ::ket::qubit<StateInteger, BitInteger>, num_qubits_of_operation > const& qubits,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -837,7 +950,7 @@ namespace ket
         yampi::environment const& environment)
       {
         using maybe_interchange_qubits_impl
-          = ::ket::mpi::utility::dispatch::maybe_interchange_qubits<num_qubits_of_operation, ::ket::mpi::utility::policy::general_mpi>;
+          = ::ket::mpi::utility::dispatch::maybe_interchange_qubits<num_qubits_of_operation, MpiPolicy>;
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
 
         auto unswappable_qubits = std::array<qubit_type, 0u>{};
@@ -922,34 +1035,28 @@ namespace ket
           local_state, qubits, permutation, buffer, datatype, communicator, environment);
       }
 
-      template <typename LocalState, typename StateInteger>
+      template <typename MpiPolicy, typename LocalState, typename StateInteger>
       inline StateInteger rank_index_to_qubit_value(
-        ::ket::mpi::utility::policy::general_mpi const mpi_policy,
-        LocalState const& local_state, yampi::rank const rank,
-        StateInteger const index)
-      {
-        return ::ket::mpi::utility::dispatch::rank_index_to_qubit_value< ::ket::mpi::utility::policy::general_mpi >::call(
-          mpi_policy, local_state, rank, index);
-      }
+        MpiPolicy const& mpi_policy, LocalState const& local_state, yampi::rank const rank, StateInteger const index)
+      { return ::ket::mpi::utility::dispatch::rank_index_to_qubit_value<MpiPolicy>::call(mpi_policy, local_state, rank, index); }
 
-      template <typename LocalState, typename StateInteger>
+      template <typename MpiPolicy, typename LocalState, typename StateInteger>
       inline std::pair<yampi::rank, StateInteger> qubit_value_to_rank_index(
-        ::ket::mpi::utility::policy::general_mpi const mpi_policy,
+        MpiPolicy const& mpi_policy,
         LocalState const& local_state, StateInteger const qubit_value,
         yampi::communicator const& communicator, yampi::environment const& environment)
       {
-        return ::ket::mpi::utility::dispatch::qubit_value_to_rank_index< ::ket::mpi::utility::policy::general_mpi >::call(
+        return ::ket::mpi::utility::dispatch::qubit_value_to_rank_index<MpiPolicy>::call(
           mpi_policy, local_state, qubit_value, communicator, environment);
       }
 
 # ifdef KET_USE_DIAGONAL_LOOP
       template <
-        typename ParallelPolicy, typename LocalState,
+        typename MpiPolicy, typename ParallelPolicy, typename LocalState,
         typename StateInteger, typename BitInteger, typename Allocator,
         typename Function0, typename Function1, typename... ControlQubits>
       inline void diagonal_loop(
-        ::ket::mpi::utility::policy::general_mpi const mpi_policy,
-        ParallelPolicy const parallel_policy,
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         LocalState& local_state,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const& permutation,
         yampi::communicator const& communicator,
@@ -961,7 +1068,7 @@ namespace ket
         assert(not ::ket::mpi::page::is_on_page(permutation[target_qubit], local_state));
         assert(::ket::mpi::page::none_on_page(permutation[control_qubits]..., local_state));
 
-        return ::ket::mpi::utility::dispatch::diagonal_loop< ::ket::mpi::utility::policy::general_mpi >::call(
+        return ::ket::mpi::utility::dispatch::diagonal_loop<MpiPolicy>::call(
           mpi_policy, parallel_policy, local_state, permutation, communicator, environment,
           target_qubit,
           std::forward<Function0>(function0), std::forward<Function1>(function1),

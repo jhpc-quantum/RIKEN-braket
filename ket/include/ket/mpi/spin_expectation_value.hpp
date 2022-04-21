@@ -374,10 +374,9 @@ namespace ket
       }
 
       auto result = spin_type{};
-      yampi::reduce(root, communicator).call(
-        yampi::make_buffer(std::begin(spin), std::end(spin)),
-        std::begin(result), yampi::binary_operation(yampi::plus_t()),
-        environment);
+      yampi::reduce(
+        yampi::make_buffer(std::begin(spin), std::end(spin)), std::begin(result), yampi::binary_operation(yampi::plus_t()),
+        root, communicator, environment);
 
       if (communicator.rank(environment) != root)
         return boost::none;
@@ -448,10 +447,9 @@ namespace ket
       }
 
       auto result = spin_type{};
-      yampi::reduce(root, communicator).call(
-        yampi::make_buffer(std::begin(spin), std::end(spin), real_datatype),
-        std::begin(result), yampi::binary_operation(yampi::plus_t()),
-        environment);
+      yampi::reduce(
+        yampi::make_buffer(std::begin(spin), std::end(spin), real_datatype), std::begin(result), yampi::binary_operation(yampi::plus_t()),
+        root, communicator, environment);
 
       if (communicator.rank(environment) != root)
         return boost::none;

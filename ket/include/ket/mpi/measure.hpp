@@ -68,10 +68,9 @@ namespace ket
       if (present_rank == root_rank)
         total_probabilities.resize(communicator.size(environment));
 
-      yampi::gather(root_rank, communicator).call(
-        yampi::make_buffer(total_probability),
-        std::begin(total_probabilities),
-        environment);
+      yampi::gather(
+        yampi::make_buffer(total_probability), std::begin(total_probabilities),
+        root_rank, communicator, environment);
 
       auto random_value = real_type{};
       auto result_rank = yampi::rank{};
@@ -92,8 +91,7 @@ namespace ket
       }
 
       auto result_mpi_rank = result_rank.mpi_rank();
-      yampi::broadcast(root_rank, communicator).call(
-        yampi::make_buffer(result_mpi_rank), environment);
+      yampi::broadcast(yampi::make_buffer(result_mpi_rank), root_rank, communicator, environment);
       result_rank = static_cast<yampi::rank>(result_mpi_rank);
 
       yampi::algorithm::transform(
@@ -129,8 +127,7 @@ namespace ket
         ::ket::mpi::utility::fill(
           mpi_policy, parallel_policy, local_state, complex_type{real_type{0}}, communicator, environment);
 
-      yampi::broadcast(result_rank, communicator).call(
-        yampi::make_buffer(permutated_result), environment);
+      yampi::broadcast(yampi::make_buffer(permutated_result), result_rank, communicator, environment);
 
       using ::ket::mpi::inverse_permutate_bits;
       return inverse_permutate_bits(permutation, permutated_result);
@@ -172,10 +169,9 @@ namespace ket
       if (present_rank == root_rank)
         total_probabilities.resize(communicator.size(environment));
 
-      yampi::gather(root_rank, communicator).call(
-        yampi::make_buffer(total_probability, real_datatype),
-        std::begin(total_probabilities),
-        environment);
+      yampi::gather(
+        yampi::make_buffer(total_probability, real_datatype), std::begin(total_probabilities),
+        root_rank, communicator, environment);
 
       auto random_value = real_type{};
       auto result_rank = yampi::rank{};
@@ -196,8 +192,7 @@ namespace ket
       }
 
       auto result_mpi_rank = result_rank.mpi_rank();
-      yampi::broadcast(root_rank, communicator).call(
-        yampi::make_buffer(result_mpi_rank), environment);
+      yampi::broadcast(yampi::make_buffer(result_mpi_rank), root_rank, communicator, environment);
       result_rank = static_cast<yampi::rank>(result_mpi_rank);
 
       yampi::algorithm::transform(
@@ -233,8 +228,7 @@ namespace ket
         ::ket::mpi::utility::fill(
           mpi_policy, parallel_policy, local_state, complex_type{real_type{0}}, communicator, environment);
 
-      yampi::broadcast(result_rank, communicator).call(
-        yampi::make_buffer(permutated_result, state_integer_datatype), environment);
+      yampi::broadcast(yampi::make_buffer(permutated_result, state_integer_datatype), result_rank, communicator, environment);
 
       using ::ket::mpi::inverse_permutate_bits;
       return inverse_permutate_bits(permutation, permutated_result);
@@ -310,10 +304,9 @@ namespace ket
         total_probabilities.resize(communicator.size(environment));
 
       using std::real;
-      yampi::gather(root_rank, communicator).call(
-        yampi::make_buffer(partial_sum_probabilities.back()),
-        std::begin(total_probabilities),
-        environment);
+      yampi::gather(
+        yampi::make_buffer(partial_sum_probabilities.back()), std::begin(total_probabilities),
+        root_rank, communicator, environment);
 
       auto random_value = real_type{};
       auto result_rank = yampi::rank{};
@@ -334,8 +327,7 @@ namespace ket
       }
 
       auto result_mpi_rank = result_rank.mpi_rank();
-      yampi::broadcast(root_rank, communicator).call(
-        yampi::make_buffer(result_mpi_rank), environment);
+      yampi::broadcast(yampi::make_buffer(result_mpi_rank), root_rank, communicator, environment);
       result_rank = static_cast<yampi::rank>(result_mpi_rank);
 
       yampi::algorithm::transform(
@@ -369,8 +361,7 @@ namespace ket
         ::ket::mpi::utility::fill(
           mpi_policy, parallel_policy, local_state, complex_type{real_type{0}}, communicator, environment);
 
-      yampi::broadcast(result_rank, communicator).call(
-        yampi::make_buffer(permutated_result), environment);
+      yampi::broadcast(yampi::make_buffer(permutated_result), result_rank, communicator, environment);
 
       using ::ket::mpi::inverse_permutate_bits;
       return inverse_permutate_bits(permutation, permutated_result);
@@ -410,9 +401,9 @@ namespace ket
         total_probabilities.resize(communicator.size(environment));
 
       using std::real;
-      yampi::gather(root_rank, communicator).call(
-        yampi::make_buffer(partial_sum_probabilities.back(), real_datatype),
-        std::begin(total_probabilities), environment);
+      yampi::gather(
+        yampi::make_buffer(partial_sum_probabilities.back(), real_datatype), std::begin(total_probabilities),
+        root_rank, communicator, environment);
 
       auto random_value = real_type{};
       auto result_rank = yampi::rank{};
@@ -433,8 +424,7 @@ namespace ket
       }
 
       auto result_mpi_rank = result_rank.mpi_rank();
-      yampi::broadcast(root_rank, communicator).call(
-        yampi::make_buffer(result_mpi_rank), environment);
+      yampi::broadcast(yampi::make_buffer(result_mpi_rank), root_rank, communicator, environment);
       result_rank = static_cast<yampi::rank>(result_mpi_rank);
 
       yampi::algorithm::transform(
@@ -468,8 +458,7 @@ namespace ket
         ::ket::mpi::utility::fill(
           mpi_policy, parallel_policy, local_state, complex_type{real_type{0}}, communicator, environment);
 
-      yampi::broadcast(result_rank, communicator).call(
-        yampi::make_buffer(permutated_result, state_integer_datatype), environment);
+      yampi::broadcast(yampi::make_buffer(permutated_result, state_integer_datatype), result_rank, communicator, environment);
 
       using ::ket::mpi::inverse_permutate_bits;
       return inverse_permutate_bits(permutation, permutated_result);
