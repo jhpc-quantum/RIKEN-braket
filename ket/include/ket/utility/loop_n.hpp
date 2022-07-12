@@ -314,6 +314,425 @@ namespace ket
     } // namespace ranges
 
 
+    // reduce
+    namespace dispatch
+    {
+      template <typename ParallelPolicy>
+      struct reduce
+      {
+        template <typename ForwardIterator, typename Category>
+        static typename std::iterator_traits<ForwardIterator>::value_type call(
+          ParallelPolicy const parallel_policy,
+          ForwardIterator const first, ForwardIterator const last,
+          Category const iterator_category);
+
+        template <typename ForwardIterator, typename Value, typename Category>
+        static Value call(
+          ParallelPolicy const parallel_policy,
+          ForwardIterator const first, ForwardIterator const last, Value const initial_value,
+          Category const iterator_category);
+
+        template <typename ForwardIterator, typename Value, typename BinaryOperation, typename Category>
+        static Value call(
+          ParallelPolicy const parallel_policy,
+          ForwardIterator const first, ForwardIterator const last,
+          Value const initial_value, BinaryOperation binary_operation,
+          Category const iterator_category);
+      }; // struct reduce<ParallelPolicy>
+
+      template <>
+      struct reduce< ::ket::utility::policy::sequential >
+      {
+        template <typename InputIterator>
+        static typename std::iterator_traits<InputIterator>::value_type call(
+          ::ket::utility::policy::sequential const,
+          InputIterator const first, InputIterator const last,
+          std::input_iterator_tag const)
+        {
+          if (first == last)
+            return typename std::iterator_traits<InputIterator>::value_type{};
+
+          return std::accumulate(std::next(first), last, *first);
+        }
+
+        template <typename InputIterator, typename Value>
+        static Value call(
+          ::ket::utility::policy::sequential const,
+          InputIterator const first, InputIterator const last, Value const initial_value,
+          std::input_iterator_tag const)
+        { return std::accumulate(first, last, initial_value); }
+
+        template <typename InputIterator, typename Value, typename BinaryOperation>
+        static Value call(
+          ::ket::utility::policy::sequential const,
+          InputIterator const first, InputIterator const last,
+          Value const initial_value, BinaryOperation binary_operation,
+          std::input_iterator_tag const)
+        { return std::accumulate(first, last, initial_value, binary_operation); }
+      }; // struct reduce< ::ket::utility::policy::sequential >
+    } // namespace dispatch
+
+    template <typename ParallelPolicy, typename ForwardIterator>
+    inline typename std::enable_if<
+      ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
+      typename std::iterator_traits<ForwardIterator>::value_type>::type
+    reduce(
+      ParallelPolicy const parallel_policy,
+      ForwardIterator const first, ForwardIterator const last)
+    {
+      return ::ket::utility::dispatch::reduce<ParallelPolicy>::call(
+        parallel_policy, first, last,
+        typename std::iterator_traits<ForwardIterator>::iterator_category{});
+    }
+
+    template <typename InputIterator>
+    inline typename std::iterator_traits<InputIterator>::value_type
+    reduce(InputIterator const first, InputIterator const last)
+    {
+      if (first == last)
+        return typename std::iterator_traits<InputIterator>::value_type{};
+
+      return std::accumulate(std::next(first), last, *first);
+    }
+
+    template <typename ParallelPolicy, typename ForwardIterator, typename Value>
+    inline typename std::enable_if<
+      ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, Value>::type
+    reduce(
+      ParallelPolicy const parallel_policy,
+      ForwardIterator const first, ForwardIterator const last, Value const initial_value)
+    {
+      return ::ket::utility::dispatch::reduce<ParallelPolicy>::call(
+        parallel_policy, first, last, initial_value,
+        typename std::iterator_traits<ForwardIterator>::iterator_category{});
+    }
+
+    template <typename InputIterator, typename Value>
+    inline typename std::enable_if<
+      not ::ket::utility::policy::meta::is_loop_n_policy<InputIterator>::value, Value>::type
+    reduce(InputIterator const first, InputIterator const last, Value const initial_value)
+    { return std::accumulate(first, last, initial_value); }
+
+    template <typename ParallelPolicy, typename ForwardIterator, typename Value, typename BinaryOperation>
+    inline Value reduce(
+      ParallelPolicy const parallel_policy,
+      ForwardIterator const first, ForwardIterator const last,
+      Value const initial_value, BinaryOperation binary_operation)
+    {
+      return ::ket::utility::dispatch::reduce<ParallelPolicy>::call(
+        parallel_policy, first, last, initial_value, binary_operation,
+        typename std::iterator_traits<ForwardIterator>::iterator_category{});
+    }
+
+    template <typename InputIterator, typename Value, typename BinaryOperation>
+    inline typename std::enable_if<
+      not ::ket::utility::policy::meta::is_loop_n_policy<InputIterator>::value, Value>::type
+    reduce(
+      InputIterator const first, InputIterator const last,
+      Value const initial_value, BinaryOperation binary_operation)
+    { return std::accumulate(first, last, initial_value, binary_operation); }
+
+    namespace ranges
+    {
+      template <typename ParallelPolicy, typename ForwardRange>
+      inline typename std::enable_if<
+        ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
+        typename boost::range_value<ForwardRange>::type>::type
+      reduce(ParallelPolicy const parallel_policy, ForwardRange const& range)
+      { return ::ket::utility::reduce(parallel_policy, std::begin(range), std::end(range)); }
+
+      template <typename ForwardRange>
+      inline typename boost::range_value<ForwardRange>::type
+      reduce(ForwardRange const& range)
+      { return ::ket::utility::reduce(std::begin(range), std::end(range)); }
+
+      template <typename ParallelPolicy, typename ForwardRange, typename Value>
+      inline typename std::enable_if<
+        ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, Value>::type
+      reduce(ParallelPolicy const parallel_policy, ForwardRange const& range, Value const initial_value)
+      { return ::ket::utility::reduce(parallel_policy, std::begin(range), std::end(range), initial_value); }
+
+      template <typename ForwardRange, typename Value>
+      inline typename std::enable_if<
+        not ::ket::utility::policy::meta::is_loop_n_policy<ForwardRange>::value, Value>::type
+      reduce(ForwardRange const& range, Value const initial_value)
+      { return ::ket::utility::reduce(std::begin(range), std::end(range), initial_value); }
+
+      template <typename ParallelPolicy, typename ForwardRange, typename Value, typename BinaryOperation>
+      inline Value reduce(
+        ParallelPolicy const parallel_policy, ForwardRange const& range,
+        Value const initial_value, BinaryOperation binary_operation)
+      {
+        return ::ket::utility::reduce(
+          parallel_policy, std::begin(range), std::end(range), initial_value, binary_operation);
+      }
+
+      template <typename ForwardRange, typename Value, typename BinaryOperation>
+      inline typename std::enable_if<
+        not ::ket::utility::policy::meta::is_loop_n_policy<ForwardRange>::value, Value>::type
+      reduce(ForwardRange const& range, Value const initial_value, BinaryOperation binary_operation)
+      { return ::ket::utility::reduce(std::begin(range), std::end(range), initial_value, binary_operation); }
+    } // namespace ranges
+
+
+    // transform_reduce
+    namespace dispatch
+    {
+      template <typename ParallelPolicy>
+      struct transform_reduce
+      {
+        template <typename ForwardIterator1, typename ForwardIterator2, typename Value, typename Category1, typename Category2>
+        static Value call(
+          ParallelPolicy const parallel_policy,
+          ForwardIterator1 const first1, ForwardIterator1 const last1,
+          ForwardIterator2 const first2, Value const initial_value,
+          Category1 const iterator_category1, Category2 const iterator_category2);
+
+        template <
+          typename ForwardIterator1, typename ForwardIterator2, typename Value,
+          typename BinaryReductionOperation, typename BinaryTransformOperation,
+          typename Category1, typename Category2>
+        static Value call(
+          ParallelPolicy const parallel_policy,
+          ForwardIterator1 const first1, ForwardIterator1 const last1,
+          ForwardIterator2 const first2, Value const initial_value,
+          BinaryReductionOperation binary_reduction_operation,
+          BinaryTransformOperation binary_transform_operation,
+          Category1 const iterator_category1, Category2 const iterator_category2);
+
+        template <
+          typename ForwardIterator, typename Value,
+          typename BinaryReductionOperation, typename UnaryTransformOperation,
+          typename Category>
+        static Value call(
+          ParallelPolicy const parallel_policy,
+          ForwardIterator const first, ForwardIterator const last,
+          Value const initial_value,
+          BinaryReductionOperation binary_reduction_operation,
+          UnaryTransformOperation unary_transform_operation,
+          Category const iterator_category);
+      }; // struct transform_reduce<ParallelPolicy>
+
+      template <>
+      struct transform_reduce< ::ket::utility::policy::sequential >
+      {
+        template <typename InputIterator1, typename InputIterator2, typename Value>
+        static Value call(
+          ::ket::utility::policy::sequential const,
+          InputIterator1 const first1, InputIterator1 const last1,
+          InputIterator2 const first2, Value const initial_value,
+          std::input_iterator_tag const, std::input_iterator_tag const)
+        { return std::inner_product(first1, last1, first2, initial_value); }
+
+        template <
+          typename InputIterator1, typename InputIterator2, typename Value,
+          typename BinaryReductionOperation, typename BinaryTransformOperation>
+        static Value call(
+          ::ket::utility::policy::sequential const,
+          InputIterator1 const first1, InputIterator1 const last1,
+          InputIterator2 const first2, Value const initial_value,
+          BinaryReductionOperation binary_reduction_operation,
+          BinaryTransformOperation binary_transform_operation,
+          std::input_iterator_tag const, std::input_iterator_tag const)
+        {
+          return std::inner_product(
+            first1, last1, first2, initial_value,
+            binary_reduction_operation, binary_transform_operation);
+        }
+
+        template <
+          typename InputIterator, typename Value,
+          typename BinaryReductionOperation, typename UnaryTransformOperation>
+        static Value call(
+          ::ket::utility::policy::sequential const,
+          InputIterator const first, InputIterator const last,
+          Value const initial_value,
+          BinaryReductionOperation binary_reduction_operation,
+          UnaryTransformOperation unary_transform_operation,
+          std::input_iterator_tag const)
+        {
+          using value_type = typename std::iterator_traits<InputIterator>::value_type;
+          return std::inner_product(
+            first, last, first, initial_value,
+            binary_reduction_operation,
+            [unary_transform_operation](value_type const& value, value_type const&)
+            { return unary_transform_operation(value); });
+        }
+      }; // struct transform_reduce< ::ket::utility::policy::sequential >
+    } // namespace dispatch
+
+    template <typename ParallelPolicy, typename ForwardIterator1, typename ForwardIterator2, typename Value>
+    inline typename std::enable_if<
+      ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, Value>::type
+    transform_reduce(
+      ParallelPolicy const parallel_policy,
+      ForwardIterator1 const first1, ForwardIterator1 const last1,
+      ForwardIterator2 const first2, Value const initial_value)
+    {
+      return ::ket::utility::dispatch::transform_reduce<ParallelPolicy>::call(
+        parallel_policy, first1, last1, first2, initial_value,
+        typename std::iterator_traits<ForwardIterator1>::iterator_category{},
+        typename std::iterator_traits<ForwardIterator2>::iterator_category{});
+    }
+
+    template <typename InputIterator1, typename InputIterator2, typename Value>
+    inline Value transform_reduce(
+      InputIterator1 const first1, InputIterator1 const last1,
+      InputIterator2 const first2, Value const initial_value)
+    { return std::inner_product(first1, last1, first2, initial_value); }
+
+    template <
+      typename ParallelPolicy, typename ForwardIterator1, typename ForwardIterator2, typename Value,
+      typename BinaryReductionOperation, typename BinaryTransformOperation>
+    inline Value transform_reduce(
+      ParallelPolicy const parallel_policy,
+      ForwardIterator1 const first1, ForwardIterator1 const last1,
+      ForwardIterator2 const first2, Value const initial_value,
+      BinaryReductionOperation binary_reduction_operation,
+      BinaryTransformOperation binary_transform_operation)
+    {
+      return ::ket::utility::dispatch::transform_reduce<ParallelPolicy>::call(
+        parallel_policy, first1, last1, first2, initial_value,
+        binary_reduction_operation, binary_transform_operation,
+        typename std::iterator_traits<ForwardIterator1>::iterator_category{},
+        typename std::iterator_traits<ForwardIterator2>::iterator_category{});
+    }
+
+    template <
+      typename InputIterator1, typename InputIterator2, typename Value,
+      typename BinaryReductionOperation, typename BinaryTransformOperation>
+    inline typename std::enable_if<
+      not ::ket::utility::policy::meta::is_loop_n_policy<InputIterator1>::value, Value>::type
+    transform_reduce(
+      InputIterator1 const first1, InputIterator1 const last1,
+      InputIterator2 const first2, Value const initial_value,
+      BinaryReductionOperation binary_reduction_operation,
+      BinaryTransformOperation binary_transform_operation)
+    {
+      return std::inner_product(
+        first1, last1, first2, initial_value,
+        binary_reduction_operation, binary_transform_operation);
+    }
+
+    template <
+      typename ParallelPolicy, typename ForwardIterator, typename Value,
+      typename BinaryReductionOperation, typename UnaryTransformOperation>
+    inline typename std::enable_if<
+      ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, Value>::type
+    transform_reduce(
+      ParallelPolicy const parallel_policy,
+      ForwardIterator const first, ForwardIterator const last,
+      Value const initial_value,
+      BinaryReductionOperation binary_reduction_operation,
+      UnaryTransformOperation unary_transform_operation)
+    {
+      return ::ket::utility::dispatch::transform_reduce<ParallelPolicy>::call(
+        parallel_policy, first, last, initial_value,
+        binary_reduction_operation, unary_transform_operation,
+        typename std::iterator_traits<ForwardIterator>::iterator_category{});
+    }
+
+    template <
+      typename InputIterator, typename Value,
+      typename BinaryReductionOperation, typename UnaryTransformOperation>
+    inline typename std::enable_if<
+      not ::ket::utility::policy::meta::is_loop_n_policy<InputIterator>::value, Value>::type
+    transform_reduce(
+      InputIterator const first, InputIterator const last,
+      Value const initial_value,
+      BinaryReductionOperation binary_reduction_operation,
+      UnaryTransformOperation unary_transform_operation)
+    {
+      using value_type = typename std::iterator_traits<InputIterator>::value_type;
+      return std::inner_product(
+        first, last, first, initial_value,
+        binary_reduction_operation,
+        [unary_transform_operation](value_type const& value, value_type const&)
+        { return unary_transform_operation(value); });
+    }
+
+    namespace ranges
+    {
+      template <typename ParallelPolicy, typename ForwardRange, typename ForwardIterator, typename Value>
+      inline typename std::enable_if<
+        ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, Value>::type
+      transform_reduce(
+        ParallelPolicy const parallel_policy,
+        ForwardRange const& range, ForwardIterator const first, Value const initial_value)
+      {
+        return ::ket::utility::transform_reduce(
+          parallel_policy, std::begin(range), std::end(range), first, initial_value);
+      }
+
+      template <typename ForwardRange, typename ForwardIterator, typename Value>
+      inline Value transform_reduce(
+        ForwardRange const& range, ForwardIterator const first, Value const initial_value)
+      { return ::ket::utility::transform_reduce(std::begin(range), std::end(range), first, initial_value); }
+
+      template <
+        typename ParallelPolicy, typename ForwardRange, typename ForwardIterator, typename Value,
+        typename BinaryReductionOperation, typename BinaryTransformOperation>
+      inline Value transform_reduce(
+        ParallelPolicy const parallel_policy,
+        ForwardRange const& range, ForwardIterator const first, Value const initial_value,
+        BinaryReductionOperation binary_reduction_operation,
+        BinaryTransformOperation binary_transform_operation)
+      {
+        return ::ket::utility::transform_reduce(
+          parallel_policy,
+          std::begin(range), std::end(range), first, initial_value,
+          binary_reduction_operation, binary_transform_operation);
+      }
+
+      template <
+        typename ForwardRange, typename ForwardIterator, typename Value,
+        typename BinaryReductionOperation, typename BinaryTransformOperation>
+      inline typename std::enable_if<
+        not ::ket::utility::policy::meta::is_loop_n_policy<ForwardRange>::value, Value>::type
+      transform_reduce(
+        ForwardRange const& range, ForwardIterator const first, Value const initial_value,
+        BinaryReductionOperation binary_reduction_operation,
+        BinaryTransformOperation binary_transform_operation)
+      {
+        return ::ket::utility::transform_reduce(
+          std::begin(range), std::end(range), first, initial_value,
+          binary_reduction_operation, binary_transform_operation);
+      }
+
+      template <
+        typename ParallelPolicy, typename ForwardRange, typename Value,
+        typename BinaryReductionOperation, typename UnaryTransformOperation>
+      inline typename std::enable_if<
+        ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, Value>::type
+      transform_reduce(
+        ParallelPolicy const parallel_policy,
+        ForwardRange const& range, Value const initial_value,
+        BinaryReductionOperation binary_reduction_operation,
+        UnaryTransformOperation unary_transform_operation)
+      {
+        return ::ket::utility::transform_reduce(
+          parallel_policy,
+          std::begin(range), std::end(range), initial_value,
+          binary_reduction_operation, unary_transform_operation);
+      }
+
+      template <
+        typename ForwardRange, typename Value,
+        typename BinaryReductionOperation, typename UnaryTransformOperation>
+      inline typename std::enable_if<
+        not ::ket::utility::policy::meta::is_loop_n_policy<ForwardRange>::value, Value>::type
+      transform_reduce(
+        ForwardRange const& range, Value const initial_value,
+        BinaryReductionOperation binary_reduction_operation,
+        UnaryTransformOperation unary_transform_operation)
+      {
+        return ::ket::utility::transform_reduce(
+          std::begin(range), std::end(range), initial_value,
+          binary_reduction_operation, unary_transform_operation);
+      }
+    } // namespace ranges
+
+
     // inclusive_scan
     namespace dispatch
     {
