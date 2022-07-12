@@ -95,7 +95,7 @@ namespace ket
       result_rank = static_cast<yampi::rank>(result_mpi_rank);
 
       yampi::algorithm::transform(
-        yampi::ignore_status(),
+        yampi::ignore_status,
         yampi::make_buffer(random_value),
         yampi::make_buffer(random_value),
         [&total_probabilities, result_rank](real_type const random_value)
@@ -196,7 +196,7 @@ namespace ket
       result_rank = static_cast<yampi::rank>(result_mpi_rank);
 
       yampi::algorithm::transform(
-        yampi::ignore_status(),
+        yampi::ignore_status,
         yampi::make_buffer(random_value, real_datatype),
         yampi::make_buffer(random_value, real_datatype),
         [&total_probabilities, result_rank](real_type const random_value)
@@ -331,7 +331,7 @@ namespace ket
       result_rank = static_cast<yampi::rank>(result_mpi_rank);
 
       yampi::algorithm::transform(
-        yampi::ignore_status(),
+        yampi::ignore_status,
         yampi::make_buffer(random_value),
         yampi::make_buffer(random_value),
         [&total_probabilities, result_rank](real_type const random_value)
@@ -428,7 +428,7 @@ namespace ket
       result_rank = static_cast<yampi::rank>(result_mpi_rank);
 
       yampi::algorithm::transform(
-        yampi::ignore_status(),
+        yampi::ignore_status,
         yampi::make_buffer(random_value, real_datatype),
         yampi::make_buffer(random_value, real_datatype),
         [&total_probabilities, result_rank](real_type const random_value)

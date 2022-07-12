@@ -652,7 +652,7 @@ namespace ket
 
 # ifndef NDEBUG
             auto const maybe_io_rank = yampi::lowest_io_process(environment);
-            auto const my_rank = yampi::communicator(yampi::world_communicator_t()).rank(environment);
+            auto const my_rank = yampi::communicator{yampi::tags::world_communicator}.rank(environment);
             if (maybe_io_rank && my_rank == *maybe_io_rank)
               std::clog << "[permutation before changing qubits] " << permutation << std::endl;
 # endif // NDEBUG

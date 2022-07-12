@@ -46,7 +46,7 @@ namespace ket
 
             buffer.resize(source_local_last_index - source_local_first_index);
             yampi::algorithm::swap(
-              yampi::ignore_status(),
+              yampi::ignore_status,
               yampi::make_buffer(first, last),
               yampi::make_buffer(std::begin(buffer), std::end(buffer)),
               target_rank, communicator, environment);
@@ -70,7 +70,7 @@ namespace ket
 
             buffer.resize(source_local_last_index - source_local_first_index);
             yampi::algorithm::swap(
-              yampi::ignore_status(),
+              yampi::ignore_status,
               yampi::make_buffer(first, last, datatype),
               yampi::make_buffer(std::begin(buffer), std::end(buffer), datatype),
               target_rank, communicator, environment);

@@ -56,7 +56,7 @@ namespace ket
               if (present_rank == rank_index.first)
                 coefficient = *(first + rank_index.second);
               else
-                yampi::receive(yampi::ignore_status(), yampi::make_buffer(coefficient), rank_index.first, yampi::tag{static_cast<int>(rank_index.second)}, communicator, environment);
+                yampi::receive(yampi::ignore_status, yampi::make_buffer(coefficient), rank_index.first, yampi::tag{static_cast<int>(rank_index.second)}, communicator, environment);
 
               output_stream << '[' << qubit_value << ": " << coefficient << "] ";
             }

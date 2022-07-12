@@ -746,7 +746,7 @@ namespace ket
               page_iterator const buffer_first, page_iterator const buffer_last)
             {
               yampi::algorithm::swap(
-                yampi::ignore_status(),
+                yampi::ignore_status,
                 yampi::make_buffer(first, last),
                 yampi::make_buffer(buffer_first, buffer_last),
                 target_rank, communicator, environment);
@@ -777,7 +777,7 @@ namespace ket
               page_iterator const buffer_first, page_iterator const buffer_last)
             {
               yampi::algorithm::swap(
-                yampi::ignore_status(),
+                yampi::ignore_status,
                 yampi::make_buffer(first, last, datatype),
                 yampi::make_buffer(buffer_first, buffer_last, datatype),
                 target_rank, communicator, environment);

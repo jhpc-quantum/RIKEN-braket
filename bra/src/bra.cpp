@@ -91,7 +91,7 @@ int main(int argc, char* argv[])
 
 #ifndef BRA_NO_MPI
   yampi::environment environment{argc, argv, yampi::thread_support::funneled};
-  auto communicator = yampi::communicator{yampi::tags::world_communicator()};
+  auto communicator = yampi::communicator{yampi::tags::world_communicator};
   auto const rank = communicator.rank(environment);
   constexpr auto root_rank = yampi::rank{0};
   auto const is_io_root_rank = rank == root_rank and yampi::is_io_process(root_rank, environment);

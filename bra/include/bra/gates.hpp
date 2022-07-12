@@ -143,7 +143,7 @@ namespace bra
       bit_integer_type num_uqubits, unsigned int num_processes_per_unit,
       yampi::environment const& environment,
       yampi::rank const root = yampi::rank{},
-      yampi::communicator const& communicator = yampi::communicator{::yampi::world_communicator_t()},
+      yampi::communicator const& communicator = yampi::communicator{::yampi::tags::world_communicator},
       size_type const num_reserved_gates = size_type{0u});
 # else // BRA_NO_MPI
     explicit gates(std::istream& input_stream);
@@ -187,7 +187,7 @@ namespace bra
 # ifndef BRA_NO_MPI
     void assign(
       std::istream& input_stream, yampi::environment const& environment,
-      yampi::communicator const& communicator = yampi::communicator{yampi::world_communicator_t()},
+      yampi::communicator const& communicator = yampi::communicator{yampi::tags::world_communicator},
       size_type const num_reserved_gates = size_type{0u});
 # else // BRA_NO_MPI
     void assign(
