@@ -335,8 +335,7 @@ namespace ket
             std::is_unsigned<UnsignedInteger>::value, "UnsignedInteger should be unsigned");
 
           using is_permutated_type = std::vector< ::ket::mpi::permutate_bits_detail::boolean >;
-          static auto is_permutated = is_permutated_type{};
-          is_permutated.assign(permutation.size(), ::ket::mpi::permutate_bits_detail::boolean::false_);
+          auto is_permutated = is_permutated_type(permutation.size(), ::ket::mpi::permutated_bits_detail::boolean::false_);
 
           using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
           constexpr auto first_bit = qubit_type{0u};
@@ -395,8 +394,7 @@ namespace ket
             std::is_unsigned<UnsignedInteger>::value, "UnsignedInteger should be unsigned");
 
           using is_permutated_type = std::vector< ::ket::mpi::permutate_bits_detail::boolean >;
-          static auto is_permutated = is_permutated_type{};
-          is_permutated.assign(permutation.size(), ::ket::mpi::permutate_bits_detail::boolean::false_);
+          auto is_permutated = is_permutated_type(permutation.size(), ::ket::mpi::permutate_bits_detail::boolean::false_);
 
           using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
           constexpr auto first_bit = qubit_type{0u};
