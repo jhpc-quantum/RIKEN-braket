@@ -26,12 +26,12 @@ namespace ket
       namespace detail
       {
         template <
-          typename MpiPolicy, typename ParallelPolicy, typename LocalState,
+          typename ParallelPolicy, typename LocalState,
           typename StateInteger, typename BitInteger, typename Allocator,
           typename UnswappableQubits>
         inline ::ket::qubit<StateInteger, BitInteger>
         make_local_swap_qubit(
-          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          ParallelPolicy const parallel_policy,
           LocalState& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
           UnswappableQubits const& unswappable_qubits,
@@ -68,7 +68,7 @@ namespace ket
               other_qubit));
 
           ::ket::mpi::utility::detail::swap_permutated_local_qubits(
-            mpi_policy, parallel_policy, local_state,
+            parallel_policy, local_state,
             permutated_local_swap_qubit, permutated_other_qubit,
             num_data_blocks, data_block_size, communicator, environment);
           using ::ket::mpi::permutate;
