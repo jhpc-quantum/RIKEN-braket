@@ -27,10 +27,10 @@ namespace ket
         struct swap_permutated_local_qubits
         {
           template <
-            typename MpiPolicy, typename ParallelPolicy,
+            typename ParallelPolicy,
             typename LocalState, typename StateInteger, typename BitInteger>
           static void call(
-            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            ParallelPolicy const parallel_policy,
             LocalState& local_state,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit1,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit2,
@@ -86,10 +86,10 @@ namespace ket
       namespace detail
       {
         template <
-          typename MpiPolicy, typename ParallelPolicy, typename LocalState,
+          typename ParallelPolicy, typename LocalState,
           typename StateInteger, typename BitInteger>
         inline void swap_permutated_local_qubits(
-          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          ParallelPolicy const parallel_policy,
           LocalState& local_state,
           ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit1,
           ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit2,
@@ -99,7 +99,7 @@ namespace ket
           using swap_permutated_local_qubits_
             = ::ket::mpi::utility::dispatch::swap_permutated_local_qubits<typename std::remove_cv<LocalState>::type>;
           swap_permutated_local_qubits_::call(
-            mpi_policy, parallel_policy, local_state, permutated_qubit1, permutated_qubit2,
+            parallel_policy, local_state, permutated_qubit1, permutated_qubit2,
             num_data_blocks, data_block_size, communicator, environment);
         }
       } // namespace detail

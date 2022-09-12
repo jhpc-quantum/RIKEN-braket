@@ -677,7 +677,7 @@ namespace ket
               permutated_local_swap_qubits[index] = least_unit_permutated_qubit - static_cast<BitInteger>(std::size_t{1u} + index);
               local_swap_qubits[index]
                 = ::ket::mpi::utility::detail::make_local_swap_qubit(
-                    mpi_policy, parallel_policy, local_state, permutation,
+                    parallel_policy, local_state, permutation,
                     unswappable_qubits, permutated_local_swap_qubits[index],
                     num_data_blocks, data_block_size, communicator, environment);
             }

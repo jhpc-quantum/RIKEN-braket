@@ -41,6 +41,7 @@
 # include <ket/mpi/page/is_on_page.hpp>
 # include <ket/mpi/utility/general_mpi.hpp>
 # include <ket/mpi/utility/for_each_local_range.hpp>
+# include <ket/mpi/utility/buffer_range.hpp>
 # include <ket/mpi/utility/transform_inclusive_scan.hpp>
 # include <ket/mpi/utility/transform_inclusive_scan_self.hpp>
 # include <ket/mpi/utility/upper_bound.hpp>
@@ -672,7 +673,6 @@ namespace ket
             using swap_permutated_local_qubits_type
               = ::ket::mpi::utility::dispatch::swap_permutated_local_qubits<page_range_type>;
             swap_permutated_local_qubits_type::call(
-              ::ket::mpi::utility::policy::make_general_mpi(),
               parallel_policy, local_state.page_range(data_block_page_indices),
               permutated_qubit1, permutated_qubit2,
               StateInteger{1u}, static_cast<StateInteger>(boost::size(local_state.page_range(data_block_page_indices))),
@@ -684,10 +684,9 @@ namespace ket
       struct swap_permutated_local_qubits
       {
         template <
-          typename MpiPolicy, typename ParallelPolicy, typename Complex, typename Allocator,
+          typename ParallelPolicy, typename Complex, typename Allocator,
           typename StateInteger, typename BitInteger>
         static void call(
-          MpiPolicy const& mpi_policy,
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, has_page_qubits, Allocator>& local_state,
           ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit1,
@@ -2349,10 +2348,10 @@ namespace ket
       struct swap_permutated_local_qubits<false>
       {
         template <
-          typename MpiPolicy, typename ParallelPolicy, typename Complex, typename Allocator,
+          typename ParallelPolicy, typename Complex, typename Allocator,
           typename StateInteger, typename BitInteger>
         static void call(
-          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, false, Allocator>& local_state,
           ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit1,
           ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit2,
@@ -2360,7 +2359,7 @@ namespace ket
           yampi::communicator const& communicator, yampi::environment const& environment)
         {
           ::ket::mpi::utility::detail::swap_permutated_local_qubits(
-            mpi_policy, parallel_policy, local_state.data(), permutated_qubit1, permutated_qubit2,
+            parallel_policy, local_state.data(), permutated_qubit1, permutated_qubit2,
             num_data_blocks, data_block_size, communicator, environment);
         }
       }; // struct swap_permutated_local_qubits<false>
@@ -2626,11 +2625,8 @@ namespace ket
         template <typename Complex, bool has_page_qubits, typename Allocator>
         struct swap_permutated_local_qubits< ::ket::mpi::state<Complex, has_page_qubits, Allocator> >
         {
-          template <
-            typename MpiPolicy, typename ParallelPolicy,
-            typename StateInteger, typename BitInteger>
+          template <typename ParallelPolicy, typename StateInteger, typename BitInteger>
           static void call(
-            MpiPolicy const& mpi_policy,
             ParallelPolicy const parallel_policy,
             ::ket::mpi::state<Complex, has_page_qubits, Allocator>& local_state,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit1,
@@ -2639,7 +2635,7 @@ namespace ket
             yampi::communicator const& communicator, yampi::environment const& environment)
           {
             ::ket::mpi::state_detail::swap_permutated_local_qubits<has_page_qubits>::call(
-              mpi_policy, parallel_policy, local_state, permutated_qubit1, permutated_qubit2,
+              parallel_policy, local_state, permutated_qubit1, permutated_qubit2,
               num_data_blocks, data_block_size, communicator, environment);
           }
         }; // struct swap_permutated_local_qubits< ::ket::mpi::state<Complex, has_page_qubits, Allocator> >
@@ -2737,6 +2733,52 @@ namespace ket
               data_block_index2, local_first_index2, data_block_size);
           }
         }; // struct swap_local_data< ::ket::mpi::state<Complex, has_page_qubits, Allocator> >
+
+        template <typename Complex, bool has_page_qubits, typename Allocator>
+        struct buffer_range< ::ket::mpi::state<Complex, has_page_qubits, Allocator> >
+        {
+          template <typename BufferAllocator>
+          static auto call(
+            ::ket::mpi::state<Complex, has_page_qubits, Allocator>& local_state,
+            std::vector<Complex, BufferAllocator>&)
+            -> decltype(local_state.buffer_range())
+          { return local_state.buffer_range(); }
+
+          template <typename BufferAllocator>
+          static auto call(
+            ::ket::mpi::state<Complex, has_page_qubits, Allocator> const& local_state,
+            std::vector<Complex, BufferAllocator> const&)
+            -> decltype(local_state.buffer_range())
+          { return local_state.buffer_range(); }
+
+          template <typename BufferAllocator>
+          static auto call_begin(
+            ::ket::mpi::state<Complex, has_page_qubits, Allocator>& local_state,
+            std::vector<Complex, BufferAllocator>&)
+            -> typename boost::range_iterator<decltype(local_state.buffer_range())>::type
+          { return std::begin(local_state.buffer_range()); }
+
+          template <typename BufferAllocator>
+          static auto call_begin(
+            ::ket::mpi::state<Complex, has_page_qubits, Allocator> const& local_state,
+            std::vector<Complex, BufferAllocator> const&)
+            -> typename boost::range_iterator<decltype(local_state.buffer_range())>::type
+          { return std::begin(local_state.buffer_range()); }
+
+          template <typename BufferAllocator>
+          static auto call_end(
+            ::ket::mpi::state<Complex, has_page_qubits, Allocator>& local_state,
+            std::vector<Complex, BufferAllocator>&)
+            -> typename boost::range_iterator<decltype(local_state.buffer_range())>::type
+          { return std::end(local_state.buffer_range()); }
+
+          template <typename BufferAllocator>
+          static auto call_end(
+            ::ket::mpi::state<Complex, has_page_qubits, Allocator> const& local_state,
+            std::vector<Complex, BufferAllocator> const&)
+            -> typename boost::range_iterator<decltype(local_state.buffer_range())>::type
+          { return std::end(local_state.buffer_range()); }
+        }; // struct buffer_range< ::ket::mpi::state<Complex, has_page_qubits, Allocator> >
 
 # ifdef KET_USE_DIAGONAL_LOOP
         template <typename LocalState_>
