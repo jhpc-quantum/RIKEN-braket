@@ -48,13 +48,13 @@ namespace ket
       template <typename LocalState, typename Allocator>
       inline auto buffer_range(
         LocalState& local_state, std::vector<typename boost::range_value<LocalState>::type, Allocator>& buffer)
-        -> decltype(::ket::mpi::utility::dispatch::buffer_range<LocalState>::call_begin(local_state, buffer))
+        -> decltype(::ket::mpi::utility::dispatch::buffer_range<LocalState>::call(local_state, buffer))
       { return ::ket::mpi::utility::dispatch::buffer_range<LocalState>::call(local_state, buffer); }
 
       template <typename LocalState, typename Allocator>
       inline auto buffer_range(
         LocalState const& local_state, std::vector<typename boost::range_value<LocalState>::type, Allocator> const& buffer)
-        -> decltype(::ket::mpi::utility::dispatch::buffer_range<LocalState>::call_begin(local_state, buffer))
+        -> decltype(::ket::mpi::utility::dispatch::buffer_range<LocalState>::call(local_state, buffer))
       { return ::ket::mpi::utility::dispatch::buffer_range<LocalState>::call(local_state, buffer); }
 
       template <typename LocalState, typename Allocator>

@@ -41,7 +41,6 @@
 # endif
 # include <ket/mpi/utility/general_mpi.hpp>
 # include <ket/mpi/utility/detail/make_local_swap_qubit.hpp>
-# include <ket/mpi/utility/detail/swap_permutated_local_qubits.hpp>
 # include <ket/mpi/utility/detail/interchange_qubits.hpp>
 # include <ket/mpi/utility/detail/for_each_in_diagonal_loop.hpp>
 # include <ket/mpi/utility/detail/swap_local_data.hpp>

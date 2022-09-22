@@ -45,7 +45,7 @@ namespace ket
             auto const max_permutated_qubit_mask = ::ket::utility::integer_exp2<StateInteger>(minmax_permutated_qubits.second);
             // 0000||000|111|
             auto const middle_bits_mask
-              = ::ket::utility::integer_exp2<StateInteger>(minmax_permutated_qubits.second - minmax_permutated_qubits.first) - StateInteger{1u};
+              = ::ket::utility::integer_exp2<StateInteger>(minmax_permutated_qubits.second - minmax_permutated_qubits.first - BitInteger{1u}) - StateInteger{1u};
 
             auto const local_state_first = std::begin(local_state);
             auto const num_local_qubits = ::ket::utility::integer_log2<BitInteger>(data_block_size);
