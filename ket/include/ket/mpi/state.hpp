@@ -2734,51 +2734,91 @@ namespace ket
           }
         }; // struct swap_local_data< ::ket::mpi::state<Complex, has_page_qubits, Allocator> >
 
-        template <typename Complex, bool has_page_qubits, typename Allocator>
-        struct buffer_range< ::ket::mpi::state<Complex, has_page_qubits, Allocator> >
+        template <typename Complex, typename Allocator>
+        struct buffer_range< ::ket::mpi::state<Complex, true, Allocator> >
         {
           template <typename BufferAllocator>
           static auto call(
-            ::ket::mpi::state<Complex, has_page_qubits, Allocator>& local_state,
+            ::ket::mpi::state<Complex, true, Allocator>& local_state,
             std::vector<Complex, BufferAllocator>&)
             -> decltype(local_state.buffer_range())
           { return local_state.buffer_range(); }
 
           template <typename BufferAllocator>
           static auto call(
-            ::ket::mpi::state<Complex, has_page_qubits, Allocator> const& local_state,
+            ::ket::mpi::state<Complex, true, Allocator> const& local_state,
             std::vector<Complex, BufferAllocator> const&)
             -> decltype(local_state.buffer_range())
           { return local_state.buffer_range(); }
 
           template <typename BufferAllocator>
           static auto call_begin(
-            ::ket::mpi::state<Complex, has_page_qubits, Allocator>& local_state,
+            ::ket::mpi::state<Complex, true, Allocator>& local_state,
             std::vector<Complex, BufferAllocator>&)
             -> typename boost::range_iterator<decltype(local_state.buffer_range())>::type
           { return std::begin(local_state.buffer_range()); }
 
           template <typename BufferAllocator>
           static auto call_begin(
-            ::ket::mpi::state<Complex, has_page_qubits, Allocator> const& local_state,
+            ::ket::mpi::state<Complex, true, Allocator> const& local_state,
             std::vector<Complex, BufferAllocator> const&)
             -> typename boost::range_iterator<decltype(local_state.buffer_range())>::type
           { return std::begin(local_state.buffer_range()); }
 
           template <typename BufferAllocator>
           static auto call_end(
-            ::ket::mpi::state<Complex, has_page_qubits, Allocator>& local_state,
+            ::ket::mpi::state<Complex, true, Allocator>& local_state,
             std::vector<Complex, BufferAllocator>&)
             -> typename boost::range_iterator<decltype(local_state.buffer_range())>::type
           { return std::end(local_state.buffer_range()); }
 
           template <typename BufferAllocator>
           static auto call_end(
-            ::ket::mpi::state<Complex, has_page_qubits, Allocator> const& local_state,
+            ::ket::mpi::state<Complex, true, Allocator> const& local_state,
             std::vector<Complex, BufferAllocator> const&)
             -> typename boost::range_iterator<decltype(local_state.buffer_range())>::type
           { return std::end(local_state.buffer_range()); }
-        }; // struct buffer_range< ::ket::mpi::state<Complex, has_page_qubits, Allocator> >
+        }; // struct buffer_range< ::ket::mpi::state<Complex, true, Allocator> >
+
+        template <typename Complex, typename Allocator>
+        struct buffer_range< ::ket::mpi::state<Complex, false, Allocator> >
+        {
+          template <typename BufferAllocator>
+          static boost::iterator_range<typename std::vector<Complex, BufferAllocator>::iterator> call(
+            ::ket::mpi::state<Complex, false, Allocator>&,
+            std::vector<Complex, BufferAllocator>& buffer)
+          { return boost::make_iterator_range(std::begin(buffer), std::end(buffer)); }
+
+          template <typename BufferAllocator>
+          static boost::iterator_range<typename std::vector<Complex, BufferAllocator>::const_iterator> call(
+            ::ket::mpi::state<Complex, false, Allocator> const&,
+            std::vector<Complex, BufferAllocator> const& buffer)
+          { return boost::make_iterator_range(std::begin(buffer), std::end(buffer)); }
+
+          template <typename BufferAllocator>
+          static typename std::vector<Complex, BufferAllocator>::iterator call_begin(
+            ::ket::mpi::state<Complex, false, Allocator>&,
+            std::vector<Complex, BufferAllocator>& buffer)
+          { return std::begin(buffer); }
+
+          template <typename BufferAllocator>
+          static typename std::vector<Complex, BufferAllocator>::const_iterator call_begin(
+            ::ket::mpi::state<Complex, false, Allocator> const&,
+            std::vector<Complex, BufferAllocator> const& buffer)
+          { return std::begin(buffer); }
+
+          template <typename BufferAllocator>
+          static typename std::vector<Complex, BufferAllocator>::iterator call_end(
+            ::ket::mpi::state<Complex, false, Allocator>&,
+            std::vector<Complex, BufferAllocator> const& buffer)
+          { return std::end(buffer); }
+
+          template <typename BufferAllocator>
+          static typename std::vector<Complex, BufferAllocator>::const_iterator call_end(
+            ::ket::mpi::state<Complex, false, Allocator> const&,
+            std::vector<Complex, BufferAllocator> const& buffer)
+          { return std::end(buffer); }
+        }; // struct buffer_range< ::ket::mpi::state<Complex, false, Allocator> >
 
 # ifdef KET_USE_DIAGONAL_LOOP
         template <typename LocalState_>
