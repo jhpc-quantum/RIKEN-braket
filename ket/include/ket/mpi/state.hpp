@@ -256,6 +256,64 @@ namespace ket
           buffer_range_{generate_initial_buffer_range(data_, num_pages_, num_data_blocks_)}
       { assert(num_page_qubits_ >= BitInteger{1u} and num_local_qubits_ > num_page_qubits_); }
 
+      void assign(std::initializer_list<value_type> initializer_list)
+      { assign(initializer_list, std::size_t{1u}, std::size_t{1u}); }
+
+      template <typename BitInteger>
+      void assign(std::initializer_list<value_type> initializer_list, BitInteger const num_page_qubits)
+      { assign(initializer_list, num_page_qubits, std::size_t{1u}); }
+
+      template <typename BitInteger, typename StateInteger>
+      void assign(std::initializer_list<value_type> initializer_list, BitInteger const num_page_qubits, StateInteger const num_data_blocks)
+      {
+        initialize_data(data_, initializer_list, std::size_t{1u} << num_page_qubits, static_cast<std::size_t>(num_data_blocks));
+
+        num_local_qubits_ = ::ket::utility::integer_log2(initializer_list.size() / num_data_blocks);
+        num_page_qubits_ = static_cast<std::size_t>(num_page_qubits);
+        num_pages_ = std::size_t{1u} << num_page_qubits;
+        num_data_blocks_ = static_cast<std::size_t>(num_data_blocks);
+
+        assert(::ket::utility::integer_exp2<std::size_t>(num_local_qubits_) * num_data_blocks_ == initializer_list.size());
+        assert(num_page_qubits_ >= BitInteger{1u} and num_local_qubits_ > num_page_qubits_);
+
+        page_ranges_ = generate_initial_page_ranges(data_, num_pages_, num_data_blocks_);
+        buffer_range_ = generate_initial_buffer_range(data_, num_pages_, num_data_blocks_);
+      }
+
+      template <typename BitInteger, typename StateInteger, typename PermutationAllocator>
+      void assign(
+        BitInteger const num_local_qubits, BitInteger const num_page_qubits,
+        StateInteger const initial_integer,
+        ::ket::mpi::qubit_permutation<
+          StateInteger, BitInteger, PermutationAllocator> const&
+          permutation,
+        yampi::communicator const& communicator,
+        yampi::environment const& environment)
+      { assign(::ket::mpi::utility::policy::make_general_mpi(), num_local_qubits, num_page_qubits, initial_integer, permutation, communicator, environment); }
+
+      template <typename MpiPolicy, typename BitInteger, typename StateInteger, typename PermutationAllocator>
+      void assign(
+        MpiPolicy const& mpi_policy,
+        BitInteger const num_local_qubits, BitInteger const num_page_qubits,
+        StateInteger const initial_integer,
+        ::ket::mpi::qubit_permutation<
+          StateInteger, BitInteger, PermutationAllocator> const& permutation,
+        yampi::communicator const& communicator,
+        yampi::environment const& environment)
+      {
+        initialize_data(data_, mpi_policy, num_local_qubits, StateInteger{1u} << num_page_qubits, initial_integer, permutation, communicator, environment);
+
+        num_local_qubits_ = static_cast<std::size_t>(num_local_qubits);
+        num_page_qubits_ = static_cast<std::size_t>(num_page_qubits);
+        num_pages_ = std::size_t{1u} << num_page_qubits;
+        num_data_blocks_ = static_cast<std::size_t>(::ket::mpi::utility::policy::num_data_blocks(mpi_policy, communicator, environment));
+
+        assert(num_page_qubits_ >= BitInteger{1u} and num_local_qubits_ > num_page_qubits_);
+
+        page_ranges_ = generate_initial_page_ranges(data_, num_pages_, num_data_blocks_);
+        buffer_range_ = generate_initial_buffer_range(data_, num_pages_, num_data_blocks_);
+      }
+
       template <typename PairOrTuple>
       size_type page_range_index(PairOrTuple const& data_block_page_etc_indices) const
       {
@@ -409,21 +467,66 @@ namespace ket
       }
 
      private:
+      void initialize_data(
+        data_type& data,
+        std::initializer_list<value_type> initializer_list,
+        std::size_t const num_pages, std::size_t const num_data_blocks) const
+      {
+        auto const state_size = initializer_list.size();
+        auto const data_size = state_size + state_size / num_pages / num_data_blocks;
+
+        assert(state_size % (num_pages * num_data_blocks) == 0);
+
+        data.clear();
+        data.reserve(data_size);
+        data.assign(initializer_list);
+        data.resize(data_size);
+      }
+
+      template <
+        typename MpiPolicy, typename BitInteger, typename StateInteger,
+        typename PermutationAllocator>
+      void initialize_data(
+        data_type& data,
+        MpiPolicy const& mpi_policy,
+        BitInteger const num_local_qubits, StateInteger const num_pages,
+        StateInteger const initial_integer,
+        ::ket::mpi::qubit_permutation<
+          StateInteger, BitInteger, PermutationAllocator> const&
+          permutation,
+        yampi::communicator const& communicator,
+        yampi::environment const& environment) const
+      {
+        auto const data_block_size = ::ket::utility::integer_exp2<std::size_t>(num_local_qubits);
+        auto const num_data_blocks = ::ket::mpi::utility::policy::num_data_blocks(mpi_policy, communicator, environment);
+        auto const state_size = data_block_size * static_cast<std::size_t>(num_data_blocks);
+        auto const data_size = state_size + data_block_size / static_cast<std::size_t>(num_pages);
+
+        assert(state_size % (num_pages * num_data_blocks) == 0);
+
+        data.clear();
+        data.reserve(data_size);
+        data.assign(state_size, value_type{0});
+
+        using ::ket::mpi::permutate_bits;
+        auto const rank_index
+          = ::ket::mpi::utility::qubit_value_to_rank_index(
+              mpi_policy, data, permutate_bits(permutation, initial_integer),
+              communicator, environment);
+
+        if (communicator.rank(environment) == rank_index.first)
+          data[rank_index.second] = value_type{1};
+
+        data.resize(data_size);
+      }
+
       data_type generate_initial_data(
         std::initializer_list<value_type> initializer_list,
         std::size_t const num_pages, std::size_t const num_data_blocks,
         allocator_type const& allocator) const
       {
         auto result = data_type{allocator};
-
-        auto const state_size = initializer_list.size();
-        auto const result_size = state_size + state_size / num_pages / num_data_blocks;
-
-        assert(state_size % (num_pages * num_data_blocks) == 0);
-
-        result.reserve(result_size);
-        result.assign(initializer_list);
-        result.resize(result_size);
+        initialize_data(result, initializer_list, num_pages, num_data_blocks);
         return result;
       }
 
@@ -441,27 +544,7 @@ namespace ket
         yampi::environment const& environment) const
       {
         auto result = data_type{};
-
-        auto const data_block_size = ::ket::utility::integer_exp2<std::size_t>(num_local_qubits);
-        auto const num_data_blocks = ::ket::mpi::utility::policy::num_data_blocks(mpi_policy, communicator, environment);
-        auto const state_size = data_block_size * static_cast<std::size_t>(num_data_blocks);
-        auto const result_size = state_size + data_block_size / static_cast<std::size_t>(num_pages);
-
-        assert(state_size % (num_pages * num_data_blocks) == 0);
-
-        result.reserve(result_size);
-        result.assign(state_size, value_type{0});
-
-        using ::ket::mpi::permutate_bits;
-        auto const rank_index
-          = ::ket::mpi::utility::qubit_value_to_rank_index(
-              mpi_policy, result, permutate_bits(permutation, initial_integer),
-              communicator, environment);
-
-        if (communicator.rank(environment) == rank_index.first)
-          result[rank_index.second] = value_type{1};
-
-        result.resize(result_size);
+        initialize_data(result, mpi_policy, num_local_qubits, num_pages, initial_integer, permutation, communicator, environment);
         return result;
       }
 
@@ -2230,6 +2313,43 @@ namespace ket
           num_data_blocks_{::ket::mpi::utility::policy::num_data_blocks(mpi_policy, communicator, environment)}
       { }
 
+      void assign(std::initializer_list<value_type> initializer_list)
+      { assign(initializer_list, 1u); }
+
+      template <typename StateInteger>
+      void assign(std::initializer_list<value_type> initializer_list, StateInteger const num_data_blocks)
+      {
+        data_.assign(initializer_list);
+        num_local_qubits_ = ::ket::utility::integer_log2(initializer_list.size() / num_data_blocks);
+        num_data_blocks_ = static_cast<std::size_t>(num_data_blocks);
+
+        assert(::ket::utility::integer_exp2<std::size_t>(num_local_qubits_) * num_data_blocks_ == initializer_list.size());
+      }
+
+      template <typename BitInteger, typename StateInteger, typename PermutationAllocator>
+      void assign(
+        BitInteger const num_local_qubits, StateInteger const initial_integer,
+        ::ket::mpi::qubit_permutation<
+          StateInteger, BitInteger, PermutationAllocator> const&
+          permutation,
+        yampi::communicator const& communicator,
+        yampi::environment const& environment)
+      { assign(::ket::mpi::utility::policy::make_general_mpi(), num_local_qubits, initial_integer, permutation, communicator, environment); }
+
+      template <typename MpiPolicy, typename BitInteger, typename StateInteger, typename PermutationAllocator>
+      void assign(
+        MpiPolicy const& mpi_policy, BitInteger const num_local_qubits, StateInteger const initial_integer,
+        ::ket::mpi::qubit_permutation<
+          StateInteger, BitInteger, PermutationAllocator> const&
+          permutation,
+        yampi::communicator const& communicator,
+        yampi::environment const& environment)
+      {
+        initialize_data(data_, mpi_policy, num_local_qubits, initial_integer, permutation, communicator, environment);
+        num_local_qubits_ = num_local_qubits;
+        num_data_blocks_ = ::ket::mpi::utility::policy::num_data_blocks(mpi_policy, communicator, environment);
+      }
+
       std::size_t num_local_qubits() const { return num_local_qubits_; }
       std::size_t num_data_blocks() const { return num_data_blocks_; }
 
@@ -2282,6 +2402,31 @@ namespace ket
 
      private:
       template <typename MpiPolicy, typename BitInteger, typename StateInteger, typename PermutationAllocator>
+      void initialize_data(
+        data_type& data,
+        MpiPolicy const& mpi_policy, BitInteger const num_local_qubits, StateInteger const initial_integer,
+        ::ket::mpi::qubit_permutation<
+          StateInteger, BitInteger, PermutationAllocator> const&
+          permutation,
+        yampi::communicator const& communicator,
+        yampi::environment const& environment) const
+      {
+        data.assign(
+          ::ket::utility::integer_exp2<std::size_t>(num_local_qubits)
+            * ::ket::mpi::utility::policy::num_data_blocks(mpi_policy, communicator, environment),
+          value_type{0});
+
+        using ::ket::mpi::permutate_bits;
+        auto const rank_index
+          = ::ket::mpi::utility::qubit_value_to_rank_index(
+              mpi_policy, data, permutate_bits(permutation, initial_integer),
+              communicator, environment);
+
+        if (communicator.rank(environment) == rank_index.first)
+          data[rank_index.second] = value_type{1};
+      }
+
+      template <typename MpiPolicy, typename BitInteger, typename StateInteger, typename PermutationAllocator>
       data_type generate_initial_data(
         MpiPolicy const& mpi_policy, BitInteger const num_local_qubits, StateInteger const initial_integer,
         ::ket::mpi::qubit_permutation<
@@ -2290,21 +2435,8 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment) const
       {
-        auto result
-          = data_type(
-              ::ket::utility::integer_exp2<std::size_t>(num_local_qubits)
-                * ::ket::mpi::utility::policy::num_data_blocks(mpi_policy, communicator, environment),
-              value_type{0});
-
-        using ::ket::mpi::permutate_bits;
-        auto const rank_index
-          = ::ket::mpi::utility::qubit_value_to_rank_index(
-              mpi_policy, result, permutate_bits(permutation, initial_integer),
-              communicator, environment);
-
-        if (communicator.rank(environment) == rank_index.first)
-          result[rank_index.second] = value_type{1};
-
+        auto result = data_type{};
+        initialize_data(result, mpi_policy, num_local_qubits, initial_integer, permutation, communicator, environment);
         return result;
       }
     }; // class state<Complex, false, Allocator>
