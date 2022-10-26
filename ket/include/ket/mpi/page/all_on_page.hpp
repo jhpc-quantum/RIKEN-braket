@@ -14,12 +14,12 @@ namespace ket
       inline constexpr bool all_on_page(LocalState const& local_state)
       { return true; }
 
-      template <typename PermutatedQubit, typename... PermutatedQubits, typename LocalState>
+      template <typename LocalState, typename PermutatedQubit, typename... PermutatedQubits>
       inline constexpr bool all_on_page(
-        PermutatedQubit const permutated_qubit, PermutatedQubits const... permutated_qubits, LocalState const& local_state)
+        LocalState const& local_state, PermutatedQubit const permutated_qubit, PermutatedQubits const... permutated_qubits)
       {
         return ::ket::mpi::page::is_on_page(permutated_qubit, local_state)
-          and ::ket::mpi::page::all_on_page(permutated_qubits..., local_state);
+          and ::ket::mpi::page::all_on_page(local_state, permutated_qubits...);
       }
     } // namespace page
   } // namepsace mpi

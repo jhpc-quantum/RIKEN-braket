@@ -1066,7 +1066,7 @@ namespace ket
         ControlQubits... control_qubits)
       {
         assert(not ::ket::mpi::page::is_on_page(permutation[target_qubit], local_state));
-        assert(::ket::mpi::page::none_on_page(permutation[control_qubits]..., local_state));
+        assert(::ket::mpi::page::none_on_page(local_state, permutation[control_qubits]...));
 
         return ::ket::mpi::utility::dispatch::diagonal_loop<MpiPolicy>::call(
           mpi_policy, parallel_policy, local_state, permutation, communicator, environment,
