@@ -1,9 +1,6 @@
 #ifdef BRA_NO_MPI
 # include <vector>
 
-# include <yampi/communicator.hpp>
-# include <yampi/environment.hpp>
-
 # include <ket/gate/hadamard.hpp>
 # include <ket/gate/pauli_x.hpp>
 # include <ket/gate/pauli_y.hpp>

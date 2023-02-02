@@ -59,7 +59,10 @@ nompi: nompi-release
 
 .PHONY: nompi-release
 ifneq ($(findstring fn01sv,$(nodename)),)
+nompi-release: CXX = FCCpx
 nompi-release: common_flags += -Nclang
+else
+nompi-release: CXX = g++
 endif
 nompi-release: common_flags += -Ofast
 nompi-release: macros += NDEBUG BRA_NO_MPI
@@ -67,7 +70,10 @@ nompi-release: $(bin_dir)/$(target)
 
 .PHONY: nompi-debug
 ifneq ($(findstring fn01sv,$(nodename)),)
+nompi-debug: CXX = FCCpx
 nompi-debug: common_flags += -Nclang
+else
+nompi-debug: CXX = g++
 endif
 nompi-debug: common_flags += -O0
 nompi-debug: macros += BRA_NO_MPI
@@ -94,7 +100,10 @@ nompi-float: nompi-release-float
 
 .PHONY: nompi-release-float
 ifneq ($(findstring fn01sv,$(nodename)),)
+nompi-release-float: CXX = FCCpx
 nompi-release-float: common_flags += -Nclang
+else
+nompi-release-float: CXX = g++
 endif
 nompi-release-float: common_flags += -Ofast
 nompi-release-float: macros += NDEBUG BRA_NO_MPI BRA_REAL_TYPE=2
@@ -102,7 +111,10 @@ nompi-release-float: $(bin_dir)/$(target)
 
 .PHONY: nompi-debug-float
 ifneq ($(findstring fn01sv,$(nodename)),)
+nompi-debug-float: CXX = FCCpx
 nompi-debug-float: common_flags += -Nclang
+else
+nompi-debug-float: CXX = g++
 endif
 nompi-debug-float: common_flags += -O0
 nompi-debug-float: macros += BRA_NO_MPI BRA_REAL_TYPE=2
@@ -129,7 +141,10 @@ nompi-long: nompi-release-long
 
 .PHONY: nompi-release-long
 ifneq ($(findstring fn01sv,$(nodename)),)
+nompi-release-long: CXX = FCCpx
 nompi-release-long: common_flags += -Nclang
+else
+nompi-release-long: CXX = g++
 endif
 nompi-release-long: common_flags += -Ofast
 nompi-release-long: macros += NDEBUG BRA_NO_MPI BRA_REAL_TYPE=0
@@ -137,7 +152,10 @@ nompi-release-long: $(bin_dir)/$(target)
 
 .PHONY: nompi-debug-long
 ifneq ($(findstring fn01sv,$(nodename)),)
+nompi-debug-long: CXX = FCCpx
 nompi-debug-long: common_flags += -Nclang
+else
+nompi-debug-long: CXX = g++
 endif
 nompi-debug-long: common_flags += -O0
 nompi-debug-long: macros += BRA_NO_MPI BRA_REAL_TYPE=0
