@@ -1,4 +1,5 @@
 #include <cstddef>
+#include <cstdlib>
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -6,7 +7,6 @@
 #include <random>
 #include <chrono>
 
-#include <boost/lexical_cast.hpp>
 #define FMT_HEADER_ONLY
 #include <fmt/core.h>
 
@@ -236,15 +236,15 @@ int main(int argc, char* argv[])
 
     num_threads_per_process
       = argc >= 4
-        ? boost::lexical_cast<unsigned int>(argv[3])
+        ? static_cast<unsigned int>(std::strtoul(argv[3]))
         : 1u;
     num_page_qubits
       = argc >= 5
-        ? boost::lexical_cast<unsigned int>(argv[4])
+        ? static_cast<unsigned int>(std::strtoul(argv[4]))
         : 2u;
     seed
       = argc == 6
-        ? boost::lexical_cast<seed_type>(argv[5])
+        ? static_cast<seed_type>(std::strtoul(argv[5]))
         : seed_type{1};
   }
   else if (mpi_policy_string == "unit")
@@ -256,8 +256,8 @@ int main(int argc, char* argv[])
       std::exit(EXIT_FAILURE);
     }
 
-    num_unit_qubits = boost::lexical_cast<unsigned int>(argv[3]);
-    num_processes_per_unit = boost::lexical_cast<unsigned int>(argv[4]);
+    num_unit_qubits = static_cast<unsigned int>(std::strtoul(argv[3]));
+    num_processes_per_unit = static_cast<unsigned int>(std::strtoul(argv[4]));
     if (num_processes_per_unit == 0u)
     {
       if (is_io_root_rank)
@@ -267,15 +267,15 @@ int main(int argc, char* argv[])
 
     num_threads_per_process
       = argc >= 6
-        ? boost::lexical_cast<unsigned int>(argv[5])
+        ? static_cast<unsigned int>(std::strtoul(argv[5]))
         : 1u;
     num_page_qubits
       = argc >= 7
-        ? boost::lexical_cast<unsigned int>(argv[6])
+        ? static_cast<unsigned int>(std::strtoul(argv[6]))
         : 2u;
     seed
       = argc == 8
-        ? boost::lexical_cast<seed_type>(argv[7])
+        ? static_cast<seed_type>(std::strtoul(argv[7]))
         : seed_type{1};
   }
   else
@@ -288,11 +288,11 @@ int main(int argc, char* argv[])
   auto const filename = std::string{argv[1]};
   auto const num_threads_per_process
     = argc >= 3
-      ? boost::lexical_cast<unsigned int>(argv[2])
+      ? static_cast<unsigned int>(std::strtoul(argv[2]))
       : 1u;
   auto const seed
     = argc == 4
-      ? boost::lexical_cast<seed_type>(argv[3])
+      ? static_cast<seed_type>(std::strtoul(argv[3]))
       : seed_type{1};
 # endif // BRA_NO_MPI
 
