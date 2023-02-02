@@ -1,12 +1,12 @@
-#ifndef BRA_GENERAL_MPI_STATE_HPP
-# define BRA_GENERAL_MPI_STATE_HPP
+#ifndef BRA_simple_mpi_STATE_HPP
+# define BRA_simple_mpi_STATE_HPP
 
 # ifndef BRA_NO_MPI
 #   include <vector>
 
 #   include <ket/gate/projective_measurement.hpp>
 #   include <ket/utility/parallel/loop_n.hpp>
-#   include <ket/mpi/utility/general_mpi.hpp>
+#   include <ket/mpi/utility/simple_mpi.hpp>
 #   include <ket/mpi/state.hpp>
 
 #   include <yampi/allocator.hpp>
@@ -19,17 +19,17 @@
 
 namespace bra
 {
-  class general_mpi_state final
+  class simple_mpi_state final
     : public ::bra::state
   {
     ket::utility::policy::parallel<unsigned int> parallel_policy_;
-    ket::mpi::utility::policy::general_mpi mpi_policy_;
+    ket::mpi::utility::policy::simple_mpi mpi_policy_;
 
     using data_type = ket::mpi::state<complex_type, false, yampi::allocator<complex_type>>;
     data_type data_;
 
    public:
-    general_mpi_state(
+    simple_mpi_state(
       ::bra::state::state_integer_type const initial_integer,
       unsigned int const num_local_qubits,
       unsigned int const total_num_qubits,
@@ -38,7 +38,7 @@ namespace bra
       yampi::communicator const& communicator,
       yampi::environment const& environment);
 
-    general_mpi_state(
+    simple_mpi_state(
       ::bra::state::state_integer_type const initial_integer,
       unsigned int const num_local_qubits,
       std::vector<permutated_qubit_type> const& initial_permutation,
@@ -47,11 +47,11 @@ namespace bra
       yampi::communicator const& communicator,
       yampi::environment const& environment);
 
-    ~general_mpi_state() = default;
-    general_mpi_state(general_mpi_state const&) = delete;
-    general_mpi_state& operator=(general_mpi_state const&) = delete;
-    general_mpi_state(general_mpi_state&&) = delete;
-    general_mpi_state& operator=(general_mpi_state&&) = delete;
+    ~simple_mpi_state() = default;
+    simple_mpi_state(simple_mpi_state const&) = delete;
+    simple_mpi_state& operator=(simple_mpi_state const&) = delete;
+    simple_mpi_state(simple_mpi_state&&) = delete;
+    simple_mpi_state& operator=(simple_mpi_state&&) = delete;
 
    private:
     unsigned int do_num_page_qubits() const override;
@@ -128,10 +128,10 @@ namespace bra
       std::vector<qubit_type> const& modular_exponentiation_qubits) override;
     void do_clear(qubit_type const qubit) override;
     void do_set(qubit_type const qubit) override;
-  }; // class general_mpi_state
+  }; // class simple_mpi_state
 } // namespace bra
 
 
 # endif // BRA_NO_MPI
 
-#endif // BRA_GENERAL_MPI_STATE_HPP
+#endif // BRA_simple_mpi_STATE_HPP

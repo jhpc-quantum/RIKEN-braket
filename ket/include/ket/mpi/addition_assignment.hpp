@@ -20,7 +20,7 @@
 # include <ket/mpi/swapped_fourier_transform.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/gate/controlled_phase_shift.hpp>
-# include <ket/mpi/utility/general_mpi.hpp>
+# include <ket/mpi/utility/simple_mpi.hpp>
 # include <ket/mpi/utility/logger.hpp>
 
 
@@ -248,7 +248,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return addition_assignment(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
         local_state, lhs_qubits, rhs_qubits_range, phase_coefficients, permutation,
         buffer, communicator, environment);
@@ -278,7 +278,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return addition_assignment(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
         local_state, lhs_qubits, rhs_qubits_range, phase_coefficients, permutation,
         buffer, datatype, communicator, environment);
@@ -306,7 +306,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return addition_assignment(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         parallel_policy,
         local_state, lhs_qubits, rhs_qubits_range, phase_coefficients, permutation,
         buffer, communicator, environment);
@@ -336,7 +336,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return addition_assignment(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         parallel_policy,
         local_state, lhs_qubits, rhs_qubits_range, phase_coefficients, permutation,
         buffer, datatype, communicator, environment);
@@ -423,7 +423,7 @@ namespace ket
         = ::ket::utility::generate_phase_coefficients<complex_type>(boost::size(lhs_qubits));
 
       return addition_assignment(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
         local_state, lhs_qubits, rhs_qubits_range, phase_coefficients, permutation,
         buffer, communicator, environment);
@@ -453,7 +453,7 @@ namespace ket
         = ::ket::utility::generate_phase_coefficients<complex_type>(boost::size(lhs_qubits));
 
       return addition_assignment(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
         local_state, lhs_qubits, rhs_qubits_range, phase_coefficients, permutation,
         buffer, datatype, communicator, environment);
@@ -481,7 +481,7 @@ namespace ket
         = ::ket::utility::generate_phase_coefficients<complex_type>(boost::size(lhs_qubits));
 
       return addition_assignment(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         parallel_policy,
         local_state, lhs_qubits, rhs_qubits_range, phase_coefficients, permutation,
         buffer, communicator, environment);
@@ -511,7 +511,7 @@ namespace ket
         = ::ket::utility::generate_phase_coefficients<complex_type>(boost::size(lhs_qubits));
 
       return addition_assignment(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         parallel_policy,
         local_state, lhs_qubits, rhs_qubits_range, phase_coefficients, permutation,
         buffer, datatype, communicator, environment);
@@ -740,7 +740,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return adj_addition_assignment(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
         local_state, lhs_qubits, rhs_qubits_range, phase_coefficients, permutation,
         buffer, communicator, environment);
@@ -770,7 +770,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return adj_addition_assignment(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
         local_state, lhs_qubits, rhs_qubits_range, phase_coefficients, permutation,
         buffer, datatype, communicator, environment);
@@ -799,7 +799,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return adj_addition_assignment(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         parallel_policy,
         local_state, lhs_qubits, rhs_qubits_range, phase_coefficients, permutation,
         buffer, communicator, environment);
@@ -830,7 +830,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return adj_addition_assignment(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         parallel_policy,
         local_state, lhs_qubits, rhs_qubits_range, phase_coefficients, permutation,
         buffer, datatype, communicator, environment);
@@ -917,7 +917,7 @@ namespace ket
         = ::ket::utility::generate_phase_coefficients<complex_type>(boost::size(lhs_qubits));
 
       return adj_addition_assignment(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
         local_state, lhs_qubits, rhs_qubits_range, phase_coefficients, permutation,
         buffer, communicator, environment);
@@ -947,7 +947,7 @@ namespace ket
         = ::ket::utility::generate_phase_coefficients<complex_type>(boost::size(lhs_qubits));
 
       return adj_addition_assignment(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
         local_state, lhs_qubits, rhs_qubits_range, phase_coefficients, permutation,
         buffer, datatype, communicator, environment);
@@ -976,7 +976,7 @@ namespace ket
         = ::ket::utility::generate_phase_coefficients<complex_type>(boost::size(lhs_qubits));
 
       return adj_addition_assignment(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         parallel_policy,
         local_state, lhs_qubits, rhs_qubits_range, phase_coefficients, permutation,
         buffer, communicator, environment);
@@ -1007,7 +1007,7 @@ namespace ket
         = ::ket::utility::generate_phase_coefficients<complex_type>(boost::size(lhs_qubits));
 
       return adj_addition_assignment(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         parallel_policy,
         local_state, lhs_qubits, rhs_qubits_range, phase_coefficients, permutation,
         buffer, datatype, communicator, environment);

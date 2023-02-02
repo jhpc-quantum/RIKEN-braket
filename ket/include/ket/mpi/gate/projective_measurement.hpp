@@ -27,7 +27,7 @@
 # include <ket/gate/projective_measurement.hpp>
 # include <ket/mpi/permutated.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
-# include <ket/mpi/utility/general_mpi.hpp>
+# include <ket/mpi/utility/simple_mpi.hpp>
 # include <ket/mpi/utility/logger.hpp>
 # include <ket/mpi/gate/page/projective_measurement.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
@@ -196,7 +196,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::projective_measurement(
-          ::ket::mpi::utility::policy::make_general_mpi(),
+          ::ket::mpi::utility::policy::make_simple_mpi(),
           ::ket::utility::policy::make_sequential(),
           local_state, qubit, random_number_generator, permutation,
           buffer, real_pair_datatype, root, communicator, environment);
@@ -219,7 +219,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::projective_measurement(
-          ::ket::mpi::utility::policy::make_general_mpi(),
+          ::ket::mpi::utility::policy::make_simple_mpi(),
           ::ket::utility::policy::make_sequential(),
           local_state, qubit, random_number_generator, permutation,
           buffer, complex_datatype, real_pair_datatype, root, communicator, environment);
@@ -242,7 +242,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::projective_measurement(
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
           local_state, qubit, random_number_generator, permutation,
           buffer, real_pair_datatype, root, communicator, environment);
       }
@@ -265,7 +265,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::projective_measurement(
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
           local_state, qubit, random_number_generator, permutation,
           buffer, complex_datatype, real_pair_datatype, root, communicator, environment);
       }

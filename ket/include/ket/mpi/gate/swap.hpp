@@ -19,7 +19,7 @@
 # include <ket/gate/swap.hpp>
 # include <ket/mpi/permutated.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
-# include <ket/mpi/utility/general_mpi.hpp>
+# include <ket/mpi/utility/simple_mpi.hpp>
 # include <ket/mpi/utility/for_each_local_range.hpp>
 # include <ket/mpi/utility/logger.hpp>
 # include <ket/mpi/gate/page/swap.hpp>
@@ -173,7 +173,7 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment)
       {
         return ::ket::mpi::gate::swap(
-          ::ket::mpi::utility::policy::make_general_mpi(), ::ket::utility::policy::make_sequential(),
+          ::ket::mpi::utility::policy::make_simple_mpi(), ::ket::utility::policy::make_sequential(),
           local_state, qubit1, qubit2, permutation, buffer, communicator, environment);
       }
 
@@ -190,7 +190,7 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment)
       {
         return ::ket::mpi::gate::swap(
-          ::ket::mpi::utility::policy::make_general_mpi(), ::ket::utility::policy::make_sequential(),
+          ::ket::mpi::utility::policy::make_simple_mpi(), ::ket::utility::policy::make_sequential(),
           local_state, qubit1, qubit2, permutation, buffer, datatype, communicator, environment);
       }
 
@@ -206,7 +206,7 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment)
       {
         return ::ket::mpi::gate::swap(
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
           local_state, qubit1, qubit2, permutation, buffer, communicator, environment);
       }
 
@@ -224,7 +224,7 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment)
       {
         return ::ket::mpi::gate::swap(
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
           local_state, qubit1, qubit2, permutation, buffer, datatype, communicator, environment);
       }
 
@@ -370,7 +370,7 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment)
       {
         return ::ket::mpi::gate::adj_swap(
-          ::ket::mpi::utility::policy::make_general_mpi(), ::ket::utility::policy::make_sequential(),
+          ::ket::mpi::utility::policy::make_simple_mpi(), ::ket::utility::policy::make_sequential(),
           local_state, qubit1, qubit2, permutation, buffer, communicator, environment);
       }
 
@@ -387,7 +387,7 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment)
       {
         return ::ket::mpi::gate::adj_swap(
-          ::ket::mpi::utility::policy::make_general_mpi(), ::ket::utility::policy::make_sequential(),
+          ::ket::mpi::utility::policy::make_simple_mpi(), ::ket::utility::policy::make_sequential(),
           local_state, qubit1, qubit2, permutation, buffer, datatype, communicator, environment);
       }
 
@@ -404,7 +404,7 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment)
       {
         return ::ket::mpi::gate::adj_swap(
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
           local_state, qubit1, qubit2, permutation, buffer, communicator, environment);
       }
 
@@ -423,7 +423,7 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment)
       {
         return ::ket::mpi::gate::adj_swap(
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
           local_state, qubit1, qubit2, permutation, buffer, datatype, communicator, environment);
       }
     } // namespace gate

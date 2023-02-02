@@ -21,7 +21,7 @@
 # include <ket/gate/toffoli.hpp>
 # include <ket/mpi/permutated.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
-# include <ket/mpi/utility/general_mpi.hpp>
+# include <ket/mpi/utility/simple_mpi.hpp>
 # include <ket/mpi/utility/for_each_local_range.hpp>
 # include <ket/mpi/utility/logger.hpp>
 # include <ket/mpi/gate/page/toffoli.hpp>
@@ -218,7 +218,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::toffoli(
-          ::ket::mpi::utility::policy::make_general_mpi(),
+          ::ket::mpi::utility::policy::make_simple_mpi(),
           ::ket::utility::policy::make_sequential(),
           local_state, target_qubit, control_qubit1, control_qubit2, permutation,
           buffer, communicator, environment);
@@ -240,7 +240,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::toffoli(
-          ::ket::mpi::utility::policy::make_general_mpi(),
+          ::ket::mpi::utility::policy::make_simple_mpi(),
           ::ket::utility::policy::make_sequential(),
           local_state, target_qubit, control_qubit1, control_qubit2, permutation,
           buffer, datatype, communicator, environment);
@@ -262,7 +262,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::toffoli(
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
           local_state, target_qubit, control_qubit1, control_qubit2, permutation,
           buffer, communicator, environment);
       }
@@ -284,7 +284,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::toffoli(
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
           local_state, target_qubit, control_qubit1, control_qubit2, permutation,
           buffer, datatype, communicator, environment);
       }
@@ -473,7 +473,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::adj_toffoli(
-          ::ket::mpi::utility::policy::make_general_mpi(),
+          ::ket::mpi::utility::policy::make_simple_mpi(),
           ::ket::utility::policy::make_sequential(),
           local_state, target_qubit, control_qubit1, control_qubit2, permutation,
           buffer, communicator, environment);
@@ -495,7 +495,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::adj_toffoli(
-          ::ket::mpi::utility::policy::make_general_mpi(),
+          ::ket::mpi::utility::policy::make_simple_mpi(),
           ::ket::utility::policy::make_sequential(),
           local_state, target_qubit, control_qubit1, control_qubit2, permutation,
           buffer, datatype, communicator, environment);
@@ -517,7 +517,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::adj_toffoli(
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
           local_state, target_qubit, control_qubit1, control_qubit2, permutation,
           buffer, communicator, environment);
       }
@@ -539,7 +539,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::adj_toffoli(
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
           local_state, target_qubit, control_qubit1, control_qubit2, permutation,
           buffer, datatype, communicator, environment);
       }

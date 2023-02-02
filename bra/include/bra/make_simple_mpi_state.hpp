@@ -1,5 +1,5 @@
-#ifndef BRA_MAKE_GENERAL_MPI_STATE_HPP
-# define BRA_MAKE_GENERAL_MPI_STATE_HPP
+#ifndef BRA_MAKE_simple_mpi_STATE_HPP
+# define BRA_MAKE_simple_mpi_STATE_HPP
 
 # ifndef BRA_NO_MPI
 #   include <vector>
@@ -14,7 +14,7 @@
 
 namespace bra
 {
-  std::unique_ptr< ::bra::state > make_general_mpi_state(
+  std::unique_ptr< ::bra::state > make_simple_mpi_state(
     unsigned int const num_page_qubits,
     ::bra::state::state_integer_type const initial_integer,
     ::bra::state::bit_integer_type const num_local_qubits,
@@ -24,7 +24,7 @@ namespace bra
     yampi::communicator const& communicator,
     yampi::environment const& environment);
 
-  std::unique_ptr< ::bra::state > make_general_mpi_state(
+  std::unique_ptr< ::bra::state > make_simple_mpi_state(
     unsigned int const num_page_qubits,
     ::bra::state::state_integer_type const initial_integer,
     ::bra::state::bit_integer_type const num_local_qubits,
@@ -38,4 +38,4 @@ namespace bra
 
 # endif // BRA_NO_MPI
 
-#endif // BRA_MAKE_GENERAL_MPI_STATE_HPP
+#endif // BRA_MAKE_simple_mpi_STATE_HPP

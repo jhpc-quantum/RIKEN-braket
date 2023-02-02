@@ -39,7 +39,7 @@
 # include <ket/mpi/permutated.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
-# include <ket/mpi/utility/general_mpi.hpp>
+# include <ket/mpi/utility/simple_mpi.hpp>
 # include <ket/mpi/utility/for_each_local_range.hpp>
 # include <ket/mpi/utility/buffer_range.hpp>
 # include <ket/mpi/utility/transform_inclusive_scan.hpp>
@@ -226,7 +226,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
         : data_{generate_initial_data(
-            ::ket::mpi::utility::policy::make_general_mpi(),
+            ::ket::mpi::utility::policy::make_simple_mpi(),
             num_local_qubits, StateInteger{1u} << num_page_qubits,
             initial_integer, permutation, communicator, environment)},
           num_local_qubits_{static_cast<std::size_t>(num_local_qubits)},
@@ -289,7 +289,7 @@ namespace ket
           permutation,
         yampi::communicator const& communicator,
         yampi::environment const& environment)
-      { assign(::ket::mpi::utility::policy::make_general_mpi(), num_local_qubits, num_page_qubits, initial_integer, permutation, communicator, environment); }
+      { assign(::ket::mpi::utility::policy::make_simple_mpi(), num_local_qubits, num_page_qubits, initial_integer, permutation, communicator, environment); }
 
       template <typename MpiPolicy, typename BitInteger, typename StateInteger, typename PermutationAllocator>
       void assign(
@@ -2293,7 +2293,7 @@ namespace ket
         yampi::communicator const& communicator,
         yampi::environment const& environment)
         : data_{generate_initial_data(
-            ::ket::mpi::utility::policy::make_general_mpi(),
+            ::ket::mpi::utility::policy::make_simple_mpi(),
             num_local_qubits, initial_integer, permutation, communicator, environment)},
           num_local_qubits_{num_local_qubits},
           num_data_blocks_{1u}
@@ -2334,7 +2334,7 @@ namespace ket
           permutation,
         yampi::communicator const& communicator,
         yampi::environment const& environment)
-      { assign(::ket::mpi::utility::policy::make_general_mpi(), num_local_qubits, initial_integer, permutation, communicator, environment); }
+      { assign(::ket::mpi::utility::policy::make_simple_mpi(), num_local_qubits, initial_integer, permutation, communicator, environment); }
 
       template <typename MpiPolicy, typename BitInteger, typename StateInteger, typename PermutationAllocator>
       void assign(

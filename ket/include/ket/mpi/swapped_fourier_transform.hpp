@@ -22,7 +22,7 @@
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/gate/hadamard.hpp>
 # include <ket/mpi/gate/controlled_phase_shift.hpp>
-# include <ket/mpi/utility/general_mpi.hpp>
+# include <ket/mpi/utility/simple_mpi.hpp>
 # include <ket/mpi/utility/logger.hpp>
 # include <ket/utility/integer_exp2.hpp>
 # ifndef NDEBUG
@@ -179,7 +179,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return swapped_fourier_transform(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
         local_state, qubits, phase_coefficients, permutation,
         buffer, communicator, environment);
@@ -208,7 +208,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return swapped_fourier_transform(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
         local_state, qubits, phase_coefficients, permutation,
         buffer, datatype, communicator, environment);
@@ -235,7 +235,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return swapped_fourier_transform(
-        ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+        ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
         local_state, qubits, phase_coefficients, permutation,
         buffer, communicator, environment);
     }
@@ -263,7 +263,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return swapped_fourier_transform(
-        ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+        ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
         local_state, qubits, phase_coefficients, permutation,
         buffer, datatype, communicator, environment);
     }
@@ -580,7 +580,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return adj_swapped_fourier_transform(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
         local_state, qubits, phase_coefficients, permutation,
         buffer, communicator, environment);
@@ -609,7 +609,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return adj_swapped_fourier_transform(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
         local_state, qubits, phase_coefficients, permutation,
         buffer, datatype, communicator, environment);
@@ -636,7 +636,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return adj_swapped_fourier_transform(
-        ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+        ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
         local_state, qubits, phase_coefficients, permutation,
         buffer, communicator, environment);
     }
@@ -664,7 +664,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return adj_swapped_fourier_transform(
-        ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+        ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
         local_state, qubits, phase_coefficients, permutation,
         buffer, datatype, communicator, environment);
     }

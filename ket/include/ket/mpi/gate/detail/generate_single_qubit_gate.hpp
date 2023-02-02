@@ -99,7 +99,7 @@ namespace ket\
         yampi::environment const& environment)\
       {\
         return ::ket::mpi::gate::gate_name(\
-          ::ket::mpi::utility::policy::make_general_mpi(),\
+          ::ket::mpi::utility::policy::make_simple_mpi(),\
           ::ket::utility::policy::make_sequential(),\
           local_state, qubit, permutation, buffer, communicator, environment);\
       }\
@@ -118,7 +118,7 @@ namespace ket\
         yampi::environment const& environment)\
       {\
         return ::ket::mpi::gate::gate_name(\
-          ::ket::mpi::utility::policy::make_general_mpi(),\
+          ::ket::mpi::utility::policy::make_simple_mpi(),\
           ::ket::utility::policy::make_sequential(),\
           local_state, qubit, permutation, buffer, datatype, communicator, environment);\
       }\
@@ -137,7 +137,7 @@ namespace ket\
         yampi::environment const& environment)\
       {\
         return ::ket::mpi::gate::gate_name(\
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,\
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,\
           local_state, qubit, permutation, buffer, communicator, environment);\
       }\
 \
@@ -156,7 +156,7 @@ namespace ket\
         yampi::environment const& environment)\
       {\
         return ::ket::mpi::gate::gate_name(\
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,\
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,\
           local_state, qubit, permutation, buffer, datatype, communicator, environment);\
       }\
 \
@@ -250,7 +250,7 @@ namespace ket\
         yampi::environment const& environment)\
       {\
         return ::ket::mpi::gate::adj_ ## gate_name(\
-          ::ket::mpi::utility::policy::make_general_mpi(),\
+          ::ket::mpi::utility::policy::make_simple_mpi(),\
           ::ket::utility::policy::make_sequential(),\
           local_state, qubit, permutation, buffer, communicator, environment);\
       }\
@@ -269,7 +269,7 @@ namespace ket\
         yampi::environment const& environment)\
       {\
         return ::ket::mpi::gate::adj_ ## gate_name(\
-          ::ket::mpi::utility::policy::make_general_mpi(),\
+          ::ket::mpi::utility::policy::make_simple_mpi(),\
           ::ket::utility::policy::make_sequential(),\
           local_state, qubit, permutation, buffer, datatype, communicator, environment);\
       }\
@@ -288,7 +288,7 @@ namespace ket\
         yampi::environment const& environment)\
       {\
         return ::ket::mpi::gate::adj_ ## gate_name(\
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,\
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,\
           local_state, qubit, permutation, buffer, communicator, environment);\
       }\
 \
@@ -307,7 +307,7 @@ namespace ket\
         yampi::environment const& environment)\
       {\
         return ::ket::mpi::gate::adj_ ## gate_name(\
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,\
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,\
           local_state, qubit, permutation, buffer, datatype, communicator, environment);\
       }\
     }\
@@ -432,7 +432,7 @@ namespace ket\
         yampi::environment const& environment)\
       {\
         return ::ket::mpi::gate::gate_name(\
-          ::ket::mpi::utility::policy::make_general_mpi(),\
+          ::ket::mpi::utility::policy::make_simple_mpi(),\
           ::ket::utility::policy::make_sequential(),\
           local_state, qubit, permutation, buffer, communicator, environment);\
       }\
@@ -451,7 +451,7 @@ namespace ket\
         yampi::environment const& environment)\
       {\
         return ::ket::mpi::gate::gate_name(\
-          ::ket::mpi::utility::policy::make_general_mpi(),\
+          ::ket::mpi::utility::policy::make_simple_mpi(),\
           ::ket::utility::policy::make_sequential(),\
           local_state, qubit, permutation, buffer, datatype, communicator, environment);\
       }\
@@ -470,7 +470,7 @@ namespace ket\
         yampi::environment const& environment)\
       {\
         return ::ket::mpi::gate::gate_name(\
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,\
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,\
           local_state, qubit, permutation, buffer, communicator, environment);\
       }\
 \
@@ -489,7 +489,7 @@ namespace ket\
         yampi::environment const& environment)\
       {\
         return ::ket::mpi::gate::gate_name(\
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,\
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,\
           local_state, qubit, permutation, buffer, datatype, communicator, environment);\
       }\
 \
@@ -604,7 +604,7 @@ namespace ket\
         yampi::environment const& environment)\
       {\
         return ::ket::mpi::gate::adj_ ## gate_name(\
-          ::ket::mpi::utility::policy::make_general_mpi(),\
+          ::ket::mpi::utility::policy::make_simple_mpi(),\
           ::ket::utility::policy::make_sequential(),\
           local_state, qubit, permutation, buffer, communicator, environment);\
       }\
@@ -623,7 +623,7 @@ namespace ket\
         yampi::environment const& environment)\
       {\
         return ::ket::mpi::gate::adj_ ## gate_name(\
-          ::ket::mpi::utility::policy::make_general_mpi(),\
+          ::ket::mpi::utility::policy::make_simple_mpi(),\
           ::ket::utility::policy::make_sequential(),\
           local_state, qubit, permutation, buffer, datatype, communicator, environment);\
       }\
@@ -642,7 +642,7 @@ namespace ket\
         yampi::environment const& environment)\
       {\
         return ::ket::mpi::gate::adj_ ## gate_name(\
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,\
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,\
           local_state, qubit, permutation, buffer, communicator, environment);\
       }\
 \
@@ -661,7 +661,7 @@ namespace ket\
         yampi::environment const& environment)\
       {\
         return ::ket::mpi::gate::adj_ ## gate_name(\
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,\
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,\
           local_state, qubit, permutation,\
           buffer, datatype, communicator, environment);\
       }\

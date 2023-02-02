@@ -27,7 +27,7 @@
 #include <bra/gates.hpp>
 #include <bra/state.hpp>
 #ifndef BRA_NO_MPI
-# include <bra/make_general_mpi_state.hpp>
+# include <bra/make_simple_mpi_state.hpp>
 # include <bra/make_unit_mpi_state.hpp>
 #else
 # include <bra/nompi_state.hpp>
@@ -316,7 +316,7 @@ int main(int argc, char* argv[])
       ? bra::make_unit_mpi_state(
           num_page_qubits, gates.initial_state_value(), gates.num_lqubits(), num_unit_qubits, gates.initial_permutation(),
           num_threads_per_process, num_processes_per_unit, seed, communicator, environment)
-      : bra::make_general_mpi_state(
+      : bra::make_simple_mpi_state(
           num_page_qubits, gates.initial_state_value(), gates.num_lqubits(), gates.initial_permutation(),
           num_threads_per_process, seed, communicator, environment);
 # else // BRA_USE_DEPRECATED_CLI
@@ -326,7 +326,7 @@ int main(int argc, char* argv[])
       ? bra::make_unit_mpi_state(
           num_page_qubits, gates.initial_state_value(), gates.num_lqubits(), num_unit_qubits, gates.initial_permutation(),
           num_threads_per_process, num_processes_per_unit, seed, communicator, environment)
-      : bra::make_general_mpi_state(
+      : bra::make_simple_mpi_state(
           num_page_qubits, gates.initial_state_value(), gates.num_lqubits(), gates.initial_permutation(),
           num_threads_per_process, seed, communicator, environment);
 # endif // BRA_USE_DEPRECATED_CLI

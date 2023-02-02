@@ -19,7 +19,7 @@
 # include <ket/gate/clear.hpp>
 # include <ket/mpi/permutated.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
-# include <ket/mpi/utility/general_mpi.hpp>
+# include <ket/mpi/utility/simple_mpi.hpp>
 # include <ket/mpi/utility/for_each_local_range.hpp>
 # include <ket/mpi/utility/logger.hpp>
 # include <ket/mpi/gate/page/clear.hpp>
@@ -151,7 +151,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::clear(
-          ::ket::mpi::utility::policy::make_general_mpi(),
+          ::ket::mpi::utility::policy::make_simple_mpi(),
           ::ket::utility::policy::make_sequential(),
           local_state, qubit, permutation, buffer, communicator, environment);
       }
@@ -171,7 +171,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::clear(
-          ::ket::mpi::utility::policy::make_general_mpi(),
+          ::ket::mpi::utility::policy::make_simple_mpi(),
           ::ket::utility::policy::make_sequential(),
           local_state, qubit, permutation, buffer, datatype, communicator, environment);
       }
@@ -190,7 +190,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::clear(
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
           local_state, qubit, permutation, buffer, communicator, environment);
       }
 
@@ -210,7 +210,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::clear(
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
           local_state, qubit, permutation,
           buffer, datatype, communicator, environment);
       }

@@ -20,7 +20,7 @@
 # include <ket/gate/phase_shift.hpp>
 # include <ket/mpi/permutated.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
-# include <ket/mpi/utility/general_mpi.hpp>
+# include <ket/mpi/utility/simple_mpi.hpp>
 # include <ket/mpi/utility/for_each_local_range.hpp>
 # include <ket/mpi/utility/logger.hpp>
 # include <ket/mpi/gate/page/phase_shift.hpp>
@@ -166,7 +166,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::phase_shift_coeff(
-          ::ket::mpi::utility::policy::make_general_mpi(),
+          ::ket::mpi::utility::policy::make_simple_mpi(),
           ::ket::utility::policy::make_sequential(),
           local_state, phase_coefficient, qubit, permutation,
           buffer, communicator, environment);
@@ -187,7 +187,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::phase_shift_coeff(
-          ::ket::mpi::utility::policy::make_general_mpi(),
+          ::ket::mpi::utility::policy::make_simple_mpi(),
           ::ket::utility::policy::make_sequential(),
           local_state, phase_coefficient, qubit, permutation,
           buffer, datatype, communicator, environment);
@@ -208,7 +208,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::phase_shift_coeff(
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
           local_state, phase_coefficient, qubit, permutation,
           buffer, communicator, environment);
       }
@@ -229,7 +229,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::phase_shift_coeff(
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
           local_state, phase_coefficient, qubit, permutation,
           buffer, datatype, communicator, environment);
       }
@@ -316,7 +316,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::adj_phase_shift_coeff(
-          ::ket::mpi::utility::policy::make_general_mpi(),
+          ::ket::mpi::utility::policy::make_simple_mpi(),
           ::ket::utility::policy::make_sequential(),
           local_state, phase_coefficient, qubit, permutation,
           buffer, communicator, environment);
@@ -337,7 +337,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::adj_phase_shift_coeff(
-          ::ket::mpi::utility::policy::make_general_mpi(),
+          ::ket::mpi::utility::policy::make_simple_mpi(),
           ::ket::utility::policy::make_sequential(),
           local_state, phase_coefficient, qubit, permutation,
           buffer, datatype, communicator, environment);
@@ -358,7 +358,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::adj_phase_shift_coeff(
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
           local_state, phase_coefficient, qubit, permutation,
           buffer, communicator, environment);
       }
@@ -379,7 +379,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::adj_phase_shift_coeff(
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
           local_state, phase_coefficient, qubit, permutation,
           buffer, datatype, communicator, environment);
       }
@@ -467,7 +467,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::phase_shift(
-          ::ket::mpi::utility::policy::make_general_mpi(),
+          ::ket::mpi::utility::policy::make_simple_mpi(),
           ::ket::utility::policy::make_sequential(),
           local_state, phase, qubit, permutation, buffer, communicator, environment);
       }
@@ -487,7 +487,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::phase_shift(
-          ::ket::mpi::utility::policy::make_general_mpi(),
+          ::ket::mpi::utility::policy::make_simple_mpi(),
           ::ket::utility::policy::make_sequential(),
           local_state, phase, qubit, permutation,
           buffer, datatype, communicator, environment);
@@ -508,7 +508,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::phase_shift(
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
           local_state, phase, qubit, permutation, buffer, communicator, environment);
       }
 
@@ -528,7 +528,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::phase_shift(
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
           local_state, phase, qubit, permutation,
           buffer, datatype, communicator, environment);
       }
@@ -613,7 +613,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::adj_phase_shift(
-          ::ket::mpi::utility::policy::make_general_mpi(),
+          ::ket::mpi::utility::policy::make_simple_mpi(),
           ::ket::utility::policy::make_sequential(),
           local_state, phase, qubit, permutation, buffer, communicator, environment);
       }
@@ -633,7 +633,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::adj_phase_shift(
-          ::ket::mpi::utility::policy::make_general_mpi(),
+          ::ket::mpi::utility::policy::make_simple_mpi(),
           ::ket::utility::policy::make_sequential(),
           local_state, phase, qubit, permutation,
           buffer, datatype, communicator, environment);
@@ -654,7 +654,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::adj_phase_shift(
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
           local_state, phase, qubit, permutation, buffer, communicator, environment);
       }
 
@@ -674,7 +674,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::adj_phase_shift(
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
           local_state, phase, qubit, permutation,
           buffer, datatype, communicator, environment);
       }
@@ -865,7 +865,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::phase_shift2(
-          ::ket::mpi::utility::policy::make_general_mpi(),
+          ::ket::mpi::utility::policy::make_simple_mpi(),
           ::ket::utility::policy::make_sequential(),
           local_state, phase1, phase2, qubit, permutation,
           buffer, communicator, environment);
@@ -886,7 +886,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::phase_shift2(
-          ::ket::mpi::utility::policy::make_general_mpi(),
+          ::ket::mpi::utility::policy::make_simple_mpi(),
           ::ket::utility::policy::make_sequential(),
           local_state, phase1, phase2, qubit, permutation,
           buffer, datatype, communicator, environment);
@@ -907,7 +907,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::phase_shift2(
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
           local_state, phase1, phase2, qubit, permutation,
           buffer, communicator, environment);
       }
@@ -928,7 +928,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::phase_shift2(
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
           local_state, phase1, phase2, qubit, permutation,
           buffer, datatype, communicator, environment);
       }
@@ -1116,7 +1116,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::adj_phase_shift2(
-          ::ket::mpi::utility::policy::make_general_mpi(),
+          ::ket::mpi::utility::policy::make_simple_mpi(),
           ::ket::utility::policy::make_sequential(),
           local_state, phase1, phase2, qubit, permutation, buffer, communicator, environment);
       }
@@ -1136,7 +1136,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::adj_phase_shift2(
-          ::ket::mpi::utility::policy::make_general_mpi(),
+          ::ket::mpi::utility::policy::make_simple_mpi(),
           ::ket::utility::policy::make_sequential(),
           local_state, phase1, phase2, qubit, permutation, buffer, datatype, communicator, environment);
       }
@@ -1156,7 +1156,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::adj_phase_shift2(
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
           local_state, phase1, phase2, qubit, permutation, buffer, communicator, environment);
       }
 
@@ -1176,7 +1176,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::adj_phase_shift2(
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
           local_state, phase1, phase2, qubit, permutation, buffer, datatype, communicator, environment);
       }
 
@@ -1368,7 +1368,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::phase_shift3(
-          ::ket::mpi::utility::policy::make_general_mpi(),
+          ::ket::mpi::utility::policy::make_simple_mpi(),
           ::ket::utility::policy::make_sequential(),
           local_state, phase1, phase2, phase3, qubit, permutation,
           buffer, communicator, environment);
@@ -1389,7 +1389,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::phase_shift3(
-          ::ket::mpi::utility::policy::make_general_mpi(),
+          ::ket::mpi::utility::policy::make_simple_mpi(),
           ::ket::utility::policy::make_sequential(),
           local_state, phase1, phase2, phase3, qubit, permutation,
           buffer, datatype, communicator, environment);
@@ -1410,7 +1410,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::phase_shift3(
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
           local_state, phase1, phase2, phase3, qubit, permutation,
           buffer, communicator, environment);
       }
@@ -1431,7 +1431,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::phase_shift3(
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
           local_state, phase1, phase2, phase3, qubit, permutation,
           buffer, datatype, communicator, environment);
       }
@@ -1624,7 +1624,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::adj_phase_shift3(
-          ::ket::mpi::utility::policy::make_general_mpi(),
+          ::ket::mpi::utility::policy::make_simple_mpi(),
           ::ket::utility::policy::make_sequential(),
           local_state, phase1, phase2, phase3, qubit, permutation,
           buffer, communicator, environment);
@@ -1645,7 +1645,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::adj_phase_shift3(
-          ::ket::mpi::utility::policy::make_general_mpi(),
+          ::ket::mpi::utility::policy::make_simple_mpi(),
           ::ket::utility::policy::make_sequential(),
           local_state, phase1, phase2, phase3, qubit, permutation,
           buffer, datatype, communicator, environment);
@@ -1666,7 +1666,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::adj_phase_shift3(
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
           local_state, phase1, phase2, phase3, qubit, permutation,
           buffer, communicator, environment);
       }
@@ -1687,7 +1687,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::gate::adj_phase_shift3(
-          ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
           local_state, phase1, phase2, phase3, qubit, permutation,
           buffer, datatype, communicator, environment);
       }

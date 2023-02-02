@@ -18,7 +18,7 @@
 # include <ket/mpi/page/is_on_page.hpp>
 # include <ket/mpi/gate/page/unsupported_page_gate_operation.hpp>
 # include <ket/mpi/gate/page/detail/one_page_qubit_gate.hpp>
-# include <ket/mpi/utility/general_mpi.hpp>
+# include <ket/mpi/utility/simple_mpi.hpp>
 # include <ket/mpi/utility/unit_mpi.hpp>
 
 
@@ -271,7 +271,7 @@ namespace ket
             typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
           [[noreturn]] inline ::ket::mpi::state<Complex, false, Allocator>&
           controlled_phaes_shift_coeff_cp(
-            ::ket::mpi::utility::policy::general_mpi const, ParallelPolicy const,
+            ::ket::mpi::utility::policy::simple_mpi const, ParallelPolicy const,
             ::ket::mpi::state<Complex, false, Allocator>& local_state,
             Complex const&,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const,
@@ -298,7 +298,7 @@ namespace ket
             typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
           inline ::ket::mpi::state<Complex, true, Allocator>&
           controlled_phase_shift_coeff_cp(
-            ::ket::mpi::utility::policy::general_mpi const mpi_policy,
+            ::ket::mpi::utility::policy::simple_mpi const mpi_policy,
             ParallelPolicy const parallel_policy,
             ::ket::mpi::state<Complex, true, Allocator>& local_state,
             Complex const& phase_coefficient,

@@ -17,7 +17,7 @@
 # include <ket/utility/meta/real_of.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/spin_expectation_value.hpp>
-# include <ket/mpi/utility/general_mpi.hpp>
+# include <ket/mpi/utility/simple_mpi.hpp>
 
 
 namespace ket
@@ -125,7 +125,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return ::ket::mpi::all_spin_expectation_values<SpinsAllocator>(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
         local_state, permutation, num_qubits,
         buffer, communicator, environment);
@@ -155,7 +155,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return ::ket::mpi::all_spin_expectation_values<SpinsAllocator>(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
         local_state, permutation, num_qubits,
         buffer, real_datatype, complex_datatype, communicator, environment);
@@ -183,7 +183,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return ::ket::mpi::all_spin_expectation_values<SpinsAllocator>(
-        ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+        ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
         local_state, permutation, num_qubits,
         buffer, communicator, environment);
     }
@@ -213,7 +213,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return ::ket::mpi::all_spin_expectation_values<SpinsAllocator>(
-        ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+        ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
         local_state, permutation, num_qubits,
         buffer, real_datatype, complex_datatype, communicator, environment);
     }
@@ -301,7 +301,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return ::ket::mpi::all_spin_expectation_values(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
         local_state, permutation, num_qubits,
         buffer, communicator, environment);
@@ -330,7 +330,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return ::ket::mpi::all_spin_expectation_values(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
         local_state, permutation, num_qubits,
         buffer, real_datatype, complex_datatype, communicator, environment);
@@ -357,7 +357,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return ::ket::mpi::all_spin_expectation_values(
-        ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+        ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
         local_state, permutation, num_qubits,
         buffer, communicator, environment);
     }
@@ -386,7 +386,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return ::ket::mpi::all_spin_expectation_values(
-        ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+        ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
         local_state, permutation, num_qubits,
         buffer, real_datatype, complex_datatype, communicator, environment);
     }
@@ -522,7 +522,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return ::ket::mpi::all_spin_expectation_values<SpinsAllocator>(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
         local_state, permutation, num_qubits,
         buffer, root, communicator, environment);
@@ -554,7 +554,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return ::ket::mpi::all_spin_expectation_values<SpinsAllocator>(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
         local_state, permutation, num_qubits,
         buffer, real_datatype, complex_datatype, root, communicator, environment);
@@ -584,7 +584,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return ::ket::mpi::all_spin_expectation_values<SpinsAllocator>(
-        ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+        ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
         local_state, permutation, num_qubits,
         buffer, root, communicator, environment);
     }
@@ -616,7 +616,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return ::ket::mpi::all_spin_expectation_values<SpinsAllocator>(
-        ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+        ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
         local_state, permutation, num_qubits,
         buffer, real_datatype, complex_datatype, root, communicator, environment);
     }
@@ -649,7 +649,7 @@ namespace ket
       using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
       using spin_type = std::array<real_type, 3u>;
       return ::ket::mpi::all_spin_expectation_values< std::allocator<spin_type> >(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
         local_state, permutation, num_qubits,
         buffer, root, communicator, environment);
@@ -684,7 +684,7 @@ namespace ket
       using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
       using spin_type = std::array<real_type, 3u>;
       return ::ket::mpi::all_spin_expectation_values< std::allocator<spin_type> >(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
         local_state, permutation, num_qubits,
         buffer, real_datatype, complex_datatype, root, communicator, environment);
@@ -712,7 +712,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return ::ket::mpi::all_spin_expectation_values(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
         local_state, permutation, num_qubits,
         buffer, root, communicator, environment);
@@ -743,7 +743,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return ::ket::mpi::all_spin_expectation_values(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
         local_state, permutation, num_qubits,
         buffer, real_datatype, complex_datatype, root, communicator, environment);
@@ -772,7 +772,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return ::ket::mpi::all_spin_expectation_values(
-        ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+        ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
         local_state, permutation, num_qubits,
         buffer, root, communicator, environment);
     }
@@ -803,7 +803,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return ::ket::mpi::all_spin_expectation_values(
-        ::ket::mpi::utility::policy::make_general_mpi(), parallel_policy,
+        ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
         local_state, permutation, num_qubits,
         buffer, real_datatype, complex_datatype, root, communicator, environment);
     }
