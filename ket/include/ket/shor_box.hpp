@@ -85,7 +85,7 @@ namespace ket
     auto modular_exponentiation_value = StateInteger{1u};
 
     using std::pow;
-    auto const constant_coefficient = complex_type{real_type{pow(num_exponents, -0.5)}};
+    auto const constant_coefficient = complex_type{pow(static_cast<real_type>(num_exponents), real_type{-0.5})};
 
     for (auto exponent = StateInteger{0u}; exponent < num_exponents; ++exponent)
     {
