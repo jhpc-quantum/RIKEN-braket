@@ -7,7 +7,8 @@
 #include <chrono>
 
 #include <boost/lexical_cast.hpp>
-#include <boost/format.hpp>
+#define FMT_HEADER_ONLY
+#include <fmt/core.h>
 
 #ifndef BRA_USE_DEPRECATED_CLI
 # include <cxxopts.hpp>
@@ -373,12 +374,10 @@ int main(int argc, char* argv[])
     else if (finish_time_and_process.second == ::bra::finished_process::begin_measurement)
     {
       std::cout
-        << boost::format("Expectation values of spins:\n%|=8s| %|=8s| %|=8s|\n")
-           % "<Qx>" % "<Qy>" % "<Qz>";
+        << fmt::format("Expectation values of spins:\n{:^8s} {:^8s} {:^8s}\n", "<Qx>", "<Qy>", "<Qz>");
       for (auto const& spin: *(state_ptr->maybe_expectation_values()))
         std::cout
-          << boost::format("%|=8.3f| %|=8.3f| %|=8.3f|\n")
-             % (0.5-spin[0u]) % (0.5-spin[1u]) % (0.5-spin[2u]);
+          << fmt::format("{:^ 8.3f} {:^ 8.3f} {:^ 8.3f}\n", 0.5-spin[0u], 0.5-spin[1u], 0.5-spin[2u]);
       std::cout << std::flush;
 
       std::cout
