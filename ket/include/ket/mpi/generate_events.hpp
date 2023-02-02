@@ -22,7 +22,7 @@
 # include <ket/utility/positive_random_value_upto.hpp>
 # include <ket/utility/meta/real_of.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
-# include <ket/mpi/utility/general_mpi.hpp>
+# include <ket/mpi/utility/simple_mpi.hpp>
 # include <ket/mpi/utility/logger.hpp>
 # include <ket/mpi/utility/fill.hpp>
 # include <ket/mpi/utility/transform_inclusive_scan_self.hpp>
@@ -307,7 +307,7 @@ namespace ket
       yampi::environment const& environment)
     {
       ::ket::mpi::generate_events(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
         result, local_state, num_events, random_number_generator, permutation,
         communicator, environment);
@@ -331,7 +331,7 @@ namespace ket
       yampi::environment const& environment)
     {
       ::ket::mpi::generate_events(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
         result, local_state, num_events, random_number_generator, permutation,
         state_integer_datatype, real_datatype, communicator, environment);

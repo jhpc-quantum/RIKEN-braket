@@ -5,15 +5,15 @@
 # include <yampi/communicator.hpp>
 # include <yampi/environment.hpp>
 
-# include <bra/make_general_mpi_state.hpp>
+# include <bra/make_simple_mpi_state.hpp>
 # include <bra/state.hpp>
-# include <bra/general_mpi_state.hpp>
-# include <bra/paged_general_mpi_state.hpp>
+# include <bra/simple_mpi_state.hpp>
+# include <bra/paged_simple_mpi_state.hpp>
 
 
 namespace bra
 {
-  std::unique_ptr< ::bra::state > make_general_mpi_state(
+  std::unique_ptr< ::bra::state > make_simple_mpi_state(
     unsigned int const num_page_qubits,
     ::bra::state::state_integer_type const initial_integer,
     ::bra::state::bit_integer_type const num_local_qubits,
@@ -25,17 +25,17 @@ namespace bra
   {
     if (num_page_qubits == 0u)
       return std::unique_ptr< ::bra::state >{
-        new ::bra::general_mpi_state{
+        new ::bra::simple_mpi_state{
           initial_integer, num_local_qubits, total_num_qubits,
           num_threads_per_process, seed, communicator, environment}};
 
     return std::unique_ptr< ::bra::state >{
-      new ::bra::paged_general_mpi_state{
+      new ::bra::paged_simple_mpi_state{
         initial_integer, num_local_qubits, total_num_qubits, num_page_qubits,
         num_threads_per_process, seed, communicator, environment}};
   }
 
-  std::unique_ptr< ::bra::state > make_general_mpi_state(
+  std::unique_ptr< ::bra::state > make_simple_mpi_state(
     unsigned int const num_page_qubits,
     ::bra::state::state_integer_type const initial_integer,
     ::bra::state::bit_integer_type const num_local_qubits,
@@ -47,12 +47,12 @@ namespace bra
   {
     if (num_page_qubits == 0u)
       return std::unique_ptr< ::bra::state >{
-        new ::bra::general_mpi_state{
+        new ::bra::simple_mpi_state{
           initial_integer, num_local_qubits, initial_permutation,
           num_threads_per_process, seed, communicator, environment}};
 
     return std::unique_ptr< ::bra::state >{
-      new ::bra::paged_general_mpi_state{
+      new ::bra::paged_simple_mpi_state{
         initial_integer, num_local_qubits, initial_permutation, num_page_qubits,
         num_threads_per_process, seed, communicator, environment}};
   }

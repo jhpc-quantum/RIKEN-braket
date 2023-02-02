@@ -38,7 +38,7 @@
 # ifndef NDEBUG
 #   include <ket/mpi/page/is_on_page.hpp>
 # endif
-# include <ket/mpi/utility/general_mpi.hpp>
+# include <ket/mpi/utility/simple_mpi.hpp>
 # include <ket/mpi/utility/detail/make_local_swap_qubit.hpp>
 # include <ket/mpi/utility/detail/interchange_qubits.hpp>
 # include <ket/mpi/utility/detail/for_each_in_diagonal_loop.hpp>

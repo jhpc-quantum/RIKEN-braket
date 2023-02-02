@@ -7,7 +7,7 @@
 # include <yampi/environment.hpp>
 
 # include <ket/utility/loop_n.hpp>
-# include <ket/mpi/utility/general_mpi.hpp>
+# include <ket/mpi/utility/simple_mpi.hpp>
 # include <ket/mpi/utility/for_each_local_range.hpp>
 
 
@@ -72,7 +72,7 @@ namespace ket
         yampi::environment const& environment)
       {
         return ::ket::mpi::utility::fill(
-          ::ket::mpi::utility::policy::make_general_mpi(),
+          ::ket::mpi::utility::policy::make_simple_mpi(),
           ::ket::utility::policy::make_sequential(),
           local_state, value, communicator, environment);
       }

@@ -12,7 +12,7 @@
 # include <yampi/receive.hpp>
 
 # include <ket/mpi/qubit_permutation.hpp>
-# include <ket/mpi/utility/general_mpi.hpp>
+# include <ket/mpi/utility/simple_mpi.hpp>
 
 
 namespace ket

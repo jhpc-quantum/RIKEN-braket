@@ -13,7 +13,7 @@
 # include <ket/utility/loop_n.hpp>
 # include <ket/mpi/addition_assignment.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
-# include <ket/mpi/utility/general_mpi.hpp>
+# include <ket/mpi/utility/simple_mpi.hpp>
 
 
 namespace ket
@@ -103,7 +103,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return subtraction_assignment(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
         local_state, lhs_qubits, rhs_qubits_range, phase_coefficients, permutation,
         buffer, communicator, environment);
@@ -133,7 +133,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return subtraction_assignment(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
         local_state, lhs_qubits, rhs_qubits_range, phase_coefficients, permutation,
         buffer, datatype, communicator, environment);
@@ -162,7 +162,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return subtraction_assignment(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         parallel_policy,
         local_state, lhs_qubits, rhs_qubits_range, phase_coefficients, permutation,
         buffer, communicator, environment);
@@ -193,7 +193,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return subtraction_assignment(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         parallel_policy,
         local_state, lhs_qubits, rhs_qubits_range, phase_coefficients, permutation,
         buffer, datatype, communicator, environment);
@@ -270,7 +270,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return subtraction_assignment(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
         local_state, lhs_qubits, rhs_qubits_range, permutation,
         buffer, communicator, environment);
@@ -296,7 +296,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return subtraction_assignment(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
         local_state, lhs_qubits, rhs_qubits_range, permutation,
         buffer, datatype, communicator, environment);
@@ -321,7 +321,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return subtraction_assignment(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         parallel_policy,
         local_state, lhs_qubits, rhs_qubits_range, permutation,
         buffer, communicator, environment);
@@ -348,7 +348,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return subtraction_assignment(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         parallel_policy,
         local_state, lhs_qubits, rhs_qubits_range, permutation,
         buffer, datatype, communicator, environment);
@@ -438,7 +438,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return adj_subtraction_assignment(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
         local_state, lhs_qubits, rhs_qubits_range, phase_coefficients, permutation,
         buffer, communicator, environment);
@@ -468,7 +468,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return adj_subtraction_assignment(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
         local_state, lhs_qubits, rhs_qubits_range, phase_coefficients, permutation,
         buffer, datatype, communicator, environment);
@@ -497,7 +497,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return adj_subtraction_assignment(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         parallel_policy,
         local_state, lhs_qubits, rhs_qubits_range, phase_coefficients, permutation,
         buffer, communicator, environment);
@@ -528,7 +528,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return adj_subtraction_assignment(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         parallel_policy,
         local_state, lhs_qubits, rhs_qubits_range, phase_coefficients, permutation,
         buffer, datatype, communicator, environment);
@@ -605,7 +605,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return adj_subtraction_assignment(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
         local_state, lhs_qubits, rhs_qubits_range, permutation,
         buffer, communicator, environment);
@@ -631,7 +631,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return adj_subtraction_assignment(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
         local_state, lhs_qubits, rhs_qubits_range, permutation,
         buffer, datatype, communicator, environment);
@@ -656,7 +656,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return adj_subtraction_assignment(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         parallel_policy,
         local_state, lhs_qubits, rhs_qubits_range, permutation,
         buffer, communicator, environment);
@@ -683,7 +683,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return adj_subtraction_assignment(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         parallel_policy,
         local_state, lhs_qubits, rhs_qubits_range, permutation,
         buffer, datatype, communicator, environment);

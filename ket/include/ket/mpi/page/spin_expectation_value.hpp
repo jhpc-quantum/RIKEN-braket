@@ -13,7 +13,7 @@
 # include <ket/utility/meta/real_of.hpp>
 # include <ket/mpi/state.hpp>
 # include <ket/mpi/permutated.hpp>
-# include <ket/mpi/utility/general_mpi.hpp>
+# include <ket/mpi/utility/simple_mpi.hpp>
 # include <ket/mpi/gate/page/unsupported_page_gate_operation.hpp>
 # include <ket/mpi/gate/page/detail/one_page_qubit_gate.hpp>
 

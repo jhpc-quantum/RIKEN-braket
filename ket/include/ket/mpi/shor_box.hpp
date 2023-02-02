@@ -23,7 +23,7 @@
 # include <ket/utility/integer_exp2.hpp>
 # include <ket/utility/meta/real_of.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
-# include <ket/mpi/utility/general_mpi.hpp>
+# include <ket/mpi/utility/simple_mpi.hpp>
 # include <ket/mpi/utility/fill.hpp>
 # include <ket/mpi/utility/logger.hpp>
 
@@ -114,7 +114,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return shor_box(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
         local_state, base, divisor, exponent_qubits, modular_exponentiation_qubits, permutation,
         communicator, environment);
@@ -134,7 +134,7 @@ namespace ket
       yampi::environment const& environment)
     {
       return shor_box(
-        ::ket::mpi::utility::policy::make_general_mpi(),
+        ::ket::mpi::utility::policy::make_simple_mpi(),
         parallel_policy,
         local_state, base, divisor, exponent_qubits, modular_exponentiation_qubits, permutation,
         communicator, environment);
