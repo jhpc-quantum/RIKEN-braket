@@ -38,7 +38,7 @@ You can test those assembler codes via:
 
 ```
 $ ./bin/bra -f qcx/hadamards08.qcx 1> stdout 2> stderr # 1.
-$ mpiexec -np 4 ./bin/bra --mode general --file qcx/hadamards08.qcx 1> stdout 2> stderr # 2.
+$ mpiexec -np 4 ./bin/bra --mode simple --file qcx/hadamards08.qcx 1> stdout 2> stderr # 2.
 $ mpiexec -np 6 ./bin/bra --mode unit --file qcx/hadamards08.qcx --unit-qubits 3 --unit-processes 3 1> stdout 2> stderr # 3.
 ```
 
@@ -75,7 +75,7 @@ int main(int argc, char* argv[])
   using complex_type = std::complex<double>;
 
   yampi::environment environment{argc, argv, yampi::thread_support::funneled};
-  auto communicator = yampi::communicator{yampi::tags::world_communicator()};
+  auto communicator = yampi::communicator{yampi::tags::world_communicator};
   auto const rank = communicator.rank(environment);
   auto const num_gqubits = ket::utility::integer_log2<bit_integer_type>(communicator.size(environment));
   auto const num_qubits = bit_integer_type{12u};
@@ -83,7 +83,7 @@ int main(int argc, char* argv[])
   auto const initial_state_value = state_integer_type{0};
 
   auto permutation = ket::mpi::qubit_permutation<state_integer_type, bit_integer_type>{num_qubits};
-  auto local_state = ket::mpi::state<complex_type>{num_lqubits, initial_state_value, permutation, communicator, environment};
+  auto local_state = ket::mpi::state<complex_type, false>{num_lqubits, initial_state_value, permutation, communicator, environment};
   auto buffer = std::vector<complex_type>{};
 
   using qubit_type = ket::qubit<state_integer_type, bit_integer_type>;
