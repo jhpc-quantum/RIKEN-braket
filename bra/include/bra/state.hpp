@@ -113,8 +113,22 @@ namespace bra
       yampi::environment const& environment);
 
     state(
+      bit_integer_type const total_num_qubits,
+      seed_type const seed,
+      unsigned int const num_elements_in_buffer,
+      yampi::communicator const& communicator,
+      yampi::environment const& environment);
+
+    state(
       std::vector<permutated_qubit_type> const& initial_permutation,
       seed_type const seed,
+      yampi::communicator const& communicator,
+      yampi::environment const& environment);
+
+    state(
+      std::vector<permutated_qubit_type> const& initial_permutation,
+      seed_type const seed,
+      unsigned int const num_elements_in_buffer,
       yampi::communicator const& communicator,
       yampi::environment const& environment);
 # else // BRA_NO_MPI

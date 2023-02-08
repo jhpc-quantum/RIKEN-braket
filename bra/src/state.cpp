@@ -48,6 +48,26 @@ namespace bra
   { finish_times_and_processes_.reserve(2u); }
 
   state::state(
+    bit_integer_type const total_num_qubits,
+    seed_type const seed,
+    unsigned int const num_elements_in_buffer,
+    yampi::communicator const& communicator,
+    yampi::environment const& environment)
+    : total_num_qubits_{total_num_qubits},
+      last_outcomes_{total_num_qubits, ket::gate::outcome::unspecified},
+      maybe_expectation_values_{},
+      measured_value_{},
+      generated_events_{},
+      random_number_generator_{seed},
+      permutation_{static_cast<permutation_type::size_type>(total_num_qubits)},
+      buffer_(num_elements_in_buffer),
+      real_pair_datatype_{yampi::predefined_datatype<real_type>(), 2, environment},
+      communicator_{communicator},
+      environment_{environment},
+      finish_times_and_processes_{}
+  { finish_times_and_processes_.reserve(2u); }
+
+  state::state(
     std::vector<permutated_qubit_type> const& initial_permutation,
     seed_type const seed,
     yampi::communicator const& communicator,
@@ -61,6 +81,27 @@ namespace bra
       permutation_{
         std::begin(initial_permutation), std::end(initial_permutation)},
       buffer_{},
+      real_pair_datatype_{yampi::predefined_datatype<real_type>(), 2, environment},
+      communicator_{communicator},
+      environment_{environment},
+      finish_times_and_processes_{}
+  { finish_times_and_processes_.reserve(2u); }
+
+  state::state(
+    std::vector<permutated_qubit_type> const& initial_permutation,
+    seed_type const seed,
+    unsigned int const num_elements_in_buffer,
+    yampi::communicator const& communicator,
+    yampi::environment const& environment)
+    : total_num_qubits_{static_cast<bit_integer_type>(initial_permutation.size())},
+      last_outcomes_{total_num_qubits_, ket::gate::outcome::unspecified},
+      maybe_expectation_values_{},
+      measured_value_{},
+      generated_events_{},
+      random_number_generator_{seed},
+      permutation_{
+        std::begin(initial_permutation), std::end(initial_permutation)},
+      buffer_(num_elements_in_buffer),
       real_pair_datatype_{yampi::predefined_datatype<real_type>(), 2, environment},
       communicator_{communicator},
       environment_{environment},

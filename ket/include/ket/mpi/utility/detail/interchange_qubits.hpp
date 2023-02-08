@@ -44,6 +44,7 @@ namespace ket
             auto const first = std::begin(local_state) + data_block_index * data_block_size + source_local_first_index;
             auto const last = std::begin(local_state) + data_block_index * data_block_size + source_local_last_index;
 
+#ifndef BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
             buffer.resize(source_local_last_index - source_local_first_index);
             yampi::algorithm::swap(
               yampi::ignore_status,
@@ -51,6 +52,47 @@ namespace ket
               yampi::make_buffer(std::begin(buffer), std::end(buffer)),
               target_rank, communicator, environment);
             std::copy(std::begin(buffer), std::end(buffer), first);
+#else // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
+            if (buffer.empty())
+            {
+              buffer.resize(source_local_last_index - source_local_first_index);
+              yampi::algorithm::swap(
+                yampi::ignore_status,
+                yampi::make_buffer(first, last),
+                yampi::make_buffer(std::begin(buffer), std::end(buffer)),
+                target_rank, communicator, environment);
+              std::copy(std::begin(buffer), std::end(buffer), first);
+            }
+            else
+            {
+              auto const buffer_size = buffer.size();
+              auto const num_iterations = (source_local_last_index - source_local_first_index) / buffer_size;
+
+              auto present_first = first;
+              for (auto count = decltype(num_iterations){0}; count < num_iterations; ++count)
+              {
+                yampi::algorithm::swap(
+                  yampi::ignore_status,
+                  yampi::make_buffer(present_first, present_first + buffer_size),
+                  yampi::make_buffer(std::begin(buffer), std::end(buffer)),
+                  target_rank, communicator, environment);
+                std::copy(std::begin(buffer), std::end(buffer), present_first);
+
+                present_first += buffer_size;
+              }
+
+              auto const remainder_size = (source_local_last_index - source_local_first_index) % buffer_size;
+              if (remainder_size > decltype(remainder_size){0})
+              {
+                yampi::algorithm::swap(
+                  yampi::ignore_status,
+                  yampi::make_buffer(present_first, present_first + remainder_size),
+                  yampi::make_buffer(std::begin(buffer), std::begin(buffer) + remainder_size),
+                  target_rank, communicator, environment);
+                std::copy(std::begin(buffer), std::begin(buffer) + remainder_size, present_first);
+              }
+            }
+#endif // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
           }
 
           template <typename LocalState, typename Allocator, typename StateInteger, typename DerivedDatatype>
@@ -68,6 +110,7 @@ namespace ket
             auto const first = std::begin(local_state) + data_block_index * data_block_size + source_local_first_index;
             auto const last = std::begin(local_state) + data_block_index * data_block_size + source_local_last_index;
 
+#ifndef BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
             buffer.resize(source_local_last_index - source_local_first_index);
             yampi::algorithm::swap(
               yampi::ignore_status,
@@ -75,6 +118,47 @@ namespace ket
               yampi::make_buffer(std::begin(buffer), std::end(buffer), datatype),
               target_rank, communicator, environment);
             std::copy(std::begin(buffer), std::end(buffer), first);
+#else // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
+            if (buffer.empty())
+            {
+              buffer.resize(source_local_last_index - source_local_first_index);
+              yampi::algorithm::swap(
+                yampi::ignore_status,
+                yampi::make_buffer(first, last, datatype),
+                yampi::make_buffer(std::begin(buffer), std::end(buffer), datatype),
+                target_rank, communicator, environment);
+              std::copy(std::begin(buffer), std::end(buffer), first);
+            }
+            else
+            {
+              auto const buffer_size = buffer.size();
+              auto const num_iterations = (source_local_last_index - source_local_first_index) / buffer_size;
+
+              auto present_first = first;
+              for (auto count = decltype(num_iterations){0}; count < num_iterations; ++count)
+              {
+                yampi::algorithm::swap(
+                  yampi::ignore_status,
+                  yampi::make_buffer(present_first, present_first + buffer_size, datatype),
+                  yampi::make_buffer(std::begin(buffer), std::end(buffer), datatype),
+                  target_rank, communicator, environment);
+                std::copy(std::begin(buffer), std::end(buffer), present_first);
+
+                present_first += buffer_size;
+              }
+
+              auto const remainder_size = (source_local_last_index - source_local_first_index) % buffer_size;
+              if (remainder_size > decltype(remainder_size){0})
+              {
+                yampi::algorithm::swap(
+                  yampi::ignore_status,
+                  yampi::make_buffer(present_first, present_first + remainder_size, datatype),
+                  yampi::make_buffer(std::begin(buffer), std::begin(buffer) + remainder_size, datatype),
+                  target_rank, communicator, environment);
+                std::copy(std::begin(buffer), std::begin(buffer) + remainder_size, present_first);
+              }
+            }
+#endif // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
           }
         }; // struct interchange_qubits<LocalState_>
       } // namespace dispatch
