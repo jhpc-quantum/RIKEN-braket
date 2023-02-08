@@ -36,6 +36,7 @@ namespace bra
   unsigned int unit_mpi_state::do_num_pages() const
   { return 1u; }
 
+# ifndef BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
   unit_mpi_state::unit_mpi_state(
     ::bra::state::state_integer_type const initial_integer,
     unsigned int const num_local_qubits,
@@ -71,6 +72,45 @@ namespace bra
         mpi_policy_, num_local_qubits, initial_integer,
         permutation_, communicator, environment}
   { }
+# else // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
+  unit_mpi_state::unit_mpi_state(
+    ::bra::state::state_integer_type const initial_integer,
+    unsigned int const num_local_qubits,
+    unsigned int const num_unit_qubits,
+    unsigned int const total_num_qubits,
+    unsigned int const num_threads_per_process,
+    unsigned int const num_processes_per_unit,
+    ::bra::state::seed_type const seed,
+    unsigned int const num_elements_in_buffer,
+    yampi::communicator const& communicator,
+    yampi::environment const& environment)
+    : ::bra::state{total_num_qubits, seed, num_elements_in_buffer, communicator, environment},
+      parallel_policy_{num_threads_per_process},
+      mpi_policy_{num_unit_qubits, num_processes_per_unit},
+      data_{
+        mpi_policy_, num_local_qubits, initial_integer,
+        permutation_, communicator, environment}
+  { }
+
+  unit_mpi_state::unit_mpi_state(
+    ::bra::state::state_integer_type const initial_integer,
+    unsigned int const num_local_qubits,
+    unsigned int const num_unit_qubits,
+    std::vector<permutated_qubit_type> const& initial_permutation,
+    unsigned int const num_threads_per_process,
+    unsigned int const num_processes_per_unit,
+    ::bra::state::seed_type const seed,
+    unsigned int const num_elements_in_buffer,
+    yampi::communicator const& communicator,
+    yampi::environment const& environment)
+    : ::bra::state{initial_permutation, seed, num_elements_in_buffer, communicator, environment},
+      parallel_policy_{num_threads_per_process},
+      mpi_policy_{num_unit_qubits, num_processes_per_unit},
+      data_{
+        mpi_policy_, num_local_qubits, initial_integer,
+        permutation_, communicator, environment}
+  { }
+# endif // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
 
   void unit_mpi_state::do_hadamard(qubit_type const qubit)
   {

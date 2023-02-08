@@ -35,6 +35,7 @@ namespace bra
   unsigned int simple_mpi_state::do_num_pages() const
   { return 1u; }
 
+# ifndef BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
   simple_mpi_state::simple_mpi_state(
     ::bra::state::state_integer_type const initial_integer,
     unsigned int const num_local_qubits,
@@ -66,6 +67,41 @@ namespace bra
         mpi_policy_, num_local_qubits, initial_integer,
         permutation_, communicator, environment}
   { }
+# else // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
+  simple_mpi_state::simple_mpi_state(
+    ::bra::state::state_integer_type const initial_integer,
+    unsigned int const num_local_qubits,
+    unsigned int const total_num_qubits,
+    unsigned int num_threads_per_process,
+    ::bra::state::seed_type const seed,
+    unsigned int const num_elements_in_buffer,
+    yampi::communicator const& communicator,
+    yampi::environment const& environment)
+    : ::bra::state{total_num_qubits, seed, num_elements_in_buffer, communicator, environment},
+      parallel_policy_{num_threads_per_process},
+      mpi_policy_{},
+      data_{
+        mpi_policy_, num_local_qubits, initial_integer,
+        permutation_, communicator, environment}
+  { }
+
+  simple_mpi_state::simple_mpi_state(
+    ::bra::state::state_integer_type const initial_integer,
+    unsigned int const num_local_qubits,
+    std::vector<permutated_qubit_type> const& initial_permutation,
+    unsigned int num_threads_per_process,
+    ::bra::state::seed_type const seed,
+    unsigned int const num_elements_in_buffer,
+    yampi::communicator const& communicator,
+    yampi::environment const& environment)
+    : ::bra::state{initial_permutation, seed, num_elements_in_buffer, communicator, environment},
+      parallel_policy_{num_threads_per_process},
+      mpi_policy_{},
+      data_{
+        mpi_policy_, num_local_qubits, initial_integer,
+        permutation_, communicator, environment}
+  { }
+# endif // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
 
   void simple_mpi_state::do_hadamard(qubit_type const qubit)
   {

@@ -39,6 +39,9 @@ namespace bra
       unsigned int const num_threads_per_process,
       unsigned int const num_processes_per_unit,
       ::bra::state::seed_type const seed,
+#   ifdef BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
+      unsigned int const num_elements_in_buffer,
+#   endif // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
       yampi::communicator const& communicator,
       yampi::environment const& environment);
 
@@ -50,6 +53,9 @@ namespace bra
       unsigned int const num_threads_per_process,
       unsigned int const num_processes_per_unit,
       ::bra::state::seed_type const seed,
+#   ifdef BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
+      unsigned int const num_elements_in_buffer,
+#   endif // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
       yampi::communicator const& communicator,
       yampi::environment const& environment);
 

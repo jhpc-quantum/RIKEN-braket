@@ -91,6 +91,9 @@ int main(int argc, char* argv[])
   options.add_options()
     ("m,mode", "set mode, \"simple\" or \"unit\"", cxxopts::value<std::string>()->default_value("simple"))
     ("f,file", "set the name of input qcx file, or read from standard input if this option is unspecified", cxxopts::value<std::string>())
+#ifdef BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
+    ("buffer-size", "set the number of complex numbers in buffer (meaningful only if the value of page-qubits is 0)", cxxopts::value<unsigned int>()->default_value("65536"))
+#endif // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
     ("unit-qubits", "set the number of unit qubits (meaningful only for unit mode)", cxxopts::value<unsigned int>())
     ("unit-processes", "set the number of MPI processes for each unit (meaningful only for unit mode)", cxxopts::value<unsigned int>())
     ("threads", "set the number of threads per process", cxxopts::value<unsigned int>()->default_value("1"))
@@ -133,6 +136,17 @@ int main(int argc, char* argv[])
   }
 
   auto const num_page_qubits = parse_result["page-qubits"].as<unsigned int>();
+#ifdef BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
+  auto const num_elements_in_buffer = parse_result["buffer-size"].as<unsigned int>();
+
+  if (num_elements_in_buffer == 0u)
+  {
+    if (is_io_root_rank)
+      std::cerr << "Error: wrong argument\n" << options.help() << std::flush;
+    std::exit(EXIT_FAILURE);
+  }
+#endif // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
+
   auto num_unit_qubits = 0u;
   auto num_processes_per_unit = 1u;
 
@@ -181,6 +195,7 @@ int main(int argc, char* argv[])
 
 #ifndef BRA_NO_MPI
   auto gates = bra::gates{parse_result.count("file") ? possible_input_stream : std::cin, num_unit_qubits, num_processes_per_unit, environment, root_rank, communicator};
+# ifndef BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
   auto state_ptr
     = is_unit
       ? bra::make_unit_mpi_state(
@@ -189,6 +204,16 @@ int main(int argc, char* argv[])
       : bra::make_simple_mpi_state(
           num_page_qubits, gates.initial_state_value(), gates.num_lqubits(), gates.initial_permutation(),
           num_threads_per_process, seed, communicator, environment);
+# else // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
+  auto state_ptr
+    = is_unit
+      ? bra::make_unit_mpi_state(
+          num_page_qubits, gates.initial_state_value(), gates.num_lqubits(), num_unit_qubits, gates.initial_permutation(),
+          num_threads_per_process, num_processes_per_unit, seed, num_elements_in_buffer, communicator, environment)
+      : bra::make_simple_mpi_state(
+          num_page_qubits, gates.initial_state_value(), gates.num_lqubits(), gates.initial_permutation(),
+          num_threads_per_process, seed, num_elements_in_buffer, communicator, environment);
+# endif // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
 #else // BRA_NO_MPI
   auto gates = bra::gates{parse_result.count("file") ? possible_input_stream : std::cin};
   auto state_ptr
