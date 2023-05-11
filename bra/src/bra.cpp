@@ -256,7 +256,9 @@ int main(int argc, char* argv[])
         << fmt::format("Expectation values of spins:\n{:^8s} {:^8s} {:^8s}\n", "<Qx>", "<Qy>", "<Qz>");
       for (auto const& spin: *(state_ptr->maybe_expectation_values()))
         std::cout
-          << fmt::format("{:^ 8.3f} {:^ 8.3f} {:^ 8.3f}\n", 0.5-spin[0u], 0.5-spin[1u], 0.5-spin[2u]);
+          << fmt::format(
+               "{:^ 8.3f} {:^ 8.3f} {:^ 8.3f}\n",
+               0.5 - static_cast<double>(spin[0u]), 0.5 - static_cast<double>(spin[1u]), 0.5 - static_cast<double>(spin[2u]));
       std::cout << std::flush;
 
       std::cout
