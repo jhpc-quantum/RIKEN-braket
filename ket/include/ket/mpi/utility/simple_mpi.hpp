@@ -300,7 +300,6 @@ namespace ket
             static_assert(
               std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
 
-            assert(communicator.size(environment) > 1);
             assert(
               ::ket::utility::integer_exp2<StateInteger>(
                 ::ket::utility::integer_log2<BitInteger>(boost::size(local_state)))
@@ -369,7 +368,6 @@ namespace ket
             static_assert(
               std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
 
-            assert(communicator.size(environment) > 1);
             assert(
               ::ket::utility::integer_exp2<StateInteger>(
                 ::ket::utility::integer_log2<BitInteger>(boost::size(local_state)))
