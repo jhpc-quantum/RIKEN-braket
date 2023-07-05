@@ -789,7 +789,7 @@ namespace ket
               {
                 // xx0xx0xx0xxx
                 auto nonlocal_qubit_value_base = StateInteger{0u};
-                for (auto index = std::size_t{0u}; index < num_qubits_of_operation + std::size_t{1u}; ++index)
+                for (auto index = std::size_t{0u}; index <= num_qubits_of_operation; ++index)
                   nonlocal_qubit_value_base
                     |= (nonlocal_qubit_value_wo_qubits bitand nonlocal_qubit_value_masks[index]) << index;
 
