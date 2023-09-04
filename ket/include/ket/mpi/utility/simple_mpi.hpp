@@ -581,7 +581,7 @@ namespace ket
             for (auto index = std::size_t{0u}; index <= num_qubits_of_operation; ++index)
               color_integer |= ((global_qubit_value >> index) bitand global_qubit_value_masks[index]);
 
-            return std::make_pair(yampi::color{static_cast<int>(color_integer)}, key);
+            return {yampi::color{static_cast<int>(color_integer)}, static_cast<int>(key)};
           }
 
           template <typename LocalState, typename StateInteger, typename BitInteger, typename Function>
