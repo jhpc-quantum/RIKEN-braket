@@ -27,7 +27,7 @@ namespace bra
       = ket::mpi::utility::policy::unit_mpi< ::bra::state::state_integer_type, ::bra::state::bit_integer_type, unsigned int >;
     unit_mpi_policy_type mpi_policy_;
 
-    using data_type = ket::mpi::state<complex_type, false, yampi::allocator<complex_type>>;
+    using data_type = std::vector<complex_type, yampi::allocator<complex_type>>;
     data_type data_;
 
    public:
@@ -66,6 +66,10 @@ namespace bra
     unit_mpi_state& operator=(unit_mpi_state&&) = delete;
 
    private:
+    data_type generate_initial_data(
+      unsigned int const num_local_qubits,
+      ::bra::state::state_integer_type const initial_integer,
+      yampi::communicator const& communicator, yampi::environment const& environment) const;
 
     unsigned int do_num_page_qubits() const override;
     unsigned int do_num_pages() const override;
