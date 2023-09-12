@@ -990,8 +990,12 @@ namespace ket
 
               datatypes[target_local_rank.mpi_rank()]
                 = yampi::datatype{
-                    datatype, transferring_chunk_displacements_first + first_index,
-                    transferring_chunk_displacements_first + last_index, static_cast<int>(chunk_size), environment};
+                    datatype,
+                    yampi::fixed_blocks{
+                      yampi::count{chunk_size},
+                      transferring_chunk_displacements_first + first_index,
+                      transferring_chunk_displacements_first + last_index},
+                    environment};
             }
 
             {
