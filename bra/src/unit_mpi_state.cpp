@@ -50,9 +50,7 @@ namespace bra
     : ::bra::state{total_num_qubits, seed, communicator, environment},
       parallel_policy_{num_threads_per_process},
       mpi_policy_{num_unit_qubits, num_processes_per_unit},
-      data_{
-        mpi_policy_, num_local_qubits, initial_integer,
-        permutation_, communicator, environment}
+      data_{generate_initial_data(num_local_qubits, initial_integer, communicator, environment)}
   { }
 
   unit_mpi_state::unit_mpi_state(
@@ -68,9 +66,7 @@ namespace bra
     : ::bra::state{initial_permutation, seed, communicator, environment},
       parallel_policy_{num_threads_per_process},
       mpi_policy_{num_unit_qubits, num_processes_per_unit},
-      data_{
-        mpi_policy_, num_local_qubits, initial_integer,
-        permutation_, communicator, environment}
+      data_{generate_initial_data(num_local_qubits, initial_integer, communicator, environment)}
   { }
 # else // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
   unit_mpi_state::unit_mpi_state(
@@ -87,9 +83,7 @@ namespace bra
     : ::bra::state{total_num_qubits, seed, num_elements_in_buffer, communicator, environment},
       parallel_policy_{num_threads_per_process},
       mpi_policy_{num_unit_qubits, num_processes_per_unit},
-      data_{
-        mpi_policy_, num_local_qubits, initial_integer,
-        permutation_, communicator, environment}
+      data_{generate_initial_data(num_local_qubits, initial_integer, communicator, environment)}
   { }
 
   unit_mpi_state::unit_mpi_state(
@@ -106,11 +100,30 @@ namespace bra
     : ::bra::state{initial_permutation, seed, num_elements_in_buffer, communicator, environment},
       parallel_policy_{num_threads_per_process},
       mpi_policy_{num_unit_qubits, num_processes_per_unit},
-      data_{
-        mpi_policy_, num_local_qubits, initial_integer,
-        permutation_, communicator, environment}
+      data_{generate_initial_data(num_local_qubits, initial_integer, communicator, environment)}
   { }
 # endif // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
+
+  unit_mpi_state::data_type unit_mpi_state::generate_initial_data(
+    unsigned int const num_local_qubits,
+    ::bra::state::state_integer_type const initial_integer,
+    yampi::communicator const& communicator, yampi::environment const& environment) const
+  {
+    auto result
+      = data_type(
+          ket::utility::integer_exp2<std::size_t>(num_local_qubits)
+            * ket::mpi::utility::policy::num_data_blocks(mpi_policy_, communicator, environment),
+          complex_type{0});
+
+    auto const rank_index
+      = ket::mpi::utility::qubit_value_to_rank_index(
+          mpi_policy_, data_, ket::mpi::permutate_bits(permutation_, initial_integer),
+          communicator, environment);
+    if (communicator.rank(environment) == rank_index.first)
+      result[rank_index.second] = complex_type{1};
+
+    return result;
+  }
 
   void unit_mpi_state::do_hadamard(qubit_type const qubit)
   {

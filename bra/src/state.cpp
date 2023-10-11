@@ -41,7 +41,7 @@ namespace bra
       random_number_generator_{seed},
       permutation_{static_cast<permutation_type::size_type>(total_num_qubits)},
       buffer_{},
-      real_pair_datatype_{yampi::predefined_datatype<real_type>(), 2, environment},
+      real_pair_datatype_{yampi::predefined_datatype<real_type>(), yampi::count{2}, environment},
       communicator_{communicator},
       environment_{environment},
       finish_times_and_processes_{}
@@ -61,7 +61,7 @@ namespace bra
       random_number_generator_{seed},
       permutation_{static_cast<permutation_type::size_type>(total_num_qubits)},
       buffer_(num_elements_in_buffer),
-      real_pair_datatype_{yampi::predefined_datatype<real_type>(), 2, environment},
+      real_pair_datatype_{yampi::predefined_datatype<real_type>(), yampi::count{2}, environment},
       communicator_{communicator},
       environment_{environment},
       finish_times_and_processes_{}
@@ -81,7 +81,7 @@ namespace bra
       permutation_{
         std::begin(initial_permutation), std::end(initial_permutation)},
       buffer_{},
-      real_pair_datatype_{yampi::predefined_datatype<real_type>(), 2, environment},
+      real_pair_datatype_{yampi::predefined_datatype<real_type>(), yampi::count{2}, environment},
       communicator_{communicator},
       environment_{environment},
       finish_times_and_processes_{}
@@ -102,7 +102,7 @@ namespace bra
       permutation_{
         std::begin(initial_permutation), std::end(initial_permutation)},
       buffer_(num_elements_in_buffer),
-      real_pair_datatype_{yampi::predefined_datatype<real_type>(), 2, environment},
+      real_pair_datatype_{yampi::predefined_datatype<real_type>(), yampi::count{2}, environment},
       communicator_{communicator},
       environment_{environment},
       finish_times_and_processes_{}

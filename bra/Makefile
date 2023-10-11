@@ -28,6 +28,7 @@ macros += KET_USE_OPENMP
 macros += KET_USE_DIAGONAL_LOOP
 macros += KET_USE_BARRIER
 #macros += BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
+macros += KET_USE_COLLECTIVE_COMMUNICATIONS
 libraries =
 
 CPPFLAGS = $(addprefix -I,$(idirs)) $(addprefix -D,$(macros))

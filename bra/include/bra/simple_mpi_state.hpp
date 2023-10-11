@@ -7,7 +7,6 @@
 #   include <ket/gate/projective_measurement.hpp>
 #   include <ket/utility/parallel/loop_n.hpp>
 #   include <ket/mpi/utility/simple_mpi.hpp>
-#   include <ket/mpi/state.hpp>
 
 #   include <yampi/allocator.hpp>
 #   include <yampi/rank.hpp>
@@ -25,7 +24,7 @@ namespace bra
     ket::utility::policy::parallel<unsigned int> parallel_policy_;
     ket::mpi::utility::policy::simple_mpi mpi_policy_;
 
-    using data_type = ket::mpi::state<complex_type, false, yampi::allocator<complex_type>>;
+    using data_type = std::vector<complex_type, yampi::allocator<complex_type>>;
     data_type data_;
 
    public:
@@ -60,6 +59,11 @@ namespace bra
     simple_mpi_state& operator=(simple_mpi_state&&) = delete;
 
    private:
+    data_type generate_initial_data(
+      unsigned int const num_local_qubits,
+      ::bra::state::state_integer_type const initial_integer,
+      yampi::communicator const& communicator, yampi::environment const& environment) const;
+
     unsigned int do_num_page_qubits() const override;
     unsigned int do_num_pages() const override;
 
