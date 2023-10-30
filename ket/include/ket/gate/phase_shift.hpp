@@ -24,6 +24,8 @@ namespace ket
   namespace gate
   {
     // phase_shift_coeff
+    // U1_i(s)
+    // U1_1(s) (a_0 |0> + a_1 |1>) = a_0 |0> + e^{is} a_1 |1>
     template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger>
     inline void phase_shift_coeff(
       ParallelPolicy const parallel_policy,
@@ -180,6 +182,8 @@ namespace ket
     } // namespace ranges
 
     // generalized phase_shift
+    // U2_i(s,s')
+    // U2_1(s,s') (a_0 |0> + a_1 |1>) = (a_0 - e^{is'} a_1)/sqrt(2) |0> + (e^{is} a_0 + e^{i(s+s')} a_1)/sqrt(2) |1>
     template <
       typename ParallelPolicy, typename RandomAccessIterator, typename Real,
       typename StateInteger, typename BitInteger>
@@ -260,6 +264,8 @@ namespace ket
       { return ::ket::gate::ranges::phase_shift2(::ket::utility::policy::make_sequential(), state, phase1, phase2, qubit); }
     } // namespace ranges
 
+    // U2+_i(s,s')
+    // U2+_1(s,s') (a_0 |0> + a_1 |1>) = (a_0 + e^{-is} a_1)/sqrt(2) |0> + (-e^{-is'} a_0 + e^{-i(s+s')} a_1)/sqrt(2) |1>
     template <
       typename ParallelPolicy, typename RandomAccessIterator, typename Real,
       typename StateInteger, typename BitInteger>
@@ -340,6 +346,8 @@ namespace ket
       { return ::ket::gate::ranges::adj_phase_shift2(::ket::utility::policy::make_sequential(), state, phase1, phase2, qubit); }
     } // namespace ranges
 
+    // U3_i(s,s',s'')
+    // U3_1(s,s',s'') (a_0 |0> + a_1 |1>) = (cos(s/2) a_0 - e^{is''} sin(s/2) a_1) |0> + (e^{is'} sin(s/2) a_0 + e^{i(s'+s'')} cos(s/2) a_1) |1>
     template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger>
     inline void phase_shift3(
       ParallelPolicy const parallel_policy,
@@ -423,6 +431,8 @@ namespace ket
       { return ::ket::gate::ranges::phase_shift3(::ket::utility::policy::make_sequential(), state, phase1, phase2, phase3, qubit); }
     } // namespace ranges
 
+    // U3+_i(s,s',s'')
+    // U3+_1(s,s',s'') (a_0 |0> + a_1 |1>) = (cos(s/2) a_0 + e^{-is'} sin(s/2) a_1) |0> + (-e^{-is''} sin(s/2) a_0 + e^{-i(s'+s'')} cos(s/2) a_1) |1>
     template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger>
     inline void adj_phase_shift3(
       ParallelPolicy const parallel_policy,
