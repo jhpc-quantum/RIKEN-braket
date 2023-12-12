@@ -31,6 +31,11 @@ namespace ket
   {
     namespace gate
     {
+      // Z_i
+      // Z_1 (a_0 |0> + a_1 |1>) = a_0 |0> - a_1 |1>
+      // ZZ_i = Z_i Z_j
+      // ZZ_{1,2} (a_{00} |00> + a_{01} |01> + a_{10} |10> + a{11} |11>)
+      //   = a_{00} |00> - a_{01} |01> - a_{10} |10> + a{11} |11>
       namespace pauli_z_detail
       {
 # ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -42,7 +47,7 @@ namespace ket
         }; // struct return_<StateInteger>
 
         template <typename StateInteger>
-        struct do_pauli_z
+        struct negate
         {
           template <typename Iterator>
           void operator()(Iterator const iter, StateInteger const) const
@@ -51,7 +56,7 @@ namespace ket
             using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
             *iter *= real_type{-1};
           }
-        }; // struct do_pauli_z<StateInteger, Complex>
+        }; // struct negate<StateInteger>
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 
         template <
@@ -67,7 +72,7 @@ namespace ket
         {
           auto const permutated_qubit = permutation[qubit];
           if (::ket::mpi::page::is_on_page(permutated_qubit, local_state))
-            return ::ket::mpi::gate::page::pauli_z(parallel_policy, local_state, permutated_qubit);
+            return ::ket::mpi::gate::page::pauli_z1(parallel_policy, local_state, permutated_qubit);
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           using complex_type = typename boost::range_value<RandomAccessRange>::type;
@@ -82,7 +87,52 @@ namespace ket
             mpi_policy, parallel_policy,
             local_state, permutation, communicator, environment, qubit,
             ::ket::mpi::gate::pauli_z_detail::return_<StateInteger>{},
-            ::ket::mpi::gate::pauli_z_detail::do_pauli_z<StateInteger>{});
+            ::ket::mpi::gate::pauli_z_detail::negate<StateInteger>{});
+# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+
+          return local_state;
+        }
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange,
+          typename StateInteger, typename BitInteger, typename Allocator>
+        inline RandomAccessRange& pauli_z(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::qubit<StateInteger, BitInteger> const qubit1,
+          ::ket::qubit<StateInteger, BitInteger> const qubit2,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          yampi::communicator const& communicator, yampi::environment const& environment)
+        {
+          auto const permutated_qubit1 = permutation[qubit1];
+          auto const permutated_qubit2 = permutation[qubit2];
+          if (::ket::mpi::page::is_on_page(permutated_qubit1, local_state))
+            if (::ket::mpi::page::is_on_page(permutated_qubit1, local_state))
+              return ::ket::mpi::gate::page::pauli_z2_2p(parallel_policy, local_state, permutated_qubit1, permutated_qubit2);
+            else
+              return ::ket::mpi::gate::page::pauli_z2_p(parallel_policy, local_state, permutated_qubit1, permutated_qubit2);
+          else
+            return ::ket::mpi::gate::page::pauli_z2_p(parallel_policy, local_state, permutated_qubit2, permutated_qubit1);
+
+# ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
+          using complex_type = typename boost::range_value<RandomAccessRange>::type;
+          using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
+          ::ket::mpi::utility::diagonal_loop(
+            mpi_policy, parallel_policy,
+            local_state, permutation, communicator, environment, qubit1, qubit2,
+            [](auto const, StateInteger const) { },
+            [](auto const iter, StateInteger const) { *iter *= real_type{-1}; },
+            [](auto const iter, StateInteger const) { *iter *= real_type{-1}; },
+            [](auto const, StateInteger const) { });
+# else // BOOST_NO_CXX14_GENERIC_LAMBDAS
+          ::ket::mpi::utility::diagonal_loop(
+            mpi_policy, parallel_policy,
+            local_state, permutation, communicator, environment, qubit1, qubit2,
+            ::ket::mpi::gate::pauli_z_detail::return_<StateInteger>{},
+            ::ket::mpi::gate::pauli_z_detail::negate<StateInteger>{},
+            ::ket::mpi::gate::pauli_z_detail::negate<StateInteger>{},
+            ::ket::mpi::gate::pauli_z_detail::return_<StateInteger>{});
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 
           return local_state;
@@ -91,8 +141,7 @@ namespace ket
 
       template <
         typename MpiPolicy, typename ParallelPolicy,
-        typename RandomAccessRange,
-        typename StateInteger, typename BitInteger,
+        typename RandomAccessRange, typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator>
       inline RandomAccessRange& pauli_z(
         MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
@@ -100,8 +149,7 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const qubit,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>&,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment)
+        yampi::communicator const& communicator, yampi::environment const& environment)
       {
         ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Z "}, qubit), environment};
 
@@ -111,8 +159,7 @@ namespace ket
 
       template <
         typename MpiPolicy, typename ParallelPolicy,
-        typename RandomAccessRange,
-        typename StateInteger, typename BitInteger,
+        typename RandomAccessRange, typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>
       inline RandomAccessRange& pauli_z(
         MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
@@ -121,8 +168,7 @@ namespace ket
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>&,
         yampi::datatype_base<DerivedDatatype> const&,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment)
+        yampi::communicator const& communicator, yampi::environment const& environment)
       {
         ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Z "}, qubit), environment};
 
@@ -131,103 +177,134 @@ namespace ket
       }
 
       template <
-        typename RandomAccessRange,
-        typename StateInteger, typename BitInteger,
+        typename MpiPolicy, typename ParallelPolicy,
+        typename RandomAccessRange, typename StateInteger, typename BitInteger,
+        typename Allocator, typename BufferAllocator>
+      inline RandomAccessRange& pauli_z(
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+        RandomAccessRange& local_state,
+        ::ket::qubit<StateInteger, BitInteger> const qubit1,
+        ::ket::qubit<StateInteger, BitInteger> const qubit2,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>&,
+        yampi::communicator const& communicator, yampi::environment const& environment)
+      {
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"ZZ "}, qubit1, ' ', qubit2), environment};
+
+        return ::ket::mpi::gate::pauli_z_detail::pauli_z(
+          mpi_policy, parallel_policy, local_state, qubit1, qubit2, permutation, communicator, environment);
+      }
+
+      template <
+        typename MpiPolicy, typename ParallelPolicy,
+        typename RandomAccessRange, typename StateInteger, typename BitInteger,
+        typename Allocator, typename BufferAllocator, typename DerivedDatatype>
+      inline RandomAccessRange& pauli_z(
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+        RandomAccessRange& local_state,
+        ::ket::qubit<StateInteger, BitInteger> const qubit1,
+        ::ket::qubit<StateInteger, BitInteger> const qubit2,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>&,
+        yampi::datatype_base<DerivedDatatype> const&,
+        yampi::communicator const& communicator, yampi::environment const& environment)
+      {
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"ZZ "}, qubit1, ' ', qubit2), environment};
+
+        return ::ket::mpi::gate::pauli_z_detail::pauli_z(
+          mpi_policy, parallel_policy, local_state, qubit1, qubit2, permutation, communicator, environment);
+      }
+
+      template <
+        typename RandomAccessRange, typename StateInteger, typename BitInteger, typename... Qubits,
         typename Allocator, typename BufferAllocator>
       inline RandomAccessRange& pauli_z(
         RandomAccessRange& local_state,
-        ::ket::qubit<StateInteger, BitInteger> const qubit,
+        ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment)
+        yampi::communicator const& communicator, yampi::environment const& environment)
       {
         return ::ket::mpi::gate::pauli_z(
           ::ket::mpi::utility::policy::make_simple_mpi(),
           ::ket::utility::policy::make_sequential(),
-          local_state, qubit, permutation, buffer, communicator, environment);
+          local_state, qubit, qubits..., permutation, buffer, communicator, environment);
       }
 
       template <
-        typename RandomAccessRange,
-        typename StateInteger, typename BitInteger,
+        typename RandomAccessRange, typename StateInteger, typename BitInteger, typename... Qubits,
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>
       inline RandomAccessRange& pauli_z(
         RandomAccessRange& local_state,
-        ::ket::qubit<StateInteger, BitInteger> const qubit,
+        ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
         yampi::datatype_base<DerivedDatatype> const& datatype,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment)
+        yampi::communicator const& communicator, yampi::environment const& environment)
       {
         return ::ket::mpi::gate::pauli_z(
           ::ket::mpi::utility::policy::make_simple_mpi(),
           ::ket::utility::policy::make_sequential(),
-          local_state, qubit, permutation, buffer, datatype, communicator, environment);
+          local_state, qubit, qubits..., permutation, buffer, datatype, communicator, environment);
       }
 
       template <
-        typename ParallelPolicy, typename RandomAccessRange,
-        typename StateInteger, typename BitInteger,
+        typename ParallelPolicy,
+        typename RandomAccessRange, typename StateInteger, typename BitInteger, typename... Qubits,
         typename Allocator, typename BufferAllocator>
       inline RandomAccessRange& pauli_z(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
-        ::ket::qubit<StateInteger, BitInteger> const qubit,
+        ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment)
+        yampi::communicator const& communicator, yampi::environment const& environment)
       {
         return ::ket::mpi::gate::pauli_z(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
-          local_state, qubit, permutation, buffer, communicator, environment);
+          local_state, qubit, qubits..., permutation, buffer, communicator, environment);
       }
 
       template <
-        typename ParallelPolicy, typename RandomAccessRange,
-        typename StateInteger, typename BitInteger,
+        typename ParallelPolicy,
+        typename RandomAccessRange, typename StateInteger, typename BitInteger, typename... Qubits,
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>
       inline RandomAccessRange& pauli_z(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
-        ::ket::qubit<StateInteger, BitInteger> const qubit,
+        ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
         yampi::datatype_base<DerivedDatatype> const& datatype,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment)
+        yampi::communicator const& communicator, yampi::environment const& environment)
       {
         return ::ket::mpi::gate::pauli_z(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
-          local_state, qubit, permutation, buffer, datatype, communicator, environment);
+          local_state, qubit, qubits..., permutation, buffer, datatype, communicator, environment);
       }
 
       namespace pauli_z_detail
       {
         template <
           typename MpiPolicy, typename ParallelPolicy,
-          typename RandomAccessRange,
-          typename StateInteger, typename BitInteger, typename Allocator>
+          typename RandomAccessRange, typename StateInteger, typename BitInteger, typename... Qubits,
+          typename Allocator>
         inline RandomAccessRange& adj_pauli_z(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
-          ::ket::qubit<StateInteger, BitInteger> const qubit,
+          ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
           yampi::communicator const& communicator, yampi::environment const& environment)
         {
-          using std::conj;
           return ::ket::mpi::gate::pauli_z_detail::pauli_z(
             mpi_policy, parallel_policy,
-            local_state, qubit, permutation, communicator, environment);
+            local_state, qubit, qubits..., permutation, communicator, environment);
         }
       } // namespace pauli_z_detail
 
       template <
         typename MpiPolicy, typename ParallelPolicy,
-        typename RandomAccessRange,
-        typename StateInteger, typename BitInteger,
+        typename RandomAccessRange, typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator>
       inline RandomAccessRange& adj_pauli_z(
         MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
@@ -235,8 +312,7 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const qubit,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>&,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment)
+        yampi::communicator const& communicator, yampi::environment const& environment)
       {
         ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(Z) "}, qubit), environment};
 
@@ -247,8 +323,7 @@ namespace ket
 
       template <
         typename MpiPolicy, typename ParallelPolicy,
-        typename RandomAccessRange,
-        typename StateInteger, typename BitInteger,
+        typename RandomAccessRange, typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>
       inline RandomAccessRange& adj_pauli_z(
         MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
@@ -257,8 +332,7 @@ namespace ket
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>&,
         yampi::datatype_base<DerivedDatatype> const&,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment)
+        yampi::communicator const& communicator, yampi::environment const& environment)
       {
         ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(Z) "}, qubit), environment};
 
@@ -268,77 +342,112 @@ namespace ket
       }
 
       template <
-        typename RandomAccessRange,
-        typename StateInteger, typename BitInteger,
+        typename MpiPolicy, typename ParallelPolicy,
+        typename RandomAccessRange, typename StateInteger, typename BitInteger,
+        typename Allocator, typename BufferAllocator>
+      inline RandomAccessRange& adj_pauli_z(
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+        RandomAccessRange& local_state,
+        ::ket::qubit<StateInteger, BitInteger> const qubit1,
+        ::ket::qubit<StateInteger, BitInteger> const qubit2,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>&,
+        yampi::communicator const& communicator, yampi::environment const& environment)
+      {
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(ZZ) "}, qubit1, ' ', qubit2), environment};
+
+        return ::ket::mpi::gate::pauli_z_detail::adj_pauli_z(
+          mpi_policy, parallel_policy,
+          local_state, qubit1, qubit2, permutation, communicator, environment);
+      }
+
+      template <
+        typename MpiPolicy, typename ParallelPolicy,
+        typename RandomAccessRange, typename StateInteger, typename BitInteger,
+        typename Allocator, typename BufferAllocator, typename DerivedDatatype>
+      inline RandomAccessRange& adj_pauli_z(
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+        RandomAccessRange& local_state,
+        ::ket::qubit<StateInteger, BitInteger> const qubit1,
+        ::ket::qubit<StateInteger, BitInteger> const qubit2,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>&,
+        yampi::datatype_base<DerivedDatatype> const&,
+        yampi::communicator const& communicator, yampi::environment const& environment)
+      {
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(ZZ) "}, qubit1, ' ', qubit2), environment};
+
+        return ::ket::mpi::gate::pauli_z_detail::adj_pauli_z(
+          mpi_policy, parallel_policy,
+          local_state, qubit1, qubit2, permutation, communicator, environment);
+      }
+
+      template <
+        typename RandomAccessRange, typename StateInteger, typename BitInteger, typename... Qubits,
         typename Allocator, typename BufferAllocator>
       inline RandomAccessRange& adj_pauli_z(
         RandomAccessRange& local_state,
-        ::ket::qubit<StateInteger, BitInteger> const qubit,
+        ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment)
+        yampi::communicator const& communicator, yampi::environment const& environment)
       {
         return ::ket::mpi::gate::adj_pauli_z(
           ::ket::mpi::utility::policy::make_simple_mpi(),
           ::ket::utility::policy::make_sequential(),
-          local_state, qubit, permutation, buffer, communicator, environment);
+          local_state, qubit, qubits..., permutation, buffer, communicator, environment);
       }
 
       template <
-        typename RandomAccessRange,
-        typename StateInteger, typename BitInteger,
+        typename RandomAccessRange, typename StateInteger, typename BitInteger, typename... Qubits,
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>
       inline RandomAccessRange& adj_pauli_z(
         RandomAccessRange& local_state,
-        ::ket::qubit<StateInteger, BitInteger> const qubit,
+        ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
         yampi::datatype_base<DerivedDatatype> const& datatype,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment)
+        yampi::communicator const& communicator, yampi::environment const& environment)
       {
         return ::ket::mpi::gate::adj_pauli_z(
           ::ket::mpi::utility::policy::make_simple_mpi(),
           ::ket::utility::policy::make_sequential(),
-          local_state, qubit, permutation, buffer, datatype, communicator, environment);
+          local_state, qubit, qubits..., permutation, buffer, datatype, communicator, environment);
       }
 
       template <
-        typename ParallelPolicy, typename RandomAccessRange,
-        typename StateInteger, typename BitInteger,
+        typename ParallelPolicy,
+        typename RandomAccessRange, typename StateInteger, typename BitInteger, typename... Qubits,
         typename Allocator, typename BufferAllocator>
       inline RandomAccessRange& adj_pauli_z(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
-        ::ket::qubit<StateInteger, BitInteger> const qubit,
+        ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment)
+        yampi::communicator const& communicator, yampi::environment const& environment)
       {
         return ::ket::mpi::gate::adj_pauli_z(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
-          local_state, qubit, permutation, buffer, communicator, environment);
+          local_state, qubit, qubits..., permutation, buffer, communicator, environment);
       }
 
       template <
-        typename ParallelPolicy, typename RandomAccessRange,
-        typename StateInteger, typename BitInteger,
+        typename ParallelPolicy,
+        typename RandomAccessRange, typename StateInteger, typename BitInteger, typename... Qubits,
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>
       inline RandomAccessRange& adj_pauli_z(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
-        ::ket::qubit<StateInteger, BitInteger> const qubit,
+        ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
         yampi::datatype_base<DerivedDatatype> const& datatype,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment)
+        yampi::communicator const& communicator, yampi::environment const& environment)
       {
         return ::ket::mpi::gate::adj_pauli_z(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
-          local_state, qubit, permutation, buffer, datatype, communicator, environment);
+          local_state, qubit, qubits..., permutation, buffer, datatype, communicator, environment);
       }
     } // namespace gate
   } // namespace mpi
