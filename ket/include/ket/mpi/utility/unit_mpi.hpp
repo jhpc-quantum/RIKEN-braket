@@ -1638,6 +1638,45 @@ namespace ket
               control_qubits...);
           }
 
+          template <
+            typename ParallelPolicy, typename LocalState, typename Allocator,
+            typename Function00, typename Function01, typename Function10, typename Function11,
+            typename... ControlQubits>
+          static void call(
+            ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
+            ParallelPolicy const parallel_policy, LocalState& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const& permutation,
+            yampi::communicator const& communicator,
+            yampi::environment const& environment,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit1,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit2,
+            Function00&& function00, Function01&& function01,
+            Function10&& function10, Function11&& function11,
+            ControlQubits... control_qubits)
+          {
+            using permutated_control_qubit_type = ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >;
+            auto unit_permutated_control_qubits = std::array<permutated_control_qubit_type, 0u>{};
+            auto local_permutated_control_qubits = std::array<permutated_control_qubit_type, 0u>{};
+
+            auto const present_rank = communicator.rank(environment);
+            auto const present_rank_in_unit = ::ket::mpi::utility::policy::rank_in_unit(mpi_policy, present_rank);
+            using permutated_qubit_type = ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >;
+            auto const least_unit_permutated_qubit
+              = permutated_qubit_type{::ket::mpi::utility::policy::num_local_qubits(mpi_policy, local_state, present_rank_in_unit)};
+            auto const least_global_permutated_qubit = least_unit_permutated_qubit + mpi_policy.num_unit_qubits();
+
+            call_impl(
+              mpi_policy, parallel_policy, local_state, permutation,
+              present_rank, present_rank_in_unit,
+              least_unit_permutated_qubit, least_global_permutated_qubit, target_qubit1, target_qubit2,
+              std::forward<Function00>(function00),
+              std::forward<Function01>(function01),
+              std::forward<Function10>(function10),
+              std::forward<Function11>(function11),
+              unit_permutated_control_qubits, local_permutated_control_qubits,
+              control_qubits...);
+          }
+
          private:
           template <
             typename ParallelPolicy, typename LocalState, typename Allocator,
@@ -1878,39 +1917,508 @@ namespace ket
             }
           }
 
+          template <
+            typename ParallelPolicy, typename LocalState, typename Allocator,
+            typename Function00, typename Function01, typename Function10, typename Function11,
+            std::size_t num_unit_control_qubits, std::size_t num_local_control_qubits,
+            typename... ControlQubits>
+          static void call_impl(
+            ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
+            ParallelPolicy const parallel_policy, LocalState& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const& permutation,
+            yampi::rank const present_rank, yampi::rank const present_rank_in_unit,
+            ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const least_unit_permutated_qubit,
+            ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const least_global_permutated_qubit,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit1,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit2,
+            Function00&& function00, Function01&& function01,
+            Function10&& function10, Function11&& function11,
+            std::array<
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >,
+              num_unit_control_qubits > const& unit_permutated_control_qubits,
+            std::array<
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >,
+              num_local_control_qubits > const& local_permutated_control_qubits,
+            ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit,
+            ControlQubits... control_qubits)
+          {
+            auto const permutated_control_qubit = permutation[control_qubit];
+
+            if (permutated_control_qubit < least_unit_permutated_qubit)
+            {
+              using permutated_control_qubit_type = ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >;
+              auto new_local_permutated_control_qubits
+                = std::array<permutated_control_qubit_type, num_local_control_qubits + 1u>{};
+              std::copy(
+                std::begin(local_permutated_control_qubits),
+                std::end(local_permutated_control_qubits),
+                std::begin(new_local_permutated_control_qubits));
+              new_local_permutated_control_qubits.back() = permutated_control_qubit;
+
+              call_impl(
+                mpi_policy, parallel_policy, local_state, permutation, present_rank, present_rank_in_unit,
+                least_unit_permutated_qubit, least_global_permutated_qubit, target_qubit1, target_qubit2,
+                std::forward<Function00>(function00), std::forward<Function01>(function01),
+                std::forward<Function10>(function10), std::forward<Function11>(function11),
+                unit_permutated_control_qubits, new_local_permutated_control_qubits,
+                control_qubits...);
+            }
+            else if (permutated_control_qubit < least_global_permutated_qubit)
+            {
+              using permutated_control_qubit_type = ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >;
+              auto new_unit_permutated_control_qubits
+                = std::array<permutated_control_qubit_type, num_unit_control_qubits + 1u>{};
+              std::copy(
+                std::begin(unit_permutated_control_qubits),
+                std::end(unit_permutated_control_qubits),
+                std::begin(new_unit_permutated_control_qubits));
+              new_unit_permutated_control_qubits.back() = permutated_control_qubit;
+
+              call_impl(
+                mpi_policy, parallel_policy, local_state, permutation, present_rank, present_rank_in_unit,
+                least_unit_permutated_qubit, least_global_permutated_qubit, target_qubit1, target_qubit2,
+                std::forward<Function00>(function00), std::forward<Function01>(function01),
+                std::forward<Function10>(function10), std::forward<Function11>(function11),
+                new_unit_permutated_control_qubits, local_permutated_control_qubits,
+                control_qubits...);
+            }
+            else
+            {
+              static constexpr auto zero_state_integer = StateInteger{0u};
+              static constexpr auto one_state_integer = StateInteger{1u};
+
+              auto const mask
+                = one_state_integer << (permutated_control_qubit - least_global_permutated_qubit);
+
+              if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand mask) != zero_state_integer)
+                call_impl(
+                  mpi_policy, parallel_policy, local_state, permutation, present_rank, present_rank_in_unit,
+                  least_unit_permutated_qubit, least_global_permutated_qubit, target_qubit1, target_qubit2,
+                  std::forward<Function00>(function00), std::forward<Function01>(function01),
+                  std::forward<Function10>(function10), std::forward<Function11>(function11),
+                  unit_permutated_control_qubits, local_permutated_control_qubits,
+                  control_qubits...);
+            }
+          }
+
+          template <
+            typename ParallelPolicy, typename LocalState, typename Allocator,
+            typename Function00, typename Function01, typename Function10, typename Function11,
+            std::size_t num_unit_control_qubits, std::size_t num_local_control_qubits>
+          static void call_impl(
+            ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
+            ParallelPolicy const parallel_policy, LocalState& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const& permutation,
+            yampi::rank const present_rank, yampi::rank const present_rank_in_unit,
+            ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const least_unit_permutated_qubit,
+            ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const least_global_permutated_qubit,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit1,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit2,
+            Function00&& function00, Function01&& function01,
+            Function10&& function10, Function11&& function11,
+            std::array<
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >,
+              num_unit_control_qubits > const& unit_permutated_control_qubits,
+            std::array<
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >,
+              num_local_control_qubits > const& local_permutated_control_qubits)
+          {
+            auto const permutated_target_qubit1 = permutation[target_qubit1];
+            auto const permutated_target_qubit2 = permutation[target_qubit2];
+
+            static constexpr auto zero_state_integer = StateInteger{0u};
+            static constexpr auto one_state_integer = StateInteger{1u};
+
+            auto const num_data_blocks
+              = ::ket::mpi::utility::policy::num_data_blocks(mpi_policy, present_rank_in_unit);
+            auto const data_block_size
+              = ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, present_rank_in_unit);
+
+            auto const last_local_qubit_value = one_state_integer << least_unit_permutated_qubit;
+
+            for (auto data_block_index = StateInteger{0u}; data_block_index < num_data_blocks; ++data_block_index)
+            {
+              auto const unit_qubit_value
+                = ::ket::mpi::utility::policy::unit_qubit_value(mpi_policy, data_block_index, present_rank_in_unit);
+
+              using permutated_control_qubit_type = ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >;
+              if (std::any_of(
+                    std::begin(unit_permutated_control_qubits), std::end(unit_permutated_control_qubits),
+                    [unit_qubit_value, least_unit_permutated_qubit](permutated_control_qubit_type const& permutated_control_qubit)
+                    {
+                      return
+                        (unit_qubit_value bitand (one_state_integer << (permutated_control_qubit - least_unit_permutated_qubit)))
+                          == zero_state_integer;
+                    }))
+                continue;
+
+              if (permutated_target_qubit1 < least_unit_permutated_qubit)
+              {
+                auto const target_mask1 = one_state_integer << permutated_target_qubit1;
+
+                if (permutated_target_qubit2 < least_unit_permutated_qubit)
+                {
+                  auto const target_mask2 = one_state_integer << permutated_target_qubit2;
+
+#   ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
+                  ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                    parallel_policy, local_state, data_block_index, data_block_size, last_local_qubit_value, local_permutated_control_qubits,
+                    [&function00, &function01, &function10, &function11, target_mask1, target_mask2](
+                      auto const iter, StateInteger const state_integer)
+                    {
+                      if ((state_integer bitand target_mask1) == zero_state_integer)
+                      {
+                        if ((state_integer bitand target_mask2) == zero_state_integer)
+                          function00(iter, state_integer);
+                        else
+                          function10(iter, state_integer);
+                      }
+                      else
+                      {
+                        if ((state_integer bitand target_mask2) == zero_state_integer)
+                          function01(iter, state_integer);
+                        else
+                          function11(iter, state_integer);
+                      }
+                    });
+#   else // BOOST_NO_CXX14_GENERIC_LAMBDAS
+                  ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                    parallel_policy, local_state, data_block_index, data_block_size, last_local_qubit_value, local_permutated_control_qubits,
+                    make_call_function_if_local(
+                      std::forward<Function00>(function00), std::forward<Function01>(function01),
+                      std::forward<Function10>(function10), std::forward<Function11>(function11),
+                      target_mask1, target_mask2));
+#   endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+                }
+                else if (permutated_target_qubit2 < least_global_permutated_qubit)
+                {
+                  auto const target_mask2 = one_state_integer << (permutated_target_qubit2 - least_unit_permutated_qubit);
+
+#   ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
+                  if ((unit_qubit_value bitand target_mask2) == zero_state_integer)
+                    ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                      parallel_policy, local_state, data_block_index, data_block_size, last_local_qubit_value, local_permutated_control_qubits,
+                      [&function00, &function01, target_mask1](auto const iter, StateInteger const state_integer)
+                      {
+                        if ((state_integer bitand target_mask1) == zero_state_integer)
+                          function00(iter, state_integer);
+                        else
+                          function01(iter, state_integer);
+                      });
+                  else // if ((unit_qubit_value bitand target_mask2) == zero_state_integer)
+                    ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                      parallel_policy, local_state, data_block_index, data_block_size, last_local_qubit_value, local_permutated_control_qubits,
+                      [&function10, &function11, target_mask1](auto const iter, StateInteger const state_integer)
+                      {
+                        if ((state_integer bitand target_mask1) == zero_state_integer)
+                          function10(iter, state_integer);
+                        else
+                          function11(iter, state_integer);
+                      });
+#   else // BOOST_NO_CXX14_GENERIC_LAMBDAS
+                  if ((unit_qubit_value bitand target_mask2) == zero_state_integer)
+                    ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                      parallel_policy, local_state, data_block_index, data_block_size, last_local_qubit_value, local_permutated_control_qubits,
+                      make_call_function_if_local(std::forward<Function00>(function00), std::forward<Function01>(function01), target_mask1));
+                  else // if ((unit_qubit_value bitand target_mask2) == zero_state_integer)
+                    ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                      parallel_policy, local_state, data_block_index, data_block_size, last_local_qubit_value, local_permutated_control_qubits,
+                      make_call_function_if_local(std::forward<Function10>(function10), std::forward<Function11>(function11), target_mask1));
+#   endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+                }
+                else // if (permutated_target_qubit2 < least_global_permutated_qubit)
+                {
+                  auto const target_mask2 = one_state_integer << (permutated_target_qubit2 - least_global_permutated_qubit);
+
+#   ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
+                  if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand target_mask2) == zero_state_integer)
+                    ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                      parallel_policy, local_state, data_block_index, data_block_size, last_local_qubit_value, local_permutated_control_qubits,
+                      [&function00, &function01, target_mask1](auto const iter, StateInteger const state_integer)
+                      {
+                        if ((state_integer bitand target_mask1) == zero_state_integer)
+                          function00(iter, state_integer);
+                        else
+                          function01(iter, state_integer);
+                      });
+                  else // if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand target_mask2) == zero_state_integer)
+                    ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                      parallel_policy, local_state, data_block_index, data_block_size, last_local_qubit_value, local_permutated_control_qubits,
+                      [&function10, &function11, target_mask1](auto const iter, StateInteger const state_integer)
+                      {
+                        if ((state_integer bitand target_mask1) == zero_state_integer)
+                          function10(iter, state_integer);
+                        else
+                          function11(iter, state_integer);
+                      });
+#   else // BOOST_NO_CXX14_GENERIC_LAMBDAS
+                  if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand target_mask2) == zero_state_integer)
+                    ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                      parallel_policy, local_state, data_block_index, data_block_size, last_local_qubit_value, local_permutated_control_qubits,
+                      make_call_function_if_local(std::forward<Function00>(function00), std::forward<Function01>(function01), target_mask1));
+                  else // if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand target_mask2) == zero_state_integer)
+                    ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                      parallel_policy, local_state, data_block_index, data_block_size, last_local_qubit_value, local_permutated_control_qubits,
+                      make_call_function_if_local(std::forward<Function10>(function10), std::forward<Function11>(function11), target_mask1));
+#   endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+                }
+              }
+              else if (permutated_target_qubit1 < least_global_permutated_qubit)
+              {
+                auto const target_mask1 = one_state_integer << (permutated_target_qubit1 - least_unit_permutated_qubit);
+
+                if (permutated_target_qubit2 < least_unit_permutated_qubit)
+                {
+                  auto const target_mask2 = one_state_integer << permutated_target_qubit2;
+
+#   ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
+                  if ((unit_qubit_value bitand target_mask1) == zero_state_integer)
+                    ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                      parallel_policy, local_state, data_block_index, data_block_size, last_local_qubit_value, local_permutated_control_qubits,
+                      [&function00, &function10, target_mask2](auto const iter, StateInteger const state_integer)
+                      {
+                        if ((state_integer bitand target_mask2) == zero_state_integer)
+                          function00(iter, state_integer);
+                        else
+                          function10(iter, state_integer);
+                      });
+                  else // if ((unit_qubit_value bitand target_mask1) == zero_state_integer)
+                    ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                      parallel_policy, local_state, data_block_index, data_block_size, last_local_qubit_value, local_permutated_control_qubits,
+                      [&function01, &function11, target_mask2](auto const iter, StateInteger const state_integer)
+                      {
+                        if ((state_integer bitand target_mask2) == zero_state_integer)
+                          function01(iter, state_integer);
+                        else
+                          function11(iter, state_integer);
+                      });
+#   else // BOOST_NO_CXX14_GENERIC_LAMBDAS
+                  if ((unit_qubit_value bitand target_mask1) == zero_state_integer)
+                    ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                      parallel_policy, local_state, data_block_index, data_block_size, last_local_qubit_value, local_permutated_control_qubits,
+                      make_call_function_if_local(std::forward<Function00>(function00), std::forward<Function10>(function10), target_mask2));
+                  else // if ((unit_qubit_value bitand target_mask1) == zero_state_integer)
+                    ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                      parallel_policy, local_state, data_block_index, data_block_size, last_local_qubit_value, local_permutated_control_qubits,
+                      make_call_function_if_local(std::forward<Function01>(function01), std::forward<Function11>(function11), target_mask2));
+#   endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+                }
+                else if (permutated_target_qubit2 < least_global_permutated_qubit)
+                {
+                  auto const target_mask2 = one_state_integer << (permutated_target_qubit2 - least_unit_permutated_qubit);
+
+                  if ((unit_qubit_value bitand target_mask1) == zero_state_integer)
+                  {
+                    if ((unit_qubit_value bitand target_mask2) == zero_state_integer)
+                      ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                        parallel_policy, local_state, data_block_index, data_block_size, last_local_qubit_value, local_permutated_control_qubits,
+                        std::forward<Function00>(function00));
+                    else // if ((unit_qubit_value bitand target_mask2) == zero_state_integer)
+                      ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                        parallel_policy, local_state, data_block_index, data_block_size, last_local_qubit_value, local_permutated_control_qubits,
+                        std::forward<Function10>(function10));
+                  }
+                  else // if ((unit_qubit_value bitand target_mask1) == zero_state_integer)
+                  {
+                    if ((unit_qubit_value bitand target_mask2) == zero_state_integer)
+                      ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                        parallel_policy, local_state, data_block_index, data_block_size, last_local_qubit_value, local_permutated_control_qubits,
+                        std::forward<Function01>(function01));
+                    else // if ((unit_qubit_value bitand target_mask2) == zero_state_integer)
+                      ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                        parallel_policy, local_state, data_block_index, data_block_size, last_local_qubit_value, local_permutated_control_qubits,
+                        std::forward<Function11>(function11));
+                  }
+                }
+                else // if (permutated_target_qubit2 < least_global_permutated_qubit)
+                {
+                  auto const target_mask2 = one_state_integer << (permutated_target_qubit2 - least_global_permutated_qubit);
+
+                  if ((unit_qubit_value bitand target_mask1) == zero_state_integer)
+                  {
+                    if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand target_mask2) == zero_state_integer)
+                      ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                        parallel_policy, local_state, data_block_index, data_block_size, last_local_qubit_value, local_permutated_control_qubits,
+                        std::forward<Function00>(function00));
+                    else // if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand target_mask2) == zero_state_integer)
+                      ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                        parallel_policy, local_state, data_block_index, data_block_size, last_local_qubit_value, local_permutated_control_qubits,
+                        std::forward<Function10>(function10));
+                  }
+                  else // if ((unit_qubit_value bitand target_mask1) == zero_state_integer)
+                  {
+                    if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand target_mask2) == zero_state_integer)
+                      ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                        parallel_policy, local_state, data_block_index, data_block_size, last_local_qubit_value, local_permutated_control_qubits,
+                        std::forward<Function01>(function01));
+                    else // if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand target_mask2) == zero_state_integer)
+                      ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                        parallel_policy, local_state, data_block_index, data_block_size, last_local_qubit_value, local_permutated_control_qubits,
+                        std::forward<Function11>(function11));
+                  }
+                }
+              }
+              else // if (permutated_target_qubit1 < least_global_permutated_qubit)
+              {
+                auto const target_mask1 = one_state_integer << (permutated_target_qubit1 - least_global_permutated_qubit);
+
+                if (permutated_target_qubit2 < least_unit_permutated_qubit)
+                {
+                  auto const target_mask2 = one_state_integer << permutated_target_qubit2;
+
+#   ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
+                  if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand target_mask1) == zero_state_integer)
+                    ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                      parallel_policy, local_state, data_block_index, data_block_size, last_local_qubit_value, local_permutated_control_qubits,
+                      [&function00, &function10, target_mask2](auto const iter, StateInteger const state_integer)
+                      {
+                        if ((state_integer bitand target_mask2) == zero_state_integer)
+                          function00(iter, state_integer);
+                        else
+                          function10(iter, state_integer);
+                      });
+                  else // if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand target_mask1) == zero_state_integer)
+                    ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                      parallel_policy, local_state, data_block_index, data_block_size, last_local_qubit_value, local_permutated_control_qubits,
+                      [&function01, &function11, target_mask2](auto const iter, StateInteger const state_integer)
+                      {
+                        if ((state_integer bitand target_mask2) == zero_state_integer)
+                          function01(iter, state_integer);
+                        else
+                          function11(iter, state_integer);
+                      });
+#   else // BOOST_NO_CXX14_GENERIC_LAMBDAS
+                  if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand target_mask1) == zero_state_integer)
+                    ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                      parallel_policy, local_state, data_block_index, data_block_size, last_local_qubit_value, local_permutated_control_qubits,
+                      make_call_function_if_local(std::forward<Function00>(function00), std::forward<Function10>(function10), target_mask2));
+                  else // if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand target_mask1) == zero_state_integer)
+                    ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                      parallel_policy, local_state, data_block_index, data_block_size, last_local_qubit_value, local_permutated_control_qubits,
+                      make_call_function_if_local(std::forward<Function01>(function01), std::forward<Function11>(function11), target_mask2));
+#   endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+                }
+                else if (permutated_target_qubit2 < least_global_permutated_qubit)
+                {
+                  auto const target_mask2 = one_state_integer << (permutated_target_qubit2 - least_unit_permutated_qubit);
+
+                  if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand target_mask1) == zero_state_integer)
+                  {
+                    if ((unit_qubit_value bitand target_mask2) == zero_state_integer)
+                      ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                        parallel_policy, local_state, data_block_index, data_block_size, last_local_qubit_value, local_permutated_control_qubits,
+                        std::forward<Function00>(function00));
+                    else // if ((unit_qubit_value bitand target_mask2) == zero_state_integer)
+                      ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                        parallel_policy, local_state, data_block_index, data_block_size, last_local_qubit_value, local_permutated_control_qubits,
+                        std::forward<Function10>(function10));
+                  }
+                  else // if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand target_mask1) == zero_state_integer)
+                  {
+                    if ((unit_qubit_value bitand target_mask2) == zero_state_integer)
+                      ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                        parallel_policy, local_state, data_block_index, data_block_size, last_local_qubit_value, local_permutated_control_qubits,
+                        std::forward<Function01>(function01));
+                    else // if ((unit_qubit_value bitand target_mask2) == zero_state_integer)
+                      ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                        parallel_policy, local_state, data_block_index, data_block_size, last_local_qubit_value, local_permutated_control_qubits,
+                        std::forward<Function11>(function11));
+                  }
+                }
+                else // if (permutated_target_qubit2 < least_global_permutated_qubit)
+                {
+                  auto const target_mask2 = one_state_integer << (permutated_target_qubit2 - least_global_permutated_qubit);
+
+                  if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand target_mask1) == zero_state_integer)
+                  {
+                    if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand target_mask2) == zero_state_integer)
+                      ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                        parallel_policy, local_state, data_block_index, data_block_size, last_local_qubit_value, local_permutated_control_qubits,
+                        std::forward<Function00>(function00));
+                    else // if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand target_mask2) == zero_state_integer)
+                      ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                        parallel_policy, local_state, data_block_index, data_block_size, last_local_qubit_value, local_permutated_control_qubits,
+                        std::forward<Function10>(function10));
+                  }
+                  else // if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand target_mask1) == zero_state_integer)
+                  {
+                    if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand target_mask2) == zero_state_integer)
+                      ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                        parallel_policy, local_state, data_block_index, data_block_size, last_local_qubit_value, local_permutated_control_qubits,
+                        std::forward<Function01>(function01));
+                    else // if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand target_mask2) == zero_state_integer)
+                      ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                        parallel_policy, local_state, data_block_index, data_block_size, last_local_qubit_value, local_permutated_control_qubits,
+                        std::forward<Function11>(function11));
+                  }
+                }
+              }
+            }
+          }
+
 #   ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
-          template <typename Function0, typename Function1>
-          struct call_function_if_local
+          template <typename Function0, typename Function1, typename StateInteger>
+          struct call_function_if_local1
           {
             Function0 function0_;
             Function1 function1_;
-            StateInteger target_mask_;
-
-            call_function_if_local(Function0&& function0, Function1&& function1, StateInteger const target_mask)
-              : function0_{std::forward<Function0>(function0)},
-                function1_{std::forward<Function1>(function1)},
-                target_mask_{target_mask}
-            { }
+            StateInteger mask_;
 
             template <typename Iterator>
             void operator()(Iterator const iter, StateInteger const state_integer)
             {
               static constexpr auto zero_state_integer = StateInteger{0u};
 
-              if ((state_integer bitand target_mask_) == zero_state_integer)
+              if ((state_integer bitand mask_) == zero_state_integer)
                 function0_(iter, state_integer);
               else
                 function1_(iter, state_integer);
             }
-          }; // struct call_function_if_local<Function0, Function1, StateInteger>
+          }; // struct call_function_if_local1<Function0, Function1, StateInteger>
 
-          template <typename Function0, typename Function1>
-          static call_function_if_local<Function0, Function1>
-          make_call_function_if_local(Function0&& function0, Function1&& function1, StateInteger const target_mask)
+          template <typename Function00, typename Function01, typename Function10, typename Function11, typename StateInteger>
+          struct call_function_if_local2
           {
-            return call_function_if_local<Function0, Function1>{
-              std::forward<Function0>(function0), std::forward<Function1>(function1), target_mask};
-          }
+            Function00 function00_;
+            Function01 function01_;
+            Function10 function10_;
+            Function11 function11_;
+            StateInteger mask1_;
+            StateInteger mask2_;
+
+            template <typename Iterator>
+            void operator()(Iterator const iter, StateInteger const state_integer)
+            {
+              static constexpr auto zero_state_integer = StateInteger{0u};
+
+              if ((state_integer bitand mask1_) == zero_state_integer)
+              {
+                if ((state_integer bitand mask2_) == zero_state_integer)
+                  function00_(iter, state_integer);
+                else
+                  function10_(iter, state_integer);
+              }
+              else
+              {
+                if ((state_integer bitand mask2_) == zero_state_integer)
+                  function01_(iter, state_integer);
+                else
+                  function11_(iter, state_integer);
+              }
+            }
+          }; // struct call_function_if_local2<Function00, Function01, Function10, Function11, StateInteger>
+
+          template <typename Function0, typename Function1, typename StateInteger>
+          static call_function_if_local1<Function0, Function1, StateInteger>
+          make_call_function_if_local(Function0&& function0, Function1&& function1, StateInteger const mask)
+          { return {std::forward<Function0>(function0), std::forward<Function1>(function1), mask}; }
+
+          template <typename Function00, typename Function01, typename Function10, typename Function11, typename StateInteger>
+          static call_function_if_local2<Function00, Function01, Function10, Function11, StateInteger>
+          make_call_function_if_local(
+            Function00&& function00, Function01&& function01, Function10&& function10, Function11&& function11,
+            StateInteger const mask1, StateInteger const mask2)
+          { return {std::forward<Function00>(function00), std::forward<Function01>(function01), std::forward<Function10>(function10), std::forward<Function11>(function11), mask1, mask2}; }
 #   endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }; // struct diagonal_loop< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
 # endif // KET_USE_DIAGONAL_LOOP
