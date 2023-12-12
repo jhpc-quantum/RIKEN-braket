@@ -34,6 +34,9 @@ namespace ket
     namespace gate
     {
       // exponential_swap_coeff
+      // eSWAP_{ij}(s) = exp(is SWAP_{ij}) = I cos s + i SWAP_{ij} sin s
+      // eSWAP_{1,2}(s) (a_{00} |00> + a_{01} |01> + a_{10} |10> + a_{11} |11>)
+      //   = e^{is} a_{00} |00> + (cos s a_{01} + i sin s a_{10}) |01> + (i sin s a_{01} + cos s a_{10}) |10> + e^{is} a_{11} |11>
       namespace exponential_swap_detail
       {
 # ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS

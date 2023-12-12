@@ -32,6 +32,8 @@ namespace ket
   {
     namespace gate
     {
+      // SET_i
+      // SET_1 (a_{0} |0> + a_{1} |1>) = |1>
       namespace set_detail
       {
 # ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS

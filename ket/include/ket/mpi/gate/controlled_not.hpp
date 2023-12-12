@@ -34,6 +34,9 @@ namespace ket
   {
     namespace gate
     {
+      // CNOT_{tc}
+      // CNOT_{1,2} (a_{00} |00> + a_{01} |01> + a_{10} |10> + a_{11} |11>)
+      //   = a_{00} |00> + a_{01} |01> + a_{11} |10> + a_{10} |11>
       namespace controlled_not_detail
       {
 # ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS

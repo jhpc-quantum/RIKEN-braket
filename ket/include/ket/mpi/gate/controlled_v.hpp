@@ -36,6 +36,9 @@ namespace ket
     namespace gate
     {
       // controlled_v_coeff
+      // V_{tc}(s)
+      // V_{1,2}(s) (a_{00} |00> + a_{01} |01> + a_{10} |10> + a_{11} |11>)
+      //   = a_{00} |00> + a_{01} |01> + [a_{10} (1+e^{is})/2 + a_{11} (1-e^{is})/2] |10> + [a_{10} (1-e^{is})/2 + a_{11} (1+e^{is})/2] |11>
       namespace controlled_v_detail
       {
 # ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS

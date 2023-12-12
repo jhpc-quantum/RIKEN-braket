@@ -32,6 +32,9 @@ namespace ket
   {
     namespace gate
     {
+      // SWAP_{ij}
+      // SWAP_{1,2} (a_{00} |00> + a_{01} |01> + a_{10} |10> + a_{11} |11>)
+      //   = a_{00} |00> + a_{10} |01> + a_{01} |10> + a_{11} |11>
       namespace swap_detail
       {
 # ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS

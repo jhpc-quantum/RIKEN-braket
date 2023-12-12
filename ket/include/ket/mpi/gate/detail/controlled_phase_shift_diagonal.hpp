@@ -31,6 +31,9 @@ namespace ket
     namespace gate
     {
       // controlled_phase_shift_coeff
+      // U_{tc}(s)
+      // U_{1,2}(s) (a_{00} |00> + a_{01} |01> + a_{10} |10> + a_{11} |11>)
+      //   = a_{00} |00> + a_{01} |01> + a_{10} |10> + e^{is} a_{11} |11>
       namespace controlled_phase_shift_detail
       {
 # ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS

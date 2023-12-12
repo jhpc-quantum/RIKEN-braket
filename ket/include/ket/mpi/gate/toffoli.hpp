@@ -34,6 +34,9 @@ namespace ket
   {
     namespace gate
     {
+      // TOFFOLI_{t,c1,c2}
+      // TOFFOLI_{1,2,3} (a_{000} |000> + a_{001} |001> + a_{010} |010> + a_{011} |011> + a_{100} |100> + a_{101} |101> + a_{110} |110> + a_{111} |111>)
+      //   = a_{000} |000> + a_{001} |001> + a_{010} |010> + a_{011} |011> + a_{100} |100> + a_{101} |101> + a_{111} |110> + a_{110} |111>
       namespace toffoli_detail
       {
 # ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
