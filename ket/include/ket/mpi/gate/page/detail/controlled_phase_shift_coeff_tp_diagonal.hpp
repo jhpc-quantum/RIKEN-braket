@@ -268,7 +268,7 @@ namespace ket
             typename ParallelPolicy,
             typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
           [[noreturn]] inline ::ket::mpi::state<Complex, false, Allocator>&
-          controlled_phaes_shift_coeff_tp(
+          controlled_phase_shift_coeff_tp(
             ::ket::mpi::utility::policy::simple_mpi const, ParallelPolicy const,
             ::ket::mpi::state<Complex, false, Allocator>& local_state,
             Complex const&,
@@ -281,7 +281,7 @@ namespace ket
             typename StateInteger, typename BitInteger, typename NumProcesses,
             typename ParallelPolicy, typename Complex, typename Allocator>
           [[noreturn]] inline ::ket::mpi::state<Complex, false, Allocator>&
-          controlled_phaes_shift_coeff_tp(
+          controlled_phase_shift_coeff_tp(
             ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const&,
             ParallelPolicy const,
             ::ket::mpi::state<Complex, false, Allocator>& local_state,
