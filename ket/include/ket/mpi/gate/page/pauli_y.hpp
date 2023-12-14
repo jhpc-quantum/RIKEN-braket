@@ -157,18 +157,31 @@ namespace ket
         namespace pauli_y_detail
         {
 # ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
+          template <typename StateInteger>
           struct pauli_y2_p
           {
-            template <typename Iterator, typename StateInteger>
+            StateInteger nonpage_permutated_qubit_mask_;
+            StateInteger nonpage_lower_bits_mask_;
+            StateInteger nonpage_upper_bits_mask_;
+
+            pauli_y2_p(
+              StateInteger const nonpage_permutated_qubit_mask,
+              StateInteger const nonpage_lower_bits_mask,
+              StateInteger const nonpage_upper_bits_mask)
+              : nonpage_permutated_qubit_mask_{nonpage_permutated_qubit_mask},
+                nonpage_lower_bits_mask_{nonpage_lower_bits_mask},
+                nonpage_upper_bits_mask_{nonpage_upper_bits_mask}
+            { }
+
+            template <typename Iterator>
             void operator()(
-              Iterator const first_00, Iterator const first_01,
-              Iterator const first_10, Iterator const first_11,
-              StateInteger const index, int const) const
+              Iterator const zero_first, Iterator const one_first,
+              StateInteger const index_wo_nonpage_qubit, int const) const
             {
               auto const zero_index
-                = ((index_wo_nonpage_qubit bitand nonpage_upper_bits_mask) << 1u)
-                  bitor (index_wo_nonpage_qubit bitand nonpage_lower_bits_mask);
-              auto const one_index = zero_index bitor nonpage_permutated_qubit_mask;
+                = ((index_wo_nonpage_qubit bitand nonpage_upper_bits_mask_) << 1u)
+                  bitor (index_wo_nonpage_qubit bitand nonpage_lower_bits_mask_);
+              auto const one_index = zero_index bitor nonpage_permutated_qubit_mask_;
 
               auto const iter_00 = zero_first + zero_index;
               auto const iter_01_or_10 = zero_first + one_index;
@@ -183,7 +196,7 @@ namespace ket
               *iter_00 *= real_type{-1.0};
               *iter_11 *= real_type{-1.0};
             }
-          }; // struct pauli_y2_p
+          }; // struct pauli_y2_p<StateInteger>
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         } // namespace pauli_y_detail
 
@@ -231,7 +244,8 @@ namespace ket
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
             parallel_policy, local_state, page_permutated_qubit,
-            ::ket::mpi::gate::page::pauli_y_detail::pauli_y2_p{});
+            ::ket::mpi::gate::page::pauli_y_detail::pauli_y2_p<StateInteger>{
+              nonpage_permutated_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask});
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }
       } // namespace page
