@@ -2357,7 +2357,7 @@ namespace ket
           }
 
 #   ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
-          template <typename Function0, typename Function1, typename StateInteger>
+          template <typename Function0, typename Function1>
           struct call_function_if_local1
           {
             Function0 function0_;
@@ -2374,9 +2374,9 @@ namespace ket
               else
                 function1_(iter, state_integer);
             }
-          }; // struct call_function_if_local1<Function0, Function1, StateInteger>
+          }; // struct call_function_if_local1<Function0, Function1>
 
-          template <typename Function00, typename Function01, typename Function10, typename Function11, typename StateInteger>
+          template <typename Function00, typename Function01, typename Function10, typename Function11>
           struct call_function_if_local2
           {
             Function00 function00_;
@@ -2406,15 +2406,15 @@ namespace ket
                   function11_(iter, state_integer);
               }
             }
-          }; // struct call_function_if_local2<Function00, Function01, Function10, Function11, StateInteger>
+          }; // struct call_function_if_local2<Function00, Function01, Function10, Function11>
 
-          template <typename Function0, typename Function1, typename StateInteger>
-          static call_function_if_local1<Function0, Function1, StateInteger>
+          template <typename Function0, typename Function1>
+          static call_function_if_local1<Function0, Function1>
           make_call_function_if_local(Function0&& function0, Function1&& function1, StateInteger const mask)
           { return {std::forward<Function0>(function0), std::forward<Function1>(function1), mask}; }
 
-          template <typename Function00, typename Function01, typename Function10, typename Function11, typename StateInteger>
-          static call_function_if_local2<Function00, Function01, Function10, Function11, StateInteger>
+          template <typename Function00, typename Function01, typename Function10, typename Function11>
+          static call_function_if_local2<Function00, Function01, Function10, Function11>
           make_call_function_if_local(
             Function00&& function00, Function01&& function01, Function10&& function10, Function11&& function11,
             StateInteger const mask1, StateInteger const mask2)
