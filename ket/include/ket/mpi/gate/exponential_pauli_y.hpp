@@ -18,7 +18,9 @@
 #   include <ket/qubit_io.hpp>
 # endif // KET_PRINT_LOG
 # include <ket/gate/exponential_pauli_y.hpp>
-# include <ket/mpi/permutated.hpp>
+# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
+#   include <ket/mpi/permutated.hpp>
+# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/simple_mpi.hpp>
 # include <ket/mpi/utility/for_each_local_range.hpp>
@@ -191,6 +193,36 @@ namespace ket
         template <
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename Complex,
+          typename StateInteger, typename BitInteger, typename... Qubits, typename Allocator>
+        inline RandomAccessRange& do_exponential_pauli_y_coeff(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+          ::ket::qubit<StateInteger, BitInteger> const qubit1,
+          ::ket::qubit<StateInteger, BitInteger> const qubit2,
+          ::ket::qubit<StateInteger, BitInteger> const qubit3, Qubits const... qubits,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          yampi::communicator const& communicator, yampi::environment const& environment)
+        {
+          auto const data_block_size
+            = ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment);
+          auto const num_data_blocks
+            = ::ket::mpi::utility::policy::num_data_blocks(mpi_policy, communicator, environment);
+
+          auto const first = std::begin(local_state);
+          for (auto data_block_index = decltype(num_data_blocks){0u}; data_block_index < num_data_blocks; ++data_block_index)
+            ::ket::gate::exponential_pauli_y_coeff(
+              parallel_policy,
+              first + data_block_index * data_block_size,
+              first + (data_block_index + 1u) * data_block_size,
+              permutation[qubit1], permutation[qubit2], permutation[qubit3], permutation[qubits]...);
+
+          return local_state;
+        }
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename Complex,
           typename StateInteger, typename BitInteger, typename... Qubits,
           typename Allocator, typename BufferAllocator>
         inline RandomAccessRange& exponential_pauli_y_coeff(
@@ -328,6 +360,77 @@ namespace ket
           mpi_policy, parallel_policy,
           local_state, phase_coefficient, qubit1, qubit2, permutation,
           buffer, datatype, communicator, environment);
+      }
+
+      namespace exponential_pauli_y_detail
+      {
+        inline std::string do_generate_exponential_pauli_y_coeff_string(std::string const& result)
+        { return result; }
+
+        template <typename StateInteger, typename BitInteger, typename... Qubits>
+        inline std::string do_generate_exponential_pauli_y_coeff_string(std::string const& result, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
+        { return do_generate_exponential_pauli_y_coeff_string(::ket::mpi::utility::generate_logger_string(result, ' ', qubit), qubits...); }
+
+        template <typename Complex, typename... Qubits>
+        inline std::string generate_exponential_pauli_y_coeff_string(Complex const& phase_coefficient, Qubits const... qubits)
+        {
+          auto result = std::string{"e"};
+          for (std::size_t count = 0u; count < sizeof...(Qubits); ++count)
+            result += 'Y';
+          result += "(coeff) ";
+          result = ::ket::mpi::utility::generate_logger_string(result, phase_coefficient);
+
+          return do_generate_exponential_pauli_y_coeff_string(result, qubits...);
+        }
+      } // namespace exponential_pauli_y_detail
+
+      template <
+        typename MpiPolicy, typename ParallelPolicy,
+        typename RandomAccessRange, typename Complex,
+        typename StateInteger, typename BitInteger, typename... Qubits,
+        typename Allocator, typename BufferAllocator>
+      inline RandomAccessRange& exponential_pauli_y_coeff(
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+        RandomAccessRange& local_state,
+        Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+        ::ket::qubit<StateInteger, BitInteger> const qubit1,
+        ::ket::qubit<StateInteger, BitInteger> const qubit2,
+        ::ket::qubit<StateInteger, BitInteger> const qubit3, Qubits const... qubits,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        yampi::communicator const& communicator, yampi::environment const& environment)
+      {
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::gate::exponential_pauli_y_detail::generate_exponential_pauli_y_coeff_string(phase_coefficient, qubit1, qubit2, qubit3, qubits...), environment};
+
+        return ::ket::mpi::gate::exponential_pauli_y_detail::exponential_pauli_y_coeff(
+          mpi_policy, parallel_policy,
+          local_state, phase_coefficient, qubit1, qubit2, qubit3, qubits...,
+          permutation, buffer, communicator, environment);
+      }
+
+      template <
+        typename MpiPolicy, typename ParallelPolicy,
+        typename RandomAccessRange, typename Complex,
+        typename StateInteger, typename BitInteger, typename... Qubits,
+        typename Allocator, typename BufferAllocator, typename DerivedDatatype>
+      inline RandomAccessRange& exponential_pauli_y_coeff(
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+        RandomAccessRange& local_state,
+        Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+        ::ket::qubit<StateInteger, BitInteger> const qubit1,
+        ::ket::qubit<StateInteger, BitInteger> const qubit2,
+        ::ket::qubit<StateInteger, BitInteger> const qubit3, Qubits const... qubits,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        yampi::datatype_base<DerivedDatatype> const& datatype,
+        yampi::communicator const& communicator, yampi::environment const& environment)
+      {
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::gate::exponential_pauli_y_detail::generate_exponential_pauli_y_coeff_string(phase_coefficient, qubit1, qubit2, qubit3, qubits...), environment};
+
+        return ::ket::mpi::gate::exponential_pauli_y_detail::exponential_pauli_y_coeff(
+          mpi_policy, parallel_policy,
+          local_state, phase_coefficient, qubit1, qubit2, qubit3, qubits...,
+          permutation, buffer, datatype, communicator, environment);
       }
 
       template <
@@ -546,6 +649,77 @@ namespace ket
           buffer, datatype, communicator, environment);
       }
 
+      namespace exponential_pauli_y_detail
+      {
+        inline std::string do_generate_adj_exponential_pauli_y_coeff_string(std::string const& result)
+        { return result; }
+
+        template <typename StateInteger, typename BitInteger, typename... Qubits>
+        inline std::string do_generate_adj_exponential_pauli_y_coeff_string(std::string const& result, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
+        { return do_generate_adj_exponential_pauli_y_coeff_string(::ket::mpi::utility::generate_logger_string(result, ' ', qubit), qubits...); }
+
+        template <typename Complex, typename... Qubits>
+        inline std::string generate_adj_exponential_pauli_y_coeff_string(Complex const& phase_coefficient, Qubits const... qubits)
+        {
+          auto result = std::string{"Adj(e"};
+          for (std::size_t count = 0u; count < sizeof...(Qubits); ++count)
+            result += 'Y';
+          result += "(coeff)) ";
+          result = ::ket::mpi::utility::generate_logger_string(result, phase_coefficient);
+
+          return do_generate_adj_exponential_pauli_y_coeff_string(result, qubits...);
+        }
+      } // namespace exponential_pauli_y_detail
+
+      template <
+        typename MpiPolicy, typename ParallelPolicy,
+        typename RandomAccessRange, typename Complex,
+        typename StateInteger, typename BitInteger, typename... Qubits,
+        typename Allocator, typename BufferAllocator>
+      inline RandomAccessRange& adj_exponential_pauli_y_coeff(
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+        RandomAccessRange& local_state,
+        Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+        ::ket::qubit<StateInteger, BitInteger> const qubit1,
+        ::ket::qubit<StateInteger, BitInteger> const qubit2,
+        ::ket::qubit<StateInteger, BitInteger> const qubit3, Qubits const... qubits,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        yampi::communicator const& communicator, yampi::environment const& environment)
+      {
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::gate::exponential_pauli_y_detail::generate_adj_exponential_pauli_y_coeff_string(phase_coefficient, qubit1, qubit2, qubit3, qubits...), environment};
+
+        return ::ket::mpi::gate::exponential_pauli_y_detail::adj_exponential_pauli_y_coeff(
+          mpi_policy, parallel_policy,
+          local_state, phase_coefficient, qubit1, qubit2, qubit3, qubits...,
+          permutation, buffer, communicator, environment);
+      }
+
+      template <
+        typename MpiPolicy, typename ParallelPolicy,
+        typename RandomAccessRange, typename Complex,
+        typename StateInteger, typename BitInteger, typename... Qubits,
+        typename Allocator, typename BufferAllocator, typename DerivedDatatype>
+      inline RandomAccessRange& adj_exponential_pauli_y_coeff(
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+        RandomAccessRange& local_state,
+        Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+        ::ket::qubit<StateInteger, BitInteger> const qubit1,
+        ::ket::qubit<StateInteger, BitInteger> const qubit2,
+        ::ket::qubit<StateInteger, BitInteger> const qubit3, Qubits const... qubits,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        yampi::datatype_base<DerivedDatatype> const& datatype,
+        yampi::communicator const& communicator, yampi::environment const& environment)
+      {
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::gate::exponential_pauli_y_detail::generate_adj_exponential_pauli_y_coeff_string(phase_coefficient, qubit1, qubit2, qubit3, qubits...), environment};
+
+        return ::ket::mpi::gate::exponential_pauli_y_detail::adj_exponential_pauli_y_coeff(
+          mpi_policy, parallel_policy,
+          local_state, phase_coefficient, qubit1, qubit2, qubit3, qubits...,
+          permutation, buffer, datatype, communicator, environment);
+      }
+
       template <
         typename RandomAccessRange, typename Complex,
         typename StateInteger, typename BitInteger, typename... Qubits,
@@ -761,6 +935,76 @@ namespace ket
           buffer, datatype, communicator, environment);
       }
 
+      namespace exponential_pauli_y_detail
+      {
+        inline std::string do_generate_exponential_pauli_y_string(std::string const& result)
+        { return result; }
+
+        template <typename StateInteger, typename BitInteger, typename... Qubits>
+        inline std::string do_generate_exponential_pauli_y_string(std::string const& result, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
+        { return do_generate_exponential_pauli_y_string(::ket::mpi::utility::generate_logger_string(result, ' ', qubit), qubits...); }
+
+        template <typename Real, typename... Qubits>
+        inline std::string generate_exponential_pauli_y_string(Real const phase, Qubits const... qubits)
+        {
+          auto result = std::string{"e"};
+          for (std::size_t count = 0u; count < sizeof...(Qubits); ++count)
+            result += 'Y';
+          result = ::ket::mpi::utility::generate_logger_string(result, ' ', phase_coefficient);
+
+          return do_generate_exponential_pauli_y_string(result, qubits...);
+        }
+      } // namespace exponential_pauli_y_detail
+
+      template <
+        typename MpiPolicy, typename ParallelPolicy,
+        typename RandomAccessRange, typename Real,
+        typename StateInteger, typename BitInteger, typename... Qubits,
+        typename Allocator, typename BufferAllocator>
+      inline RandomAccessRange& exponential_pauli_y(
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+        RandomAccessRange& local_state,
+        Real const phase,
+        ::ket::qubit<StateInteger, BitInteger> const qubit1,
+        ::ket::qubit<StateInteger, BitInteger> const qubit2,
+        ::ket::qubit<StateInteger, BitInteger> const qubit3, Qubits const... qubits,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        yampi::communicator const& communicator, yampi::environment const& environment)
+      {
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::gate::exponential_pauli_y_detail::generate_exponential_pauli_y_string(phase, qubit1, qubit2, qubit3, qubits...), environment};
+
+        return ::ket::mpi::gate::exponential_pauli_y_detail::exponential_pauli_y(
+          mpi_policy, parallel_policy,
+          local_state, phase, qubit1, qubit2, qubit3, qubits...,
+          permutation, buffer, communicator, environment);
+      }
+
+      template <
+        typename MpiPolicy, typename ParallelPolicy,
+        typename RandomAccessRange, typename Real,
+        typename StateInteger, typename BitInteger, typename... Qubits,
+        typename Allocator, typename BufferAllocator, typename DerivedDatatype>
+      inline RandomAccessRange& exponential_pauli_y(
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+        RandomAccessRange& local_state,
+        Real const phase,
+        ::ket::qubit<StateInteger, BitInteger> const qubit1,
+        ::ket::qubit<StateInteger, BitInteger> const qubit2,
+        ::ket::qubit<StateInteger, BitInteger> const qubit3, Qubits const... qubits,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        yampi::datatype_base<DerivedDatatype> const& datatype,
+        yampi::communicator const& communicator, yampi::environment const& environment)
+      {
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::gate::exponential_pauli_y_detail::generate_exponential_pauli_y_string(phase, qubit1, qubit2, qubit3, qubits...), environment};
+
+        return ::ket::mpi::gate::exponential_pauli_y_detail::exponential_pauli_y(
+          mpi_policy, parallel_policy,
+          local_state, phase, qubit1, qubit2, qubit3, qubits...,
+          permutation, buffer, datatype, communicator, environment);
+      }
+
       template <
         typename RandomAccessRange, typename Real,
         typename StateInteger, typename BitInteger, typename... Qubits,
@@ -965,6 +1209,76 @@ namespace ket
         return ::ket::mpi::gate::exponential_pauli_y_detail::adj_exponential_pauli_y(
           mpi_policy, parallel_policy,
           local_state, phase, qubit1, qubit2, permutation, buffer, datatype, communicator, environment);
+      }
+
+      namespace exponential_pauli_y_detail
+      {
+        inline std::string do_generate_adj_exponential_pauli_y_string(std::string const& result)
+        { return result; }
+
+        template <typename StateInteger, typename BitInteger, typename... Qubits>
+        inline std::string do_generate_adj_exponential_pauli_y_string(std::string const& result, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
+        { return do_generate_adj_exponential_pauli_y_string(::ket::mpi::utility::generate_logger_string(result, ' ', qubit), qubits...); }
+
+        template <typename Real, typename... Qubits>
+        inline std::string generate_adj_exponential_pauli_y_string(Real const phase, Qubits const... qubits)
+        {
+          auto result = std::string{"Adj(e"};
+          for (std::size_t count = 0u; count < sizeof...(Qubits); ++count)
+            result += 'Y';
+          result = ::ket::mpi::utility::generate_logger_string(result, ") ", phase_coefficient);
+
+          return do_generate_adj_exponential_pauli_y_string(result, qubits...);
+        }
+      } // namespace exponential_pauli_y_detail
+
+      template <
+        typename MpiPolicy, typename ParallelPolicy,
+        typename RandomAccessRange, typename Real,
+        typename StateInteger, typename BitInteger, typename... Qubits,
+        typename Allocator, typename BufferAllocator>
+      inline RandomAccessRange& adj_exponential_pauli_y(
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+        RandomAccessRange& local_state,
+        Real const phase,
+        ::ket::qubit<StateInteger, BitInteger> const qubit1,
+        ::ket::qubit<StateInteger, BitInteger> const qubit2,
+        ::ket::qubit<StateInteger, BitInteger> const qubit3, Qubits const... qubits,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        yampi::communicator const& communicator, yampi::environment const& environment)
+      {
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::gate::exponential_pauli_y_detail::generate_adj_exponential_pauli_y_string(phase, qubit1, qubit2, qubit3, qubits...), environment};
+
+        return ::ket::mpi::gate::exponential_pauli_y_detail::adj_exponential_pauli_y(
+          mpi_policy, parallel_policy,
+          local_state, phase, qubit1, qubit2, qubit3, qubits...,
+          permutation, buffer, communicator, environment);
+      }
+
+      template <
+        typename MpiPolicy, typename ParallelPolicy,
+        typename RandomAccessRange, typename Real,
+        typename StateInteger, typename BitInteger, typename... Qubits,
+        typename Allocator, typename BufferAllocator, typename DerivedDatatype>
+      inline RandomAccessRange& adj_exponential_pauli_y(
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+        RandomAccessRange& local_state,
+        Real const phase,
+        ::ket::qubit<StateInteger, BitInteger> const qubit1,
+        ::ket::qubit<StateInteger, BitInteger> const qubit2,
+        ::ket::qubit<StateInteger, BitInteger> const qubit3, Qubits const... qubits,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        yampi::datatype_base<DerivedDatatype> const& datatype,
+        yampi::communicator const& communicator, yampi::environment const& environment)
+      {
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::gate::exponential_pauli_y_detail::generate_adj_exponential_pauli_y_string(phase, qubit1, qubit2, qubit3, qubits...), environment};
+
+        return ::ket::mpi::gate::exponential_pauli_y_detail::adj_exponential_pauli_y(
+          mpi_policy, parallel_policy,
+          local_state, phase, qubit1, qubit2, qubit3, qubits...,
+          permutation, buffer, datatype, communicator, environment);
       }
 
       template <
