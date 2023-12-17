@@ -40,7 +40,7 @@ namespace ket
       // eZ_1(s) (a_0 |0> + a_1 |1>) = e^{is} a_0 |0> + e^{-is} a_1 |1>
       // eZZ_{ij}(s) = exp(is Z_i Z_j) = I cos s + i Z_i Z_j sin s
       // eZZ_{1,2}(s) (a_{00} |00> + a_{01} |01> + a_{10} |10> + a{11} |11>)
-      //   = e^{is} |00> + e^{-is} |01> + e^{-is} |10> + e^{is} |11>
+      //   = e^{is} a_{00} |00> + e^{-is} a_{01} |01> + e^{-is} a_{10} |10> + e^{is} a_{11} |11>
       namespace exponential_pauli_z_detail
       {
 # ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS

@@ -73,7 +73,7 @@ namespace ket
 
     // eZZ_{ij}(s) = exp(is Z_i Z_j) = I cos s + i Z_i Z_j sin s
     // eZZ_{1,2}(s) (a_{00} |00> + a_{01} |01> + a_{10} |10> + a{11} |11>)
-    //   = e^{is} |00> + e^{-is} |01> + e^{-is} |10> + e^{is} |11>
+    //   = e^{is} a_{00} |00> + e^{-is} a_{01} |01> + e^{-is} a_{10} |10> + e^{is} a_{11} |11>
     template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger>
     inline void exponential_pauli_z_coeff(
       ParallelPolicy const parallel_policy,
