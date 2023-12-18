@@ -115,11 +115,13 @@ namespace ket
           auto const permutated_qubit1 = permutation[qubit1];
           auto const permutated_qubit2 = permutation[qubit2];
           if (::ket::mpi::page::is_on_page(permutated_qubit1, local_state))
-            if (::ket::mpi::page::is_on_page(permutated_qubit1, local_state))
+          {
+            if (::ket::mpi::page::is_on_page(permutated_qubit2, local_state))
               return ::ket::mpi::gate::page::pauli_z2_2p(parallel_policy, local_state, permutated_qubit1, permutated_qubit2);
-            else
-              return ::ket::mpi::gate::page::pauli_z2_p(parallel_policy, local_state, permutated_qubit1, permutated_qubit2);
-          else
+
+            return ::ket::mpi::gate::page::pauli_z2_p(parallel_policy, local_state, permutated_qubit1, permutated_qubit2);
+          }
+          else if (::ket::mpi::page::is_on_page(permutated_qubit2, local_state))
             return ::ket::mpi::gate::page::pauli_z2_p(parallel_policy, local_state, permutated_qubit2, permutated_qubit1);
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -189,7 +191,7 @@ namespace ket
           yampi::communicator const& communicator, yampi::environment const& environment)
         {
           using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-          auto qubit_array = std::array<qubit_type, sizeof...(Qubits) + 1u>{qubit1, qubit2, qubit3, qubits...};
+          auto qubit_array = std::array<qubit_type, sizeof...(Qubits) + 3u>{qubit1, qubit2, qubit3, qubits...};
           ::ket::mpi::utility::maybe_interchange_qubits(
             mpi_policy, parallel_policy,
             local_state, qubit_array, permutation, buffer, communicator, environment);
@@ -214,7 +216,7 @@ namespace ket
           yampi::communicator const& communicator, yampi::environment const& environment)
         {
           using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-          auto qubit_array = std::array<qubit_type, sizeof...(Qubits) + 1u>{qubit1, qubit2, qubit3, qubits...};
+          auto qubit_array = std::array<qubit_type, sizeof...(Qubits) + 3u>{qubit1, qubit2, qubit3, qubits...};
           ::ket::mpi::utility::maybe_interchange_qubits(
             mpi_policy, parallel_policy,
             local_state, qubit_array, permutation, buffer, datatype, communicator, environment);
