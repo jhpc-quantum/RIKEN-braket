@@ -25,6 +25,7 @@
 # include <ket/mpi/utility/simple_mpi.hpp>
 # include <ket/mpi/utility/for_each_local_range.hpp>
 # include <ket/mpi/utility/logger.hpp>
+# include <ket/mpi/gate/detail/append_qubits_string.hpp>
 # include <ket/mpi/gate/page/exponential_pauli_y.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
 
@@ -362,28 +363,6 @@ namespace ket
           buffer, datatype, communicator, environment);
       }
 
-      namespace exponential_pauli_y_detail
-      {
-        inline std::string do_generate_exponential_pauli_y_coeff_string(std::string const& result)
-        { return result; }
-
-        template <typename StateInteger, typename BitInteger, typename... Qubits>
-        inline std::string do_generate_exponential_pauli_y_coeff_string(std::string const& result, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
-        { return do_generate_exponential_pauli_y_coeff_string(::ket::mpi::utility::generate_logger_string(result, ' ', qubit), qubits...); }
-
-        template <typename Complex, typename... Qubits>
-        inline std::string generate_exponential_pauli_y_coeff_string(Complex const& phase_coefficient, Qubits const... qubits)
-        {
-          auto result = std::string{"e"};
-          for (std::size_t count = 0u; count < sizeof...(Qubits); ++count)
-            result += 'Y';
-          result += "(coeff) ";
-          result = ::ket::mpi::utility::generate_logger_string(result, phase_coefficient);
-
-          return do_generate_exponential_pauli_y_coeff_string(result, qubits...);
-        }
-      } // namespace exponential_pauli_y_detail
-
       template <
         typename MpiPolicy, typename ParallelPolicy,
         typename RandomAccessRange, typename Complex,
@@ -400,7 +379,11 @@ namespace ket
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment)
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::gate::exponential_pauli_y_detail::generate_exponential_pauli_y_coeff_string(phase_coefficient, qubit1, qubit2, qubit3, qubits...), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{
+          ::ket::mpi::gate::detail::append_qubits_string(
+            ::ket::mpi::utility::generate_logger_string(std::string{"e"}.append(sizeof...(Qubits) + 3u, 'Y'), "(coeff) ", phase_coefficient),
+            qubit1, qubit2, qubit3, qubits...),
+          environment};
 
         return ::ket::mpi::gate::exponential_pauli_y_detail::exponential_pauli_y_coeff(
           mpi_policy, parallel_policy,
@@ -425,7 +408,11 @@ namespace ket
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment)
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::gate::exponential_pauli_y_detail::generate_exponential_pauli_y_coeff_string(phase_coefficient, qubit1, qubit2, qubit3, qubits...), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{
+          ::ket::mpi::gate::detail::append_qubits_string(
+            ::ket::mpi::utility::generate_logger_string(std::string{"e"}.append(sizeof...(Qubits) + 3u, 'Y'), "(coeff) ", phase_coefficient),
+            qubit1, qubit2, qubit3, qubits...),
+          environment};
 
         return ::ket::mpi::gate::exponential_pauli_y_detail::exponential_pauli_y_coeff(
           mpi_policy, parallel_policy,
@@ -649,28 +636,6 @@ namespace ket
           buffer, datatype, communicator, environment);
       }
 
-      namespace exponential_pauli_y_detail
-      {
-        inline std::string do_generate_adj_exponential_pauli_y_coeff_string(std::string const& result)
-        { return result; }
-
-        template <typename StateInteger, typename BitInteger, typename... Qubits>
-        inline std::string do_generate_adj_exponential_pauli_y_coeff_string(std::string const& result, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
-        { return do_generate_adj_exponential_pauli_y_coeff_string(::ket::mpi::utility::generate_logger_string(result, ' ', qubit), qubits...); }
-
-        template <typename Complex, typename... Qubits>
-        inline std::string generate_adj_exponential_pauli_y_coeff_string(Complex const& phase_coefficient, Qubits const... qubits)
-        {
-          auto result = std::string{"Adj(e"};
-          for (std::size_t count = 0u; count < sizeof...(Qubits); ++count)
-            result += 'Y';
-          result += "(coeff)) ";
-          result = ::ket::mpi::utility::generate_logger_string(result, phase_coefficient);
-
-          return do_generate_adj_exponential_pauli_y_coeff_string(result, qubits...);
-        }
-      } // namespace exponential_pauli_y_detail
-
       template <
         typename MpiPolicy, typename ParallelPolicy,
         typename RandomAccessRange, typename Complex,
@@ -687,7 +652,11 @@ namespace ket
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment)
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::gate::exponential_pauli_y_detail::generate_adj_exponential_pauli_y_coeff_string(phase_coefficient, qubit1, qubit2, qubit3, qubits...), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{
+          ::ket::mpi::gate::detail::append_qubits_string(
+            ::ket::mpi::utility::generate_logger_string(std::string{"Adj(e"}.append(sizeof...(Qubits) + 3u, 'Y'), "(coeff)) ", phase_coefficient),
+            qubit1, qubit2, qubit3, qubits...),
+          environment};
 
         return ::ket::mpi::gate::exponential_pauli_y_detail::adj_exponential_pauli_y_coeff(
           mpi_policy, parallel_policy,
@@ -712,7 +681,11 @@ namespace ket
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment)
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::gate::exponential_pauli_y_detail::generate_adj_exponential_pauli_y_coeff_string(phase_coefficient, qubit1, qubit2, qubit3, qubits...), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{
+          ::ket::mpi::gate::detail::append_qubits_string(
+            ::ket::mpi::utility::generate_logger_string(std::string{"Adj(e"}.append(sizeof...(Qubits) + 3u, 'Y'), "(coeff)) ", phase_coefficient),
+            qubit1, qubit2, qubit3, qubits...),
+          environment};
 
         return ::ket::mpi::gate::exponential_pauli_y_detail::adj_exponential_pauli_y_coeff(
           mpi_policy, parallel_policy,
@@ -935,27 +908,6 @@ namespace ket
           buffer, datatype, communicator, environment);
       }
 
-      namespace exponential_pauli_y_detail
-      {
-        inline std::string do_generate_exponential_pauli_y_string(std::string const& result)
-        { return result; }
-
-        template <typename StateInteger, typename BitInteger, typename... Qubits>
-        inline std::string do_generate_exponential_pauli_y_string(std::string const& result, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
-        { return do_generate_exponential_pauli_y_string(::ket::mpi::utility::generate_logger_string(result, ' ', qubit), qubits...); }
-
-        template <typename Real, typename... Qubits>
-        inline std::string generate_exponential_pauli_y_string(Real const phase, Qubits const... qubits)
-        {
-          auto result = std::string{"e"};
-          for (std::size_t count = 0u; count < sizeof...(Qubits); ++count)
-            result += 'Y';
-          result = ::ket::mpi::utility::generate_logger_string(result, ' ', phase_coefficient);
-
-          return do_generate_exponential_pauli_y_string(result, qubits...);
-        }
-      } // namespace exponential_pauli_y_detail
-
       template <
         typename MpiPolicy, typename ParallelPolicy,
         typename RandomAccessRange, typename Real,
@@ -972,7 +924,11 @@ namespace ket
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment)
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::gate::exponential_pauli_y_detail::generate_exponential_pauli_y_string(phase, qubit1, qubit2, qubit3, qubits...), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{
+          ::ket::mpi::gate::detail::append_qubits_string(
+            ::ket::mpi::utility::generate_logger_string(std::string{"e"}.append(sizeof...(Qubits) + 3u, 'Y'), ' ', phase),
+            qubit1, qubit2, qubit3, qubits...),
+          environment};
 
         return ::ket::mpi::gate::exponential_pauli_y_detail::exponential_pauli_y(
           mpi_policy, parallel_policy,
@@ -997,7 +953,11 @@ namespace ket
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment)
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::gate::exponential_pauli_y_detail::generate_exponential_pauli_y_string(phase, qubit1, qubit2, qubit3, qubits...), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{
+          ::ket::mpi::gate::detail::append_qubits_string(
+            ::ket::mpi::utility::generate_logger_string(std::string{"e"}.append(sizeof...(Qubits) + 3u, 'Y'), ' ', phase),
+            qubit1, qubit2, qubit3, qubits...),
+          environment};
 
         return ::ket::mpi::gate::exponential_pauli_y_detail::exponential_pauli_y(
           mpi_policy, parallel_policy,
@@ -1211,27 +1171,6 @@ namespace ket
           local_state, phase, qubit1, qubit2, permutation, buffer, datatype, communicator, environment);
       }
 
-      namespace exponential_pauli_y_detail
-      {
-        inline std::string do_generate_adj_exponential_pauli_y_string(std::string const& result)
-        { return result; }
-
-        template <typename StateInteger, typename BitInteger, typename... Qubits>
-        inline std::string do_generate_adj_exponential_pauli_y_string(std::string const& result, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
-        { return do_generate_adj_exponential_pauli_y_string(::ket::mpi::utility::generate_logger_string(result, ' ', qubit), qubits...); }
-
-        template <typename Real, typename... Qubits>
-        inline std::string generate_adj_exponential_pauli_y_string(Real const phase, Qubits const... qubits)
-        {
-          auto result = std::string{"Adj(e"};
-          for (std::size_t count = 0u; count < sizeof...(Qubits); ++count)
-            result += 'Y';
-          result = ::ket::mpi::utility::generate_logger_string(result, ") ", phase_coefficient);
-
-          return do_generate_adj_exponential_pauli_y_string(result, qubits...);
-        }
-      } // namespace exponential_pauli_y_detail
-
       template <
         typename MpiPolicy, typename ParallelPolicy,
         typename RandomAccessRange, typename Real,
@@ -1248,7 +1187,11 @@ namespace ket
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment)
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::gate::exponential_pauli_y_detail::generate_adj_exponential_pauli_y_string(phase, qubit1, qubit2, qubit3, qubits...), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{
+          ::ket::mpi::gate::detail::append_qubits_string(
+            ::ket::mpi::utility::generate_logger_string(std::string{"Adj(e"}.append(sizeof...(Qubits) + 3u, 'Y'), ") ", phase),
+            qubit1, qubit2, qubit3, qubits...),
+          environment};
 
         return ::ket::mpi::gate::exponential_pauli_y_detail::adj_exponential_pauli_y(
           mpi_policy, parallel_policy,
@@ -1273,7 +1216,11 @@ namespace ket
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment)
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::gate::exponential_pauli_y_detail::generate_adj_exponential_pauli_y_string(phase, qubit1, qubit2, qubit3, qubits...), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{
+          ::ket::mpi::gate::detail::append_qubits_string(
+            ::ket::mpi::utility::generate_logger_string(std::string{"Adj(e"}.append(sizeof...(Qubits) + 3u, 'Y'), ") ", phase),
+            qubit1, qubit2, qubit3, qubits...),
+          environment};
 
         return ::ket::mpi::gate::exponential_pauli_y_detail::adj_exponential_pauli_y(
           mpi_policy, parallel_policy,

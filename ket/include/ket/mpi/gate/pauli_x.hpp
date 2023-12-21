@@ -25,6 +25,7 @@
 # include <ket/mpi/utility/simple_mpi.hpp>
 # include <ket/mpi/utility/for_each_local_range.hpp>
 # include <ket/mpi/utility/logger.hpp>
+# include <ket/mpi/gate/detail/append_qubits_string.hpp>
 # include <ket/mpi/gate/page/pauli_x.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
 
@@ -314,26 +315,6 @@ namespace ket
           local_state, qubit1, qubit2, permutation, buffer, datatype, communicator, environment);
       }
 
-      namespace pauli_x_detail
-      {
-        inline std::string do_generate_pauli_x_string(std::string const& result)
-        { return result; }
-
-        template <typename StateInteger, typename BitInteger, typename... Qubits>
-        inline std::string do_generate_pauli_x_string(std::string const& result, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
-        { return do_generate_pauli_x_string(::ket::mpi::utility::generate_logger_string(result, ' ', qubit), qubits...); }
-
-        template <typename... Qubits>
-        inline std::string generate_pauli_x_string(Qubits const... qubits)
-        {
-          auto result = std::string{};
-          for (std::size_t count = 0u; count < sizeof...(Qubits); ++count)
-            result += 'X';
-
-          return do_generate_pauli_x_string(result, qubits...);
-        }
-      } // namespace pauli_x_detail
-
       template <
         typename MpiPolicy, typename ParallelPolicy,
         typename RandomAccessRange, typename StateInteger, typename BitInteger, typename... Qubits,
@@ -348,7 +329,9 @@ namespace ket
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment)
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::gate::pauli_x_detail::generate_pauli_x_string(qubit1, qubit2, qubit3, qubits...), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{
+          ::ket::mpi::gate::detail::append_qubits_string(std::string(sizeof...(Qubits) + 3u, 'X'), qubit1, qubit2, qubit3, qubits...),
+          environment};
 
         return ::ket::mpi::gate::pauli_x_detail::pauli_x(
           mpi_policy, parallel_policy,
@@ -370,7 +353,9 @@ namespace ket
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment)
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::gate::pauli_x_detail::generate_pauli_x_string(qubit1, qubit2, qubit3, qubits...), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{
+          ::ket::mpi::gate::detail::append_qubits_string(std::string(sizeof...(Qubits) + 3u, 'X'), qubit1, qubit2, qubit3, qubits...),
+          environment};
 
         return ::ket::mpi::gate::pauli_x_detail::pauli_x(
           mpi_policy, parallel_policy,
@@ -565,27 +550,6 @@ namespace ket
           local_state, qubit1, qubit2, permutation, buffer, datatype, communicator, environment);
       }
 
-      namespace pauli_x_detail
-      {
-        inline std::string do_generate_adj_pauli_x_string(std::string const& result)
-        { return result; }
-
-        template <typename StateInteger, typename BitInteger, typename... Qubits>
-        inline std::string do_generate_adj_pauli_x_string(std::string const& result, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
-        { return do_generate_adj_pauli_x_string(::ket::mpi::utility::generate_logger_string(result, ' ', qubit), qubits...); }
-
-        template <typename... Qubits>
-        inline std::string generate_adj_pauli_x_string(Qubits const... qubits)
-        {
-          auto result = std::string{"Adj("};
-          for (std::size_t count = 0u; count < sizeof...(Qubits); ++count)
-            result += 'X';
-          result += ')';
-
-          return do_generate_adj_pauli_x_string(result, qubits...);
-        }
-      } // namespace pauli_x_detail
-
       template <
         typename MpiPolicy, typename ParallelPolicy,
         typename RandomAccessRange, typename StateInteger, typename BitInteger, typename... Qubits,
@@ -600,7 +564,9 @@ namespace ket
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment)
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::gate::pauli_x_detail::generate_adj_pauli_x_string(qubit1, qubit2, qubit3, qubits...), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{
+          ::ket::mpi::gate::detail::append_qubits_string(std::string{"Adj("}.append(sizeof...(Qubits) + 3u, 'X').append(")"), qubit1, qubit2, qubit3, qubits...),
+          environment};
 
         return ::ket::mpi::gate::pauli_x_detail::adj_pauli_x(
           mpi_policy, parallel_policy,
@@ -622,7 +588,9 @@ namespace ket
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment)
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::gate::pauli_x_detail::generate_adj_pauli_x_string(qubit1, qubit2, qubit3, qubits...), environment};
+        ::ket::mpi::utility::log_with_time_guard<char> print{
+          ::ket::mpi::gate::detail::append_qubits_string(std::string{"Adj("}.append(sizeof...(Qubits) + 3u, 'X').append(")"), qubit1, qubit2, qubit3, qubits...),
+          environment};
 
         return ::ket::mpi::gate::pauli_x_detail::adj_pauli_x(
           mpi_policy, parallel_policy,
