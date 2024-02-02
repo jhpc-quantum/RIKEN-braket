@@ -61,7 +61,6 @@ namespace ket
             auto const num_nonpage_qubits
               = static_cast<BitInteger>(local_state.num_local_qubits() - local_state.num_page_qubits());
 
-            using permutated_qubit_type = ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >;
             auto const minmax_permutated_qubits = std::minmax(page_permutated_qubit1, page_permutated_qubit2);
             auto const page_permutated_qubit1_mask
               = ::ket::utility::integer_exp2<StateInteger>(

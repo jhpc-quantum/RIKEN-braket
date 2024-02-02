@@ -183,17 +183,59 @@ namespace bra
     ::bra::state& adj_pauli_x(qubit_type const qubit)
     { do_adj_pauli_x(qubit); return *this; }
 
+    ::bra::state& pauli_xx(qubit_type const qubit1, qubit_type const qubit2)
+    { do_pauli_xx(qubit1, qubit2); return *this; }
+
+    ::bra::state& adj_pauli_xx(qubit_type const qubit1, qubit_type const qubit2)
+    { do_adj_pauli_xx(qubit1, qubit2); return *this; }
+
+    ::bra::state& pauli_xn(std::vector<qubit_type> const& qubits)
+    { do_pauli_xn(qubits); return *this; }
+
+    ::bra::state& adj_pauli_xn(std::vector<qubit_type> const& qubits)
+    { do_adj_pauli_xn(qubits); return *this; }
+
     ::bra::state& pauli_y(qubit_type const qubit)
     { do_pauli_y(qubit); return *this; }
 
     ::bra::state& adj_pauli_y(qubit_type const qubit)
     { do_adj_pauli_y(qubit); return *this; }
 
+    ::bra::state& pauli_yy(qubit_type const qubit1, qubit_type const qubit2)
+    { do_pauli_yy(qubit1, qubit2); return *this; }
+
+    ::bra::state& adj_pauli_yy(qubit_type const qubit1, qubit_type const qubit2)
+    { do_adj_pauli_yy(qubit1, qubit2); return *this; }
+
+    ::bra::state& pauli_yn(std::vector<qubit_type> const& qubits)
+    { do_pauli_yn(qubits); return *this; }
+
+    ::bra::state& adj_pauli_yn(std::vector<qubit_type> const& qubits)
+    { do_adj_pauli_yn(qubits); return *this; }
+
     ::bra::state& pauli_z(qubit_type const qubit)
     { do_pauli_z(qubit); return *this; }
 
     ::bra::state& adj_pauli_z(qubit_type const qubit)
     { do_adj_pauli_z(qubit); return *this; }
+
+    ::bra::state& pauli_zz(qubit_type const qubit1, qubit_type const qubit2)
+    { do_pauli_zz(qubit1, qubit2); return *this; }
+
+    ::bra::state& adj_pauli_zz(qubit_type const qubit1, qubit_type const qubit2)
+    { do_adj_pauli_zz(qubit1, qubit2); return *this; }
+
+    ::bra::state& pauli_zn(std::vector<qubit_type> const& qubits)
+    { do_pauli_zn(qubits); return *this; }
+
+    ::bra::state& adj_pauli_zn(std::vector<qubit_type> const& qubits)
+    { do_adj_pauli_zn(qubits); return *this; }
+
+    ::bra::state& swap(qubit_type const qubit1, qubit_type const qubit2)
+    { do_swap(qubit1, qubit2); return *this; }
+
+    ::bra::state& adj_swap(qubit_type const qubit1, qubit_type const qubit2)
+    { do_adj_swap(qubit1, qubit2); return *this; }
 
     ::bra::state& u1(real_type const phase, qubit_type const qubit)
     { do_u1(phase, qubit); return *this; }
@@ -279,6 +321,66 @@ namespace bra
       return *this;
     }
 
+    ::bra::state& exponential_pauli_x(real_type const phase, qubit_type const qubit)
+    { do_exponential_pauli_x(phase, qubit); return *this; }
+
+    ::bra::state& adj_exponential_pauli_x(real_type const phase, qubit_type const qubit)
+    { do_adj_exponential_pauli_x(phase, qubit); return *this; }
+
+    ::bra::state& exponential_pauli_xx(real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
+    { do_exponential_pauli_xx(phase, qubit1, qubit2); return *this; }
+
+    ::bra::state& adj_exponential_pauli_xx(real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
+    { do_adj_exponential_pauli_xx(phase, qubit1, qubit2); return *this; }
+
+    ::bra::state& exponential_pauli_xn(real_type const phase, std::vector<qubit_type> const& qubits)
+    { do_exponential_pauli_xn(phase, qubits); return *this; }
+
+    ::bra::state& adj_exponential_pauli_xn(real_type const phase, std::vector<qubit_type> const& qubits)
+    { do_adj_exponential_pauli_xn(phase, qubits); return *this; }
+
+    ::bra::state& exponential_pauli_y(real_type const phase, qubit_type const qubit)
+    { do_exponential_pauli_y(phase, qubit); return *this; }
+
+    ::bra::state& adj_exponential_pauli_y(real_type const phase, qubit_type const qubit)
+    { do_adj_exponential_pauli_y(phase, qubit); return *this; }
+
+    ::bra::state& exponential_pauli_yy(real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
+    { do_exponential_pauli_yy(phase, qubit1, qubit2); return *this; }
+
+    ::bra::state& adj_exponential_pauli_yy(real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
+    { do_adj_exponential_pauli_yy(phase, qubit1, qubit2); return *this; }
+
+    ::bra::state& exponential_pauli_yn(real_type const phase, std::vector<qubit_type> const& qubits)
+    { do_exponential_pauli_yn(phase, qubits); return *this; }
+
+    ::bra::state& adj_exponential_pauli_yn(real_type const phase, std::vector<qubit_type> const& qubits)
+    { do_adj_exponential_pauli_yn(phase, qubits); return *this; }
+
+    ::bra::state& exponential_pauli_z(real_type const phase, qubit_type const qubit)
+    { do_exponential_pauli_z(phase, qubit); return *this; }
+
+    ::bra::state& adj_exponential_pauli_z(real_type const phase, qubit_type const qubit)
+    { do_adj_exponential_pauli_z(phase, qubit); return *this; }
+
+    ::bra::state& exponential_pauli_zz(real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
+    { do_exponential_pauli_zz(phase, qubit1, qubit2); return *this; }
+
+    ::bra::state& adj_exponential_pauli_zz(real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
+    { do_adj_exponential_pauli_zz(phase, qubit1, qubit2); return *this; }
+
+    ::bra::state& exponential_pauli_zn(real_type const phase, std::vector<qubit_type> const& qubits)
+    { do_exponential_pauli_zn(phase, qubits); return *this; }
+
+    ::bra::state& adj_exponential_pauli_zn(real_type const phase, std::vector<qubit_type> const& qubits)
+    { do_adj_exponential_pauli_zn(phase, qubits); return *this; }
+
+    ::bra::state& exponential_swap(real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
+    { do_exponential_swap(phase, qubit1, qubit2); return *this; }
+
+    ::bra::state& adj_exponential_swap(real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
+    { do_adj_exponential_swap(phase, qubit1, qubit2); return *this; }
+
     ::bra::state& toffoli(
       qubit_type const target_qubit,
       control_qubit_type const control_qubit1,
@@ -335,10 +437,24 @@ namespace bra
     virtual void do_adj_hadamard(qubit_type const qubit) = 0;
     virtual void do_pauli_x(qubit_type const qubit) = 0;
     virtual void do_adj_pauli_x(qubit_type const qubit) = 0;
+    virtual void do_pauli_xx(qubit_type const qubit1, qubit_type const qubit2) = 0;
+    virtual void do_adj_pauli_xx(qubit_type const qubit1, qubit_type const qubit2) = 0;
+    virtual void do_pauli_xn(std::vector<qubit_type> const& qubits) = 0;
+    virtual void do_adj_pauli_xn(std::vector<qubit_type> const& qubits) = 0;
     virtual void do_pauli_y(qubit_type const qubit) = 0;
     virtual void do_adj_pauli_y(qubit_type const qubit) = 0;
+    virtual void do_pauli_yy(qubit_type const qubit1, qubit_type const qubit2) = 0;
+    virtual void do_adj_pauli_yy(qubit_type const qubit1, qubit_type const qubit2) = 0;
+    virtual void do_pauli_yn(std::vector<qubit_type> const& qubits) = 0;
+    virtual void do_adj_pauli_yn(std::vector<qubit_type> const& qubits) = 0;
     virtual void do_pauli_z(qubit_type const qubit) = 0;
     virtual void do_adj_pauli_z(qubit_type const qubit) = 0;
+    virtual void do_pauli_zz(qubit_type const qubit1, qubit_type const qubit2) = 0;
+    virtual void do_adj_pauli_zz(qubit_type const qubit1, qubit_type const qubit2) = 0;
+    virtual void do_pauli_zn(std::vector<qubit_type> const& qubits) = 0;
+    virtual void do_adj_pauli_zn(std::vector<qubit_type> const& qubits) = 0;
+    virtual void do_swap(qubit_type const qubit1, qubit_type const qubit2) = 0;
+    virtual void do_adj_swap(qubit_type const qubit1, qubit_type const qubit2) = 0;
     virtual void do_u1(real_type const phase, qubit_type const qubit) = 0;
     virtual void do_adj_u1(real_type const phase, qubit_type const qubit) = 0;
     virtual void do_u2(
@@ -383,6 +499,40 @@ namespace bra
       complex_type const phase_coefficient,
       qubit_type const target_qubit, control_qubit_type const control_qubit)
       = 0;
+    virtual void do_exponential_pauli_x(real_type const phase, qubit_type const qubit) = 0;
+    virtual void do_adj_exponential_pauli_x(real_type const phase, qubit_type const qubit) = 0;
+    virtual void do_exponential_pauli_xx(
+      real_type const phase, qubit_type const qubit1, qubit_type const qubit2) = 0;
+    virtual void do_adj_exponential_pauli_xx(
+      real_type const phase, qubit_type const qubit1, qubit_type const qubit2) = 0;
+    virtual void do_exponential_pauli_xn(
+      real_type const phase, std::vector<qubit_type> const& qubits) = 0;
+    virtual void do_adj_exponential_pauli_xn(
+      real_type const phase, std::vector<qubit_type> const& qubits) = 0;
+    virtual void do_exponential_pauli_y(real_type const phase, qubit_type const qubit) = 0;
+    virtual void do_adj_exponential_pauli_y(real_type const phase, qubit_type const qubit) = 0;
+    virtual void do_exponential_pauli_yy(
+      real_type const phase, qubit_type const qubit1, qubit_type const qubit2) = 0;
+    virtual void do_adj_exponential_pauli_yy(
+      real_type const phase, qubit_type const qubit1, qubit_type const qubit2) = 0;
+    virtual void do_exponential_pauli_yn(
+      real_type const phase, std::vector<qubit_type> const& qubits) = 0;
+    virtual void do_adj_exponential_pauli_yn(
+      real_type const phase, std::vector<qubit_type> const& qubits) = 0;
+    virtual void do_exponential_pauli_z(real_type const phase, qubit_type const qubit) = 0;
+    virtual void do_adj_exponential_pauli_z(real_type const phase, qubit_type const qubit) = 0;
+    virtual void do_exponential_pauli_zz(
+      real_type const phase, qubit_type const qubit1, qubit_type const qubit2) = 0;
+    virtual void do_adj_exponential_pauli_zz(
+      real_type const phase, qubit_type const qubit1, qubit_type const qubit2) = 0;
+    virtual void do_exponential_pauli_zn(
+      real_type const phase, std::vector<qubit_type> const& qubits) = 0;
+    virtual void do_adj_exponential_pauli_zn(
+      real_type const phase, std::vector<qubit_type> const& qubits) = 0;
+    virtual void do_exponential_swap(
+      real_type const phase, qubit_type const qubit1, qubit_type const qubit2) = 0;
+    virtual void do_adj_exponential_swap(
+      real_type const phase, qubit_type const qubit1, qubit_type const qubit2) = 0;
     virtual void do_toffoli(
       qubit_type const target_qubit,
       control_qubit_type const control_qubit1,

@@ -32,6 +32,9 @@ namespace ket
   {
     namespace gate
     {
+      // SWAP_{ij}
+      // SWAP_{1,2} (a_{00} |00> + a_{01} |01> + a_{10} |10> + a_{11} |11>)
+      //   = a_{00} |00> + a_{10} |01> + a_{01} |10> + a_{11} |11>
       namespace swap_detail
       {
 # ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -350,7 +353,7 @@ namespace ket
         ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(SWAP) "}, qubit1, ' ', qubit2), environment};
 
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-        auto qubits = std::array<qubit_type, 2u>{qubit, qubit2};
+        auto qubits = std::array<qubit_type, 2u>{qubit1, qubit2};
         ::ket::mpi::utility::maybe_interchange_qubits(
           mpi_policy, parallel_policy,
           local_state, qubits, permutation, buffer, datatype, communicator, environment);

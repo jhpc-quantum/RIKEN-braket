@@ -24,6 +24,8 @@ namespace ket
 {
   namespace gate
   {
+    // CLEAR_i
+    // CLEAR_1 (a_{0} |0> + a_{1} |1>) = |0>
     namespace clear_detail
     {
       template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger>

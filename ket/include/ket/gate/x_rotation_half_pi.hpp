@@ -22,6 +22,8 @@ namespace ket
 {
   namespace gate
   {
+    // RX_i
+    // RX_1 (a_0 |0> + a_1 |1>) = (a_0 + i a_1)/sqrt(2) |0> + (i a_0 + a_1)/sqrt(2) |1>
     template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger>
     inline void x_rotation_half_pi(
       ParallelPolicy const parallel_policy,
