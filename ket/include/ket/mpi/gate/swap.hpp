@@ -353,7 +353,7 @@ namespace ket
         ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(SWAP) "}, qubit1, ' ', qubit2), environment};
 
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-        auto qubits = std::array<qubit_type, 2u>{qubit, qubit2};
+        auto qubits = std::array<qubit_type, 2u>{qubit1, qubit2};
         ::ket::mpi::utility::maybe_interchange_qubits(
           mpi_policy, parallel_policy,
           local_state, qubits, permutation, buffer, datatype, communicator, environment);

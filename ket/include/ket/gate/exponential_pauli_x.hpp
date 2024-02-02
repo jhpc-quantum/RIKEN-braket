@@ -10,7 +10,7 @@
 # include <type_traits>
 
 # include <ket/qubit.hpp>
-# include <ket/gates/gate.hpp>
+# include <ket/gate/gate.hpp>
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/integer_exp2.hpp>
 # ifndef NDEBUG
@@ -59,7 +59,7 @@ namespace ket
         parallel_policy,
         static_cast<StateInteger>(last - first) >> 1u,
         [first, cos_theta, &i_sin_theta, qubit_mask, lower_bits_mask, upper_bits_mask](
-          StateInteger const value_wo_qubits, int const)
+          StateInteger const value_wo_qubit, int const)
         {
           // xxxxx0xxxxxx
           auto const zero_index
@@ -177,7 +177,7 @@ namespace ket
           {
             auto iter1 = first + indices[i];
             auto iter2 = first + indices[num_indices - StateInteger{1u} - i];
-            iter1_value = *iter1;
+            auto const iter1_value = *iter1;
 
             *iter1 *= cos_theta;
             *iter1 += *iter2 * i_sin_theta;

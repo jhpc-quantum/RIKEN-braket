@@ -75,8 +75,6 @@ namespace ket
           ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const page_permutated_qubit1,
           ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const page_permutated_qubit2)
         {
-          using real_type = typename ::ket::utility::meta::real_of<Complex>::type;
-
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::two_page_qubits_gate<0u>(
             parallel_policy, local_state, page_permutated_qubit1, page_permutated_qubit2,

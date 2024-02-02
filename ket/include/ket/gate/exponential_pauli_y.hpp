@@ -10,7 +10,7 @@
 # include <type_traits>
 
 # include <ket/qubit.hpp>
-# include <ket/gates/gate.hpp>
+# include <ket/gate/gate.hpp>
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/integer_exp2.hpp>
 # ifndef NDEBUG
@@ -59,7 +59,7 @@ namespace ket
         parallel_policy,
         static_cast<StateInteger>(last - first) >> 1u,
         [first, cos_theta, sin_theta, qubit_mask, lower_bits_mask, upper_bits_mask](
-          StateInteger const value_wo_qubits, int const)
+          StateInteger const value_wo_qubit, int const)
         {
           // xxxxx0xxxxxx
           auto const zero_index
@@ -169,7 +169,7 @@ namespace ket
       auto const sin_theta = static_cast<Complex>(imag(phase_coefficient));
       auto const i_sin_theta = ::ket::utility::imaginary_unit<Complex>() * sin_theta;
 
-      auto const sin_part = Complex{};
+      auto sin_part = Complex{};
       switch (num_qubits % BitInteger{4u})
       {
        case BitInteger{0u}:
@@ -201,9 +201,9 @@ namespace ket
             auto j_tmp = j;
             for (auto count = BitInteger{0u}; count < num_qubits; ++count)
             {
-              if (i_tmp bitand StateInteger{1u} == StateInteger{1u})
+              if ((i_tmp bitand StateInteger{1u}) == StateInteger{1u})
                 ++num_ones_in_i;
-              if (j_tmp bitand StateInteger{1u} == StateInteger{1u})
+              if ((j_tmp bitand StateInteger{1u}) == StateInteger{1u})
                 ++num_ones_in_j;
 
               i_tmp >>= BitInteger{1u};
@@ -212,7 +212,7 @@ namespace ket
 
             auto iter1 = first + indices[i];
             auto iter2 = first + indices[j];
-            iter1_value = *iter1;
+            auto const iter1_value = *iter1;
 
             *iter1 *= cos_theta;
             *iter1 += (num_qubits - num_ones_in_i) % BitInteger{2u} == BitInteger{0u} ? *iter2 * sin_part : *iter2 * (-sin_part);
@@ -246,7 +246,7 @@ namespace ket
       inline RandomAccessRange& exponential_pauli_y_coeff(
         RandomAccessRange& state,
         Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
-        ::ket::qubit<StateInteger, BitInteger> const qubit)
+        ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
       { return ::ket::gate::ranges::exponential_pauli_y_coeff(::ket::utility::policy::make_sequential(), state, phase_coefficient, qubit, qubits...); }
     } // namespace ranges
 

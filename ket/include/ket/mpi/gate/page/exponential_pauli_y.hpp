@@ -29,7 +29,7 @@ namespace ket
         namespace exponential_pauli_y_detail
         {
 # ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
-          template <typename Real, typename StateInteger>
+          template <typename Real>
           struct exponential_pauli_y_coeff1
           {
             Real cos_theta_;
@@ -39,7 +39,7 @@ namespace ket
               : cos_theta_{cos_theta}, sin_theta_{sin_theta}
             { }
 
-            template <typename Iterator>
+            template <typename Iterator, typename StateInteger>
             void operator()(Iterator const zero_first, Iterator const one_first, StateInteger const index, int const) const
             {
               auto const zero_iter = zero_first + index;
@@ -51,10 +51,10 @@ namespace ket
               *one_iter *= cos_theta_;
               *one_iter -= zero_iter_value * sin_theta_;
             }
-          }; // struct exponential_pauli_y_coeff1<Real, StateInteger>
+          }; // struct exponential_pauli_y_coeff1<Real>
 
-          template <typename Real, typename StateInteger>
-          inline ::ket::mpi::gate::page::exponential_pauli_y_detail::exponential_pauli_y_coeff1<Real, StateInteger>
+          template <typename Real>
+          inline ::ket::mpi::gate::page::exponential_pauli_y_detail::exponential_pauli_y_coeff1<Real>
           make_exponential_pauli_y_coeff1(Real const cos_theta, Real const sin_theta)
           { return {cos_theta, sin_theta}; }
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -93,8 +93,8 @@ namespace ket
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
-            parallel_policy, local_state, page_permutated_qubit,
-            ::ket::mpi::gate::page::exponential_pauli_y_detail::make_exponential_pauli_y_coeff1(cos_theta, i_sin_theta));
+            parallel_policy, local_state, permutated_qubit,
+            ::ket::mpi::gate::page::exponential_pauli_y_detail::make_exponential_pauli_y_coeff1(cos_theta, sin_theta));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }
 

@@ -132,7 +132,7 @@ namespace ket
             auto i_tmp = i;
             for (auto count = BitInteger{0u}; count < num_qubits; ++count)
             {
-              if (i_tmp bitand StateInteger{1u} == StateInteger{1u})
+              if ((i_tmp bitand StateInteger{1u}) == StateInteger{1u})
                 ++num_ones_in_i;
 
               i_tmp >>= BitInteger{1u};

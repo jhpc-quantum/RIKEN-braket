@@ -29,7 +29,7 @@ namespace ket
         namespace exponential_pauli_x_detail
         {
 # ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
-          template <typename Real, typename Complex, typename StateInteger>
+          template <typename Real, typename Complex>
           struct exponential_pauli_x_coeff1
           {
             Real cos_theta_;
@@ -39,7 +39,7 @@ namespace ket
               : cos_theta_{cos_theta}, i_sin_theta_{i_sin_theta}
             { }
 
-            template <typename Iterator>
+            template <typename Iterator, typename StateInteger>
             void operator()(Iterator const zero_first, Iterator const one_first, StateInteger const index, int const) const
             {
               auto const zero_iter = zero_first + index;
@@ -51,10 +51,10 @@ namespace ket
               *one_iter *= cos_theta_;
               *one_iter += zero_iter_value * i_sin_theta_;
             }
-          }; // struct exponential_pauli_x_coeff1<Real, Complex, StateInteger>
+          }; // struct exponential_pauli_x_coeff1<Real, Complex>
 
-          template <typename Real, typename Complex, typename StateInteger>
-          inline ::ket::mpi::gate::page::exponential_pauli_x_detail::exponential_pauli_x_coeff1<Real, Complex, StateInteger>
+          template <typename Real, typename Complex>
+          inline ::ket::mpi::gate::page::exponential_pauli_x_detail::exponential_pauli_x_coeff1<Real, Complex>
           make_exponential_pauli_x_coeff1(Real const cos_theta, Complex const& i_sin_theta)
           { return {cos_theta, i_sin_theta}; }
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -93,7 +93,7 @@ namespace ket
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
-            parallel_policy, local_state, page_permutated_qubit,
+            parallel_policy, local_state, permutated_qubit,
             ::ket::mpi::gate::page::exponential_pauli_x_detail::make_exponential_pauli_x_coeff1(cos_theta, i_sin_theta));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }
@@ -235,14 +235,14 @@ namespace ket
               auto const value_00 = *iter_00;
               auto const value_01_or_10 = *iter_01_or_10;
 
-              *iter_00 *= cos_theta;
-              *iter_00 += *iter_11 * i_sin_theta;
-              *iter_01_or_10 *= cos_theta;
-              *iter_01_or_10 += *iter_10_or_01 * i_sin_theta;
-              *iter_10_or_01 *= cos_theta;
-              *iter_10_or_01 += value_01_or_10 * i_sin_theta;
-              *iter_11 *= cos_theta;
-              *iter_11 += value_00 * i_sin_theta;
+              *iter_00 *= cos_theta_;
+              *iter_00 += *iter_11 * i_sin_theta_;
+              *iter_01_or_10 *= cos_theta_;
+              *iter_01_or_10 += *iter_10_or_01 * i_sin_theta_;
+              *iter_10_or_01 *= cos_theta_;
+              *iter_10_or_01 += value_01_or_10 * i_sin_theta_;
+              *iter_11 *= cos_theta_;
+              *iter_11 += value_00 * i_sin_theta_;
             }
           }; // struct exponential_pauli_x_coeff2_p<Real, Complex, StateInteger>
 

@@ -20,7 +20,7 @@ namespace ket
 
         template <typename StateInteger, typename BitInteger, typename... Qubits>
         inline std::string append_qubits_string(std::string const& result, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
-        { return do_generate_pauli_z_string(::ket::mpi::utility::generate_logger_string(result, ' ', qubit), qubits...); }
+        { return append_qubits_string(::ket::mpi::utility::generate_logger_string(result, ' ', qubit), qubits...); }
       } // namespace detail
     } // namespace gate
   } // namespace mpi

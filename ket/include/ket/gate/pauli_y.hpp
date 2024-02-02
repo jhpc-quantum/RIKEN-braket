@@ -136,7 +136,7 @@ namespace ket
       constexpr auto num_indices = ::ket::utility::integer_exp2<std::size_t>(num_qubits);
 
       using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
-      auto const coefficient = complex_type{};
+      auto coefficient = complex_type{};
       switch (num_qubits % BitInteger{4u})
       {
        case BitInteger{0u}:
@@ -168,9 +168,9 @@ namespace ket
             auto j_tmp = j;
             for (auto count = BitInteger{0u}; count < num_qubits; ++count)
             {
-              if (i_tmp bitand StateInteger{1u} == StateInteger{1u})
+              if ((i_tmp bitand StateInteger{1u}) == StateInteger{1u})
                 ++num_ones_in_i;
-              if (j_tmp bitand StateInteger{1u} == StateInteger{1u})
+              if ((j_tmp bitand StateInteger{1u}) == StateInteger{1u})
                 ++num_ones_in_j;
 
               i_tmp >>= BitInteger{1u};

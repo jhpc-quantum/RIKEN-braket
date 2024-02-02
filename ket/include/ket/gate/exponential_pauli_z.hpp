@@ -57,7 +57,7 @@ namespace ket
         parallel_policy,
         static_cast<StateInteger>(last - first) >> 1u,
         [first, &phase_coefficient, &conj_phase_coefficient, qubit_mask, lower_bits_mask, upper_bits_mask](
-          StateInteger const value_wo_qubits, int const)
+          StateInteger const value_wo_qubit, int const)
         {
           // xxxxx0xxxxxx
           auto const zero_index
@@ -160,7 +160,7 @@ namespace ket
             auto i_tmp = i;
             for (auto count = BitInteger{0u}; count < num_qubits; ++count)
             {
-              if (i_tmp bitand StateInteger{1u} == StateInteger{1u})
+              if ((i_tmp bitand StateInteger{1u}) == StateInteger{1u})
                 ++num_ones_in_i;
 
               i_tmp >>= BitInteger{1u};
@@ -257,7 +257,7 @@ namespace ket
     template <typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger, typename... Qubits>
     inline void exponential_pauli_z(
       RandomAccessIterator const first, RandomAccessIterator const last, Real const phase, // theta
-      ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const.. qubits)
+      ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
     {
       using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
       ::ket::gate::exponential_pauli_z_coeff(first, last, ::ket::utility::exp_i<complex_type>(phase), qubit, qubits...);

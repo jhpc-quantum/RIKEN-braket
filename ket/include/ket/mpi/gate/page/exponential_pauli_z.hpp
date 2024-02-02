@@ -29,27 +29,27 @@ namespace ket
         namespace exponential_pauli_z_detail
         {
 # ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
-          template <typename Complex, typename StateInteger>
+          template <typename Complex>
           struct exponential_pauli_z_coeff1
           {
-            Real cos_theta_;
-            Real sin_theta_;
+            Complex phase_coefficient_;
+            Complex conj_phase_coefficient_;
 
             exponential_pauli_z_coeff1(
               Complex const& phase_coefficient, Complex const& conj_phase_coefficient) noexcept
               : phase_coefficient_{phase_coefficient}, conj_phase_coefficient_{conj_phase_coefficient}
             { }
 
-            template <typename Iterator>
+            template <typename Iterator, typename StateInteger>
             void operator()(Iterator const zero_first, Iterator const one_first, StateInteger const index, int const) const
             {
               *(zero_first + index) *= phase_coefficient_;
               *(one_first + index) *= conj_phase_coefficient_;
             }
-          }; // struct exponential_pauli_z_coeff1<Complex, StateInteger>
+          }; // struct exponential_pauli_z_coeff1<Complex>
 
-          template <typename Complex, typename StateInteger>
-          inline ::ket::mpi::gate::page::exponential_pauli_z_detail::exponential_pauli_z_coeff1<Complex, StateInteger>
+          template <typename Complex>
+          inline ::ket::mpi::gate::page::exponential_pauli_z_detail::exponential_pauli_z_coeff1<Complex>
           make_exponential_pauli_z_coeff1(Complex const& phase_coefficient, Complex const& conj_phase_coefficient)
           { return {phase_coefficient, conj_phase_coefficient}; }
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -80,8 +80,8 @@ namespace ket
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
-            parallel_policy, local_state, page_permutated_qubit,
-            ::ket::mpi::gate::page::exponential_pauli_z_detail::make_exponential_pauli_z_coeff1_p(
+            parallel_policy, local_state, permutated_qubit,
+            ::ket::mpi::gate::page::exponential_pauli_z_detail::make_exponential_pauli_z_coeff1(
               phase_coefficient, conj_phase_coefficient));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }
