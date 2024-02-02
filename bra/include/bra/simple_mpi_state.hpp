@@ -1,5 +1,5 @@
-#ifndef BRA_simple_mpi_STATE_HPP
-# define BRA_simple_mpi_STATE_HPP
+#ifndef BRA_SIMPLE_MPI_STATE_HPP
+# define BRA_SIMPLE_MPI_STATE_HPP
 
 # ifndef BRA_NO_MPI
 #   include <vector>
@@ -71,10 +71,24 @@ namespace bra
     void do_adj_hadamard(qubit_type const qubit) override;
     void do_pauli_x(qubit_type const qubit) override;
     void do_adj_pauli_x(qubit_type const qubit) override;
+    void do_pauli_xx(qubit_type const qubit1, qubit_type const qubit2) override;
+    void do_adj_pauli_xx(qubit_type const qubit1, qubit_type const qubit2) override;
+    void do_pauli_xn(std::vector<qubit_type> const& qubits) override;
+    void do_adj_pauli_xn(std::vector<qubit_type> const& qubits) override;
     void do_pauli_y(qubit_type const qubit) override;
     void do_adj_pauli_y(qubit_type const qubit) override;
+    void do_pauli_yy(qubit_type const qubit1, qubit_type const qubit2) override;
+    void do_adj_pauli_yy(qubit_type const qubit1, qubit_type const qubit2) override;
+    void do_pauli_yn(std::vector<qubit_type> const& qubits) override;
+    void do_adj_pauli_yn(std::vector<qubit_type> const& qubits) override;
     void do_pauli_z(qubit_type const qubit) override;
     void do_adj_pauli_z(qubit_type const qubit) override;
+    void do_pauli_zz(qubit_type const qubit1, qubit_type const qubit2) override;
+    void do_adj_pauli_zz(qubit_type const qubit1, qubit_type const qubit2) override;
+    void do_pauli_zn(std::vector<qubit_type> const& qubits) override;
+    void do_adj_pauli_zn(std::vector<qubit_type> const& qubits) override;
+    void do_swap(qubit_type const qubit1, qubit_type const qubit2) override;
+    void do_adj_swap(qubit_type const qubit1, qubit_type const qubit2) override;
     void do_u1(real_type const phase, qubit_type const qubit) override;
     void do_adj_u1(real_type const phase, qubit_type const qubit) override;
     void do_u2(
@@ -119,6 +133,40 @@ namespace bra
       complex_type const phase_coefficient,
       qubit_type const target_qubit,
       control_qubit_type const control_qubit) override;
+    void do_exponential_pauli_x(real_type const phase, qubit_type const qubit) override;
+    void do_adj_exponential_pauli_x(real_type const phase, qubit_type const qubit) override;
+    void do_exponential_pauli_xx(
+      real_type const phase, qubit_type const qubit1, qubit_type const qubit2) override;
+    void do_adj_exponential_pauli_xx(
+      real_type const phase, qubit_type const qubit1, qubit_type const qubit2) override;
+    void do_exponential_pauli_xn(
+      real_type const phase, std::vector<qubit_type> const& qubits) override;
+    void do_adj_exponential_pauli_xn(
+      real_type const phase, std::vector<qubit_type> const& qubits) override;
+    void do_exponential_pauli_y(real_type const phase, qubit_type const qubit) override;
+    void do_adj_exponential_pauli_y(real_type const phase, qubit_type const qubit) override;
+    void do_exponential_pauli_yy(
+      real_type const phase, qubit_type const qubit1, qubit_type const qubit2) override;
+    void do_adj_exponential_pauli_yy(
+      real_type const phase, qubit_type const qubit1, qubit_type const qubit2) override;
+    void do_exponential_pauli_yn(
+      real_type const phase, std::vector<qubit_type> const& qubits) override;
+    void do_adj_exponential_pauli_yn(
+      real_type const phase, std::vector<qubit_type> const& qubits) override;
+    void do_exponential_pauli_z(real_type const phase, qubit_type const qubit) override;
+    void do_adj_exponential_pauli_z(real_type const phase, qubit_type const qubit) override;
+    void do_exponential_pauli_zz(
+      real_type const phase, qubit_type const qubit1, qubit_type const qubit2) override;
+    void do_adj_exponential_pauli_zz(
+      real_type const phase, qubit_type const qubit1, qubit_type const qubit2) override;
+    void do_exponential_pauli_zn(
+      real_type const phase, std::vector<qubit_type> const& qubits) override;
+    void do_adj_exponential_pauli_zn(
+      real_type const phase, std::vector<qubit_type> const& qubits) override;
+    void do_exponential_swap(
+      real_type const phase, qubit_type const qubit1, qubit_type const qubit2) override;
+    void do_adj_exponential_swap(
+      real_type const phase, qubit_type const qubit1, qubit_type const qubit2) override;
     void do_toffoli(
       qubit_type const target_qubit,
       control_qubit_type const control_qubit1,
@@ -144,4 +192,4 @@ namespace bra
 
 # endif // BRA_NO_MPI
 
-#endif // BRA_simple_mpi_STATE_HPP
+#endif // BRA_SIMPLE_MPI_STATE_HPP

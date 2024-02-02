@@ -259,18 +259,29 @@ namespace bra
 # endif
 
     qubit_type read_target(columns_type const& columns) const;
+    std::tuple<qubit_type, qubit_type> read_2targets(columns_type const& columns) const;
+    void read_multi_targets(columns_type const& columns, std::vector<qubit_type>& result) const;
     std::tuple<qubit_type, real_type> read_target_phase(columns_type const& columns) const;
     std::tuple<qubit_type, real_type, real_type> read_target_2phases(columns_type const& columns) const;
     std::tuple<qubit_type, real_type, real_type, real_type> read_target_3phases(columns_type const& columns) const;
     std::tuple<qubit_type, int> read_target_phaseexp(columns_type const& columns) const;
+    std::tuple<qubit_type, qubit_type, real_type> read_2targets_phase(columns_type const& columns) const;
+    real_type read_multi_targets_phase(columns_type const& columns, std::vector<qubit_type>& targets_result) const;
     std::tuple<control_qubit_type, qubit_type> read_control_target(columns_type const& columns) const;
     std::tuple<control_qubit_type, qubit_type, int> read_control_target_phaseexp(columns_type const& columns) const;
     std::tuple<control_qubit_type, control_qubit_type, qubit_type> read_2controls_target(columns_type const& columns) const;
 
     qubit_type read_hadamard(columns_type const& columns) const { return read_target(columns); }
     qubit_type read_pauli_x(columns_type const& columns) const { return read_target(columns); }
+    std::tuple<qubit_type, qubit_type> read_pauli_xx(columns_type const& columns) const { return read_2targets(columns); }
+    void read_pauli_xn(columns_type const& columns, std::vector<qubit_type>& result) const { read_multi_targets(columns, result); }
     qubit_type read_pauli_y(columns_type const& columns) const { return read_target(columns); }
+    std::tuple<qubit_type, qubit_type> read_pauli_yy(columns_type const& columns) const { return read_2targets(columns); }
+    void read_pauli_yn(columns_type const& columns, std::vector<qubit_type>& result) const { read_multi_targets(columns, result); }
     qubit_type read_pauli_z(columns_type const& columns) const { return read_target(columns); }
+    std::tuple<qubit_type, qubit_type> read_pauli_zz(columns_type const& columns) const { return read_2targets(columns); }
+    void read_pauli_zn(columns_type const& columns, std::vector<qubit_type>& result) const { read_multi_targets(columns, result); }
+    std::tuple<qubit_type, qubit_type> read_swap(columns_type const& columns) const { return read_2targets(columns); }
     qubit_type read_s_gate(columns_type const& columns) const { return read_target(columns); }
     qubit_type read_adj_s_gate(columns_type const& columns) const { return read_target(columns); }
     qubit_type read_t_gate(columns_type const& columns) const { return read_target(columns); }
@@ -286,6 +297,16 @@ namespace bra
     std::tuple<control_qubit_type, qubit_type> read_controlled_not(columns_type const& columns) const { return read_control_target(columns); }
     std::tuple<control_qubit_type, qubit_type, int> read_controlled_phase_shift(columns_type const& columns) const { return read_control_target_phaseexp(columns); }
     std::tuple<control_qubit_type, qubit_type, int> read_controlled_v(columns_type const& columns) const { return read_control_target_phaseexp(columns); }
+    std::tuple<qubit_type, real_type> read_exponential_pauli_x(columns_type const& columns) const { return read_target_phase(columns); }
+    std::tuple<qubit_type, qubit_type, real_type> read_exponential_pauli_xx(columns_type const& columns) const { return read_2targets_phase(columns); }
+    real_type read_exponential_pauli_xn(columns_type const& columns, std::vector<qubit_type>& targets_result) const { return read_multi_targets_phase(columns, targets_result); }
+    std::tuple<qubit_type, real_type> read_exponential_pauli_y(columns_type const& columns) const { return read_target_phase(columns); }
+    std::tuple<qubit_type, qubit_type, real_type> read_exponential_pauli_yy(columns_type const& columns) const { return read_2targets_phase(columns); }
+    real_type read_exponential_pauli_yn(columns_type const& columns, std::vector<qubit_type>& targets_result) const { return read_multi_targets_phase(columns, targets_result); }
+    std::tuple<qubit_type, real_type> read_exponential_pauli_z(columns_type const& columns) const { return read_target_phase(columns); }
+    std::tuple<qubit_type, qubit_type, real_type> read_exponential_pauli_zz(columns_type const& columns) const { return read_2targets_phase(columns); }
+    real_type read_exponential_pauli_zn(columns_type const& columns, std::vector<qubit_type>& targets_result) const { return read_multi_targets_phase(columns, targets_result); }
+    std::tuple<qubit_type, qubit_type, real_type> read_exponential_swap(columns_type const& columns) const { return read_2targets_phase(columns); }
     std::tuple<control_qubit_type, control_qubit_type, qubit_type> read_toffoli(columns_type const& columns) const { return read_2controls_target(columns); }
     qubit_type read_projective_measurement(columns_type const& columns) const { return read_target(columns); }
 

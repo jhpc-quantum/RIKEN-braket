@@ -9,12 +9,17 @@
 # include <ket/mpi/gate/pauli_x.hpp>
 # include <ket/mpi/gate/pauli_y.hpp>
 # include <ket/mpi/gate/pauli_z.hpp>
+# include <ket/mpi/gate/swap.hpp>
 # include <ket/mpi/gate/phase_shift.hpp>
 # include <ket/mpi/gate/x_rotation_half_pi.hpp>
 # include <ket/mpi/gate/y_rotation_half_pi.hpp>
 # include <ket/mpi/gate/controlled_not.hpp>
 # include <ket/mpi/gate/controlled_phase_shift.hpp>
 # include <ket/mpi/gate/controlled_v.hpp>
+# include <ket/mpi/gate/exponential_pauli_x.hpp>
+# include <ket/mpi/gate/exponential_pauli_y.hpp>
+# include <ket/mpi/gate/exponential_pauli_z.hpp>
+# include <ket/mpi/gate/exponential_swap.hpp>
 # include <ket/mpi/gate/toffoli.hpp>
 # include <ket/mpi/gate/projective_measurement.hpp>
 # include <ket/mpi/gate/clear.hpp>
@@ -102,6 +107,46 @@ namespace bra
       data_, qubit, permutation_, buffer_, communicator_, environment_);
   }
 
+  void paged_unit_mpi_state::do_pauli_xx(qubit_type const qubit1, qubit_type const qubit2)
+  {
+    ket::mpi::gate::pauli_x(
+      mpi_policy_, parallel_policy_,
+      data_, qubit1, qubit2, permutation_, buffer_, communicator_, environment_);
+  }
+
+  void paged_unit_mpi_state::do_adj_pauli_xx(qubit_type const qubit1, qubit_type const qubit2)
+  {
+    ket::mpi::gate::adj_pauli_x(
+      mpi_policy_, parallel_policy_,
+      data_, qubit1, qubit2, permutation_, buffer_, communicator_, environment_);
+  }
+
+  void paged_unit_mpi_state::do_pauli_xn(std::vector<qubit_type> const& qubits)
+  {
+    auto const num_qubits = qubits.size();
+    if (num_qubits == 3u)
+      ket::mpi::gate::pauli_x(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubits[0u], qubits[1u], qubits[2u]);
+    else if (num_qubits == 4u)
+      ket::mpi::gate::pauli_x(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+  }
+
+  void paged_unit_mpi_state::do_adj_pauli_xn(std::vector<qubit_type> const& qubits)
+  {
+    auto const num_qubits = qubits.size();
+    if (num_qubits == 3u)
+      ket::mpi::gate::adj_pauli_x(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubits[0u], qubits[1u], qubits[2u]);
+    else if (num_qubits == 4u)
+      ket::mpi::gate::adj_pauli_x(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+  }
+
   void paged_unit_mpi_state::do_pauli_y(qubit_type const qubit)
   {
     ket::mpi::gate::pauli_y(
@@ -116,6 +161,46 @@ namespace bra
       data_, qubit, permutation_, buffer_, communicator_, environment_);
   }
 
+  void paged_unit_mpi_state::do_pauli_yy(qubit_type const qubit1, qubit_type const qubit2)
+  {
+    ket::mpi::gate::pauli_y(
+      mpi_policy_, parallel_policy_,
+      data_, qubit1, qubit2, permutation_, buffer_, communicator_, environment_);
+  }
+
+  void paged_unit_mpi_state::do_adj_pauli_yy(qubit_type const qubit1, qubit_type const qubit2)
+  {
+    ket::mpi::gate::adj_pauli_y(
+      mpi_policy_, parallel_policy_,
+      data_, qubit1, qubit2, permutation_, buffer_, communicator_, environment_);
+  }
+
+  void paged_unit_mpi_state::do_pauli_yn(std::vector<qubit_type> const& qubits)
+  {
+    auto const num_qubits = qubits.size();
+    if (num_qubits == 3u)
+      ket::mpi::gate::pauli_y(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubits[0u], qubits[1u], qubits[2u]);
+    else if (num_qubits == 4u)
+      ket::mpi::gate::pauli_y(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+  }
+
+  void paged_unit_mpi_state::do_adj_pauli_yn(std::vector<qubit_type> const& qubits)
+  {
+    auto const num_qubits = qubits.size();
+    if (num_qubits == 3u)
+      ket::mpi::gate::adj_pauli_y(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubits[0u], qubits[1u], qubits[2u]);
+    else if (num_qubits == 4u)
+      ket::mpi::gate::adj_pauli_y(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+  }
+
   void paged_unit_mpi_state::do_pauli_z(qubit_type const qubit)
   {
     ket::mpi::gate::pauli_z(
@@ -128,6 +213,60 @@ namespace bra
     ket::mpi::gate::adj_pauli_z(
       mpi_policy_, parallel_policy_,
       data_, qubit, permutation_, buffer_, communicator_, environment_);
+  }
+
+  void paged_unit_mpi_state::do_pauli_zz(qubit_type const qubit1, qubit_type const qubit2)
+  {
+    ket::mpi::gate::pauli_z(
+      mpi_policy_, parallel_policy_,
+      data_, qubit1, qubit2, permutation_, buffer_, communicator_, environment_);
+  }
+
+  void paged_unit_mpi_state::do_adj_pauli_zz(qubit_type const qubit1, qubit_type const qubit2)
+  {
+    ket::mpi::gate::adj_pauli_z(
+      mpi_policy_, parallel_policy_,
+      data_, qubit1, qubit2, permutation_, buffer_, communicator_, environment_);
+  }
+
+  void paged_unit_mpi_state::do_pauli_zn(std::vector<qubit_type> const& qubits)
+  {
+    auto const num_qubits = qubits.size();
+    if (num_qubits == 3u)
+      ket::mpi::gate::pauli_z(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubits[0u], qubits[1u], qubits[2u]);
+    else if (num_qubits == 4u)
+      ket::mpi::gate::pauli_z(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+  }
+
+  void paged_unit_mpi_state::do_adj_pauli_zn(std::vector<qubit_type> const& qubits)
+  {
+    auto const num_qubits = qubits.size();
+    if (num_qubits == 3u)
+      ket::mpi::gate::adj_pauli_z(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubits[0u], qubits[1u], qubits[2u]);
+    else if (num_qubits == 4u)
+      ket::mpi::gate::adj_pauli_z(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+  }
+
+  void paged_unit_mpi_state::do_swap(qubit_type const qubit1, qubit_type const qubit2)
+  {
+    ket::mpi::gate::swap(
+      mpi_policy_, parallel_policy_,
+      data_, qubit1, qubit2, permutation_, buffer_, communicator_, environment_);
+  }
+
+  void paged_unit_mpi_state::do_adj_swap(qubit_type const qubit1, qubit_type const qubit2)
+  {
+    ket::mpi::gate::adj_swap(
+      mpi_policy_, parallel_policy_,
+      data_, qubit1, qubit2, permutation_, buffer_, communicator_, environment_);
   }
 
   void paged_unit_mpi_state::do_u1(real_type const phase, qubit_type const qubit)
@@ -272,6 +411,196 @@ namespace bra
     ket::mpi::gate::adj_controlled_v_coeff(
       mpi_policy_, parallel_policy_,
       data_, phase_coefficient, target_qubit, control_qubit, permutation_, buffer_, communicator_, environment_);
+  }
+
+  void paged_unit_mpi_state::do_exponential_pauli_x(real_type const phase, qubit_type const qubit)
+  {
+    ket::mpi::gate::exponential_pauli_x(
+      mpi_policy_, parallel_policy_,
+      data_, phase, qubit, permutation_, buffer_, communicator_, environment_);
+  }
+
+  void paged_unit_mpi_state::do_adj_exponential_pauli_x(real_type const phase, qubit_type const qubit)
+  {
+    ket::mpi::gate::adj_exponential_pauli_x(
+      mpi_policy_, parallel_policy_,
+      data_, phase, qubit, permutation_, buffer_, communicator_, environment_);
+  }
+
+  void paged_unit_mpi_state::do_exponential_pauli_xx(
+    real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
+  {
+    ket::mpi::gate::exponential_pauli_x(
+      mpi_policy_, parallel_policy_,
+      data_, phase, qubit1, qubit2, permutation_, buffer_, communicator_, environment_);
+  }
+
+  void paged_unit_mpi_state::do_adj_exponential_pauli_xx(
+    real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
+  {
+    ket::mpi::gate::adj_exponential_pauli_x(
+      mpi_policy_, parallel_policy_,
+      data_, phase, qubit1, qubit2, permutation_, buffer_, communicator_, environment_);
+  }
+
+  void paged_unit_mpi_state::do_exponential_pauli_xn(
+    real_type const phase, std::vector<qubit_type> const& qubits)
+  {
+    auto const num_qubits = qubits.size();
+    if (num_qubits == 3u)
+      ket::mpi::gate::exponential_pauli_x(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, qubits[0u], qubits[1u], qubits[2u]);
+    else if (num_qubits == 4u)
+      ket::mpi::gate::exponential_pauli_x(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+  }
+
+  void paged_unit_mpi_state::do_adj_exponential_pauli_xn(
+    real_type const phase, std::vector<qubit_type> const& qubits)
+  {
+    auto const num_qubits = qubits.size();
+    if (num_qubits == 3u)
+      ket::mpi::gate::adj_exponential_pauli_x(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, qubits[0u], qubits[1u], qubits[2u]);
+    else if (num_qubits == 4u)
+      ket::mpi::gate::adj_exponential_pauli_x(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+  }
+
+  void paged_unit_mpi_state::do_exponential_pauli_y(real_type const phase, qubit_type const qubit)
+  {
+    ket::mpi::gate::exponential_pauli_y(
+      mpi_policy_, parallel_policy_,
+      data_, phase, qubit, permutation_, buffer_, communicator_, environment_);
+  }
+
+  void paged_unit_mpi_state::do_adj_exponential_pauli_y(real_type const phase, qubit_type const qubit)
+  {
+    ket::mpi::gate::adj_exponential_pauli_y(
+      mpi_policy_, parallel_policy_,
+      data_, phase, qubit, permutation_, buffer_, communicator_, environment_);
+  }
+
+  void paged_unit_mpi_state::do_exponential_pauli_yy(
+    real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
+  {
+    ket::mpi::gate::exponential_pauli_y(
+      mpi_policy_, parallel_policy_,
+      data_, phase, qubit1, qubit2, permutation_, buffer_, communicator_, environment_);
+  }
+
+  void paged_unit_mpi_state::do_adj_exponential_pauli_yy(
+    real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
+  {
+    ket::mpi::gate::adj_exponential_pauli_y(
+      mpi_policy_, parallel_policy_,
+      data_, phase, qubit1, qubit2, permutation_, buffer_, communicator_, environment_);
+  }
+
+  void paged_unit_mpi_state::do_exponential_pauli_yn(
+    real_type const phase, std::vector<qubit_type> const& qubits)
+  {
+    auto const num_qubits = qubits.size();
+    if (num_qubits == 3u)
+      ket::mpi::gate::exponential_pauli_y(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, qubits[0u], qubits[1u], qubits[2u]);
+    else if (num_qubits == 4u)
+      ket::mpi::gate::exponential_pauli_y(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+  }
+
+  void paged_unit_mpi_state::do_adj_exponential_pauli_yn(
+    real_type const phase, std::vector<qubit_type> const& qubits)
+  {
+    auto const num_qubits = qubits.size();
+    if (num_qubits == 3u)
+      ket::mpi::gate::adj_exponential_pauli_y(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, qubits[0u], qubits[1u], qubits[2u]);
+    else if (num_qubits == 4u)
+      ket::mpi::gate::adj_exponential_pauli_y(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+  }
+
+  void paged_unit_mpi_state::do_exponential_pauli_z(real_type const phase, qubit_type const qubit)
+  {
+    ket::mpi::gate::exponential_pauli_z(
+      mpi_policy_, parallel_policy_,
+      data_, phase, qubit, permutation_, buffer_, communicator_, environment_);
+  }
+
+  void paged_unit_mpi_state::do_adj_exponential_pauli_z(real_type const phase, qubit_type const qubit)
+  {
+    ket::mpi::gate::adj_exponential_pauli_z(
+      mpi_policy_, parallel_policy_,
+      data_, phase, qubit, permutation_, buffer_, communicator_, environment_);
+  }
+
+  void paged_unit_mpi_state::do_exponential_pauli_zz(
+    real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
+  {
+    ket::mpi::gate::exponential_pauli_z(
+      mpi_policy_, parallel_policy_,
+      data_, phase, qubit1, qubit2, permutation_, buffer_, communicator_, environment_);
+  }
+
+  void paged_unit_mpi_state::do_adj_exponential_pauli_zz(
+    real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
+  {
+    ket::mpi::gate::adj_exponential_pauli_z(
+      mpi_policy_, parallel_policy_,
+      data_, phase, qubit1, qubit2, permutation_, buffer_, communicator_, environment_);
+  }
+
+  void paged_unit_mpi_state::do_exponential_pauli_zn(
+    real_type const phase, std::vector<qubit_type> const& qubits)
+  {
+    auto const num_qubits = qubits.size();
+    if (num_qubits == 3u)
+      ket::mpi::gate::exponential_pauli_z(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, qubits[0u], qubits[1u], qubits[2u]);
+    else if (num_qubits == 4u)
+      ket::mpi::gate::exponential_pauli_z(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+  }
+
+  void paged_unit_mpi_state::do_adj_exponential_pauli_zn(
+    real_type const phase, std::vector<qubit_type> const& qubits)
+  {
+    auto const num_qubits = qubits.size();
+    if (num_qubits == 3u)
+      ket::mpi::gate::adj_exponential_pauli_z(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, qubits[0u], qubits[1u], qubits[2u]);
+    else if (num_qubits == 4u)
+      ket::mpi::gate::adj_exponential_pauli_z(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+  }
+
+  void paged_unit_mpi_state::do_exponential_swap(
+    real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
+  {
+    ket::mpi::gate::exponential_swap(
+      mpi_policy_, parallel_policy_,
+      data_, phase, qubit1, qubit2, permutation_, buffer_, communicator_, environment_);
+  }
+
+  void paged_unit_mpi_state::do_adj_exponential_swap(
+    real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
+  {
+    ket::mpi::gate::adj_exponential_swap(
+      mpi_policy_, parallel_policy_,
+      data_, phase, qubit1, qubit2, permutation_, buffer_, communicator_, environment_);
   }
 
   void paged_unit_mpi_state::do_toffoli(

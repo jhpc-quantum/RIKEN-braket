@@ -5,12 +5,17 @@
 # include <ket/gate/pauli_x.hpp>
 # include <ket/gate/pauli_y.hpp>
 # include <ket/gate/pauli_z.hpp>
+# include <ket/gate/swap.hpp>
 # include <ket/gate/phase_shift.hpp>
 # include <ket/gate/x_rotation_half_pi.hpp>
 # include <ket/gate/y_rotation_half_pi.hpp>
 # include <ket/gate/controlled_not.hpp>
 # include <ket/gate/controlled_phase_shift.hpp>
 # include <ket/gate/controlled_v.hpp>
+# include <ket/gate/exponential_pauli_x.hpp>
+# include <ket/gate/exponential_pauli_y.hpp>
+# include <ket/gate/exponential_pauli_z.hpp>
+# include <ket/gate/exponential_swap.hpp>
 # include <ket/gate/toffoli.hpp>
 # include <ket/gate/projective_measurement.hpp>
 # include <ket/gate/clear.hpp>
@@ -47,17 +52,95 @@ namespace bra
   void nompi_state::do_adj_pauli_x(qubit_type const qubit)
   { ket::gate::ranges::adj_pauli_x(parallel_policy_, data_, qubit); }
 
+  void nompi_state::do_pauli_xx(qubit_type const qubit1, qubit_type const qubit2)
+  { ket::gate::ranges::pauli_x(parallel_policy_, data_, qubit1, qubit2); }
+
+  void nompi_state::do_adj_pauli_xx(qubit_type const qubit1, qubit_type const qubit2)
+  { ket::gate::ranges::adj_pauli_x(parallel_policy_, data_, qubit1, qubit2); }
+
+  void nompi_state::do_pauli_xn(std::vector<qubit_type> const& qubits)
+  {
+    auto const num_qubits = qubits.size();
+    if (num_qubits == 3u)
+      ket::gate::ranges::pauli_x(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u]);
+    else if (num_qubits == 4u)
+      ket::gate::ranges::pauli_x(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+  }
+
+  void nompi_state::do_adj_pauli_xn(std::vector<qubit_type> const& qubits)
+  {
+    auto const num_qubits = qubits.size();
+    if (num_qubits == 3u)
+      ket::gate::ranges::adj_pauli_x(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u]);
+    else if (num_qubits == 4u)
+      ket::gate::ranges::adj_pauli_x(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+  }
+
   void nompi_state::do_pauli_y(qubit_type const qubit)
   { ket::gate::ranges::pauli_y(parallel_policy_, data_, qubit); }
 
   void nompi_state::do_adj_pauli_y(qubit_type const qubit)
   { ket::gate::ranges::adj_pauli_y(parallel_policy_, data_, qubit); }
 
+  void nompi_state::do_pauli_yy(qubit_type const qubit1, qubit_type const qubit2)
+  { ket::gate::ranges::pauli_y(parallel_policy_, data_, qubit1, qubit2); }
+
+  void nompi_state::do_adj_pauli_yy(qubit_type const qubit1, qubit_type const qubit2)
+  { ket::gate::ranges::adj_pauli_y(parallel_policy_, data_, qubit1, qubit2); }
+
+  void nompi_state::do_pauli_yn(std::vector<qubit_type> const& qubits)
+  {
+    auto const num_qubits = qubits.size();
+    if (num_qubits == 3u)
+      ket::gate::ranges::pauli_y(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u]);
+    else if (num_qubits == 4u)
+      ket::gate::ranges::pauli_y(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+  }
+
+  void nompi_state::do_adj_pauli_yn(std::vector<qubit_type> const& qubits)
+  {
+    auto const num_qubits = qubits.size();
+    if (num_qubits == 3u)
+      ket::gate::ranges::adj_pauli_y(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u]);
+    else if (num_qubits == 4u)
+      ket::gate::ranges::adj_pauli_y(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+  }
+
   void nompi_state::do_pauli_z(qubit_type const qubit)
   { ket::gate::ranges::pauli_z(parallel_policy_, data_, qubit); }
 
   void nompi_state::do_adj_pauli_z(qubit_type const qubit)
   { ket::gate::ranges::adj_pauli_z(parallel_policy_, data_, qubit); }
+
+  void nompi_state::do_pauli_zz(qubit_type const qubit1, qubit_type const qubit2)
+  { ket::gate::ranges::pauli_z(parallel_policy_, data_, qubit1, qubit2); }
+
+  void nompi_state::do_adj_pauli_zz(qubit_type const qubit1, qubit_type const qubit2)
+  { ket::gate::ranges::adj_pauli_z(parallel_policy_, data_, qubit1, qubit2); }
+
+  void nompi_state::do_pauli_zn(std::vector<qubit_type> const& qubits)
+  {
+    auto const num_qubits = qubits.size();
+    if (num_qubits == 3u)
+      ket::gate::ranges::pauli_z(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u]);
+    else if (num_qubits == 4u)
+      ket::gate::ranges::pauli_z(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+  }
+
+  void nompi_state::do_adj_pauli_zn(std::vector<qubit_type> const& qubits)
+  {
+    auto const num_qubits = qubits.size();
+    if (num_qubits == 3u)
+      ket::gate::ranges::adj_pauli_z(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u]);
+    else if (num_qubits == 4u)
+      ket::gate::ranges::adj_pauli_z(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+  }
+
+  void nompi_state::do_swap(qubit_type const qubit1, qubit_type const qubit2)
+  { ket::gate::ranges::swap(parallel_policy_, data_, qubit1, qubit2); }
+
+  void nompi_state::do_adj_swap(qubit_type const qubit1, qubit_type const qubit2)
+  { ket::gate::ranges::adj_swap(parallel_policy_, data_, qubit1, qubit2); }
 
   void nompi_state::do_u1(real_type const phase, qubit_type const qubit)
   { ket::gate::ranges::phase_shift(parallel_policy_, data_, phase, qubit); }
@@ -146,6 +229,102 @@ namespace bra
       parallel_policy_,
       data_, phase_coefficient, target_qubit, control_qubit);
   }
+
+  void nompi_state::do_exponential_pauli_x(real_type const phase, qubit_type const qubit)
+  { ket::gate::ranges::exponential_pauli_x(parallel_policy_, data_, phase, qubit); }
+
+  void nompi_state::do_adj_exponential_pauli_x(real_type const phase, qubit_type const qubit)
+  { ket::gate::ranges::adj_exponential_pauli_x(parallel_policy_, data_, phase, qubit); }
+
+  void nompi_state::do_exponential_pauli_xx(real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
+  { ket::gate::ranges::exponential_pauli_x(parallel_policy_, data_, phase, qubit1, qubit2); }
+
+  void nompi_state::do_adj_exponential_pauli_xx(real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
+  { ket::gate::ranges::adj_exponential_pauli_x(parallel_policy_, data_, phase, qubit1, qubit2); }
+
+  void nompi_state::do_exponential_pauli_xn(real_type const phase, std::vector<qubit_type> const& qubits)
+  {
+    auto const num_qubits = qubits.size();
+    if (num_qubits == 3u)
+      ket::gate::ranges::exponential_pauli_x(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u]);
+    else if (num_qubits == 4u)
+      ket::gate::ranges::exponential_pauli_x(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+  }
+
+  void nompi_state::do_adj_exponential_pauli_xn(real_type const phase, std::vector<qubit_type> const& qubits)
+  {
+    auto const num_qubits = qubits.size();
+    if (num_qubits == 3u)
+      ket::gate::ranges::adj_exponential_pauli_x(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u]);
+    else if (num_qubits == 4u)
+      ket::gate::ranges::adj_exponential_pauli_x(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+  }
+
+  void nompi_state::do_exponential_pauli_y(real_type const phase, qubit_type const qubit)
+  { ket::gate::ranges::exponential_pauli_y(parallel_policy_, data_, phase, qubit); }
+
+  void nompi_state::do_adj_exponential_pauli_y(real_type const phase, qubit_type const qubit)
+  { ket::gate::ranges::adj_exponential_pauli_y(parallel_policy_, data_, phase, qubit); }
+
+  void nompi_state::do_exponential_pauli_yy(real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
+  { ket::gate::ranges::exponential_pauli_y(parallel_policy_, data_, phase, qubit1, qubit2); }
+
+  void nompi_state::do_adj_exponential_pauli_yy(real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
+  { ket::gate::ranges::adj_exponential_pauli_y(parallel_policy_, data_, phase, qubit1, qubit2); }
+
+  void nompi_state::do_exponential_pauli_yn(real_type const phase, std::vector<qubit_type> const& qubits)
+  {
+    auto const num_qubits = qubits.size();
+    if (num_qubits == 3u)
+      ket::gate::ranges::exponential_pauli_y(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u]);
+    else if (num_qubits == 4u)
+      ket::gate::ranges::exponential_pauli_y(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+  }
+
+  void nompi_state::do_adj_exponential_pauli_yn(real_type const phase, std::vector<qubit_type> const& qubits)
+  {
+    auto const num_qubits = qubits.size();
+    if (num_qubits == 3u)
+      ket::gate::ranges::adj_exponential_pauli_y(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u]);
+    else if (num_qubits == 4u)
+      ket::gate::ranges::adj_exponential_pauli_y(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+  }
+
+  void nompi_state::do_exponential_pauli_z(real_type const phase, qubit_type const qubit)
+  { ket::gate::ranges::exponential_pauli_z(parallel_policy_, data_, phase, qubit); }
+
+  void nompi_state::do_adj_exponential_pauli_z(real_type const phase, qubit_type const qubit)
+  { ket::gate::ranges::adj_exponential_pauli_z(parallel_policy_, data_, phase, qubit); }
+
+  void nompi_state::do_exponential_pauli_zz(real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
+  { ket::gate::ranges::exponential_pauli_z(parallel_policy_, data_, phase, qubit1, qubit2); }
+
+  void nompi_state::do_adj_exponential_pauli_zz(real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
+  { ket::gate::ranges::adj_exponential_pauli_z(parallel_policy_, data_, phase, qubit1, qubit2); }
+
+  void nompi_state::do_exponential_pauli_zn(real_type const phase, std::vector<qubit_type> const& qubits)
+  {
+    auto const num_qubits = qubits.size();
+    if (num_qubits == 3u)
+      ket::gate::ranges::exponential_pauli_z(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u]);
+    else if (num_qubits == 4u)
+      ket::gate::ranges::exponential_pauli_z(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+  }
+
+  void nompi_state::do_adj_exponential_pauli_zn(real_type const phase, std::vector<qubit_type> const& qubits)
+  {
+    auto const num_qubits = qubits.size();
+    if (num_qubits == 3u)
+      ket::gate::ranges::adj_exponential_pauli_z(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u]);
+    else if (num_qubits == 4u)
+      ket::gate::ranges::adj_exponential_pauli_z(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+  }
+
+  void nompi_state::do_exponential_swap(real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
+  { ket::gate::ranges::exponential_swap(parallel_policy_, data_, phase, qubit1, qubit2); }
+
+  void nompi_state::do_adj_exponential_swap(real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
+  { ket::gate::ranges::adj_exponential_swap(parallel_policy_, data_, phase, qubit1, qubit2); }
 
   void nompi_state::do_toffoli(
     qubit_type const target_qubit,

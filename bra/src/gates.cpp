@@ -1,5 +1,6 @@
 #include <istream>
 #include <string>
+#include <vector>
 #include <tuple>
 #include <utility>
 #include <algorithm>
@@ -38,8 +39,15 @@
 #include <bra/gate/gate.hpp>
 #include <bra/gate/hadamard.hpp>
 #include <bra/gate/pauli_x.hpp>
+#include <bra/gate/pauli_xx.hpp>
+#include <bra/gate/pauli_xn.hpp>
 #include <bra/gate/pauli_y.hpp>
+#include <bra/gate/pauli_yy.hpp>
+#include <bra/gate/pauli_yn.hpp>
 #include <bra/gate/pauli_z.hpp>
+#include <bra/gate/pauli_zz.hpp>
+#include <bra/gate/pauli_zn.hpp>
+#include <bra/gate/swap.hpp>
 #include <bra/gate/s_gate.hpp>
 #include <bra/gate/adj_s_gate.hpp>
 #include <bra/gate/t_gate.hpp>
@@ -58,6 +66,16 @@
 #include <bra/gate/adj_controlled_phase_shift.hpp>
 #include <bra/gate/controlled_v.hpp>
 #include <bra/gate/adj_controlled_v.hpp>
+#include <bra/gate/exponential_pauli_x.hpp>
+#include <bra/gate/exponential_pauli_xx.hpp>
+#include <bra/gate/exponential_pauli_xn.hpp>
+#include <bra/gate/exponential_pauli_y.hpp>
+#include <bra/gate/exponential_pauli_yy.hpp>
+#include <bra/gate/exponential_pauli_yn.hpp>
+#include <bra/gate/exponential_pauli_z.hpp>
+#include <bra/gate/exponential_pauli_zz.hpp>
+#include <bra/gate/exponential_pauli_zn.hpp>
+#include <bra/gate/exponential_swap.hpp>
 #include <bra/gate/toffoli.hpp>
 #include <bra/gate/projective_measurement.hpp>
 #include <bra/gate/measurement.hpp>
@@ -327,14 +345,75 @@ namespace bra
         data_.push_back(
           std::unique_ptr< ::bra::gate::gate >{
             new ::bra::gate::pauli_x{read_pauli_x(columns)}});
+      else if (first_mnemonic == "XX")
+      {
+        auto target1 = qubit_type{};
+        auto target2 = qubit_type{};
+        std::tie(target1, target2) = read_pauli_xx(columns);
+
+        data_.push_back(
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::pauli_xx{target1, target2}});
+      }
+      else if (first_mnemonic.size() >= 3u and std::all_of(std::begin(first_mnemonic), std::end(first_mnemonic), [](char const character) { return character == 'X'; }))
+      {
+        auto targets = std::vector<qubit_type>(first_mnemonic.size());
+        read_pauli_xn(columns, targets);
+
+        data_.push_back(std::unique_ptr< ::bra::gate::gate >{new ::bra::gate::pauli_xn{std::move(targets)}});
+      }
       else if (first_mnemonic == "Y")
         data_.push_back(
           std::unique_ptr< ::bra::gate::gate >{
             new ::bra::gate::pauli_y{read_pauli_y(columns)}});
+      else if (first_mnemonic == "YY")
+      {
+        auto target1 = qubit_type{};
+        auto target2 = qubit_type{};
+        std::tie(target1, target2) = read_pauli_yy(columns);
+
+        data_.push_back(
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::pauli_yy{target1, target2}});
+      }
+      else if (first_mnemonic.size() >= 3u and std::all_of(std::begin(first_mnemonic), std::end(first_mnemonic), [](char const character) { return character == 'Y'; }))
+      {
+        auto targets = std::vector<qubit_type>(first_mnemonic.size());
+        read_pauli_yn(columns, targets);
+
+        data_.push_back(std::unique_ptr< ::bra::gate::gate >{new ::bra::gate::pauli_yn{std::move(targets)}});
+      }
       else if (first_mnemonic == "Z")
         data_.push_back(
           std::unique_ptr< ::bra::gate::gate >{
             new ::bra::gate::pauli_z{read_pauli_z(columns)}});
+      else if (first_mnemonic == "ZZ")
+      {
+        auto target1 = qubit_type{};
+        auto target2 = qubit_type{};
+        std::tie(target1, target2) = read_pauli_zz(columns);
+
+        data_.push_back(
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::pauli_zz{target1, target2}});
+      }
+      else if (first_mnemonic.size() >= 3u and std::all_of(std::begin(first_mnemonic), std::end(first_mnemonic), [](char const character) { return character == 'Z'; }))
+      {
+        auto targets = std::vector<qubit_type>(first_mnemonic.size());
+        read_pauli_zn(columns, targets);
+
+        data_.push_back(std::unique_ptr< ::bra::gate::gate >{new ::bra::gate::pauli_zn{std::move(targets)}});
+      }
+      else if (first_mnemonic == "SWAP")
+      {
+        auto target1 = qubit_type{};
+        auto target2 = qubit_type{};
+        std::tie(target1, target2) = read_swap(columns);
+
+        data_.push_back(
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::swap{target1, target2}});
+      }
       else if (first_mnemonic == "S")
         data_.push_back(
           std::unique_ptr< ::bra::gate::gate >{
@@ -491,6 +570,107 @@ namespace bra
               new ::bra::gate::adj_controlled_v{
                 phase_exponent, phase_coefficients_[phase_exponent], target, control}});
         }
+      }
+      else if (first_mnemonic == "EX")
+      {
+        auto target = qubit_type{};
+        auto phase = real_type{};
+        std::tie(target, phase) = read_exponential_pauli_x(columns);
+
+        data_.push_back(
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::exponential_pauli_x{phase, target}});
+      }
+      else if (first_mnemonic == "EXX")
+      {
+        auto target1 = qubit_type{};
+        auto target2 = qubit_type{};
+        auto phase = real_type{};
+        std::tie(target1, target2, phase) = read_exponential_pauli_xx(columns);
+
+        data_.push_back(
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::exponential_pauli_xx{phase, target1, target2}});
+      }
+      else if (first_mnemonic.size() >= 4u and first_mnemonic[0] == 'E' and std::all_of(std::next(std::begin(first_mnemonic)), std::end(first_mnemonic), [](char const character) { return character == 'X'; }))
+      {
+        auto targets = std::vector<qubit_type>(first_mnemonic.size() - 1u);
+        auto const phase = read_exponential_pauli_xn(columns, targets);
+
+        data_.push_back(
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::exponential_pauli_xn{phase, std::move(targets)}});
+      }
+      else if (first_mnemonic == "EY")
+      {
+        auto target = qubit_type{};
+        auto phase = real_type{};
+        std::tie(target, phase) = read_exponential_pauli_y(columns);
+
+        data_.push_back(
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::exponential_pauli_y{phase, target}});
+      }
+      else if (first_mnemonic == "EYY")
+      {
+        auto target1 = qubit_type{};
+        auto target2 = qubit_type{};
+        auto phase = real_type{};
+        std::tie(target1, target2, phase) = read_exponential_pauli_yy(columns);
+
+        data_.push_back(
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::exponential_pauli_yy{phase, target1, target2}});
+      }
+      else if (first_mnemonic.size() >= 4u and first_mnemonic[0] == 'E' and std::all_of(std::next(std::begin(first_mnemonic)), std::end(first_mnemonic), [](char const character) { return character == 'Y'; }))
+      {
+        auto targets = std::vector<qubit_type>(first_mnemonic.size() - 1u);
+        auto const phase = read_exponential_pauli_yn(columns, targets);
+
+        data_.push_back(
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::exponential_pauli_yn{phase, std::move(targets)}});
+      }
+      else if (first_mnemonic == "EZ")
+      {
+        auto target = qubit_type{};
+        auto phase = real_type{};
+        std::tie(target, phase) = read_exponential_pauli_z(columns);
+
+        data_.push_back(
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::exponential_pauli_z{phase, target}});
+      }
+      else if (first_mnemonic == "EZZ")
+      {
+        auto target1 = qubit_type{};
+        auto target2 = qubit_type{};
+        auto phase = real_type{};
+        std::tie(target1, target2, phase) = read_exponential_pauli_zz(columns);
+
+        data_.push_back(
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::exponential_pauli_zz{phase, target1, target2}});
+      }
+      else if (first_mnemonic.size() >= 4u and first_mnemonic[0] == 'E' and std::all_of(std::next(std::begin(first_mnemonic)), std::end(first_mnemonic), [](char const character) { return character == 'Z'; }))
+      {
+        auto targets = std::vector<qubit_type>(first_mnemonic.size() - 1u);
+        auto const phase = read_exponential_pauli_zn(columns, targets);
+
+        data_.push_back(
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::exponential_pauli_zn{phase, std::move(targets)}});
+      }
+      else if (first_mnemonic == "ESWAP")
+      {
+        auto target1 = qubit_type{};
+        auto target2 = qubit_type{};
+        auto phase = real_type{};
+        std::tie(target1, target2, phase) = read_exponential_swap(columns);
+
+        data_.push_back(
+          std::unique_ptr< ::bra::gate::gate >{
+            new ::bra::gate::exponential_swap{phase, target1, target2}});
       }
       else if (first_mnemonic == "TOFFOLI")
       {
@@ -731,6 +911,33 @@ namespace bra
     return ket::make_qubit<state_integer_type>(target);
   }
 
+  std::tuple<gates::qubit_type, gates::qubit_type> gates::read_2targets(gates::columns_type const& columns) const
+  {
+    if (boost::size(columns) != 3u)
+      throw wrong_mnemonics_error{columns};
+
+    auto iter = std::begin(columns);
+    auto const target1 = boost::lexical_cast<bit_integer_type>(*++iter);
+    auto const target2 = boost::lexical_cast<bit_integer_type>(*++iter);
+
+    return std::make_tuple(ket::make_qubit<state_integer_type>(target1), ket::make_qubit<state_integer_type>(target2));
+  }
+
+  void gates::read_multi_targets(gates::columns_type const& columns, std::vector<gates::qubit_type>& result) const
+  {
+    if (boost::size(columns) < 4u or result.size() != boost::size(columns) - 1u)
+      throw wrong_mnemonics_error{columns};
+
+    auto iter = std::begin(columns);
+    ++iter;
+    auto const result_last = std::end(result);
+    for (auto result_iter = std::begin(result); result_iter != result_last; ++result_iter, ++iter)
+    {
+      auto const target = boost::lexical_cast<bit_integer_type>(*iter);
+      *result_iter = ket::make_qubit<state_integer_type>(target);
+    }
+  }
+
   std::tuple<gates::qubit_type, gates::real_type>
   gates::read_target_phase(gates::columns_type const& columns) const
   {
@@ -783,6 +990,38 @@ namespace bra
     auto const phase_exponent = boost::lexical_cast<int>(*++iter);
 
     return std::make_tuple(ket::make_qubit<state_integer_type>(target), phase_exponent);
+  }
+
+  std::tuple<gates::qubit_type, gates::qubit_type, gates::real_type>
+  gates::read_2targets_phase(gates::columns_type const& columns) const
+  {
+    if (boost::size(columns) != 4u)
+      throw wrong_mnemonics_error{columns};
+
+    auto iter = std::begin(columns);
+    auto const target1 = boost::lexical_cast<bit_integer_type>(*++iter);
+    auto const target2 = boost::lexical_cast<bit_integer_type>(*++iter);
+    auto const phase = boost::lexical_cast<real_type>(*++iter);
+
+    return std::make_tuple(ket::make_qubit<state_integer_type>(target1), ket::make_qubit<state_integer_type>(target2), phase);
+  }
+
+  gates::real_type gates::read_multi_targets_phase(gates::columns_type const& columns, std::vector<gates::qubit_type>& targets_result) const
+  {
+    if (boost::size(columns) < 5u or targets_result.size() == boost::size(columns) - 2u)
+      throw wrong_mnemonics_error{columns};
+
+    auto iter = std::begin(columns);
+    ++iter;
+    auto const result_last = std::end(targets_result);
+    for (auto result_iter = std::begin(targets_result); result_iter != result_last; ++result_iter, ++iter)
+    {
+      auto const target = boost::lexical_cast<bit_integer_type>(*iter);
+      *result_iter = ket::make_qubit<state_integer_type>(target);
+    }
+    auto const phase = boost::lexical_cast<real_type>(*iter);
+
+    return phase;
   }
 
   std::tuple<gates::control_qubit_type, gates::qubit_type> gates::read_control_target(gates::columns_type const& columns) const
