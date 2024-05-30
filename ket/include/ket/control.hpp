@@ -201,6 +201,11 @@ namespace ket
   { return ::ket::control<Qubit>{qubit}; }
 
 
+  template <typename Qubit>
+  inline constexpr Qubit remove_control(::ket::control<Qubit> const control_qubit)
+  { return control_qubit.qubit(); }
+
+
   namespace control_literals
   {
     inline constexpr ::ket::control< ::ket::qubit<std::uint64_t, unsigned int> >

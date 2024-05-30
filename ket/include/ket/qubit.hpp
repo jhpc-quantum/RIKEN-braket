@@ -121,6 +121,11 @@ namespace ket
   { return ::ket::qubit<StateInteger, BitInteger>(bit); }
 
 
+  template <typename StateInteger, typename BitInteger>
+  inline constexpr ::ket::qubit<StateInteger, BitInteger> remove_control(::ket::qubit<StateInteger, BitInteger> const qubit)
+  { return qubit; }
+
+
   namespace qubit_literals
   {
     inline constexpr ::ket::qubit<std::uint64_t, unsigned int>
