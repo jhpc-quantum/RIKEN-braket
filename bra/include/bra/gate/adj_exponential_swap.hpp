@@ -27,7 +27,7 @@ namespace bra
       static std::string const name_;
 
      public:
-      explicit adj_exponential_swap(real_type const phase, qubit_type const qubit1, qubit_type const qubit2);
+      adj_exponential_swap(real_type const phase, qubit_type const qubit1, qubit_type const qubit2);
 
       ~adj_exponential_swap() = default;
       adj_exponential_swap(adj_exponential_swap const&) = delete;

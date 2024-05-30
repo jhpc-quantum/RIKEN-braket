@@ -31,7 +31,6 @@ namespace bra
         control_qubit_type const control_qubit);
 
       ~controlled_not() = default;
-      controlled_not(controlled_not const&) = delete;
       controlled_not& operator=(controlled_not const&) = delete;
       controlled_not(controlled_not&&) = delete;
       controlled_not& operator=(controlled_not&&) = delete;

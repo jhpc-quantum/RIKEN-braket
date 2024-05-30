@@ -1,8 +1,9 @@
-#include <vector>
-#include <string>
 #include <ios>
 #include <iomanip>
 #include <sstream>
+#include <string>
+#include <vector>
+#include <utility>
 
 #include <ket/qubit_io.hpp>
 

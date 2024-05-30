@@ -16,7 +16,7 @@ namespace bra
   {
     std::string const adj_t_gate::name_ = "T+";
 
-    adj_t_gate::adj_t_gate(complex_type const phase_coefficient, qubit_type const qubit)
+    adj_t_gate::adj_t_gate(complex_type const& phase_coefficient, qubit_type const qubit)
       : ::bra::gate::gate{},
         phase_coefficient_{phase_coefficient}, qubit_{qubit}
     { }

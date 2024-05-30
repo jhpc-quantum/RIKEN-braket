@@ -29,7 +29,7 @@ namespace bra
      public:
       adj_phase_shift(
         int const phase_exponent,
-        complex_type const phase_coefficient,
+        complex_type const& phase_coefficient,
         qubit_type const qubit);
 
       ~adj_phase_shift() = default;

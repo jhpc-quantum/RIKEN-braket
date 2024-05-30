@@ -27,7 +27,7 @@ namespace bra
 
      public:
       t_gate(
-        complex_type const phase_coefficient,
+        complex_type const& phase_coefficient,
         qubit_type const qubit);
 
       ~t_gate() = default;

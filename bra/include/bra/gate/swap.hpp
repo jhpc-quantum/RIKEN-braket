@@ -25,7 +25,7 @@ namespace bra
       static std::string const name_;
 
      public:
-      explicit swap(qubit_type const qubit1, qubit_type const qubit2);
+      swap(qubit_type const qubit1, qubit_type const qubit2);
 
       ~swap() = default;
       swap(swap const&) = delete;

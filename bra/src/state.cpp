@@ -5,6 +5,7 @@
 # include <chrono>
 # include <memory>
 #endif
+#include <stdexcept>
 
 #ifndef BRA_NO_MPI
 # include <yampi/communicator.hpp>
@@ -27,6 +28,10 @@
 
 namespace bra
 {
+  too_many_qubits_error::too_many_qubits_error(std::size_t const num_qubits)
+    : std::runtime_error{std::string{"the number of qubits "}.append(std::to_string(num_qubits)).append(" is larger than 6").c_str()}
+  { }
+
 #ifndef BRA_NO_MPI
   state::state(
     bit_integer_type const total_num_qubits,

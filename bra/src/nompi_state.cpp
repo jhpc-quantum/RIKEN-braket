@@ -2,6 +2,7 @@
 # include <vector>
 
 # include <ket/gate/hadamard.hpp>
+# include <ket/gate/not_.hpp>
 # include <ket/gate/pauli_x.hpp>
 # include <ket/gate/pauli_y.hpp>
 # include <ket/gate/pauli_z.hpp>
@@ -9,7 +10,6 @@
 # include <ket/gate/phase_shift.hpp>
 # include <ket/gate/x_rotation_half_pi.hpp>
 # include <ket/gate/y_rotation_half_pi.hpp>
-# include <ket/gate/controlled_not.hpp>
 # include <ket/gate/controlled_phase_shift.hpp>
 # include <ket/gate/controlled_v.hpp>
 # include <ket/gate/exponential_pauli_x.hpp>
@@ -46,6 +46,12 @@ namespace bra
   void nompi_state::do_adj_hadamard(qubit_type const qubit)
   { ket::gate::ranges::adj_hadamard(parallel_policy_, data_, qubit); }
 
+  void nompi_state::do_not_(qubit_type const qubit)
+  { ket::gate::ranges::not_(parallel_policy_, data_, qubit); }
+
+  void nompi_state::do_adj_not_(qubit_type const qubit)
+  { ket::gate::ranges::adj_not_(parallel_policy_, data_, qubit); }
+
   void nompi_state::do_pauli_x(qubit_type const qubit)
   { ket::gate::ranges::pauli_x(parallel_policy_, data_, qubit); }
 
@@ -61,19 +67,57 @@ namespace bra
   void nompi_state::do_pauli_xn(std::vector<qubit_type> const& qubits)
   {
     auto const num_qubits = qubits.size();
-    if (num_qubits == 3u)
+    assert(num_qubits > 2u);
+
+    switch (num_qubits)
+    {
+     case 3u:
       ket::gate::ranges::pauli_x(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u]);
-    else if (num_qubits == 4u)
+      break;
+
+     case 4u:
       ket::gate::ranges::pauli_x(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+      break;
+
+     case 5u:
+      ket::gate::ranges::pauli_x(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u], qubits[3u], qubits[4u]);
+      break;
+
+     case 6u:
+      ket::gate::ranges::pauli_x(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u], qubits[3u], qubits[4u], qubits[5u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_qubits};
+    }
   }
 
   void nompi_state::do_adj_pauli_xn(std::vector<qubit_type> const& qubits)
   {
     auto const num_qubits = qubits.size();
-    if (num_qubits == 3u)
+    assert(num_qubits > 2u);
+
+    switch (num_qubits)
+    {
+     case 3u:
       ket::gate::ranges::adj_pauli_x(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u]);
-    else if (num_qubits == 4u)
+      break;
+
+     case 4u:
       ket::gate::ranges::adj_pauli_x(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+      break;
+
+     case 5u:
+      ket::gate::ranges::adj_pauli_x(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u], qubits[3u], qubits[4u]);
+      break;
+
+     case 6u:
+      ket::gate::ranges::adj_pauli_x(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u], qubits[3u], qubits[4u], qubits[5u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_qubits};
+    }
   }
 
   void nompi_state::do_pauli_y(qubit_type const qubit)
@@ -91,19 +135,57 @@ namespace bra
   void nompi_state::do_pauli_yn(std::vector<qubit_type> const& qubits)
   {
     auto const num_qubits = qubits.size();
-    if (num_qubits == 3u)
+    assert(num_qubits > 2u);
+
+    switch (num_qubits)
+    {
+     case 3u:
       ket::gate::ranges::pauli_y(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u]);
-    else if (num_qubits == 4u)
+      break;
+
+     case 4u:
       ket::gate::ranges::pauli_y(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+      break;
+
+     case 5u:
+      ket::gate::ranges::pauli_y(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u], qubits[3u], qubits[4u]);
+      break;
+
+     case 6u:
+      ket::gate::ranges::pauli_y(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u], qubits[3u], qubits[4u], qubits[5u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_qubits};
+    }
   }
 
   void nompi_state::do_adj_pauli_yn(std::vector<qubit_type> const& qubits)
   {
     auto const num_qubits = qubits.size();
-    if (num_qubits == 3u)
+    assert(num_qubits > 2u);
+
+    switch (num_qubits)
+    {
+     case 3u:
       ket::gate::ranges::adj_pauli_y(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u]);
-    else if (num_qubits == 4u)
+      break;
+
+     case 4u:
       ket::gate::ranges::adj_pauli_y(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+      break;
+
+     case 5u:
+      ket::gate::ranges::adj_pauli_y(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u], qubits[3u], qubits[4u]);
+      break;
+
+     case 6u:
+      ket::gate::ranges::adj_pauli_y(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u], qubits[3u], qubits[4u], qubits[5u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_qubits};
+    }
   }
 
   void nompi_state::do_pauli_z(qubit_type const qubit)
@@ -121,19 +203,57 @@ namespace bra
   void nompi_state::do_pauli_zn(std::vector<qubit_type> const& qubits)
   {
     auto const num_qubits = qubits.size();
-    if (num_qubits == 3u)
+    assert(num_qubits > 2u);
+
+    switch (num_qubits)
+    {
+     case 3u:
       ket::gate::ranges::pauli_z(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u]);
-    else if (num_qubits == 4u)
+      break;
+
+     case 4u:
       ket::gate::ranges::pauli_z(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+      break;
+
+     case 5u:
+      ket::gate::ranges::pauli_z(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u], qubits[3u], qubits[4u]);
+      break;
+
+     case 6u:
+      ket::gate::ranges::pauli_z(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u], qubits[3u], qubits[4u], qubits[5u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_qubits};
+    }
   }
 
   void nompi_state::do_adj_pauli_zn(std::vector<qubit_type> const& qubits)
   {
     auto const num_qubits = qubits.size();
-    if (num_qubits == 3u)
+    assert(num_qubits > 2u);
+
+    switch (num_qubits)
+    {
+     case 3u:
       ket::gate::ranges::adj_pauli_z(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u]);
-    else if (num_qubits == 4u)
+      break;
+
+     case 4u:
       ket::gate::ranges::adj_pauli_z(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+      break;
+
+     case 5u:
+      ket::gate::ranges::adj_pauli_z(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u], qubits[3u], qubits[4u]);
+      break;
+
+     case 6u:
+      ket::gate::ranges::adj_pauli_z(parallel_policy_, data_, qubits[0u], qubits[1u], qubits[2u], qubits[3u], qubits[4u], qubits[5u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_qubits};
+    }
   }
 
   void nompi_state::do_swap(qubit_type const qubit1, qubit_type const qubit2)
@@ -167,11 +287,11 @@ namespace bra
   { ket::gate::ranges::adj_phase_shift3(parallel_policy_, data_, phase1, phase2, phase3, qubit); }
 
   void nompi_state::do_phase_shift(
-    complex_type const phase_coefficient, qubit_type const qubit)
+    complex_type const& phase_coefficient, qubit_type const qubit)
   { ket::gate::ranges::phase_shift_coeff(parallel_policy_, data_, phase_coefficient, qubit); }
 
   void nompi_state::do_adj_phase_shift(
-    complex_type const phase_coefficient, qubit_type const qubit)
+    complex_type const& phase_coefficient, qubit_type const qubit)
   { ket::gate::ranges::adj_phase_shift_coeff(parallel_policy_, data_, phase_coefficient, qubit); }
 
   void nompi_state::do_x_rotation_half_pi(qubit_type const qubit)
@@ -186,34 +306,8 @@ namespace bra
   void nompi_state::do_adj_y_rotation_half_pi(qubit_type const qubit)
   { ket::gate::ranges::adj_y_rotation_half_pi(parallel_policy_, data_, qubit); }
 
-  void nompi_state::do_controlled_not(
-    qubit_type const target_qubit, control_qubit_type const control_qubit)
-  { ket::gate::ranges::controlled_not(parallel_policy_, data_, target_qubit, control_qubit); }
-
-  void nompi_state::do_adj_controlled_not(
-    qubit_type const target_qubit, control_qubit_type const control_qubit)
-  { ket::gate::ranges::adj_controlled_not(parallel_policy_, data_, target_qubit, control_qubit); }
-
-  void nompi_state::do_controlled_phase_shift(
-    complex_type const phase_coefficient,
-    qubit_type const target_qubit, control_qubit_type const control_qubit)
-  {
-    ket::gate::ranges::controlled_phase_shift_coeff(
-      parallel_policy_,
-      data_, phase_coefficient, target_qubit, control_qubit);
-  }
-
-  void nompi_state::do_adj_controlled_phase_shift(
-    complex_type const phase_coefficient,
-    qubit_type const target_qubit, control_qubit_type const control_qubit)
-  {
-    ket::gate::ranges::adj_controlled_phase_shift_coeff(
-      parallel_policy_,
-      data_, phase_coefficient, target_qubit, control_qubit);
-  }
-
   void nompi_state::do_controlled_v(
-    complex_type const phase_coefficient,
+    complex_type const& phase_coefficient,
     qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
     ket::gate::ranges::controlled_v_coeff(
@@ -222,7 +316,7 @@ namespace bra
   }
 
   void nompi_state::do_adj_controlled_v(
-    complex_type const phase_coefficient,
+    complex_type const& phase_coefficient,
     qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
     ket::gate::ranges::adj_controlled_v_coeff(
@@ -245,19 +339,57 @@ namespace bra
   void nompi_state::do_exponential_pauli_xn(real_type const phase, std::vector<qubit_type> const& qubits)
   {
     auto const num_qubits = qubits.size();
-    if (num_qubits == 3u)
+    assert(num_qubits > 2u);
+
+    switch (num_qubits)
+    {
+     case 3u:
       ket::gate::ranges::exponential_pauli_x(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u]);
-    else if (num_qubits == 4u)
+      break;
+
+     case 4u:
       ket::gate::ranges::exponential_pauli_x(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+      break;
+
+     case 5u:
+      ket::gate::ranges::exponential_pauli_x(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u], qubits[3u], qubits[4u]);
+      break;
+
+     case 6u:
+      ket::gate::ranges::exponential_pauli_x(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u], qubits[3u], qubits[4u], qubits[5u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_qubits};
+    }
   }
 
   void nompi_state::do_adj_exponential_pauli_xn(real_type const phase, std::vector<qubit_type> const& qubits)
   {
     auto const num_qubits = qubits.size();
-    if (num_qubits == 3u)
+    assert(num_qubits > 2u);
+
+    switch (num_qubits)
+    {
+     case 3u:
       ket::gate::ranges::adj_exponential_pauli_x(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u]);
-    else if (num_qubits == 4u)
+      break;
+
+     case 4u:
       ket::gate::ranges::adj_exponential_pauli_x(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+      break;
+
+     case 5u:
+      ket::gate::ranges::adj_exponential_pauli_x(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u], qubits[3u], qubits[4u]);
+      break;
+
+     case 6u:
+      ket::gate::ranges::adj_exponential_pauli_x(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u], qubits[3u], qubits[4u], qubits[5u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_qubits};
+    }
   }
 
   void nompi_state::do_exponential_pauli_y(real_type const phase, qubit_type const qubit)
@@ -275,19 +407,57 @@ namespace bra
   void nompi_state::do_exponential_pauli_yn(real_type const phase, std::vector<qubit_type> const& qubits)
   {
     auto const num_qubits = qubits.size();
-    if (num_qubits == 3u)
+    assert(num_qubits > 2u);
+
+    switch (num_qubits)
+    {
+     case 3u:
       ket::gate::ranges::exponential_pauli_y(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u]);
-    else if (num_qubits == 4u)
+      break;
+
+     case 4u:
       ket::gate::ranges::exponential_pauli_y(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+      break;
+
+     case 5u:
+      ket::gate::ranges::exponential_pauli_y(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u], qubits[3u], qubits[4u]);
+      break;
+
+     case 6u:
+      ket::gate::ranges::exponential_pauli_y(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u], qubits[3u], qubits[4u], qubits[5u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_qubits};
+    }
   }
 
   void nompi_state::do_adj_exponential_pauli_yn(real_type const phase, std::vector<qubit_type> const& qubits)
   {
     auto const num_qubits = qubits.size();
-    if (num_qubits == 3u)
+    assert(num_qubits > 2u);
+
+    switch (num_qubits)
+    {
+     case 3u:
       ket::gate::ranges::adj_exponential_pauli_y(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u]);
-    else if (num_qubits == 4u)
+      break;
+
+     case 4u:
       ket::gate::ranges::adj_exponential_pauli_y(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+      break;
+
+     case 5u:
+      ket::gate::ranges::adj_exponential_pauli_y(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u], qubits[3u], qubits[4u]);
+      break;
+
+     case 6u:
+      ket::gate::ranges::adj_exponential_pauli_y(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u], qubits[3u], qubits[4u], qubits[5u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_qubits};
+    }
   }
 
   void nompi_state::do_exponential_pauli_z(real_type const phase, qubit_type const qubit)
@@ -305,19 +475,57 @@ namespace bra
   void nompi_state::do_exponential_pauli_zn(real_type const phase, std::vector<qubit_type> const& qubits)
   {
     auto const num_qubits = qubits.size();
-    if (num_qubits == 3u)
+    assert(num_qubits > 2u);
+
+    switch (num_qubits)
+    {
+     case 3u:
       ket::gate::ranges::exponential_pauli_z(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u]);
-    else if (num_qubits == 4u)
+      break;
+
+     case 4u:
       ket::gate::ranges::exponential_pauli_z(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+      break;
+
+     case 5u:
+      ket::gate::ranges::exponential_pauli_z(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u], qubits[3u], qubits[4u]);
+      break;
+
+     case 6u:
+      ket::gate::ranges::exponential_pauli_z(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u], qubits[3u], qubits[4u], qubits[5u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_qubits};
+    }
   }
 
   void nompi_state::do_adj_exponential_pauli_zn(real_type const phase, std::vector<qubit_type> const& qubits)
   {
     auto const num_qubits = qubits.size();
-    if (num_qubits == 3u)
+    assert(num_qubits > 2u);
+
+    switch (num_qubits)
+    {
+     case 3u:
       ket::gate::ranges::adj_exponential_pauli_z(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u]);
-    else if (num_qubits == 4u)
+      break;
+
+     case 4u:
       ket::gate::ranges::adj_exponential_pauli_z(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+      break;
+
+     case 5u:
+      ket::gate::ranges::adj_exponential_pauli_z(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u], qubits[3u], qubits[4u]);
+      break;
+
+     case 6u:
+      ket::gate::ranges::adj_exponential_pauli_z(parallel_policy_, data_, phase, qubits[0u], qubits[1u], qubits[2u], qubits[3u], qubits[4u], qubits[5u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_qubits};
+    }
   }
 
   void nompi_state::do_exponential_swap(real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
@@ -394,6 +602,2156 @@ namespace bra
 
   void nompi_state::do_set(qubit_type const qubit)
   { ket::gate::ranges::set(parallel_policy_, data_, qubit); }
+
+  void nompi_state::do_controlled_hadamard(
+    qubit_type const target_qubit, control_qubit_type const control_qubit)
+  { ket::gate::ranges::hadamard(parallel_policy_, data_, target_qubit, control_qubit); }
+
+  void nompi_state::do_adj_controlled_hadamard(
+    qubit_type const target_qubit, control_qubit_type const control_qubit)
+  { ket::gate::ranges::adj_hadamard(parallel_policy_, data_, target_qubit, control_qubit); }
+
+  void nompi_state::do_multi_controlled_hadamard(
+    qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_control_qubits = control_qubits.size();
+    assert(num_control_qubits > 1u);
+
+    switch (num_control_qubits)
+    {
+     case 2u:
+      ket::gate::ranges::hadamard(parallel_policy_, data_, target_qubit, control_qubits[0u], control_qubits[1u]);
+      break;
+
+     case 3u:
+      ket::gate::ranges::hadamard(parallel_policy_, data_, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+      break;
+
+     case 4u:
+      ket::gate::ranges::hadamard(parallel_policy_, data_, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+      break;
+
+     case 5u:
+      ket::gate::ranges::hadamard(parallel_policy_, data_, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u], control_qubits[4u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_control_qubits + std::size_t{1u}};
+    }
+  }
+
+  void nompi_state::do_adj_multi_controlled_hadamard(
+    qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_control_qubits = control_qubits.size();
+    assert(num_control_qubits > 1u);
+
+    switch (num_control_qubits)
+    {
+     case 2u:
+      ket::gate::ranges::adj_hadamard(parallel_policy_, data_, target_qubit, control_qubits[0u], control_qubits[1u]);
+      break;
+
+     case 3u:
+      ket::gate::ranges::adj_hadamard(parallel_policy_, data_, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+      break;
+
+     case 4u:
+      ket::gate::ranges::adj_hadamard(parallel_policy_, data_, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+      break;
+
+     case 5u:
+      ket::gate::ranges::adj_hadamard(parallel_policy_, data_, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u], control_qubits[4u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_control_qubits + std::size_t{1u}};
+    }
+  }
+
+  void nompi_state::do_controlled_not(
+    qubit_type const target_qubit, control_qubit_type const control_qubit)
+  { ket::gate::ranges::not_(parallel_policy_, data_, target_qubit, control_qubit); }
+
+  void nompi_state::do_adj_controlled_not(
+    qubit_type const target_qubit, control_qubit_type const control_qubit)
+  { ket::gate::ranges::adj_not_(parallel_policy_, data_, target_qubit, control_qubit); }
+
+  void nompi_state::do_multi_controlled_not(
+    qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_control_qubits = control_qubits.size();
+    assert(num_control_qubits > 1u);
+
+    switch (num_control_qubits)
+    {
+     case 2u:
+      ket::gate::ranges::not_(parallel_policy_, data_, target_qubit, control_qubits[0u], control_qubits[1u]);
+      break;
+
+     case 3u:
+      ket::gate::ranges::not_(parallel_policy_, data_, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+      break;
+
+     case 4u:
+      ket::gate::ranges::not_(parallel_policy_, data_, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+      break;
+
+     case 5u:
+      ket::gate::ranges::not_(parallel_policy_, data_, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u], control_qubits[4u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_control_qubits + std::size_t{1u}};
+    }
+  }
+
+  void nompi_state::do_adj_multi_controlled_not(
+    qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_control_qubits = control_qubits.size();
+    assert(num_control_qubits > 1u);
+
+    switch (num_control_qubits)
+    {
+     case 2u:
+      ket::gate::ranges::adj_not_(parallel_policy_, data_, target_qubit, control_qubits[0u], control_qubits[1u]);
+      break;
+
+     case 3u:
+      ket::gate::ranges::adj_not_(parallel_policy_, data_, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+      break;
+
+     case 4u:
+      ket::gate::ranges::adj_not_(parallel_policy_, data_, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+      break;
+
+     case 5u:
+      ket::gate::ranges::adj_not_(parallel_policy_, data_, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u], control_qubits[4u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_control_qubits + std::size_t{1u}};
+    }
+  }
+
+  void nompi_state::do_controlled_pauli_x(
+    qubit_type const target_qubit, control_qubit_type const control_qubit)
+  { ket::gate::ranges::pauli_x(parallel_policy_, data_, target_qubit, control_qubit); }
+
+  void nompi_state::do_adj_controlled_pauli_x(
+    qubit_type const target_qubit, control_qubit_type const control_qubit)
+  {
+    ket::gate::ranges::adj_pauli_x(parallel_policy_, data_, target_qubit, control_qubit);
+  }
+
+  void nompi_state::do_multi_controlled_pauli_xn(
+    std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_target_qubits = target_qubits.size();
+    auto const num_control_qubits = control_qubits.size();
+    auto const num_qubits = num_target_qubits + num_control_qubits;
+    assert(num_target_qubits > 0u);
+    assert(num_control_qubits > 1u);
+    assert(num_qubits > 2u);
+
+    switch (num_target_qubits)
+    {
+     case 1u:
+      switch (num_control_qubits)
+      {
+       case 2u:
+        ket::gate::ranges::pauli_x(parallel_policy_, data_, target_qubits[0u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::pauli_x(parallel_policy_, data_, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       case 4u:
+        ket::gate::ranges::pauli_x(parallel_policy_, data_, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+        break;
+
+       case 5u:
+        ket::gate::ranges::pauli_x(parallel_policy_, data_, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u], control_qubits[4u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 2u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::pauli_x(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::pauli_x(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::pauli_x(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       case 4u:
+        ket::gate::ranges::pauli_x(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 3u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::pauli_x(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::pauli_x(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::pauli_x(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 4u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::pauli_x(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::pauli_x(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 5u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::pauli_x(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], target_qubits[4u], control_qubits[0u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_qubits};
+    }
+  }
+
+  void nompi_state::do_adj_multi_controlled_pauli_xn(
+    std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_target_qubits = target_qubits.size();
+    auto const num_control_qubits = control_qubits.size();
+    auto const num_qubits = num_target_qubits + num_control_qubits;
+    assert(num_target_qubits > 0u);
+    assert(num_control_qubits > 1u);
+    assert(num_qubits > 2u);
+
+    switch (num_target_qubits)
+    {
+     case 1u:
+      switch (num_control_qubits)
+      {
+       case 2u:
+        ket::gate::ranges::adj_pauli_x(parallel_policy_, data_, target_qubits[0u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::adj_pauli_x(parallel_policy_, data_, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       case 4u:
+        ket::gate::ranges::adj_pauli_x(parallel_policy_, data_, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+        break;
+
+       case 5u:
+        ket::gate::ranges::adj_pauli_x(parallel_policy_, data_, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u], control_qubits[4u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 2u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::adj_pauli_x(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::adj_pauli_x(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::adj_pauli_x(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       case 4u:
+        ket::gate::ranges::adj_pauli_x(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 3u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::adj_pauli_x(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::adj_pauli_x(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::adj_pauli_x(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 4u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::adj_pauli_x(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::adj_pauli_x(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 5u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::adj_pauli_x(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], target_qubits[4u], control_qubits[0u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_qubits};
+    }
+  }
+
+  void nompi_state::do_controlled_pauli_y(
+    qubit_type const target_qubit, control_qubit_type const control_qubit)
+  { ket::gate::ranges::pauli_y(parallel_policy_, data_, target_qubit, control_qubit); }
+
+  void nompi_state::do_adj_controlled_pauli_y(
+    qubit_type const target_qubit, control_qubit_type const control_qubit)
+  { ket::gate::ranges::adj_pauli_y(parallel_policy_, data_, target_qubit, control_qubit); }
+
+  void nompi_state::do_multi_controlled_pauli_yn(
+    std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_target_qubits = target_qubits.size();
+    auto const num_control_qubits = control_qubits.size();
+    auto const num_qubits = num_target_qubits + num_control_qubits;
+    assert(num_target_qubits > 0u);
+    assert(num_control_qubits > 1u);
+    assert(num_qubits > 2u);
+
+    switch (num_target_qubits)
+    {
+     case 1u:
+      switch (num_control_qubits)
+      {
+       case 2u:
+        ket::gate::ranges::pauli_y(parallel_policy_, data_, target_qubits[0u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::pauli_y(parallel_policy_, data_, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       case 4u:
+        ket::gate::ranges::pauli_y(parallel_policy_, data_, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+        break;
+
+       case 5u:
+        ket::gate::ranges::pauli_y(parallel_policy_, data_, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u], control_qubits[4u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 2u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::pauli_y(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::pauli_y(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::pauli_y(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       case 4u:
+        ket::gate::ranges::pauli_y(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 3u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::pauli_y(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::pauli_y(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::pauli_y(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 4u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::pauli_y(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::pauli_y(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 5u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::pauli_y(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], target_qubits[4u], control_qubits[0u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_qubits};
+    }
+  }
+
+  void nompi_state::do_adj_multi_controlled_pauli_yn(
+    std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_target_qubits = target_qubits.size();
+    auto const num_control_qubits = control_qubits.size();
+    auto const num_qubits = num_target_qubits + num_control_qubits;
+    assert(num_target_qubits > 0u);
+    assert(num_control_qubits > 1u);
+    assert(num_qubits > 2u);
+
+    switch (num_target_qubits)
+    {
+     case 1u:
+      switch (num_control_qubits)
+      {
+       case 2u:
+        ket::gate::ranges::adj_pauli_y(parallel_policy_, data_, target_qubits[0u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::adj_pauli_y(parallel_policy_, data_, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       case 4u:
+        ket::gate::ranges::adj_pauli_y(parallel_policy_, data_, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+        break;
+
+       case 5u:
+        ket::gate::ranges::adj_pauli_y(parallel_policy_, data_, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u], control_qubits[4u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 2u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::adj_pauli_y(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::adj_pauli_y(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::adj_pauli_y(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       case 4u:
+        ket::gate::ranges::adj_pauli_y(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 3u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::adj_pauli_y(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::adj_pauli_y(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::adj_pauli_y(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 4u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::adj_pauli_y(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::adj_pauli_y(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 5u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::adj_pauli_y(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], target_qubits[4u], control_qubits[0u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_qubits};
+    }
+  }
+
+  void nompi_state::do_controlled_pauli_z(
+    qubit_type const target_qubit, control_qubit_type const control_qubit)
+  { ket::gate::ranges::pauli_z(parallel_policy_, data_, target_qubit, control_qubit); }
+
+  void nompi_state::do_adj_controlled_pauli_z(
+    qubit_type const target_qubit, control_qubit_type const control_qubit)
+  { ket::gate::ranges::adj_pauli_z(parallel_policy_, data_, target_qubit, control_qubit); }
+
+  void nompi_state::do_multi_controlled_pauli_zn(
+    std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_target_qubits = target_qubits.size();
+    auto const num_control_qubits = control_qubits.size();
+    auto const num_qubits = num_target_qubits + num_control_qubits;
+    assert(num_target_qubits > 0u);
+    assert(num_control_qubits > 1u);
+    assert(num_qubits > 2u);
+
+    switch (num_target_qubits)
+    {
+     case 1u:
+      switch (num_control_qubits)
+      {
+       case 2u:
+        ket::gate::ranges::pauli_z(parallel_policy_, data_, target_qubits[0u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::pauli_z(parallel_policy_, data_, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       case 4u:
+        ket::gate::ranges::pauli_z(parallel_policy_, data_, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+        break;
+
+       case 5u:
+        ket::gate::ranges::pauli_z(parallel_policy_, data_, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u], control_qubits[4u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 2u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::pauli_z(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::pauli_z(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::pauli_z(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       case 4u:
+        ket::gate::ranges::pauli_z(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 3u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::pauli_z(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::pauli_z(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::pauli_z(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 4u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::pauli_z(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::pauli_z(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 5u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::pauli_z(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], target_qubits[4u], control_qubits[0u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_qubits};
+    }
+  }
+
+  void nompi_state::do_adj_multi_controlled_pauli_zn(
+    std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_target_qubits = target_qubits.size();
+    auto const num_control_qubits = control_qubits.size();
+    auto const num_qubits = num_target_qubits + num_control_qubits;
+    assert(num_target_qubits > 0u);
+    assert(num_control_qubits > 1u);
+    assert(num_qubits > 2u);
+
+    switch (num_target_qubits)
+    {
+     case 1u:
+      switch (num_control_qubits)
+      {
+       case 2u:
+        ket::gate::ranges::adj_pauli_z(parallel_policy_, data_, target_qubits[0u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::adj_pauli_z(parallel_policy_, data_, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       case 4u:
+        ket::gate::ranges::adj_pauli_z(parallel_policy_, data_, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+        break;
+
+       case 5u:
+        ket::gate::ranges::adj_pauli_z(parallel_policy_, data_, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u], control_qubits[4u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 2u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::adj_pauli_z(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::adj_pauli_z(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::adj_pauli_z(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       case 4u:
+        ket::gate::ranges::adj_pauli_z(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 3u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::adj_pauli_z(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::adj_pauli_z(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::adj_pauli_z(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 4u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::adj_pauli_z(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::adj_pauli_z(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 5u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::adj_pauli_z(parallel_policy_, data_, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], target_qubits[4u], control_qubits[0u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_qubits};
+    }
+  }
+
+  void nompi_state::do_multi_controlled_swap(
+    qubit_type const target_qubit1, qubit_type const target_qubit2,
+    std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_control_qubits = control_qubits.size();
+    assert(num_control_qubits > 0u);
+
+    switch (num_control_qubits)
+    {
+     case 1u:
+      ket::gate::ranges::swap(parallel_policy_, data_, target_qubit1, target_qubit2, control_qubits[0u]);
+      break;
+
+     case 2u:
+      ket::gate::ranges::swap(parallel_policy_, data_, target_qubit1, target_qubit2, control_qubits[0u], control_qubits[1u]);
+      break;
+
+     case 3u:
+      ket::gate::ranges::swap(parallel_policy_, data_, target_qubit1, target_qubit2, control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+      break;
+
+     case 4u:
+      ket::gate::ranges::swap(parallel_policy_, data_, target_qubit1, target_qubit2, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_control_qubits + 2u};
+    }
+  }
+
+  void nompi_state::do_adj_multi_controlled_swap(
+    qubit_type const target_qubit1, qubit_type const target_qubit2,
+    std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_control_qubits = control_qubits.size();
+    assert(num_control_qubits > 0u);
+
+    switch (num_control_qubits)
+    {
+     case 1u:
+      ket::gate::ranges::adj_swap(parallel_policy_, data_, target_qubit1, target_qubit2, control_qubits[0u]);
+      break;
+
+     case 2u:
+      ket::gate::ranges::adj_swap(parallel_policy_, data_, target_qubit1, target_qubit2, control_qubits[0u], control_qubits[1u]);
+      break;
+
+     case 3u:
+      ket::gate::ranges::adj_swap(parallel_policy_, data_, target_qubit1, target_qubit2, control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+      break;
+
+     case 4u:
+      ket::gate::ranges::adj_swap(parallel_policy_, data_, target_qubit1, target_qubit2, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_control_qubits + 2u};
+    }
+  }
+
+  void nompi_state::do_controlled_phase_shift(
+    complex_type const& phase_coefficient,
+    qubit_type const target_qubit, control_qubit_type const control_qubit)
+  { ket::gate::ranges::phase_shift_coeff(parallel_policy_, data_, phase_coefficient, target_qubit, control_qubit); }
+
+  void nompi_state::do_adj_controlled_phase_shift(
+    complex_type const& phase_coefficient,
+    qubit_type const target_qubit, control_qubit_type const control_qubit)
+  { ket::gate::ranges::adj_phase_shift_coeff(parallel_policy_, data_, phase_coefficient, target_qubit, control_qubit); }
+
+  void nompi_state::do_multi_controlled_phase_shift(
+    complex_type const& phase_coefficient,
+    qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_control_qubits = control_qubits.size();
+    assert(num_control_qubits > 1u);
+
+    switch (num_control_qubits)
+    {
+     case 2u:
+      ket::gate::ranges::phase_shift_coeff(parallel_policy_, data_, phase_coefficient, target_qubit, control_qubits[0u], control_qubits[1u]);
+      break;
+
+     case 3u:
+      ket::gate::ranges::phase_shift_coeff(parallel_policy_, data_, phase_coefficient, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+      break;
+
+     case 4u:
+      ket::gate::ranges::phase_shift_coeff(parallel_policy_, data_, phase_coefficient, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+      break;
+
+     case 5u:
+      ket::gate::ranges::phase_shift_coeff(parallel_policy_, data_, phase_coefficient, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u], control_qubits[4u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_control_qubits + 1u};
+    }
+  }
+
+  void nompi_state::do_adj_multi_controlled_phase_shift(
+    complex_type const& phase_coefficient,
+    qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_control_qubits = control_qubits.size();
+    assert(num_control_qubits > 1u);
+
+    switch (num_control_qubits)
+    {
+     case 2u:
+      ket::gate::ranges::adj_phase_shift_coeff(parallel_policy_, data_, phase_coefficient, target_qubit, control_qubits[0u], control_qubits[1u]);
+      break;
+
+     case 3u:
+      ket::gate::ranges::adj_phase_shift_coeff(parallel_policy_, data_, phase_coefficient, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+      break;
+
+     case 4u:
+      ket::gate::ranges::adj_phase_shift_coeff(parallel_policy_, data_, phase_coefficient, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+      break;
+
+     case 5u:
+      ket::gate::ranges::adj_phase_shift_coeff(parallel_policy_, data_, phase_coefficient, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u], control_qubits[4u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_control_qubits + 1u};
+    }
+  }
+
+  void nompi_state::do_controlled_u1(
+    real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit)
+  { ket::gate::ranges::phase_shift(parallel_policy_, data_, phase, target_qubit, control_qubit); }
+
+  void nompi_state::do_adj_controlled_u1(
+    real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit)
+  { ket::gate::ranges::adj_phase_shift(parallel_policy_, data_, phase, target_qubit, control_qubit); }
+
+  void nompi_state::do_multi_controlled_u1(
+    real_type const phase, qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_control_qubits = control_qubits.size();
+    assert(num_control_qubits > 1u);
+
+    switch (num_control_qubits)
+    {
+     case 2u:
+      ket::gate::ranges::phase_shift(parallel_policy_, data_, phase, target_qubit, control_qubits[0u], control_qubits[1u]);
+      break;
+
+     case 3u:
+      ket::gate::ranges::phase_shift(parallel_policy_, data_, phase, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+      break;
+
+     case 4u:
+      ket::gate::ranges::phase_shift(parallel_policy_, data_, phase, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+      break;
+
+     case 5u:
+      ket::gate::ranges::phase_shift(parallel_policy_, data_, phase, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u], control_qubits[4u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_control_qubits + 1u};
+    }
+  }
+
+  void nompi_state::do_adj_multi_controlled_u1(
+    real_type const phase, qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_control_qubits = control_qubits.size();
+    assert(num_control_qubits > 1u);
+
+    switch (num_control_qubits)
+    {
+     case 2u:
+      ket::gate::ranges::adj_phase_shift(parallel_policy_, data_, phase, target_qubit, control_qubits[0u], control_qubits[1u]);
+      break;
+
+     case 3u:
+      ket::gate::ranges::adj_phase_shift(parallel_policy_, data_, phase, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+      break;
+
+     case 4u:
+      ket::gate::ranges::adj_phase_shift(parallel_policy_, data_, phase, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+      break;
+
+     case 5u:
+      ket::gate::ranges::adj_phase_shift(parallel_policy_, data_, phase, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u], control_qubits[4u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_control_qubits + 1u};
+    }
+  }
+
+  void nompi_state::do_controlled_u2(
+    real_type const phase1, real_type const phase2, qubit_type const target_qubit, control_qubit_type const control_qubit)
+  { ket::gate::ranges::phase_shift2(parallel_policy_, data_, phase1, phase2, target_qubit, control_qubit); }
+
+  void nompi_state::do_adj_controlled_u2(
+    real_type const phase1, real_type const phase2, qubit_type const target_qubit, control_qubit_type const control_qubit)
+  { ket::gate::ranges::adj_phase_shift2(parallel_policy_, data_, phase1, phase2, target_qubit, control_qubit); }
+
+  void nompi_state::do_multi_controlled_u2(
+    real_type const phase1, real_type const phase2, qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_control_qubits = control_qubits.size();
+    assert(num_control_qubits > 1u);
+
+    switch (num_control_qubits)
+    {
+     case 2u:
+      ket::gate::ranges::phase_shift2(parallel_policy_, data_, phase1, phase2, target_qubit, control_qubits[0u], control_qubits[1u]);
+      break;
+
+     case 3u:
+      ket::gate::ranges::phase_shift2(parallel_policy_, data_, phase1, phase2, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+      break;
+
+     case 4u:
+      ket::gate::ranges::phase_shift2(parallel_policy_, data_, phase1, phase2, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+      break;
+
+     case 5u:
+      ket::gate::ranges::phase_shift2(parallel_policy_, data_, phase1, phase2, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u], control_qubits[4u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_control_qubits + 1u};
+    }
+  }
+
+  void nompi_state::do_adj_multi_controlled_u2(
+    real_type const phase1, real_type const phase2, qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_control_qubits = control_qubits.size();
+    assert(num_control_qubits > 1u);
+
+    switch (num_control_qubits)
+    {
+     case 2u:
+      ket::gate::ranges::adj_phase_shift2(parallel_policy_, data_, phase1, phase2, target_qubit, control_qubits[0u], control_qubits[1u]);
+      break;
+
+     case 3u:
+      ket::gate::ranges::adj_phase_shift2(parallel_policy_, data_, phase1, phase2, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+      break;
+
+     case 4u:
+      ket::gate::ranges::adj_phase_shift2(parallel_policy_, data_, phase1, phase2, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+      break;
+
+     case 5u:
+      ket::gate::ranges::adj_phase_shift2(parallel_policy_, data_, phase1, phase2, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u], control_qubits[4u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_control_qubits + 1u};
+    }
+  }
+
+  void nompi_state::do_controlled_u3(
+    real_type const phase1, real_type const phase2, real_type const phase3,
+    qubit_type const target_qubit, control_qubit_type const control_qubit)
+  { ket::gate::ranges::phase_shift3(parallel_policy_, data_, phase1, phase2, phase3, target_qubit, control_qubit); }
+
+  void nompi_state::do_adj_controlled_u3(
+    real_type const phase1, real_type const phase2, real_type const phase3,
+    qubit_type const target_qubit, control_qubit_type const control_qubit)
+  { ket::gate::ranges::adj_phase_shift3(parallel_policy_, data_, phase1, phase2, phase3, target_qubit, control_qubit); }
+
+  void nompi_state::do_multi_controlled_u3(
+    real_type const phase1, real_type const phase2, real_type const phase3,
+    qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_control_qubits = control_qubits.size();
+    assert(num_control_qubits > 1u);
+
+    switch (num_control_qubits)
+    {
+     case 2u:
+      ket::gate::ranges::phase_shift3(parallel_policy_, data_, phase1, phase2, phase3, target_qubit, control_qubits[0u], control_qubits[1u]);
+      break;
+
+     case 3u:
+      ket::gate::ranges::phase_shift3(parallel_policy_, data_, phase1, phase2, phase3, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+      break;
+
+     case 4u:
+      ket::gate::ranges::phase_shift3(parallel_policy_, data_, phase1, phase2, phase3, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+      break;
+
+     case 5u:
+      ket::gate::ranges::phase_shift3(parallel_policy_, data_, phase1, phase2, phase3, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u], control_qubits[4u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_control_qubits + 1u};
+    }
+  }
+
+  void nompi_state::do_adj_multi_controlled_u3(
+    real_type const phase1, real_type const phase2, real_type const phase3,
+    qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_control_qubits = control_qubits.size();
+    assert(num_control_qubits > 1u);
+
+    switch (num_control_qubits)
+    {
+     case 2u:
+      ket::gate::ranges::adj_phase_shift3(parallel_policy_, data_, phase1, phase2, phase3, target_qubit, control_qubits[0u], control_qubits[1u]);
+      break;
+
+     case 3u:
+      ket::gate::ranges::adj_phase_shift3(parallel_policy_, data_, phase1, phase2, phase3, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+      break;
+
+     case 4u:
+      ket::gate::ranges::adj_phase_shift3(parallel_policy_, data_, phase1, phase2, phase3, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+      break;
+
+     case 5u:
+      ket::gate::ranges::adj_phase_shift3(parallel_policy_, data_, phase1, phase2, phase3, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u], control_qubits[4u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_control_qubits + 1u};
+    }
+  }
+
+  void nompi_state::do_controlled_x_rotation_half_pi(
+    qubit_type const target_qubit, control_qubit_type const control_qubit)
+  { ket::gate::ranges::x_rotation_half_pi(parallel_policy_, data_, target_qubit, control_qubit); }
+
+  void nompi_state::do_adj_controlled_x_rotation_half_pi(
+    qubit_type const target_qubit, control_qubit_type const control_qubit)
+  { ket::gate::ranges::adj_x_rotation_half_pi(parallel_policy_, data_, target_qubit, control_qubit); }
+
+  void nompi_state::do_multi_controlled_x_rotation_half_pi(
+    qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_control_qubits = control_qubits.size();
+    assert(num_control_qubits > 1u);
+
+    switch (num_control_qubits)
+    {
+     case 2u:
+      ket::gate::ranges::x_rotation_half_pi(parallel_policy_, data_, target_qubit, control_qubits[0u], control_qubits[1u]);
+      break;
+
+     case 3u:
+      ket::gate::ranges::x_rotation_half_pi(parallel_policy_, data_, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+      break;
+
+     case 4u:
+      ket::gate::ranges::x_rotation_half_pi(parallel_policy_, data_, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+      break;
+
+     case 5u:
+      ket::gate::ranges::x_rotation_half_pi(parallel_policy_, data_, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u], control_qubits[4u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_control_qubits + std::size_t{1u}};
+    }
+  }
+
+  void nompi_state::do_adj_multi_controlled_x_rotation_half_pi(
+    qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_control_qubits = control_qubits.size();
+    assert(num_control_qubits > 1u);
+
+    switch (num_control_qubits)
+    {
+     case 2u:
+      ket::gate::ranges::adj_x_rotation_half_pi(parallel_policy_, data_, target_qubit, control_qubits[0u], control_qubits[1u]);
+      break;
+
+     case 3u:
+      ket::gate::ranges::adj_x_rotation_half_pi(parallel_policy_, data_, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+      break;
+
+     case 4u:
+      ket::gate::ranges::adj_x_rotation_half_pi(parallel_policy_, data_, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+      break;
+
+     case 5u:
+      ket::gate::ranges::adj_x_rotation_half_pi(parallel_policy_, data_, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u], control_qubits[4u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_control_qubits + std::size_t{1u}};
+    }
+  }
+
+  void nompi_state::do_controlled_y_rotation_half_pi(
+    qubit_type const target_qubit, control_qubit_type const control_qubit)
+  { ket::gate::ranges::y_rotation_half_pi(parallel_policy_, data_, target_qubit, control_qubit); }
+
+  void nompi_state::do_adj_controlled_y_rotation_half_pi(
+    qubit_type const target_qubit, control_qubit_type const control_qubit)
+  { ket::gate::ranges::adj_y_rotation_half_pi(parallel_policy_, data_, target_qubit, control_qubit); }
+
+  void nompi_state::do_multi_controlled_y_rotation_half_pi(
+    qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_control_qubits = control_qubits.size();
+    assert(num_control_qubits > 1u);
+
+    switch (num_control_qubits)
+    {
+     case 2u:
+      ket::gate::ranges::y_rotation_half_pi(parallel_policy_, data_, target_qubit, control_qubits[0u], control_qubits[1u]);
+      break;
+
+     case 3u:
+      ket::gate::ranges::y_rotation_half_pi(parallel_policy_, data_, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+      break;
+
+     case 4u:
+      ket::gate::ranges::y_rotation_half_pi(parallel_policy_, data_, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+      break;
+
+     case 5u:
+      ket::gate::ranges::y_rotation_half_pi(parallel_policy_, data_, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u], control_qubits[4u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_control_qubits + std::size_t{1u}};
+    }
+  }
+
+  void nompi_state::do_adj_multi_controlled_y_rotation_half_pi(
+    qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_control_qubits = control_qubits.size();
+    assert(num_control_qubits > 1u);
+
+    switch (num_control_qubits)
+    {
+     case 2u:
+      ket::gate::ranges::adj_y_rotation_half_pi(parallel_policy_, data_, target_qubit, control_qubits[0u], control_qubits[1u]);
+      break;
+
+     case 3u:
+      ket::gate::ranges::adj_y_rotation_half_pi(parallel_policy_, data_, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+      break;
+
+     case 4u:
+      ket::gate::ranges::adj_y_rotation_half_pi(parallel_policy_, data_, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+      break;
+
+     case 5u:
+      ket::gate::ranges::adj_y_rotation_half_pi(parallel_policy_, data_, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u], control_qubits[4u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_control_qubits + std::size_t{1u}};
+    }
+  }
+
+  void nompi_state::do_multi_controlled_v(
+    complex_type const& phase_coefficient,
+    qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_control_qubits = control_qubits.size();
+    assert(num_control_qubits > 1u);
+
+    switch (num_control_qubits)
+    {
+     case 2u:
+      ket::gate::ranges::controlled_v_coeff(parallel_policy_, data_, phase_coefficient, target_qubit, control_qubits[0u], control_qubits[1u]);
+      break;
+
+     case 3u:
+      ket::gate::ranges::controlled_v_coeff(parallel_policy_, data_, phase_coefficient, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+      break;
+
+     case 4u:
+      ket::gate::ranges::controlled_v_coeff(parallel_policy_, data_, phase_coefficient, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+      break;
+
+     case 5u:
+      ket::gate::ranges::controlled_v_coeff(parallel_policy_, data_, phase_coefficient, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u], control_qubits[4u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_control_qubits + 1u};
+    }
+  }
+
+  void nompi_state::do_adj_multi_controlled_v(
+    complex_type const& phase_coefficient,
+    qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_control_qubits = control_qubits.size();
+    assert(num_control_qubits > 1u);
+
+    switch (num_control_qubits)
+    {
+     case 2u:
+      ket::gate::ranges::adj_controlled_v_coeff(parallel_policy_, data_, phase_coefficient, target_qubit, control_qubits[0u], control_qubits[1u]);
+      break;
+
+     case 3u:
+      ket::gate::ranges::adj_controlled_v_coeff(parallel_policy_, data_, phase_coefficient, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+      break;
+
+     case 4u:
+      ket::gate::ranges::adj_controlled_v_coeff(parallel_policy_, data_, phase_coefficient, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+      break;
+
+     case 5u:
+      ket::gate::ranges::adj_controlled_v_coeff(parallel_policy_, data_, phase_coefficient, target_qubit, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u], control_qubits[4u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_control_qubits + 1u};
+    }
+  }
+
+  void nompi_state::do_controlled_exponential_pauli_x(
+    real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit)
+  { ket::gate::ranges::exponential_pauli_x(parallel_policy_, data_, phase, target_qubit, control_qubit); }
+
+  void nompi_state::do_adj_controlled_exponential_pauli_x(
+    real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit)
+  { ket::gate::ranges::adj_exponential_pauli_x(parallel_policy_, data_, phase, target_qubit, control_qubit); }
+
+  void nompi_state::do_multi_controlled_exponential_pauli_xn(
+    real_type const phase, std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_target_qubits = target_qubits.size();
+    auto const num_control_qubits = control_qubits.size();
+    auto const num_qubits = num_target_qubits + num_control_qubits;
+    assert(num_target_qubits > 0u);
+    assert(num_control_qubits > 1u);
+    assert(num_qubits > 2u);
+
+    switch (num_target_qubits)
+    {
+     case 1u:
+      switch (num_control_qubits)
+      {
+       case 2u:
+        ket::gate::ranges::exponential_pauli_x(parallel_policy_, data_, phase, target_qubits[0u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::exponential_pauli_x(parallel_policy_, data_, phase, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       case 4u:
+        ket::gate::ranges::exponential_pauli_x(parallel_policy_, data_, phase, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+        break;
+
+       case 5u:
+        ket::gate::ranges::exponential_pauli_x(parallel_policy_, data_, phase, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u], control_qubits[4u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 2u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::exponential_pauli_x(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::exponential_pauli_x(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::exponential_pauli_x(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       case 4u:
+        ket::gate::ranges::exponential_pauli_x(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 3u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::exponential_pauli_x(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::exponential_pauli_x(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::exponential_pauli_x(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 4u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::exponential_pauli_x(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::exponential_pauli_x(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 5u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::exponential_pauli_x(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], target_qubits[4u], control_qubits[0u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_qubits};
+    }
+  }
+
+  void nompi_state::do_adj_multi_controlled_exponential_pauli_xn(
+    real_type const phase, std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_target_qubits = target_qubits.size();
+    auto const num_control_qubits = control_qubits.size();
+    auto const num_qubits = num_target_qubits + num_control_qubits;
+    assert(num_target_qubits > 0u);
+    assert(num_control_qubits > 1u);
+    assert(num_qubits > 2u);
+
+    switch (num_target_qubits)
+    {
+     case 1u:
+      switch (num_control_qubits)
+      {
+       case 2u:
+        ket::gate::ranges::adj_exponential_pauli_x(parallel_policy_, data_, phase, target_qubits[0u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::adj_exponential_pauli_x(parallel_policy_, data_, phase, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       case 4u:
+        ket::gate::ranges::adj_exponential_pauli_x(parallel_policy_, data_, phase, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+        break;
+
+       case 5u:
+        ket::gate::ranges::adj_exponential_pauli_x(parallel_policy_, data_, phase, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u], control_qubits[4u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 2u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::adj_exponential_pauli_x(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::adj_exponential_pauli_x(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::adj_exponential_pauli_x(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       case 4u:
+        ket::gate::ranges::adj_exponential_pauli_x(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 3u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::adj_exponential_pauli_x(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::adj_exponential_pauli_x(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::adj_exponential_pauli_x(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 4u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::adj_exponential_pauli_x(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::adj_exponential_pauli_x(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 5u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::adj_exponential_pauli_x(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], target_qubits[4u], control_qubits[0u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_qubits};
+    }
+  }
+
+  void nompi_state::do_controlled_exponential_pauli_y(
+    real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit)
+  { ket::gate::ranges::exponential_pauli_y(parallel_policy_, data_, phase, target_qubit, control_qubit); }
+
+  void nompi_state::do_adj_controlled_exponential_pauli_y(
+    real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit)
+  { ket::gate::ranges::adj_exponential_pauli_y(parallel_policy_, data_, phase, target_qubit, control_qubit); }
+
+  void nompi_state::do_multi_controlled_exponential_pauli_yn(
+    real_type const phase, std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_target_qubits = target_qubits.size();
+    auto const num_control_qubits = control_qubits.size();
+    auto const num_qubits = num_target_qubits + num_control_qubits;
+    assert(num_target_qubits > 0u);
+    assert(num_control_qubits > 1u);
+    assert(num_qubits > 2u);
+
+    switch (num_target_qubits)
+    {
+     case 1u:
+      switch (num_control_qubits)
+      {
+       case 2u:
+        ket::gate::ranges::exponential_pauli_y(
+          parallel_policy_,
+          data_, phase, target_qubits[0u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::exponential_pauli_y(
+          parallel_policy_,
+          data_, phase, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       case 4u:
+        ket::gate::ranges::exponential_pauli_y(
+          parallel_policy_,
+          data_, phase, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+        break;
+
+       case 5u:
+        ket::gate::ranges::exponential_pauli_y(
+          parallel_policy_,
+          data_, phase, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u], control_qubits[4u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 2u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::exponential_pauli_y(
+          parallel_policy_,
+          data_, phase, target_qubits[0u], target_qubits[1u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::exponential_pauli_y(
+          parallel_policy_,
+          data_, phase, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::exponential_pauli_y(
+          parallel_policy_,
+          data_, phase, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       case 4u:
+        ket::gate::ranges::exponential_pauli_y(
+          parallel_policy_,
+          data_, phase, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 3u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::exponential_pauli_y(
+          parallel_policy_,
+          data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::exponential_pauli_y(
+          parallel_policy_,
+          data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::exponential_pauli_y(
+          parallel_policy_,
+          data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 4u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::exponential_pauli_y(
+          parallel_policy_,
+          data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::exponential_pauli_y(
+          parallel_policy_,
+          data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 5u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::exponential_pauli_y(
+          parallel_policy_,
+          data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], target_qubits[4u], control_qubits[0u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_qubits};
+    }
+  }
+
+  void nompi_state::do_adj_multi_controlled_exponential_pauli_yn(
+    real_type const phase, std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_target_qubits = target_qubits.size();
+    auto const num_control_qubits = control_qubits.size();
+    auto const num_qubits = num_target_qubits + num_control_qubits;
+    assert(num_target_qubits > 0u);
+    assert(num_control_qubits > 1u);
+    assert(num_qubits > 2u);
+
+    switch (num_target_qubits)
+    {
+     case 1u:
+      switch (num_control_qubits)
+      {
+       case 2u:
+        ket::gate::ranges::adj_exponential_pauli_y(parallel_policy_, data_, phase, target_qubits[0u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::adj_exponential_pauli_y(parallel_policy_, data_, phase, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       case 4u:
+        ket::gate::ranges::adj_exponential_pauli_y(parallel_policy_, data_, phase, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+        break;
+
+       case 5u:
+        ket::gate::ranges::adj_exponential_pauli_y(parallel_policy_, data_, phase, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u], control_qubits[4u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 2u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::adj_exponential_pauli_y(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::adj_exponential_pauli_y(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::adj_exponential_pauli_y(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       case 4u:
+        ket::gate::ranges::adj_exponential_pauli_y(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 3u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::adj_exponential_pauli_y(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::adj_exponential_pauli_y(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::adj_exponential_pauli_y(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 4u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::adj_exponential_pauli_y(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::adj_exponential_pauli_y(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 5u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::adj_exponential_pauli_y(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], target_qubits[4u], control_qubits[0u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_qubits};
+    }
+  }
+
+  void nompi_state::do_controlled_exponential_pauli_z(
+    real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit)
+  { ket::gate::ranges::exponential_pauli_z(parallel_policy_, data_, phase, target_qubit, control_qubit); }
+
+  void nompi_state::do_adj_controlled_exponential_pauli_z(
+    real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit)
+  { ket::gate::ranges::adj_exponential_pauli_z(parallel_policy_, data_, phase, target_qubit, control_qubit); }
+
+  void nompi_state::do_multi_controlled_exponential_pauli_zn(
+    real_type const phase, std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_target_qubits = target_qubits.size();
+    auto const num_control_qubits = control_qubits.size();
+    auto const num_qubits = num_target_qubits + num_control_qubits;
+    assert(num_target_qubits > 0u);
+    assert(num_control_qubits > 1u);
+    assert(num_qubits > 2u);
+
+    switch (num_target_qubits)
+    {
+     case 1u:
+      switch (num_control_qubits)
+      {
+       case 2u:
+        ket::gate::ranges::exponential_pauli_z(parallel_policy_, data_, phase, target_qubits[0u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::exponential_pauli_z(parallel_policy_, data_, phase, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       case 4u:
+        ket::gate::ranges::exponential_pauli_z(parallel_policy_, data_, phase, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+        break;
+
+       case 5u:
+        ket::gate::ranges::exponential_pauli_z(parallel_policy_, data_, phase, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u], control_qubits[4u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 2u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::exponential_pauli_z(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::exponential_pauli_z(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::exponential_pauli_z(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       case 4u:
+        ket::gate::ranges::exponential_pauli_z(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 3u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::exponential_pauli_z(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::exponential_pauli_z(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::exponential_pauli_z(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 4u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::exponential_pauli_z(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::exponential_pauli_z(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 5u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::exponential_pauli_z(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], target_qubits[4u], control_qubits[0u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_qubits};
+    }
+  }
+
+  void nompi_state::do_adj_multi_controlled_exponential_pauli_zn(
+    real_type const phase, std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_target_qubits = target_qubits.size();
+    auto const num_control_qubits = control_qubits.size();
+    auto const num_qubits = num_target_qubits + num_control_qubits;
+    assert(num_target_qubits > 0u);
+    assert(num_control_qubits > 1u);
+    assert(num_qubits > 2u);
+
+    switch (num_target_qubits)
+    {
+     case 1u:
+      switch (num_control_qubits)
+      {
+       case 2u:
+        ket::gate::ranges::adj_exponential_pauli_z(parallel_policy_, data_, phase, target_qubits[0u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::adj_exponential_pauli_z(parallel_policy_, data_, phase, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       case 4u:
+        ket::gate::ranges::adj_exponential_pauli_z(parallel_policy_, data_, phase, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+        break;
+
+       case 5u:
+        ket::gate::ranges::adj_exponential_pauli_z(parallel_policy_, data_, phase, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u], control_qubits[4u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 2u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::adj_exponential_pauli_z(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::adj_exponential_pauli_z(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::adj_exponential_pauli_z(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       case 4u:
+        ket::gate::ranges::adj_exponential_pauli_z(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 3u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::adj_exponential_pauli_z(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::adj_exponential_pauli_z(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::gate::ranges::adj_exponential_pauli_z(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 4u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::adj_exponential_pauli_z(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::gate::ranges::adj_exponential_pauli_z(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 5u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::gate::ranges::adj_exponential_pauli_z(parallel_policy_, data_, phase, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], target_qubits[4u], control_qubits[0u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_qubits};
+    }
+  }
+
+  void nompi_state::do_multi_controlled_exponential_swap(
+    real_type const phase, qubit_type const target_qubit1, qubit_type const target_qubit2,
+    std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_control_qubits = control_qubits.size();
+    assert(num_control_qubits > 0u);
+
+    switch (num_control_qubits)
+    {
+     case 1u:
+      ket::gate::ranges::exponential_swap(parallel_policy_, data_, phase, target_qubit1, target_qubit2, control_qubits[0u]);
+      break;
+
+     case 2u:
+      ket::gate::ranges::exponential_swap(parallel_policy_, data_, phase, target_qubit1, target_qubit2, control_qubits[0u], control_qubits[1u]);
+      break;
+
+     case 3u:
+      ket::gate::ranges::exponential_swap(parallel_policy_, data_, phase, target_qubit1, target_qubit2, control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+      break;
+
+     case 4u:
+      ket::gate::ranges::exponential_swap(parallel_policy_, data_, phase, target_qubit1, target_qubit2, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_control_qubits + 2u};
+    }
+  }
+
+  void nompi_state::do_adj_multi_controlled_exponential_swap(
+    real_type const phase, qubit_type const target_qubit1, qubit_type const target_qubit2,
+    std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_control_qubits = control_qubits.size();
+    assert(num_control_qubits > 0u);
+
+    switch (num_control_qubits)
+    {
+     case 1u:
+      ket::gate::ranges::adj_exponential_swap(parallel_policy_, data_, phase, target_qubit1, target_qubit2, control_qubits[0u]);
+      break;
+
+     case 2u:
+      ket::gate::ranges::adj_exponential_swap(parallel_policy_, data_, phase, target_qubit1, target_qubit2, control_qubits[0u], control_qubits[1u]);
+      break;
+
+     case 3u:
+      ket::gate::ranges::adj_exponential_swap(parallel_policy_, data_, phase, target_qubit1, target_qubit2, control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+      break;
+
+     case 4u:
+      ket::gate::ranges::adj_exponential_swap(parallel_policy_, data_, phase, target_qubit1, target_qubit2, control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_control_qubits + 2u};
+    }
+  }
 } // namespace bra
 
 
