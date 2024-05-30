@@ -9,7 +9,9 @@
 # include <type_traits>
 
 # include <ket/qubit.hpp>
+# include <ket/control.hpp>
 # include <ket/gate/gate.hpp>
+# include <ket/gate/meta/num_control_qubits.hpp>
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/integer_exp2.hpp>
 # ifndef NDEBUG
@@ -21,7 +23,7 @@ namespace ket
 {
   namespace gate
   {
-    // X_i (NOT_i)
+    // X_i, X1_i or NOT_i
     // X_1 (a_0 |0> + a_1 |1>) = a_1 |0> + a_0 |1>
     template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger>
     inline void pauli_x(
@@ -56,7 +58,7 @@ namespace ket
         });
     }
 
-    // XX_{ij} = X_i X_j
+    // XX_{ij} = X_i X_j or X2_{ij}
     // XX_{1,2} (a_{00} |00> + a_{01} |01> + a_{10} |10> + a{11} |11>)
     //   = a_{11} |00> + a_{10} |01> + a_{01} |10> + a_{00} |11>
     template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger>
@@ -110,27 +112,89 @@ namespace ket
         });
     }
 
-    // X...X_{i...j} = X_i ... X_j
-    template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger, typename... Qubits>
+    // CX_{tc}, CX1_{tc}, C1X_{tc}, C1X1_{tc}, or CNOT_{tc}
+    // CX_{1,2} (a_{00} |00> + a_{01} |01> + a_{10} |10> + a{11} |11>)
+    //   = a_{00} |00> + a_{01} |01> + a_{11} |10> + a_{10} |11>
+    template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger>
     inline void pauli_x(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
-      ::ket::qubit<StateInteger, BitInteger> const qubit1, ::ket::qubit<StateInteger, BitInteger> const qubit2,
-      ::ket::qubit<StateInteger, BitInteger> const qubit3, Qubits const... qubits)
+      ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit)
     {
+      static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+      static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
+
+      assert(::ket::utility::integer_exp2<StateInteger>(target_qubit) < static_cast<StateInteger>(last - first));
+      assert(::ket::utility::integer_exp2<StateInteger>(control_qubit) < static_cast<StateInteger>(last - first));
+      assert(target_qubit != control_qubit);
+      assert(
+        ::ket::utility::integer_exp2<StateInteger>(::ket::utility::integer_log2<BitInteger>(last - first))
+        == static_cast<StateInteger>(last - first));
+
+      auto const minmax_qubits = std::minmax(target_qubit, control_qubit.qubit());
+      auto const target_qubit_mask = ::ket::utility::integer_exp2<StateInteger>(target_qubit);
+      auto const control_qubit_mask = ::ket::utility::integer_exp2<StateInteger>(control_qubit);
+      auto const lower_bits_mask = ::ket::utility::integer_exp2<StateInteger>(minmax_qubits.first) - StateInteger{1u};
+      auto const middle_bits_mask
+        = (::ket::utility::integer_exp2<StateInteger>(minmax_qubits.second - BitInteger{1u}) - StateInteger{1u})
+          xor lower_bits_mask;
+      auto const upper_bits_mask = compl (lower_bits_mask bitor middle_bits_mask);
+
+      using ::ket::utility::loop_n;
+      loop_n(
+        parallel_policy,
+        static_cast<StateInteger>(last - first) >> 2u,
+        [first, target_qubit_mask, control_qubit_mask, lower_bits_mask, middle_bits_mask, upper_bits_mask](
+          StateInteger const value_wo_qubits, int const)
+        {
+          // xxx0_txxx0_cxxx
+          auto const base_index
+            = ((value_wo_qubits bitand upper_bits_mask) << 2u)
+              bitor ((value_wo_qubits bitand middle_bits_mask) << 1u)
+              bitor (value_wo_qubits bitand lower_bits_mask);
+          // xxx0_txxx1_cxxx
+          auto const control_on_index = base_index bitor control_qubit_mask;
+          // xxx1_txxx1_cxxx
+          auto const target_control_on_index = control_on_index bitor target_qubit_mask;
+          auto const control_on_iter = first + control_on_index;
+          auto const target_control_on_iter = first + target_control_on_index;
+
+          std::iter_swap(control_on_iter, target_control_on_iter);
+        });
+    }
+
+    // C...CX...X_{t...t'c...c'} = C...C(X_t ... X_t')_{c...c'}, CnX...X_{...}, C...CXm_{...}, or CnXm_{...}
+    template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger, typename Qubit2, typename Qubit3, typename... Qubits>
+    inline void pauli_x(
+      ParallelPolicy const parallel_policy,
+      RandomAccessIterator const first, RandomAccessIterator const last,
+      ::ket::qubit<StateInteger, BitInteger> const qubit1, Qubit2 const qubit2, Qubit3 const qubit3, Qubits const... qubits)
+    {
+      static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+      static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
+      assert(
+        ::ket::utility::integer_exp2<StateInteger>(::ket::utility::integer_log2<BitInteger>(last - first))
+        == static_cast<StateInteger>(last - first));
+
       constexpr auto num_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+      constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubit2, Qubit3, Qubits...>::value;
+      constexpr auto num_target_qubits = num_qubits - num_control_qubits;
       constexpr auto num_indices = ::ket::utility::integer_exp2<std::size_t>(num_qubits);
+      constexpr auto num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
+      constexpr auto half_num_target_indices = num_target_indices / std::size_t{2u};
+
+      // 0b1...10...0u
+      constexpr auto base_indices_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
 
       ::ket::gate::gate(
         parallel_policy, first, last,
         [](RandomAccessIterator const first, std::array<StateInteger, num_indices> const& indices, int const)
         {
-          auto const num_indices = static_cast<StateInteger>(boost::size(indices));
-          auto const half_num_indices = num_indices / StateInteger{2u};
-          for (auto i = StateInteger{0u}; i < half_num_indices; ++i)
+          for (auto i = std::size_t{0u}; i < half_num_target_indices; ++i)
           {
-            auto iter1 = first + indices[i];
-            auto iter2 = first + indices[num_indices - StateInteger{1u} - i];
+            auto const iter1 = first + indices[base_indices_index + i];
+            auto const iter2 = first + indices[base_indices_index + (num_target_indices - std::size_t{1u} - i)];
             std::iter_swap(iter1, iter2);
           }
         },

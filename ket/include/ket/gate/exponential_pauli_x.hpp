@@ -5,12 +5,15 @@
 # include <cmath>
 # include <complex>
 # include <array>
+# include <algorithm>
 # include <iterator>
 # include <utility>
 # include <type_traits>
 
 # include <ket/qubit.hpp>
+# include <ket/control.hpp>
 # include <ket/gate/gate.hpp>
+# include <ket/gate/meta/num_control_qubits.hpp>
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/integer_exp2.hpp>
 # ifndef NDEBUG
@@ -25,8 +28,8 @@ namespace ket
   namespace gate
   {
     // exponential_pauli_x_coeff
-    // eX_i(s) = exp(is X_i) = I cos s + i X_i sin s
-    // eX_1(s) (a_0 |0> + a_1 |1>) = (cos s a_0 + i sin s a_1) |0> + (i sin s a_0 + cos s a_1) |1>
+    // eX_i(theta) = exp(i theta X_i) = I cos(theta) + i X_i sin(theta), or eX1_i(theta)
+    // eX_1(theta) (a_0 |0> + a_1 |1>) = (cos(theta) a_0 + i sin(theta) a_1) |0> + (i sin(theta) a_0 + cos(theta) a_1) |1>
     template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger>
     inline void exponential_pauli_x_coeff(
       ParallelPolicy const parallel_policy,
@@ -78,9 +81,10 @@ namespace ket
         });
     }
 
-    // eXX_{ij}(s) = exp(is X_i X_j) = I cos s + i X_i X_j sin s
-    // eXX_{1,2}(s) (a_{00} |00> + a_{01} |01> + a_{10} |10> + a{11} |11>)
-    //   = (cos s a_{00} + i sin s a_{11}) |00> + (cos s a_{01} + i sin s a_{10}) |01> + (i sin s a_{01} + cos s a_{10}) |10> + (i sin s a_{00} + cos s a_{11}) |11>
+    // eXX_{ij}(theta) = exp(i theta X_i X_j) = I cos(theta) + i X_i X_j sin(theta), or eX2_{ij}(theta)
+    // eXX_{1,2}(theta) (a_{00} |00> + a_{01} |01> + a_{10} |10> + a{11} |11>)
+    //   = (cos(theta) a_{00} + i sin(theta) a_{11}) |00> + (cos(theta) a_{01} + i sin(theta) a_{10}) |01>
+    //     + (i sin(theta) a_{01} + cos(theta) a_{10}) |10> + (i sin(theta) a_{00} + cos(theta) a_{11}) |11>
     template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger>
     inline void exponential_pauli_x_coeff(
       ParallelPolicy const parallel_policy,
@@ -150,17 +154,94 @@ namespace ket
         });
     }
 
-    // eX...X_{i...j}(s) = exp(is X_i ... X_j) = I cos s + i X_i ... X_j sin s
-    template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger, typename... Qubits>
+    // CeX_{tc}(theta) = C[exp(i theta X_t)]_c = C[I cos(theta) + i X_t sin(theta)]_c, C1eX_{tc}(theta), CeX1_{tc}(theta), or C1eX1_{tc}(theta)
+    // CeX_{1,2}(theta) (a_{00} |00> + a_{01} |01> + a_{10} |10> + a{11} |11>)
+    //   = a_{00} |00> + a_{01} |01> + (cos(theta) a_{10} + i sin(theta) a_{11}) |10> + (i sin(theta) a_{10} + cos(theta) a_{11}) |11>
+    template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger>
     inline void exponential_pauli_x_coeff(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
-      ::ket::qubit<StateInteger, BitInteger> const qubit1, ::ket::qubit<StateInteger, BitInteger> const qubit2,
-      ::ket::qubit<StateInteger, BitInteger> const qubit3, Qubits const... qubits)
+      ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit)
     {
+      static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+      static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
+      static_assert(
+        (std::is_same<Complex, typename std::iterator_traits<RandomAccessIterator>::value_type>::value),
+        "Complex must be the same to value_type of RandomAccessIterator");
+
+      assert(::ket::utility::integer_exp2<StateInteger>(target_qubit) < static_cast<StateInteger>(last - first));
+      assert(::ket::utility::integer_exp2<StateInteger>(control_qubit) < static_cast<StateInteger>(last - first));
+      assert(target_qubit != control_qubit);
+      assert(
+        ::ket::utility::integer_exp2<StateInteger>(::ket::utility::integer_log2<BitInteger>(last - first))
+        == static_cast<StateInteger>(last - first));
+
+      auto const minmax_qubits = std::minmax(target_qubit, control_qubit.qubit());
+      auto const target_qubit_mask = ::ket::utility::integer_exp2<StateInteger>(target_qubit);
+      auto const control_qubit_mask = ::ket::utility::integer_exp2<StateInteger>(control_qubit);
+      auto const lower_bits_mask = ::ket::utility::integer_exp2<StateInteger>(minmax_qubits.first) - StateInteger{1u};
+      auto const middle_bits_mask
+        = (::ket::utility::integer_exp2<StateInteger>(minmax_qubits.second - BitInteger{1u}) - StateInteger{1u})
+          xor lower_bits_mask;
+      auto const upper_bits_mask = compl (lower_bits_mask bitor middle_bits_mask);
+
+      using std::real;
+      using std::imag;
+      auto const cos_theta = real(phase_coefficient);
+      auto const i_sin_theta = ::ket::utility::imaginary_unit<Complex>() * imag(phase_coefficient);
+
+      using ::ket::utility::loop_n;
+      loop_n(
+        parallel_policy,
+        static_cast<StateInteger>(last - first) >> 2u,
+        [first, cos_theta, &i_sin_theta, target_qubit_mask, control_qubit_mask, lower_bits_mask, middle_bits_mask, upper_bits_mask](
+          StateInteger const value_wo_qubits, int const)
+        {
+          // xxx0_txxx0_cxxx
+          auto const base_index
+            = ((value_wo_qubits bitand upper_bits_mask) << 2u)
+              bitor ((value_wo_qubits bitand middle_bits_mask) << 1u)
+              bitor (value_wo_qubits bitand lower_bits_mask);
+          // xxx0_txxx1_cxxx
+          auto const control_on_index = base_index bitor control_qubit_mask;
+          // xxx1_txxx1_cxxx
+          auto const target_control_on_index = control_on_index bitor target_qubit_mask;
+          auto const control_on_iter = first + control_on_index;
+          auto const target_control_on_iter = first + target_control_on_index;
+          auto const control_on_iter_value = *control_on_iter;
+
+          *control_on_iter *= cos_theta;
+          *control_on_iter += *target_control_on_iter * i_sin_theta;
+          *target_control_on_iter *= cos_theta;
+          *target_control_on_iter += control_on_iter_value * i_sin_theta;
+        });
+    }
+
+    // C...CeX...X_{t...t'c...c'}(theta) = C...C[exp(i theta X_t ... X_t')]_{c...c'} = C...C[I cos(theta) + i X_t ... X_t' sin(theta)]_{c...c'}, CneX...X_{...}, C...CeXm_{...}, or CneXm_{...}
+    template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger, typename Qubit2, typename Qubit3, typename... Qubits>
+    inline void exponential_pauli_x_coeff(
+      ParallelPolicy const parallel_policy,
+      RandomAccessIterator const first, RandomAccessIterator const last,
+      Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+      ::ket::qubit<StateInteger, BitInteger> const qubit1, Qubit2 const qubit2, Qubit3 const qubit3, Qubits const... qubits)
+    {
+      static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+      static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
+      assert(
+        ::ket::utility::integer_exp2<StateInteger>(::ket::utility::integer_log2<BitInteger>(last - first))
+        == static_cast<StateInteger>(last - first));
+
       constexpr auto num_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+      constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubit2, Qubit3, Qubits...>::value;
+      constexpr auto num_target_qubits = num_qubits - num_control_qubits;
       constexpr auto num_indices = ::ket::utility::integer_exp2<std::size_t>(num_qubits);
+      constexpr auto num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
+      constexpr auto half_num_target_indices = num_target_indices / std::size_t{2u};
+
+      // 0b1...10...0u
+      constexpr auto base_indices_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
 
       using std::real;
       using std::imag;
@@ -171,12 +252,10 @@ namespace ket
         parallel_policy, first, last,
         [cos_theta, &i_sin_theta](RandomAccessIterator const first, std::array<StateInteger, num_indices> const& indices, int const)
         {
-          auto const num_indices = static_cast<StateInteger>(boost::size(indices));
-          auto const half_num_indices = num_indices / StateInteger{2u};
-          for (auto i = StateInteger{0u}; i < half_num_indices; ++i)
+          for (auto i = std::size_t{0u}; i < half_num_target_indices; ++i)
           {
-            auto iter1 = first + indices[i];
-            auto iter2 = first + indices[num_indices - StateInteger{1u} - i];
+            auto iter1 = first + indices[base_indices_index + i];
+            auto iter2 = first + indices[base_indices_index + (num_target_indices - std::size_t{1u} - i)];
             auto const iter1_value = *iter1;
 
             *iter1 *= cos_theta;

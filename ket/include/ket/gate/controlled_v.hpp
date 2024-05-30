@@ -28,9 +28,9 @@ namespace ket
   namespace gate
   {
     // controlled_v_coeff
-    // V_{tc}(s)
-    // V_{1,2}(s) (a_{00} |00> + a_{01} |01> + a_{10} |10> + a_{11} |11>)
-    //   = a_{00} |00> + a_{01} |01> + [a_{10} (1+e^{is})/2 + a_{11} (1-e^{is})/2] |10> + [a_{10} (1-e^{is})/2 + a_{11} (1+e^{is})/2] |11>
+    // V_{tc}(theta) or CV_{tc}(theta)
+    // V_{1,2}(theta) (a_{00} |00> + a_{01} |01> + a_{10} |10> + a_{11} |11>)
+    //   = a_{00} |00> + a_{01} |01> + [a_{10} (1+e^{i theta})/2 + a_{11} (1-e^{i theta})/2] |10> + [a_{10} (1-e^{i theta})/2 + a_{11} (1+e^{i theta})/2] |11>
     template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger>
     inline void controlled_v_coeff(
       ParallelPolicy const parallel_policy,
@@ -100,7 +100,7 @@ namespace ket
         });
     }
 
-    // C...V_{t,c,...,c'}(s)
+    // C...CV_{tc...c'}(theta) or CnV_{tc...c'}(theta)
     template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger, typename... ControlQubits>
     inline void controlled_v_coeff(
       ParallelPolicy const parallel_policy,
@@ -110,36 +110,37 @@ namespace ket
       ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
       ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2, ControlQubits const... control_qubits)
     {
-      constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 2u);
-      constexpr auto num_indices = ::ket::utility::integer_exp2<std::size_t>(num_control_qubits + BitInteger{1u});
-
       using real_type = typename ::ket::utility::meta::real_of<Complex>::type;
       auto const one_plus_phase_coefficient = Complex{real_type{1}} + phase_coefficient;
       auto const one_minus_phase_coefficient = Complex{real_type{1}} - phase_coefficient;
+
+      constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 2u);
+      constexpr auto num_qubits = num_control_qubits + BitInteger{1u};
+      constexpr auto num_indices = ::ket::utility::integer_exp2<std::size_t>(num_qubits);
+
+      // 0b11...10u
+      constexpr auto indices_index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << std::size_t{1u};
+      // 0b11...11u
+      constexpr auto indices_index1 = indices_index0 bitor std::size_t{1u};
 
       ::ket::gate::gate(
         parallel_policy, first, last,
         [&one_plus_phase_coefficient, &one_minus_phase_coefficient](
           RandomAccessIterator const first, std::array<StateInteger, num_indices> const& indices, int const)
         {
-          // 0b11...10u
-          auto const index0 = ((StateInteger{1u} << num_control_qubits) - StateInteger{1u}) << BitInteger{1u};
-          // 0b11...11u
-          auto const index1 = index0 bitor StateInteger{1u};
-
-          auto const iter0 = first + indices[index0];
-          auto const iter1 = first + indices[index1];
-          auto const iter0_value = *iter0;
+          auto const control_on_iter = first + indices[indices_index0];
+          auto const target_control_on_iter = first + indices[indices_index1];
+          auto const control_on_iter_value = *control_on_iter;
 
           using boost::math::constants::half;
-          *iter0
+          *control_on_iter
             = half<real_type>()
-              * (one_plus_phase_coefficient * iter0_value
-                 + one_minus_phase_coefficient * (*iter1));
-          *iter1
+              * (one_plus_phase_coefficient * control_on_iter_value
+                 + one_minus_phase_coefficient * (*target_control_on_iter));
+          *target_control_on_iter
             = half<real_type>()
-              * (one_minus_phase_coefficient * iter0_value
-                 + one_plus_phase_coefficient * (*iter1));
+              * (one_minus_phase_coefficient * control_on_iter_value
+                 + one_plus_phase_coefficient * (*target_control_on_iter));
         },
         target_qubit, control_qubit1, control_qubit2, control_qubits...);
     }
