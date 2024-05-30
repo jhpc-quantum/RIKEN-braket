@@ -41,19 +41,16 @@ namespace ket
     {
       template <
         typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange,
-        typename StateInteger, typename BitInteger, typename RandomNumberGenerator,
-        typename Allocator, typename BufferAllocator>
+        typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator,
+        typename RandomNumberGenerator>
       inline ::ket::gate::outcome projective_measurement(
         MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
-        ::ket::qubit<StateInteger, BitInteger> const qubit,
-        RandomNumberGenerator& random_number_generator,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
         yampi::datatype const& real_pair_datatype,
-        yampi::rank const root,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment)
+        yampi::rank const root, yampi::communicator const& communicator, yampi::environment const& environment,
+        ::ket::qubit<StateInteger, BitInteger> const qubit, RandomNumberGenerator& random_number_generator)
       {
         ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Measurement "}, qubit), environment};
 
@@ -111,20 +108,16 @@ namespace ket
 
       template <
         typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange,
-        typename StateInteger, typename BitInteger, typename RandomNumberGenerator,
-        typename Allocator, typename BufferAllocator, typename DerivedDatatype>
+        typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename DerivedDatatype,
+        typename RandomNumberGenerator>
       inline ::ket::gate::outcome projective_measurement(
         MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
-        ::ket::qubit<StateInteger, BitInteger> const qubit,
-        RandomNumberGenerator& random_number_generator,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::datatype_base<DerivedDatatype> const& complex_datatype,
-        yampi::datatype const& real_pair_datatype,
-        yampi::rank const root,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment)
+        yampi::datatype_base<DerivedDatatype> const& complex_datatype, yampi::datatype const& real_pair_datatype,
+        yampi::rank const root, yampi::communicator const& communicator, yampi::environment const& environment,
+        ::ket::qubit<StateInteger, BitInteger> const qubit, RandomNumberGenerator& random_number_generator)
       {
         ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Measurement "}, qubit), environment};
 
@@ -180,6 +173,56 @@ namespace ket
         return ::ket::gate::outcome::one;
       }
 
+      // [[deprecated]]
+      template <
+        typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange,
+        typename StateInteger, typename BitInteger, typename RandomNumberGenerator,
+        typename Allocator, typename BufferAllocator>
+      inline ::ket::gate::outcome projective_measurement(
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+        RandomAccessRange& local_state,
+        ::ket::qubit<StateInteger, BitInteger> const qubit,
+        RandomNumberGenerator& random_number_generator,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        yampi::datatype const& real_pair_datatype,
+        yampi::rank const root,
+        yampi::communicator const& communicator,
+        yampi::environment const& environment)
+      {
+        return ::ket::mpi::gate::projective_measurement(
+          ::ket::mpi::utility::policy::make_simple_mpi(),
+          ::ket::utility::policy::make_sequential(),
+          local_state, permutation, buffer, real_pair_datatype, root, communicator, environment,
+          qubit, random_number_generator);
+      }
+
+      // [[deprecated]]
+      template <
+        typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange,
+        typename StateInteger, typename BitInteger, typename RandomNumberGenerator,
+        typename Allocator, typename BufferAllocator, typename DerivedDatatype>
+      inline ::ket::gate::outcome projective_measurement(
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+        RandomAccessRange& local_state,
+        ::ket::qubit<StateInteger, BitInteger> const qubit,
+        RandomNumberGenerator& random_number_generator,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        yampi::datatype_base<DerivedDatatype> const& complex_datatype,
+        yampi::datatype const& real_pair_datatype,
+        yampi::rank const root,
+        yampi::communicator const& communicator,
+        yampi::environment const& environment)
+      {
+        return ::ket::mpi::gate::projective_measurement(
+          ::ket::mpi::utility::policy::make_simple_mpi(),
+          ::ket::utility::policy::make_sequential(),
+          local_state, permutation, buffer, complex_datatype, real_pair_datatype, root, communicator, environment,
+          qubit, random_number_generator);
+      }
+
+      // [[deprecated]]
       template <
         typename RandomAccessRange,
         typename StateInteger, typename BitInteger, typename RandomNumberGenerator,
@@ -198,10 +241,11 @@ namespace ket
         return ::ket::mpi::gate::projective_measurement(
           ::ket::mpi::utility::policy::make_simple_mpi(),
           ::ket::utility::policy::make_sequential(),
-          local_state, qubit, random_number_generator, permutation,
-          buffer, real_pair_datatype, root, communicator, environment);
+          local_state, permutation, buffer, real_pair_datatype, root, communicator, environment,
+          qubit, random_number_generator);
       }
 
+      // [[deprecated]]
       template <
         typename RandomAccessRange,
         typename StateInteger, typename BitInteger, typename RandomNumberGenerator,
@@ -221,10 +265,51 @@ namespace ket
         return ::ket::mpi::gate::projective_measurement(
           ::ket::mpi::utility::policy::make_simple_mpi(),
           ::ket::utility::policy::make_sequential(),
-          local_state, qubit, random_number_generator, permutation,
-          buffer, complex_datatype, real_pair_datatype, root, communicator, environment);
+          local_state, permutation, buffer, complex_datatype, real_pair_datatype, root, communicator, environment,
+          qubit, random_number_generator);
       }
 
+      template <
+        typename RandomAccessRange,
+        typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator,
+        typename RandomNumberGenerator>
+      inline ::ket::gate::outcome projective_measurement(
+        RandomAccessRange& local_state,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        yampi::datatype const& real_pair_datatype,
+        yampi::rank const root, yampi::communicator const& communicator, yampi::environment const& environment,
+        ::ket::qubit<StateInteger, BitInteger> const qubit,
+        RandomNumberGenerator& random_number_generator)
+      {
+        return ::ket::mpi::gate::projective_measurement(
+          ::ket::mpi::utility::policy::make_simple_mpi(),
+          ::ket::utility::policy::make_sequential(),
+          local_state, permutation, buffer, real_pair_datatype, root, communicator, environment,
+          qubit, random_number_generator);
+      }
+
+      template <
+        typename RandomAccessRange,
+        typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename DerivedDatatype,
+        typename RandomNumberGenerator>
+      inline ::ket::gate::outcome projective_measurement(
+        RandomAccessRange& local_state,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        yampi::datatype_base<DerivedDatatype> const& complex_datatype, yampi::datatype const& real_pair_datatype,
+        yampi::rank const root, yampi::communicator const& communicator, yampi::environment const& environment,
+        ::ket::qubit<StateInteger, BitInteger> const qubit,
+        RandomNumberGenerator& random_number_generator)
+      {
+        return ::ket::mpi::gate::projective_measurement(
+          ::ket::mpi::utility::policy::make_simple_mpi(),
+          ::ket::utility::policy::make_sequential(),
+          local_state, permutation, buffer, complex_datatype, real_pair_datatype, root, communicator, environment,
+          qubit, random_number_generator);
+      }
+
+      // [[deprecated]]
       template <
         typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger, typename RandomNumberGenerator,
@@ -243,10 +328,11 @@ namespace ket
       {
         return ::ket::mpi::gate::projective_measurement(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
-          local_state, qubit, random_number_generator, permutation,
-          buffer, real_pair_datatype, root, communicator, environment);
+          local_state, permutation, buffer, real_pair_datatype, root, communicator, environment,
+          qubit, random_number_generator);
       }
 
+      // [[deprecated]]
       template <
         typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger, typename RandomNumberGenerator,
@@ -266,8 +352,47 @@ namespace ket
       {
         return ::ket::mpi::gate::projective_measurement(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
-          local_state, qubit, random_number_generator, permutation,
-          buffer, complex_datatype, real_pair_datatype, root, communicator, environment);
+          local_state, permutation, buffer, complex_datatype, real_pair_datatype, root, communicator, environment,
+          qubit, random_number_generator);
+      }
+
+      template <
+        typename ParallelPolicy, typename RandomAccessRange,
+        typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator,
+        typename RandomNumberGenerator>
+      inline ::ket::gate::outcome projective_measurement(
+        ParallelPolicy const parallel_policy,
+        RandomAccessRange& local_state,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        yampi::datatype const& real_pair_datatype,
+        yampi::rank const root, yampi::communicator const& communicator, yampi::environment const& environment,
+        ::ket::qubit<StateInteger, BitInteger> const qubit, RandomNumberGenerator& random_number_generator)
+      {
+        return ::ket::mpi::gate::projective_measurement(
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
+          local_state, permutation, buffer, real_pair_datatype, root, communicator, environment,
+          qubit, random_number_generator);
+      }
+
+      template <
+        typename ParallelPolicy, typename RandomAccessRange,
+        typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename DerivedDatatype,
+        typename RandomNumberGenerator>
+      inline ::ket::gate::outcome projective_measurement(
+        ParallelPolicy const parallel_policy,
+        RandomAccessRange& local_state,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        yampi::datatype_base<DerivedDatatype> const& complex_datatype,
+        yampi::datatype const& real_pair_datatype,
+        yampi::rank const root, yampi::communicator const& communicator, yampi::environment const& environment,
+        ::ket::qubit<StateInteger, BitInteger> const qubit, RandomNumberGenerator& random_number_generator)
+      {
+        return ::ket::mpi::gate::projective_measurement(
+          ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
+          local_state, permutation, buffer, complex_datatype, real_pair_datatype, root, communicator, environment,
+          qubit, random_number_generator);
       }
     } // namespace gate
   } // namespace mpi

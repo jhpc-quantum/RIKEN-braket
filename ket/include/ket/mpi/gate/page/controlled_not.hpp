@@ -10,7 +10,6 @@
 # include <ket/control.hpp>
 # include <ket/utility/integer_exp2.hpp>
 # include <ket/mpi/permutated.hpp>
-# include <ket/mpi/state.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
 # include <ket/mpi/gate/page/detail/controlled_not_tcp.hpp>
 # include <ket/mpi/gate/page/detail/one_page_qubit_gate.hpp>
@@ -25,6 +24,7 @@ namespace ket
       namespace page
       {
         // tcp: both of target qubit and control qubit are on page
+        // [[deprecated]]
         template <
           typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger>
@@ -81,6 +81,7 @@ namespace ket
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         } // namespace controlled_not_detail
 
+        // [[deprecated]]
         template <
           typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger>
@@ -159,6 +160,7 @@ namespace ket
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         } // namespace controlled_not_detail
 
+        // [[deprecated]]
         template <
           typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger>
@@ -196,6 +198,7 @@ namespace ket
         }
 
         // tcp: both of target qubit and control qubit are on page
+        // [[deprecated]]
         template <
           typename ParallelPolicy,
           typename RandomAccessRange,
@@ -211,6 +214,7 @@ namespace ket
         }
 
         // tp: only target qubit is on page
+        // [[deprecated]]
         template <
           typename ParallelPolicy,
           typename RandomAccessRange,
@@ -226,6 +230,7 @@ namespace ket
         }
 
         // cp: only control qubit is on page
+        // [[deprecated]]
         template <
           typename ParallelPolicy,
           typename RandomAccessRange,

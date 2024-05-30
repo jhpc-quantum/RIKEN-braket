@@ -7,9 +7,11 @@
 # include <algorithm>
 
 # include <ket/qubit.hpp>
+# include <ket/control.hpp>
 # include <ket/utility/integer_exp2.hpp>
 # include <ket/mpi/permutated.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
+# include <ket/mpi/gate/page/detail/pauli_cx_tcp.hpp>
 # include <ket/mpi/gate/page/detail/one_page_qubit_gate.hpp>
 # include <ket/mpi/gate/page/detail/two_page_qubits_gate.hpp>
 
@@ -23,7 +25,7 @@ namespace ket
       namespace page
       {
         // 1_p: the qubit of X is on page
-        // X_i (NOT_i)
+        // X_i, X1_i, or NOT_i
         // X_1 (a_0 |0> + a_1 |1>) = a_1 |0> + a_0 |1>
         namespace pauli_x_detail
         {
@@ -58,7 +60,7 @@ namespace ket
         }
 
         // 2_2p: both of qubits of XX are on page
-        // XX_{ij} = X_i X_j
+        // XX_{ij} = X_i X_j or X2_{ij}
         // XX_{1,2} (a_{00} |00> + a_{01} |01> + a_{10} |10> + a{11} |11>)
         //   = a_{11} |00> + a_{10} |01> + a_{01} |10> + a_{00} |11>
         namespace pauli_x_detail
@@ -104,7 +106,7 @@ namespace ket
         }
 
         // 2_p: only one qubit of XX is on page
-        // XX_{ij} = X_i X_j
+        // XX_{ij} = X_i X_j or X2_{ij}
         // XX_{1,2} (a_{00} |00> + a_{01} |01> + a_{10} |10> + a{11} |11>)
         //   = a_{11} |00> + a_{10} |01> + a_{01} |10> + a_{00} |11>
         namespace pauli_x_detail
@@ -189,6 +191,186 @@ namespace ket
             parallel_policy, local_state, page_permutated_qubit,
             ::ket::mpi::gate::page::pauli_x_detail::pauli_x2_p<StateInteger>{
               nonpage_permutated_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask});
+# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+        }
+
+        // cx_tcp: both of target and control qubits of CX are on page
+        // CX_{tc}, CX1_{tc}, C1X_{tc}, C1X1_{tc}, or CNOT_{tc}
+        // CX_{1,2} (a_{00} |00> + a_{01} |01> + a_{10} |10> + a{11} |11>)
+        //   = a_{00} |00> + a_{01} |01> + a_{11} |10> + a_{10} |11>
+        template <
+          typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger>
+        inline RandomAccessRange& pauli_cx_tcp(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
+          ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit)
+        {
+          return ::ket::mpi::gate::page::detail::pauli_cx_tcp(
+            parallel_policy, local_state, permutated_target_qubit, permutated_control_qubit);
+        }
+
+        // cx_tp: only target qubit is on page
+        // CX_{tc}, CX1_{tc}, C1X_{tc}, C1X1_{tc}, or CNOT_{tc}
+        // CX_{1,2} (a_{00} |00> + a_{01} |01> + a_{10} |10> + a{11} |11>)
+        //   = a_{00} |00> + a_{01} |01> + a_{11} |10> + a_{10} |11>
+        namespace pauli_x_detail
+        {
+# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
+          template <typename StateInteger>
+          struct pauli_cx_tp
+          {
+            StateInteger control_qubit_mask_;
+            StateInteger nonpage_lower_bits_mask_;
+            StateInteger nonpage_upper_bits_mask_;
+
+            pauli_cx_tp(
+              StateInteger const control_qubit_mask,
+              StateInteger const nonpage_lower_bits_mask,
+              StateInteger const nonpage_upper_bits_mask) noexcept
+              : control_qubit_mask_{control_qubit_mask},
+                nonpage_lower_bits_mask_{nonpage_lower_bits_mask},
+                nonpage_upper_bits_mask_{nonpage_upper_bits_mask}
+            { }
+
+            template <typename Iterator>
+            void operator()(
+              Iterator const zero_first, Iterator const one_first,
+              StateInteger const index_wo_nonpage_qubit, int const) const
+            {
+              auto const zero_index
+                = ((index_wo_nonpage_qubit bitand nonpage_upper_bits_mask_) << 1u)
+                  bitor (index_wo_nonpage_qubit bitand nonpage_lower_bits_mask_);
+              auto const one_index = zero_index bitor control_qubit_mask_;
+              std::iter_swap(zero_first + one_index, one_first + one_index);
+            }
+          }; // struct pauli_cx_tp<StateInteger>
+
+          template <typename StateInteger>
+          inline ::ket::mpi::gate::page::pauli_x_detail::pauli_cx_tp<StateInteger>
+          make_pauli_cx_tp(
+            StateInteger const control_qubit_mask,
+            StateInteger const nonpage_lower_bits_mask,
+            StateInteger const nonpage_upper_bits_mask)
+          { return {control_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask}; }
+# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+        } // namespace pauli_x_detail
+
+        template <
+          typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger>
+        inline RandomAccessRange& pauli_cx_tp(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
+          ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit)
+        {
+          assert(not ::ket::mpi::page::is_on_page(permutated_control_qubit, local_state));
+          auto const control_qubit_mask
+            = ::ket::utility::integer_exp2<StateInteger>(permutated_control_qubit);
+          auto const nonpage_lower_bits_mask = control_qubit_mask - StateInteger{1u};
+          auto const nonpage_upper_bits_mask = compl nonpage_lower_bits_mask;
+
+# ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
+          return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
+            parallel_policy, local_state, permutated_target_qubit,
+            [control_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask](
+              auto const zero_first, auto const one_first, StateInteger const index_wo_nonpage_qubit, int const)
+            {
+              auto const zero_index
+                = ((index_wo_nonpage_qubit bitand nonpage_upper_bits_mask) << 1u)
+                  bitor (index_wo_nonpage_qubit bitand nonpage_lower_bits_mask);
+              auto const one_index = zero_index bitor control_qubit_mask;
+              std::iter_swap(zero_first + one_index, one_first + one_index);
+            });
+# else // BOOST_NO_CXX14_GENERIC_LAMBDAS
+          return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
+            parallel_policy, local_state, permutated_target_qubit,
+            ::ket::mpi::gate::page::pauli_x_detail::make_pauli_cx_tp(
+              control_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask));
+# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+        }
+
+        // cx_cp: only control qubit is on page
+        // CX_{tc}, CX1_{tc}, C1X_{tc}, C1X1_{tc}, or CNOT_{tc}
+        // CX_{1,2} (a_{00} |00> + a_{01} |01> + a_{10} |10> + a{11} |11>)
+        //   = a_{00} |00> + a_{01} |01> + a_{11} |10> + a_{10} |11>
+        namespace pauli_x_detail
+        {
+# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
+          template <typename StateInteger>
+          struct pauli_cx_cp
+          {
+            StateInteger target_qubit_mask_;
+            StateInteger nonpage_lower_bits_mask_;
+            StateInteger nonpage_upper_bits_mask_;
+
+            pauli_cx_cp(
+              StateInteger const target_qubit_mask,
+              StateInteger const nonpage_lower_bits_mask,
+              StateInteger const nonpage_upper_bits_mask) noexcept
+              : target_qubit_mask_{target_qubit_mask},
+                nonpage_lower_bits_mask_{nonpage_lower_bits_mask},
+                nonpage_upper_bits_mask_{nonpage_upper_bits_mask}
+            { }
+
+            template <typename Iterator>
+            void operator()(
+              Iterator const, Iterator const one_first,
+              StateInteger const index_wo_nonpage_qubit, int const) const
+            {
+              auto const zero_index
+                = ((index_wo_nonpage_qubit bitand nonpage_upper_bits_mask_) << 1u)
+                  bitor (index_wo_nonpage_qubit bitand nonpage_lower_bits_mask_);
+              auto const one_index = zero_index bitor target_qubit_mask_;
+              std::iter_swap(one_first + zero_index, one_first + one_index);
+            }
+          }; // struct pauli_cx_cp<StateInteger>
+
+          template <typename StateInteger>
+          inline ::ket::mpi::gate::page::pauli_x_detail::pauli_cx_cp<StateInteger>
+          make_pauli_cx_cp(
+            StateInteger const target_qubit_mask,
+            StateInteger const nonpage_lower_bits_mask,
+            StateInteger const nonpage_upper_bits_mask)
+          { return {target_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask}; }
+# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+        } // namespace pauli_x_detail
+
+        template <
+          typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger>
+        inline RandomAccessRange& pauli_cx_cp(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
+          ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit)
+        {
+          assert(not ::ket::mpi::page::is_on_page(permutated_target_qubit, local_state));
+
+          auto const target_qubit_mask
+            = ::ket::utility::integer_exp2<StateInteger>(permutated_target_qubit);
+          auto const nonpage_lower_bits_mask = target_qubit_mask - StateInteger{1u};
+          auto const nonpage_upper_bits_mask = compl nonpage_lower_bits_mask;
+
+# ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
+          return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
+            parallel_policy, local_state, permutated_control_qubit,
+            [target_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask](
+              auto const, auto const one_first, StateInteger const index_wo_nonpage_qubit, int const)
+            {
+              auto const zero_index
+                = ((index_wo_nonpage_qubit bitand nonpage_upper_bits_mask) << 1u)
+                  bitor (index_wo_nonpage_qubit bitand nonpage_lower_bits_mask);
+              auto const one_index = zero_index bitor target_qubit_mask;
+              std::iter_swap(one_first + zero_index, one_first + one_index);
+            });
+# else // BOOST_NO_CXX14_GENERIC_LAMBDAS
+          return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
+            parallel_policy, local_state, permutated_control_qubit,
+            ::ket::mpi::gate::page::pauli_x_detail::make_pauli_cx_cp(
+              target_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }
       } // namespace page

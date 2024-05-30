@@ -2,24 +2,8 @@
 # define KET_MPI_GATE_DETAIL_CONTROLLED_PHASE_SHIFT_DIAGONAL_HPP
 
 # include <complex>
-# include <vector>
 
-# include <boost/range/value_type.hpp>
-
-# include <yampi/environment.hpp>
-# include <yampi/datatype_base.hpp>
-# include <yampi/communicator.hpp>
-
-# include <ket/qubit.hpp>
-# include <ket/control.hpp>
-# ifdef KET_PRINT_LOG
-#   include <ket/qubit_io.hpp>
-#   include <ket/control_io.hpp>
-# endif // KET_PRINT_LOG
 # include <ket/gate/controlled_phase_shift.hpp>
-# include <ket/mpi/qubit_permutation.hpp>
-# include <ket/mpi/utility/simple_mpi.hpp>
-# include <ket/mpi/utility/logger.hpp>
 # include <ket/mpi/gate/page/controlled_phase_shift_diagonal.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
 
@@ -31,12 +15,13 @@ namespace ket
     namespace gate
     {
       // controlled_phase_shift_coeff
-      // U_{tc}(s)
-      // U_{1,2}(s) (a_{00} |00> + a_{01} |01> + a_{10} |10> + a_{11} |11>)
-      //   = a_{00} |00> + a_{01} |01> + a_{10} |10> + e^{is} a_{11} |11>
+      // U_{tc}(theta)
+      // U_{1,2}(theta) (a_{00} |00> + a_{01} |01> + a_{10} |10> + a_{11} |11>)
+      //   = a_{00} |00> + a_{01} |01> + a_{10} |10> + e^{i theta} a_{11} |11>
       namespace controlled_phase_shift_detail
       {
 # ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
+        // [[deprecated]]
         template <typename StateInteger>
         struct return_
         {
@@ -44,10 +29,12 @@ namespace ket
           void operator()(Iterator const, StateInteger const) const { }
         }; // struct return_<StateInteger>
 
+        // [[deprecated]]
         template <typename StateInteger>
         inline ::ket::mpi::gate::controlled_phase_shift_detail::return_<StateInteger> make_return_()
         { return ::ket::mpi::gate::controlled_phase_shift_detail::return_<StateInteger>{}; }
 
+        // [[deprecated]]
         template <typename StateInteger, typename Complex>
         struct do_phase_shift
         {
@@ -62,12 +49,14 @@ namespace ket
           { *iter *= phase_coefficient_; }
         }; // struct do_phase_shift<StateInteger, Complex>
 
+        // [[deprecated]]
         template <typename StateInteger, typename Complex>
         inline ::ket::mpi::gate::controlled_phase_shift_detail::do_phase_shift<StateInteger, Complex>
         make_do_phase_shift(Complex const& phase_coefficient)
         { return ::ket::mpi::gate::controlled_phase_shift_detail::do_phase_shift<StateInteger, Complex>{phase_coefficient}; }
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 
+        // [[deprecated]]
         template <
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename Complex,
@@ -122,6 +111,7 @@ namespace ket
         }
       } // namespace controlled_phase_shift_detail
 
+      // [[deprecated]]
       template <
         typename MpiPolicy, typename ParallelPolicy,
         typename RandomAccessRange, typename Complex,
@@ -146,6 +136,7 @@ namespace ket
           communicator, environment);
       }
 
+      // [[deprecated]]
       template <
         typename MpiPolicy, typename ParallelPolicy,
         typename RandomAccessRange, typename Complex,
@@ -171,6 +162,7 @@ namespace ket
           communicator, environment);
       }
 
+      // [[deprecated]]
       template <
         typename RandomAccessRange, typename Complex,
         typename StateInteger, typename BitInteger,
@@ -192,6 +184,7 @@ namespace ket
           buffer, communicator, environment);
       }
 
+      // [[deprecated]]
       template <
         typename RandomAccessRange, typename Complex,
         typename StateInteger, typename BitInteger,
@@ -214,6 +207,7 @@ namespace ket
           buffer, datatype, communicator, environment);
       }
 
+      // [[deprecated]]
       template <
         typename ParallelPolicy, typename RandomAccessRange, typename Complex,
         typename StateInteger, typename BitInteger,
@@ -235,6 +229,7 @@ namespace ket
           buffer, communicator, environment);
       }
 
+      // [[deprecated]]
       template <
         typename ParallelPolicy, typename RandomAccessRange, typename Complex,
         typename StateInteger, typename BitInteger,
@@ -259,6 +254,7 @@ namespace ket
 
       namespace controlled_phase_shift_detail
       {
+        // [[deprecated]]
         template <
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename Complex,
@@ -281,6 +277,7 @@ namespace ket
         }
       } // namespace controlled_phase_shift_detail
 
+      // [[deprecated]]
       template <
         typename MpiPolicy, typename ParallelPolicy,
         typename RandomAccessRange, typename Complex,
@@ -305,6 +302,7 @@ namespace ket
           communicator, environment);
       }
 
+      // [[deprecated]]
       template <
         typename MpiPolicy, typename ParallelPolicy,
         typename RandomAccessRange, typename Complex,
@@ -330,6 +328,7 @@ namespace ket
           communicator, environment);
       }
 
+      // [[deprecated]]
       template <
         typename RandomAccessRange, typename Complex,
         typename StateInteger, typename BitInteger,
@@ -351,6 +350,7 @@ namespace ket
           buffer, communicator, environment);
       }
 
+      // [[deprecated]]
       template <
         typename RandomAccessRange, typename Complex,
         typename StateInteger, typename BitInteger,
@@ -373,6 +373,7 @@ namespace ket
           buffer, datatype, communicator, environment);
       }
 
+      // [[deprecated]]
       template <
         typename ParallelPolicy, typename RandomAccessRange, typename Complex,
         typename StateInteger, typename BitInteger,
@@ -394,6 +395,7 @@ namespace ket
           buffer, communicator, environment);
       }
 
+      // [[deprecated]]
       template <
         typename ParallelPolicy, typename RandomAccessRange, typename Complex,
         typename StateInteger, typename BitInteger,
@@ -419,6 +421,7 @@ namespace ket
       // phase_shift
       namespace controlled_phase_shift_detail
       {
+        // [[deprecated]]
         template <
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename Real,
@@ -442,6 +445,7 @@ namespace ket
         }
       } // namespace controlled_phase_shift_detail
 
+      // [[deprecated]]
       template <
         typename MpiPolicy, typename ParallelPolicy,
         typename RandomAccessRange, typename Real,
@@ -466,6 +470,7 @@ namespace ket
           communicator, environment);
       }
 
+      // [[deprecated]]
       template <
         typename MpiPolicy, typename ParallelPolicy,
         typename RandomAccessRange, typename Real,
@@ -491,6 +496,7 @@ namespace ket
           communicator, environment);
       }
 
+      // [[deprecated]]
       template <
         typename RandomAccessRange, typename Real,
         typename StateInteger, typename BitInteger,
@@ -512,6 +518,7 @@ namespace ket
           buffer, communicator, environment);
       }
 
+      // [[deprecated]]
       template <
         typename RandomAccessRange, typename Real,
         typename StateInteger, typename BitInteger,
@@ -534,6 +541,7 @@ namespace ket
           buffer, datatype, communicator, environment);
       }
 
+      // [[deprecated]]
       template <
         typename ParallelPolicy, typename RandomAccessRange, typename Real,
         typename StateInteger, typename BitInteger,
@@ -555,6 +563,7 @@ namespace ket
           buffer, communicator, environment);
       }
 
+      // [[deprecated]]
       template <
         typename ParallelPolicy, typename RandomAccessRange, typename Real,
         typename StateInteger, typename BitInteger,
@@ -579,6 +588,7 @@ namespace ket
 
       namespace controlled_phase_shift_detail
       {
+        // [[deprecated]]
         template <
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename Real,
@@ -600,6 +610,7 @@ namespace ket
         }
       } // namespace controlled_phase_shift_detail
 
+      // [[deprecated]]
       template <
         typename MpiPolicy, typename ParallelPolicy,
         typename RandomAccessRange, typename Real,
@@ -624,6 +635,7 @@ namespace ket
           communicator, environment);
       }
 
+      // [[deprecated]]
       template <
         typename MpiPolicy, typename ParallelPolicy,
         typename RandomAccessRange, typename Real,
@@ -649,6 +661,7 @@ namespace ket
           communicator, environment);
       }
 
+      // [[deprecated]]
       template <
         typename RandomAccessRange, typename Real,
         typename StateInteger, typename BitInteger,
@@ -670,6 +683,7 @@ namespace ket
           buffer, communicator, environment);
       }
 
+      // [[deprecated]]
       template <
         typename RandomAccessRange, typename Real,
         typename StateInteger, typename BitInteger,
@@ -692,6 +706,7 @@ namespace ket
           buffer, datatype, communicator, environment);
       }
 
+      // [[deprecated]]
       template <
         typename ParallelPolicy, typename RandomAccessRange, typename Real,
         typename StateInteger, typename BitInteger,
@@ -713,6 +728,7 @@ namespace ket
           buffer, communicator, environment);
       }
 
+      // [[deprecated]]
       template <
         typename ParallelPolicy, typename RandomAccessRange, typename Real,
         typename StateInteger, typename BitInteger,

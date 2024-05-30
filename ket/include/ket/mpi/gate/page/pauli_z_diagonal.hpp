@@ -1,5 +1,5 @@
-#ifndef KET_MPI_GATE_PAGE_PAULI_Z_HPP
-# define KET_MPI_GATE_PAGE_PAULI_Z_HPP
+#ifndef KET_MPI_GATE_PAGE_PAULI_Z_STANDARD_HPP
+# define KET_MPI_GATE_PAGE_PAULI_Z_STANDARD_HPP
 
 # include <boost/config.hpp>
 
@@ -20,6 +20,9 @@
 # include <ket/mpi/page/is_on_page.hpp>
 # include <ket/mpi/gate/page/detail/one_page_qubit_gate.hpp>
 # include <ket/mpi/gate/page/detail/two_page_qubits_gate.hpp>
+# include <ket/mpi/gate/page/detail/pauli_z2_p_diagonal.hpp>
+# include <ket/mpi/gate/page/detail/pauli_cz_tp_diagonal.hpp>
+# include <ket/mpi/gate/page/detail/pauli_cz_cp_diagonal.hpp>
 
 
 namespace ket
@@ -127,89 +130,101 @@ namespace ket
         // ZZ_i = Z_i Z_j
         // ZZ_{1,2} (a_{00} |00> + a_{01} |01> + a_{10} |10> + a{11} |11>)
         //   = a_{00} |00> - a_{01} |01> - a_{10} |10> + a{11} |11>
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger>
+        inline RandomAccessRange& pauli_z2_p(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const page_permutated_qubit,
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const nonpage_permutated_qubit,
+          yampi::rank const rank)
+        {
+          return ::ket::mpi::gate::page::detail::pauli_z2_p(
+            mpi_policy, parallel_policy, local_state,
+            page_permutated_qubit, nonpage_permutated_qubit, rank);
+        }
+
+        // cz_tcp: both of target and control qubits of CZ are on page
+        // CZ_{tc}, CZ1_{tc}, C1Z_{tc}, or C1Z1_{tc}
+        // CZ_{1,2} (a_{00} |00> + a_{01} |01> + a_{10} |10> + a{11} |11>)
+        //   = a_{00} |00> + a_{01} |01> + a_{10} |10> - a{11} |11>
         namespace pauli_z_detail
         {
 # ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
-          template <typename StateInteger>
-          struct pauli_z2_p
+          struct pauli_cz_tcp
           {
-            StateInteger nonpage_permutated_qubit_mask_;
-            StateInteger nonpage_lower_bits_mask_;
-            StateInteger nonpage_upper_bits_mask_;
-
-            pauli_z2_p(
-              StateInteger const nonpage_permutated_qubit_mask,
-              StateInteger const nonpage_lower_bits_mask,
-              StateInteger const nonpage_upper_bits_mask)
-              : nonpage_permutated_qubit_mask_{nonpage_permutated_qubit_mask},
-                nonpage_lower_bits_mask_{nonpage_lower_bits_mask},
-                nonpage_upper_bits_mask_{nonpage_upper_bits_mask}
-            { }
-
-            template <typename Iterator>
+            template <typename Iterator, typename StateInteger>
             void operator()(
-              Iterator const zero_first, Iterator const one_first,
-              StateInteger const index_wo_nonpage_qubit, int const) const
+              Iterator const, Iterator const, Iterator const, Iterator const first_11, StateInteger const index, int const) const
             {
-              auto const zero_index
-                = ((index_wo_nonpage_qubit bitand nonpage_upper_bits_mask_) << 1u)
-                  bitor (index_wo_nonpage_qubit bitand nonpage_lower_bits_mask_);
-              auto const one_index = zero_index bitor nonpage_permutated_qubit_mask_;
-
-              auto const iter_01_or_10 = zero_first + one_index;
-              auto const iter_10_or_01 = one_first + zero_index;
-
               using complex_type = typename std::iterator_traits<Iterator>::value_type;
               using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
-              *iter_01_or_10 *= real_type{-1.0};
-              *iter_10_or_01 *= real_type{-1.0};
+              *(first_11 + index) *= real_type{-1.0};
             }
-          }; // struct pauli_z2_p<StateInteger>
+          }; // struct pauli_cz_tcp
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         } // namespace pauli_z_detail
 
         template <
           typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger>
-        inline RandomAccessRange& pauli_z2_p(
+        inline RandomAccessRange& pauli_cz_tcp(
           ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
-          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const page_permutated_qubit,
-          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const nonpage_permutated_qubit)
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
+          ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit)
         {
-          assert(::ket::mpi::page::is_on_page(page_permutated_qubit, local_state));
-          assert(not ::ket::mpi::page::is_on_page(nonpage_permutated_qubit, local_state));
-
-          auto const nonpage_permutated_qubit_mask
-            = ::ket::utility::integer_exp2<StateInteger>(nonpage_permutated_qubit);
-          auto const nonpage_lower_bits_mask = nonpage_permutated_qubit_mask - StateInteger{1u};
-          auto const nonpage_upper_bits_mask = compl nonpage_lower_bits_mask;
-
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
-          return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
-            parallel_policy, local_state, page_permutated_qubit,
-            [nonpage_permutated_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask](
-              auto const zero_first, auto const one_first, StateInteger const index_wo_nonpage_qubit, int const)
+          return ::ket::mpi::gate::page::detail::two_page_qubits_gate<0u>(
+            parallel_policy, local_state, permutated_target_qubit, permutated_control_qubit,
+            [](auto const, auto const, auto const, auto const first_11, StateInteger const index, int const)
             {
-              auto const zero_index
-                = ((index_wo_nonpage_qubit bitand nonpage_upper_bits_mask) << 1u)
-                  bitor (index_wo_nonpage_qubit bitand nonpage_lower_bits_mask);
-              auto const one_index = zero_index bitor nonpage_permutated_qubit_mask;
-
-              auto const iter_01_or_10 = zero_first + one_index;
-              auto const iter_10_or_01 = one_first + zero_index;
-
               using complex_type = typename boost::range_value<RandomAccessRange>::type;
               using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
-              *iter_01_or_10 *= real_type{-1.0};
-              *iter_10_or_01 *= real_type{-1.0};
+              *(first_11 + index) *= real_type{-1.0};
             });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
-          return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
-            parallel_policy, local_state, page_permutated_qubit,
-            ::ket::mpi::gate::page::pauli_z_detail::pauli_z2_p<StateInteger>{
-              nonpage_permutated_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask});
+          return ::ket::mpi::gate::page::detail::two_page_qubits_gate<0u>(
+            parallel_policy, local_state, permutated_target_qubit, permutated_control_qubit,
+            ::ket::mpi::gate::page::pauli_z_detail::pauli_cz_tcp{});
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+        }
+
+        // cz_tp: only target qubit is on page
+        // CZ_{tc}, CZ1_{tc}, C1Z_{tc}, or C1Z1_{tc}
+        // CZ_{1,2} (a_{00} |00> + a_{01} |01> + a_{10} |10> + a{11} |11>)
+        //   = a_{00} |00> + a_{01} |01> + a_{10} |10> - a{11} |11>
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger>
+        inline RandomAccessRange& pauli_cz_tp(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
+          ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit,
+          yampi::rank const rank)
+        {
+          return ::ket::mpi::gate::page::detail::pauli_cz_tp(
+            mpi_policy, parallel_policy, local_state, permutated_target_qubit, permutated_control_qubit, rank);
+        }
+
+        // cz_cp: only control qubit is on page
+        // CZ_{tc}, CZ1_{tc}, C1Z_{tc}, or C1Z1_{tc}
+        // CZ_{1,2} (a_{00} |00> + a_{01} |01> + a_{10} |10> + a{11} |11>)
+        //   = a_{00} |00> + a_{01} |01> + a_{10} |10> - a{11} |11>
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger>
+        inline RandomAccessRange& pauli_cz_cp(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
+          ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit,
+          yampi::rank const rank)
+        {
+          return ::ket::mpi::gate::page::detail::pauli_cz_cp(
+            mpi_policy, parallel_policy, local_state, permutated_target_qubit, permutated_control_qubit, rank);
         }
       } // namespace page
     } // namespace gate
@@ -217,4 +232,4 @@ namespace ket
 } // namespace ket
 
 
-#endif // KET_MPI_GATE_PAGE_PAULI_Z_HPP
+#endif // KET_MPI_GATE_PAGE_PAULI_Z_STANDARD_HPP

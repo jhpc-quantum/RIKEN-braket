@@ -1,11 +1,14 @@
-#ifndef KET_MPI_GATE_PAGE_DETAIL_CONTROLLED_PHASE_SHIFT_COEFF_CP_DIAGONAL_HPP
-# define KET_MPI_GATE_PAGE_DETAIL_CONTROLLED_PHASE_SHIFT_COEFF_CP_DIAGONAL_HPP
+#ifndef KET_MPI_GATE_PAGE_DETAIL_PAULI_CZ_TP_DIAGONAL_HPP
+# define KET_MPI_GATE_PAGE_DETAIL_PAULI_CZ_TP_DIAGONAL_HPP
 
 # include <boost/config.hpp>
 
 # include <cassert>
 # include <iterator>
 # include <utility>
+# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
+#   include <memory>
+# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 
 # include <boost/range/size.hpp>
 
@@ -13,7 +16,8 @@
 # include <ket/control.hpp>
 # include <ket/utility/integer_exp2.hpp>
 # include <ket/utility/integer_log2.hpp>
-# include <ket/mpi/permutated.hpp>
+# include <ket/utility/meta/real_of.hpp>
+# include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/state.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
 # include <ket/mpi/gate/page/unsupported_page_gate_operation.hpp>
@@ -32,26 +36,22 @@ namespace ket
       {
         namespace detail
         {
-          namespace controlled_phase_shift_coeff_cp_detail
+          namespace pauli_cz_tp_detail
           {
-            // cp_tl: control qubit is on page and target qubit is local
+            // tp_cl: target qubit is on page and control qubit is local
 # ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
-            // [[deprecated]]
-            template <typename Complex, typename StateInteger>
-            struct do_controlled_phase_shift_coeff_cp_tl
+            template <typename StateInteger>
+            struct do_pauli_cz_tp_cl
             {
-              Complex phase_coefficient_;
-              StateInteger permutated_target_qubit_mask_;
+              StateInteger permutated_control_qubit_mask_;
               StateInteger nonpage_lower_bits_mask_;
               StateInteger nonpage_upper_bits_mask_;
 
-              do_controlled_phase_shift_coeff_cp_tl(
-                Complex const& phase_coefficient,
-                StateInteger const permutated_target_qubit_mask,
+              do_pauli_cz_tp_cl(
+                StateInteger const permutated_control_qubit_mask,
                 StateInteger const nonpage_lower_bits_mask,
                 StateInteger const nonpage_upper_bits_mask) noexcept
-                : phase_coefficient_{phase_coefficient},
-                  permutated_target_qubit_mask_{permutated_target_qubit_mask},
+                : permutated_control_qubit_mask_{permutated_control_qubit_mask},
                   nonpage_lower_bits_mask_{nonpage_lower_bits_mask},
                   nonpage_upper_bits_mask_{nonpage_upper_bits_mask}
               { }
@@ -64,98 +64,93 @@ namespace ket
                 auto const zero_index
                   = ((index_wo_nonpage_qubit bitand nonpage_upper_bits_mask_) << 1u)
                     bitor (index_wo_nonpage_qubit bitand nonpage_lower_bits_mask_);
-                auto const one_index = zero_index bitor permutated_target_qubit_mask_;
-                *(one_first + one_index) *= phase_coefficient_;
-              }
-            }; // struct do_controlled_phase_shift_coeff_cp_tl<Complex, StateInteger>
+                auto const one_index = zero_index bitor permutated_control_qubit_mask_;
 
-            // [[deprecated]]
-            template <typename Complex, typename StateInteger>
-            inline ::ket::mpi::gate::page::detail::controlled_phase_shift_coeff_cp_detail::do_controlled_phase_shift_coeff_cp_tl<Complex, StateInteger>
-            make_do_controlled_phase_shift_coeff_cp_tl(
-              Complex const& phase_coefficient,
-              StateInteger const permutated_target_qubit_mask,
+                using complex_type = typename std::iterator_traits<Iterator>::value_type;
+                using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
+                *(one_first + one_index) *= static_cast<real_type>(-1);
+              }
+            }; // struct do_pauli_cz_tp_cl<StateInteger>
+
+            template <typename StateInteger>
+            inline ::ket::mpi::gate::page::detail::pauli_cz_tp_detail::do_pauli_cz_tp_cl<StateInteger>
+            make_do_pauli_cz_tp_cl(
+              StateInteger const permutated_control_qubit_mask,
               StateInteger const nonpage_lower_bits_mask,
               StateInteger const nonpage_upper_bits_mask)
-            { return {phase_coefficient, permutated_target_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask}; }
+            { return {permutated_control_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask}; }
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 
-            // [[deprecated]]
             template <
               typename ParallelPolicy,
               typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
             inline ::ket::mpi::state<Complex, true, Allocator>&
-            controlled_phase_shift_coeff_cp_tl(
+            pauli_cz_tp_cl(
               ParallelPolicy const parallel_policy,
               ::ket::mpi::state<Complex, true, Allocator>& local_state,
-              Complex const& phase_coefficient,
               ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
               ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit)
             {
-              assert(not ::ket::mpi::page::is_on_page(permutated_target_qubit, local_state));
-              auto const permutated_target_qubit_mask
-                = ::ket::utility::integer_exp2<StateInteger>(permutated_target_qubit);
-              auto const nonpage_lower_bits_mask = permutated_target_qubit_mask - StateInteger{1u};
+              assert(not ::ket::mpi::page::is_on_page(permutated_control_qubit, local_state));
+              auto const permutated_control_qubit_mask
+                = ::ket::utility::integer_exp2<StateInteger>(permutated_control_qubit);
+              auto const nonpage_lower_bits_mask = permutated_control_qubit_mask - StateInteger{1u};
               auto const nonpage_upper_bits_mask = compl nonpage_lower_bits_mask;
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
               return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
-                parallel_policy, local_state, permutated_control_qubit,
-                [&phase_coefficient, permutated_target_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask](
+                parallel_policy, local_state, permutated_target_qubit,
+                [permutated_control_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask](
                   auto const, auto const one_first, StateInteger const index_wo_nonpage_qubit, int const)
                 {
                   auto const zero_index
                     = ((index_wo_nonpage_qubit bitand nonpage_upper_bits_mask) << 1u)
                       bitor (index_wo_nonpage_qubit bitand nonpage_lower_bits_mask);
-                  auto const one_index = zero_index bitor permutated_target_qubit_mask;
-                  *(one_first + one_index) *= phase_coefficient;
+                  auto const one_index = zero_index bitor permutated_control_qubit_mask;
+
+                  using real_type = typename ::ket::utility::meta::real_of<Complex>::type;
+                  *(one_first + one_index) *= static_cast<real_type>(-1);
                 });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
               return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
-                parallel_policy, local_state, permutated_control_qubit,
-                ::ket::mpi::gate::page::detail::controlled_phase_shift_coeff_cp_detail::make_do_controlled_phase_shift_coeff_cp_tl(
-                  phase_coefficient,
-                  permutated_target_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask));
+                parallel_policy, local_state, permutated_target_qubit,
+                ::ket::mpi::gate::page::detail::pauli_cz_tp_detail::make_do_pauli_cz_tp_cl(
+                  permutated_control_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
             }
 
-            // cp_tu: control qubit is on page and target qubit is unit
-            // [[deprecated]]
+            // tp_cu: target qubit is on page and control qubit is unit
             template <
               typename StateInteger, typename BitInteger, typename NumProcesses,
               typename ParallelPolicy, typename Complex, typename Allocator>
             inline ::ket::mpi::state<Complex, false, Allocator>&
-            controlled_phase_shift_coeff_cp_tu(
+            pauli_cz_tp_cu(
               ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
               ParallelPolicy const parallel_policy,
               ::ket::mpi::state<Complex, false, Allocator>& local_state,
-              Complex const& phase_coefficient,
               ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
               ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit,
-              yampi::rank const rank,
+              ::yampi::rank const rank,
               ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const least_permutated_unit_qubit)
-            { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"controlled_phase_shift_coeff_cp_tu"}; }
+            { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"pauli_cz_tp_cu"}; }
 
-            // [[deprecated]]
             template <
               typename StateInteger, typename BitInteger, typename NumProcesses,
               typename ParallelPolicy, typename Complex, typename Allocator>
             inline ::ket::mpi::state<Complex, true, Allocator>&
-            controlled_phase_shift_coeff_cp_tu(
+            pauli_cz_tp_cu(
               ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
               ParallelPolicy const parallel_policy,
               ::ket::mpi::state<Complex, true, Allocator>& local_state,
-              Complex const& phase_coefficient,
               ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
               ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit,
-              yampi::rank const rank,
+              ::yampi::rank const rank,
               ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const least_permutated_unit_qubit)
             {
-              assert(not ::ket::mpi::page::is_on_page(permutated_target_qubit, local_state));
+              assert(not ::ket::mpi::page::is_on_page(permutated_control_qubit, local_state));
 
-              auto const permutated_target_qubit_mask
-                = StateInteger{1u}
-                  << (permutated_target_qubit - least_permutated_unit_qubit);
+              auto const permutated_control_qubit_mask
+                = StateInteger{1u} << (permutated_control_qubit - least_permutated_unit_qubit);
 
               auto const num_data_blocks = static_cast<StateInteger>(local_state.num_data_blocks());
               auto const rank_in_unit = ::ket::mpi::utility::policy::rank_in_unit(mpi_policy, rank);
@@ -163,15 +158,15 @@ namespace ket
               {
                 auto const unit_qubit_value = ::ket::mpi::utility::policy::unit_qubit_value(mpi_policy, data_block_index, rank_in_unit);
 
-                if ((unit_qubit_value bitand permutated_target_qubit_mask) == StateInteger{0u})
+                if ((unit_qubit_value bitand permutated_control_qubit_mask) == StateInteger{0u})
                   continue;
 
                 auto const num_nonpage_local_qubits
                   = static_cast<BitInteger>(local_state.num_local_qubits() - local_state.num_page_qubits());
-                auto const permutated_control_qubit_mask
+                auto const permutated_target_qubit_mask
                   = ::ket::utility::integer_exp2<StateInteger>(
-                      permutated_control_qubit - static_cast<BitInteger>(num_nonpage_local_qubits));
-                auto const lower_bits_mask = permutated_control_qubit_mask - StateInteger{1u};
+                      permutated_target_qubit - static_cast<BitInteger>(num_nonpage_local_qubits));
+                auto const lower_bits_mask = permutated_target_qubit_mask - StateInteger{1u};
                 auto const upper_bits_mask = compl lower_bits_mask;
 
                 auto const num_pages = local_state.num_pages();
@@ -182,192 +177,172 @@ namespace ket
                     = ((page_index_wo_qubit bitand upper_bits_mask) << 1u)
                       bitor (page_index_wo_qubit bitand lower_bits_mask);
                   // x1x
-                  auto const one_page_index = zero_page_index bitor permutated_control_qubit_mask;
+                  auto const one_page_index = zero_page_index bitor permutated_target_qubit_mask;
 
                   auto const one_page_range = local_state.page_range(std::make_pair(data_block_index, one_page_index));
                   auto const one_first = std::begin(one_page_range);
 
                   using ::ket::utility::loop_n;
                   loop_n(
-                    parallel_policy,
-                    boost::size(one_page_range),
-                    [one_first, &phase_coefficient](StateInteger const index, int const)
-                    { *(one_first + index) *= phase_coefficient; });
+                    parallel_policy, boost::size(one_page_range),
+                    [one_first](StateInteger const index, int const)
+                    {
+                      using real_type = typename ::ket::utility::meta::real_of<Complex>::type;
+                      *(one_first + index) *= static_cast<real_type>(-1);
+                    });
                 }
               }
 
               return local_state;
             }
 
-            // cp_tg: control qubit is on page and target qubit is global
+            // tp_cg: target qubit is on page and control qubit is global
 # ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
-            // [[deprecated]]
-            template <typename Complex>
-            struct do_controlled_phase_shift_coeff_cp_tg
+            struct do_pauli_cz_tp_cg
             {
-              Complex phase_coefficient_;
-
-              explicit do_controlled_phase_shift_coeff_cp_tg(Complex const& phase_coefficient) noexcept
-                : phase_coefficient_{phase_coefficient}
-              { }
-
               template <typename Iterator, typename StateInteger>
               void operator()(
                 Iterator const, Iterator const one_first, StateInteger const index, int const) const
-              { *(one_first + index) *= phase_coefficient_; }
-            }; // struct do_controlled_phase_shift_coeff_cp_tg<Complex>
-
-            // [[deprecated]]
-            template <typename Complex>
-            inline ::ket::mpi::gate::page::detail::controlled_phase_shift_coeff_cp_detail::do_controlled_phase_shift_coeff_cp_tg<Complex>
-            make_do_controlled_phase_shift_coeff_cp_tg(Complex const& phase_coefficient)
-            { return ::ket::mpi::gate::page::detail::controlled_phase_shift_coeff_cp_detail::do_controlled_phase_shift_coeff_cp_tg<Complex>{phase_coefficient}; }
+              {
+                using complex_type = typename std::iterator_traits<Iterator>::value_type;
+                using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
+                *(one_first + index) *= static_cast<real_type>(-1);
+              }
+            }; // struct do_pauli_cz_tp_cg<Complex>
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 
-            // [[deprecated]]
             template <
               typename ParallelPolicy,
               typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
             inline ::ket::mpi::state<Complex, true, Allocator>&
-            controlled_phase_shift_coeff_cp_tg(
+            pauli_cz_tp_cg(
               ParallelPolicy const parallel_policy,
               ::ket::mpi::state<Complex, true, Allocator>& local_state,
-              Complex const& phase_coefficient,
               ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
               ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit,
-              yampi::rank const rank,
               ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const least_permutated_global_qubit,
               StateInteger const global_qubit_value)
             {
-              assert(not ::ket::mpi::page::is_on_page(permutated_target_qubit, local_state));
+              assert(not ::ket::mpi::page::is_on_page(permutated_control_qubit, local_state));
 
-              auto const permutated_target_qubit_mask
-                = StateInteger{1u} << (permutated_target_qubit - least_permutated_global_qubit);
+              auto const permutated_control_qubit_mask
+                = StateInteger{1u} << (permutated_control_qubit - least_permutated_global_qubit);
 
-              if ((global_qubit_value bitand permutated_target_qubit_mask) == StateInteger{0u})
+              if ((global_qubit_value bitand permutated_control_qubit_mask) == StateInteger{0u})
                 return local_state;
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
               return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-                parallel_policy, local_state, permutated_control_qubit,
-                [&phase_coefficient](
-                  auto const, auto const one_first, StateInteger const index, int const)
-                { *(one_first + index) *= phase_coefficient; });
+                parallel_policy, local_state, permutated_target_qubit,
+                [](auto const, auto const one_first, StateInteger const index, int const)
+                {
+                  using real_type = typename ::ket::utility::meta::real_of<Complex>::type;
+                  *(one_first + index) *= static_cast<real_type>(-1);
+                });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
               return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-                parallel_policy, local_state, permutated_control_qubit,
-                ::ket::mpi::gate::page::detail::controlled_phase_shift_coeff_cp_detail::make_do_controlled_phase_shift_coeff_cp_tg(phase_coefficient));
+                parallel_policy, local_state, permutated_target_qubit,
+                ::ket::mpi::gate::page::detail::pauli_cz_tp_detail::do_pauli_cz_tp_cg{});
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
             }
-          } // namespace controlled_phase_shift_coeff_cp_detail
+          } // namespace pauli_cz_tp_detail
 
-          // [[deprecated]]
           template <
             typename MpiPolicy, typename ParallelPolicy,
-            typename RandomAccessRange, typename Complex,
-            typename StateInteger, typename BitInteger>
-          [[noreturn]] inline RandomAccessRange& controlled_phase_shift_coeff_cp(
+            typename RandomAccessRange, typename StateInteger, typename BitInteger>
+          [[noreturn]] inline RandomAccessRange& pauli_cz_tp(
             MpiPolicy const&, ParallelPolicy const,
             RandomAccessRange& local_state,
-            Complex const&,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const,
             ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const,
             yampi::rank const)
-          { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"controlled_phase_shift_coeff_cp"}; }
+          { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"pauli_cz_tp"}; }
 
-          // [[deprecated]]
           template <
             typename ParallelPolicy,
             typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
           [[noreturn]] inline ::ket::mpi::state<Complex, false, Allocator>&
-          controlled_phase_shift_coeff_cp(
+          pauli_cz_tp(
             ::ket::mpi::utility::policy::simple_mpi const, ParallelPolicy const,
             ::ket::mpi::state<Complex, false, Allocator>& local_state,
-            Complex const&,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const,
             ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const,
             yampi::rank const)
-          { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"controlled_phase_shift_coeff_cp"}; }
+          { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"pauli_cz_tp"}; }
 
-          // [[deprecated]]
           template <
             typename StateInteger, typename BitInteger, typename NumProcesses,
             typename ParallelPolicy, typename Complex, typename Allocator>
           [[noreturn]] inline ::ket::mpi::state<Complex, false, Allocator>&
-          controlled_phase_shift_coeff_cp(
+          pauli_cz_tp(
             ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const&,
             ParallelPolicy const,
             ::ket::mpi::state<Complex, false, Allocator>& local_state,
-            Complex const&,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const,
             ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const,
             yampi::rank const)
-          { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"controlled_phase_shift_coeff_cp"}; }
+          { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"pauli_cz_tp"}; }
 
-          // [[deprecated]]
           template <
             typename ParallelPolicy,
             typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
           inline ::ket::mpi::state<Complex, true, Allocator>&
-          controlled_phase_shift_coeff_cp(
+          pauli_cz_tp(
             ::ket::mpi::utility::policy::simple_mpi const mpi_policy,
             ParallelPolicy const parallel_policy,
             ::ket::mpi::state<Complex, true, Allocator>& local_state,
-            Complex const& phase_coefficient,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
             ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit,
             yampi::rank const rank)
           {
-            assert(not ::ket::mpi::page::is_on_page(permutated_target_qubit, local_state));
+            assert(not ::ket::mpi::page::is_on_page(permutated_control_qubit, local_state));
 
             using permutated_qubit_type = ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >;
             auto const least_permutated_global_qubit = permutated_qubit_type{static_cast<BitInteger>(local_state.num_local_qubits())};
 
-            if (permutated_target_qubit < least_permutated_global_qubit)
-              return ::ket::mpi::gate::page::detail::controlled_phase_shift_coeff_cp_detail::controlled_phase_shift_coeff_cp_tl(
-                parallel_policy, local_state, phase_coefficient, permutated_target_qubit, permutated_control_qubit);
+            if (permutated_control_qubit < least_permutated_global_qubit)
+              return ::ket::mpi::gate::page::detail::pauli_cz_tp_detail::pauli_cz_tp_cl(
+                parallel_policy, local_state, permutated_target_qubit, permutated_control_qubit);
 
-            return ::ket::mpi::gate::page::detail::controlled_phase_shift_coeff_cp_detail::controlled_phase_shift_coeff_cp_tg(
+            return ::ket::mpi::gate::page::detail::pauli_cz_tp_detail::pauli_cz_tp_cg(
               parallel_policy,
-              local_state, phase_coefficient, permutated_target_qubit, permutated_control_qubit,
-              rank, least_permutated_global_qubit,
+              local_state, permutated_target_qubit, permutated_control_qubit,
+              least_permutated_global_qubit,
               static_cast<StateInteger>(::ket::mpi::utility::policy::global_qubit_value(mpi_policy, rank)));
           }
 
-          // [[deprecated]]
           template <
             typename StateInteger, typename BitInteger, typename NumProcesses,
             typename ParallelPolicy, typename Complex, typename Allocator>
           inline ::ket::mpi::state<Complex, true, Allocator>&
-          controlled_phase_shift_coeff_cp(
+          pauli_cz_tp(
             ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
             ParallelPolicy const parallel_policy,
             ::ket::mpi::state<Complex, true, Allocator>& local_state,
-            Complex const& phase_coefficient,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
             ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit,
             yampi::rank const rank)
           {
-            assert(not ::ket::mpi::page::is_on_page(permutated_target_qubit, local_state));
+            assert(not ::ket::mpi::page::is_on_page(permutated_control_qubit, local_state));
 
             using permutated_qubit_type = ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >;
             auto const least_permutated_unit_qubit = permutated_qubit_type{static_cast<BitInteger>(local_state.num_local_qubits())};
             auto const least_permutated_global_qubit = least_permutated_unit_qubit + static_cast<BitInteger>(mpi_policy.num_unit_qubits());
 
-            if (permutated_target_qubit < least_permutated_unit_qubit)
-              return ::ket::mpi::gate::page::detail::controlled_phase_shift_coeff_cp_detail::controlled_phase_shift_coeff_cp_tl(
-                parallel_policy, local_state, phase_coefficient, permutated_target_qubit, permutated_control_qubit);
+            if (permutated_control_qubit < least_permutated_unit_qubit)
+              return ::ket::mpi::gate::page::detail::pauli_cz_tp_detail::pauli_cz_tp_cl(
+                parallel_policy, local_state, permutated_target_qubit, permutated_control_qubit);
 
-            if (permutated_target_qubit < least_permutated_global_qubit)
-              return ::ket::mpi::gate::page::detail::controlled_phase_shift_coeff_cp_detail::controlled_phase_shift_coeff_cp_tu(
+            if (permutated_control_qubit < least_permutated_global_qubit)
+              return ::ket::mpi::gate::page::detail::pauli_cz_tp_detail::pauli_cz_tp_cu(
                 mpi_policy, parallel_policy,
-                local_state, phase_coefficient, permutated_target_qubit, permutated_control_qubit,
+                local_state, permutated_target_qubit, permutated_control_qubit,
                 rank, least_permutated_unit_qubit);
 
-            return ::ket::mpi::gate::page::detail::controlled_phase_shift_coeff_cp_detail::controlled_phase_shift_coeff_cp_tg(
+            return ::ket::mpi::gate::page::detail::pauli_cz_tp_detail::pauli_cz_tp_cg(
               parallel_policy,
-              local_state, phase_coefficient, permutated_target_qubit, permutated_control_qubit,
-              rank, least_permutated_global_qubit,
+              local_state, permutated_target_qubit, permutated_control_qubit,
+              least_permutated_global_qubit,
               static_cast<StateInteger>(::ket::mpi::utility::policy::global_qubit_value(mpi_policy, rank)));
           }
         } // namespace detail
@@ -377,4 +352,4 @@ namespace ket
 } // namespace ket
 
 
-#endif // KET_MPI_GATE_PAGE_DETAIL_CONTROLLED_PHASE_SHIFT_COEFF_CP_DIAGONAL_HPP
+#endif // KET_MPI_GATE_PAGE_DETAIL_PAULI_CZ_TP_DIAGONAL_HPP
