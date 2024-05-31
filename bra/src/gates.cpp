@@ -1205,9 +1205,9 @@ namespace bra
     if (*++iter != "CHANNEL")
       throw wrong_mnemonics_error{columns};
 
-    auto px = real_type{};
-    auto py = real_type{};
-    auto pz = real_type{};
+    auto px = real_type{0};
+    auto py = real_type{0};
+    auto pz = real_type{0};
     auto seed = -1;
     auto is_px_checked = false;
     auto is_py_checked = false;
@@ -1267,15 +1267,7 @@ namespace bra
         throw wrong_mnemonics_error{columns};
     }
 
-    if (is_px_checked and is_py_checked and is_pz_checked and px + py + pz > 1.0)
-      throw wrong_mnemonics_error{columns};
-    else if (is_px_checked and is_py_checked and not is_pz_checked and px + py < 1.0)
-      pz = 1.0 - px - py;
-    else if (is_px_checked and not is_py_checked and is_pz_checked and px + pz < 1.0)
-      py = 1.0 - px - pz;
-    else if (not is_px_checked and is_py_checked and is_pz_checked and py + pz < 1.0)
-      px = 1.0 - py - pz;
-    else
+    if (px > real_type{1} or px < real_type{0} or py > real_type{1} or py < real_type{0} or pz > real_type{1} or pz < real_type{0} or px + py + pz > real_type{1})
       throw wrong_mnemonics_error{columns};
 
     return std::make_tuple(::bra::depolarizing_statement::channel, px, py, pz, seed);
