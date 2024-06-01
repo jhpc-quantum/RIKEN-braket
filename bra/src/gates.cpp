@@ -23,9 +23,6 @@
 #include <boost/algorithm/string/split.hpp>
 #include <boost/algorithm/string/classification.hpp>
 
-#include <boost/utility/string_view.hpp>
-#include <boost/core/pointer_traits.hpp>
-
 #ifndef BRA_NO_MPI
 # include <yampi/communicator.hpp>
 # include <yampi/environment.hpp>
@@ -1317,13 +1314,14 @@ namespace bra
 
   void gates::add_xn(gates::columns_type const& columns, std::string const& mnemonic)
   {
-    auto const possible_digits_view = boost::string_view{std::next(mnemonic.data()), std::size(mnemonic) - 1u};
+    auto const possible_digits_first = std::next(std::begin(mnemonic));
+    auto const possible_digits_last = std::end(mnemonic);
     if (not std::all_of(
-              std::begin(possible_digits_view), std::end(possible_digits_view),
+              possible_digits_first, possible_digits_last,
               [](unsigned char const character) { return std::isdigit(character); }))
       throw unsupported_mnemonic_error{mnemonic};
 
-    auto const num_qubits = ::bra::utility::to_integer<int>(possible_digits_view);
+    auto const num_qubits = ::bra::utility::to_integer<int>(possible_digits_first, possible_digits_last);
     if (num_qubits == 1)
       data_.push_back(
         std::unique_ptr< ::bra::gate::gate >{
@@ -1381,13 +1379,14 @@ namespace bra
 
   void gates::add_yn(gates::columns_type const& columns, std::string const& mnemonic)
   {
-    auto const possible_digits_view = boost::string_view{std::next(mnemonic.data()), std::size(mnemonic) - 1u};
+    auto const possible_digits_first = std::next(std::begin(mnemonic));
+    auto const possible_digits_last = std::end(mnemonic);
     if (not std::all_of(
-              std::begin(possible_digits_view), std::end(possible_digits_view),
+              possible_digits_first, possible_digits_last,
               [](unsigned char const character) { return std::isdigit(character); }))
       throw unsupported_mnemonic_error{mnemonic};
 
-    auto const num_qubits = ::bra::utility::to_integer<int>(possible_digits_view);
+    auto const num_qubits = ::bra::utility::to_integer<int>(possible_digits_first, possible_digits_last);
     if (num_qubits == 1)
       data_.push_back(
         std::unique_ptr< ::bra::gate::gate >{
@@ -1445,13 +1444,14 @@ namespace bra
 
   void gates::add_zn(gates::columns_type const& columns, std::string const& mnemonic)
   {
-    auto const possible_digits_view = boost::string_view{std::next(mnemonic.data()), std::size(mnemonic) - 1u};
+    auto const possible_digits_first = std::next(std::begin(mnemonic));
+    auto const possible_digits_last = std::end(mnemonic);
     if (not std::all_of(
-              std::begin(possible_digits_view), std::end(possible_digits_view),
+              possible_digits_first, possible_digits_last,
               [](unsigned char const character) { return std::isdigit(character); }))
       throw unsupported_mnemonic_error{mnemonic};
 
-    auto const num_qubits = ::bra::utility::to_integer<int>(possible_digits_view);
+    auto const num_qubits = ::bra::utility::to_integer<int>(possible_digits_first, possible_digits_last);
     if (num_qubits == 1)
       data_.push_back(
         std::unique_ptr< ::bra::gate::gate >{
@@ -1696,13 +1696,14 @@ namespace bra
 
   void gates::add_exn(gates::columns_type const& columns, std::string const& mnemonic)
   {
-    auto const possible_digits_view = boost::string_view{std::next(mnemonic.data()), std::size(mnemonic) - 1u};
+    auto const possible_digits_first = std::next(std::begin(mnemonic));
+    auto const possible_digits_last = std::end(mnemonic);
     if (not std::all_of(
-              std::begin(possible_digits_view), std::end(possible_digits_view),
+              possible_digits_first, possible_digits_last,
               [](unsigned char const character) { return std::isdigit(character); }))
       throw unsupported_mnemonic_error{mnemonic};
 
-    auto const num_qubits = ::bra::utility::to_integer<int>(possible_digits_view);
+    auto const num_qubits = ::bra::utility::to_integer<int>(possible_digits_first, possible_digits_last);
     if (num_qubits == 1)
     {
       auto target = qubit_type{};
@@ -1772,13 +1773,14 @@ namespace bra
 
   void gates::add_eyn(gates::columns_type const& columns, std::string const& mnemonic)
   {
-    auto const possible_digits_view = boost::string_view{std::next(mnemonic.data()), std::size(mnemonic) - 1u};
+    auto const possible_digits_first = std::next(std::begin(mnemonic));
+    auto const possible_digits_last = std::end(mnemonic);
     if (not std::all_of(
-              std::begin(possible_digits_view), std::end(possible_digits_view),
+              possible_digits_first, possible_digits_last,
               [](unsigned char const character) { return std::isdigit(character); }))
       throw unsupported_mnemonic_error{mnemonic};
 
-    auto const num_qubits = ::bra::utility::to_integer<int>(possible_digits_view);
+    auto const num_qubits = ::bra::utility::to_integer<int>(possible_digits_first, possible_digits_last);
     if (num_qubits == 1)
     {
       auto target = qubit_type{};
@@ -1848,13 +1850,14 @@ namespace bra
 
   void gates::add_ezn(gates::columns_type const& columns, std::string const& mnemonic)
   {
-    auto const possible_digits_view = boost::string_view{std::next(mnemonic.data()), std::size(mnemonic) - 1u};
+    auto const possible_digits_first = std::next(std::begin(mnemonic));
+    auto const possible_digits_last = std::end(mnemonic);
     if (not std::all_of(
-              std::begin(possible_digits_view), std::end(possible_digits_view),
+              possible_digits_first, possible_digits_last,
               [](unsigned char const character) { return std::isdigit(character); }))
       throw unsupported_mnemonic_error{mnemonic};
 
-    auto const num_qubits = ::bra::utility::to_integer<int>(possible_digits_view);
+    auto const num_qubits = ::bra::utility::to_integer<int>(possible_digits_first, possible_digits_last);
     if (num_qubits == 1)
     {
       auto target = qubit_type{};
@@ -1987,21 +1990,14 @@ namespace bra
         ? static_cast<int>(cs_last - cs_first)
         : possible_digits_first == possible_digits_last
           ? 1
-          : ::bra::utility::to_integer<int>(
-              boost::string_view{
-                boost::to_address(possible_digits_first),
-                static_cast<boost::string_view::size_type>(possible_digits_last - possible_digits_first)});
+          : ::bra::utility::to_integer<int>(possible_digits_first, possible_digits_last);
     if (num_control_qubits <= 0)
       throw unsupported_mnemonic_error{mnemonic};
 
     auto const noncontrol_mnemonic
       = cs_last - cs_first > 1
-        ? boost::string_view{
-            boost::to_address(cs_last),
-            static_cast<boost::string_view::size_type>(std::end(mnemonic) - cs_last)}
-        : boost::string_view{
-            boost::to_address(possible_digits_last),
-            static_cast<boost::string_view::size_type>(std::end(mnemonic) - possible_digits_last)};
+        ? std::string{cs_last, std::end(mnemonic)}
+        : std::string{possible_digits_last, std::end(mnemonic)};
 
     if (noncontrol_mnemonic == "H")
       add_ch(columns, num_control_qubits);
@@ -2174,7 +2170,7 @@ namespace bra
 
   void gates::add_cxs(
     gates::columns_type const& columns, int const num_control_qubits,
-    boost::string_view const noncontrol_mnemonic)
+    std::string const& noncontrol_mnemonic)
   {
     auto controls = std::vector<control_qubit_type>(num_control_qubits);
     auto targets = std::vector<qubit_type>(noncontrol_mnemonic.size());
@@ -2187,16 +2183,16 @@ namespace bra
 
   void gates::add_cxn(
     gates::columns_type const& columns, int const num_control_qubits,
-    boost::string_view const noncontrol_mnemonic, std::string const& mnemonic)
+    std::string const& noncontrol_mnemonic, std::string const& mnemonic)
   {
-    auto const possible_digits_view
-      = boost::string_view{std::next(noncontrol_mnemonic.data()), std::size(noncontrol_mnemonic) - 1u};
+    auto const possible_digits_first = std::next(std::begin(noncontrol_mnemonic));
+    auto const possible_digits_last = std::end(noncontrol_mnemonic);
     if (not std::all_of(
-              std::begin(possible_digits_view), std::end(possible_digits_view),
+              possible_digits_first, possible_digits_last,
               [](unsigned char const character) { return std::isdigit(character); }))
       throw unsupported_mnemonic_error{mnemonic};
 
-    auto const num_target_qubits = ::bra::utility::to_integer<int>(possible_digits_view);
+    auto const num_target_qubits = ::bra::utility::to_integer<int>(possible_digits_first, possible_digits_last);
     if (num_control_qubits == 1 and num_target_qubits == 1)
     {
       auto control = control_qubit_type{};
@@ -2247,7 +2243,7 @@ namespace bra
 
   void gates::add_cys(
     gates::columns_type const& columns, int const num_control_qubits,
-    boost::string_view const noncontrol_mnemonic)
+    std::string const& noncontrol_mnemonic)
   {
     auto controls = std::vector<control_qubit_type>(num_control_qubits);
     auto targets = std::vector<qubit_type>(noncontrol_mnemonic.size());
@@ -2260,16 +2256,16 @@ namespace bra
 
   void gates::add_cyn(
     gates::columns_type const& columns, int const num_control_qubits,
-    boost::string_view const noncontrol_mnemonic, std::string const& mnemonic)
+    std::string const& noncontrol_mnemonic, std::string const& mnemonic)
   {
-    auto const possible_digits_view
-      = boost::string_view{std::next(noncontrol_mnemonic.data()), std::size(noncontrol_mnemonic) - 1u};
+    auto const possible_digits_first = std::next(std::begin(noncontrol_mnemonic));
+    auto const possible_digits_last = std::end(noncontrol_mnemonic);
     if (not std::all_of(
-              std::begin(possible_digits_view), std::end(possible_digits_view),
+              possible_digits_first, possible_digits_last,
               [](unsigned char const character) { return std::isdigit(character); }))
       throw unsupported_mnemonic_error{mnemonic};
 
-    auto const num_target_qubits = ::bra::utility::to_integer<int>(possible_digits_view);
+    auto const num_target_qubits = ::bra::utility::to_integer<int>(possible_digits_first, possible_digits_last);
     if (num_control_qubits == 1 and num_target_qubits == 1)
     {
       auto control = control_qubit_type{};
@@ -2320,7 +2316,7 @@ namespace bra
 
   void gates::add_czs(
     gates::columns_type const& columns, int const num_control_qubits,
-    boost::string_view const noncontrol_mnemonic)
+    std::string const& noncontrol_mnemonic)
   {
     auto controls = std::vector<control_qubit_type>(num_control_qubits);
     auto targets = std::vector<qubit_type>(noncontrol_mnemonic.size());
@@ -2333,16 +2329,16 @@ namespace bra
 
   void gates::add_czn(
     gates::columns_type const& columns, int const num_control_qubits,
-    boost::string_view const noncontrol_mnemonic, std::string const& mnemonic)
+    std::string const& noncontrol_mnemonic, std::string const& mnemonic)
   {
-    auto const possible_digits_view
-      = boost::string_view{std::next(noncontrol_mnemonic.data()), std::size(noncontrol_mnemonic) - 1u};
+    auto const possible_digits_first = std::next(std::begin(noncontrol_mnemonic));
+    auto const possible_digits_last = std::end(noncontrol_mnemonic);
     if (not std::all_of(
-              std::begin(possible_digits_view), std::end(possible_digits_view),
+              possible_digits_first, possible_digits_last,
               [](unsigned char const character) { return std::isdigit(character); }))
       throw unsupported_mnemonic_error{mnemonic};
 
-    auto const num_target_qubits = ::bra::utility::to_integer<int>(possible_digits_view);
+    auto const num_target_qubits = ::bra::utility::to_integer<int>(possible_digits_first, possible_digits_last);
     if (num_control_qubits == 1 and num_target_qubits == 1)
     {
       auto control = control_qubit_type{};
@@ -2858,7 +2854,7 @@ namespace bra
 
   void gates::add_cexs(
     gates::columns_type const& columns, int const num_control_qubits,
-    boost::string_view const noncontrol_mnemonic)
+    std::string const& noncontrol_mnemonic)
   {
     auto controls = std::vector<control_qubit_type>(num_control_qubits);
     auto targets = std::vector<qubit_type>(noncontrol_mnemonic.size() - 1u);
@@ -2871,16 +2867,16 @@ namespace bra
 
   void gates::add_cexn(
     gates::columns_type const& columns, int const num_control_qubits,
-    boost::string_view const noncontrol_mnemonic, std::string const& mnemonic)
+    std::string const& noncontrol_mnemonic, std::string const& mnemonic)
   {
-    auto const possible_digits_view
-      = boost::string_view{std::next(noncontrol_mnemonic.data()), std::size(noncontrol_mnemonic) - 1u};
+    auto const possible_digits_first = std::next(std::begin(noncontrol_mnemonic));
+    auto const possible_digits_last = std::end(noncontrol_mnemonic);
     if (not std::all_of(
-              std::begin(possible_digits_view), std::end(possible_digits_view),
+              possible_digits_first, possible_digits_last,
               [](unsigned char const character) { return std::isdigit(character); }))
       throw unsupported_mnemonic_error{mnemonic};
 
-    auto const num_target_qubits = ::bra::utility::to_integer<int>(possible_digits_view);
+    auto const num_target_qubits = ::bra::utility::to_integer<int>(possible_digits_first, possible_digits_last);
     if (num_target_qubits <= 0)
       throw unsupported_mnemonic_error{mnemonic};
 
@@ -2934,7 +2930,7 @@ namespace bra
 
   void gates::add_ceys(
     gates::columns_type const& columns, int const num_control_qubits,
-    boost::string_view const noncontrol_mnemonic)
+    std::string const& noncontrol_mnemonic)
   {
     auto controls = std::vector<control_qubit_type>(num_control_qubits);
     auto targets = std::vector<qubit_type>(noncontrol_mnemonic.size() - 1u);
@@ -2947,16 +2943,16 @@ namespace bra
 
   void gates::add_ceyn(
     gates::columns_type const& columns, int const num_control_qubits,
-    boost::string_view const noncontrol_mnemonic, std::string const& mnemonic)
+    std::string const& noncontrol_mnemonic, std::string const& mnemonic)
   {
-    auto const possible_digits_view
-      = boost::string_view{std::next(noncontrol_mnemonic.data()), std::size(noncontrol_mnemonic) - 1u};
+    auto const possible_digits_first = std::next(std::begin(noncontrol_mnemonic));
+    auto const possible_digits_last = std::end(noncontrol_mnemonic);
     if (not std::all_of(
-              std::begin(possible_digits_view), std::end(possible_digits_view),
+              possible_digits_first, possible_digits_last,
               [](unsigned char const character) { return std::isdigit(character); }))
       throw unsupported_mnemonic_error{mnemonic};
 
-    auto const num_target_qubits = ::bra::utility::to_integer<int>(possible_digits_view);
+    auto const num_target_qubits = ::bra::utility::to_integer<int>(possible_digits_first, possible_digits_last);
     if (num_target_qubits <= 0)
       throw unsupported_mnemonic_error{mnemonic};
 
@@ -3010,7 +3006,7 @@ namespace bra
 
   void gates::add_cezs(
     gates::columns_type const& columns, int const num_control_qubits,
-    boost::string_view const noncontrol_mnemonic)
+    std::string const& noncontrol_mnemonic)
   {
     auto controls = std::vector<control_qubit_type>(num_control_qubits);
     auto targets = std::vector<qubit_type>(noncontrol_mnemonic.size() - 1u);
@@ -3023,16 +3019,16 @@ namespace bra
 
   void gates::add_cezn(
     gates::columns_type const& columns, int const num_control_qubits,
-    boost::string_view const noncontrol_mnemonic, std::string const& mnemonic)
+    std::string const& noncontrol_mnemonic, std::string const& mnemonic)
   {
-    auto const possible_digits_view
-      = boost::string_view{std::next(noncontrol_mnemonic.data()), std::size(noncontrol_mnemonic) - 1u};
+    auto const possible_digits_first = std::next(std::begin(noncontrol_mnemonic));
+    auto const possible_digits_last = std::end(noncontrol_mnemonic);
     if (not std::all_of(
-              std::begin(possible_digits_view), std::end(possible_digits_view),
+              possible_digits_first, possible_digits_last,
               [](unsigned char const character) { return std::isdigit(character); }))
       throw unsupported_mnemonic_error{mnemonic};
 
-    auto const num_target_qubits = ::bra::utility::to_integer<int>(possible_digits_view);
+    auto const num_target_qubits = ::bra::utility::to_integer<int>(possible_digits_first, possible_digits_last);
     if (num_target_qubits <= 0)
       throw unsupported_mnemonic_error{mnemonic};
 

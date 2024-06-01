@@ -19,7 +19,6 @@
 # endif
 
 # include <boost/lexical_cast.hpp>
-# include <boost/utility/string_view.hpp>
 
 # ifndef BRA_NO_MPI
 #   include <yampi/allocator.hpp>
@@ -344,20 +343,20 @@ namespace bra
     void add_ch(columns_type const& columns, int const num_control_qubits);
     void add_cnot(columns_type const& columns, int const num_control_qubits);
     void add_cx(columns_type const& columns, int const num_control_qubits);
-    void add_cxs(columns_type const& columns, int const num_control_qubits, boost::string_view const noncontrol_mnemonic);
+    void add_cxs(columns_type const& columns, int const num_control_qubits, std::string const& noncontrol_mnemonic);
     void add_cxn(
       columns_type const& columns, int const num_control_qubits,
-      boost::string_view const noncontrol_mnemonic, std::string const& mnemonic);
+      std::string const& noncontrol_mnemonic, std::string const& mnemonic);
     void add_cy(columns_type const& columns, int const num_control_qubits);
-    void add_cys(columns_type const& columns, int const num_control_qubits, boost::string_view const noncontrol_mnemonic);
+    void add_cys(columns_type const& columns, int const num_control_qubits, std::string const& noncontrol_mnemonic);
     void add_cyn(
       columns_type const& columns, int const num_control_qubits,
-      boost::string_view const noncontrol_mnemonic, std::string const& mnemonic);
+      std::string const& noncontrol_mnemonic, std::string const& mnemonic);
     void add_cz(columns_type const& columns, int const num_control_qubits);
-    void add_czs(columns_type const& columns, int const num_control_qubits, boost::string_view const noncontrol_mnemonic);
+    void add_czs(columns_type const& columns, int const num_control_qubits, std::string const& noncontrol_mnemonic);
     void add_czn(
       columns_type const& columns, int const num_control_qubits,
-      boost::string_view const noncontrol_mnemonic, std::string const& mnemonic);
+      std::string const& noncontrol_mnemonic, std::string const& mnemonic);
     void add_cswap(columns_type const& columns, int const num_control_qubits);
     void add_cs(columns_type const& columns, int const num_control_qubits);
     void add_adj_cs(columns_type const& columns, int const num_control_qubits);
@@ -375,20 +374,20 @@ namespace bra
     void add_cu(columns_type const& columns, int const num_control_qubits);
     void add_cv(columns_type const& columns, int const num_control_qubits);
     void add_cex(columns_type const& columns, int const num_control_qubits);
-    void add_cexs(columns_type const& columns, int const num_control_qubits, boost::string_view const noncontrol_mnemonic);
+    void add_cexs(columns_type const& columns, int const num_control_qubits, std::string const& noncontrol_mnemonic);
     void add_cexn(
       columns_type const& columns, int const num_control_qubits,
-      boost::string_view const noncontrol_mnemonic, std::string const& mnemonic);
+      std::string const& noncontrol_mnemonic, std::string const& mnemonic);
     void add_cey(columns_type const& columns, int const num_control_qubits);
-    void add_ceys(columns_type const& columns, int const num_control_qubits, boost::string_view const noncontrol_mnemonic);
+    void add_ceys(columns_type const& columns, int const num_control_qubits, std::string const& noncontrol_mnemonic);
     void add_ceyn(
       columns_type const& columns, int const num_control_qubits,
-      boost::string_view const noncontrol_mnemonic, std::string const& mnemonic);
+      std::string const& noncontrol_mnemonic, std::string const& mnemonic);
     void add_cez(columns_type const& columns, int const num_control_qubits);
-    void add_cezs(columns_type const& columns, int const num_control_qubits, boost::string_view const noncontrol_mnemonic);
+    void add_cezs(columns_type const& columns, int const num_control_qubits, std::string const& noncontrol_mnemonic);
     void add_cezn(
       columns_type const& columns, int const num_control_qubits,
-      boost::string_view const noncontrol_mnemonic, std::string const& mnemonic);
+      std::string const& noncontrol_mnemonic, std::string const& mnemonic);
     void add_ceswap(columns_type const& columns, int const num_control_qubits);
   }; // class gates
 
