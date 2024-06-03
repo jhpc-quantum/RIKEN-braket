@@ -79,6 +79,27 @@ namespace ket
         }; // struct call_pauli_z2<ParallelPolicy, Qubit>
 
         template <typename ParallelPolicy, typename Qubit>
+        struct call_pauli_cz
+        {
+          ParallelPolicy parallel_policy_;
+          ::ket::mpi::permutated<Qubit> permutated_target_qubit_;
+          ::ket::mpi::permutated< ::ket::control<Qubit> > permutated_control_qubit_;
+
+          call_pauli_cz(
+            ParallelPolicy const parallel_policy,
+            ::ket::mpi::permutated<Qubit> const permutated_target_qubit,
+            ::ket::mpi::permutated< ::ket::control<Qubit> > const permutated_control_qubit)
+            : parallel_policy_{parallel_policy},
+              permutated_target_qubit_{permutated_target_qubit},
+              permutated_control_qubit_{permutated_control_qubit}
+          { }
+
+          template <typename RandomAccessIterator>
+          void operator()(RandomAccessIterator const first, RandomAccessIterator const last) const
+          { ::ket::gate::pauli_z(parallel_policy_, first, last, permutated_target_qubit_.qubit(), permutated_control_qubit_.qubit()); }
+        }; // struct call_pauli_cz<ParallelPolicy, Qubit>
+
+        template <typename ParallelPolicy, typename Qubit>
         inline call_pauli_z1<ParallelPolicy, Qubit> make_call_pauli_z(
           ParallelPolicy const parallel_policy, ::ket::mpi::permutated<Qubit> const permutated_qubit)
         { return {parallel_policy, permutated_qubit}; }
@@ -89,6 +110,13 @@ namespace ket
           ::ket::mpi::permutated<Qubit> const permutated_qubit1,
           ::ket::mpi::permutated<Qubit> const permutated_qubit2)
         { return {parallel_policy, permutated_qubit1, permutated_qubit2}; }
+
+        template <typename ParallelPolicy, typename Qubit>
+        inline call_pauli_cz<ParallelPolicy, Qubit> make_call_pauli_z(
+          ParallelPolicy const parallel_policy,
+          ::ket::mpi::permutated<Qubit> const permutated_target_qubit,
+          ::ket::mpi::permutated< ::ket::control<Qubit> > const permutated_control_qubit)
+        { return {parallel_policy, permutated_target_qubit, permutated_control_qubit}; }
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 
         // Z_i or Z1_i

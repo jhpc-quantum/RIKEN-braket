@@ -94,6 +94,33 @@ namespace ket
         }; // struct call_exponential_pauli_z_coeff2<ParallelPolicy, Complex, TargetQubit, ControlQubit>
 
         template <typename ParallelPolicy, typename Complex, typename Qubit>
+        struct call_exponential_pauli_cz_coeff
+        {
+          ParallelPolicy parallel_policy_;
+          Complex phase_coefficient_; // exp(i theta) = cos(theta) + i sin(theta)
+          ::ket::mpi::permutated<Qubit> permutated_target_qubit_;
+          ::ket::mpi::permutated< ::ket::control<Qubit> > permutated_control_qubit_;
+
+          call_exponential_pauli_cz_coeff(
+            ParallelPolicy const parallel_policy, Complex const& phase_coefficient,
+            ::ket::mpi::permutated<Qubit> const permutated_target_qubit,
+            ::ket::mpi::permutated< ::ket::control<Qubit> > const permutated_control_qubit)
+            : parallel_policy_{parallel_policy},
+              phase_coefficient_{phase_coefficient},
+              permutated_target_qubit_{permutated_target_qubit},
+              permutated_control_qubit_{permutated_control_qubit}
+          { }
+
+          template <typename RandomAccessIterator>
+          void operator()(RandomAccessIterator const first, RandomAccessIterator const last) const
+          {
+            ::ket::gate::exponential_pauli_z_coeff(
+              parallel_policy_, first, last, phase_coefficient_,
+              permutated_target_qubit_.qubit(), permutated_control_qubit_.qubit());
+          }
+        }; // struct call_exponential_pauli_cz_coeff<ParallelPolicy, Complex, TargetQubit, ControlQubit>
+
+        template <typename ParallelPolicy, typename Complex, typename Qubit>
         inline call_exponential_pauli_z_coeff1<ParallelPolicy, Complex, Qubit>
         make_call_exponential_pauli_z_coeff(
           ParallelPolicy const parallel_policy, Complex const& phase_coefficient,
@@ -107,6 +134,14 @@ namespace ket
           ::ket::mpi::permutated<Qubit> const permutated_qubit1,
           ::ket::mpi::permutated<Qubit> const permutated_qubit2)
         { return {parallel_policy, phase_coefficient, permutated_qubit1, permutated_qubit2}; }
+
+        template <typename ParallelPolicy, typename Complex, typename Qubit>
+        inline call_exponential_pauli_cz_coeff<ParallelPolicy, Complex, Qubit>
+        make_call_exponential_pauli_z_coeff(
+          ParallelPolicy const parallel_policy, Complex const& phase_coefficient,
+          ::ket::mpi::permutated<Qubit> const permutated_target_qubit,
+          ::ket::mpi::permutated< ::ket::control<Qubit> > const permutated_control_qubit)
+        { return {parallel_policy, phase_coefficient, permutated_target_qubit, permutated_control_qubit}; }
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 
         // eZ_i(theta) = exp(i theta Z_i) = I cos(theta) + i Z_i sin(theta), or eZ1_i(theta)
@@ -219,14 +254,14 @@ namespace ket
           {
             if (::ket::mpi::page::is_on_page(permutated_control_qubit, local_state))
               return ::ket::mpi::gate::page::exponential_pauli_cz_coeff_tcp(
-                parallel_policy, local_state, permutated_target_qubit, permutated_control_qubit);
+                parallel_policy, local_state, phase_coefficient, permutated_target_qubit, permutated_control_qubit);
 
             return ::ket::mpi::gate::page::exponential_pauli_cz_coeff_tp(
-              parallel_policy, local_state, permutated_target_qubit, permutated_control_qubit);
+              parallel_policy, local_state, phase_coefficient, permutated_target_qubit, permutated_control_qubit);
           }
           else if (::ket::mpi::page::is_on_page(permutated_control_qubit, local_state))
             return ::ket::mpi::gate::page::exponential_pauli_cz_coeff_cp(
-              parallel_policy, local_state, permutated_target_qubit, permutated_control_qubit);
+              parallel_policy, local_state, phase_coefficient, permutated_target_qubit, permutated_control_qubit);
 
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::utility::for_each_local_range(
