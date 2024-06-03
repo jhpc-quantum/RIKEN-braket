@@ -1,5 +1,5 @@
 #ifndef BRA_GATE_CONTROLLED_PHASE_SHIFT_CU_HPP
-# define BRA_GATE_CONTROLLED_PHASE_SHIFT_HPP
+# define BRA_GATE_CONTROLLED_PHASE_SHIFT_CU_HPP
 
 # include <string>
 # include <iosfwd>

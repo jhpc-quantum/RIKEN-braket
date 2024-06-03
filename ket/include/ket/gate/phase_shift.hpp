@@ -938,7 +938,7 @@ namespace ket
       inline RandomAccessRange& phase_shift3(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& state, Real const phase1, Real const phase2, Real const phase3,
-        ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits...)
+        ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
       {
         ::ket::gate::phase_shift3(parallel_policy, std::begin(state), std::end(state), phase1, phase2, phase3, target_qubit, control_qubits...);
         return state;
@@ -947,7 +947,7 @@ namespace ket
       template <typename RandomAccessRange, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
       inline RandomAccessRange& phase_shift3(
         RandomAccessRange& state, Real const phase1, Real const phase2, Real const phase3,
-        ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits...)
+        ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
       { return ::ket::gate::ranges::phase_shift3(::ket::utility::policy::make_sequential(), state, phase1, phase2, phase3, target_qubit, control_qubits...); }
     } // namespace ranges
 
