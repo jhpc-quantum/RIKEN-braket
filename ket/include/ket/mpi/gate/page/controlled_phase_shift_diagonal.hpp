@@ -24,6 +24,7 @@ namespace ket
         namespace controlled_phase_shift_detail
         {
 # ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
+          // [[deprecated]]
           template <typename Complex>
           struct controlled_phase_shift_coeff_tcp
           {
@@ -40,6 +41,7 @@ namespace ket
             { *(first_11 + index) *= phase_coefficient_; }
           }; // struct controlled_phase_shift_coeff_tcp<Complex>
 
+          // [[deprecated]]
           template <typename Complex>
           inline ::ket::mpi::gate::page::controlled_phase_shift_detail::controlled_phase_shift_coeff_tcp<Complex>
           make_controlled_phase_shift_coeff_tcp(Complex const& phase_coefficient)
@@ -47,6 +49,7 @@ namespace ket
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         } // namespace controlled_phase_shift_detail
 
+        // [[deprecated]]
         template <
           typename ParallelPolicy,
           typename RandomAccessRange, typename Complex, typename StateInteger, typename BitInteger>
@@ -72,6 +75,7 @@ namespace ket
         }
 
         // tp: only target qubit is on page
+        // [[deprecated]]
         template <
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename Complex, typename StateInteger, typename BitInteger>
@@ -90,6 +94,7 @@ namespace ket
         }
 
         // cp: only control qubit is on page
+        // [[deprecated]]
         template <
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename Complex, typename StateInteger, typename BitInteger>

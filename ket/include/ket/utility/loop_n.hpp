@@ -7,6 +7,8 @@
 # include <utility>
 # include <type_traits>
 
+# include <boost/range/value_type.hpp>
+
 
 namespace ket
 {

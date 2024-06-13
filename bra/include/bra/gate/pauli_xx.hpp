@@ -25,7 +25,7 @@ namespace bra
       static std::string const name_;
 
      public:
-      explicit pauli_xx(qubit_type const qubit1, qubit_type const qubit2);
+      pauli_xx(qubit_type const qubit1, qubit_type const qubit2);
 
       ~pauli_xx() = default;
       pauli_xx(pauli_xx const&) = delete;

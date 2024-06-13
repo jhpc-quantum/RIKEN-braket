@@ -27,7 +27,7 @@ namespace bra
 
      public:
       adj_s_gate(
-        complex_type const phase_coefficient,
+        complex_type const& phase_coefficient,
         qubit_type const qubit);
 
       ~adj_s_gate() = default;

@@ -25,7 +25,7 @@ namespace bra
       static std::string const name_;
 
      public:
-      explicit adj_pauli_yy(qubit_type const qubit1, qubit_type const qubit2);
+      adj_pauli_yy(qubit_type const qubit1, qubit_type const qubit2);
 
       ~adj_pauli_yy() = default;
       adj_pauli_yy(adj_pauli_yy const&) = delete;

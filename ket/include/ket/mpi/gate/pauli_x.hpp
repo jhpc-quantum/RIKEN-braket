@@ -5,7 +5,6 @@
 
 # include <vector>
 # include <array>
-# include <tuple>
 
 # include <boost/range/value_type.hpp>
 
@@ -14,10 +13,13 @@
 # include <yampi/communicator.hpp>
 
 # include <ket/qubit.hpp>
+# include <ket/control.hpp>
 # ifdef KET_PRINT_LOG
 #   include <ket/qubit_io.hpp>
+#   include <ket/control_io.hpp>
 # endif // KET_PRINT_LOG
 # include <ket/gate/pauli_x.hpp>
+# include <ket/gate/meta/num_control_qubits.hpp>
 # ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
 #   include <ket/mpi/permutated.hpp>
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -36,11 +38,6 @@ namespace ket
   {
     namespace gate
     {
-      // X_i (NOT_i)
-      // X_1 (a_0 |0> + a_1 |1>) = a_1 |0> + a_0 |1>
-      // XX_{ij} = X_i X_j
-      // XX_{1,2} (a_{00} |00> + a_{01} |01> + a_{10} |10> + a{11} |11>)
-      //   = a_{11} |00> + a_{10} |01> + a_{01} |10> + a_{00} |11>
       namespace pauli_x_detail
       {
 # ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -81,6 +78,27 @@ namespace ket
           { ::ket::gate::pauli_x(parallel_policy_, first, last, permutated_qubit1_.qubit(), permutated_qubit2_.qubit()); }
         }; // struct call_pauli_x2<ParallelPolicy, Qubit>
 
+        template <typename ParallelPolicy, typename TargetQubit, typename ControlQubit>
+        struct call_pauli_cx
+        {
+          ParallelPolicy parallel_policy_;
+          ::ket::mpi::permutated<TargetQubit> permutated_target_qubit_;
+          ::ket::mpi::permutated<ControlQubit> permutated_control_qubit_;
+
+          call_pauli_cx(
+            ParallelPolicy const parallel_policy,
+            ::ket::mpi::permutated<TargetQubit> const permutated_target_qubit,
+            ::ket::mpi::permutated<ControlQubit> const permutated_control_qubit)
+            : parallel_policy_{parallel_policy},
+              permutated_target_qubit_{permutated_target_qubit},
+              permutated_control_qubit_{permutated_control_qubit}
+          { }
+
+          template <typename RandomAccessIterator>
+          void operator()(RandomAccessIterator const first, RandomAccessIterator const last) const
+          { ::ket::gate::pauli_x(parallel_policy_, first, last, permutated_target_qubit_.qubit(), permutated_control_qubit_.qubit()); }
+        }; // struct call_pauli_cx<ParallelPolicy, TargetQubit, ControlQubit>
+
         template <typename ParallelPolicy, typename Qubit>
         inline call_pauli_x1<ParallelPolicy, Qubit> make_call_pauli_x(
           ParallelPolicy const parallel_policy, ::ket::mpi::permutated<Qubit> const permutated_qubit)
@@ -92,8 +110,17 @@ namespace ket
           ::ket::mpi::permutated<Qubit> const permutated_qubit1,
           ::ket::mpi::permutated<Qubit> const permutated_qubit2)
         { return {parallel_policy, permutated_qubit1, permutated_qubit2}; }
+
+        template <typename ParallelPolicy, typename TargetQubit, typename ControlQubit>
+        inline call_pauli_cx<ParallelPolicy, TargetQubit, ControlQubit> make_call_pauli_x(
+          ParallelPolicy const parallel_policy,
+          ::ket::mpi::permutated<TargetQubit> const permutated_target_qubit,
+          ::ket::mpi::permutated<ControlQubit> const permutated_control_qubit)
+        { return {parallel_policy, permutated_target_qubit, permutated_control_qubit}; }
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 
+        // X_i, X1_i, or NOT_i
+        // X_1 (a_0 |0> + a_1 |1>) = a_1 |0> + a_0 |1>
         template <
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange,
@@ -121,6 +148,9 @@ namespace ket
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }
 
+        // XX_{ij} = X_i X_j or X2_{ij}
+        // XX_{1,2} (a_{00} |00> + a_{01} |01> + a_{10} |10> + a{11} |11>)
+        //   = a_{11} |00> + a_{10} |01> + a_{01} |10> + a_{00} |11>
         template <
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange,
@@ -160,18 +190,59 @@ namespace ket
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }
 
+        // CX_{tc}, CX1_{tc}, C1X_{tc}, C1X1_{tc}, or CNOT_{tc}
+        // CX_{1,2} (a_{00} |00> + a_{01} |01> + a_{10} |10> + a{11} |11>)
+        //   = a_{00} |00> + a_{01} |01> + a_{11} |10> + a_{10} |11>
         template <
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange,
-          typename StateInteger, typename BitInteger, typename Allocator, typename... Qubits>
+          typename StateInteger, typename BitInteger, typename Allocator>
         inline RandomAccessRange& do_pauli_x(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
           yampi::communicator const& communicator, yampi::environment const& environment,
-          ::ket::qubit<StateInteger, BitInteger> const qubit1,
-          ::ket::qubit<StateInteger, BitInteger> const qubit2,
-          ::ket::qubit<StateInteger, BitInteger> const qubit3, Qubits const... qubits)
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit)
+        {
+          auto const permutated_target_qubit = permutation[target_qubit];
+          auto const permutated_control_qubit = permutation[control_qubit];
+          if (::ket::mpi::page::is_on_page(permutated_target_qubit, local_state))
+          {
+            if (::ket::mpi::page::is_on_page(permutated_control_qubit, local_state))
+              return ::ket::mpi::gate::page::pauli_cx_tcp(
+                parallel_policy, local_state, permutated_target_qubit, permutated_control_qubit);
+
+            return ::ket::mpi::gate::page::pauli_cx_tp(
+              parallel_policy, local_state, permutated_target_qubit, permutated_control_qubit);
+          }
+          else if (::ket::mpi::page::is_on_page(permutated_control_qubit, local_state))
+            return ::ket::mpi::gate::page::pauli_cx_cp(
+              parallel_policy, local_state, permutated_target_qubit, permutated_control_qubit);
+
+# ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
+          return ::ket::mpi::utility::for_each_local_range(
+            mpi_policy, local_state, communicator, environment,
+            [parallel_policy, permutated_target_qubit, permutated_control_qubit](auto const first, auto const last)
+            { ::ket::gate::pauli_x(parallel_policy, first, last, permutated_target_qubit.qubit(), permutated_control_qubit.qubit()); });
+# else // BOOST_NO_CXX14_GENERIC_LAMBDAS
+          return ::ket::mpi::utility::for_each_local_range(
+            mpi_policy, local_state, communicator, environment,
+            ::ket::mpi::gate::pauli_x_detail::make_call_pauli_x(parallel_policy, permutated_target_qubit, permutated_control_qubit));
+# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+        }
+
+        // C...CX...X_{t...t'c...c'} = C...C(X_t ... X_t')_{c...c'}, CnX...X_{...}, C...CXm_{...}, or CnXm_{...}
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename Qubit2, typename Qubit3, typename... Qubits>
+        inline RandomAccessRange& do_pauli_x(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          ::ket::qubit<StateInteger, BitInteger> const qubit1, Qubit2 const qubit2, Qubit3 const qubit3, Qubits const... qubits)
         {
           auto const data_block_size
             = ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment);
@@ -202,7 +273,7 @@ namespace ket
           ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
         {
           using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-          auto qubit_array = std::array<qubit_type, sizeof...(Qubits) + 1u>{qubit, qubits...};
+          auto qubit_array = std::array<qubit_type, sizeof...(Qubits) + 1u>{qubit, ::ket::remove_control(qubits)...};
           ::ket::mpi::utility::maybe_interchange_qubits(
             mpi_policy, parallel_policy,
             local_state, qubit_array, permutation, buffer, communicator, environment);
@@ -225,7 +296,7 @@ namespace ket
           ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
         {
           using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-          auto qubit_array = std::array<qubit_type, sizeof...(Qubits) + 1u>{qubit, qubits...};
+          auto qubit_array = std::array<qubit_type, sizeof...(Qubits) + 1u>{qubit, ::ket::remove_control(qubits)...};
           ::ket::mpi::utility::maybe_interchange_qubits(
             mpi_policy, parallel_policy,
             local_state, qubit_array, permutation, buffer, datatype, communicator, environment);
@@ -235,6 +306,7 @@ namespace ket
         }
       } // namespace pauli_x_detail
 
+      // [[deprecated]]
       template <
         typename MpiPolicy, typename ParallelPolicy,
         typename RandomAccessRange, typename StateInteger, typename BitInteger,
@@ -254,6 +326,7 @@ namespace ket
           local_state, permutation, buffer, communicator, environment, qubit);
       }
 
+      // [[deprecated]]
       template <
         typename MpiPolicy, typename ParallelPolicy,
         typename RandomAccessRange, typename StateInteger, typename BitInteger,
@@ -274,6 +347,7 @@ namespace ket
           local_state, permutation, buffer, datatype, communicator, environment, qubit);
       }
 
+      // [[deprecated]]
       template <
         typename MpiPolicy, typename ParallelPolicy,
         typename RandomAccessRange, typename StateInteger, typename BitInteger,
@@ -294,6 +368,7 @@ namespace ket
           local_state, permutation, buffer, communicator, environment, qubit1, qubit2);
       }
 
+      // [[deprecated]]
       template <
         typename MpiPolicy, typename ParallelPolicy,
         typename RandomAccessRange, typename StateInteger, typename BitInteger,
@@ -327,8 +402,9 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment,
         ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
       {
+        static constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
         ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(std::string(sizeof...(Qubits) + 1u, 'X'), qubit, qubits...),
+          ::ket::mpi::gate::detail::append_qubits_string(std::string(num_control_qubits, 'C').append(sizeof...(Qubits) + 1u - num_control_qubits, 'X'), qubit, qubits...),
           environment};
 
         return ::ket::mpi::gate::pauli_x_detail::pauli_x(
@@ -349,8 +425,9 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment,
         ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
       {
+        static constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
         ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(std::string(sizeof...(Qubits) + 1u, 'X'), qubit, qubits...),
+          ::ket::mpi::gate::detail::append_qubits_string(std::string(num_control_qubits, 'C').append(sizeof...(Qubits) + 1u - num_control_qubits, 'X'), qubit, qubits...),
           environment};
 
         return ::ket::mpi::gate::pauli_x_detail::pauli_x(
@@ -358,6 +435,7 @@ namespace ket
           local_state, permutation, buffer, datatype, communicator, environment, qubit, qubits...);
       }
 
+      // [[deprecated]]
       template <
         typename RandomAccessRange, typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator>
@@ -374,6 +452,7 @@ namespace ket
           local_state, qubit, permutation, buffer, communicator, environment);
       }
 
+      // [[deprecated]]
       template <
         typename RandomAccessRange, typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>
@@ -391,6 +470,7 @@ namespace ket
           local_state, qubit, permutation, buffer, datatype, communicator, environment);
       }
 
+      // [[deprecated]]
       template <
         typename RandomAccessRange, typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator>
@@ -408,6 +488,7 @@ namespace ket
           local_state, qubit1, qubit2, permutation, buffer, communicator, environment);
       }
 
+      // [[deprecated]]
       template <
         typename RandomAccessRange, typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>
@@ -460,6 +541,7 @@ namespace ket
           local_state, permutation, buffer, datatype, communicator, environment, qubit, qubits...);
       }
 
+      // [[deprecated]]
       template <
         typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger,
@@ -477,6 +559,7 @@ namespace ket
           local_state, qubit, permutation, buffer, communicator, environment);
       }
 
+      // [[deprecated]]
       template <
         typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger,
@@ -495,6 +578,7 @@ namespace ket
           local_state, qubit, permutation, buffer, datatype, communicator, environment);
       }
 
+      // [[deprecated]]
       template <
         typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger,
@@ -513,6 +597,7 @@ namespace ket
           local_state, qubit1, qubit2, permutation, buffer, communicator, environment);
       }
 
+      // [[deprecated]]
       template <
         typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger,
@@ -605,6 +690,7 @@ namespace ket
         }
       } // namespace pauli_x_detail
 
+      // [[deprecated]]
       template <
         typename MpiPolicy, typename ParallelPolicy,
         typename RandomAccessRange, typename StateInteger, typename BitInteger,
@@ -624,6 +710,7 @@ namespace ket
           local_state, permutation, buffer, communicator, environment, qubit);
       }
 
+      // [[deprecated]]
       template <
         typename MpiPolicy, typename ParallelPolicy,
         typename RandomAccessRange, typename StateInteger, typename BitInteger,
@@ -644,6 +731,7 @@ namespace ket
           local_state, permutation, buffer, datatype, communicator, environment, qubit);
       }
 
+      // [[deprecated]]
       template <
         typename MpiPolicy, typename ParallelPolicy,
         typename RandomAccessRange, typename StateInteger, typename BitInteger,
@@ -664,6 +752,7 @@ namespace ket
           local_state, permutation, buffer, communicator, environment, qubit1, qubit2);
       }
 
+      // [[deprecated]]
       template <
         typename MpiPolicy, typename ParallelPolicy,
         typename RandomAccessRange, typename StateInteger, typename BitInteger,
@@ -697,8 +786,9 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment,
         ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
       {
+        static constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
         ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(std::string{"Adj("}.append(sizeof...(Qubits) + 1u, 'X').append(")"), qubit, qubits...),
+          ::ket::mpi::gate::detail::append_qubits_string(std::string{"Adj("}.append(num_control_qubits, 'C').append(sizeof...(Qubits) + 1u - num_control_qubits, 'X').append(")"), qubit, qubits...),
           environment};
 
         return ::ket::mpi::gate::pauli_x_detail::adj_pauli_x(
@@ -719,8 +809,9 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment,
         ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
       {
+        static constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
         ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(std::string{"Adj("}.append(sizeof...(Qubits) + 1u, 'X').append(")"), qubit, qubits...),
+          ::ket::mpi::gate::detail::append_qubits_string(std::string{"Adj("}.append(num_control_qubits, 'C').append(sizeof...(Qubits) + 1u - num_control_qubits, 'X').append(")"), qubit, qubits...),
           environment};
 
         return ::ket::mpi::gate::pauli_x_detail::adj_pauli_x(
@@ -728,6 +819,7 @@ namespace ket
           local_state, permutation, buffer, datatype, communicator, environment, qubit, qubits...);
       }
 
+      // [[deprecated]]
       template <
         typename RandomAccessRange,
         typename StateInteger, typename BitInteger,
@@ -745,6 +837,7 @@ namespace ket
           local_state, qubit, permutation, buffer, communicator, environment);
       }
 
+      // [[deprecated]]
       template <
         typename RandomAccessRange,
         typename StateInteger, typename BitInteger,
@@ -763,6 +856,7 @@ namespace ket
           local_state, qubit, permutation, buffer, datatype, communicator, environment);
       }
 
+      // [[deprecated]]
       template <
         typename RandomAccessRange,
         typename StateInteger, typename BitInteger,
@@ -781,6 +875,7 @@ namespace ket
           local_state, qubit1, qubit2, permutation, buffer, communicator, environment);
       }
 
+      // [[deprecated]]
       template <
         typename RandomAccessRange,
         typename StateInteger, typename BitInteger,
@@ -835,6 +930,7 @@ namespace ket
           local_state, permutation, buffer, datatype, communicator, environment, qubit, qubits...);
       }
 
+      // [[deprecated]]
       template <
         typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger,
@@ -852,6 +948,7 @@ namespace ket
           local_state, qubit, permutation, buffer, communicator, environment);
       }
 
+      // [[deprecated]]
       template <
         typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger,
@@ -870,6 +967,7 @@ namespace ket
           local_state, qubit, permutation, buffer, datatype, communicator, environment);
       }
 
+      // [[deprecated]]
       template <
         typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger,
@@ -888,6 +986,7 @@ namespace ket
           local_state, qubit1, qubit2, permutation, buffer, communicator, environment);
       }
 
+      // [[deprecated]]
       template <
         typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger,

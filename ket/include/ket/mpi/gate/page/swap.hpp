@@ -115,36 +115,6 @@ namespace ket
               nonpage_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }
-
-        // 2p: both of two qubits are on page
-        template <
-          typename ParallelPolicy,
-          typename RandomAccessRange,
-          typename StateInteger, typename BitInteger, typename Allocator>
-        inline RandomAccessRange& adj_swap_2p(
-          ParallelPolicy const parallel_policy,
-          RandomAccessRange& local_state,
-          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const page_permutated_qubit1,
-          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const page_permutated_qubit2)
-        {
-          return ::ket::mpi::gate::page::swap_2p(
-            parallel_policy, local_state, page_permutated_qubit1, page_permutated_qubit2);
-        }
-
-        // p: only one qubit is on page
-        template <
-          typename ParallelPolicy,
-          typename RandomAccessRange,
-          typename StateInteger, typename BitInteger, typename Allocator>
-        inline RandomAccessRange& adj_swap_p(
-          ParallelPolicy const parallel_policy,
-          RandomAccessRange& local_state,
-          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const page_permutated_qubit,
-          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const nonpage_permutated_qubit)
-        {
-          return ::ket::mpi::gate::page::swap_p(
-            parallel_policy, local_state, page_permutated_qubit, nonpage_permutated_qubit);
-        }
       } // namespace page
     } // namespace gate
   } // namespace mpi

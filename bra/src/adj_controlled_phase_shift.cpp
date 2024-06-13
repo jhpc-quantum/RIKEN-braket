@@ -19,7 +19,7 @@ namespace bra
 
     adj_controlled_phase_shift::adj_controlled_phase_shift(
       int const phase_exponent,
-      complex_type const phase_coefficient,
+      complex_type const& phase_coefficient,
       qubit_type const target_qubit,
       control_qubit_type const control_qubit)
       : ::bra::gate::gate{},

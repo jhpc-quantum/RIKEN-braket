@@ -16,7 +16,7 @@ namespace bra
   {
     std::string const s_gate::name_ = "S";
 
-    s_gate::s_gate(complex_type const phase_coefficient, qubit_type const qubit)
+    s_gate::s_gate(complex_type const& phase_coefficient, qubit_type const qubit)
       : ::bra::gate::gate{},
         phase_coefficient_{phase_coefficient}, qubit_{qubit}
     { }

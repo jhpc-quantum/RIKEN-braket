@@ -4,6 +4,7 @@
 
 **braket** is a tool for simulations of quantum gates on (classical) computers.
 It contains an interpreter of "quantum assembler" *bra* and a C++ template library *ket*.
+Documents of [*bra*](docs/bra.md) and [*ket*](docs/ket.md) are on `docs/` directory.
 
 ## Getting Started
 

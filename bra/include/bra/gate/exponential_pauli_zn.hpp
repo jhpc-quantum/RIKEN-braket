@@ -27,7 +27,7 @@ namespace bra
       std::string name_;
 
      public:
-      explicit exponential_pauli_zn(real_type const phase, std::vector<qubit_type>&& qubits);
+      exponential_pauli_zn(real_type const phase, std::vector<qubit_type>&& qubits);
 
       ~exponential_pauli_zn() = default;
       exponential_pauli_zn(exponential_pauli_zn const&) = delete;

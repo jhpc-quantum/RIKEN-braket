@@ -3,14 +3,16 @@
 
 # include <cassert>
 # include <iterator>
+# include <algorithm>
+# include <iterator>
 # include <utility>
-# ifndef NDEBUG
-#   include <type_traits>
-# endif
+# include <type_traits>
 
 # include <boost/math/constants/constants.hpp>
 
 # include <ket/qubit.hpp>
+# include <ket/control.hpp>
+# include <ket/gate/gate.hpp>
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/integer_exp2.hpp>
 # ifndef NDEBUG
@@ -68,48 +70,157 @@ namespace ket
         });
     }
 
-    template <typename RandomAccessIterator, typename StateInteger, typename BitInteger>
+    // CH_{tc} or C1H_{tc}
+    // CH_{1,2} (a_{00} |00> + a_{01} |01> + a_{10} |10> + a_{11} |11>)
+    //   = a_{00} |00> + a_{01} |01> + (a_{10} + a_{11})/sqrt(2) |10> + (a_{10} - a_{11})/sqrt(2) |11>
+    template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger>
     inline void hadamard(
-      RandomAccessIterator const first, RandomAccessIterator const last, ::ket::qubit<StateInteger, BitInteger> const qubit)
-    { ::ket::gate::hadamard(::ket::utility::policy::make_sequential(), first, last, qubit); }
+      ParallelPolicy const parallel_policy,
+      RandomAccessIterator const first, RandomAccessIterator const last,
+      ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit)
+    {
+      static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+      static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
+
+      assert(::ket::utility::integer_exp2<StateInteger>(target_qubit) < static_cast<StateInteger>(last - first));
+      assert(::ket::utility::integer_exp2<StateInteger>(control_qubit) < static_cast<StateInteger>(last - first));
+      assert(target_qubit != control_qubit);
+      assert(
+        ::ket::utility::integer_exp2<StateInteger>(::ket::utility::integer_log2<BitInteger>(last - first))
+        == static_cast<StateInteger>(last - first));
+
+      auto const minmax_qubits = std::minmax(target_qubit, control_qubit.qubit());
+      auto const target_qubit_mask = ::ket::utility::integer_exp2<StateInteger>(target_qubit);
+      auto const control_qubit_mask = ::ket::utility::integer_exp2<StateInteger>(control_qubit);
+      auto const lower_bits_mask = ::ket::utility::integer_exp2<StateInteger>(minmax_qubits.first) - StateInteger{1u};
+      auto const middle_bits_mask
+        = (::ket::utility::integer_exp2<StateInteger>(minmax_qubits.second - BitInteger{1u}) - StateInteger{1u})
+          xor lower_bits_mask;
+      auto const upper_bits_mask = compl (lower_bits_mask bitor middle_bits_mask);
+
+      using ::ket::utility::loop_n;
+      loop_n(
+        parallel_policy,
+        static_cast<StateInteger>(last - first) >> 2u,
+        [first, target_qubit_mask, control_qubit_mask, lower_bits_mask, middle_bits_mask, upper_bits_mask](
+          StateInteger const value_wo_qubits, int const)
+        {
+          // xxx0_txxx0_cxxx
+          auto const base_index
+            = ((value_wo_qubits bitand upper_bits_mask) << 2u)
+              bitor ((value_wo_qubits bitand middle_bits_mask) << 1u)
+              bitor (value_wo_qubits bitand lower_bits_mask);
+          // xxx0_txxx1_cxxx
+          auto const control_on_index = base_index bitor control_qubit_mask;
+          // xxx1_txxx1_cxxx
+          auto const target_control_on_index = control_on_index bitor target_qubit_mask;
+          auto const control_on_iter = first + control_on_index;
+          auto const target_control_on_iter = first + target_control_on_index;
+          auto const control_on_iter_value = *control_on_iter;
+
+          using complex_type = typename std::remove_const<decltype(control_on_iter_value)>::type;
+          using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
+          using boost::math::constants::one_div_root_two;
+          *control_on_iter += *target_control_on_iter;
+          *control_on_iter *= one_div_root_two<real_type>();
+          *target_control_on_iter = control_on_iter_value - *target_control_on_iter;
+          *target_control_on_iter *= one_div_root_two<real_type>();
+        });
+    }
+
+    // C...CH_{tc...c'} or CnH_{tc...c'}
+    template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger, typename... ControlQubits>
+    inline void hadamard(
+      ParallelPolicy const parallel_policy,
+      RandomAccessIterator const first, RandomAccessIterator const last,
+      ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2, ControlQubits const... control_qubits)
+    {
+      static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+      static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
+      assert(::ket::utility::integer_exp2<StateInteger>(target_qubit) < static_cast<StateInteger>(last - first));
+      assert(
+        ::ket::utility::integer_exp2<StateInteger>(::ket::utility::integer_log2<BitInteger>(last - first))
+        == static_cast<StateInteger>(last - first));
+
+      constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 2u);
+      constexpr auto num_qubits = num_control_qubits + BitInteger{1u};
+      constexpr auto num_indices = ::ket::utility::integer_exp2<std::size_t>(num_qubits);
+
+      // 0b11...10u
+      constexpr auto indices_index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{1u};
+      // 0b11...11u
+      constexpr auto indices_index1 = indices_index0 bitor std::size_t{1u};
+
+      ::ket::gate::gate(
+        parallel_policy, first, last,
+        [](RandomAccessIterator const first, std::array<StateInteger, num_indices> const& indices, int const)
+        {
+          auto const iter0 = first + indices[indices_index0];
+          auto const iter1 = first + indices[indices_index1];
+          auto const iter0_value = *iter0;
+
+          using complex_type = typename std::remove_const<decltype(iter0_value)>::type;
+          using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
+          using boost::math::constants::one_div_root_two;
+          *iter0 += *iter1;
+          *iter0 *= one_div_root_two<real_type>();
+          *iter1 = iter0_value - *iter1;
+          *iter1 *= one_div_root_two<real_type>();
+        },
+        target_qubit, control_qubit1, control_qubit2, control_qubits...);
+    }
+
+    template <typename RandomAccessIterator, typename StateInteger, typename BitInteger, typename... ControlQubits>
+    inline void hadamard(
+      RandomAccessIterator const first, RandomAccessIterator const last,
+      ::ket::qubit<StateInteger, BitInteger> const qubit, ControlQubits const... control_qubits)
+    { ::ket::gate::hadamard(::ket::utility::policy::make_sequential(), first, last, qubit, control_qubits...); }
 
     namespace ranges
     {
-      template <typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger>
+      template <typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename... ControlQubits>
       inline RandomAccessRange& hadamard(
-        ParallelPolicy const parallel_policy, RandomAccessRange& state, ::ket::qubit<StateInteger, BitInteger> const qubit)
+        ParallelPolicy const parallel_policy, RandomAccessRange& state,
+        ::ket::qubit<StateInteger, BitInteger> const qubit, ControlQubits const... control_qubits)
       {
-        ::ket::gate::hadamard(parallel_policy, std::begin(state), std::end(state), qubit);
+        ::ket::gate::hadamard(parallel_policy, std::begin(state), std::end(state), qubit, control_qubits...);
         return state;
       }
 
-      template <typename RandomAccessRange, typename StateInteger, typename BitInteger>
+      template <typename RandomAccessRange, typename StateInteger, typename BitInteger, typename... ControlQubits>
       inline RandomAccessRange& hadamard(
-        RandomAccessRange& state, ::ket::qubit<StateInteger, BitInteger> const qubit)
-      { return ::ket::gate::ranges::hadamard(::ket::utility::policy::make_sequential(), state, qubit); }
+        RandomAccessRange& state, ::ket::qubit<StateInteger, BitInteger> const qubit, ControlQubits const... control_qubits)
+      { return ::ket::gate::ranges::hadamard(::ket::utility::policy::make_sequential(), state, qubit, control_qubits...); }
     } // namespace ranges
 
-    template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger>
+    template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger, typename... ControlQubits>
     inline void adj_hadamard(
       ParallelPolicy const parallel_policy,
-      RandomAccessIterator const first, RandomAccessIterator const last, ::ket::qubit<StateInteger, BitInteger> const qubit)
-    { ::ket::gate::hadamard(parallel_policy, first, last, qubit); }
+      RandomAccessIterator const first, RandomAccessIterator const last,
+      ::ket::qubit<StateInteger, BitInteger> const qubit, ControlQubits const... control_qubits)
+    { ::ket::gate::hadamard(parallel_policy, first, last, qubit, control_qubits...); }
 
-    template <typename RandomAccessIterator, typename StateInteger, typename BitInteger>
+    template <typename RandomAccessIterator, typename StateInteger, typename BitInteger, typename... ControlQubits>
     inline void adj_hadamard(
-      RandomAccessIterator const first, RandomAccessIterator const last, ::ket::qubit<StateInteger, BitInteger> const qubit)
-    { ::ket::gate::hadamard(first, last, qubit); }
+      RandomAccessIterator const first, RandomAccessIterator const last,
+      ::ket::qubit<StateInteger, BitInteger> const qubit, ControlQubits const... control_qubits)
+    { ::ket::gate::hadamard(first, last, qubit, control_qubits...); }
 
     namespace ranges
     {
-      template <typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger>
+      template <typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename... ControlQubits>
       inline RandomAccessRange& adj_hadamard(
-        ParallelPolicy const parallel_policy, RandomAccessRange& state, ::ket::qubit<StateInteger, BitInteger> const qubit)
-      { return ::ket::gate::ranges::hadamard(parallel_policy, state, qubit); }
+        ParallelPolicy const parallel_policy, RandomAccessRange& state,
+        ::ket::qubit<StateInteger, BitInteger> const qubit, ControlQubits const... control_qubits)
+      { return ::ket::gate::ranges::hadamard(parallel_policy, state, qubit, control_qubits...); }
 
-      template <typename RandomAccessRange, typename StateInteger, typename BitInteger>
-      inline RandomAccessRange& adj_hadamard(RandomAccessRange& state, ::ket::qubit<StateInteger, BitInteger> const qubit)
-      { return ::ket::gate::ranges::hadamard(state, qubit); }
+      template <typename RandomAccessRange, typename StateInteger, typename BitInteger, typename... ControlQubits>
+      inline RandomAccessRange& adj_hadamard(
+        RandomAccessRange& state, ::ket::qubit<StateInteger, BitInteger> const qubit, ControlQubits const... control_qubits)
+      { return ::ket::gate::ranges::hadamard(state, qubit, control_qubits...); }
     } // namespace ranges
   } // namespace gate
 } // namespace ket

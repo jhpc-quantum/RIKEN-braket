@@ -84,7 +84,7 @@ namespace ket
 
             auto const last_integer = last_local_qubit_value >> num_local_control_qubits;
 
-            auto const first = std::begin(local_state);
+            auto const first = std::begin(std::forward<LocalState>(local_state));
             auto const first_index = data_block_index * data_block_size;
             using ::ket::utility::loop_n;
             loop_n(

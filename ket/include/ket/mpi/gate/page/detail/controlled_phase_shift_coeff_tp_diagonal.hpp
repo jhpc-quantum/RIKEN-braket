@@ -36,6 +36,7 @@ namespace ket
           {
             // tp_cl: target qubit is on page and control qubit is local
 # ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
+            // [[deprecated]]
             template <typename Complex, typename StateInteger>
             struct do_controlled_phase_shift_coeff_tp_cl
             {
@@ -68,6 +69,7 @@ namespace ket
               }
             }; // struct do_controlled_phase_shift_coeff_tp_cl<Complex, StateInteger>
 
+            // [[deprecated]]
             template <typename Complex, typename StateInteger>
             inline ::ket::mpi::gate::page::detail::controlled_phase_shift_coeff_tp_detail::do_controlled_phase_shift_coeff_tp_cl<Complex, StateInteger>
             make_do_controlled_phase_shift_coeff_tp_cl(
@@ -78,6 +80,7 @@ namespace ket
             { return {phase_coefficient, permutated_control_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask}; }
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 
+            // [[deprecated]]
             template <
               typename ParallelPolicy,
               typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
@@ -98,7 +101,7 @@ namespace ket
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
               return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
                 parallel_policy, local_state, permutated_target_qubit,
-                [phase_coefficient, permutated_control_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask](
+                [&phase_coefficient, permutated_control_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask](
                   auto const, auto const one_first, StateInteger const index_wo_nonpage_qubit, int const)
                 {
                   auto const zero_index
@@ -117,6 +120,7 @@ namespace ket
             }
 
             // tp_cu: target qubit is on page and control qubit is unit
+            // [[deprecated]]
             template <
               typename StateInteger, typename BitInteger, typename NumProcesses,
               typename ParallelPolicy, typename Complex, typename Allocator>
@@ -132,6 +136,7 @@ namespace ket
               ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const least_permutated_unit_qubit)
             { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"controlled_phase_shift_coeff_tp_cu"}; }
 
+            // [[deprecated]]
             template <
               typename StateInteger, typename BitInteger, typename NumProcesses,
               typename ParallelPolicy, typename Complex, typename Allocator>
@@ -185,7 +190,7 @@ namespace ket
                   loop_n(
                     parallel_policy,
                     boost::size(one_page_range),
-                    [one_first, phase_coefficient](StateInteger const index, int const)
+                    [one_first, &phase_coefficient](StateInteger const index, int const)
                     { *(one_first + index) *= phase_coefficient; });
                 }
               }
@@ -195,6 +200,7 @@ namespace ket
 
             // tp_cg: target qubit is on page and control qubit is global
 # ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
+            // [[deprecated]]
             template <typename Complex>
             struct do_controlled_phase_shift_coeff_tp_cg
             {
@@ -210,12 +216,14 @@ namespace ket
               { *(one_first + index) *= phase_coefficient_; }
             }; // struct do_controlled_phase_shift_coeff_tp_cg<Complex>
 
+            // [[deprecated]]
             template <typename Complex>
             inline ::ket::mpi::gate::page::detail::controlled_phase_shift_coeff_tp_detail::do_controlled_phase_shift_coeff_tp_cg<Complex>
             make_do_controlled_phase_shift_coeff_tp_cg(Complex const& phase_coefficient)
             { return ::ket::mpi::gate::page::detail::controlled_phase_shift_coeff_tp_detail::do_controlled_phase_shift_coeff_tp_cg<Complex>{phase_coefficient}; }
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 
+            // [[deprecated]]
             template <
               typename ParallelPolicy,
               typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
@@ -241,7 +249,7 @@ namespace ket
 # ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
               return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
                 parallel_policy, local_state, permutated_target_qubit,
-                [phase_coefficient](
+                [&phase_coefficient](
                   auto const, auto const one_first, StateInteger const index, int const)
                 { *(one_first + index) *= phase_coefficient; });
 # else // BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -252,6 +260,7 @@ namespace ket
             }
           } // namespace controlled_phase_shift_coeff_tp_detail
 
+          // [[deprecated]]
           template <
             typename MpiPolicy, typename ParallelPolicy,
             typename RandomAccessRange, typename Complex, typename StateInteger, typename BitInteger>
@@ -264,6 +273,7 @@ namespace ket
             yampi::rank const)
           { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"controlled_phase_shift_coeff_tp"}; }
 
+          // [[deprecated]]
           template <
             typename ParallelPolicy,
             typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
@@ -277,6 +287,7 @@ namespace ket
             yampi::rank const)
           { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"controlled_phase_shift_coeff_tp"}; }
 
+          // [[deprecated]]
           template <
             typename StateInteger, typename BitInteger, typename NumProcesses,
             typename ParallelPolicy, typename Complex, typename Allocator>
@@ -291,6 +302,7 @@ namespace ket
             yampi::rank const)
           { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"controlled_phase_shift_coeff_tp"}; }
 
+          // [[deprecated]]
           template <
             typename ParallelPolicy,
             typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
@@ -320,6 +332,7 @@ namespace ket
               static_cast<StateInteger>(::ket::mpi::utility::policy::global_qubit_value(mpi_policy, rank)));
           }
 
+          // [[deprecated]]
           template <
             typename StateInteger, typename BitInteger, typename NumProcesses,
             typename ParallelPolicy, typename Complex, typename Allocator>

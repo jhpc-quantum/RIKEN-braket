@@ -4,10 +4,13 @@
 # include <cassert>
 # include <iterator>
 # include <algorithm>
+# include <iterator>
 # include <utility>
 # include <type_traits>
 
 # include <ket/qubit.hpp>
+# include <ket/control.hpp>
+# include <ket/gate/gate.hpp>
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/integer_exp2.hpp>
 # ifndef NDEBUG
@@ -67,56 +70,98 @@ namespace ket
         });
     }
 
-    template <typename RandomAccessIterator, typename StateInteger, typename BitInteger>
+    // C...CSWAP_{tt'c...c'} or CnSWAP_{tt'c...c'}
+    template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger, typename... ControlQubits>
+    inline void swap(
+      ParallelPolicy const parallel_policy,
+      RandomAccessIterator const first, RandomAccessIterator const last,
+      ::ket::qubit<StateInteger, BitInteger> const target_qubit1, ::ket::qubit<StateInteger, BitInteger> const target_qubit2,
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ControlQubits const... control_qubits)
+    {
+      static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+      static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
+      assert(::ket::utility::integer_exp2<StateInteger>(target_qubit1) < static_cast<StateInteger>(last - first));
+      assert(::ket::utility::integer_exp2<StateInteger>(target_qubit2) < static_cast<StateInteger>(last - first));
+      assert(target_qubit1 != target_qubit2);
+      assert(
+        ::ket::utility::integer_exp2<StateInteger>(::ket::utility::integer_log2<BitInteger>(last - first))
+        == static_cast<StateInteger>(last - first));
+
+      constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 1u);
+      constexpr auto num_qubits = num_control_qubits + BitInteger{2u};
+      constexpr auto num_indices = ::ket::utility::integer_exp2<std::size_t>(num_qubits);
+
+      // 0b11...100u
+      constexpr auto base_indices_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{2u};
+      // 0b11...101u
+      constexpr auto indices_index01 = base_indices_index bitor std::size_t{1u};
+      // 0b11...110u
+      constexpr auto indices_index10 = base_indices_index bitor (std::size_t{1u} << BitInteger{1u});
+
+      ::ket::gate::gate(
+        parallel_policy, first, last,
+        [](RandomAccessIterator const first, std::array<StateInteger, num_indices> const& indices, int const)
+        { std::iter_swap(first + indices[indices_index01], first + indices[indices_index10]); },
+        target_qubit1, target_qubit2, control_qubit, control_qubits...);
+    }
+
+    template <typename RandomAccessIterator, typename StateInteger, typename BitInteger, typename... ControlQubits>
     inline void swap(
       RandomAccessIterator const first, RandomAccessIterator const last,
-      ::ket::qubit<StateInteger, BitInteger> const qubit1, ::ket::qubit<StateInteger, BitInteger> const qubit2)
-    { ::ket::gate::swap(::ket::utility::policy::make_sequential(), first, last, qubit1, qubit2); }
+      ::ket::qubit<StateInteger, BitInteger> const target_qubit1, ::ket::qubit<StateInteger, BitInteger> const target_qubit2,
+      ControlQubits const... control_qubits)
+    { ::ket::gate::swap(::ket::utility::policy::make_sequential(), first, last, target_qubit1, target_qubit2, control_qubits...); }
 
     namespace ranges
     {
-      template <typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger>
+      template <typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename... ControlQubits>
       inline RandomAccessRange& swap(
         ParallelPolicy const parallel_policy, RandomAccessRange& state,
-        ::ket::qubit<StateInteger, BitInteger> const qubit1, ::ket::qubit<StateInteger, BitInteger> const qubit2)
+        ::ket::qubit<StateInteger, BitInteger> const target_qubit1, ::ket::qubit<StateInteger, BitInteger> const target_qubit2,
+        ControlQubits const... control_qubits)
       {
-        ::ket::gate::swap(parallel_policy, std::begin(state), std::end(state), qubit1, qubit2);
+        ::ket::gate::swap(parallel_policy, std::begin(state), std::end(state), target_qubit1, target_qubit2, control_qubits...);
         return state;
       }
 
-      template <typename RandomAccessRange, typename StateInteger, typename BitInteger>
+      template <typename RandomAccessRange, typename StateInteger, typename BitInteger, typename... ControlQubits>
       inline RandomAccessRange& swap(
         RandomAccessRange& state,
-        ::ket::qubit<StateInteger, BitInteger> const qubit1, ::ket::qubit<StateInteger, BitInteger> const qubit2)
-      { return ::ket::gate::ranges::swap(::ket::utility::policy::make_sequential(), state, qubit1, qubit2); }
+        ::ket::qubit<StateInteger, BitInteger> const target_qubit1, ::ket::qubit<StateInteger, BitInteger> const target_qubit2,
+        ControlQubits const... control_qubits)
+      { return ::ket::gate::ranges::swap(::ket::utility::policy::make_sequential(), state, target_qubit1, target_qubit2, control_qubits...); }
     } // namespace ranges
 
-    template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger>
+    template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger, typename... ControlQubits>
     inline void adj_swap(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
-      ::ket::qubit<StateInteger, BitInteger> const qubit1, ::ket::qubit<StateInteger, BitInteger> const qubit2)
-    { ::ket::gate::swap(parallel_policy, first, last, qubit1, qubit2); }
+      ::ket::qubit<StateInteger, BitInteger> const target_qubit1, ::ket::qubit<StateInteger, BitInteger> const target_qubit2,
+      ControlQubits const... control_qubits)
+    { ::ket::gate::swap(parallel_policy, first, last, target_qubit1, target_qubit2, control_qubits...); }
 
-    template <typename RandomAccessIterator, typename StateInteger, typename BitInteger>
+    template <typename RandomAccessIterator, typename StateInteger, typename BitInteger, typename... ControlQubits>
     inline void adj_swap(
       RandomAccessIterator const first, RandomAccessIterator const last,
-      ::ket::qubit<StateInteger, BitInteger> const qubit1, ::ket::qubit<StateInteger, BitInteger> const qubit2)
-    { ::ket::gate::swap(first, last, qubit1, qubit2); }
+      ::ket::qubit<StateInteger, BitInteger> const target_qubit1, ::ket::qubit<StateInteger, BitInteger> const target_qubit2,
+      ControlQubits const... control_qubits)
+    { ::ket::gate::swap(first, last, target_qubit1, target_qubit2, control_qubits...); }
 
     namespace ranges
     {
-      template <typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger>
+      template <typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename... ControlQubits>
       inline RandomAccessRange& adj_swap(
         ParallelPolicy const parallel_policy, RandomAccessRange& state,
-        ::ket::qubit<StateInteger, BitInteger> const qubit1, ::ket::qubit<StateInteger, BitInteger> const qubit2)
-      { return ::ket::gate::ranges::swap(parallel_policy, state, qubit1, qubit2); }
+        ::ket::qubit<StateInteger, BitInteger> const target_qubit1, ::ket::qubit<StateInteger, BitInteger> const target_qubit2,
+        ControlQubits const... control_qubits)
+      { return ::ket::gate::ranges::swap(parallel_policy, state, target_qubit1, target_qubit2, control_qubits...); }
 
-      template <typename RandomAccessRange, typename StateInteger, typename BitInteger>
+      template <typename RandomAccessRange, typename StateInteger, typename BitInteger, typename... ControlQubits>
       inline RandomAccessRange& adj_swap(
         RandomAccessRange& state,
-        ::ket::qubit<StateInteger, BitInteger> const qubit1, ::ket::qubit<StateInteger, BitInteger> const qubit2)
-      { return ::ket::gate::ranges::swap(state, qubit1, qubit2); }
+        ::ket::qubit<StateInteger, BitInteger> const target_qubit1, ::ket::qubit<StateInteger, BitInteger> const target_qubit2,
+        ControlQubits const... control_qubits)
+      { return ::ket::gate::ranges::swap(state, target_qubit1, target_qubit2, control_qubits...); }
     } // namespace ranges
   } // namespace gate
 } // namespace ket

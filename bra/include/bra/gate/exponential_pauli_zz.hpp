@@ -27,7 +27,7 @@ namespace bra
       static std::string const name_;
 
      public:
-      explicit exponential_pauli_zz(real_type const phase, qubit_type const qubit1, qubit_type const qubit2);
+      exponential_pauli_zz(real_type const phase, qubit_type const qubit1, qubit_type const qubit2);
 
       ~exponential_pauli_zz() = default;
       exponential_pauli_zz(exponential_pauli_zz const&) = delete;

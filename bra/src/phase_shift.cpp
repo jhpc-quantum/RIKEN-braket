@@ -17,7 +17,7 @@ namespace bra
     std::string const phase_shift::name_ = "R";
 
     phase_shift::phase_shift(
-      int const phase_exponent, complex_type const phase_coefficient, qubit_type const qubit)
+      int const phase_exponent, complex_type const& phase_coefficient, qubit_type const qubit)
       : ::bra::gate::gate{},
         phase_exponent_{phase_exponent}, phase_coefficient_{phase_coefficient}, qubit_{qubit}
     { }

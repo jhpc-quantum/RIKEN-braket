@@ -985,7 +985,7 @@ namespace ket
             typename StateInteger, typename BitInteger, typename Allocator,
             typename Function0, typename Function1, typename... ControlQubits>
           static void call(
-            MpiPolicy const&, ParallelPolicy const, LocalState& local_state,
+            MpiPolicy const&, ParallelPolicy const, LocalState&& local_state,
             ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const& permutation,
             yampi::communicator const& communicator,
             yampi::environment const& environment,
@@ -999,7 +999,7 @@ namespace ket
             typename Function00, typename Function01, typename Function10, typename Function11,
             typename... ControlQubits>
           static void call(
-            MpiPolicy const&, ParallelPolicy const, LocalState& local_state,
+            MpiPolicy const&, ParallelPolicy const, LocalState&& local_state,
             ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const& permutation,
             yampi::communicator const& communicator,
             yampi::environment const& environment,
@@ -1019,7 +1019,7 @@ namespace ket
             typename Function0, typename Function1, typename... ControlQubits>
           static void call(
             ::ket::mpi::utility::policy::simple_mpi const mpi_policy,
-            ParallelPolicy const parallel_policy, LocalState& local_state,
+            ParallelPolicy const parallel_policy, LocalState&& local_state,
             ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const& permutation,
             yampi::communicator const& communicator,
             yampi::environment const& environment,
@@ -1036,7 +1036,7 @@ namespace ket
               = permutated_qubit_type{::ket::mpi::utility::policy::num_local_qubits(mpi_policy, local_state, communicator, environment)};
 
             call_impl(
-              mpi_policy, parallel_policy, local_state, permutation, present_rank,
+              mpi_policy, parallel_policy, std::forward<LocalState>(local_state), permutation, present_rank,
               least_global_permutated_qubit, target_qubit,
               std::forward<Function0>(function0),
               std::forward<Function1>(function1),
@@ -1050,7 +1050,7 @@ namespace ket
             typename... ControlQubits>
           static void call(
             ::ket::mpi::utility::policy::simple_mpi const mpi_policy,
-            ParallelPolicy const parallel_policy, LocalState& local_state,
+            ParallelPolicy const parallel_policy, LocalState&& local_state,
             ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const& permutation,
             yampi::communicator const& communicator,
             yampi::environment const& environment,
@@ -1069,7 +1069,7 @@ namespace ket
               = permutated_qubit_type{::ket::mpi::utility::policy::num_local_qubits(mpi_policy, local_state, communicator, environment)};
 
             call_impl(
-              mpi_policy, parallel_policy, local_state, permutation, present_rank,
+              mpi_policy, parallel_policy, std::forward<LocalState>(local_state), permutation, present_rank,
               least_global_permutated_qubit, target_qubit1, target_qubit2,
               std::forward<Function00>(function00),
               std::forward<Function01>(function01),
@@ -1086,7 +1086,7 @@ namespace ket
             std::size_t num_local_control_qubits, typename... ControlQubits>
           static void call_impl(
             ::ket::mpi::utility::policy::simple_mpi const mpi_policy,
-            ParallelPolicy const parallel_policy, LocalState& local_state,
+            ParallelPolicy const parallel_policy, LocalState&& local_state,
             ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const& permutation,
             yampi::rank const present_rank,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const least_global_permutated_qubit,
@@ -1112,7 +1112,7 @@ namespace ket
               new_local_permutated_control_qubits.back() = permutated_control_qubit;
 
               call_impl(
-                mpi_policy, parallel_policy, local_state, permutation, present_rank,
+                mpi_policy, parallel_policy, std::forward<LocalState>(local_state), permutation, present_rank,
                 least_global_permutated_qubit, target_qubit,
                 std::forward<Function0>(function0),
                 std::forward<Function1>(function1),
@@ -1128,7 +1128,7 @@ namespace ket
 
               if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand mask) != zero_state_integer)
                 call_impl(
-                  mpi_policy, parallel_policy, local_state, permutation, present_rank,
+                  mpi_policy, parallel_policy, std::forward<LocalState>(local_state), permutation, present_rank,
                   least_global_permutated_qubit, target_qubit,
                   std::forward<Function0>(function0),
                   std::forward<Function1>(function1),
@@ -1143,7 +1143,7 @@ namespace ket
             std::size_t num_local_control_qubits>
           static void call_impl(
             ::ket::mpi::utility::policy::simple_mpi const mpi_policy,
-            ParallelPolicy const parallel_policy, LocalState& local_state,
+            ParallelPolicy const parallel_policy, LocalState&& local_state,
             ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const& permutation,
             yampi::rank const present_rank,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const least_global_permutated_qubit,
@@ -1165,7 +1165,7 @@ namespace ket
 
 #   ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
               ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
-                parallel_policy, local_state, StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
+                parallel_policy, std::forward<LocalState>(local_state), StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
                 [&function0, &function1, mask](auto const iter, StateInteger const state_integer)
                 {
                   static constexpr auto zero_state_integer = StateInteger{0u};
@@ -1177,7 +1177,7 @@ namespace ket
                 });
 #   else // BOOST_NO_CXX14_GENERIC_LAMBDAS
               ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
-                parallel_policy, local_state, StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
+                parallel_policy, std::forward<LocalState>(local_state), StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
                 make_call_function_if_local(std::forward<Function0>(function0), std::forward<Function1>(function1), mask));
 #   endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
             }
@@ -1190,11 +1190,11 @@ namespace ket
 
               if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand mask) == zero_state_integer)
                 ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
-                  parallel_policy, local_state, StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
+                  parallel_policy, std::forward<LocalState>(local_state), StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
                   std::forward<Function0>(function0));
               else
                 ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
-                  parallel_policy, local_state, StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
+                  parallel_policy, std::forward<LocalState>(local_state), StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
                   std::forward<Function1>(function1));
             }
           }
@@ -1206,7 +1206,7 @@ namespace ket
             std::size_t num_local_control_qubits, typename... ControlQubits>
           static void call_impl(
             ::ket::mpi::utility::policy::simple_mpi const mpi_policy,
-            ParallelPolicy const parallel_policy, LocalState& local_state,
+            ParallelPolicy const parallel_policy, LocalState&& local_state,
             ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const& permutation,
             yampi::rank const present_rank,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const least_global_permutated_qubit,
@@ -1234,7 +1234,7 @@ namespace ket
               new_local_permutated_control_qubits.back() = permutated_control_qubit;
 
               call_impl(
-                mpi_policy, parallel_policy, local_state, permutation, present_rank,
+                mpi_policy, parallel_policy, std::forward<LocalState>(local_state), permutation, present_rank,
                 least_global_permutated_qubit, target_qubit1, target_qubit2,
                 std::forward<Function00>(function00),
                 std::forward<Function01>(function01),
@@ -1252,7 +1252,7 @@ namespace ket
 
               if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand mask) != zero_state_integer)
                 call_impl(
-                  mpi_policy, parallel_policy, local_state, permutation, present_rank,
+                  mpi_policy, parallel_policy, std::forward<LocalState>(local_state), permutation, present_rank,
                   least_global_permutated_qubit, target_qubit1, target_qubit2,
                   std::forward<Function00>(function00),
                   std::forward<Function01>(function01),
@@ -1269,7 +1269,7 @@ namespace ket
             std::size_t num_local_control_qubits>
           static void call_impl(
             ::ket::mpi::utility::policy::simple_mpi const mpi_policy,
-            ParallelPolicy const parallel_policy, LocalState& local_state,
+            ParallelPolicy const parallel_policy, LocalState&& local_state,
             ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const& permutation,
             yampi::rank const present_rank,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const least_global_permutated_qubit,
@@ -1298,7 +1298,7 @@ namespace ket
 
 #   ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
                 ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
-                  parallel_policy, local_state, StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
+                  parallel_policy, std::forward<LocalState>(local_state), StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
                   [&function00, &function01, &function10, &function11, mask1, mask2](
                     auto const iter, StateInteger const state_integer)
                   {
@@ -1321,7 +1321,7 @@ namespace ket
                   });
 #   else // BOOST_NO_CXX14_GENERIC_LAMBDAS
                 ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
-                  parallel_policy, local_state, StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
+                  parallel_policy, std::forward<LocalState>(local_state), StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
                   make_call_function_if_local(
                     std::forward<Function00>(function00), std::forward<Function01>(function01),
                     std::forward<Function10>(function10), std::forward<Function11>(function11),
@@ -1338,7 +1338,7 @@ namespace ket
 #   ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
                 if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand mask2) == zero_state_integer)
                   ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
-                    parallel_policy, local_state, StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
+                    parallel_policy, std::forward<LocalState>(local_state), StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
                     [&function00, &function01, mask1](auto const iter, StateInteger const state_integer)
                     {
                       if ((state_integer bitand mask1) == zero_state_integer)
@@ -1348,7 +1348,7 @@ namespace ket
                     });
                 else
                   ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
-                    parallel_policy, local_state, StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
+                    parallel_policy, std::forward<LocalState>(local_state), StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
                     [&function10, &function11, mask1](auto const iter, StateInteger const state_integer)
                     {
                       if ((state_integer bitand mask1) == zero_state_integer)
@@ -1359,12 +1359,12 @@ namespace ket
 #   else // BOOST_NO_CXX14_GENERIC_LAMBDAS
                 if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand mask2) == zero_state_integer)
                   ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
-                    parallel_policy, local_state, StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
+                    parallel_policy, std::forward<LocalState>(local_state), StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
                     make_call_function_if_local(
                       std::forward<Function00>(function00), std::forward<Function01>(function01), mask1));
                 else
                   ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
-                    parallel_policy, local_state, StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
+                    parallel_policy, std::forward<LocalState>(local_state), StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
                     make_call_function_if_local(
                       std::forward<Function10>(function10), std::forward<Function11>(function11), mask1));
 #   endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -1384,7 +1384,7 @@ namespace ket
 #   ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
                 if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand mask1) == zero_state_integer)
                   ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
-                    parallel_policy, local_state, StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
+                    parallel_policy, std::forward<LocalState>(local_state), StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
                     [&function00, &function10, mask2](auto const iter, StateInteger const state_integer)
                     {
                       if ((state_integer bitand mask2) == zero_state_integer)
@@ -1394,7 +1394,7 @@ namespace ket
                     });
                 else
                   ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
-                    parallel_policy, local_state, StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
+                    parallel_policy, std::forward<LocalState>(local_state), StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
                     [&function01, &function11, mask2](auto const iter, StateInteger const state_integer)
                     {
                       if ((state_integer bitand mask2) == zero_state_integer)
@@ -1405,12 +1405,12 @@ namespace ket
 #   else // BOOST_NO_CXX14_GENERIC_LAMBDAS
                 if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand mask1) == zero_state_integer)
                   ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
-                    parallel_policy, local_state, StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
+                    parallel_policy, std::forward<LocalState>(local_state), StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
                     make_call_function_if_local(
                       std::forward<Function00>(function00), std::forward<Function10>(function10), mask2));
                 else
                   ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
-                    parallel_policy, local_state, StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
+                    parallel_policy, std::forward<LocalState>(local_state), StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
                     make_call_function_if_local(
                       std::forward<Function01>(function01), std::forward<Function11>(function11), mask2));
 #   endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -1426,22 +1426,22 @@ namespace ket
                 {
                   if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand mask2) == zero_state_integer)
                     ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
-                      parallel_policy, local_state, StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
+                      parallel_policy, std::forward<LocalState>(local_state), StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
                       std::forward<Function00>(function00));
                   else
                     ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
-                      parallel_policy, local_state, StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
+                      parallel_policy, std::forward<LocalState>(local_state), StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
                       std::forward<Function10>(function10));
                 }
                 else
                 {
                   if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand mask2) == zero_state_integer)
                     ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
-                      parallel_policy, local_state, StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
+                      parallel_policy, std::forward<LocalState>(local_state), StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
                       std::forward<Function01>(function01));
                   else
                     ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
-                      parallel_policy, local_state, StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
+                      parallel_policy, std::forward<LocalState>(local_state), StateInteger{0u}, static_cast<StateInteger>(boost::size(local_state)), last_local_qubit_value, local_permutated_control_qubits,
                       std::forward<Function11>(function11));
                 }
               }
@@ -1662,7 +1662,7 @@ namespace ket
         typename Function0, typename Function1, typename... ControlQubits>
       inline void diagonal_loop(
         MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
-        LocalState& local_state,
+        LocalState&& local_state,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const& permutation,
         yampi::communicator const& communicator,
         yampi::environment const& environment,
@@ -1674,7 +1674,7 @@ namespace ket
         assert(::ket::mpi::page::none_on_page(local_state, permutation[control_qubits]...));
 
         return ::ket::mpi::utility::dispatch::diagonal_loop<MpiPolicy>::call(
-          mpi_policy, parallel_policy, local_state, permutation, communicator, environment,
+          mpi_policy, parallel_policy, std::forward<LocalState>(local_state), permutation, communicator, environment,
           target_qubit,
           std::forward<Function0>(function0), std::forward<Function1>(function1),
           control_qubits...);
@@ -1687,7 +1687,7 @@ namespace ket
         typename... ControlQubits>
       inline void diagonal_loop(
         MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
-        LocalState& local_state,
+        LocalState&& local_state,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const& permutation,
         yampi::communicator const& communicator,
         yampi::environment const& environment,
@@ -1702,7 +1702,7 @@ namespace ket
         assert(::ket::mpi::page::none_on_page(local_state, permutation[control_qubits]...));
 
         return ::ket::mpi::utility::dispatch::diagonal_loop<MpiPolicy>::call(
-          mpi_policy, parallel_policy, local_state, permutation, communicator, environment,
+          mpi_policy, parallel_policy, std::forward<LocalState>(local_state), permutation, communicator, environment,
           target_qubit1, target_qubit2,
           std::forward<Function00>(function00), std::forward<Function01>(function01),
           std::forward<Function10>(function10), std::forward<Function11>(function11),
