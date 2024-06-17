@@ -86,10 +86,10 @@ https://github.com/naoki-yoshioka/braket/blob/ec5460b24455de307949ad1289752af944
 *bra* can be used in the following way:
 
 ```bash
-$ ./bin/bra --path <file> --threads <threads> --seed <seed>
+$ ./bin/bra --file <path> --threads <threads> --seed <seed>
 ```
 
-* `--file <path>`: specifies the path of "quantum assembler" file. If this option is omitted, "quantum assembler" code is read from the standard input. Therefore `./bin/bra < <file>` and `/path/to/script_generating_my_excellent_quantum_circuit | ./bin/bra` are OK.
+* `--file <path>`: specifies the path of "quantum assembler" file. If this option is omitted, "quantum assembler" code is read from the standard input. Therefore `./bin/bra < <path>` and `/path/to/script_generating_my_excellent_quantum_circuit | ./bin/bra` are OK.
 * `--threads <threads>`: specifies the number of threads. The default value is `1` if this option is omitted.
 * `--seed <seed>`: specifies the initial seed of the random number generator. You can omit this option, too.
 
@@ -98,7 +98,7 @@ $ ./bin/bra --path <file> --threads <threads> --seed <seed>
 There are additional options other than ones of the nompi version of *bra*.
 
 ```bash
-$ mpiexec -n <processes> ./bin/bra --path <file> --threads <threads> --seed <seed> --mode <mode> --unit-qubits <unit-qubits> --unit-processes <unit-processes> --page-qubits <page-qubits>
+$ mpiexec -n <processes> ./bin/bra --file <path> --threads <threads> --seed <seed> --mode <mode> --unit-qubits <unit-qubits> --unit-processes <unit-processes> --page-qubits <page-qubits>
 ```
 
 ## Quantum assembler
