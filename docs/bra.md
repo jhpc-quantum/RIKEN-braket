@@ -17,7 +17,7 @@ It is not difficult to build *bra* if you have [GCC](https://gcc.gnu.org/) in yo
 Usually *bra* can be built just by using `make`:
 
 ```bash
-$ cd /path/to/braket/bra
+$ cd /path/to/RIKEN-braket/bra
 $ make <command>
 $ ls bin/
 bra
@@ -49,14 +49,14 @@ You would like to edit Makefile to build *bra* if, for example,
 The compiler to build *bra* is specified via `CXX`.
 The easiest way to change to your compiler is to replace `$(CXX)` to the command you want to use.
 
-https://github.com/naoki-yoshioka/braket/blob/ec5460b24455de307949ad1289752af94415ef29/bra/Makefile#L174-L180
+https://github.com/jhpc-quantum/RIKEN-braket/blob/ec5460b24455de307949ad1289752af94415ef29/bra/Makefile#L174-L180
 
 #### Fujitsu compiler, but you use other than the supercomputer Fugaku
 
 The Makefile uses the command `uname -n` to know the hostname of the login server.
 After that, it uses the `findstring` function to understand if the login server is on the supercomputer Fugaku or not.
 
-https://github.com/naoki-yoshioka/braket/blob/ec5460b24455de307949ad1289752af94415ef29/bra/Makefile#L44-L50
+https://github.com/jhpc-quantum/RIKEN-braket/blob/ec5460b24455de307949ad1289752af94415ef29/bra/Makefile#L44-L50
 
 You can build by using the Makefile if you change the conditional directives in the Makefile appropriately.
 
@@ -64,7 +64,7 @@ You can build by using the Makefile if you change the conditional directives in 
 
 The directories of libraries are specified at the line starts with `library_dirs`.
 
-https://github.com/naoki-yoshioka/braket/blob/ec5460b24455de307949ad1289752af94415ef29/bra/Makefile#L18-L20
+https://github.com/jhpc-quantum/RIKEN-braket/blob/ec5460b24455de307949ad1289752af94415ef29/bra/Makefile#L18-L20
 
 Add the directory of the Boost library you expanded, `/path/to/boost`, to the line.
 Don't specify the *include path* itself `/path/to/boost/include` there.
@@ -73,11 +73,11 @@ Don't specify the *include path* itself `/path/to/boost/include` there.
 
 Edit the lines start with `common_flags` or `cxx_flags` to add other options.
 
-https://github.com/naoki-yoshioka/braket/blob/ec5460b24455de307949ad1289752af94415ef29/bra/Makefile#L171-L172
+https://github.com/jhpc-quantum/RIKEN-braket/blob/ec5460b24455de307949ad1289752af94415ef29/bra/Makefile#L171-L172
 
 If you would like to add options only to the linker, edit the line starts with `LDFLAGS`.
 
-https://github.com/naoki-yoshioka/braket/blob/ec5460b24455de307949ad1289752af94415ef29/bra/Makefile#L34-L36
+https://github.com/jhpc-quantum/RIKEN-braket/blob/ec5460b24455de307949ad1289752af94415ef29/bra/Makefile#L34-L36
 
 ## Usage
 
