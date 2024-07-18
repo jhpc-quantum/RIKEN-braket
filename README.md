@@ -1,20 +1,20 @@
-# braket
+# RIKEN-braket
 
 ## Introduction
 
-**braket** is a tool for simulations of quantum gates on (classical) computers.
+**RIKEN-braket** is a tool for simulations of quantum gates on (classical) computers.
 It contains an interpreter of "quantum assembler" *bra* and a C++ template library *ket*.
 Documents of [*bra*](docs/bra.md) and [*ket*](docs/ket.md) are on `docs/` directory.
 
 ## Getting Started
 
-**braket** requires a C++11 compliant compiler and [Boost C++ library](https://www.boost.org/).
-Any [MPI](https://www.mpi-forum.org/) libaries are also required if you would like to use **braket** in massively parallel supercomputers.
+**RIKEN-braket** requires a C++11 compliant compiler and [Boost C++ library](https://www.boost.org/).
+Any [MPI](https://www.mpi-forum.org/) libaries are also required if you would like to use **RIKEN-braket** in massively parallel supercomputers.
 
-You can retrieve the current status of **braket** by cloning the repository:
+You can retrieve the current status of **RIKEN-braket** by cloning the repository:
 
 ```bash
-$ git clone --recursive https://github.com/naoki-yoshioka/braket.git
+$ git clone --recursive https://github.com/jhpc-quantum/RIKEN-braket.git
 ```
 
 ## Using *bra*
@@ -22,7 +22,7 @@ $ git clone --recursive https://github.com/naoki-yoshioka/braket.git
 On the `bra/` directory, you can compile *bra* via:
 
 ```
-$ cd braket/bra
+$ cd RIKEN-braket/bra
 $ make nompi
 ```
 
@@ -95,6 +95,6 @@ int main(int argc, char* argv[])
 ```
 
 ```bash
-$ mpiCC -I${HOME}/braket/ket/include -I${HOME}/braket/yampi/include -DKET_PRINT_LOG -DNDEBUG -O3 test.cpp
+$ mpiCC -I${HOME}/RIKEN-braket/ket/include -I${HOME}/RIKEN-braket/yampi/include -DKET_PRINT_LOG -DNDEBUG -O3 test.cpp
 ```
 
