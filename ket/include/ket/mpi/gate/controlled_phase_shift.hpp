@@ -17,9 +17,6 @@
 #   include <ket/qubit_io.hpp>
 #   include <ket/control_io.hpp>
 # endif // KET_PRINT_LOG
-# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
-#   include <ket/mpi/permutated.hpp>
-# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/gate/phase_shift.hpp>
 # include <ket/mpi/utility/simple_mpi.hpp>

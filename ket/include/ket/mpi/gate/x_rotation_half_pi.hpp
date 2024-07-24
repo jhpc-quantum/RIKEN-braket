@@ -27,6 +27,7 @@
 # include <ket/mpi/utility/for_each_local_range.hpp>
 # include <ket/mpi/utility/logger.hpp>
 # include <ket/mpi/gate/detail/append_qubits_string.hpp>
+# include <ket/mpi/gate/detail/assert_all_qubits_are_local.hpp>
 # include <ket/mpi/gate/page/x_rotation_half_pi.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
 
@@ -37,9 +38,9 @@ namespace ket
   {
     namespace gate
     {
+# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
       namespace x_rotation_half_pi_detail
       {
-# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
         template <typename ParallelPolicy, typename Qubit>
         struct call_x_rotation_half_pi
         {
@@ -87,15 +88,18 @@ namespace ket
           ::ket::mpi::permutated<TargetQubit> const permutated_target_qubit,
           ::ket::mpi::permutated<ControlQubit> const permutated_control_qubit)
         { return {parallel_policy, permutated_target_qubit, permutated_control_qubit}; }
-# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+      } // namespace x_rotation_half_pi_detail
 
+# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+      namespace local
+      {
         // +X_i
         // +X_1 (a_0 |0> + a_1 |1>) = (a_0 + i a_1)/sqrt(2) |0> + (i a_0 + a_1)/sqrt(2) |1>
         template <
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename Allocator>
-        inline RandomAccessRange& do_x_rotation_half_pi(
+        inline RandomAccessRange& x_rotation_half_pi(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -103,6 +107,9 @@ namespace ket
           ::ket::qubit<StateInteger, BitInteger> const qubit)
         {
           auto const permutated_qubit = permutation[qubit];
+          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
+            mpi_policy, local_state, communicator, environment, permutated_qubit);
+
           if (::ket::mpi::page::is_on_page(permutated_qubit, local_state))
             return ::ket::mpi::gate::page::x_rotation_half_pi(parallel_policy, local_state, permutated_qubit);
 
@@ -125,7 +132,7 @@ namespace ket
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename Allocator>
-        inline RandomAccessRange& do_x_rotation_half_pi(
+        inline RandomAccessRange& x_rotation_half_pi(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -135,6 +142,9 @@ namespace ket
         {
           auto const permutated_target_qubit = permutation[target_qubit];
           auto const permutated_control_qubit = permutation[control_qubit];
+          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
+            mpi_policy, local_state, communicator, environment, permutated_target_qubit, permutated_control_qubit);
+
           if (::ket::mpi::page::is_on_page(permutated_target_qubit, local_state))
           {
             if (::ket::mpi::page::is_on_page(permutated_control_qubit, local_state))
@@ -165,7 +175,7 @@ namespace ket
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger,
           typename Allocator, typename... ControlQubits>
-        inline RandomAccessRange& do_x_rotation_half_pi(
+        inline RandomAccessRange& x_rotation_half_pi(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -175,6 +185,10 @@ namespace ket
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
           ControlQubits const... control_qubits)
         {
+          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
+            mpi_policy, local_state, communicator, environment,
+            permutation[target_qubit], permutation[control_qubit1], permutation[control_qubit2], permutation[control_qubits]...);
+
           auto const data_block_size
             = ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment);
           auto const num_data_blocks
@@ -190,7 +204,10 @@ namespace ket
 
           return local_state;
         }
+      } // namespace local
 
+      namespace x_rotation_half_pi_detail
+      {
         template <
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger,
@@ -209,7 +226,7 @@ namespace ket
             mpi_policy, parallel_policy,
             local_state, qubit_array, permutation, buffer, communicator, environment);
 
-          return ::ket::mpi::gate::x_rotation_half_pi_detail::do_x_rotation_half_pi(
+          return ::ket::mpi::gate::local::x_rotation_half_pi(
             mpi_policy, parallel_policy, local_state, permutation, communicator, environment, target_qubit, control_qubits...);
         }
 
@@ -232,7 +249,7 @@ namespace ket
             mpi_policy, parallel_policy,
             local_state, qubit_array, permutation, buffer, datatype, communicator, environment);
 
-          return ::ket::mpi::gate::x_rotation_half_pi_detail::do_x_rotation_half_pi(
+          return ::ket::mpi::gate::local::x_rotation_half_pi(
             mpi_policy, parallel_policy, local_state, permutation, communicator, environment, target_qubit, control_qubits...);
         }
       } // namespace x_rotation_half_pi_detail
@@ -462,9 +479,9 @@ namespace ket
           local_state, permutation, buffer, datatype, communicator, environment, target_qubit, control_qubits...);
       }
 
+# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
       namespace x_rotation_half_pi_detail
       {
-# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
         template <typename ParallelPolicy, typename Qubit>
         struct call_adj_x_rotation_half_pi
         {
@@ -512,15 +529,18 @@ namespace ket
           ::ket::mpi::permutated<TargetQubit> const permutated_target_qubit,
           ::ket::mpi::permutated<ControlQubit> const permutated_control_qubit)
         { return {parallel_policy, permutated_target_qubit, permutated_control_qubit}; }
-# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+      } // namespace x_rotation_half_pi_detail
 
+# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+      namespace local
+      {
         // -X_i
         // -X_1 (a_0 |0> + a_1 |1>) = (a_0 - i a_1)/sqrt(2) |0> + (-i a_0 + a_1)/sqrt(2) |1>
         template <
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename Allocator>
-        inline RandomAccessRange& do_adj_x_rotation_half_pi(
+        inline RandomAccessRange& adj_x_rotation_half_pi(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -528,6 +548,9 @@ namespace ket
           ::ket::qubit<StateInteger, BitInteger> const qubit)
         {
           auto const permutated_qubit = permutation[qubit];
+          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
+            mpi_policy, local_state, communicator, environment, permutated_qubit);
+
           if (::ket::mpi::page::is_on_page(permutated_qubit, local_state))
             return ::ket::mpi::gate::page::adj_x_rotation_half_pi(parallel_policy, local_state, permutated_qubit);
 
@@ -550,7 +573,7 @@ namespace ket
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename Allocator>
-        inline RandomAccessRange& do_adj_x_rotation_half_pi(
+        inline RandomAccessRange& adj_x_rotation_half_pi(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -560,6 +583,9 @@ namespace ket
         {
           auto const permutated_target_qubit = permutation[target_qubit];
           auto const permutated_control_qubit = permutation[control_qubit];
+          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
+            mpi_policy, local_state, communicator, environment, permutated_target_qubit, permutated_control_qubit);
+
           if (::ket::mpi::page::is_on_page(permutated_target_qubit, local_state))
           {
             if (::ket::mpi::page::is_on_page(permutated_control_qubit, local_state))
@@ -590,7 +616,7 @@ namespace ket
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger,
           typename Allocator, typename... ControlQubits>
-        inline RandomAccessRange& do_adj_x_rotation_half_pi(
+        inline RandomAccessRange& adj_x_rotation_half_pi(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -600,6 +626,10 @@ namespace ket
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
           ControlQubits const... control_qubits)
         {
+          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
+            mpi_policy, local_state, communicator, environment,
+            permutation[target_qubit], permutation[control_qubit1], permutation[control_qubit2], permutation[control_qubits]...);
+
           auto const data_block_size
             = ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment);
           auto const num_data_blocks
@@ -615,7 +645,10 @@ namespace ket
 
           return local_state;
         }
+      } // namespace local
 
+      namespace x_rotation_half_pi_detail
+      {
         template <
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger,
@@ -634,7 +667,7 @@ namespace ket
             mpi_policy, parallel_policy,
             local_state, qubit_array, permutation, buffer, communicator, environment);
 
-          return ::ket::mpi::gate::x_rotation_half_pi_detail::do_adj_x_rotation_half_pi(
+          return ::ket::mpi::gate::local::adj_x_rotation_half_pi(
             mpi_policy, parallel_policy, local_state, permutation, communicator, environment, target_qubit, control_qubits...);
         }
 
@@ -657,7 +690,7 @@ namespace ket
             mpi_policy, parallel_policy,
             local_state, qubit_array, permutation, buffer, datatype, communicator, environment);
 
-          return ::ket::mpi::gate::x_rotation_half_pi_detail::do_adj_x_rotation_half_pi(
+          return ::ket::mpi::gate::local::adj_x_rotation_half_pi(
             mpi_policy, parallel_policy, local_state, permutation, communicator, environment, target_qubit, control_qubits...);
         }
       } // namespace x_rotation_half_pi_detail

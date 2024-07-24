@@ -22,6 +22,7 @@
 # include <ket/mpi/utility/simple_mpi.hpp>
 # include <ket/mpi/utility/for_each_local_range.hpp>
 # include <ket/mpi/utility/logger.hpp>
+# include <ket/mpi/gate/detail/assert_all_qubits_are_local.hpp>
 # include <ket/mpi/gate/page/set.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
 
@@ -34,9 +35,9 @@ namespace ket
     {
       // SET_i
       // SET_1 (a_{0} |0> + a_{1} |1>) = |1>
+# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
       namespace set_detail
       {
-# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
         template <typename ParallelPolicy, typename Qubit>
         struct call_set
         {
@@ -60,8 +61,11 @@ namespace ket
         inline call_set<ParallelPolicy, Qubit> make_call_set(
           ParallelPolicy const parallel_policy, ::ket::mpi::permutated<Qubit> const permutated_qubit)
         { return {parallel_policy, permutated_qubit}; }
-# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+      } // namespace set_detail
 
+# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+      namespace local
+      {
         template <
           typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename Allocator>
@@ -73,6 +77,9 @@ namespace ket
           ::ket::qubit<StateInteger, BitInteger> const qubit)
         {
           auto const permutated_qubit = permutation[qubit];
+          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
+            mpi_policy, local_state, communicator, environment, permutated_qubit);
+
           if (::ket::mpi::page::is_on_page(permutated_qubit, local_state))
             return ::ket::mpi::gate::page::set(parallel_policy, local_state, permutated_qubit);
 
@@ -87,7 +94,7 @@ namespace ket
             ::ket::mpi::gate::set_detail::make_call_set(parallel_policy, permutated_qubit));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }
-      } // namespace set_detail
+      } // namespace local
 
       // [[deprecated]]
       template <
@@ -111,7 +118,7 @@ namespace ket
           mpi_policy, parallel_policy,
           local_state, qubits, permutation, buffer, communicator, environment);
 
-        return ::ket::mpi::gate::set_detail::set(
+        return ::ket::mpi::gate::local::set(
           mpi_policy, parallel_policy, local_state, permutation, communicator, environment, qubit);
       }
 
@@ -138,7 +145,7 @@ namespace ket
           mpi_policy, parallel_policy,
           local_state, qubits, permutation, buffer, datatype, communicator, environment);
 
-        return ::ket::mpi::gate::set_detail::set(
+        return ::ket::mpi::gate::local::set(
           mpi_policy, parallel_policy, local_state, permutation, communicator, environment, qubit);
       }
 
@@ -161,7 +168,7 @@ namespace ket
           mpi_policy, parallel_policy,
           local_state, qubits, permutation, buffer, communicator, environment);
 
-        return ::ket::mpi::gate::set_detail::set(
+        return ::ket::mpi::gate::local::set(
           mpi_policy, parallel_policy, local_state, permutation, communicator, environment, qubit);
       }
 
@@ -186,7 +193,7 @@ namespace ket
           mpi_policy, parallel_policy,
           local_state, qubits, permutation, buffer, datatype, communicator, environment);
 
-        return ::ket::mpi::gate::set_detail::set(
+        return ::ket::mpi::gate::local::set(
           mpi_policy, parallel_policy, local_state, permutation, communicator, environment, qubit);
       }
 

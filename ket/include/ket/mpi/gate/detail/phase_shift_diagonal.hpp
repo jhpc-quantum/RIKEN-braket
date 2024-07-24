@@ -19,6 +19,7 @@
 # include <ket/control.hpp>
 # ifdef KET_PRINT_LOG
 #   include <ket/qubit_io.hpp>
+#   include <ket/control_io.hpp>
 # endif // KET_PRINT_LOG
 # include <ket/gate/phase_shift.hpp>
 # ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
@@ -29,6 +30,7 @@
 # include <ket/mpi/utility/for_each_local_range.hpp>
 # include <ket/mpi/utility/logger.hpp>
 # include <ket/mpi/gate/detail/append_qubits_string.hpp>
+# include <ket/mpi/gate/detail/assert_all_qubits_are_local.hpp>
 # include <ket/mpi/gate/page/phase_shift_diagonal.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
 
@@ -40,9 +42,9 @@ namespace ket
     namespace gate
     {
       // phase_shift_coeff
+# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
       namespace phase_shift_detail
       {
-# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
         template <typename StateInteger>
         struct return_
         {
@@ -72,15 +74,18 @@ namespace ket
         inline ::ket::mpi::gate::phase_shift_detail::do_phase_shift<StateInteger, Complex>
         make_do_phase_shift(Complex const& phase_coefficient)
         { return ::ket::mpi::gate::phase_shift_detail::do_phase_shift<StateInteger, Complex>{phase_coefficient}; }
-# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+      } // namespace phase_shift_detail
 
+# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+      namespace local
+      {
         // U1_i(s)
         // U1_1(s) (a_0 |0> + a_1 |1>) = a_0 |0> + e^{is} a_1 |1>
         template <
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger,
           typename Allocator, typename Complex>
-        inline RandomAccessRange& do_phase_shift_coeff(
+        inline RandomAccessRange& phase_shift_coeff(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -88,6 +93,9 @@ namespace ket
           Complex const& phase_coefficient, ::ket::qubit<StateInteger, BitInteger> const qubit)
         {
           auto const permutated_qubit = permutation[qubit];
+          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
+            mpi_policy, local_state, communicator, environment, permutated_qubit);
+
           if (::ket::mpi::page::is_on_page(permutated_qubit, local_state))
             return ::ket::mpi::gate::page::phase_shift_coeff(
               parallel_policy, local_state, phase_coefficient, permutated_qubit);
@@ -116,7 +124,7 @@ namespace ket
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger,
           typename Allocator, typename Complex>
-        inline RandomAccessRange& do_phase_shift_coeff(
+        inline RandomAccessRange& phase_shift_coeff(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -127,6 +135,9 @@ namespace ket
         {
           auto const permutated_target_qubit = permutation[target_qubit];
           auto const permutated_control_qubit = permutation[control_qubit];
+          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
+            mpi_policy, local_state, communicator, environment, permutated_target_qubit, permutated_control_qubit);
+
           if (::ket::mpi::page::is_on_page(permutated_target_qubit, local_state))
           {
             if (::ket::mpi::page::is_on_page(permutated_control_qubit, local_state))
@@ -170,7 +181,7 @@ namespace ket
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator,
           typename Complex, typename... ControlQubits>
-        inline RandomAccessRange& do_phase_shift_coeff(
+        inline RandomAccessRange& phase_shift_coeff(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -181,6 +192,10 @@ namespace ket
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
           ControlQubits const... control_qubits)
         {
+          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
+            mpi_policy, local_state, communicator, environment,
+            permutation[target_qubit], permutation[control_qubit1], permutation[control_qubit2], permutation[control_qubits]...);
+
           auto const data_block_size
             = ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment);
           auto const num_data_blocks
@@ -198,7 +213,10 @@ namespace ket
 
           return local_state;
         }
+      } // namespace local
 
+      namespace phase_shift_detail
+      {
         template <
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger,
@@ -211,7 +229,7 @@ namespace ket
           yampi::communicator const& communicator, yampi::environment const& environment,
           Complex const& phase_coefficient, ::ket::qubit<StateInteger, BitInteger> const qubit)
         {
-          return ::ket::mpi::gate::phase_shift_detail::do_phase_shift_coeff(
+          return ::ket::mpi::gate::local::phase_shift_coeff(
             mpi_policy, parallel_policy, local_state, permutation, communicator, environment, phase_coefficient, qubit);
         }
 
@@ -228,7 +246,7 @@ namespace ket
           yampi::communicator const& communicator, yampi::environment const& environment,
           Complex const& phase_coefficient, ::ket::qubit<StateInteger, BitInteger> const qubit)
         {
-          return ::ket::mpi::gate::phase_shift_detail::do_phase_shift_coeff(
+          return ::ket::mpi::gate::local::phase_shift_coeff(
             mpi_policy, parallel_policy, local_state, permutation, communicator, environment, phase_coefficient, qubit);
         }
 
@@ -246,7 +264,7 @@ namespace ket
           ::ket::qubit<StateInteger, BitInteger> const target_qubit,
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit)
         {
-          return ::ket::mpi::gate::phase_shift_detail::do_phase_shift_coeff(
+          return ::ket::mpi::gate::local::phase_shift_coeff(
             mpi_policy, parallel_policy, local_state, permutation, communicator, environment, phase_coefficient, target_qubit, control_qubit);
         }
 
@@ -265,7 +283,7 @@ namespace ket
           ::ket::qubit<StateInteger, BitInteger> const target_qubit,
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit)
         {
-          return ::ket::mpi::gate::phase_shift_detail::do_phase_shift_coeff(
+          return ::ket::mpi::gate::local::phase_shift_coeff(
             mpi_policy, parallel_policy, local_state, permutation, communicator, environment, phase_coefficient, target_qubit, control_qubit);
         }
 
@@ -291,7 +309,7 @@ namespace ket
             mpi_policy, parallel_policy,
             local_state, qubit_array, permutation, buffer, communicator, environment);
 
-          return ::ket::mpi::gate::phase_shift_detail::do_phase_shift_coeff(
+          return ::ket::mpi::gate::local::phase_shift_coeff(
             mpi_policy, parallel_policy, local_state, permutation, communicator, environment, phase_coefficient, target_qubit, control_qubit1, control_qubit2, control_qubits...);
         }
 
@@ -319,7 +337,7 @@ namespace ket
             mpi_policy, parallel_policy,
             local_state, qubit_array, permutation, buffer, datatype, communicator, environment);
 
-          return ::ket::mpi::gate::phase_shift_detail::do_phase_shift_coeff(
+          return ::ket::mpi::gate::local::phase_shift_coeff(
             mpi_policy, parallel_policy, local_state, permutation, communicator, environment, phase_coefficient, target_qubit, control_qubit1, control_qubit2, control_qubits...);
         }
       } // namespace phase_shift_detail
@@ -1427,9 +1445,9 @@ namespace ket
       }
 
       // generalized phase_shift
+# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
       namespace phase_shift_detail
       {
-# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
         template <typename ParallelPolicy, typename Real, typename Qubit>
         struct call_phase_shift2
         {
@@ -1502,15 +1520,18 @@ namespace ket
           ::ket::mpi::permutated<TargetQubit> const permutated_target_qubit,
           ::ket::mpi::permutated<ControlQubit> const permutated_control_qubit)
         { return {parallel_policy, phase1, phase2, permutated_target_qubit, permutated_control_qubit}; }
-# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+      } // namespace phase_shift_detail
 
+# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+      namespace local
+      {
         // U2_i(s,s')
         // U2_1(s,s') (a_0 |0> + a_1 |1>) = (a_0 - e^{is'} a_1)/sqrt(2) |0> + (e^{is} a_0 + e^{i(s+s')} a_1)/sqrt(2) |1>
         template <
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger,
           typename Allocator, typename Real>
-        inline RandomAccessRange& do_phase_shift2(
+        inline RandomAccessRange& phase_shift2(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -1518,6 +1539,9 @@ namespace ket
           Real const phase1, Real const phase2, ::ket::qubit<StateInteger, BitInteger> const qubit)
         {
           auto const permutated_qubit = permutation[qubit];
+          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
+            mpi_policy, local_state, communicator, environment, permutated_qubit);
+
           if (::ket::mpi::page::is_on_page(permutated_qubit, local_state))
             return ::ket::mpi::gate::page::phase_shift2(
               parallel_policy, local_state, phase1, phase2, permutated_qubit);
@@ -1546,7 +1570,7 @@ namespace ket
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger,
           typename Allocator, typename Real>
-        inline RandomAccessRange& do_phase_shift2(
+        inline RandomAccessRange& phase_shift2(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -1557,6 +1581,9 @@ namespace ket
         {
           auto const permutated_target_qubit = permutation[target_qubit];
           auto const permutated_control_qubit = permutation[control_qubit];
+          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
+            mpi_policy, local_state, communicator, environment, permutated_target_qubit, permutated_control_qubit);
+
           if (::ket::mpi::page::is_on_page(permutated_target_qubit, local_state))
           {
             if (::ket::mpi::page::is_on_page(permutated_control_qubit, local_state))
@@ -1593,7 +1620,7 @@ namespace ket
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator,
           typename Real, typename... ControlQubits>
-        inline RandomAccessRange& do_phase_shift2(
+        inline RandomAccessRange& phase_shift2(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -1604,6 +1631,10 @@ namespace ket
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
           ControlQubits const... control_qubits)
         {
+          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
+            mpi_policy, local_state, communicator, environment,
+            permutation[target_qubit], permutation[control_qubit1], permutation[control_qubit2], permutation[control_qubits]...);
+
           auto const data_block_size
             = ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment);
           auto const num_data_blocks
@@ -1621,7 +1652,10 @@ namespace ket
 
           return local_state;
         }
+      } // namespace local
 
+      namespace phase_shift_detail
+      {
         template <
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger,
@@ -1641,7 +1675,7 @@ namespace ket
             mpi_policy, parallel_policy,
             local_state, qubit_array, permutation, buffer, communicator, environment);
 
-          return ::ket::mpi::gate::phase_shift_detail::do_phase_shift2(
+          return ::ket::mpi::gate::local::phase_shift2(
             mpi_policy, parallel_policy, local_state, permutation, communicator, environment, phase1, phase2, target_qubit, control_qubits...);
         }
 
@@ -1666,7 +1700,7 @@ namespace ket
             mpi_policy, parallel_policy,
             local_state, qubit_array, permutation, buffer, datatype, communicator, environment);
 
-          return ::ket::mpi::gate::phase_shift_detail::do_phase_shift2(
+          return ::ket::mpi::gate::local::phase_shift2(
             mpi_policy, parallel_policy, local_state, permutation, communicator, environment, phase1, phase2, target_qubit, control_qubits...);
         }
       } // namespace phase_shift_detail
@@ -1912,9 +1946,9 @@ namespace ket
           local_state, permutation, buffer, datatype, communicator, environment, phase1, phase2, target_qubit, control_qubits...);
       }
 
+# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
       namespace phase_shift_detail
       {
-# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
         template <typename ParallelPolicy, typename Real, typename Qubit>
         struct call_adj_phase_shift2
         {
@@ -1987,15 +2021,18 @@ namespace ket
           ::ket::mpi::permutated<TargetQubit> const permutated_target_qubit,
           ::ket::mpi::permutated<ControlQubit> const permutated_control_qubit)
         { return {parallel_policy, phase1, phase2, permutated_target_qubit, permutated_control_qubit}; }
-# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+      } // namespace phase_shift_detail
 
+# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+      namespace local
+      {
         // U2+_i(s,s')
         // U2+_1(s,s') (a_0 |0> + a_1 |1>) = (a_0 + e^{-is} a_1)/sqrt(2) |0> + (-e^{-is'} a_0 + e^{-i(s+s')} a_1)/sqrt(2) |1>
         template <
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger,
           typename Allocator, typename Real>
-        inline RandomAccessRange& do_adj_phase_shift2(
+        inline RandomAccessRange& adj_phase_shift2(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -2003,6 +2040,9 @@ namespace ket
           Real const phase1, Real const phase2, ::ket::qubit<StateInteger, BitInteger> const qubit)
         {
           auto const permutated_qubit = permutation[qubit];
+          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
+            mpi_policy, local_state, communicator, environment, permutated_qubit);
+
           if (::ket::mpi::page::is_on_page(permutated_qubit, local_state))
             return ::ket::mpi::gate::page::adj_phase_shift2(
               parallel_policy, local_state, phase1, phase2, permutated_qubit);
@@ -2031,7 +2071,7 @@ namespace ket
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger,
           typename Allocator, typename Real>
-        inline RandomAccessRange& do_adj_phase_shift2(
+        inline RandomAccessRange& adj_phase_shift2(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -2042,6 +2082,9 @@ namespace ket
         {
           auto const permutated_target_qubit = permutation[target_qubit];
           auto const permutated_control_qubit = permutation[control_qubit];
+          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
+            mpi_policy, local_state, communicator, environment, permutated_target_qubit, permutated_control_qubit);
+
           if (::ket::mpi::page::is_on_page(permutated_target_qubit, local_state))
           {
             if (::ket::mpi::page::is_on_page(permutated_control_qubit, local_state))
@@ -2078,7 +2121,7 @@ namespace ket
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator,
           typename Real, typename... ControlQubits>
-        inline RandomAccessRange& do_adj_phase_shift2(
+        inline RandomAccessRange& adj_phase_shift2(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -2089,6 +2132,10 @@ namespace ket
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
           ControlQubits const... control_qubits)
         {
+          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
+            mpi_policy, local_state, communicator, environment,
+            permutation[target_qubit], permutation[control_qubit1], permutation[control_qubit2], permutation[control_qubits]...);
+
           auto const data_block_size
             = ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment);
           auto const num_data_blocks
@@ -2106,7 +2153,10 @@ namespace ket
 
           return local_state;
         }
+      } // namespace local
 
+      namespace phase_shift_detail
+      {
         template <
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger,
@@ -2126,7 +2176,7 @@ namespace ket
             mpi_policy, parallel_policy,
             local_state, qubit_array, permutation, buffer, communicator, environment);
 
-          return ::ket::mpi::gate::phase_shift_detail::do_adj_phase_shift2(
+          return ::ket::mpi::gate::local::adj_phase_shift2(
             mpi_policy, parallel_policy, local_state, permutation, communicator, environment, phase1, phase2, target_qubit, control_qubits...);
         }
 
@@ -2151,7 +2201,7 @@ namespace ket
             mpi_policy, parallel_policy,
             local_state, qubit_array, permutation, buffer, datatype, communicator, environment);
 
-          return ::ket::mpi::gate::phase_shift_detail::do_adj_phase_shift2(
+          return ::ket::mpi::gate::local::adj_phase_shift2(
             mpi_policy, parallel_policy, local_state, permutation, communicator, environment, phase1, phase2, target_qubit, control_qubits...);
         }
       } // namespace phase_shift_detail
@@ -2397,9 +2447,9 @@ namespace ket
           local_state, permutation, buffer, datatype, communicator, environment, phase1, phase2, target_qubit, control_qubits...);
       }
 
+# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
       namespace phase_shift_detail
       {
-# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
         template <typename ParallelPolicy, typename Real, typename Qubit>
         struct call_phase_shift3
         {
@@ -2477,15 +2527,18 @@ namespace ket
           ::ket::mpi::permutated<TargetQubit> const permutated_target_qubit,
           ::ket::mpi::permutated<ControlQubit> const permutated_control_qubit)
         { return {parallel_policy, phase1, phase2, phase3, permutated_target_qubit, permutated_control_qubit}; }
-# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+      } // namespace phase_shift_detail
 
+# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+      namespace local
+      {
         // U3_i(s,s',s'')
         // U3_1(s,s',s'') (a_0 |0> + a_1 |1>) = (cos(s/2) a_0 - e^{is''} sin(s/2) a_1) |0> + (e^{is'} sin(s/2) a_0 + e^{i(s'+s'')} cos(s/2) a_1) |1>
         template <
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger,
           typename Allocator, typename Real>
-        inline RandomAccessRange& do_phase_shift3(
+        inline RandomAccessRange& phase_shift3(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -2494,6 +2547,9 @@ namespace ket
           ::ket::qubit<StateInteger, BitInteger> const qubit)
         {
           auto const permutated_qubit = permutation[qubit];
+          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
+            mpi_policy, local_state, communicator, environment, permutated_qubit);
+
           if (::ket::mpi::page::is_on_page(permutated_qubit, local_state))
             return ::ket::mpi::gate::page::phase_shift3(
               parallel_policy, local_state, phase1, phase2, phase3, permutated_qubit);
@@ -2522,7 +2578,7 @@ namespace ket
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger,
           typename Allocator, typename Real>
-        inline RandomAccessRange& do_phase_shift3(
+        inline RandomAccessRange& phase_shift3(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -2533,6 +2589,9 @@ namespace ket
         {
           auto const permutated_target_qubit = permutation[target_qubit];
           auto const permutated_control_qubit = permutation[control_qubit];
+          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
+            mpi_policy, local_state, communicator, environment, permutated_target_qubit, permutated_control_qubit);
+
           if (::ket::mpi::page::is_on_page(permutated_target_qubit, local_state))
           {
             if (::ket::mpi::page::is_on_page(permutated_control_qubit, local_state))
@@ -2569,7 +2628,7 @@ namespace ket
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator,
           typename Real, typename... ControlQubits>
-        inline RandomAccessRange& do_phase_shift3(
+        inline RandomAccessRange& phase_shift3(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -2580,6 +2639,10 @@ namespace ket
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
           ControlQubits const... control_qubits)
         {
+          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
+            mpi_policy, local_state, communicator, environment,
+            permutation[target_qubit], permutation[control_qubit1], permutation[control_qubit2], permutation[control_qubits]...);
+
           auto const data_block_size
             = ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment);
           auto const num_data_blocks
@@ -2597,7 +2660,10 @@ namespace ket
 
           return local_state;
         }
+      } // namespace local
 
+      namespace phase_shift_detail
+      {
         template <
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger,
@@ -2617,7 +2683,7 @@ namespace ket
             mpi_policy, parallel_policy,
             local_state, qubit_array, permutation, buffer, communicator, environment);
 
-          return ::ket::mpi::gate::phase_shift_detail::do_phase_shift3(
+          return ::ket::mpi::gate::local::phase_shift3(
             mpi_policy, parallel_policy, local_state, permutation, communicator, environment, phase1, phase2, phase3, target_qubit, control_qubits...);
         }
 
@@ -2642,7 +2708,7 @@ namespace ket
             mpi_policy, parallel_policy,
             local_state, qubit_array, permutation, buffer, datatype, communicator, environment);
 
-          return ::ket::mpi::gate::phase_shift_detail::do_phase_shift3(
+          return ::ket::mpi::gate::local::phase_shift3(
             mpi_policy, parallel_policy, local_state, permutation, communicator, environment, phase1, phase2, phase3, target_qubit, control_qubits...);
         }
       } // namespace phase_shift_detail
@@ -2896,9 +2962,9 @@ namespace ket
 
       // U3+_i(s,s',s'')
       // U3+_1(s,s',s'') (a_0 |0> + a_1 |1>) = (cos(s/2) a_0 + e^{-is'} sin(s/2) a_1) |0> + (-e^{-is''} sin(s/2) a_0 + e^{-i(s'+s'')} cos(s/2) a_1) |1>
+# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
       namespace phase_shift_detail
       {
-# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
         template <typename ParallelPolicy, typename Real, typename Qubit>
         struct call_adj_phase_shift3
         {
@@ -2976,13 +3042,16 @@ namespace ket
           ::ket::mpi::permutated<TargetQubit> const permutated_target_qubit,
           ::ket::mpi::permutated<ControlQubit> const permutated_control_qubit)
         { return {parallel_policy, phase1, phase2, phase3, permutated_target_qubit, permutated_control_qubit}; }
-# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+      } // namespace phase_shift_detail
 
+# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+      namespace local
+      {
         template <
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger,
           typename Allocator, typename Real>
-        inline RandomAccessRange& do_adj_phase_shift3(
+        inline RandomAccessRange& adj_phase_shift3(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -2991,6 +3060,9 @@ namespace ket
           ::ket::qubit<StateInteger, BitInteger> const qubit)
         {
           auto const permutated_qubit = permutation[qubit];
+          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
+            mpi_policy, local_state, communicator, environment, permutated_qubit);
+
           if (::ket::mpi::page::is_on_page(permutated_qubit, local_state))
             return ::ket::mpi::gate::page::adj_phase_shift3(
               parallel_policy, local_state, phase1, phase2, phase3, permutated_qubit);
@@ -3019,7 +3091,7 @@ namespace ket
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger,
           typename Allocator, typename Real>
-        inline RandomAccessRange& do_adj_phase_shift3(
+        inline RandomAccessRange& adj_phase_shift3(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -3030,6 +3102,9 @@ namespace ket
         {
           auto const permutated_target_qubit = permutation[target_qubit];
           auto const permutated_control_qubit = permutation[control_qubit];
+          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
+            mpi_policy, local_state, communicator, environment, permutated_target_qubit, permutated_control_qubit);
+
           if (::ket::mpi::page::is_on_page(permutated_target_qubit, local_state))
           {
             if (::ket::mpi::page::is_on_page(permutated_control_qubit, local_state))
@@ -3066,7 +3141,7 @@ namespace ket
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator,
           typename Real, typename... ControlQubits>
-        inline RandomAccessRange& do_adj_phase_shift3(
+        inline RandomAccessRange& adj_phase_shift3(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -3077,6 +3152,10 @@ namespace ket
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
           ControlQubits const... control_qubits)
         {
+          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
+            mpi_policy, local_state, communicator, environment,
+            permutation[target_qubit], permutation[control_qubit1], permutation[control_qubit2], permutation[control_qubits]...);
+
           auto const data_block_size
             = ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment);
           auto const num_data_blocks
@@ -3094,7 +3173,10 @@ namespace ket
 
           return local_state;
         }
+      } // namespace local
 
+      namespace phase_shift_detail
+      {
         template <
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger,
@@ -3114,7 +3196,7 @@ namespace ket
             mpi_policy, parallel_policy,
             local_state, qubit_array, permutation, buffer, communicator, environment);
 
-          return ::ket::mpi::gate::phase_shift_detail::do_adj_phase_shift3(
+          return ::ket::mpi::gate::local::adj_phase_shift3(
             mpi_policy, parallel_policy, local_state, permutation, communicator, environment, phase1, phase2, phase3, target_qubit, control_qubits...);
         }
 
@@ -3139,7 +3221,7 @@ namespace ket
             mpi_policy, parallel_policy,
             local_state, qubit_array, permutation, buffer, datatype, communicator, environment);
 
-          return ::ket::mpi::gate::phase_shift_detail::do_adj_phase_shift3(
+          return ::ket::mpi::gate::local::adj_phase_shift3(
             mpi_policy, parallel_policy, local_state, permutation, communicator, environment, phase1, phase2, phase3, target_qubit, control_qubits...);
         }
       } // namespace phase_shift_detail

@@ -28,6 +28,7 @@
 # include <ket/mpi/utility/for_each_local_range.hpp>
 # include <ket/mpi/utility/logger.hpp>
 # include <ket/mpi/gate/detail/append_qubits_string.hpp>
+# include <ket/mpi/gate/detail/assert_all_qubits_are_local.hpp>
 # include <ket/mpi/gate/page/controlled_v.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
 
@@ -39,9 +40,9 @@ namespace ket
     namespace gate
     {
       // controlled_v_coeff
+# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
       namespace controlled_v_detail
       {
-# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
         template <
           typename ParallelPolicy, typename Complex,
           typename TargetQubit, typename ControlQubit>
@@ -81,8 +82,11 @@ namespace ket
           ::ket::mpi::permutated<TargetQubit> const permutated_target_qubit,
           ::ket::mpi::permutated<ControlQubit> const permutated_control_qubit)
         { return {parallel_policy, phase_coefficient, permutated_target_qubit, permutated_control_qubit}; }
-# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+      } // namespace controlled_v_detail
 
+# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+      namespace local
+      {
         // V_{tc}(theta) or CV_{tc}(theta)
         // V_{1,2}(theta) (a_{00} |00> + a_{01} |01> + a_{10} |10> + a_{11} |11>)
         //   = a_{00} |00> + a_{01} |01> + [a_{10} (1+e^{i theta})/2 + a_{11} (1-e^{i theta})/2] |10> + [a_{10} (1-e^{i theta})/2 + a_{11} (1+e^{i theta})/2] |11>
@@ -90,7 +94,7 @@ namespace ket
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger,
           typename Allocator, typename Complex>
-        inline RandomAccessRange& do_controlled_v_coeff(
+        inline RandomAccessRange& controlled_v_coeff(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -101,6 +105,9 @@ namespace ket
         {
           auto const permutated_target_qubit = permutation[target_qubit];
           auto const permutated_control_qubit = permutation[control_qubit];
+          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
+            mpi_policy, local_state, communicator, environment, permutated_target_qubit, permutated_control_qubit);
+
           if (::ket::mpi::page::is_on_page(permutated_target_qubit, local_state))
           {
             if (::ket::mpi::page::is_on_page(permutated_control_qubit, local_state))
@@ -137,7 +144,7 @@ namespace ket
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger,
           typename Allocator, typename Complex, typename... ControlQubits>
-        inline RandomAccessRange& do_controlled_v_coeff(
+        inline RandomAccessRange& controlled_v_coeff(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -147,6 +154,10 @@ namespace ket
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2, ControlQubits const... control_qubits)
         {
+          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
+            mpi_policy, local_state, communicator, environment,
+            permutation[target_qubit], permutation[control_qubit1], permutation[control_qubit2], permutation[control_qubits]...);
+
           auto const data_block_size
             = ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment);
           auto const num_data_blocks
@@ -162,7 +173,10 @@ namespace ket
 
           return local_state;
         }
+      } // namespace local
 
+      namespace controlled_v_detail
+      {
         template <
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger,
@@ -183,7 +197,7 @@ namespace ket
             mpi_policy, parallel_policy,
             local_state, qubits, permutation, buffer, communicator, environment);
 
-          return ::ket::mpi::gate::controlled_v_detail::do_controlled_v_coeff(
+          return ::ket::mpi::gate::local::controlled_v_coeff(
             mpi_policy, parallel_policy,
             local_state, permutation, communicator, environment,
             phase_coefficient, target_qubit, control_qubit, control_qubits...);
@@ -210,7 +224,7 @@ namespace ket
             mpi_policy, parallel_policy,
             local_state, qubits, permutation, buffer, datatype, communicator, environment);
 
-          return ::ket::mpi::gate::controlled_v_detail::do_controlled_v_coeff(
+          return ::ket::mpi::gate::local::controlled_v_coeff(
             mpi_policy, parallel_policy,
             local_state, permutation, communicator, environment,
             phase_coefficient, target_qubit, control_qubit, control_qubits...);
