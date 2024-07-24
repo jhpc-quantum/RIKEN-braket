@@ -27,6 +27,7 @@
 # include <ket/mpi/utility/for_each_local_range.hpp>
 # include <ket/mpi/utility/logger.hpp>
 # include <ket/mpi/gate/detail/append_qubits_string.hpp>
+# include <ket/mpi/gate/detail/assert_all_qubits_are_local.hpp>
 # include <ket/mpi/gate/page/swap.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
 
@@ -37,9 +38,9 @@ namespace ket
   {
     namespace gate
     {
+# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
       namespace swap_detail
       {
-# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
         template <typename ParallelPolicy, typename Qubit>
         struct call_swap
         {
@@ -72,15 +73,18 @@ namespace ket
           ::ket::mpi::permutated<Qubit> const permutated_qubit1,
           ::ket::mpi::permutated<Qubit> const permutated_qubit2)
         { return {parallel_policy, permutated_qubit1, permutated_qubit2}; }
-# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+      } // namespace swap_detail
 
+# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+      namespace local
+      {
         // SWAP_{ij}
         // SWAP_{1,2} (a_{00} |00> + a_{01} |01> + a_{10} |10> + a_{11} |11>)
         //   = a_{00} |00> + a_{10} |01> + a_{01} |10> + a_{11} |11>
         template <
           typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename Allocator>
-        inline RandomAccessRange& do_swap(
+        inline RandomAccessRange& swap(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -90,6 +94,9 @@ namespace ket
         {
           auto const permutated_qubit1 = permutation[qubit1];
           auto const permutated_qubit2 = permutation[qubit2];
+          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
+            mpi_policy, local_state, communicator, environment, permutated_qubit1, permutated_qubit2);
+
           if (::ket::mpi::page::is_on_page(permutated_qubit1, local_state))
           {
             if (::ket::mpi::page::is_on_page(permutated_qubit2, local_state))
@@ -126,7 +133,7 @@ namespace ket
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger,
           typename Allocator, typename... ControlQubits>
-        inline RandomAccessRange& do_swap(
+        inline RandomAccessRange& swap(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -136,6 +143,10 @@ namespace ket
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit,
           ControlQubits const... control_qubits)
         {
+          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
+            mpi_policy, local_state, communicator, environment,
+            permutation[target_qubit1], permutation[target_qubit2], permutation[control_qubit], permutation[control_qubits]...);
+
           auto const data_block_size
             = ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment);
           auto const num_data_blocks
@@ -151,7 +162,10 @@ namespace ket
 
           return local_state;
         }
+      } // namespace local
 
+      namespace swap_detail
+      {
         template <
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger,
@@ -172,7 +186,7 @@ namespace ket
             mpi_policy, parallel_policy,
             local_state, qubit_array, permutation, buffer, communicator, environment);
 
-          return ::ket::mpi::gate::swap_detail::do_swap(
+          return ::ket::mpi::gate::local::swap(
             mpi_policy, parallel_policy, local_state, permutation, communicator, environment, target_qubit1, target_qubit2, control_qubits...);
         }
 
@@ -197,7 +211,7 @@ namespace ket
             mpi_policy, parallel_policy,
             local_state, qubit_array, permutation, buffer, datatype, communicator, environment);
 
-          return ::ket::mpi::gate::swap_detail::do_swap(
+          return ::ket::mpi::gate::local::swap(
             mpi_policy, parallel_policy, local_state, permutation, communicator, environment, target_qubit1, target_qubit2, control_qubits...);
         }
       } // namespace swap_detail

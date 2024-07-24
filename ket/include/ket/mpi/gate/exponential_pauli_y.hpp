@@ -29,6 +29,7 @@
 # include <ket/mpi/utility/for_each_local_range.hpp>
 # include <ket/mpi/utility/logger.hpp>
 # include <ket/mpi/gate/detail/append_qubits_string.hpp>
+# include <ket/mpi/gate/detail/assert_all_qubits_are_local.hpp>
 # include <ket/mpi/gate/page/exponential_pauli_y.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
 
@@ -40,9 +41,9 @@ namespace ket
     namespace gate
     {
       // exponential_pauli_y_coeff
+# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
       namespace exponential_pauli_y_detail
       {
-# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
         template <typename ParallelPolicy, typename Complex, typename Qubit>
         struct call_exponential_pauli_y_coeff1
         {
@@ -142,15 +143,18 @@ namespace ket
           ::ket::mpi::permutated<Qubit> const permutated_target_qubit,
           ::ket::mpi::permutated< ::ket::control<Qubit> > const permutated_control_qubit)
         { return {parallel_policy, phase_coefficient, permutated_target_qubit, permutated_control_qubit}; }
-# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+      } // namespace exponential_pauli_y_detail
 
+# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+      namespace local
+      {
         // eY_i(theta) = exp(i theta Y_i) = I cos(theta) + i Y_i sin(theta), or eY1_i(theta)
         // eY_1(theta) (a_0 |0> + a_1 |1>) = (cos(theta) a_0 + sin(theta) a_1) |0> + (-sin(theta) a_0 + cos(theta) a_1) |1>
         template <
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename Allocator, typename Complex>
-        inline RandomAccessRange& do_exponential_pauli_y_coeff(
+        inline RandomAccessRange& exponential_pauli_y_coeff(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -159,6 +163,9 @@ namespace ket
           ::ket::qubit<StateInteger, BitInteger> const qubit)
         {
           auto const permutated_qubit = permutation[qubit];
+          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
+            mpi_policy, local_state, communicator, environment, permutated_qubit);
+
           if (::ket::mpi::page::is_on_page(permutated_qubit, local_state))
             return ::ket::mpi::gate::page::exponential_pauli_y_coeff1(
               parallel_policy, local_state, phase_coefficient, permutated_qubit);
@@ -188,7 +195,7 @@ namespace ket
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename Allocator, typename Complex>
-        inline RandomAccessRange& do_exponential_pauli_y_coeff(
+        inline RandomAccessRange& exponential_pauli_y_coeff(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -199,6 +206,9 @@ namespace ket
         {
           auto const permutated_qubit1 = permutation[qubit1];
           auto const permutated_qubit2 = permutation[qubit2];
+          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
+            mpi_policy, local_state, communicator, environment, permutated_qubit1, permutated_qubit2);
+
           if (::ket::mpi::page::is_on_page(permutated_qubit1, local_state))
           {
             if (::ket::mpi::page::is_on_page(permutated_qubit2, local_state))
@@ -238,7 +248,7 @@ namespace ket
           typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename Allocator,
           typename Complex>
-        inline RandomAccessRange& do_exponential_pauli_y_coeff(
+        inline RandomAccessRange& exponential_pauli_y_coeff(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -249,6 +259,9 @@ namespace ket
         {
           auto const permutated_target_qubit = permutation[target_qubit];
           auto const permutated_control_qubit = permutation[control_qubit];
+          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
+            mpi_policy, local_state, communicator, environment, permutated_target_qubit, permutated_control_qubit);
+
           if (::ket::mpi::page::is_on_page(permutated_target_qubit, local_state))
           {
             if (::ket::mpi::page::is_on_page(permutated_control_qubit, local_state))
@@ -287,7 +300,7 @@ namespace ket
           typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename Allocator,
           typename Complex, typename Qubit2, typename Qubit3, typename... Qubits>
-        inline RandomAccessRange& do_exponential_pauli_y_coeff(
+        inline RandomAccessRange& exponential_pauli_y_coeff(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -295,6 +308,10 @@ namespace ket
           Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
           ::ket::qubit<StateInteger, BitInteger> const qubit1, Qubit2 const qubit2, Qubit3 const qubit3, Qubits const... qubits)
         {
+          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
+            mpi_policy, local_state, communicator, environment,
+            permutation[qubit1], permutation[qubit2], permutation[qubit3], permutation[qubits]...);
+
           auto const data_block_size
             = ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment);
           auto const num_data_blocks
@@ -310,7 +327,10 @@ namespace ket
 
           return local_state;
         }
+      } // namespace local
 
+      namespace exponential_pauli_y_detail
+      {
         template <
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange,
@@ -332,7 +352,7 @@ namespace ket
             mpi_policy, parallel_policy,
             local_state, qubit_array, permutation, buffer, communicator, environment);
 
-          return ::ket::mpi::gate::exponential_pauli_y_detail::do_exponential_pauli_y_coeff(
+          return ::ket::mpi::gate::local::exponential_pauli_y_coeff(
             mpi_policy, parallel_policy,
             local_state, permutation, communicator, environment, phase_coefficient, qubit, qubits...);
         }
@@ -359,7 +379,7 @@ namespace ket
             mpi_policy, parallel_policy,
             local_state, qubit_array, permutation, buffer, datatype, communicator, environment);
 
-          return ::ket::mpi::gate::exponential_pauli_y_detail::do_exponential_pauli_y_coeff(
+          return ::ket::mpi::gate::local::exponential_pauli_y_coeff(
             mpi_policy, parallel_policy,
             local_state, permutation, communicator, environment, phase_coefficient, qubit, qubits...);
         }

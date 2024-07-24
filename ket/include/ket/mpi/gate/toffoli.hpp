@@ -24,6 +24,7 @@
 # include <ket/mpi/utility/simple_mpi.hpp>
 # include <ket/mpi/utility/for_each_local_range.hpp>
 # include <ket/mpi/utility/logger.hpp>
+# include <ket/mpi/gate/detail/assert_all_qubits_are_local.hpp>
 # include <ket/mpi/gate/page/toffoli.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
 
@@ -37,9 +38,9 @@ namespace ket
       // TOFFOLI_{t,c1,c2}
       // TOFFOLI_{1,2,3} (a_{000} |000> + a_{001} |001> + a_{010} |010> + a_{011} |011> + a_{100} |100> + a_{101} |101> + a_{110} |110> + a_{111} |111>)
       //   = a_{000} |000> + a_{001} |001> + a_{010} |010> + a_{011} |011> + a_{100} |100> + a_{101} |101> + a_{111} |110> + a_{110} |111>
+# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
       namespace toffoli_detail
       {
-# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
         template <typename ParallelPolicy, typename TargetQubit, typename ControlQubit>
         struct call_toffoli
         {
@@ -78,8 +79,11 @@ namespace ket
           ::ket::mpi::permutated<ControlQubit> const permutated_control_qubit1,
           ::ket::mpi::permutated<ControlQubit> const permutated_control_qubit2)
         { return {parallel_policy, permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2}; }
-# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+      } // namespace toffoli_detail
 
+# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+      namespace local
+      {
         template <
           typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename Allocator>
@@ -95,6 +99,10 @@ namespace ket
           auto const permutated_target_qubit = permutation[target_qubit];
           auto const permutated_control_qubit1 = permutation[control_qubit1];
           auto const permutated_control_qubit2 = permutation[control_qubit2];
+          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
+            mpi_policy, local_state, communicator, environment,
+            permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2);
+
           if (::ket::mpi::page::is_on_page(permutated_target_qubit, local_state))
           {
             if (::ket::mpi::page::is_on_page(permutated_control_qubit1, local_state))
@@ -146,7 +154,7 @@ namespace ket
               permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }
-      } // namespace toffoli_detail
+      } // namespace local
 
       // [[deprecated]]
       template <
@@ -173,7 +181,7 @@ namespace ket
           mpi_policy, parallel_policy,
           local_state, qubits, permutation, buffer, communicator, environment);
 
-        return ::ket::mpi::gate::toffoli_detail::toffoli(
+        return ::ket::mpi::gate::local::toffoli(
           mpi_policy, parallel_policy, local_state, permutation, communicator, environment, target_qubit, control_qubit1, control_qubit2);
       }
 
@@ -203,7 +211,7 @@ namespace ket
           mpi_policy, parallel_policy,
           local_state, qubits, permutation, buffer, datatype, communicator, environment);
 
-        return ::ket::mpi::gate::toffoli_detail::toffoli(
+        return ::ket::mpi::gate::local::toffoli(
           mpi_policy, parallel_policy, local_state, permutation, communicator, environment, target_qubit, control_qubit1, control_qubit2);
       }
 
@@ -229,7 +237,7 @@ namespace ket
           mpi_policy, parallel_policy,
           local_state, qubits, permutation, buffer, communicator, environment);
 
-        return ::ket::mpi::gate::toffoli_detail::toffoli(
+        return ::ket::mpi::gate::local::toffoli(
           mpi_policy, parallel_policy, local_state, permutation, communicator, environment, target_qubit, control_qubit1, control_qubit2);
       }
 
@@ -257,7 +265,7 @@ namespace ket
           mpi_policy, parallel_policy,
           local_state, qubits, permutation, buffer, datatype, communicator, environment);
 
-        return ::ket::mpi::gate::toffoli_detail::toffoli(
+        return ::ket::mpi::gate::local::toffoli(
           mpi_policy, parallel_policy, local_state, permutation, communicator, environment, target_qubit, control_qubit1, control_qubit2);
       }
 
@@ -423,9 +431,9 @@ namespace ket
           local_state, permutation, buffer, datatype, communicator, environment, target_qubit, control_qubit1, control_qubit2);
       }
 
+# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
       namespace toffoli_detail
       {
-# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
         template <typename ParallelPolicy, typename TargetQubit, typename ControlQubit>
         struct call_adj_toffoli
         {
@@ -464,8 +472,11 @@ namespace ket
           ::ket::mpi::permutated<ControlQubit> const permutated_control_qubit1,
           ::ket::mpi::permutated<ControlQubit> const permutated_control_qubit2)
         { return {parallel_policy, permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2}; }
-# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+      } // namespace toffoli_detail
 
+# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+      namespace local
+      {
         template <
           typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename Allocator>
@@ -481,6 +492,10 @@ namespace ket
           auto const permutated_target_qubit = permutation[target_qubit];
           auto const permutated_control_qubit1 = permutation[control_qubit1];
           auto const permutated_control_qubit2 = permutation[control_qubit2];
+          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
+            mpi_policy, local_state, communicator, environment,
+            permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2);
+
           if (::ket::mpi::page::is_on_page(permutated_target_qubit, local_state))
           {
             if (::ket::mpi::page::is_on_page(permutated_control_qubit1, local_state))
@@ -533,7 +548,7 @@ namespace ket
               permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }
-      } // namespace toffoli_detail
+      } // namespace local
 
       // [[deprecated]]
       template <
@@ -560,7 +575,7 @@ namespace ket
           mpi_policy, parallel_policy,
           local_state, qubits, permutation, buffer, communicator, environment);
 
-        return ::ket::mpi::gate::toffoli_detail::adj_toffoli(
+        return ::ket::mpi::gate::local::adj_toffoli(
           mpi_policy, parallel_policy, local_state, permutation, communicator, environment, target_qubit, control_qubit1, control_qubit2);
       }
 
@@ -590,7 +605,7 @@ namespace ket
           mpi_policy, parallel_policy,
           local_state, qubits, permutation, buffer, datatype, communicator, environment);
 
-        return ::ket::mpi::gate::toffoli_detail::adj_toffoli(
+        return ::ket::mpi::gate::local::adj_toffoli(
           mpi_policy, parallel_policy, local_state, permutation, communicator, environment, target_qubit, control_qubit1, control_qubit2);
       }
 
@@ -616,7 +631,7 @@ namespace ket
           mpi_policy, parallel_policy,
           local_state, qubits, permutation, buffer, communicator, environment);
 
-        return ::ket::mpi::gate::toffoli_detail::adj_toffoli(
+        return ::ket::mpi::gate::local::adj_toffoli(
           mpi_policy, parallel_policy, local_state, permutation, communicator, environment, target_qubit, control_qubit1, control_qubit2);
       }
 
@@ -645,7 +660,7 @@ namespace ket
           mpi_policy, parallel_policy,
           local_state, qubits, permutation, buffer, datatype, communicator, environment);
 
-        return ::ket::mpi::gate::toffoli_detail::adj_toffoli(
+        return ::ket::mpi::gate::local::adj_toffoli(
           mpi_policy, parallel_policy, local_state, permutation, communicator, environment, target_qubit, control_qubit1, control_qubit2);
       }
 

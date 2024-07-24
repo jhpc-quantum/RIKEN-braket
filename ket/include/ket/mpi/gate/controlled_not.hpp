@@ -27,6 +27,7 @@
 # include <ket/mpi/utility/simple_mpi.hpp>
 # include <ket/mpi/utility/for_each_local_range.hpp>
 # include <ket/mpi/utility/logger.hpp>
+# include <ket/mpi/gate/detail/assert_all_qubits_are_local.hpp>
 # include <ket/mpi/gate/page/controlled_not.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
 
@@ -40,9 +41,9 @@ namespace ket
       // CNOT_{tc}
       // CNOT_{1,2} (a_{00} |00> + a_{01} |01> + a_{10} |10> + a_{11} |11>)
       //   = a_{00} |00> + a_{01} |01> + a_{11} |10> + a_{10} |11>
+# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
       namespace controlled_not_detail
       {
-# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
         template <typename ParallelPolicy, typename TargetQubit, typename ControlQubit>
         struct call_controlled_not
         {
@@ -77,8 +78,12 @@ namespace ket
           ::ket::mpi::permutated<TargetQubit> const permutated_target_qubit,
           ::ket::mpi::permutated<ControlQubit> const permutated_control_qubit)
         { return {parallel_policy, permutated_target_qubit, permutated_control_qubit}; }
-# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+        }
+      } // namespace controlled_not_detail
 
+# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+      namespace local
+      {
         // [[deprecated]]
         template <
           typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange,
@@ -93,6 +98,9 @@ namespace ket
         {
           auto const permutated_target_qubit = permutation[target_qubit];
           auto const permutated_control_qubit = permutation[control_qubit];
+          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
+            mpi_policy, local_state, communicator, environment, permutated_target_qubit, permutated_control_qubit);
+
           if (::ket::mpi::page::is_on_page(permutated_target_qubit, local_state))
           {
             if (::ket::mpi::page::is_on_page(permutated_control_qubit, local_state))
@@ -123,7 +131,7 @@ namespace ket
               parallel_policy, permutated_target_qubit, permutated_control_qubit));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }
-      } // namespace controlled_not_detail
+      } // namespace local
 
       // [[deprecated]]
       template <
@@ -148,7 +156,7 @@ namespace ket
           mpi_policy, parallel_policy,
           local_state, qubits, permutation, buffer, communicator, environment);
 
-        return ::ket::mpi::gate::controlled_not_detail::controlled_not(
+        return ::ket::mpi::gate::local::controlled_not(
           mpi_policy, parallel_policy, local_state, target_qubit, control_qubit, permutation, communicator, environment);
       }
 
@@ -176,7 +184,7 @@ namespace ket
           mpi_policy, parallel_policy,
           local_state, qubits, permutation, buffer, datatype, communicator, environment);
 
-        return ::ket::mpi::gate::controlled_not_detail::controlled_not(
+        return ::ket::mpi::gate::local::controlled_not(
           mpi_policy, parallel_policy, local_state, target_qubit, control_qubit, permutation, communicator, environment);
       }
 
@@ -371,9 +379,9 @@ namespace ket
           local_state, permutation, buffer, datatype, communicator, environment, target_qubit, control_qubit, control_qubits...);
       }
 
+# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
       namespace controlled_not_detail
       {
-# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
         template <typename ParallelPolicy, typename TargetQubit, typename ControlQubit>
         struct call_adj_controlled_not
         {
@@ -408,8 +416,11 @@ namespace ket
           ::ket::mpi::permutated<TargetQubit> const permutated_target_qubit,
           ::ket::mpi::permutated<ControlQubit> const permutated_control_qubit)
         { return {parallel_policy, permutated_target_qubit, permutated_control_qubit}; }
-# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+      } // namespace controlled_not_detail
 
+# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+      namespace local
+      {
         // [[deprecated]]
         template <
           typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange,
@@ -424,6 +435,9 @@ namespace ket
         {
           auto const permutated_target_qubit = permutation[target_qubit];
           auto const permutated_control_qubit = permutation[control_qubit];
+          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
+            mpi_policy, local_state, communicator, environment, permutated_target_qubit, permutated_control_qubit);
+
           if (::ket::mpi::page::is_on_page(permutated_target_qubit, local_state))
           {
             if (::ket::mpi::page::is_on_page(permutated_control_qubit, local_state))
@@ -454,7 +468,7 @@ namespace ket
               parallel_policy, permutated_target_qubit, permutated_control_qubit));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }
-      } // namespace controlled_not_detail
+      } // namespace local
 
       // [[deprecated]]
       template <
@@ -479,7 +493,7 @@ namespace ket
           mpi_policy, parallel_policy,
           local_state, qubits, permutation, buffer, communicator, environment);
 
-        return ::ket::mpi::gate::controlled_not_detail::controlled_not(
+        return ::ket::mpi::gate::local::controlled_not(
           mpi_policy, parallel_policy, local_state, target_qubit, control_qubit, permutation, communicator, environment);
       }
 
@@ -507,7 +521,7 @@ namespace ket
           mpi_policy, parallel_policy,
           local_state, qubits, permutation, buffer, datatype, communicator, environment);
 
-        return ::ket::mpi::gate::controlled_not_detail::controlled_not(
+        return ::ket::mpi::gate::local::controlled_not(
           mpi_policy, parallel_policy, local_state, target_qubit, control_qubit, permutation, communicator, environment);
       }
 

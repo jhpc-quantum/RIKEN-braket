@@ -17,11 +17,14 @@
 #   include <ket/qubit_io.hpp>
 # endif // KET_PRINT_LOG
 # include <ket/gate/clear.hpp>
-# include <ket/mpi/permutated.hpp>
+# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
+#   include <ket/mpi/permutated.hpp>
+# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/simple_mpi.hpp>
 # include <ket/mpi/utility/for_each_local_range.hpp>
 # include <ket/mpi/utility/logger.hpp>
+# include <ket/mpi/gate/detail/assert_all_qubits_are_local.hpp>
 # include <ket/mpi/gate/page/clear.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
 
@@ -34,9 +37,9 @@ namespace ket
     {
       // CLEAR_i
       // CLEAR_1 (a_{0} |0> + a_{1} |1>) = |0>
+# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
       namespace clear_detail
       {
-# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
         template <typename ParallelPolicy, typename Qubit>
         struct call_clear
         {
@@ -59,8 +62,11 @@ namespace ket
         inline call_clear<ParallelPolicy, Qubit> make_call_clear(
           ParallelPolicy const parallel_policy, ::ket::mpi::permutated<Qubit> const permutated_qubit)
         { return {parallel_policy, permutated_qubit}; }
-# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+      } // namespace clear_detail
 
+# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
+      namespace local
+      {
         template <
           typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename Allocator>
@@ -72,6 +78,9 @@ namespace ket
           ::ket::qubit<StateInteger, BitInteger> const qubit)
         {
           auto const permutated_qubit = permutation[qubit];
+          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
+            mpi_policy, local_state, communicator, environment, permutated_qubit);
+
           if (::ket::mpi::page::is_on_page(permutated_qubit, local_state))
             return ::ket::mpi::gate::page::clear(parallel_policy, local_state, permutated_qubit);
 
@@ -86,7 +95,7 @@ namespace ket
             ::ket::mpi::gate::clear_detail::make_call_clear(parallel_policy, permutated_qubit));
 # endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }
-      } // namespace clear_detail
+      } // namespace local
 
       // [[deprecated]]
       template <
@@ -110,7 +119,7 @@ namespace ket
           mpi_policy, parallel_policy,
           local_state, qubits, permutation, buffer, communicator, environment);
 
-        return ::ket::mpi::gate::clear_detail::clear(
+        return ::ket::mpi::gate::local::clear(
           mpi_policy, parallel_policy, local_state, permutation, communicator, environment, qubit);
       }
 
@@ -138,7 +147,7 @@ namespace ket
           mpi_policy, parallel_policy,
           local_state, qubits, permutation, buffer, datatype, communicator, environment);
 
-        return ::ket::mpi::gate::clear_detail::clear(
+        return ::ket::mpi::gate::local::clear(
           mpi_policy, parallel_policy, local_state, permutation, communicator, environment, qubit);
       }
 
@@ -161,7 +170,7 @@ namespace ket
           mpi_policy, parallel_policy,
           local_state, qubits, permutation, buffer, communicator, environment);
 
-        return ::ket::mpi::gate::clear_detail::clear(
+        return ::ket::mpi::gate::local::clear(
           mpi_policy, parallel_policy, local_state, permutation, communicator, environment, qubit);
       }
 
@@ -186,7 +195,7 @@ namespace ket
           mpi_policy, parallel_policy,
           local_state, qubits, permutation, buffer, datatype, communicator, environment);
 
-        return ::ket::mpi::gate::clear_detail::clear(
+        return ::ket::mpi::gate::local::clear(
           mpi_policy, parallel_policy, local_state, permutation, communicator, environment, qubit);
       }
 
