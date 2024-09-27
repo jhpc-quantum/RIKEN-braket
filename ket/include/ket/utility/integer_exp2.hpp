@@ -7,7 +7,7 @@ namespace ket
   namespace utility
   {
     template <typename UnsignedInteger, typename Exponent>
-    inline constexpr UnsignedInteger integer_exp2(Exponent const exponent) noexcept
+    inline constexpr auto integer_exp2(Exponent const exponent) noexcept -> UnsignedInteger
     { return UnsignedInteger{1u} << exponent; }
   } // namespace utility
 } // namespace ket

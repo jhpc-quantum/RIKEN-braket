@@ -10,20 +10,23 @@ namespace ket
   namespace utility
   {
     template <typename ForwardIterator>
-    inline bool is_unique_if_sorted(
-      ForwardIterator const first, ForwardIterator const last)
+    inline auto is_unique_if_sorted(ForwardIterator const first, ForwardIterator const last) -> bool
     {
       using value_type = typename std::iterator_traits<ForwardIterator>::value_type;
       auto sorted_values = std::vector<value_type>(first, last);
-      std::sort(std::begin(sorted_values), std::end(sorted_values));
-      return std::unique(std::begin(sorted_values), std::end(sorted_values)) == std::end(sorted_values);
+
+      using std::begin;
+      using std::end;
+      std::sort(begin(sorted_values), end(sorted_values));
+
+      return std::unique(begin(sorted_values), end(sorted_values)) == end(sorted_values);
     }
 
     namespace ranges
     {
       template <typename ForwardRange>
-      inline bool is_unique_if_sorted(ForwardRange const& range)
-      { return ::ket::utility::is_unique_if_sorted(std::begin(range), std::end(range)); }
+      inline auto is_unique_if_sorted(ForwardRange const& range) -> bool
+      { using std::begin; using std::end; return ::ket::utility::is_unique_if_sorted(begin(range), end(range)); }
     }
   } // namespace utility
 } // namespace ket

@@ -20,6 +20,7 @@
 # endif
 # include <ket/utility/imaginary_unit.hpp>
 # include <ket/utility/exp_i.hpp>
+# include <ket/utility/meta/ranges.hpp>
 
 
 namespace ket
@@ -31,16 +32,17 @@ namespace ket
     // eSWAP_{1,2}(s) (a_{00} |00> + a_{01} |01> + a_{10} |10> + a_{11} |11>)
     //   = e^{is} a_{00} |00> + (cos s a_{01} + i sin s a_{10}) |01> + (i sin s a_{01} + cos s a_{10}) |10> + e^{is} a_{11} |11>
     template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger>
-    inline void exponential_swap_coeff(
+    inline auto exponential_swap_coeff(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
       ::ket::qubit<StateInteger, BitInteger> const qubit1, ::ket::qubit<StateInteger, BitInteger> const qubit2)
+    -> void
     {
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
       static_assert(
-        (std::is_same<Complex, typename std::iterator_traits<RandomAccessIterator>::value_type>::value),
+        std::is_same<Complex, typename std::iterator_traits<RandomAccessIterator>::value_type>::value,
         "Complex must be the same to value_type of RandomAccessIterator");
 
       assert(::ket::utility::integer_exp2<StateInteger>(qubit1) < static_cast<StateInteger>(last - first));
@@ -62,10 +64,8 @@ namespace ket
       using std::imag;
       auto const i_sin_theta = ::ket::utility::imaginary_unit<Complex>() * imag(phase_coefficient);
 
-      using ::ket::utility::loop_n;
-      loop_n(
-        parallel_policy,
-        static_cast<StateInteger>(last - first) >> 2u,
+      ::ket::utility::loop_n(
+        parallel_policy, static_cast<StateInteger>(last - first) >> 2u,
         [first, &phase_coefficient, &i_sin_theta, qubit1_mask, qubit2_mask, lower_bits_mask, middle_bits_mask, upper_bits_mask](
           StateInteger const value_wo_qubits, int const)
         {
@@ -97,17 +97,18 @@ namespace ket
 
     // C...CeSWAP_{tt'c...c'}(s) = C...C[exp(is SWAP_{tt'})]_{c...c'} = C...C[I cos s + i SWAP_{tt'} sin s]_{c...c'}
     template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger, typename... ControlQubits>
-    inline void exponential_swap_coeff(
+    inline auto exponential_swap_coeff(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
       ::ket::qubit<StateInteger, BitInteger> const target_qubit1, ::ket::qubit<StateInteger, BitInteger> const target_qubit2,
       ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ControlQubits const... control_qubits)
+    -> void
     {
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
       static_assert(
-        (std::is_same<Complex, typename std::iterator_traits<RandomAccessIterator>::value_type>::value),
+        std::is_same<Complex, typename std::iterator_traits<RandomAccessIterator>::value_type>::value,
         "Complex must be the same to value_type of RandomAccessIterator");
 
       assert(::ket::utility::integer_exp2<StateInteger>(target_qubit1) < static_cast<StateInteger>(last - first));
@@ -135,8 +136,7 @@ namespace ket
 
       ::ket::gate::gate(
         parallel_policy, first, last,
-        [&phase_coefficient, &i_sin_theta](
-          RandomAccessIterator const first, std::array<StateInteger, num_indices> const& indices, int const)
+        [&phase_coefficient, &i_sin_theta](RandomAccessIterator const first, std::array<StateInteger, num_indices> const& indices, int const)
         {
           *(first + indices[indices_index00]) *= phase_coefficient;
           *(first + indices[indices_index11]) *= phase_coefficient;
@@ -155,168 +155,164 @@ namespace ket
     }
 
     template <typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger, typename... ControlQubits>
-    inline void exponential_swap_coeff(
+    inline auto exponential_swap_coeff(
       RandomAccessIterator const first, RandomAccessIterator const last,
       Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
       ::ket::qubit<StateInteger, BitInteger> const target_qubit1, ::ket::qubit<StateInteger, BitInteger> const target_qubit2,
       ControlQubits const... control_qubits)
+    -> void
     { ::ket::gate::exponential_swap_coeff(::ket::utility::policy::make_sequential(), first, last, phase_coefficient, target_qubit1, target_qubit2, control_qubits...); }
 
     namespace ranges
     {
       template <typename ParallelPolicy, typename RandomAccessRange, typename Complex, typename StateInteger, typename BitInteger, typename... ControlQubits>
-      inline RandomAccessRange& exponential_swap_coeff(
+      inline auto exponential_swap_coeff(
         ParallelPolicy const parallel_policy, RandomAccessRange& state,
         Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
         ::ket::qubit<StateInteger, BitInteger> const target_qubit1, ::ket::qubit<StateInteger, BitInteger> const target_qubit2,
         ControlQubits const... control_qubits)
+      -> RandomAccessRange&
       {
-        ::ket::gate::exponential_swap_coeff(
-          parallel_policy, std::begin(state), std::end(state),
-          phase_coefficient, target_qubit1, target_qubit2, control_qubits...);
+        using std::begin;
+        using std::end;
+        ::ket::gate::exponential_swap_coeff(parallel_policy, begin(state), end(state), phase_coefficient, target_qubit1, target_qubit2, control_qubits...);
         return state;
       }
 
       template <typename RandomAccessRange, typename Complex, typename StateInteger, typename BitInteger, typename... ControlQubits>
-      inline RandomAccessRange& exponential_swap_coeff(
+      inline auto exponential_swap_coeff(
         RandomAccessRange& state,
         Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
         ::ket::qubit<StateInteger, BitInteger> const target_qubit1, ::ket::qubit<StateInteger, BitInteger> const target_qubit2,
         ControlQubits const... control_qubits)
+      -> RandomAccessRange&
       { return ::ket::gate::ranges::exponential_swap_coeff(::ket::utility::policy::make_sequential(), state, phase_coefficient, target_qubit1, target_qubit2, control_qubits...); }
     } // namespace ranges
 
     template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger, typename... ControlQubits>
-    inline void adj_exponential_swap_coeff(
+    inline auto adj_exponential_swap_coeff(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
       ::ket::qubit<StateInteger, BitInteger> const target_qubit1, ::ket::qubit<StateInteger, BitInteger> const target_qubit2,
       ControlQubits const... control_qubits)
-    {
-      using std::conj;
-      ::ket::gate::exponential_swap_coeff(
-        parallel_policy, first, last, conj(phase_coefficient), target_qubit1, target_qubit2, control_qubits...);
-    }
+    -> void
+    { using std::conj; ::ket::gate::exponential_swap_coeff(parallel_policy, first, last, conj(phase_coefficient), target_qubit1, target_qubit2, control_qubits...); }
 
     template <typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger, typename... ControlQubits>
-    inline void adj_exponential_swap_coeff(
+    inline auto adj_exponential_swap_coeff(
       RandomAccessIterator const first, RandomAccessIterator const last,
       Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
       ::ket::qubit<StateInteger, BitInteger> const target_qubit1, ::ket::qubit<StateInteger, BitInteger> const target_qubit2,
       ControlQubits const... control_qubits)
-    {
-      using std::conj;
-      ::ket::gate::exponential_swap_coeff(first, last, conj(phase_coefficient), target_qubit1, target_qubit2, control_qubits...);
-    }
+    -> void
+    { using std::conj; ::ket::gate::exponential_swap_coeff(first, last, conj(phase_coefficient), target_qubit1, target_qubit2, control_qubits...); }
 
     namespace ranges
     {
       template <typename ParallelPolicy, typename RandomAccessRange, typename Complex, typename StateInteger, typename BitInteger, typename... ControlQubits>
-      inline RandomAccessRange& adj_exponential_swap_coeff(
+      inline auto adj_exponential_swap_coeff(
         ParallelPolicy const parallel_policy, RandomAccessRange& state,
         Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
         ::ket::qubit<StateInteger, BitInteger> const target_qubit1, ::ket::qubit<StateInteger, BitInteger> const target_qubit2,
         ControlQubits const... control_qubits)
-      {
-        using std::conj;
-        return ::ket::gate::ranges::exponential_swap_coeff(
-          parallel_policy, state, conj(phase_coefficient), target_qubit1, target_qubit2, control_qubits...);
-      }
+      -> RandomAccessRange&
+      { using std::conj; return ::ket::gate::ranges::exponential_swap_coeff(parallel_policy, state, conj(phase_coefficient), target_qubit1, target_qubit2, control_qubits...); }
 
       template <typename RandomAccessRange, typename Complex, typename StateInteger, typename BitInteger, typename... ControlQubits>
-      inline RandomAccessRange& adj_exponential_swap_coeff(
+      inline auto adj_exponential_swap_coeff(
         RandomAccessRange& state,
         Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
         ::ket::qubit<StateInteger, BitInteger> const target_qubit1, ::ket::qubit<StateInteger, BitInteger> const target_qubit2,
         ControlQubits const... control_qubits)
-      {
-        using std::conj;
-        return ::ket::gate::ranges::exponential_swap_coeff(
-          state, conj(phase_coefficient), target_qubit1, target_qubit2, control_qubits...);
-      }
+      -> RandomAccessRange&
+      { using std::conj; return ::ket::gate::ranges::exponential_swap_coeff(state, conj(phase_coefficient), target_qubit1, target_qubit2, control_qubits...); }
     } // namespace ranges
 
     // exponential_swap
     template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
-    inline void exponential_swap(
+    inline auto exponential_swap(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last, Real const phase, // theta
       ::ket::qubit<StateInteger, BitInteger> const target_qubit1, ::ket::qubit<StateInteger, BitInteger> const target_qubit2,
       ControlQubits const... control_qubits)
+    -> void
     {
       using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
-      ::ket::gate::exponential_swap_coeff(
-        parallel_policy, first, last, ::ket::utility::exp_i<complex_type>(phase), target_qubit1, target_qubit2, control_qubits...);
+      ::ket::gate::exponential_swap_coeff(parallel_policy, first, last, ::ket::utility::exp_i<complex_type>(phase), target_qubit1, target_qubit2, control_qubits...);
     }
 
     template <typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
-    inline void exponential_swap(
+    inline auto exponential_swap(
       RandomAccessIterator const first, RandomAccessIterator const last, Real const phase, // theta
       ::ket::qubit<StateInteger, BitInteger> const target_qubit1, ::ket::qubit<StateInteger, BitInteger> const target_qubit2,
       ControlQubits const... control_qubits)
+    -> void
     {
       using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
-      ::ket::gate::exponential_swap_coeff(
-        first, last, ::ket::utility::exp_i<complex_type>(phase), target_qubit1, target_qubit2, control_qubits...);
+      ::ket::gate::exponential_swap_coeff(first, last, ::ket::utility::exp_i<complex_type>(phase), target_qubit1, target_qubit2, control_qubits...);
     }
 
     namespace ranges
     {
       template <typename ParallelPolicy, typename RandomAccessRange, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
-      inline RandomAccessRange& exponential_swap(
+      inline auto exponential_swap(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& state, Real const phase, // theta
         ::ket::qubit<StateInteger, BitInteger> const target_qubit1, ::ket::qubit<StateInteger, BitInteger> const target_qubit2,
         ControlQubits const... control_qubits)
+      -> RandomAccessRange&
       {
-        using complex_type = typename boost::range_value<RandomAccessRange>::type;
-        return ::ket::gate::ranges::exponential_swap_coeff(
-          parallel_policy, state, ::ket::utility::exp_i<complex_type>(phase), target_qubit1, target_qubit2, control_qubits...);
+        using complex_type = ::ket::utility::meta::range_value_t<RandomAccessRange>;
+        return ::ket::gate::ranges::exponential_swap_coeff(parallel_policy, state, ::ket::utility::exp_i<complex_type>(phase), target_qubit1, target_qubit2, control_qubits...);
       }
 
       template <typename RandomAccessRange, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
-      inline RandomAccessRange& exponential_swap(
+      inline auto exponential_swap(
         RandomAccessRange& state, Real const phase, // theta
         ::ket::qubit<StateInteger, BitInteger> const target_qubit1, ::ket::qubit<StateInteger, BitInteger> const target_qubit2,
         ControlQubits const... control_qubits)
+      -> RandomAccessRange&
       {
-        using complex_type = typename boost::range_value<RandomAccessRange>::type;
-        return ::ket::gate::ranges::exponential_swap_coeff(
-          state, ::ket::utility::exp_i<complex_type>(phase), target_qubit1, target_qubit2, control_qubits...);
+        using complex_type = ::ket::utility::meta::range_value_t<RandomAccessRange>;
+        return ::ket::gate::ranges::exponential_swap_coeff(state, ::ket::utility::exp_i<complex_type>(phase), target_qubit1, target_qubit2, control_qubits...);
       }
     } // namespace ranges
 
     template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
-    inline void adj_exponential_swap(
+    inline auto adj_exponential_swap(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last, Real const phase, // theta
       ::ket::qubit<StateInteger, BitInteger> const target_qubit1, ::ket::qubit<StateInteger, BitInteger> const target_qubit2,
       ControlQubits const... control_qubits)
+    -> void
     { ::ket::gate::exponential_swap(parallel_policy, first, last, -phase, target_qubit1, target_qubit2, control_qubits...); }
 
     template <typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
-    inline void adj_exponential_swap(
+    inline auto adj_exponential_swap(
       RandomAccessIterator const first, RandomAccessIterator const last, Real const phase, // theta
       ::ket::qubit<StateInteger, BitInteger> const target_qubit1, ::ket::qubit<StateInteger, BitInteger> const target_qubit2,
       ControlQubits const... control_qubits)
+    -> void
     { ::ket::gate::exponential_swap(first, last, -phase, target_qubit1, target_qubit2, control_qubits...); }
 
     namespace ranges
     {
       template <typename ParallelPolicy, typename RandomAccessRange, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
-      inline RandomAccessRange& adj_exponential_swap(
+      inline auto adj_exponential_swap(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& state, Real const phase, // theta
         ::ket::qubit<StateInteger, BitInteger> const target_qubit1, ::ket::qubit<StateInteger, BitInteger> const target_qubit2,
         ControlQubits const... control_qubits)
+      -> RandomAccessRange&
       { return ::ket::gate::ranges::exponential_swap(parallel_policy, state, -phase, target_qubit1, target_qubit2, control_qubits...); }
 
       template <typename RandomAccessRange, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
-      inline RandomAccessRange& adj_exponential_swap(
+      inline auto adj_exponential_swap(
         RandomAccessRange& state, Real const phase, // theta
         ::ket::qubit<StateInteger, BitInteger> const target_qubit1, ::ket::qubit<StateInteger, BitInteger> const target_qubit2,
         ControlQubits const... control_qubits)
+      -> RandomAccessRange&
       { return ::ket::gate::ranges::exponential_swap(state, -phase, target_qubit1, target_qubit2, control_qubits...); }
     } // namespace ranges
   } // namespace gate

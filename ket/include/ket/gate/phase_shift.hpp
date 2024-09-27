@@ -21,6 +21,7 @@
 # endif
 # include <ket/utility/exp_i.hpp>
 # include <ket/utility/meta/real_of.hpp>
+# include <ket/utility/meta/ranges.hpp>
 
 
 namespace ket
@@ -31,16 +32,17 @@ namespace ket
     // U1_i(theta)
     // U1_1(theta) (a_0 |0> + a_1 |1>) = a_0 |0> + e^{i theta} a_1 |1>
     template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger>
-    inline void phase_shift_coeff(
+    inline auto phase_shift_coeff(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
       ::ket::qubit<StateInteger, BitInteger> const qubit)
+    -> void
     {
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
       static_assert(
-        (std::is_same<Complex, typename std::iterator_traits<RandomAccessIterator>::value_type>::value),
+        std::is_same<Complex, typename std::iterator_traits<RandomAccessIterator>::value_type>::value,
         "Complex must be the same to value_type of RandomAccessIterator");
 
       assert(::ket::utility::integer_exp2<StateInteger>(qubit) < static_cast<StateInteger>(last - first));
@@ -52,16 +54,12 @@ namespace ket
       auto const lower_bits_mask = qubit_mask - StateInteger{1u};
       auto const upper_bits_mask = compl lower_bits_mask;
 
-      using ::ket::utility::loop_n;
-      loop_n(
-        parallel_policy,
-        static_cast<StateInteger>(last - first) >> 1u,
+      ::ket::utility::loop_n(
+        parallel_policy, static_cast<StateInteger>(last - first) >> 1u,
         [first, &phase_coefficient, qubit_mask, lower_bits_mask, upper_bits_mask](StateInteger const value_wo_qubit, int const)
         {
           // xxxxx1xxxxxx
-          auto const one_index
-            = ((value_wo_qubit bitand upper_bits_mask) << 1u)
-              bitor (value_wo_qubit bitand lower_bits_mask) bitor qubit_mask;
+          auto const one_index = ((value_wo_qubit bitand upper_bits_mask) << 1u) bitor (value_wo_qubit bitand lower_bits_mask) bitor qubit_mask;
           *(first + one_index) *= phase_coefficient;
         });
     }
@@ -70,17 +68,18 @@ namespace ket
     // CU1_{1,2}(theta) (a_{00} |00> + a_{01} |01> + a_{10} |10> + a{11} |11>)
     //   = a_{00} |00> + a_{01} |01> + a_{10} |10> + e^{i thta} a_{11} |11>
     template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger>
-    inline void phase_shift_coeff(
+    inline auto phase_shift_coeff(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
       ::ket::qubit<StateInteger, BitInteger> const target_qubit,
       ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit)
+    -> void
     {
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
       static_assert(
-        (std::is_same<Complex, typename std::iterator_traits<RandomAccessIterator>::value_type>::value),
+        std::is_same<Complex, typename std::iterator_traits<RandomAccessIterator>::value_type>::value,
         "Complex must be the same to value_type of RandomAccessIterator");
 
       assert(::ket::utility::integer_exp2<StateInteger>(target_qubit) < static_cast<StateInteger>(last - first));
@@ -99,10 +98,8 @@ namespace ket
           xor lower_bits_mask;
       auto const upper_bits_mask = compl (lower_bits_mask bitor middle_bits_mask);
 
-      using ::ket::utility::loop_n;
-      loop_n(
-        parallel_policy,
-        static_cast<StateInteger>(last - first) >> 2u,
+      ::ket::utility::loop_n(
+        parallel_policy, static_cast<StateInteger>(last - first) >> 2u,
         [first, &phase_coefficient, target_qubit_mask, control_qubit_mask, lower_bits_mask, middle_bits_mask, upper_bits_mask](
           StateInteger const value_wo_qubits, int const)
         {
@@ -118,13 +115,14 @@ namespace ket
 
     // C...CU1_{tc...c'}(theta) or CnU1_{tc...c'}(theta)
     template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger, typename... ControlQubits>
-    inline void phase_shift_coeff(
+    inline auto phase_shift_coeff(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
       ::ket::qubit<StateInteger, BitInteger> const target_qubit,
       ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
       ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2, ControlQubits const... control_qubits)
+    -> void
     {
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
@@ -150,84 +148,92 @@ namespace ket
     }
 
     template <typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger, typename... ControlQubits>
-    inline void phase_shift_coeff(
+    inline auto phase_shift_coeff(
       RandomAccessIterator const first, RandomAccessIterator const last,
       Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
       ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
+    -> void
     { ::ket::gate::phase_shift_coeff(::ket::utility::policy::make_sequential(), first, last, phase_coefficient, target_qubit, control_qubits...); }
 
     namespace ranges
     {
       template <typename ParallelPolicy, typename RandomAccessRange, typename Complex, typename StateInteger, typename BitInteger, typename... ControlQubits>
-      inline RandomAccessRange& phase_shift_coeff(
+      inline auto phase_shift_coeff(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& state,
         Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
         ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
+      -> RandomAccessRange&
       {
-        ::ket::gate::phase_shift_coeff(parallel_policy, std::begin(state), std::end(state), phase_coefficient, target_qubit, control_qubits...);
+        using std::begin;
+        using std::end;
+        ::ket::gate::phase_shift_coeff(parallel_policy, begin(state), end(state), phase_coefficient, target_qubit, control_qubits...);
         return state;
       }
 
       template <typename RandomAccessRange, typename Complex, typename StateInteger, typename BitInteger, typename... ControlQubits>
-      inline RandomAccessRange& phase_shift_coeff(
+      inline auto phase_shift_coeff(
         RandomAccessRange& state,
         Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
         ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
+      -> RandomAccessRange&
       { return ::ket::gate::ranges::phase_shift_coeff(::ket::utility::policy::make_sequential(), state, phase_coefficient, target_qubit, control_qubits...); }
     } // namespace ranges
 
     template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger, typename... ControlQubits>
-    inline void adj_phase_shift_coeff(
+    inline auto adj_phase_shift_coeff(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
       ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
-    {
-      using std::conj;
-      ::ket::gate::phase_shift_coeff(parallel_policy, first, last, conj(phase_coefficient), target_qubit, control_qubits...);
-    }
+    -> void
+    { using std::conj; ::ket::gate::phase_shift_coeff(parallel_policy, first, last, conj(phase_coefficient), target_qubit, control_qubits...); }
 
     template <typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger, typename... ControlQubits>
-    inline void adj_phase_shift_coeff(
+    inline auto adj_phase_shift_coeff(
       RandomAccessIterator const first, RandomAccessIterator const last,
       Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
       ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
+    -> void
     { using std::conj; ::ket::gate::phase_shift_coeff(first, last, conj(phase_coefficient), target_qubit, control_qubits...); }
 
     namespace ranges
     {
       template <typename ParallelPolicy, typename RandomAccessRange, typename Complex, typename StateInteger, typename BitInteger, typename... ControlQubits>
-      inline RandomAccessRange& adj_phase_shift_coeff(
+      inline auto adj_phase_shift_coeff(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& state,
         Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
         ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
+      -> RandomAccessRange&
       { using std::conj; return ::ket::gate::ranges::phase_shift_coeff(parallel_policy, state, conj(phase_coefficient), target_qubit, control_qubits...); }
 
       template <typename RandomAccessRange, typename Complex, typename StateInteger, typename BitInteger, typename... ControlQubits>
-      inline RandomAccessRange& adj_phase_shift_coeff(
+      inline auto adj_phase_shift_coeff(
         RandomAccessRange& state,
         Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
         ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
+      -> RandomAccessRange&
       { using std::conj; return ::ket::gate::ranges::phase_shift_coeff(state, conj(phase_coefficient), target_qubit, control_qubits...); }
     } // namespace ranges
 
     // phase_shift
     template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
-    inline void phase_shift(
+    inline auto phase_shift(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Real const phase, ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
+    -> void
     {
       using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
       ::ket::gate::phase_shift_coeff(parallel_policy, first, last, ::ket::utility::exp_i<complex_type>(phase), target_qubit, control_qubits...);
     }
 
     template <typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
-    inline void phase_shift(
+    inline auto phase_shift(
       RandomAccessIterator const first, RandomAccessIterator const last,
       Real const phase, ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
+    -> void
     {
       using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
       ::ket::gate::phase_shift_coeff(first, last, ::ket::utility::exp_i<complex_type>(phase), target_qubit, control_qubits...);
@@ -236,47 +242,49 @@ namespace ket
     namespace ranges
     {
       template <typename ParallelPolicy, typename RandomAccessRange, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
-      inline RandomAccessRange& phase_shift(
+      inline auto phase_shift(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& state, Real const phase, ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
+      -> RandomAccessRange&
       {
-        using complex_type = typename boost::range_value<RandomAccessRange>::type;
+        using complex_type = ::ket::utility::meta::range_value_t<RandomAccessRange>;
         return ::ket::gate::ranges::phase_shift_coeff(parallel_policy, state, ::ket::utility::exp_i<complex_type>(phase), target_qubit, control_qubits...);
       }
 
       template <typename RandomAccessRange, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
-      inline RandomAccessRange& phase_shift(
-        RandomAccessRange& state, Real const phase, ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
+      inline auto phase_shift(RandomAccessRange& state, Real const phase, ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits) -> RandomAccessRange&
       {
-        using complex_type = typename boost::range_value<RandomAccessRange>::type;
+        using complex_type = ::ket::utility::meta::range_value_t<RandomAccessRange>;
         return ::ket::gate::ranges::phase_shift_coeff(state, ::ket::utility::exp_i<complex_type>(phase), target_qubit, control_qubits...);
       }
     } // namespace ranges
 
     template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
-    inline void adj_phase_shift(
+    inline auto adj_phase_shift(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Real const phase, ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
+    -> void
     { ::ket::gate::phase_shift(parallel_policy, first, last, -phase, target_qubit, control_qubits...); }
 
     template <typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
-    inline void adj_phase_shift(
+    inline auto adj_phase_shift(
       RandomAccessIterator const first, RandomAccessIterator const last,
       Real const phase, ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
+    -> void
     { ::ket::gate::phase_shift(first, last, -phase, target_qubit, control_qubits...); }
 
     namespace ranges
     {
       template <typename ParallelPolicy, typename RandomAccessRange, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
-      inline RandomAccessRange& adj_phase_shift(
+      inline auto adj_phase_shift(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& state, Real const phase, ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
+      -> RandomAccessRange&
       { return ::ket::gate::ranges::phase_shift(parallel_policy, state, -phase, target_qubit, control_qubits...); }
 
       template <typename RandomAccessRange, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
-      inline RandomAccessRange& adj_phase_shift(
-        RandomAccessRange& state, Real const phase, ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
+      inline auto adj_phase_shift(RandomAccessRange& state, Real const phase, ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits) -> RandomAccessRange&
       { return ::ket::gate::ranges::phase_shift(state, -phase, target_qubit, control_qubits...); }
     } // namespace ranges
 
@@ -287,18 +295,19 @@ namespace ket
     template <
       typename ParallelPolicy, typename RandomAccessIterator, typename Real,
       typename StateInteger, typename BitInteger>
-    inline void phase_shift2(
+    inline auto phase_shift2(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Real const phase1, Real const phase2,
       ::ket::qubit<StateInteger, BitInteger> const qubit)
+    -> void
     {
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
 
       using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
       static_assert(
-        (std::is_same<Real, typename ::ket::utility::meta::real_of<complex_type>::type>::value),
+        std::is_same<Real, ::ket::utility::meta::real_t<complex_type>>::value,
         "Real must be the same to \"real part\" of value_type of RandomAccessIterator");
 
       assert(::ket::utility::integer_exp2<StateInteger>(qubit) < static_cast<StateInteger>(last - first));
@@ -316,17 +325,13 @@ namespace ket
       auto const lower_bits_mask = qubit_mask - StateInteger{1u};
       auto const upper_bits_mask = compl lower_bits_mask;
 
-      using ::ket::utility::loop_n;
-      loop_n(
-        parallel_policy,
-        static_cast<StateInteger>(last - first) >> 1u,
+      ::ket::utility::loop_n(
+        parallel_policy, static_cast<StateInteger>(last - first) >> 1u,
         [first, &modified_phase_coefficient1, &phase_coefficient2, qubit_mask, lower_bits_mask, upper_bits_mask](
           StateInteger const value_wo_qubit, int const)
         {
           // xxxxx0xxxxxx
-          auto const zero_index
-            = ((value_wo_qubit bitand upper_bits_mask) << 1u)
-              bitor (value_wo_qubit bitand lower_bits_mask);
+          auto const zero_index = ((value_wo_qubit bitand upper_bits_mask) << 1u) bitor (value_wo_qubit bitand lower_bits_mask);
           // xxxxx1xxxxxx
           auto const one_index = zero_index bitor qubit_mask;
           auto const zero_iter = first + zero_index;
@@ -348,19 +353,20 @@ namespace ket
     template <
       typename ParallelPolicy, typename RandomAccessIterator, typename Real,
       typename StateInteger, typename BitInteger>
-    inline void phase_shift2(
+    inline auto phase_shift2(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Real const phase1, Real const phase2,
       ::ket::qubit<StateInteger, BitInteger> const target_qubit,
       ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit)
+    -> void
     {
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
 
       using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
       static_assert(
-        (std::is_same<Real, typename ::ket::utility::meta::real_of<complex_type>::type>::value),
+        std::is_same<Real, ::ket::utility::meta::real_t<complex_type>>::value,
         "Real must be the same to \"real part\" of value_type of RandomAccessIterator");
 
       assert(::ket::utility::integer_exp2<StateInteger>(target_qubit) < static_cast<StateInteger>(last - first));
@@ -385,10 +391,8 @@ namespace ket
           xor lower_bits_mask;
       auto const upper_bits_mask = compl (lower_bits_mask bitor middle_bits_mask);
 
-      using ::ket::utility::loop_n;
-      loop_n(
-        parallel_policy,
-        static_cast<StateInteger>(last - first) >> 2u,
+      ::ket::utility::loop_n(
+        parallel_policy, static_cast<StateInteger>(last - first) >> 2u,
         [first, &modified_phase_coefficient1, &phase_coefficient2, target_qubit_mask, control_qubit_mask, lower_bits_mask, middle_bits_mask, upper_bits_mask](
           StateInteger const value_wo_qubits, int const)
         {
@@ -415,20 +419,21 @@ namespace ket
 
     // C...CU2_{tc...c'}(theta, theta') or CnU2_{tc...c'}(theta, theta')
     template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
-    inline void phase_shift2(
+    inline auto phase_shift2(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Real const phase1, Real const phase2,
       ::ket::qubit<StateInteger, BitInteger> const target_qubit,
       ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
       ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2, ControlQubits const... control_qubits)
+    -> void
     {
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
 
       using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
       static_assert(
-        (std::is_same<Real, typename ::ket::utility::meta::real_of<complex_type>::type>::value),
+        std::is_same<Real, ::ket::utility::meta::real_t<complex_type>>::value,
         "Real must be the same to \"real part\" of value_type of RandomAccessIterator");
 
       assert(::ket::utility::integer_exp2<StateInteger>(target_qubit) < static_cast<StateInteger>(last - first));
@@ -474,27 +479,32 @@ namespace ket
     }
 
     template <typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
-    inline void phase_shift2(
+    inline auto phase_shift2(
       RandomAccessIterator const first, RandomAccessIterator const last,
       Real const phase1, Real const phase2, ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
+    -> void
     { ::ket::gate::phase_shift2(::ket::utility::policy::make_sequential(), first, last, phase1, phase2, target_qubit, control_qubits...); }
 
     namespace ranges
     {
       template <typename ParallelPolicy, typename RandomAccessRange, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
-      inline RandomAccessRange& phase_shift2(
+      inline auto phase_shift2(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& state, Real const phase1, Real const phase2,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
+      -> RandomAccessRange&
       {
-        ::ket::gate::phase_shift2(parallel_policy, std::begin(state), std::end(state), phase1, phase2, target_qubit, control_qubits...);
+        using std::begin;
+        using std::end;
+        ::ket::gate::phase_shift2(parallel_policy, begin(state), end(state), phase1, phase2, target_qubit, control_qubits...);
         return state;
       }
 
       template <typename RandomAccessRange, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
-      inline RandomAccessRange& phase_shift2(
+      inline auto phase_shift2(
         RandomAccessRange& state, Real const phase1, Real const phase2,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
+      -> RandomAccessRange&
       { return ::ket::gate::ranges::phase_shift2(::ket::utility::policy::make_sequential(), state, phase1, phase2, target_qubit, control_qubits...); }
     } // namespace ranges
 
@@ -505,18 +515,19 @@ namespace ket
     template <
       typename ParallelPolicy, typename RandomAccessIterator, typename Real,
       typename StateInteger, typename BitInteger>
-    inline void adj_phase_shift2(
+    inline auto adj_phase_shift2(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Real const phase1, Real const phase2,
       ::ket::qubit<StateInteger, BitInteger> const qubit)
+    -> void
     {
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
 
       using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
       static_assert(
-        (std::is_same<Real, typename ::ket::utility::meta::real_of<complex_type>::type>::value),
+        std::is_same<Real, ::ket::utility::meta::real_t<complex_type>>::value,
         "Real must be the same to \"real part\" of value_type of RandomAccessIterator");
 
       assert(::ket::utility::integer_exp2<StateInteger>(qubit) < static_cast<StateInteger>(last - first));
@@ -534,17 +545,13 @@ namespace ket
       auto const lower_bits_mask = qubit_mask - StateInteger{1u};
       auto const upper_bits_mask = compl lower_bits_mask;
 
-      using ::ket::utility::loop_n;
-      loop_n(
-        parallel_policy,
-        static_cast<StateInteger>(last - first) >> 1u,
+      ::ket::utility::loop_n(
+        parallel_policy, static_cast<StateInteger>(last - first) >> 1u,
         [first, &phase_coefficient1, &modified_phase_coefficient2, qubit_mask, lower_bits_mask, upper_bits_mask](
           StateInteger const value_wo_qubit, int const)
         {
           // xxxxx0xxxxxx
-          auto const zero_index
-            = ((value_wo_qubit bitand upper_bits_mask) << 1u)
-              bitor (value_wo_qubit bitand lower_bits_mask);
+          auto const zero_index = ((value_wo_qubit bitand upper_bits_mask) << 1u) bitor (value_wo_qubit bitand lower_bits_mask);
           // xxxxx1xxxxxx
           auto const one_index = zero_index bitor qubit_mask;
           auto const zero_iter = first + zero_index;
@@ -566,19 +573,20 @@ namespace ket
     template <
       typename ParallelPolicy, typename RandomAccessIterator, typename Real,
       typename StateInteger, typename BitInteger>
-    inline void adj_phase_shift2(
+    inline auto adj_phase_shift2(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Real const phase1, Real const phase2,
       ::ket::qubit<StateInteger, BitInteger> const target_qubit,
       ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit)
+    -> void
     {
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
 
       using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
       static_assert(
-        (std::is_same<Real, typename ::ket::utility::meta::real_of<complex_type>::type>::value),
+        std::is_same<Real, ::ket::utility::meta::real_t<complex_type>>::value,
         "Real must be the same to \"real part\" of value_type of RandomAccessIterator");
 
       assert(::ket::utility::integer_exp2<StateInteger>(target_qubit) < static_cast<StateInteger>(last - first));
@@ -603,10 +611,8 @@ namespace ket
           xor lower_bits_mask;
       auto const upper_bits_mask = compl (lower_bits_mask bitor middle_bits_mask);
 
-      using ::ket::utility::loop_n;
-      loop_n(
-        parallel_policy,
-        static_cast<StateInteger>(last - first) >> 2u,
+      ::ket::utility::loop_n(
+        parallel_policy, static_cast<StateInteger>(last - first) >> 2u,
         [first, &phase_coefficient1, &modified_phase_coefficient2, target_qubit_mask, control_qubit_mask, lower_bits_mask, middle_bits_mask, upper_bits_mask](
           StateInteger const value_wo_qubits, int const)
         {
@@ -633,20 +639,21 @@ namespace ket
 
     // C...CU2+_{tc...c'}(theta, theta'), or CnU2+_{tc...c'}(theta, theta')
     template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
-    inline void adj_phase_shift2(
+    inline auto adj_phase_shift2(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Real const phase1, Real const phase2,
       ::ket::qubit<StateInteger, BitInteger> const target_qubit,
       ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
       ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2, ControlQubits const... control_qubits)
+    -> void
     {
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
 
       using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
       static_assert(
-        (std::is_same<Real, typename ::ket::utility::meta::real_of<complex_type>::type>::value),
+        std::is_same<Real, ::ket::utility::meta::real_t<complex_type>>::value,
         "Real must be the same to \"real part\" of value_type of RandomAccessIterator");
 
       assert(::ket::utility::integer_exp2<StateInteger>(target_qubit) < static_cast<StateInteger>(last - first));
@@ -692,27 +699,32 @@ namespace ket
     }
 
     template <typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
-    inline void adj_phase_shift2(
+    inline auto adj_phase_shift2(
       RandomAccessIterator const first, RandomAccessIterator const last,
       Real const phase1, Real const phase2, ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
+    -> void
     { ::ket::gate::adj_phase_shift2(::ket::utility::policy::make_sequential(), first, last, phase1, phase2, target_qubit, control_qubits...); }
 
     namespace ranges
     {
       template <typename ParallelPolicy, typename RandomAccessRange, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
-      inline RandomAccessRange& adj_phase_shift2(
+      inline auto adj_phase_shift2(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& state, Real const phase1, Real const phase2,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
+      -> RandomAccessRange&
       {
-        ::ket::gate::adj_phase_shift2(parallel_policy, std::begin(state), std::end(state), phase1, phase2, target_qubit, control_qubits...);
+        using std::begin;
+        using std::end;
+        ::ket::gate::adj_phase_shift2(parallel_policy, begin(state), end(state), phase1, phase2, target_qubit, control_qubits...);
         return state;
       }
 
       template <typename RandomAccessRange, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
-      inline RandomAccessRange& adj_phase_shift2(
+      inline auto adj_phase_shift2(
         RandomAccessRange& state, Real const phase1, Real const phase2,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
+      -> RandomAccessRange&
       { return ::ket::gate::ranges::adj_phase_shift2(::ket::utility::policy::make_sequential(), state, phase1, phase2, target_qubit, control_qubits...); }
     } // namespace ranges
 
@@ -721,17 +733,18 @@ namespace ket
     //   = (cos(theta/2) a_0 - e^{i theta''} sin(theta/2) a_1) |0>
     //     + (e^{i theta'} sin(theta/2) a_0 + e^{i(theta' + theta'')} cos(theta/2) a_1) |1>
     template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger>
-    inline void phase_shift3(
+    inline auto phase_shift3(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Real const phase1, Real const phase2, Real const phase3, ::ket::qubit<StateInteger, BitInteger> const qubit)
+    -> void
     {
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
 
       using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
       static_assert(
-        (std::is_same<Real, typename ::ket::utility::meta::real_of<complex_type>::type>::value),
+        std::is_same<Real, ::ket::utility::meta::real_t<complex_type>>::value,
         "Real must be the same to \"real part\" of value_type of RandomAccessIterator");
 
       assert(::ket::utility::integer_exp2<StateInteger>(qubit) < static_cast<StateInteger>(last - first));
@@ -755,17 +768,13 @@ namespace ket
       auto const lower_bits_mask = qubit_mask - StateInteger{1u};
       auto const upper_bits_mask = compl lower_bits_mask;
 
-      using ::ket::utility::loop_n;
-      loop_n(
-        parallel_policy,
-        static_cast<StateInteger>(last - first) >> 1u,
+      ::ket::utility::loop_n(
+        parallel_policy, static_cast<StateInteger>(last - first) >> 1u,
         [first, sine, cosine, &phase_coefficient2, &sine_phase_coefficient3, &cosine_phase_coefficient3, qubit_mask, lower_bits_mask, upper_bits_mask](
           StateInteger const value_wo_qubit, int const)
         {
           // xxxxx0xxxxxx
-          auto const zero_index
-            = ((value_wo_qubit bitand upper_bits_mask) << 1u)
-              bitor (value_wo_qubit bitand lower_bits_mask);
+          auto const zero_index = ((value_wo_qubit bitand upper_bits_mask) << 1u) bitor (value_wo_qubit bitand lower_bits_mask);
           // xxxxx1xxxxxx
           auto const one_index = zero_index bitor qubit_mask;
           auto const zero_iter = first + zero_index;
@@ -787,19 +796,20 @@ namespace ket
     template <
       typename ParallelPolicy, typename RandomAccessIterator, typename Real,
       typename StateInteger, typename BitInteger>
-    inline void phase_shift3(
+    inline auto phase_shift3(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Real const phase1, Real const phase2, Real const phase3,
       ::ket::qubit<StateInteger, BitInteger> const target_qubit,
       ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit)
+    -> void
     {
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
 
       using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
       static_assert(
-        (std::is_same<Real, typename ::ket::utility::meta::real_of<complex_type>::type>::value),
+        std::is_same<Real, ::ket::utility::meta::real_t<complex_type>>::value,
         "Real must be the same to \"real part\" of value_type of RandomAccessIterator");
 
       assert(::ket::utility::integer_exp2<StateInteger>(target_qubit) < static_cast<StateInteger>(last - first));
@@ -830,10 +840,8 @@ namespace ket
           xor lower_bits_mask;
       auto const upper_bits_mask = compl (lower_bits_mask bitor middle_bits_mask);
 
-      using ::ket::utility::loop_n;
-      loop_n(
-        parallel_policy,
-        static_cast<StateInteger>(last - first) >> 2u,
+      ::ket::utility::loop_n(
+        parallel_policy, static_cast<StateInteger>(last - first) >> 2u,
         [first, sine, cosine, &phase_coefficient2, &sine_phase_coefficient3, &cosine_phase_coefficient3,
          target_qubit_mask, control_qubit_mask, lower_bits_mask, middle_bits_mask, upper_bits_mask](
           StateInteger const value_wo_qubits, int const)
@@ -861,20 +869,21 @@ namespace ket
 
     // C...CU3_{tc...c'}(theta, theta', theta''), or CnU3_{tc...c'}(theta, theta', theta'')
     template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
-    inline void phase_shift3(
+    inline auto phase_shift3(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Real const phase1, Real const phase2, Real const phase3,
       ::ket::qubit<StateInteger, BitInteger> const target_qubit,
       ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
       ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2, ControlQubits const... control_qubits)
+    -> void
     {
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
 
       using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
       static_assert(
-        (std::is_same<Real, typename ::ket::utility::meta::real_of<complex_type>::type>::value),
+        std::is_same<Real, ::ket::utility::meta::real_t<complex_type>>::value,
         "Real must be the same to \"real part\" of value_type of RandomAccessIterator");
 
       assert(::ket::utility::integer_exp2<StateInteger>(target_qubit) < static_cast<StateInteger>(last - first));
@@ -926,28 +935,33 @@ namespace ket
     }
 
     template <typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
-    inline void phase_shift3(
+    inline auto phase_shift3(
       RandomAccessIterator const first, RandomAccessIterator const last,
       Real const phase1, Real const phase2, Real const phase3,
       ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
+    -> void
     { ::ket::gate::phase_shift3(::ket::utility::policy::make_sequential(), first, last, phase1, phase2, phase3, target_qubit, control_qubits...); }
 
     namespace ranges
     {
       template <typename ParallelPolicy, typename RandomAccessRange, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
-      inline RandomAccessRange& phase_shift3(
+      inline auto phase_shift3(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& state, Real const phase1, Real const phase2, Real const phase3,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
+      -> RandomAccessRange&
       {
-        ::ket::gate::phase_shift3(parallel_policy, std::begin(state), std::end(state), phase1, phase2, phase3, target_qubit, control_qubits...);
+        using std::begin;
+        using std::end;
+        ::ket::gate::phase_shift3(parallel_policy, begin(state), end(state), phase1, phase2, phase3, target_qubit, control_qubits...);
         return state;
       }
 
       template <typename RandomAccessRange, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
-      inline RandomAccessRange& phase_shift3(
+      inline auto phase_shift3(
         RandomAccessRange& state, Real const phase1, Real const phase2, Real const phase3,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
+      -> RandomAccessRange&
       { return ::ket::gate::ranges::phase_shift3(::ket::utility::policy::make_sequential(), state, phase1, phase2, phase3, target_qubit, control_qubits...); }
     } // namespace ranges
 
@@ -956,17 +970,18 @@ namespace ket
     //   = (cos(theta/2) a_0 + e^{-i theta'} sin(theta/2) a_1) |0>
     //     + (-e^{-i theta''} sin(theta/2) a_0 + e^{-i(theta' + theta'')} cos(theta/2) a_1) |1>
     template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger>
-    inline void adj_phase_shift3(
+    inline auto adj_phase_shift3(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Real const phase1, Real const phase2, Real const phase3, ::ket::qubit<StateInteger, BitInteger> const qubit)
+    -> void
     {
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
 
       using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
       static_assert(
-        (std::is_same<Real, typename ::ket::utility::meta::real_of<complex_type>::type>::value),
+        std::is_same<Real, ::ket::utility::meta::real_t<complex_type>>::value,
         "Real must be the same to \"real part\" of value_type of RandomAccessIterator");
 
       assert(::ket::utility::integer_exp2<StateInteger>(qubit) < static_cast<StateInteger>(last - first));
@@ -990,17 +1005,13 @@ namespace ket
       auto const lower_bits_mask = qubit_mask - StateInteger{1u};
       auto const upper_bits_mask = compl lower_bits_mask;
 
-      using ::ket::utility::loop_n;
-      loop_n(
-        parallel_policy,
-        static_cast<StateInteger>(last - first) >> 1u,
+      ::ket::utility::loop_n(
+        parallel_policy, static_cast<StateInteger>(last - first) >> 1u,
         [first, sine, cosine, &sine_phase_coefficient2, &cosine_phase_coefficient2, &phase_coefficient3, qubit_mask, lower_bits_mask, upper_bits_mask](
           StateInteger const value_wo_qubit, int const)
         {
           // xxxxx0xxxxxx
-          auto const zero_index
-            = ((value_wo_qubit bitand upper_bits_mask) << 1u)
-              bitor (value_wo_qubit bitand lower_bits_mask);
+          auto const zero_index = ((value_wo_qubit bitand upper_bits_mask) << 1u) bitor (value_wo_qubit bitand lower_bits_mask);
           // xxxxx1xxxxxx
           auto const one_index = zero_index bitor qubit_mask;
           auto const zero_iter = first + zero_index;
@@ -1022,19 +1033,20 @@ namespace ket
     template <
       typename ParallelPolicy, typename RandomAccessIterator, typename Real,
       typename StateInteger, typename BitInteger>
-    inline void adj_phase_shift3(
+    inline auto adj_phase_shift3(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Real const phase1, Real const phase2, Real const phase3,
       ::ket::qubit<StateInteger, BitInteger> const target_qubit,
       ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit)
+    -> void
     {
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
 
       using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
       static_assert(
-        (std::is_same<Real, typename ::ket::utility::meta::real_of<complex_type>::type>::value),
+        std::is_same<Real, ::ket::utility::meta::real_t<complex_type>>::value,
         "Real must be the same to \"real part\" of value_type of RandomAccessIterator");
 
       assert(::ket::utility::integer_exp2<StateInteger>(target_qubit) < static_cast<StateInteger>(last - first));
@@ -1065,10 +1077,8 @@ namespace ket
           xor lower_bits_mask;
       auto const upper_bits_mask = compl (lower_bits_mask bitor middle_bits_mask);
 
-      using ::ket::utility::loop_n;
-      loop_n(
-        parallel_policy,
-        static_cast<StateInteger>(last - first) >> 2u,
+      ::ket::utility::loop_n(
+        parallel_policy, static_cast<StateInteger>(last - first) >> 2u,
         [first, sine, cosine, &sine_phase_coefficient2, &cosine_phase_coefficient2, &phase_coefficient3,
          target_qubit_mask, control_qubit_mask, lower_bits_mask, middle_bits_mask, upper_bits_mask](
           StateInteger const value_wo_qubits, int const)
@@ -1096,20 +1106,21 @@ namespace ket
 
     // C...CU3+_{tc...c'}(theta, theta', theta''), or CnU3+_{tc...c'}(theta, theta', theta'')
     template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
-    inline void adj_phase_shift3(
+    inline auto adj_phase_shift3(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Real const phase1, Real const phase2, Real const phase3,
       ::ket::qubit<StateInteger, BitInteger> const target_qubit,
       ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
       ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2, ControlQubits const... control_qubits)
+    -> void
     {
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
 
       using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
       static_assert(
-        (std::is_same<Real, typename ::ket::utility::meta::real_of<complex_type>::type>::value),
+        std::is_same<Real, ::ket::utility::meta::real_t<complex_type>>::value,
         "Real must be the same to \"real part\" of value_type of RandomAccessIterator");
 
       assert(::ket::utility::integer_exp2<StateInteger>(target_qubit) < static_cast<StateInteger>(last - first));
@@ -1161,28 +1172,33 @@ namespace ket
     }
 
     template <typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
-    inline void adj_phase_shift3(
+    inline auto adj_phase_shift3(
       RandomAccessIterator const first, RandomAccessIterator const last,
       Real const phase1, Real const phase2, Real const phase3,
       ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
+    -> void
     { ::ket::gate::adj_phase_shift3(::ket::utility::policy::make_sequential(), first, last, phase1, phase2, phase3, target_qubit, control_qubits...); }
 
     namespace ranges
     {
       template <typename ParallelPolicy, typename RandomAccessRange, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
-      inline RandomAccessRange& adj_phase_shift3(
+      inline auto adj_phase_shift3(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& state, Real const phase1, Real const phase2, Real const phase3,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
+      -> RandomAccessRange&
       {
-        ::ket::gate::adj_phase_shift3(parallel_policy, std::begin(state), std::end(state), phase1, phase2, phase3, target_qubit, control_qubits...);
+        using std::begin;
+        using std::end;
+        ::ket::gate::adj_phase_shift3(parallel_policy, begin(state), end(state), phase1, phase2, phase3, target_qubit, control_qubits...);
         return state;
       }
 
       template <typename RandomAccessRange, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
-      inline RandomAccessRange& adj_phase_shift3(
+      inline auto adj_phase_shift3(
         RandomAccessRange& state, Real const phase1, Real const phase2, Real const phase3,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
+      -> RandomAccessRange&
       { return ::ket::gate::ranges::adj_phase_shift3(::ket::utility::policy::make_sequential(), state, phase1, phase2, phase3, target_qubit, control_qubits...); }
     } // namespace ranges
   } // namespace gate
