@@ -9,7 +9,9 @@
 #   include <ket/meta/bit_integer_of.hpp>
 # endif // NDEBUG
 # include <ket/mpi/permutated.hpp>
-# include <ket/mpi/utility/simple_mpi.hpp>
+# ifndef NDEBUG
+#   include <ket/mpi/utility/simple_mpi.hpp>
+# endif // NDEBUG
 
 # include <yampi/communicator.hpp>
 # include <yampi/environment.hpp>
@@ -23,22 +25,24 @@ namespace ket
       namespace detail
       {
         template <typename MpiPolicy, typename RandomAccessRange>
-        inline void assert_all_qubits_are_local(
+        inline auto assert_all_qubits_are_local(
           MpiPolicy const& mpi_policy, RandomAccessRange& local_state,
           yampi::communicator const& communicator, yampi::environment const& environment)
+        -> void
         { }
 
         template <
           typename MpiPolicy, typename RandomAccessRange, 
           typename PermutatedQubit, typename... PermutatedQubits>
-        inline void assert_all_qubits_are_local(
+        inline auto assert_all_qubits_are_local(
           MpiPolicy const& mpi_policy, RandomAccessRange& local_state,
           yampi::communicator const& communicator, yampi::environment const& environment,
           PermutatedQubit const permutated_qubit, PermutatedQubits const... permutated_qubits)
+        -> void
         {
 # ifndef NDEBUG
-          using state_integer_type = typename ::ket::meta::state_integer_of<PermutatedQubit>::type;
-          using bit_integer_type = typename ::ket::meta::bit_integer_of<PermutatedQubit>::type;
+          using state_integer_type = ::ket::meta::state_integer_t<PermutatedQubit>;
+          using bit_integer_type = ::ket::meta::bit_integer_t<PermutatedQubit>;
           auto const num_local_qubits
             = static_cast<bit_integer_type>(::ket::mpi::utility::policy::num_local_qubits(mpi_policy, local_state, communicator, environment));
           auto const least_nonlocal_permutated_qubit = ::ket::mpi::make_permutated(::ket::make_qubit<state_integer_type>(num_local_qubits));

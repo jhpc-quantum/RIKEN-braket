@@ -11,12 +11,13 @@ namespace ket
     namespace page
     {
       template <typename LocalState>
-      inline constexpr bool none_on_page(LocalState const& local_state)
+      inline constexpr auto none_on_page(LocalState const& local_state) -> bool
       { return true; }
 
       template <typename LocalState, typename PermutatedQubit, typename... PermutatedQubits>
-      inline constexpr bool none_on_page(
+      inline constexpr auto none_on_page(
         LocalState const& local_state, PermutatedQubit const permutated_qubit, PermutatedQubits const... permutated_qubits)
+      -> bool
       {
         return (not ::ket::mpi::page::is_on_page(permutated_qubit, local_state))
           and ::ket::mpi::page::none_on_page(local_state, permutated_qubits...);

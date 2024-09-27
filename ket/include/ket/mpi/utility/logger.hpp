@@ -46,36 +46,36 @@ namespace ket
         logger(logger&&) = delete;
         logger& operator=(logger&&) = delete;
 
-        void print(char const* c_str, yampi::environment const& environment) const
+        auto print(char const* c_str, yampi::environment const& environment) const -> void
         { print(static_cast<std::string>(c_str), environment); }
 
-        void print(wchar_t const* c_str, yampi::environment const& environment) const
+        auto print(wchar_t const* c_str, yampi::environment const& environment) const -> void
         { print(static_cast<std::wstring>(c_str), environment); }
 
-        void print(std::string const& string, yampi::environment const& environment) const
+        auto print(std::string const& string, yampi::environment const& environment) const -> void
         { do_print(std::clog, string, environment); }
 
-        void print(std::wstring const& string, yampi::environment const& environment) const
+        auto print(std::wstring const& string, yampi::environment const& environment) const -> void
         { do_print(std::wclog, string, environment); }
 
-        void print_with_time(char const* c_str, yampi::environment const& environment) const
+        auto print_with_time(char const* c_str, yampi::environment const& environment) const -> void
         { print_with_time(static_cast<std::string>(c_str), environment); }
 
-        void print_with_time(wchar_t const* c_str, yampi::environment const& environment) const
+        auto print_with_time(wchar_t const* c_str, yampi::environment const& environment) const -> void
         { print_with_time(static_cast<std::wstring>(c_str), environment); }
 
-        void print_with_time(std::string const& string, yampi::environment const& environment) const
+        auto print_with_time(std::string const& string, yampi::environment const& environment) const -> void
         { do_print_with_time(std::clog, string, environment); }
 
-        void print_with_time(std::wstring const& string, yampi::environment const& environment) const
+        auto print_with_time(std::wstring const& string, yampi::environment const& environment) const -> void
         { do_print_with_time(std::wclog, string, environment); }
 
        private:
         template <typename Character, typename CharacterTraits, typename Allocator>
-        void do_print(
+        auto do_print(
           std::basic_ostream<Character, CharacterTraits>& output_stream,
           std::basic_string<Character, CharacterTraits, Allocator> const& string,
-          yampi::environment const& environment) const
+          yampi::environment const& environment) const -> void
         {
           if (!maybe_io_rank_)
             return;
@@ -87,10 +87,10 @@ namespace ket
         }
 
         template <typename Character, typename CharacterTraits, typename Allocator>
-        void do_print_with_time(
+        auto do_print_with_time(
           std::basic_ostream<Character, CharacterTraits>& output_stream,
           std::basic_string<Character, CharacterTraits, Allocator> const& string,
-          yampi::environment const& environment) const
+          yampi::environment const& environment) const -> void
         {
           if (!maybe_io_rank_)
             return;
@@ -232,11 +232,11 @@ namespace ket
       namespace logger_detail
       {
         template <typename Character, typename CharacterTraits, typename Allocator>
-        inline void insert(std::basic_ostringstream<Character, CharacterTraits, Allocator>&)
+        inline auto insert(std::basic_ostringstream<Character, CharacterTraits, Allocator>&) -> void
         { }
 
         template <typename Character, typename CharacterTraits, typename Allocator, typename Value, typename... Values>
-        inline void insert(std::basic_ostringstream<Character, CharacterTraits, Allocator>& output_string_stream, Value&& value, Values&&... values)
+        inline auto insert(std::basic_ostringstream<Character, CharacterTraits, Allocator>& output_string_stream, Value&& value, Values&&... values) -> void
         {
           output_string_stream << std::forward<Value>(value);
           ::ket::mpi::utility::logger_detail::insert(output_string_stream, std::forward<Values>(values)...);
@@ -244,8 +244,8 @@ namespace ket
       } // namespace logger_detail
 
       template <typename Character, typename CharacterTraits, typename Allocator, typename... Values>
-      inline std::basic_string<Character, CharacterTraits, Allocator>
-      generate_logger_string(std::basic_string<Character, CharacterTraits, Allocator> const& base_string, Values&&... values)
+      inline auto generate_logger_string(std::basic_string<Character, CharacterTraits, Allocator> const& base_string, Values&&... values)
+      -> std::basic_string<Character, CharacterTraits, Allocator>
       {
         auto output_string_stream = std::basic_ostringstream<Character, CharacterTraits, Allocator>{base_string, std::ios_base::ate};
         ::ket::mpi::utility::logger_detail::insert(output_string_stream, std::forward<Values>(values)...);
@@ -264,23 +264,23 @@ namespace ket
         logger& operator=(logger&&) = delete;
 
         template <typename Character>
-        void print(Character const*, yampi::environment const&) const
+        auto print(Character const*, yampi::environment const&) const -> void
         { }
 
         template <typename Character, typename CharacterTraits, typename Allocator>
-        void print(
+        auto print(
           std::basic_string<Character, CharacterTraits, Allocator> const&,
-          yampi::environment const&) const
+          yampi::environment const&) const -> void
         { }
 
         template <typename Character>
-        void print_with_time(Character const*, yampi::environment const&) const
+        auto print_with_time(Character const*, yampi::environment const&) const -> void
         { }
 
         template <typename Character, typename CharacterTraits, typename Allocator>
-        void print_with_time(
+        auto print_with_time(
           std::basic_string<Character, CharacterTraits, Allocator> const&,
-          yampi::environment const&) const
+          yampi::environment const&) const -> void
         { }
       }; // class logger
 
@@ -331,8 +331,8 @@ namespace ket
       }; // class log_with_time_guard<Character, CharacterTraits, Allocator>
 
       template <typename Character, typename CharacterTraits, typename Allocator, typename... Values>
-      inline std::basic_string<Character, CharacterTraits, Allocator>
-      generate_logger_string(std::basic_string<Character, CharacterTraits, Allocator> const&, Values&&...)
+      inline auto generate_logger_string(std::basic_string<Character, CharacterTraits, Allocator> const&, Values&&...)
+      -> std::basic_string<Character, CharacterTraits, Allocator>
       { return {}; }
 # endif // KET_PRINT_LOG
     } // namespace utility

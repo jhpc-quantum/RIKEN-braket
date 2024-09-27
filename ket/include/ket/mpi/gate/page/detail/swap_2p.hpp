@@ -27,31 +27,34 @@ namespace ket
           template <
             typename ParallelPolicy,
             typename RandomAccessRange, typename StateInteger, typename BitInteger>
-          [[noreturn]] inline RandomAccessRange& swap_2p(
+          [[noreturn]] inline auto swap_2p(
             ParallelPolicy const,
             RandomAccessRange& local_state,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const)
+          -> RandomAccessRange&
           { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"swap_2p"}; }
 
           template <
             typename ParallelPolicy,
             typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
-          [[noreturn]] inline ::ket::mpi::state<Complex, false, Allocator>& swap_2p(
+          [[noreturn]] inline auto swap_2p(
             ParallelPolicy const,
             ::ket::mpi::state<Complex, false, Allocator>& local_state,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const)
+          -> ::ket::mpi::state<Complex, false, Allocator>&
           { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"swap_2p"}; }
 
           template <
             typename ParallelPolicy,
             typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
-          inline ::ket::mpi::state<Complex, true, Allocator>& swap_2p(
+          inline auto swap_2p(
             ParallelPolicy const parallel_policy,
             ::ket::mpi::state<Complex, true, Allocator>& local_state,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const page_permutated_qubit1,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const page_permutated_qubit2)
+          -> ::ket::mpi::state<Complex, true, Allocator>&
           {
             assert(local_state.num_page_qubits() >= std::size_t{2u});
 

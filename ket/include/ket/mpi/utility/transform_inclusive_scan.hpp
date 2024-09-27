@@ -4,11 +4,10 @@
 # include <iterator>
 # include <type_traits>
 
-# include <boost/range/value_type.hpp>
-
 # include <yampi/environment.hpp>
 
 # include <ket/utility/loop_n.hpp>
+# include <ket/utility/meta/ranges.hpp>
 
 
 namespace ket
@@ -23,37 +22,38 @@ namespace ket
         struct transform_inclusive_scan
         {
           template <
-            typename ParallelPolicy,
-            typename LocalState, typename ForwardIterator,
+            typename ParallelPolicy, typename LocalState, typename ForwardIterator,
             typename BinaryOperation, typename UnaryOperation>
-          static typename boost::range_value<LocalState>::type call(
+          static auto call(
             ParallelPolicy const parallel_policy,
             LocalState const& local_state, ForwardIterator const d_first,
             BinaryOperation binary_operation, UnaryOperation unary_operation,
             yampi::environment const&)
+          -> ::ket::utility::meta::range_value_t<LocalState>
           {
             ::ket::utility::ranges::transform_inclusive_scan(
-              parallel_policy,
-              local_state, d_first, binary_operation, unary_operation);
-            return *std::prev(std::end(local_state));
+              parallel_policy, local_state, d_first, binary_operation, unary_operation);
+
+            using std::end;
+            return *std::prev(end(local_state));
           }
 
           template <
-            typename ParallelPolicy,
-            typename LocalState, typename ForwardIterator,
-            typename BinaryOperation, typename UnaryOperation,
-            typename Value>
-          static typename boost::range_value<LocalState>::type call(
+            typename ParallelPolicy, typename LocalState, typename ForwardIterator,
+            typename BinaryOperation, typename UnaryOperation, typename Value>
+          static auto call(
             ParallelPolicy const parallel_policy,
             LocalState const& local_state, ForwardIterator const d_first,
             BinaryOperation binary_operation, UnaryOperation unary_operation,
             Value const initial_value, yampi::environment const&)
+          -> ::ket::utility::meta::range_value_t<LocalState>
           {
             ::ket::utility::ranges::transform_inclusive_scan(
               parallel_policy,
-              local_state, d_first,
-              binary_operation, unary_operation, initial_value);
-            return *std::prev(std::end(local_state));
+              local_state, d_first, binary_operation, unary_operation, initial_value);
+
+            using std::end;
+            return *std::prev(end(local_state));
           }
         }; // struct transform_inclusive_scan<LocalState_>
       } // namespace dispatch
@@ -62,10 +62,7 @@ namespace ket
         typename Value, typename ParallelPolicy,
         typename LocalState, typename ForwardIterator,
         typename BinaryOperation, typename UnaryOperation>
-      inline typename std::enable_if<
-        ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
-        Value>::type
-      transform_inclusive_scan(
+      inline std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, Value > transform_inclusive_scan(
         ParallelPolicy const parallel_policy,
         LocalState const& local_state, ForwardIterator const d_first,
         BinaryOperation binary_operation, UnaryOperation unary_operation,
@@ -112,10 +109,7 @@ namespace ket
       template <
         typename Value1, typename LocalState, typename OutputIterator,
         typename BinaryOperation, typename UnaryOperation, typename Value2>
-      inline typename std::enable_if<
-        not ::ket::utility::policy::meta::is_loop_n_policy<LocalState>::value,
-        Value1>::type
-      transform_inclusive_scan(
+      inline std::enable_if_t<not ::ket::utility::policy::meta::is_loop_n_policy<LocalState>::value, Value1> transform_inclusive_scan(
         LocalState const& local_state, OutputIterator const d_first,
         BinaryOperation binary_operation, UnaryOperation unary_operation,
         Value2 const initial_value,

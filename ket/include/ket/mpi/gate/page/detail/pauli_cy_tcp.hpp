@@ -6,8 +6,6 @@
 # include <algorithm>
 # include <iterator>
 
-# include <boost/range/size.hpp>
-
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
 # include <ket/utility/loop_n.hpp>
@@ -32,31 +30,34 @@ namespace ket
           template <
             typename ParallelPolicy,
             typename RandomAccessRange, typename StateInteger, typename BitInteger>
-          [[noreturn]] inline RandomAccessRange& pauli_cy_tcp(
+          [[noreturn]] inline auto pauli_cy_tcp(
             ParallelPolicy const,
             RandomAccessRange& local_state,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const,
             ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const)
+          -> RandomAccessRange&
           { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"pauli_cy_tcp"}; }
 
           template <
             typename ParallelPolicy,
             typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
-          [[noreturn]] inline ::ket::mpi::state<Complex, false, Allocator>& pauli_cy_tcp(
+          [[noreturn]] inline auto pauli_cy_tcp(
             ParallelPolicy const,
             ::ket::mpi::state<Complex, false, Allocator>& local_state,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const,
             ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const)
+          -> ::ket::mpi::state<Complex, false, Allocator>&
           { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"pauli_cy_tcp"}; }
 
           template <
             typename ParallelPolicy,
             typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
-          inline ::ket::mpi::state<Complex, true, Allocator>& pauli_cy_tcp(
+          inline auto pauli_cy_tcp(
             ParallelPolicy const parallel_policy,
             ::ket::mpi::state<Complex, true, Allocator>& local_state,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
             ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit)
+          -> ::ket::mpi::state<Complex, true, Allocator>&
           {
             assert(local_state.num_page_qubits() >= std::size_t{2u});
 
@@ -107,12 +108,15 @@ namespace ket
 
                 auto const control_on_page_range
                   = local_state.page_range(std::make_pair(data_block_index, control_on_page_index));
-                auto const control_on_first = std::begin(control_on_page_range);
+                using std::begin;
+                auto const control_on_first = begin(control_on_page_range);
                 auto const target_control_on_first
-                  = std::begin(local_state.page_range(std::make_pair(data_block_index, target_control_on_page_index)));
-                using ::ket::utility::loop_n;
-                loop_n(
-                  parallel_policy, boost::size(control_on_page_range),
+                  = begin(local_state.page_range(std::make_pair(data_block_index, target_control_on_page_index)));
+
+                using std::end;
+                ::ket::utility::loop_n(
+                  parallel_policy,
+                  static_cast<StateInteger>(std::distance(begin(control_on_page_range), end(control_on_page_range))),
                   [control_on_first, target_control_on_first](StateInteger const index, int const)
                   {
                     *(control_on_first + index) *= -::ket::utility::imaginary_unit<Complex>();

@@ -5,9 +5,6 @@
 # include <vector>
 # include <iterator>
 
-# include <boost/range/size.hpp>
-# include <boost/range/value_type.hpp>
-
 # include <yampi/environment.hpp>
 # include <yampi/datatype_base.hpp>
 # include <yampi/communicator.hpp>
@@ -21,6 +18,7 @@
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/positive_random_value_upto.hpp>
 # include <ket/utility/meta/real_of.hpp>
+# include <ket/utility/meta/ranges.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/simple_mpi.hpp>
 # include <ket/mpi/utility/logger.hpp>
@@ -39,23 +37,22 @@ namespace ket
       typename ResultAllocator,
       typename LocalState, typename RandomNumberGenerator,
       typename StateInteger, typename BitInteger, typename Allocator>
-    inline void generate_events(
+    inline auto generate_events(
       MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       std::vector<StateInteger, ResultAllocator>& result,
       LocalState& local_state,
       int const num_events,
       RandomNumberGenerator& random_number_generator,
-      ::ket::mpi::qubit_permutation<
-        StateInteger, BitInteger, Allocator>& permutation,
-      yampi::communicator const& communicator,
-      yampi::environment const& environment)
+      ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+      yampi::communicator const& communicator, yampi::environment const& environment)
+    -> void
     {
       ket::mpi::utility::log_with_time_guard<char> print{"Generate Events", environment};
 
       result.clear();
       result.reserve(num_events);
 
-      using complex_type = typename boost::range_value<LocalState>::type;
+      using complex_type = ::ket::utility::meta::range_value_t<LocalState>;
       using std::real;
       auto const total_probability
         = real(::ket::mpi::utility::transform_inclusive_scan_self(
@@ -69,18 +66,18 @@ namespace ket
       auto const present_rank = communicator.rank(environment);
       constexpr auto root_rank = yampi::rank{0};
 
-      using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
+      using real_type = ::ket::utility::meta::real_t<complex_type>;
       auto total_probabilities = std::vector<real_type>{};
       if (present_rank == root_rank)
         total_probabilities.resize(communicator.size(environment));
 
+      using std::begin;
       yampi::gather(
-        yampi::make_buffer(total_probability), std::begin(total_probabilities),
+        yampi::make_buffer(total_probability), begin(total_probabilities),
         root_rank, communicator, environment);
 
       if (present_rank == root_rank)
-        ::ket::utility::ranges::inclusive_scan(
-          total_probabilities, std::begin(total_probabilities));
+        ::ket::utility::ranges::inclusive_scan(total_probabilities, begin(total_probabilities));
 
       for (auto event_index = 0; event_index < num_events; ++event_index)
       {
@@ -91,12 +88,11 @@ namespace ket
           random_value
             = ::ket::utility::positive_random_value_upto(
                 total_probabilities.back(), random_number_generator);
+          using std::end;
           result_rank
             = static_cast<yampi::rank>(static_cast<StateInteger>(
-                std::upper_bound(
-                  std::begin(total_probabilities),
-                  std::end(total_probabilities), random_value)
-                - std::begin(total_probabilities)));
+                std::upper_bound(begin(total_probabilities), end(total_probabilities), random_value)
+                - begin(total_probabilities)));
         }
 
         auto result_mpi_rank = result_rank.mpi_rank();
@@ -123,16 +119,14 @@ namespace ket
                   { using std::real; return real(lhs) < real(rhs); },
                   environment));
 
-          using ::ket::mpi::utility::rank_index_to_qubit_value;
           permutated_result
-            = rank_index_to_qubit_value(
+            = ::ket::mpi::utility::rank_index_to_qubit_value(
                 mpi_policy, local_state, result_rank, local_result);
         }
 
         yampi::broadcast(yampi::make_buffer(permutated_result), result_rank, communicator, environment);
 
-        using ::ket::mpi::inverse_permutate_bits;
-        result.push_back(inverse_permutate_bits(permutation, permutated_result));
+        result.push_back(::ket::mpi::inverse_permutate_bits(permutation, permutated_result));
       }
     }
 
@@ -142,25 +136,24 @@ namespace ket
       typename LocalState, typename RandomNumberGenerator,
       typename StateInteger, typename BitInteger, typename Allocator,
       typename DerivedDatatype1, typename DerivedDatatype2>
-    inline void generate_events(
+    inline auto generate_events(
       MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       std::vector<StateInteger, ResultAllocator>& result,
       LocalState& local_state,
       int const num_events,
       RandomNumberGenerator& random_number_generator,
-      ::ket::mpi::qubit_permutation<
-        StateInteger, BitInteger, Allocator>& permutation,
+      ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
       yampi::datatype_base<DerivedDatatype1> const& state_integer_datatype,
       yampi::datatype_base<DerivedDatatype2> const& real_datatype,
-      yampi::communicator const& communicator,
-      yampi::environment const& environment)
+      yampi::communicator const& communicator, yampi::environment const& environment)
+    -> void
     {
       ket::mpi::utility::log_with_time_guard<char> print{"Generate Events", environment};
 
       result.clear();
       result.reserve(num_events);
 
-      using complex_type = typename boost::range_value<LocalState>::type;
+      using complex_type = ::ket::utility::meta::range_value_t<LocalState>;
       using std::real;
       auto const total_probability
         = real(::ket::mpi::utility::transform_inclusive_scan_self(
@@ -174,18 +167,18 @@ namespace ket
       auto const present_rank = communicator.rank(environment);
       constexpr auto root_rank = yampi::rank{0};
 
-      using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
+      using real_type = ::ket::utility::meta::real_t<complex_type>;
       auto total_probabilities = std::vector<real_type>{};
       if (present_rank == root_rank)
         total_probabilities.resize(communicator.size(environment));
 
+      using std::begin;
       yampi::gather(
-        yampi::make_buffer(total_probability, real_datatype), std::begin(total_probabilities),
+        yampi::make_buffer(total_probability, real_datatype), begin(total_probabilities),
         root_rank, communicator, environment);
 
       if (present_rank == root_rank)
-        ::ket::utility::ranges::inclusive_scan(
-          total_probabilities, std::begin(total_probabilities));
+        ::ket::utility::ranges::inclusive_scan(total_probabilities, begin(total_probabilities));
 
       for (auto event_index = 0; event_index < num_events; ++event_index)
       {
@@ -196,12 +189,11 @@ namespace ket
           random_value
             = ::ket::utility::positive_random_value_upto(
                 total_probabilities.back(), random_number_generator);
+          using std::end;
           result_rank
             = static_cast<yampi::rank>(static_cast<StateInteger>(
-                std::upper_bound(
-                  std::begin(total_probabilities),
-                  std::end(total_probabilities), random_value)
-                - std::begin(total_probabilities)));
+                std::upper_bound(begin(total_probabilities), end(total_probabilities), random_value)
+                - begin(total_probabilities)));
         }
 
         auto result_mpi_rank = result_rank.mpi_rank();
@@ -228,16 +220,14 @@ namespace ket
                   { using std::real; return real(lhs) < real(rhs); },
                   environment));
 
-          using ::ket::mpi::utility::rank_index_to_qubit_value;
           permutated_result
-            = rank_index_to_qubit_value(
+            = ::ket::mpi::utility::rank_index_to_qubit_value(
                 mpi_policy, local_state, result_rank, local_result);
         }
 
         yampi::broadcast(yampi::make_buffer(permutated_result, state_integer_datatype), result_rank, communicator, environment);
 
-        using ::ket::mpi::inverse_permutate_bits;
-        result.push_back(inverse_permutate_bits(permutation, permutated_result));
+        result.push_back(::ket::mpi::inverse_permutate_bits(permutation, permutated_result));
       }
     }
 
@@ -246,17 +236,15 @@ namespace ket
       typename ResultAllocator,
       typename LocalState, typename RandomNumberGenerator,
       typename StateInteger, typename BitInteger, typename Allocator>
-    inline void generate_events(
+    inline auto generate_events(
       MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       std::vector<StateInteger, ResultAllocator>& result,
       LocalState& local_state,
-      int const num_events,
-      RandomNumberGenerator const&,
+      int const num_events, RandomNumberGenerator const&,
       typename RandomNumberGenerator::result_type const seed,
-      ::ket::mpi::qubit_permutation<
-        StateInteger, BitInteger, Allocator>& permutation,
-      yampi::communicator const& communicator,
-      yampi::environment const& environment)
+      ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+      yampi::communicator const& communicator, yampi::environment const& environment)
+    -> void
     {
       RandomNumberGenerator random_number_generator(seed);
       ::ket::mpi::generate_events(
@@ -271,19 +259,17 @@ namespace ket
       typename LocalState, typename RandomNumberGenerator,
       typename StateInteger, typename BitInteger, typename Allocator,
       typename DerivedDatatype1, typename DerivedDatatype2>
-    inline void generate_events(
+    inline auto generate_events(
       MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       std::vector<StateInteger, ResultAllocator>& result,
       LocalState& local_state,
-      int const num_events,
-      RandomNumberGenerator const&,
+      int const num_events, RandomNumberGenerator const&,
       typename RandomNumberGenerator::result_type const seed,
-      ::ket::mpi::qubit_permutation<
-        StateInteger, BitInteger, Allocator>& permutation,
+      ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
       yampi::datatype_base<DerivedDatatype1> const& state_integer_datatype,
       yampi::datatype_base<DerivedDatatype2> const& real_datatype,
-      yampi::communicator const& communicator,
-      yampi::environment const& environment)
+      yampi::communicator const& communicator, yampi::environment const& environment)
+    -> void
     {
       RandomNumberGenerator random_number_generator(seed);
       ::ket::mpi::generate_events(
@@ -296,21 +282,19 @@ namespace ket
       typename ResultAllocator,
       typename LocalState, typename RandomNumberGenerator,
       typename StateInteger, typename BitInteger, typename Allocator>
-    inline void generate_events(
+    inline auto generate_events(
       std::vector<StateInteger, ResultAllocator>& result,
       LocalState& local_state,
       int const num_events,
       RandomNumberGenerator& random_number_generator,
-      ::ket::mpi::qubit_permutation<
-        StateInteger, BitInteger, Allocator>& permutation,
-      yampi::communicator const& communicator,
-      yampi::environment const& environment)
+      ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+      yampi::communicator const& communicator, yampi::environment const& environment)
+    -> void
     {
       ::ket::mpi::generate_events(
         ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
-        result, local_state, num_events, random_number_generator, permutation,
-        communicator, environment);
+        result, local_state, num_events, random_number_generator, permutation, communicator, environment);
     }
 
     template <
@@ -318,17 +302,16 @@ namespace ket
       typename LocalState, typename RandomNumberGenerator,
       typename StateInteger, typename BitInteger, typename Allocator,
       typename DerivedDatatype1, typename DerivedDatatype2>
-    inline void generate_events(
+    inline auto generate_events(
       std::vector<StateInteger, ResultAllocator>& result,
       LocalState& local_state,
       int const num_events,
       RandomNumberGenerator& random_number_generator,
-      ::ket::mpi::qubit_permutation<
-        StateInteger, BitInteger, Allocator>& permutation,
+      ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
       yampi::datatype_base<DerivedDatatype1> const& state_integer_datatype,
       yampi::datatype_base<DerivedDatatype2> const& real_datatype,
-      yampi::communicator const& communicator,
-      yampi::environment const& environment)
+      yampi::communicator const& communicator, yampi::environment const& environment)
+    -> void
     {
       ::ket::mpi::generate_events(
         ::ket::mpi::utility::policy::make_simple_mpi(),
@@ -341,16 +324,15 @@ namespace ket
       typename ResultAllocator,
       typename LocalState, typename RandomNumberGenerator,
       typename StateInteger, typename BitInteger, typename Allocator>
-    inline void generate_events(
+    inline auto generate_events(
       std::vector<StateInteger, ResultAllocator>& result,
       LocalState& local_state,
       int const num_events,
       RandomNumberGenerator const&,
       typename RandomNumberGenerator::result_type const seed,
-      ::ket::mpi::qubit_permutation<
-        StateInteger, BitInteger, Allocator>& permutation,
-      yampi::communicator const& communicator,
-      yampi::environment const& environment)
+      ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+      yampi::communicator const& communicator, yampi::environment const& environment)
+    -> void
     {
       RandomNumberGenerator random_number_generator(seed);
       ::ket::mpi::generate_events(
@@ -363,18 +345,17 @@ namespace ket
       typename LocalState, typename RandomNumberGenerator,
       typename StateInteger, typename BitInteger, typename Allocator,
       typename DerivedDatatype1, typename DerivedDatatype2>
-    inline void generate_events(
+    inline auto generate_events(
       std::vector<StateInteger, ResultAllocator>& result,
       LocalState& local_state,
       int const num_events,
       RandomNumberGenerator const&,
       typename RandomNumberGenerator::result_type const seed,
-      ::ket::mpi::qubit_permutation<
-        StateInteger, BitInteger, Allocator>& permutation,
+      ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
       yampi::datatype_base<DerivedDatatype1> const& state_integer_datatype,
       yampi::datatype_base<DerivedDatatype2> const& real_datatype,
-      yampi::communicator const& communicator,
-      yampi::environment const& environment)
+      yampi::communicator const& communicator, yampi::environment const& environment)
+    -> void
     {
       RandomNumberGenerator random_number_generator(seed);
       ::ket::mpi::generate_events(

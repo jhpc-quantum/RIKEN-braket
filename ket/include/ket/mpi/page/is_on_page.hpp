@@ -13,15 +13,11 @@ namespace ket
     namespace page
     {
       template <typename StateInteger, typename BitInteger, typename LocalState>
-      inline constexpr bool is_on_page(
-        ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const,
-        LocalState const&)
+      inline constexpr auto is_on_page(::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const, LocalState const&) -> bool
       { return false; }
 
       template <typename StateInteger, typename BitInteger, typename LocalState>
-      inline constexpr bool is_on_page(
-        ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const,
-        LocalState const&)
+      inline constexpr auto is_on_page(::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const, LocalState const&) -> bool
       { return false; }
     } // namespace page
   } // namespace mpi

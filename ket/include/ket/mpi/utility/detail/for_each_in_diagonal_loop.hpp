@@ -28,22 +28,20 @@ namespace ket
         struct for_each_in_diagonal_loop
         {
           template <
-            typename ParallelPolicy, typename LocalState,
-            typename StateInteger, typename BitInteger,
+            typename ParallelPolicy, typename LocalState, typename StateInteger, typename BitInteger,
             std::size_t num_local_control_qubits, typename Function>
-          static void call(
+          static auto call(
             ParallelPolicy const parallel_policy,
             LocalState&& local_state,
             StateInteger const data_block_index, StateInteger const data_block_size,
             StateInteger const last_local_qubit_value,
-            std::array<
-              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >,
-              num_local_control_qubits> local_permutated_control_qubits,
+            std::array< ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >, num_local_control_qubits > local_permutated_control_qubits,
             Function&& function)
+          -> void
           {
-            std::sort(
-              std::begin(local_permutated_control_qubits),
-              std::end(local_permutated_control_qubits));
+            using std::begin;
+            using std::end;
+            std::sort(begin(local_permutated_control_qubits), end(local_permutated_control_qubits));
 
             impl(
               parallel_policy, std::forward<LocalState>(local_state),
@@ -53,28 +51,27 @@ namespace ket
 
          private:
           template <
-            typename ParallelPolicy, typename LocalState,
-            typename StateInteger, typename BitInteger,
+            typename ParallelPolicy, typename LocalState, typename StateInteger, typename BitInteger,
             std::size_t num_local_control_qubits, typename Function>
-          static void impl(
+          static auto impl(
             ParallelPolicy const parallel_policy,
             LocalState&& local_state,
             StateInteger const data_block_index, StateInteger const data_block_size,
             StateInteger const last_local_qubit_value,
-            std::array<
-              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >,
-              num_local_control_qubits> const& sorted_local_permutated_control_qubits,
+            std::array< ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >, num_local_control_qubits > const& sorted_local_permutated_control_qubits,
             Function&& function)
+          -> void
           {
             static constexpr auto zero_state_integer = StateInteger{0u};
 
             using permutated_control_qubit_type
               = ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >;
+            using std::begin;
+            using std::end;
             // 000101000100
             auto const mask
               = std::accumulate(
-                  std::begin(sorted_local_permutated_control_qubits),
-                  std::end(sorted_local_permutated_control_qubits),
+                  begin(sorted_local_permutated_control_qubits), end(sorted_local_permutated_control_qubits),
                   zero_state_integer,
                   [](StateInteger const& partial_mask, permutated_control_qubit_type const& permutated_control_qubit)
                   {
@@ -84,13 +81,11 @@ namespace ket
 
             auto const last_integer = last_local_qubit_value >> num_local_control_qubits;
 
-            auto const first = std::begin(std::forward<LocalState>(local_state));
+            auto const first = begin(std::forward<LocalState>(local_state));
             auto const first_index = data_block_index * data_block_size;
-            using ::ket::utility::loop_n;
-            loop_n(
+            ::ket::utility::loop_n(
               parallel_policy, last_integer,
-              [&function, &sorted_local_permutated_control_qubits, mask, first, first_index](
-                StateInteger state_integer, int const)
+              [&function, &sorted_local_permutated_control_qubits, mask, first, first_index](StateInteger state_integer, int const)
               {
                 static constexpr auto one_state_integer = StateInteger{1u};
 
@@ -99,9 +94,7 @@ namespace ket
                 {
                   auto const lower_mask = (one_state_integer << permutated_control_qubit) - one_state_integer;
                   auto const upper_mask = compl lower_mask;
-                  state_integer
-                    = (state_integer bitand lower_mask)
-                      bitor ((state_integer bitand upper_mask) << 1u);
+                  state_integer = (state_integer bitand lower_mask) bitor ((state_integer bitand upper_mask) << 1u);
                 }
 
                 // xxx1x1xxx1xx
@@ -119,18 +112,17 @@ namespace ket
           typename ParallelPolicy, typename LocalState,
           typename StateInteger, typename BitInteger, std::size_t num_local_control_qubits,
           typename Function>
-        inline void for_each_in_diagonal_loop(
+        inline auto for_each_in_diagonal_loop(
           ParallelPolicy const parallel_policy,
           LocalState&& local_state,
           StateInteger const data_block_index, StateInteger const data_block_size,
           StateInteger const last_local_qubit_value,
-          std::array<
-            ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >,
-            num_local_control_qubits> const& local_permutated_control_qubits,
+          std::array< ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >, num_local_control_qubits > const& local_permutated_control_qubits,
           Function&& function)
+        -> void
         {
           using for_each_in_diagonal_loop_type
-            = ::ket::mpi::utility::dispatch::for_each_in_diagonal_loop<typename std::remove_cv<typename std::remove_reference<LocalState>::type>::type>;
+            = ::ket::mpi::utility::dispatch::for_each_in_diagonal_loop<std::remove_cv_t<std::remove_reference_t<LocalState>>>;
           return for_each_in_diagonal_loop_type::call(
             parallel_policy, std::forward<LocalState>(local_state), data_block_index, data_block_size, last_local_qubit_value,
             local_permutated_control_qubits, std::forward<Function>(function));

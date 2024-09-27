@@ -7,15 +7,13 @@
 # include <iterator>
 # include <utility>
 
-# include <boost/range/value_type.hpp>
-
 # include <yampi/datatype_base.hpp>
 # include <yampi/communicator.hpp>
 # include <yampi/environment.hpp>
 
 # include <ket/qubit.hpp>
 # include <ket/gate/gate.hpp>
-# include <ket/mpi/permutated.hpp>
+# include <ket/utility/meta/ranges.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/simple_mpi.hpp>
 
@@ -30,19 +28,20 @@ namespace ket
       {
         template <
           typename MpiPolicy, typename ParallelPolicy,
-          typename RandomAccessRange, typename StateInteger, typename BitInteger,
-          typename Function, typename Qubit, typename... Qubits>
-        inline RandomAccessRange& gate(
+          typename RandomAccessRange, typename Function, typename Qubit, typename... Qubits>
+        inline auto gate(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state, yampi::communicator const& communicator, yampi::environment const& environment,
-          Function&& function, ::ket::permutated<Qubit> const permutated_qubit, ::ket::permutated<Qubits> const... permutated_qubits)
+          Function&& function, ::ket::mpi::permutated<Qubit> const permutated_qubit, ::ket::mpi::permutated<Qubits> const... permutated_qubits)
+        -> RandomAccessRange&
         {
           auto const data_block_size
             = ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment);
           auto const num_data_blocks
             = ::ket::mpi::utility::policy::num_data_blocks(mpi_policy, communicator, environment);
 
-          auto const first = std::begin(local_state);
+          using std::begin;
+          auto const first = begin(local_state);
           for (auto data_block_index = decltype(num_data_blocks){0u}; data_block_index < num_data_blocks; ++data_block_index)
             ::ket::gate::gate(
               parallel_policy,
@@ -59,13 +58,14 @@ namespace ket
         typename RandomAccessRange, typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator,
         typename Function, typename Qubit, typename... Qubits>
-      inline RandomAccessRange& gate(
+      inline auto gate(
         MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
-        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment,
         Function&& function, Qubit&& qubit, Qubits&&... qubits)
+      -> RandomAccessRange&
       {
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
         auto qubit_array = std::array<qubit_type, sizeof...(Qubits) + 1u>{::ket::remove_control(qubit), ::ket::remove_control(qubits)...};
@@ -83,14 +83,15 @@ namespace ket
         typename RandomAccessRange, typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator, typename DerivedDatatype,
         typename Function, typename Qubit, typename... Qubits>
-      inline RandomAccessRange& gate(
+      inline auto gate(
         MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
-        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment,
         Function&& function, Qubit&& qubit, Qubits&&... qubits)
+      -> RandomAccessRange&
       {
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
         auto qubit_array = std::array<qubit_type, sizeof...(Qubits) + 1u>{::ket::remove_control(qubit), ::ket::remove_control(qubits)...};

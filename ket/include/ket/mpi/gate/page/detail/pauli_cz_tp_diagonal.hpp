@@ -1,16 +1,9 @@
 #ifndef KET_MPI_GATE_PAGE_DETAIL_PAULI_CZ_TP_DIAGONAL_HPP
 # define KET_MPI_GATE_PAGE_DETAIL_PAULI_CZ_TP_DIAGONAL_HPP
 
-# include <boost/config.hpp>
-
 # include <cassert>
 # include <iterator>
 # include <utility>
-# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
-#   include <memory>
-# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
-
-# include <boost/range/size.hpp>
 
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
@@ -39,57 +32,15 @@ namespace ket
           namespace pauli_cz_tp_detail
           {
             // tp_cl: target qubit is on page and control qubit is local
-# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
-            template <typename StateInteger>
-            struct do_pauli_cz_tp_cl
-            {
-              StateInteger permutated_control_qubit_mask_;
-              StateInteger nonpage_lower_bits_mask_;
-              StateInteger nonpage_upper_bits_mask_;
-
-              do_pauli_cz_tp_cl(
-                StateInteger const permutated_control_qubit_mask,
-                StateInteger const nonpage_lower_bits_mask,
-                StateInteger const nonpage_upper_bits_mask) noexcept
-                : permutated_control_qubit_mask_{permutated_control_qubit_mask},
-                  nonpage_lower_bits_mask_{nonpage_lower_bits_mask},
-                  nonpage_upper_bits_mask_{nonpage_upper_bits_mask}
-              { }
-
-              template <typename Iterator>
-              void operator()(
-                Iterator const, Iterator const one_first,
-                StateInteger const index_wo_nonpage_qubit, int const) const
-              {
-                auto const zero_index
-                  = ((index_wo_nonpage_qubit bitand nonpage_upper_bits_mask_) << 1u)
-                    bitor (index_wo_nonpage_qubit bitand nonpage_lower_bits_mask_);
-                auto const one_index = zero_index bitor permutated_control_qubit_mask_;
-
-                using complex_type = typename std::iterator_traits<Iterator>::value_type;
-                using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
-                *(one_first + one_index) *= static_cast<real_type>(-1);
-              }
-            }; // struct do_pauli_cz_tp_cl<StateInteger>
-
-            template <typename StateInteger>
-            inline ::ket::mpi::gate::page::detail::pauli_cz_tp_detail::do_pauli_cz_tp_cl<StateInteger>
-            make_do_pauli_cz_tp_cl(
-              StateInteger const permutated_control_qubit_mask,
-              StateInteger const nonpage_lower_bits_mask,
-              StateInteger const nonpage_upper_bits_mask)
-            { return {permutated_control_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask}; }
-# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
-
             template <
               typename ParallelPolicy,
               typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
-            inline ::ket::mpi::state<Complex, true, Allocator>&
-            pauli_cz_tp_cl(
+            inline auto pauli_cz_tp_cl(
               ParallelPolicy const parallel_policy,
               ::ket::mpi::state<Complex, true, Allocator>& local_state,
               ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
               ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit)
+            -> ::ket::mpi::state<Complex, true, Allocator>&
             {
               assert(not ::ket::mpi::page::is_on_page(permutated_control_qubit, local_state));
               auto const permutated_control_qubit_mask
@@ -97,7 +48,6 @@ namespace ket
               auto const nonpage_lower_bits_mask = permutated_control_qubit_mask - StateInteger{1u};
               auto const nonpage_upper_bits_mask = compl nonpage_lower_bits_mask;
 
-# ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
               return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
                 parallel_policy, local_state, permutated_target_qubit,
                 [permutated_control_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask](
@@ -108,23 +58,16 @@ namespace ket
                       bitor (index_wo_nonpage_qubit bitand nonpage_lower_bits_mask);
                   auto const one_index = zero_index bitor permutated_control_qubit_mask;
 
-                  using real_type = typename ::ket::utility::meta::real_of<Complex>::type;
+                  using real_type = ::ket::utility::meta::real_t<Complex>;
                   *(one_first + one_index) *= static_cast<real_type>(-1);
                 });
-# else // BOOST_NO_CXX14_GENERIC_LAMBDAS
-              return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
-                parallel_policy, local_state, permutated_target_qubit,
-                ::ket::mpi::gate::page::detail::pauli_cz_tp_detail::make_do_pauli_cz_tp_cl(
-                  permutated_control_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask));
-# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
             }
 
             // tp_cu: target qubit is on page and control qubit is unit
             template <
               typename StateInteger, typename BitInteger, typename NumProcesses,
               typename ParallelPolicy, typename Complex, typename Allocator>
-            inline ::ket::mpi::state<Complex, false, Allocator>&
-            pauli_cz_tp_cu(
+            [[noreturn]] inline auto pauli_cz_tp_cu(
               ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
               ParallelPolicy const parallel_policy,
               ::ket::mpi::state<Complex, false, Allocator>& local_state,
@@ -132,13 +75,13 @@ namespace ket
               ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit,
               ::yampi::rank const rank,
               ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const least_permutated_unit_qubit)
+            -> ::ket::mpi::state<Complex, false, Allocator>&
             { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"pauli_cz_tp_cu"}; }
 
             template <
               typename StateInteger, typename BitInteger, typename NumProcesses,
               typename ParallelPolicy, typename Complex, typename Allocator>
-            inline ::ket::mpi::state<Complex, true, Allocator>&
-            pauli_cz_tp_cu(
+            inline auto pauli_cz_tp_cu(
               ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
               ParallelPolicy const parallel_policy,
               ::ket::mpi::state<Complex, true, Allocator>& local_state,
@@ -146,6 +89,7 @@ namespace ket
               ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit,
               ::yampi::rank const rank,
               ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const least_permutated_unit_qubit)
+            -> ::ket::mpi::state<Complex, true, Allocator>&
             {
               assert(not ::ket::mpi::page::is_on_page(permutated_control_qubit, local_state));
 
@@ -180,14 +124,16 @@ namespace ket
                   auto const one_page_index = zero_page_index bitor permutated_target_qubit_mask;
 
                   auto const one_page_range = local_state.page_range(std::make_pair(data_block_index, one_page_index));
-                  auto const one_first = std::begin(one_page_range);
+                  using std::begin;
+                  auto const one_first = begin(one_page_range);
 
-                  using ::ket::utility::loop_n;
-                  loop_n(
-                    parallel_policy, boost::size(one_page_range),
+                  using std::end;
+                  ::ket::utility::loop_n(
+                    parallel_policy,
+                    static_cast<StateInteger>(std::distance(begin(one_page_range), end(one_page_range))),
                     [one_first](StateInteger const index, int const)
                     {
-                      using real_type = typename ::ket::utility::meta::real_of<Complex>::type;
+                      using real_type = ::ket::utility::meta::real_t<Complex>;
                       *(one_first + index) *= static_cast<real_type>(-1);
                     });
                 }
@@ -197,31 +143,17 @@ namespace ket
             }
 
             // tp_cg: target qubit is on page and control qubit is global
-# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
-            struct do_pauli_cz_tp_cg
-            {
-              template <typename Iterator, typename StateInteger>
-              void operator()(
-                Iterator const, Iterator const one_first, StateInteger const index, int const) const
-              {
-                using complex_type = typename std::iterator_traits<Iterator>::value_type;
-                using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
-                *(one_first + index) *= static_cast<real_type>(-1);
-              }
-            }; // struct do_pauli_cz_tp_cg<Complex>
-# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
-
             template <
               typename ParallelPolicy,
               typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
-            inline ::ket::mpi::state<Complex, true, Allocator>&
-            pauli_cz_tp_cg(
+            inline auto pauli_cz_tp_cg(
               ParallelPolicy const parallel_policy,
               ::ket::mpi::state<Complex, true, Allocator>& local_state,
               ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
               ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit,
               ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const least_permutated_global_qubit,
               StateInteger const global_qubit_value)
+            -> ::ket::mpi::state<Complex, true, Allocator>&
             {
               assert(not ::ket::mpi::page::is_on_page(permutated_control_qubit, local_state));
 
@@ -231,69 +163,64 @@ namespace ket
               if ((global_qubit_value bitand permutated_control_qubit_mask) == StateInteger{0u})
                 return local_state;
 
-# ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
               return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
                 parallel_policy, local_state, permutated_target_qubit,
                 [](auto const, auto const one_first, StateInteger const index, int const)
                 {
-                  using real_type = typename ::ket::utility::meta::real_of<Complex>::type;
+                  using real_type = ::ket::utility::meta::real_t<Complex>;
                   *(one_first + index) *= static_cast<real_type>(-1);
                 });
-# else // BOOST_NO_CXX14_GENERIC_LAMBDAS
-              return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-                parallel_policy, local_state, permutated_target_qubit,
-                ::ket::mpi::gate::page::detail::pauli_cz_tp_detail::do_pauli_cz_tp_cg{});
-# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
             }
           } // namespace pauli_cz_tp_detail
 
           template <
             typename MpiPolicy, typename ParallelPolicy,
             typename RandomAccessRange, typename StateInteger, typename BitInteger>
-          [[noreturn]] inline RandomAccessRange& pauli_cz_tp(
+          [[noreturn]] inline auto pauli_cz_tp(
             MpiPolicy const&, ParallelPolicy const,
             RandomAccessRange& local_state,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const,
             ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const,
             yampi::rank const)
+          -> RandomAccessRange&
           { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"pauli_cz_tp"}; }
 
           template <
             typename ParallelPolicy,
             typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
-          [[noreturn]] inline ::ket::mpi::state<Complex, false, Allocator>&
-          pauli_cz_tp(
+          [[noreturn]] inline auto pauli_cz_tp(
             ::ket::mpi::utility::policy::simple_mpi const, ParallelPolicy const,
             ::ket::mpi::state<Complex, false, Allocator>& local_state,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const,
             ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const,
             yampi::rank const)
+          -> ::ket::mpi::state<Complex, false, Allocator>&
           { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"pauli_cz_tp"}; }
 
           template <
             typename StateInteger, typename BitInteger, typename NumProcesses,
             typename ParallelPolicy, typename Complex, typename Allocator>
-          [[noreturn]] inline ::ket::mpi::state<Complex, false, Allocator>&
-          pauli_cz_tp(
+          [[noreturn]] inline auto pauli_cz_tp(
             ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const&,
             ParallelPolicy const,
             ::ket::mpi::state<Complex, false, Allocator>& local_state,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const,
             ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const,
             yampi::rank const)
+          -> ::ket::mpi::state<Complex, false, Allocator>&
           { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"pauli_cz_tp"}; }
 
           template <
             typename ParallelPolicy,
             typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
-          inline ::ket::mpi::state<Complex, true, Allocator>&
-          pauli_cz_tp(
+          inline auto pauli_cz_tp(
             ::ket::mpi::utility::policy::simple_mpi const mpi_policy,
             ParallelPolicy const parallel_policy,
             ::ket::mpi::state<Complex, true, Allocator>& local_state,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
             ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit,
             yampi::rank const rank)
+          -> ::ket::mpi::state<Complex, true, Allocator>&
           {
             assert(not ::ket::mpi::page::is_on_page(permutated_control_qubit, local_state));
 
@@ -314,14 +241,14 @@ namespace ket
           template <
             typename StateInteger, typename BitInteger, typename NumProcesses,
             typename ParallelPolicy, typename Complex, typename Allocator>
-          inline ::ket::mpi::state<Complex, true, Allocator>&
-          pauli_cz_tp(
+          inline auto pauli_cz_tp(
             ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
             ParallelPolicy const parallel_policy,
             ::ket::mpi::state<Complex, true, Allocator>& local_state,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
             ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit,
             yampi::rank const rank)
+          -> ::ket::mpi::state<Complex, true, Allocator>&
           {
             assert(not ::ket::mpi::page::is_on_page(permutated_control_qubit, local_state));
 
