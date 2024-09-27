@@ -557,7 +557,7 @@ namespace bra
   ket::gate::outcome nompi_state::do_projective_measurement(qubit_type const qubit)
   {
     return ket::gate::ranges::projective_measurement(
-      parallel_policy_, data_, qubit, random_number_generator_);
+      parallel_policy_, data_, random_number_generator_, qubit);
   }
 
   void nompi_state::do_expectation_values()
