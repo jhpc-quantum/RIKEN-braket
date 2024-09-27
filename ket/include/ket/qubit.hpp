@@ -25,139 +25,128 @@ namespace ket
 
     explicit operator BitInteger() const { return bit_; }
 
-    qubit& operator++() noexcept { ++bit_; return *this; }
-    qubit operator++(int) noexcept
-    {
-      auto result = *this;
-      ++(*this);
-      return result;
-    }
-    qubit& operator--() noexcept { --bit_; return *this; }
-    qubit operator--(int) noexcept
-    {
-      auto result = *this;
-      --(*this);
-      return result;
-    }
-    qubit& operator+=(BitInteger const bit) noexcept
-    { bit_ += bit; return *this; }
-    qubit& operator-=(BitInteger const bit) noexcept
-    { bit_ -= bit; return *this; }
-    BitInteger operator-(qubit const& other) const noexcept
-    { return bit_ - other.bit_; }
+    auto operator++() noexcept -> qubit& { ++bit_; return *this; }
+    auto operator++(int) noexcept -> qubit { auto result = *this; ++(*this); return result; }
+    auto operator--() noexcept -> qubit& { --bit_; return *this; }
+    auto operator--(int) noexcept -> qubit { auto result = *this; --(*this); return result; }
+    auto operator+=(BitInteger const bit) noexcept -> qubit& { bit_ += bit; return *this; }
+    auto operator-=(BitInteger const bit) noexcept -> qubit& { bit_ -= bit; return *this; }
+    auto operator-(qubit const& other) const noexcept -> BitInteger { return bit_ - other.bit_; }
   }; // class qubit<StateInteger, BitInteger>
 
   template <typename StateInteger, typename BitInteger>
-  inline constexpr bool operator==(
+  inline constexpr auto operator==(
     ::ket::qubit<StateInteger, BitInteger> const qubit1,
     ::ket::qubit<StateInteger, BitInteger> const qubit2) noexcept
+  -> bool
   { return static_cast<BitInteger>(qubit1) == static_cast<BitInteger>(qubit2); }
 
   template <typename StateInteger, typename BitInteger>
-  inline constexpr bool operator!=(
+  inline constexpr auto operator!=(
     ::ket::qubit<StateInteger, BitInteger> const qubit1,
     ::ket::qubit<StateInteger, BitInteger> const qubit2) noexcept
+  -> bool
   { return not (qubit1 == qubit2); }
 
   template <typename StateInteger, typename BitInteger>
-  inline constexpr bool operator<(
+  inline constexpr auto operator<(
     ::ket::qubit<StateInteger, BitInteger> const qubit1,
     ::ket::qubit<StateInteger, BitInteger> const qubit2) noexcept
+  -> bool
   { return static_cast<BitInteger>(qubit1) < static_cast<BitInteger>(qubit2); }
 
   template <typename StateInteger, typename BitInteger>
-  inline constexpr bool operator>(
+  inline constexpr auto operator>(
     ::ket::qubit<StateInteger, BitInteger> const qubit1,
     ::ket::qubit<StateInteger, BitInteger> const qubit2) noexcept
+  -> bool
   { return qubit2 < qubit1; }
 
   template <typename StateInteger, typename BitInteger>
-  inline constexpr bool operator<=(
+  inline constexpr auto operator<=(
     ::ket::qubit<StateInteger, BitInteger> const qubit1,
     ::ket::qubit<StateInteger, BitInteger> const qubit2) noexcept
+  -> bool
   { return not (qubit1 > qubit2); }
 
   template <typename StateInteger, typename BitInteger>
-  inline constexpr bool operator>=(
+  inline constexpr auto operator>=(
     ::ket::qubit<StateInteger, BitInteger> const qubit1,
     ::ket::qubit<StateInteger, BitInteger> const qubit2) noexcept
+  -> bool
   { return not (qubit1 < qubit2); }
 
   template <typename StateInteger, typename BitInteger>
-  inline constexpr qubit<StateInteger, BitInteger> operator+(
+  inline constexpr auto operator+(
     ::ket::qubit<StateInteger, BitInteger> qubit, BitInteger const bit) noexcept
+  -> ::ket::qubit<StateInteger, BitInteger>
   { return qubit += bit; }
 
   template <typename StateInteger, typename BitInteger>
-  inline constexpr qubit<StateInteger, BitInteger> operator+(
+  inline constexpr auto operator+(
     BitInteger const bit, ::ket::qubit<StateInteger, BitInteger> const qubit) noexcept
+  -> ::ket::qubit<StateInteger, BitInteger>
   { return qubit + bit; }
 
   template <typename StateInteger, typename BitInteger>
-  inline constexpr qubit<StateInteger, BitInteger> operator-(
+  inline constexpr auto operator-(
     ::ket::qubit<StateInteger, BitInteger> qubit, BitInteger const bit) noexcept
+  -> ::ket::qubit<StateInteger, BitInteger>
   { return qubit -= bit; }
 
   template <typename Value, typename StateInteger, typename BitInteger>
-  inline constexpr
-  typename std::enable_if<std::is_integral<Value>::value, Value>::type
-  operator<<(
-    Value const value,
-    ::ket::qubit<StateInteger, BitInteger> const qubit) noexcept
+  inline constexpr std::enable_if_t<std::is_integral<Value>::value, Value>
+  operator<<(Value const value, ::ket::qubit<StateInteger, BitInteger> const qubit) noexcept
   { return value << static_cast<BitInteger>(qubit); }
 
   template <typename Value, typename StateInteger, typename BitInteger>
-  inline constexpr
-  typename std::enable_if<std::is_integral<Value>::value, Value>::type
-  operator>>(
-    Value const value,
-    ::ket::qubit<StateInteger, BitInteger> const qubit) noexcept
+  inline constexpr std::enable_if_t<std::is_integral<Value>::value, Value>
+  operator>>(Value const value, ::ket::qubit<StateInteger, BitInteger> const qubit) noexcept
   { return value >> static_cast<BitInteger>(qubit); }
 
 
   template <typename StateInteger, typename BitInteger>
-  inline constexpr ::ket::qubit<StateInteger, BitInteger>
-  make_qubit(BitInteger const bit) noexcept
+  inline constexpr auto make_qubit(BitInteger const bit) noexcept -> ::ket::qubit<StateInteger, BitInteger>
   { return ::ket::qubit<StateInteger, BitInteger>(bit); }
 
 
   template <typename StateInteger, typename BitInteger>
-  inline constexpr ::ket::qubit<StateInteger, BitInteger> remove_control(::ket::qubit<StateInteger, BitInteger> const qubit)
+  inline constexpr auto remove_control(::ket::qubit<StateInteger, BitInteger> const qubit) -> ::ket::qubit<StateInteger, BitInteger>
   { return qubit; }
 
 
   namespace qubit_literals
   {
-    inline constexpr ::ket::qubit<std::uint64_t, unsigned int>
-    operator"" _q(unsigned long long int const bit) noexcept
+    inline constexpr auto operator"" _q(unsigned long long int const bit) noexcept
+    -> ::ket::qubit<std::uint64_t, unsigned int>
     { return ::ket::qubit<std::uint64_t, unsigned int>{static_cast<unsigned int>(bit)}; }
 
-    inline constexpr ::ket::qubit<std::uint64_t, unsigned short int>
-    operator"" _qs(unsigned long long int const bit) noexcept
+    inline constexpr auto operator"" _qs(unsigned long long int const bit) noexcept
+    -> ::ket::qubit<std::uint64_t, unsigned short int>
     { return ::ket::qubit<std::uint64_t, unsigned short int>{static_cast<unsigned short>(bit)}; }
 
-    inline constexpr ::ket::qubit<std::uint64_t, unsigned long int>
-    operator"" _ql(unsigned long long int const bit) noexcept
+    inline constexpr auto operator"" _ql(unsigned long long int const bit) noexcept
+    -> ::ket::qubit<std::uint64_t, unsigned long int>
     { return ::ket::qubit<std::uint64_t, unsigned long int>{static_cast<unsigned long>(bit)}; }
 
-    inline constexpr ::ket::qubit<std::uint64_t, unsigned long long int>
-    operator"" _qll(unsigned long long int const bit) noexcept
+    inline constexpr auto operator"" _qll(unsigned long long int const bit) noexcept
+    -> ::ket::qubit<std::uint64_t, unsigned long long int>
     { return ::ket::qubit<std::uint64_t, unsigned long long int>{bit}; }
 
-    inline constexpr ::ket::qubit<std::uint64_t, std::uint8_t>
-    operator"" _q8(unsigned long long int const bit) noexcept
+    inline constexpr auto operator"" _q8(unsigned long long int const bit) noexcept
+    -> ::ket::qubit<std::uint64_t, std::uint8_t>
     { return ::ket::qubit<std::uint64_t, std::uint8_t>{static_cast<std::uint8_t>(bit)}; }
 
-    inline constexpr ::ket::qubit<std::uint64_t, std::uint16_t>
-    operator"" _q16(unsigned long long int const bit) noexcept
+    inline constexpr auto operator"" _q16(unsigned long long int const bit) noexcept
+    -> ::ket::qubit<std::uint64_t, std::uint16_t>
     { return ::ket::qubit<std::uint64_t, std::uint16_t>{static_cast<std::uint16_t>(bit)}; }
 
-    inline constexpr ::ket::qubit<std::uint64_t, std::uint32_t>
-    operator"" _q32(unsigned long long int const bit) noexcept
+    inline constexpr auto operator"" _q32(unsigned long long int const bit) noexcept
+    -> ::ket::qubit<std::uint64_t, std::uint32_t>
     { return ::ket::qubit<std::uint64_t, std::uint32_t>{static_cast<std::uint32_t>(bit)}; }
 
-    inline constexpr ::ket::qubit<std::uint64_t, std::uint64_t>
-    operator"" _q64(unsigned long long int const bit) noexcept
+    inline constexpr auto operator"" _q64(unsigned long long int const bit) noexcept
+    -> ::ket::qubit<std::uint64_t, std::uint64_t>
     { return ::ket::qubit<std::uint64_t, std::uint64_t>{static_cast<std::uint64_t>(bit)}; }
   } // namespace qubit_literals
 } // namespace ket

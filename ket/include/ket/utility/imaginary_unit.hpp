@@ -20,17 +20,17 @@ namespace ket
 # else
       template <typename T>
       struct imaginary_unit<std::complex<T>>
-      { static constexpr std::complex<T> value() { return {T{0}, T{1}}; } };
+      { static constexpr auto value() -> std::complex<T> { return {T{0}, T{1}}; } };
 # endif
     } // namespace imaginary_unit_detail
 
 # if __cplusplus >= 201703L
     template <typename Complex>
-    inline constexpr Complex imaginary_unit() noexcept
+    inline constexpr auto imaginary_unit() noexcept -> Complex
     { return ::ket::utility::imaginary_unit_detail::imaginary_unit<Complex>::value; }
 # else
     template <typename Complex>
-    inline constexpr Complex imaginary_unit() noexcept
+    inline constexpr auto imaginary_unit() noexcept -> Complex
     { return ::ket::utility::imaginary_unit_detail::imaginary_unit<Complex>::value(); }
 # endif
   } // namespace utility

@@ -33,16 +33,13 @@ namespace ket
       template <
         typename ParallelPolicy, typename RandomAccessIterator,
         typename StateInteger, typename BitInteger>
-      inline
-      std::pair<
-        typename ::ket::utility::meta::real_of<
-          typename std::iterator_traits<RandomAccessIterator>::value_type>::type,
-        typename ::ket::utility::meta::real_of<
-          typename std::iterator_traits<RandomAccessIterator>::value_type>::type>
-      zero_one_probabilities(
+      inline auto zero_one_probabilities(
         ParallelPolicy const parallel_policy,
         RandomAccessIterator const first, RandomAccessIterator const last,
         ::ket::qubit<StateInteger, BitInteger> const qubit)
+      -> std::pair<
+           ::ket::utility::meta::real_t<typename std::iterator_traits<RandomAccessIterator>::value_type>,
+           ::ket::utility::meta::real_t<typename std::iterator_traits<RandomAccessIterator>::value_type>>
       {
         auto const qubit_mask = ::ket::utility::integer_exp2<StateInteger>(qubit);
         auto const lower_bits_mask = qubit_mask - StateInteger{1u};
@@ -51,18 +48,13 @@ namespace ket
         auto zero_probabilities = std::vector<long double>(::ket::utility::num_threads(parallel_policy), 0.0l);
         auto one_probabilities = std::vector<long double>(::ket::utility::num_threads(parallel_policy), 0.0l);
 
-        using ::ket::utility::loop_n;
-        loop_n(
-          parallel_policy,
-          static_cast<StateInteger>(last - first) / 2u,
-          [&zero_probabilities, &one_probabilities, first,
-           qubit_mask, lower_bits_mask, upper_bits_mask](
+        ::ket::utility::loop_n(
+          parallel_policy, static_cast<StateInteger>(last - first) / 2u,
+          [&zero_probabilities, &one_probabilities, first, qubit_mask, lower_bits_mask, upper_bits_mask](
             StateInteger const value_wo_qubit, int const thread_index)
           {
             // xxxxx0xxxxxx
-            auto const zero_index
-              = ((value_wo_qubit bitand upper_bits_mask) << 1u)
-                bitor (value_wo_qubit bitand lower_bits_mask);
+            auto const zero_index = ((value_wo_qubit bitand upper_bits_mask) << 1u) bitor (value_wo_qubit bitand lower_bits_mask);
             // xxxxx1xxxxxx
             auto const one_index = zero_index bitor qubit_mask;
 
@@ -72,23 +64,26 @@ namespace ket
           });
 
         using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
-        using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
+        using real_type = ::ket::utility::meta::real_t<complex_type>;
+        using std::begin;
+        using std::end;
         return std::make_pair(
-          static_cast<real_type>(std::accumulate(std::begin(zero_probabilities), std::end(zero_probabilities), 0.0l)),
-          static_cast<real_type>(std::accumulate(std::begin(one_probabilities), std::end(one_probabilities), 0.0l)));
+          static_cast<real_type>(std::accumulate(begin(zero_probabilities), end(zero_probabilities), 0.0l)),
+          static_cast<real_type>(std::accumulate(begin(one_probabilities), end(one_probabilities), 0.0l)));
       }
 
       template <
         typename ParallelPolicy, typename RandomAccessIterator,
         typename StateInteger, typename BitInteger, typename Real>
-      inline void change_state_after_measuring_zero(
+      inline auto change_state_after_measuring_zero(
         ParallelPolicy const parallel_policy,
         RandomAccessIterator const first, RandomAccessIterator const last,
         ::ket::qubit<StateInteger, BitInteger> const qubit, Real const zero_probability)
+      -> void
       {
         using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
         static_assert(
-          (std::is_same<typename ::ket::utility::meta::real_of<complex_type>::type, Real>::value),
+          std::is_same< ::ket::utility::meta::real_t<complex_type>, Real >::value,
           "Real must be the same as real number type corresponding to value type of iterator");
 
         auto const qubit_mask = ::ket::utility::integer_exp2<StateInteger>(qubit);
@@ -101,17 +96,12 @@ namespace ket
         using boost::math::constants::half;
         auto const multiplier = pow(zero_probability, -half<Real>());
 
-        using ::ket::utility::loop_n;
-        loop_n(
-          parallel_policy,
-          static_cast<StateInteger>(last - first) / 2u,
-          [first, qubit_mask, lower_bits_mask, upper_bits_mask, multiplier](
-            StateInteger const value_wo_qubit, int const)
+        ::ket::utility::loop_n(
+          parallel_policy, static_cast<StateInteger>(last - first) / 2u,
+          [first, qubit_mask, lower_bits_mask, upper_bits_mask, multiplier](StateInteger const value_wo_qubit, int const)
           {
             // xxxxx0xxxxxx
-            auto const zero_index
-              = ((value_wo_qubit bitand upper_bits_mask) << 1u)
-                bitor (value_wo_qubit bitand lower_bits_mask);
+            auto const zero_index = ((value_wo_qubit bitand upper_bits_mask) << 1u) bitor (value_wo_qubit bitand lower_bits_mask);
             // xxxxx1xxxxxx
             auto const one_index = zero_index bitor qubit_mask;
 
@@ -123,14 +113,15 @@ namespace ket
       template <
         typename ParallelPolicy, typename RandomAccessIterator,
         typename StateInteger, typename BitInteger, typename Real>
-      inline void change_state_after_measuring_one(
+      inline auto change_state_after_measuring_one(
         ParallelPolicy const parallel_policy,
         RandomAccessIterator const first, RandomAccessIterator const last,
         ::ket::qubit<StateInteger, BitInteger> const qubit, Real const one_probability)
+      -> void
       {
         using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
         static_assert(
-          (std::is_same<typename ::ket::utility::meta::real_of<complex_type>::type, Real>::value),
+          std::is_same< ::ket::utility::meta::real_t<complex_type>, Real >::value,
           "Real must be the same as real number type corresponding to value type of iterator");
 
         auto const qubit_mask = ::ket::utility::integer_exp2<StateInteger>(qubit);
@@ -143,17 +134,12 @@ namespace ket
         using boost::math::constants::half;
         auto const multiplier = pow(one_probability, -half<Real>());
 
-        using ::ket::utility::loop_n;
-        loop_n(
-          parallel_policy,
-          static_cast<StateInteger>(last - first) / 2u,
-          [first, qubit_mask, lower_bits_mask, upper_bits_mask, multiplier](
-            StateInteger const value_wo_qubit, int const)
+        ::ket::utility::loop_n(
+          parallel_policy, static_cast<StateInteger>(last - first) / 2u,
+          [first, qubit_mask, lower_bits_mask, upper_bits_mask, multiplier](StateInteger const value_wo_qubit, int const)
           {
             // xxxxx0xxxxxx
-            auto const zero_index
-              = ((value_wo_qubit bitand upper_bits_mask) << 1u)
-                bitor (value_wo_qubit bitand lower_bits_mask);
+            auto const zero_index = ((value_wo_qubit bitand upper_bits_mask) << 1u) bitor (value_wo_qubit bitand lower_bits_mask);
             // xxxxx1xxxxxx
             auto const one_index = zero_index bitor qubit_mask;
 
@@ -164,28 +150,23 @@ namespace ket
 
       template <
         typename ParallelPolicy, typename RandomAccessIterator,
-        typename StateInteger, typename BitInteger, typename RandomNumberGenerator>
-      inline ::ket::gate::outcome projective_measurement(
+        typename RandomNumberGenerator, typename StateInteger, typename BitInteger>
+      inline auto projective_measurement(
         ParallelPolicy const parallel_policy,
         RandomAccessIterator const first, RandomAccessIterator const last,
-        ::ket::qubit<StateInteger, BitInteger> const qubit,
-        RandomNumberGenerator& random_number_generator)
+        RandomNumberGenerator& random_number_generator,
+        ::ket::qubit<StateInteger, BitInteger> const qubit)
+      -> ::ket::gate::outcome
       {
-        static_assert(
-          std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
-        static_assert(
-          std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
+        static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+        static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
+        assert(::ket::utility::integer_exp2<StateInteger>(qubit) < static_cast<StateInteger>(last - first));
         assert(
-          ::ket::utility::integer_exp2<StateInteger>(qubit)
-          < static_cast<StateInteger>(last - first));
-        assert(
-          ::ket::utility::integer_exp2<StateInteger>(
-            ::ket::utility::integer_log2<BitInteger>(last - first))
+          ::ket::utility::integer_exp2<StateInteger>(::ket::utility::integer_log2<BitInteger>(last - first))
           == static_cast<StateInteger>(last - first));
 
         auto const zero_one_probabilities
-          = ::ket::gate::projective_measurement_detail::zero_one_probabilities(
-              parallel_policy, first, last, qubit);
+          = ::ket::gate::projective_measurement_detail::zero_one_probabilities(parallel_policy, first, last, qubit);
         auto const total_probability = zero_one_probabilities.first + zero_one_probabilities.second;
 
         if (::ket::utility::positive_random_value_upto(total_probability, random_number_generator)
@@ -205,37 +186,78 @@ namespace ket
     template <
       typename ParallelPolicy, typename RandomAccessIterator,
       typename StateInteger, typename BitInteger, typename RandomNumberGenerator>
-    inline ::ket::gate::outcome projective_measurement(
+    [[deprecated]] inline auto projective_measurement(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       ::ket::qubit<StateInteger, BitInteger> const qubit, RandomNumberGenerator& random_number_generator)
+    -> ::ket::gate::outcome
     { return ::ket::gate::projective_measurement_detail::projective_measurement(parallel_policy, first, last, qubit, random_number_generator); }
+
+    template <
+      typename ParallelPolicy, typename RandomAccessIterator,
+      typename RandomNumberGenerator, typename StateInteger, typename BitInteger>
+    inline auto projective_measurement(
+      ParallelPolicy const parallel_policy,
+      RandomAccessIterator const first, RandomAccessIterator const last,
+      RandomNumberGenerator& random_number_generator, ::ket::qubit<StateInteger, BitInteger> const qubit)
+    -> ::ket::gate::outcome
+    { return ::ket::gate::projective_measurement_detail::projective_measurement(parallel_policy, first, last, random_number_generator, qubit); }
 
     template <
       typename RandomAccessIterator,
       typename StateInteger, typename BitInteger, typename RandomNumberGenerator>
-    inline ::ket::gate::outcome projective_measurement(
+    [[deprecated]] inline auto projective_measurement(
       RandomAccessIterator const first, RandomAccessIterator const last,
       ::ket::qubit<StateInteger, BitInteger> const qubit, RandomNumberGenerator& random_number_generator)
+    -> ::ket::gate::outcome
     { return ::ket::gate::projective_measurement(::ket::utility::policy::make_sequential(), first, last, qubit, random_number_generator); }
+
+    template <
+      typename RandomAccessIterator,
+      typename RandomNumberGenerator, typename StateInteger, typename BitInteger>
+    inline auto projective_measurement(
+      RandomAccessIterator const first, RandomAccessIterator const last,
+      RandomNumberGenerator& random_number_generator, ::ket::qubit<StateInteger, BitInteger> const qubit)
+    -> ::ket::gate::outcome
+    { return ::ket::gate::projective_measurement(::ket::utility::policy::make_sequential(), first, last, random_number_generator, qubit); }
 
     namespace ranges
     {
       template <
         typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger, typename RandomNumberGenerator>
-      inline ::ket::gate::outcome projective_measurement(
+      [[deprecated]] inline auto projective_measurement(
         ParallelPolicy const parallel_policy, RandomAccessRange& state,
         ::ket::qubit<StateInteger, BitInteger> const qubit, RandomNumberGenerator& random_number_generator)
-      { return ::ket::gate::projective_measurement(parallel_policy, std::begin(state), std::end(state), qubit, random_number_generator); }
+      -> ::ket::gate::outcome
+      { using std::begin; using std::end; return ::ket::gate::projective_measurement(parallel_policy, begin(state), end(state), qubit, random_number_generator); }
+
+      template <
+        typename ParallelPolicy, typename RandomAccessRange,
+        typename RandomNumberGenerator, typename StateInteger, typename BitInteger>
+      inline auto projective_measurement(
+        ParallelPolicy const parallel_policy, RandomAccessRange& state,
+        RandomNumberGenerator& random_number_generator, ::ket::qubit<StateInteger, BitInteger> const qubit)
+      -> ::ket::gate::outcome
+      { using std::begin; using std::end; return ::ket::gate::projective_measurement(parallel_policy, begin(state), end(state), random_number_generator, qubit); }
 
       template <
         typename RandomAccessRange,
         typename StateInteger, typename BitInteger, typename RandomNumberGenerator>
-      inline ::ket::gate::outcome projective_measurement(
+      [[deprecated]] inline auto projective_measurement(
         RandomAccessRange& state,
         ::ket::qubit<StateInteger, BitInteger> const qubit, RandomNumberGenerator& random_number_generator)
+      -> ::ket::gate::outcome
       { return ::ket::gate::ranges::projective_measurement(::ket::utility::policy::make_sequential(), state, qubit, random_number_generator); }
+
+      template <
+        typename RandomAccessRange,
+        typename RandomNumberGenerator, typename StateInteger, typename BitInteger>
+      inline auto projective_measurement(
+        RandomAccessRange& state,
+        RandomNumberGenerator& random_number_generator, ::ket::qubit<StateInteger, BitInteger> const qubit)
+      -> ::ket::gate::outcome
+      { return ::ket::gate::ranges::projective_measurement(::ket::utility::policy::make_sequential(), state, random_number_generator, qubit); }
     } // namespace ranges
   } // namespace gate
 } // namespace ket

@@ -18,18 +18,17 @@ namespace ket
         struct swap_local_data
         {
           template <typename LocalState, typename StateInteger>
-          static void call(
+          static auto call(
             LocalState& local_state,
             StateInteger const data_block_index1, StateInteger const local_first_index1, StateInteger const local_last_index1,
             StateInteger const data_block_index2, StateInteger const local_first_index2,
             StateInteger const data_block_size)
+          -> void
           {
-            auto const first1
-              = std::begin(local_state) + data_block_index1 * data_block_size + local_first_index1;
-            auto const last1
-              = std::begin(local_state) + data_block_index1 * data_block_size + local_last_index1;
-            auto const first2
-              = std::begin(local_state) + data_block_index2 * data_block_size + local_first_index2;
+            using std::begin;
+            auto const first1 = begin(local_state) + data_block_index1 * data_block_size + local_first_index1;
+            auto const last1 = begin(local_state) + data_block_index1 * data_block_size + local_last_index1;
+            auto const first2 = begin(local_state) + data_block_index2 * data_block_size + local_first_index2;
 
             std::swap_ranges(first1, last1, first2);
           }
@@ -39,13 +38,14 @@ namespace ket
       namespace detail
       {
         template <typename LocalState, typename StateInteger>
-        inline void swap_local_data(
+        inline auto swap_local_data(
           LocalState& local_state,
           StateInteger const data_block_index1, StateInteger const local_first_index1, StateInteger const local_last_index1,
           StateInteger const data_block_index2, StateInteger const local_first_index2,
           StateInteger const data_block_size)
+        -> void
         {
-          using local_state_type = typename std::remove_cv<typename std::remove_reference<LocalState>::type>::type;
+          using local_state_type = std::remove_cv_t<std::remove_reference_t<LocalState>>;
           ::ket::mpi::utility::dispatch::swap_local_data<local_state_type>::call(
             local_state,
             data_block_index1, local_first_index1, local_last_index1,

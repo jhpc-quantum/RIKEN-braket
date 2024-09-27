@@ -39,36 +39,36 @@ namespace ket
        public:
 # if defined(_OPENMP) && defined(KET_USE_OPENMP)
         parallel() noexcept
-          : num_threads_(static_cast<NumThreads>(omp_get_max_threads()))
+          : num_threads_{static_cast<NumThreads>(omp_get_max_threads())}
         { }
 
         explicit parallel(NumThreads const num_threads)
-          : num_threads_(
+          : num_threads_{
               num_threads <= NumThreads{0}
               ? NumThreads{1}
               : num_threads > static_cast<NumThreads>(omp_get_max_threads())
                 ? static_cast<NumThreads>(omp_get_max_threads())
-                : num_threads)
+                : num_threads}
         { omp_set_num_threads(static_cast<int>(num_threads_)); }
 # else // defined(_OPENMP) && defined(KET_USE_OPENMP)
         parallel() noexcept
-          : num_threads_(static_cast<NumThreads>(std::thread::hardware_concurrency()))
+          : num_threads_{static_cast<NumThreads>(std::thread::hardware_concurrency())}
         { }
 
         explicit parallel(NumThreads const num_threads) noexcept
-          : num_threads_(
+          : num_threads_{
               num_threads <= NumThreads{0}
               ? NumThreads{1}
               : num_threads >= static_cast<NumThreads>(std::thread::hardware_concurrency())
                 ? static_cast<NumThreads>(std::thread::hardware_concurrency())
-                : num_threads)
+                : num_threads}
         { }
 # endif // defined(_OPENMP) && defined(KET_USE_OPENMP)
 
-        NumThreads num_threads() const noexcept { return num_threads_; }
+        auto num_threads() const noexcept -> NumThreads { return num_threads_; }
 
 # if defined(_OPENMP) && defined(KET_USE_OPENMP)
-        void num_threads(NumThreads const num_threads) const noexcept
+        auto num_threads(NumThreads const num_threads) const noexcept -> void
         {
           if (num_threads <= 0 or num_threads > static_cast<NumThreads>(omp_get_max_threads()))
             return;
@@ -77,7 +77,7 @@ namespace ket
           omp_set_num_threads(static_cast<int>(num_threads_));
         }
 # else // defined(_OPENMP) && defined(KET_USE_OPENMP)
-        void num_threads(NumThreads const num_threads) const noexcept
+        auto num_threads(NumThreads const num_threads) const noexcept -> void
         {
           if (num_threads <= 0 or num_threads > static_cast<NumThreads>(std::thread::hardware_concurrency()))
             return;
@@ -88,13 +88,13 @@ namespace ket
       }; // class parallel<NumThreads>
 
       template <typename NumThreads>
-      inline constexpr ::ket::utility::policy::parallel<NumThreads> make_parallel() noexcept
+      inline constexpr auto make_parallel() noexcept -> ::ket::utility::policy::parallel<NumThreads>
       { return ::ket::utility::policy::parallel<NumThreads>{}; }
 
       template <typename NumThreads>
-      inline constexpr ::ket::utility::policy::parallel<NumThreads>
-      make_parallel(NumThreads const num_threads) noexcept
-      { return ::ket::utility::policy::parallel<NumThreads>(num_threads); }
+      inline constexpr auto make_parallel(NumThreads const num_threads) noexcept
+      -> ::ket::utility::policy::parallel<NumThreads>
+      { return ::ket::utility::policy::parallel<NumThreads>{num_threads}; }
 
       namespace meta
       {
@@ -111,8 +111,7 @@ namespace ket
       template <typename NumThreads>
       struct num_threads< ::ket::utility::policy::parallel<NumThreads> >
       {
-        static unsigned int call(
-          ::ket::utility::policy::parallel<NumThreads> const policy) noexcept
+        static auto call(::ket::utility::policy::parallel<NumThreads> const policy) noexcept -> unsigned int
         { return static_cast<unsigned int>(policy.num_threads()); }
       }; // struct num_threads< ::ket::utility::policy::parallel<NumThreads> >
     } // namespace dispatch
@@ -134,9 +133,9 @@ namespace ket
         omp_mutex(omp_mutex&&) = delete;
         omp_mutex& operator=(omp_mutex&&) = delete;
 
-        void lock() noexcept { omp_set_lock(&omp_lock_); }
-        bool try_lock() noexcept { return static_cast<bool>(omp_test_lock(&omp_lock_)); }
-        void unlock() noexcept { omp_unset_lock(&omp_lock_); }
+        auto lock() noexcept -> void { omp_set_lock(&omp_lock_); }
+        auto try_lock() noexcept -> bool { return static_cast<bool>(omp_test_lock(&omp_lock_)); }
+        auto unlock() noexcept -> void { omp_unset_lock(&omp_lock_); }
       }; // class omp_mutex
 
       class omp_nonstandard_exception
@@ -144,7 +143,7 @@ namespace ket
       {
        public:
         omp_nonstandard_exception()
-          : std::runtime_error("nonstandard exception is thrown in OpenMP block")
+          : std::runtime_error{"nonstandard exception is thrown in OpenMP block"}
         { }
       }; // class omp_nonstandard_exception
 # endif // defined(_OPENMP) && defined(KET_USE_OPENMP)
@@ -157,9 +156,10 @@ namespace ket
       struct loop_n< ::ket::utility::policy::parallel<NumThreads>, Integer >
       {
         template <typename Function>
-        static void call(
+        static auto call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
           Integer const n, Function&& function)
+        -> void
         {
           assert(::ket::utility::num_threads(parallel_policy) > 0u);
 
@@ -203,9 +203,10 @@ namespace ket
       struct loop_n< ::ket::utility::policy::parallel<NumThreads>, Integer >
       {
         template <typename Function>
-        static void call(
+        static auto call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
           Integer const n, Function&& function)
+        -> void
         {
           assert(::ket::utility::num_threads(parallel_policy) > 0u);
 
@@ -242,7 +243,7 @@ namespace ket
                 local_num_counts * num_threads + std::min(remainder, num_threads));
 
           for (auto count = first_count; count < last_count; ++count)
-            std::forward<Function>(function)(count, static_cast<int>(num_futures));
+            function(count, static_cast<int>(num_futures));
 
           for (auto const& future: futures)
             future.wait();
@@ -261,9 +262,10 @@ namespace ket
       {
        public:
         template <typename Function>
-        void invoke(
+        auto invoke(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
           Function&& function)
+        -> void
         {
           assert(::ket::utility::num_threads(parallel_policy) > 0u);
 
@@ -304,9 +306,10 @@ namespace ket
       struct loop_n_in_execute< ::ket::utility::policy::parallel<NumThreads> >
       {
         template <typename Integer, typename Function>
-        static void call(
+        static auto call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
           Integer const n, int const thread_index, Function&& function)
+        -> void
         {
 #   pragma omp for
           for (auto count = Integer{0}; count < n; ++count)
@@ -318,8 +321,7 @@ namespace ket
       struct barrier< ::ket::utility::policy::parallel<NumThreads> >
       {
         template <typename Executor>
-        static void call(
-          ::ket::utility::policy::parallel<NumThreads> const, Executor&)
+        static auto call(::ket::utility::policy::parallel<NumThreads> const, Executor&) -> void
         {
 #   pragma omp barrier
         }
@@ -329,9 +331,7 @@ namespace ket
       struct single_execute< ::ket::utility::policy::parallel<NumThreads> >
       {
         template <typename Executor, typename Function>
-        static void call(
-          ::ket::utility::policy::parallel<NumThreads> const, Executor&,
-          Function&& function)
+        static auto call(::ket::utility::policy::parallel<NumThreads> const, Executor&, Function&& function) -> void
         {
 #   pragma omp single
           {
@@ -347,7 +347,7 @@ namespace ket
         std::condition_variable cond_;
         std::vector<int> barrier_counters_;
 
-        typedef ::ket::utility::policy::parallel<NumThreads> parallel_policy_type;
+        using parallel_policy_type = ::ket::utility::policy::parallel<NumThreads>;
         friend class loop_n_in_execute<parallel_policy_type>;
         friend class barrier<parallel_policy_type>;
         friend class single_execute<parallel_policy_type>;
@@ -358,14 +358,11 @@ namespace ket
         { barrier_counters_.reserve(64); }
 
         template <typename Function>
-        void invoke(
-          ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
-          Function&& function)
+        auto invoke(::ket::utility::policy::parallel<NumThreads> const parallel_policy, Function&& function) -> void
         {
           assert(::ket::utility::num_threads(parallel_policy) > 0u);
 
-          auto const num_threads
-            = static_cast<NumThreads>(::ket::utility::num_threads(parallel_policy));
+          auto const num_threads = static_cast<NumThreads>(::ket::utility::num_threads(parallel_policy));
           barrier_counters_.push_back(num_threads);
 
           auto const num_futures = num_threads - NumThreads{1u};
@@ -373,14 +370,12 @@ namespace ket
           futures.reserve(num_futures);
 
           for (auto thread_index = NumThreads{0u}; thread_index < num_futures; ++thread_index)
-          {
             futures.push_back(std::async(
               std::launch::async,
               [&function, thread_index, this]
               { function(static_cast<int>(thread_index), *this); }));
-          }
 
-          std::forward<Function>(function)(static_cast<int>(num_futures), *this);
+          function(static_cast<int>(num_futures), *this);
 
           for (auto const& future: futures)
             future.wait();
@@ -391,13 +386,12 @@ namespace ket
       struct loop_n_in_execute< ::ket::utility::policy::parallel<NumThreads> >
       {
         template <typename Integer, typename Function>
-        static void call(
+        static auto call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
-          Integer const n, int const thread_index,
-          Function&& function)
+          Integer const n, int const thread_index, Function&& function)
+        -> void
         {
-          auto const num_threads
-            = static_cast<NumThreads>(::ket::utility::num_threads(parallel_policy));
+          auto const num_threads = static_cast<NumThreads>(::ket::utility::num_threads(parallel_policy));
           auto const local_num_counts = static_cast<NumThreads>(n) / num_threads;
           auto const remainder = static_cast<NumThreads>(n) % num_threads;
           auto const first_count
@@ -417,18 +411,17 @@ namespace ket
       template <typename NumThreads>
       struct barrier< ::ket::utility::policy::parallel<NumThreads> >
       {
-        static void call(
+        static auto call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
           ::ket::utility::dispatch::execute< ::ket::utility::policy::parallel<NumThreads> >& executor)
+        -> void
         {
-          auto const index
-            = static_cast<std::size_t>(executor.barrier_counters_.size()) - std::size_t{1u};
+          auto const index = static_cast<std::size_t>(executor.barrier_counters_.size()) - std::size_t{1u};
 
           if (executor.barrier_counters_[index] == 1)
           {
             std::lock_guard<std::mutex> lock{executor.mutex_};
-            executor.barrier_counters_.push_back(
-              static_cast<int>(::ket::utility::num_threads(parallel_policy)));
+            executor.barrier_counters_.push_back(static_cast<int>(::ket::utility::num_threads(parallel_policy)));
             --executor.barrier_counters_[index];
             executor.cond_.notify_all();
             return;
@@ -436,8 +429,7 @@ namespace ket
 
           auto lock = std::unique_lock<std::mutex>{executor.mutex_};
           --executor.barrier_counters_[index];
-          executor.cond_.wait(
-            lock, [&executor, index] { return executor.barrier_counters_[index] == 0; });
+          executor.cond_.wait(lock, [&executor, index] { return executor.barrier_counters_[index] == 0; });
         }
       }; // struct barrier< ::ket::utility::policy::parallel<NumThreads> >
 
@@ -445,13 +437,13 @@ namespace ket
       struct single_execute< ::ket::utility::policy::parallel<NumThreads> >
       {
         template <typename Function>
-        static void call(
+        static auto call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
           ::ket::utility::dispatch::execute< ::ket::utility::policy::parallel<NumThreads> >& executor,
           Function&& function)
+        -> void
         {
-          auto const index
-            = static_cast<std::size_t>(executor.barrier_counters_.size()) - std::size_t{1u};
+          auto const index = static_cast<std::size_t>(executor.barrier_counters_.size()) - std::size_t{1u};
 
           if (executor.barrier_counters_[index]
               == static_cast<int>(::ket::utility::num_threads(parallel_policy)))
@@ -463,8 +455,7 @@ namespace ket
           if (executor.barrier_counters_[index] == 1)
           {
             std::lock_guard<std::mutex> lock{executor.mutex_};
-            executor.barrier_counters_.push_back(
-              static_cast<int>(::ket::utility::num_threads(parallel_policy)));
+            executor.barrier_counters_.push_back(static_cast<int>(::ket::utility::num_threads(parallel_policy)));
             --executor.barrier_counters_[index];
             executor.cond_.notify_all();
             return;
@@ -472,8 +463,7 @@ namespace ket
 
           auto lock = std::unique_lock<std::mutex>{executor.mutex_};
           --executor.barrier_counters_[index];
-          executor.cond_.wait(
-            lock, [&executor, index] { return executor.barrier_counters_[index] == 0; });
+          executor.cond_.wait(lock, [&executor, index] { return executor.barrier_counters_[index] == 0; });
         }
       }; // struct single_execute< ::ket::utility::policy::parallel<NumThreads> >
 # endif // defined(_OPENMP) && defined(KET_USE_OPENMP)
@@ -487,27 +477,25 @@ namespace ket
       struct fill< ::ket::utility::policy::parallel<NumThreads> >
       {
         template <typename ForwardIterator, typename Value>
-        static void call(
+        static auto call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
           ForwardIterator const first, ForwardIterator const last, Value const& value,
           std::forward_iterator_tag const)
+        -> void
         {
           auto is_calleds
             = std::vector<int>(
                 static_cast<int>(::ket::utility::num_threads(parallel_policy)),
                 static_cast<int>(false));
-          auto iters
-            = std::vector<ForwardIterator>(::ket::utility::num_threads(parallel_policy));
-          auto is_calleds_first = std::begin(is_calleds);
-          auto iters_first = std::begin(iters);
+          auto iters = std::vector<ForwardIterator>(::ket::utility::num_threads(parallel_policy));
+          using std::begin;
+          auto is_calleds_first = begin(is_calleds);
+          auto iters_first = begin(iters);
 
-          using ::ket::utility::loop_n;
-          using difference_type
-            = typename std::iterator_traits<ForwardIterator>::difference_type;
-          loop_n(
+          using difference_type = typename std::iterator_traits<ForwardIterator>::difference_type;
+          ::ket::utility::loop_n(
             parallel_policy, std::distance(first, last),
-            [first, &value, is_calleds_first, iters_first](
-              difference_type const n, int const thread_index)
+            [first, &value, is_calleds_first, iters_first](difference_type const n, int const thread_index)
             {
               if (not static_cast<bool>(is_calleds_first[thread_index]))
               {
@@ -520,15 +508,14 @@ namespace ket
         }
 
         template <typename RandomAccessIterator, typename Value>
-        static void call(
+        static auto call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
           RandomAccessIterator const first, RandomAccessIterator const last, Value const& value,
           std::random_access_iterator_tag const)
+        -> void
         {
-          using difference_type
-            = typename std::iterator_traits<RandomAccessIterator>::difference_type;
-          using ::ket::utility::loop_n;
-          loop_n(
+          using difference_type = typename std::iterator_traits<RandomAccessIterator>::difference_type;
+          ::ket::utility::loop_n(
             parallel_policy, last - first,
             [first, &value](difference_type const n, int) { first[n] = value; });
         }
@@ -543,31 +530,26 @@ namespace ket
       struct reduce< ::ket::utility::policy::parallel<NumThreads> >
       {
         template <typename ForwardIterator>
-        static typename std::iterator_traits<ForwardIterator>::value_type call(
+        static auto call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
           ForwardIterator const first, ForwardIterator const last,
           std::forward_iterator_tag const)
+        -> typename std::iterator_traits<ForwardIterator>::value_type
         {
-          auto is_calleds
-            = std::vector<int>(
-                ::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
-          auto iters
-            = std::vector<ForwardIterator>(::ket::utility::num_threads(parallel_policy));
+          auto is_calleds = std::vector<int>(::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
+          auto iters = std::vector<ForwardIterator>(::ket::utility::num_threads(parallel_policy));
           using value_type = typename std::iterator_traits<ForwardIterator>::value_type;
-          auto partial_sums
-            = std::vector<value_type>(::ket::utility::num_threads(parallel_policy));
+          auto partial_sums = std::vector<value_type>(::ket::utility::num_threads(parallel_policy));
 
-          auto is_calleds_first = std::begin(is_calleds);
-          auto iters_first = std::begin(iters);
-          auto partial_sums_first = std::begin(partial_sums);
+          using std::begin;
+          auto is_calleds_first = begin(is_calleds);
+          auto iters_first = begin(iters);
+          auto partial_sums_first = begin(partial_sums);
 
-          using ::ket::utility::loop_n;
-          using difference_type
-            = typename std::iterator_traits<ForwardIterator>::difference_type;
-          loop_n(
+          using difference_type = typename std::iterator_traits<ForwardIterator>::difference_type;
+          ::ket::utility::loop_n(
             parallel_policy, std::distance(first, last),
-            [first, is_calleds_first, iters_first, partial_sums_first](
-              difference_type const n, int const thread_index)
+            [first, is_calleds_first, iters_first, partial_sums_first](difference_type const n, int const thread_index)
             {
               if (not is_calleds_first[thread_index])
               {
@@ -581,30 +563,27 @@ namespace ket
                 partial_sums_first[thread_index] += *iters_first[thread_index]++;
             });
 
-          return std::accumulate(std::next(partial_sums_first), std::end(partial_sums), *partial_sums_first);
+          using std::end;
+          return std::accumulate(std::next(partial_sums_first), end(partial_sums), *partial_sums_first);
         }
 
         template <typename RandomAccessIterator>
-        static typename std::iterator_traits<RandomAccessIterator>::value_type call(
+        static auto call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
           RandomAccessIterator const first, RandomAccessIterator const last,
           std::random_access_iterator_tag const)
+        -> typename std::iterator_traits<RandomAccessIterator>::value_type
         {
-          auto is_calleds
-            = std::vector<int>(
-                ::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
-          using value_type
-            = typename std::iterator_traits<RandomAccessIterator>::value_type;
-          auto partial_sums
-            = std::vector<value_type>(::ket::utility::num_threads(parallel_policy));
+          auto is_calleds = std::vector<int>(::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
+          using value_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+          auto partial_sums = std::vector<value_type>(::ket::utility::num_threads(parallel_policy));
 
-          auto is_calleds_first = std::begin(is_calleds);
-          auto partial_sums_first = std::begin(partial_sums);
+          using std::begin;
+          auto is_calleds_first = begin(is_calleds);
+          auto partial_sums_first = begin(partial_sums);
 
-          using ::ket::utility::loop_n;
-          using difference_type
-            = typename std::iterator_traits<RandomAccessIterator>::difference_type;
-          loop_n(
+          using difference_type = typename std::iterator_traits<RandomAccessIterator>::difference_type;
+          ::ket::utility::loop_n(
             parallel_policy, last - first,
             [first, is_calleds_first, partial_sums_first](difference_type const n, int const thread_index)
             {
@@ -617,33 +596,30 @@ namespace ket
                 partial_sums_first[thread_index] += first[n];
             });
 
-          return std::accumulate(std::next(partial_sums_first), std::end(partial_sums), *partial_sums_first);
+          using std::end;
+          return std::accumulate(std::next(partial_sums_first), end(partial_sums), *partial_sums_first);
         }
 
         template <typename ForwardIterator, typename Value>
-        static Value call(
+        static auto call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
           ForwardIterator const first, ForwardIterator const last, Value const initial_value,
           std::forward_iterator_tag const)
+        -> Value
         {
-          auto is_calleds
-            = std::vector<int>(
-                ::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
-          auto iters
-            = std::vector<ForwardIterator>(::ket::utility::num_threads(parallel_policy));
+          auto is_calleds = std::vector<int>(::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
+          auto iters = std::vector<ForwardIterator>(::ket::utility::num_threads(parallel_policy));
           auto partial_sums = std::vector<Value>(::ket::utility::num_threads(parallel_policy));
 
-          auto is_calleds_first = std::begin(is_calleds);
-          auto iters_first = std::begin(iters);
-          auto partial_sums_first = std::begin(partial_sums);
+          using std::begin;
+          auto is_calleds_first = begin(is_calleds);
+          auto iters_first = begin(iters);
+          auto partial_sums_first = begin(partial_sums);
 
-          using ::ket::utility::loop_n;
-          using difference_type
-            = typename std::iterator_traits<ForwardIterator>::difference_type;
-          loop_n(
+          using difference_type = typename std::iterator_traits<ForwardIterator>::difference_type;
+          ::ket::utility::loop_n(
             parallel_policy, std::distance(first, last),
-            [first, is_calleds_first, iters_first, partial_sums_first](
-              difference_type const n, int const thread_index)
+            [first, is_calleds_first, iters_first, partial_sums_first](difference_type const n, int const thread_index)
             {
               if (not is_calleds_first[thread_index])
               {
@@ -657,30 +633,28 @@ namespace ket
                 partial_sums_first[thread_index] += *iters_first[thread_index]++;
             });
 
-          return std::accumulate(partial_sums_first, std::end(partial_sums), initial_value);
+          using std::end;
+          return std::accumulate(partial_sums_first, end(partial_sums), initial_value);
         }
 
         template <typename RandomAccessIterator, typename Value>
-        static Value call(
+        static auto call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
           RandomAccessIterator const first, RandomAccessIterator const last, Value const initial_value,
           std::random_access_iterator_tag const)
+        -> Value
         {
-          auto is_calleds
-            = std::vector<int>(
-                ::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
+          auto is_calleds = std::vector<int>(::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
           auto partial_sums = std::vector<Value>(::ket::utility::num_threads(parallel_policy));
 
-          auto is_calleds_first = std::begin(is_calleds);
-          auto partial_sums_first = std::begin(partial_sums);
+          using std::begin;
+          auto is_calleds_first = begin(is_calleds);
+          auto partial_sums_first = begin(partial_sums);
 
-          using ::ket::utility::loop_n;
-          using difference_type
-            = typename std::iterator_traits<RandomAccessIterator>::difference_type;
-          loop_n(
+          using difference_type = typename std::iterator_traits<RandomAccessIterator>::difference_type;
+          ::ket::utility::loop_n(
             parallel_policy, last - first,
-            [first, is_calleds_first, partial_sums_first](
-              difference_type const n, int const thread_index)
+            [first, is_calleds_first, partial_sums_first](difference_type const n, int const thread_index)
             {
               if (not is_calleds_first[thread_index])
               {
@@ -691,34 +665,31 @@ namespace ket
                 partial_sums_first[thread_index] += first[n];
             });
 
-          return std::accumulate(partial_sums_first, std::end(partial_sums), initial_value);
+          using std::end;
+          return std::accumulate(partial_sums_first, end(partial_sums), initial_value);
         }
 
         template <typename ForwardIterator, typename Value, typename BinaryOperation>
-        static Value call(
+        static auto call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
           ForwardIterator const first, ForwardIterator const last,
           Value const initial_value, BinaryOperation binary_operation,
           std::forward_iterator_tag const)
+        -> Value
         {
-          auto is_calleds
-            = std::vector<int>(
-                ::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
-          auto iters
-            = std::vector<ForwardIterator>(::ket::utility::num_threads(parallel_policy));
+          auto is_calleds = std::vector<int>(::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
+          auto iters = std::vector<ForwardIterator>(::ket::utility::num_threads(parallel_policy));
           auto partial_sums = std::vector<Value>(::ket::utility::num_threads(parallel_policy));
 
-          auto is_calleds_first = std::begin(is_calleds);
-          auto iters_first = std::begin(iters);
-          auto partial_sums_first = std::begin(partial_sums);
+          using std::begin;
+          auto is_calleds_first = begin(is_calleds);
+          auto iters_first = begin(iters);
+          auto partial_sums_first = begin(partial_sums);
 
-          using ::ket::utility::loop_n;
-          using difference_type
-            = typename std::iterator_traits<ForwardIterator>::difference_type;
-          loop_n(
+          using difference_type = typename std::iterator_traits<ForwardIterator>::difference_type;
+          ::ket::utility::loop_n(
             parallel_policy, std::distance(first, last),
-            [first, initial_value, binary_operation,
-             is_calleds_first, iters_first, partial_sums_first](
+            [first, initial_value, binary_operation, is_calleds_first, iters_first, partial_sums_first](
               difference_type const n, int const thread_index)
             {
               if (not is_calleds_first[thread_index])
@@ -731,35 +702,32 @@ namespace ket
               }
               else
                 partial_sums_first[thread_index]
-                  = binary_operation(
-                      partial_sums_first[thread_index], *iters_first[thread_index]++);
+                  = binary_operation(partial_sums_first[thread_index], *iters_first[thread_index]++);
             });
 
-          return std::accumulate(partial_sums_first, std::end(partial_sums), initial_value, binary_operation);
+          using std::end;
+          return std::accumulate(partial_sums_first, end(partial_sums), initial_value, binary_operation);
         }
 
         template <typename RandomAccessIterator, typename Value, typename BinaryOperation>
-        static Value call(
+        static auto call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
           RandomAccessIterator const first, RandomAccessIterator const last,
           Value const initial_value, BinaryOperation binary_operation,
           std::random_access_iterator_tag const)
+        -> Value
         {
-          auto is_calleds
-            = std::vector<int>(
-                ::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
+          auto is_calleds = std::vector<int>(::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
           auto partial_sums = std::vector<Value>(::ket::utility::num_threads(parallel_policy));
 
-          auto is_calleds_first = std::begin(is_calleds);
-          auto partial_sums_first = std::begin(partial_sums);
+          using std::begin;
+          auto is_calleds_first = begin(is_calleds);
+          auto partial_sums_first = begin(partial_sums);
 
-          using ::ket::utility::loop_n;
-          using difference_type
-            = typename std::iterator_traits<RandomAccessIterator>::difference_type;
-          loop_n(
+          using difference_type = typename std::iterator_traits<RandomAccessIterator>::difference_type;
+          ::ket::utility::loop_n(
             parallel_policy, last - first,
-            [first, binary_operation, is_calleds_first, partial_sums_first](
-              difference_type const n, int const thread_index)
+            [first, binary_operation, is_calleds_first, partial_sums_first](difference_type const n, int const thread_index)
             {
               if (not is_calleds_first[thread_index])
               {
@@ -767,11 +735,11 @@ namespace ket
                 is_calleds_first[thread_index] = static_cast<int>(true);
               }
               else
-                partial_sums_first[thread_index]
-                  = binary_operation(partial_sums_first[thread_index], first[n]);
+                partial_sums_first[thread_index] = binary_operation(partial_sums_first[thread_index], first[n]);
             });
 
-          return std::accumulate(partial_sums_first, std::end(partial_sums), initial_value, binary_operation);
+          using std::end;
+          return std::accumulate(partial_sums_first, end(partial_sums), initial_value, binary_operation);
         }
       }; // struct reduce< ::ket::utility::policy::parallel<NumThreads> >
     } // namespace dispatch
@@ -784,31 +752,26 @@ namespace ket
       struct transform_reduce< ::ket::utility::policy::parallel<NumThreads> >
       {
         template <typename ForwardIterator1, typename ForwardIterator2, typename Value>
-        static Value call(
+        static auto call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
           ForwardIterator1 const first1, ForwardIterator1 const last1,
           ForwardIterator2 const first2, Value const initial_value,
           std::forward_iterator_tag const, std::forward_iterator_tag const)
+        -> Value
         {
-          auto is_calleds
-            = std::vector<int>(
-                ::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
-          auto iters1
-            = std::vector<ForwardIterator1>(::ket::utility::num_threads(parallel_policy));
-          auto iters2
-            = std::vector<ForwardIterator2>(::ket::utility::num_threads(parallel_policy));
-          auto partial_sums
-            = std::vector<Value>(::ket::utility::num_threads(parallel_policy));
+          auto is_calleds = std::vector<int>(::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
+          auto iters1 = std::vector<ForwardIterator1>(::ket::utility::num_threads(parallel_policy));
+          auto iters2 = std::vector<ForwardIterator2>(::ket::utility::num_threads(parallel_policy));
+          auto partial_sums = std::vector<Value>(::ket::utility::num_threads(parallel_policy));
 
-          auto is_calleds_first = std::begin(is_calleds);
-          auto iters1_first = std::begin(iters1);
-          auto iters2_first = std::begin(iters2);
-          auto partial_sums_first = std::begin(partial_sums);
+          using std::begin;
+          auto is_calleds_first = begin(is_calleds);
+          auto iters1_first = begin(iters1);
+          auto iters2_first = begin(iters2);
+          auto partial_sums_first = begin(partial_sums);
 
-          using ::ket::utility::loop_n;
-          using difference_type
-            = typename std::iterator_traits<ForwardIterator1>::difference_type;
-          loop_n(
+          using difference_type = typename std::iterator_traits<ForwardIterator1>::difference_type;
+          ::ket::utility::loop_n(
             parallel_policy, std::distance(first1, last1),
             [first1, first2, is_calleds_first, iters1_first, iters2_first, partial_sums_first](
               difference_type const n, int const thread_index)
@@ -828,35 +791,31 @@ namespace ket
                 partial_sums_first[thread_index] += *iters1_first[thread_index]++ * *iters2_first[thread_index]++;
             });
 
-          return std::accumulate(partial_sums_first, std::end(partial_sums), initial_value);
+          using std::end;
+          return std::accumulate(partial_sums_first, end(partial_sums), initial_value);
         }
 
         template <typename RandomAccessIterator, typename ForwardIterator, typename Value>
-        static Value call(
+        static auto call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
           RandomAccessIterator const first1, RandomAccessIterator const last1,
           ForwardIterator const first2, Value const initial_value,
           std::random_access_iterator_tag const, std::forward_iterator_tag const)
+        -> Value
         {
-          auto is_calleds
-            = std::vector<int>(
-                ::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
-          auto iters2
-            = std::vector<ForwardIterator>(::ket::utility::num_threads(parallel_policy));
-          auto partial_sums
-            = std::vector<Value>(::ket::utility::num_threads(parallel_policy));
+          auto is_calleds = std::vector<int>(::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
+          auto iters2 = std::vector<ForwardIterator>(::ket::utility::num_threads(parallel_policy));
+          auto partial_sums = std::vector<Value>(::ket::utility::num_threads(parallel_policy));
 
-          auto is_calleds_first = std::begin(is_calleds);
-          auto iters2_first = std::begin(iters2);
-          auto partial_sums_first = std::begin(partial_sums);
+          using std::begin;
+          auto is_calleds_first = begin(is_calleds);
+          auto iters2_first = begin(iters2);
+          auto partial_sums_first = begin(partial_sums);
 
-          using ::ket::utility::loop_n;
-          using difference_type
-            = typename std::iterator_traits<RandomAccessIterator>::difference_type;
-          loop_n(
+          using difference_type = typename std::iterator_traits<RandomAccessIterator>::difference_type;
+          ::ket::utility::loop_n(
             parallel_policy, last1 - first1,
-            [first1, first2, is_calleds_first, iters2_first, partial_sums_first](
-              difference_type const n, int const thread_index)
+            [first1, first2, is_calleds_first, iters2_first, partial_sums_first](difference_type const n, int const thread_index)
             {
               if (not is_calleds_first[thread_index])
               {
@@ -870,35 +829,31 @@ namespace ket
                 partial_sums_first[thread_index] += first1[n] * *iters2_first[thread_index]++;
             });
 
-          return std::accumulate(partial_sums_first, std::end(partial_sums), initial_value);
+          using std::end;
+          return std::accumulate(partial_sums_first, end(partial_sums), initial_value);
         }
 
         template <typename ForwardIterator, typename RandomAccessIterator, typename Value>
-        static Value call(
+        static auto call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
           ForwardIterator const first1, ForwardIterator const last1,
           RandomAccessIterator const first2, Value const initial_value,
           std::forward_iterator_tag const, std::random_access_iterator_tag const)
+        -> Value
         {
-          auto is_calleds
-            = std::vector<int>(
-                ::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
-          auto iters1
-            = std::vector<ForwardIterator>(::ket::utility::num_threads(parallel_policy));
-          auto partial_sums
-            = std::vector<Value>(::ket::utility::num_threads(parallel_policy));
+          auto is_calleds = std::vector<int>(::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
+          auto iters1 = std::vector<ForwardIterator>(::ket::utility::num_threads(parallel_policy));
+          auto partial_sums = std::vector<Value>(::ket::utility::num_threads(parallel_policy));
 
-          auto is_calleds_first = std::begin(is_calleds);
-          auto iters1_first = std::begin(iters1);
-          auto partial_sums_first = std::begin(partial_sums);
+          using std::begin;
+          auto is_calleds_first = begin(is_calleds);
+          auto iters1_first = begin(iters1);
+          auto partial_sums_first = begin(partial_sums);
 
-          using ::ket::utility::loop_n;
-          using difference_type
-            = typename std::iterator_traits<ForwardIterator>::difference_type;
-          loop_n(
+          using difference_type = typename std::iterator_traits<ForwardIterator>::difference_type;
+          ::ket::utility::loop_n(
             parallel_policy, std::distance(first1, last1),
-            [first1, first2, is_calleds_first, iters1_first, partial_sums_first](
-              difference_type const n, int const thread_index)
+            [first1, first2, is_calleds_first, iters1_first, partial_sums_first](difference_type const n, int const thread_index)
             {
               if (not is_calleds_first[thread_index])
               {
@@ -912,32 +867,29 @@ namespace ket
                 partial_sums_first[thread_index] += *iters1_first[thread_index]++ * first2[n];
             });
 
-          return std::accumulate(partial_sums_first, std::end(partial_sums), initial_value);
+          using std::end;
+          return std::accumulate(partial_sums_first, end(partial_sums), initial_value);
         }
 
         template <typename RandomAccessIterator1, typename RandomAccessIterator2, typename Value>
-        static Value call(
+        static auto call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
           RandomAccessIterator1 const first1, RandomAccessIterator1 const last1,
           RandomAccessIterator2 const first2, Value const initial_value,
           std::random_access_iterator_tag const, std::random_access_iterator_tag const)
+        -> Value
         {
-          auto is_calleds
-            = std::vector<int>(
-                ::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
-          auto partial_sums
-            = std::vector<Value>(::ket::utility::num_threads(parallel_policy));
+          auto is_calleds = std::vector<int>(::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
+          auto partial_sums = std::vector<Value>(::ket::utility::num_threads(parallel_policy));
 
-          auto is_calleds_first = std::begin(is_calleds);
-          auto partial_sums_first = std::begin(partial_sums);
+          using std::begin;
+          auto is_calleds_first = begin(is_calleds);
+          auto partial_sums_first = begin(partial_sums);
 
-          using ::ket::utility::loop_n;
-          using difference_type
-            = typename std::iterator_traits<RandomAccessIterator1>::difference_type;
-          loop_n(
+          using difference_type = typename std::iterator_traits<RandomAccessIterator1>::difference_type;
+          ::ket::utility::loop_n(
             parallel_policy, last1 - first1,
-            [first1, first2, is_calleds_first, partial_sums_first](
-              difference_type const n, int const thread_index)
+            [first1, first2, is_calleds_first, partial_sums_first](difference_type const n, int const thread_index)
             {
               if (not is_calleds_first[thread_index])
               {
@@ -948,39 +900,35 @@ namespace ket
                 partial_sums_first[thread_index] += first1[n] * first2[n];
             });
 
-          return std::accumulate(partial_sums_first, std::end(partial_sums), initial_value);
+          using std::end;
+          return std::accumulate(partial_sums_first, end(partial_sums), initial_value);
         }
 
         template <
           typename ForwardIterator1, typename ForwardIterator2, typename Value,
           typename BinaryReductionOperation, typename BinaryTransformOperation>
-        static Value call(
+        static auto call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
           ForwardIterator1 const first1, ForwardIterator1 const last1,
           ForwardIterator2 const first2, Value const initial_value,
           BinaryReductionOperation binary_reduction_operation,
           BinaryTransformOperation binary_transform_operation,
           std::forward_iterator_tag const, std::forward_iterator_tag const)
+        -> Value
         {
-          auto is_calleds
-            = std::vector<int>(
-                ::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
-          auto iters1
-            = std::vector<ForwardIterator1>(::ket::utility::num_threads(parallel_policy));
-          auto iters2
-            = std::vector<ForwardIterator2>(::ket::utility::num_threads(parallel_policy));
-          auto partial_sums
-            = std::vector<Value>(::ket::utility::num_threads(parallel_policy));
+          auto is_calleds = std::vector<int>(::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
+          auto iters1 = std::vector<ForwardIterator1>(::ket::utility::num_threads(parallel_policy));
+          auto iters2 = std::vector<ForwardIterator2>(::ket::utility::num_threads(parallel_policy));
+          auto partial_sums = std::vector<Value>(::ket::utility::num_threads(parallel_policy));
 
-          auto is_calleds_first = std::begin(is_calleds);
-          auto iters1_first = std::begin(iters1);
-          auto iters2_first = std::begin(iters2);
-          auto partial_sums_first = std::begin(partial_sums);
+          using std::begin;
+          auto is_calleds_first = begin(is_calleds);
+          auto iters1_first = begin(iters1);
+          auto iters2_first = begin(iters2);
+          auto partial_sums_first = begin(partial_sums);
 
-          using ::ket::utility::loop_n;
-          using difference_type
-            = typename std::iterator_traits<ForwardIterator1>::difference_type;
-          loop_n(
+          using difference_type = typename std::iterator_traits<ForwardIterator1>::difference_type;
+          ::ket::utility::loop_n(
             parallel_policy, std::distance(first1, last1),
             [first1, first2, binary_reduction_operation, binary_transform_operation,
              is_calleds_first, iters1_first, iters2_first, partial_sums_first](
@@ -995,48 +943,43 @@ namespace ket
                 std::advance(iters2_first[thread_index], n);
 
                 partial_sums_first[thread_index]
-                  = binary_transform_operation(
-                      *iters1_first[thread_index]++, *iters2_first[thread_index]++);
+                  = binary_transform_operation(*iters1_first[thread_index]++, *iters2_first[thread_index]++);
                 is_calleds_first[thread_index] = static_cast<int>(true);
               }
               else
                 partial_sums_first[thread_index]
                   = binary_reduction_operation(
                       partial_sums_first[thread_index],
-                      binary_transform_operation(
-                        *iters1_first[thread_index]++, *iters2_first[thread_index]++));
+                      binary_transform_operation(*iters1_first[thread_index]++, *iters2_first[thread_index]++));
             });
 
-          return std::accumulate(partial_sums_first, std::end(partial_sums), initial_value, binary_reduction_operation);
+          using std::end;
+          return std::accumulate(partial_sums_first, end(partial_sums), initial_value, binary_reduction_operation);
         }
 
         template <
           typename RandomAccessIterator, typename ForwardIterator, typename Value,
           typename BinaryReductionOperation, typename BinaryTransformOperation>
-        static Value call(
+        static auto call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
           RandomAccessIterator const first1, RandomAccessIterator const last1,
           ForwardIterator const first2, Value const initial_value,
           BinaryReductionOperation binary_reduction_operation,
           BinaryTransformOperation binary_transform_operation,
           std::random_access_iterator_tag const, std::forward_iterator_tag const)
+        -> Value
         {
-          auto is_calleds
-            = std::vector<int>(
-                ::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
-          auto iters2
-            = std::vector<ForwardIterator>(::ket::utility::num_threads(parallel_policy));
-          auto partial_sums
-            = std::vector<Value>(::ket::utility::num_threads(parallel_policy));
+          auto is_calleds = std::vector<int>(::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
+          auto iters2 = std::vector<ForwardIterator>(::ket::utility::num_threads(parallel_policy));
+          auto partial_sums = std::vector<Value>(::ket::utility::num_threads(parallel_policy));
 
-          auto is_calleds_first = std::begin(is_calleds);
-          auto iters2_first = std::begin(iters2);
-          auto partial_sums_first = std::begin(partial_sums);
+          using std::begin;
+          auto is_calleds_first = begin(is_calleds);
+          auto iters2_first = begin(iters2);
+          auto partial_sums_first = begin(partial_sums);
 
-          using ::ket::utility::loop_n;
-          using difference_type
-            = typename std::iterator_traits<RandomAccessIterator>::difference_type;
-          loop_n(
+          using difference_type = typename std::iterator_traits<RandomAccessIterator>::difference_type;
+          ::ket::utility::loop_n(
             parallel_policy, last1 - first1,
             [first1, first2, binary_reduction_operation, binary_transform_operation,
              is_calleds_first, iters2_first, partial_sums_first](
@@ -1047,47 +990,42 @@ namespace ket
                 iters2_first[thread_index] = first2;
                 std::advance(iters2_first[thread_index], n);
 
-                partial_sums_first[thread_index]
-                  = binary_transform_operation(first1[n], *iters2_first[thread_index]++);
+                partial_sums_first[thread_index] = binary_transform_operation(first1[n], *iters2_first[thread_index]++);
                 is_calleds_first[thread_index] = static_cast<int>(true);
               }
               else
                 partial_sums_first[thread_index]
                   = binary_reduction_operation(
-                      partial_sums_first[thread_index],
-                      binary_transform_operation(first1[n], *iters2_first[thread_index]++));
+                      partial_sums_first[thread_index], binary_transform_operation(first1[n], *iters2_first[thread_index]++));
             });
 
-          return std::accumulate(partial_sums_first, std::end(partial_sums), initial_value, binary_reduction_operation);
+          using std::end;
+          return std::accumulate(partial_sums_first, end(partial_sums), initial_value, binary_reduction_operation);
         }
 
         template <
           typename ForwardIterator, typename RandomAccessIterator, typename Value,
           typename BinaryReductionOperation, typename BinaryTransformOperation>
-        static Value call(
+        static auto call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
           ForwardIterator const first1, ForwardIterator const last1,
           RandomAccessIterator const first2, Value const initial_value,
           BinaryReductionOperation binary_reduction_operation,
           BinaryTransformOperation binary_transform_operation,
           std::forward_iterator_tag const, std::random_access_iterator_tag const)
+        -> Value
         {
-          auto is_calleds
-            = std::vector<int>(
-                ::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
-          auto iters1
-            = std::vector<ForwardIterator>(::ket::utility::num_threads(parallel_policy));
-          auto partial_sums
-            = std::vector<Value>(::ket::utility::num_threads(parallel_policy));
+          auto is_calleds = std::vector<int>(::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
+          auto iters1 = std::vector<ForwardIterator>(::ket::utility::num_threads(parallel_policy));
+          auto partial_sums = std::vector<Value>(::ket::utility::num_threads(parallel_policy));
 
-          auto is_calleds_first = std::begin(is_calleds);
-          auto iters1_first = std::begin(iters1);
-          auto partial_sums_first = std::begin(partial_sums);
+          using std::begin;
+          auto is_calleds_first = begin(is_calleds);
+          auto iters1_first = begin(iters1);
+          auto partial_sums_first = begin(partial_sums);
 
-          using ::ket::utility::loop_n;
-          using difference_type
-            = typename std::iterator_traits<ForwardIterator>::difference_type;
-          loop_n(
+          using difference_type = typename std::iterator_traits<ForwardIterator>::difference_type;
+          ::ket::utility::loop_n(
             parallel_policy, std::distance(first1, last1),
             [first1, first2, binary_reduction_operation, binary_transform_operation,
              is_calleds_first, iters1_first, partial_sums_first](
@@ -1098,47 +1036,42 @@ namespace ket
                 iters1_first[thread_index] = first1;
                 std::advance(iters1_first[thread_index], n);
 
-                partial_sums_first[thread_index]
-                  = binary_transform_operation(*iters1_first[thread_index]++, first2[n]);
+                partial_sums_first[thread_index] = binary_transform_operation(*iters1_first[thread_index]++, first2[n]);
                 is_calleds_first[thread_index] = static_cast<int>(true);
               }
               else
                 partial_sums_first[thread_index]
                   = binary_reduction_operation(
-                      partial_sums_first[thread_index],
-                      binary_transform_operation(*iters1_first[thread_index]++, first2[n]));
+                      partial_sums_first[thread_index], binary_transform_operation(*iters1_first[thread_index]++, first2[n]));
             });
 
-          return std::accumulate(partial_sums_first, std::end(partial_sums), initial_value, binary_reduction_operation);
+          using std::end;
+          return std::accumulate(partial_sums_first, end(partial_sums), initial_value, binary_reduction_operation);
         }
 
         template <
           typename RandomAccessIterator1, typename RandomAccessIterator2, typename Value,
           typename BinaryReductionOperation, typename BinaryTransformOperation>
-        static Value call(
+        static auto call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
           RandomAccessIterator1 const first1, RandomAccessIterator1 const last1,
           RandomAccessIterator2 const first2, Value const initial_value,
           BinaryReductionOperation binary_reduction_operation,
           BinaryTransformOperation binary_transform_operation,
           std::random_access_iterator_tag const, std::random_access_iterator_tag const)
+        -> Value
         {
-          auto is_calleds
-            = std::vector<int>(
-                ::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
-          auto partial_sums
-            = std::vector<Value>(::ket::utility::num_threads(parallel_policy));
+          auto is_calleds = std::vector<int>(::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
+          auto partial_sums = std::vector<Value>(::ket::utility::num_threads(parallel_policy));
 
-          auto is_calleds_first = std::begin(is_calleds);
-          auto partial_sums_first = std::begin(partial_sums);
+          using std::begin;
+          auto is_calleds_first = begin(is_calleds);
+          auto partial_sums_first = begin(partial_sums);
 
-          using ::ket::utility::loop_n;
-          using difference_type
-            = typename std::iterator_traits<RandomAccessIterator1>::difference_type;
-          loop_n(
+          using difference_type = typename std::iterator_traits<RandomAccessIterator1>::difference_type;
+          ::ket::utility::loop_n(
             parallel_policy, last1 - first1,
-            [first1, first2, binary_reduction_operation, binary_transform_operation,
-             is_calleds_first, partial_sums_first](
+            [first1, first2, binary_reduction_operation, binary_transform_operation, is_calleds_first, partial_sums_first](
               difference_type const n, int const thread_index)
             {
               if (not is_calleds_first[thread_index])
@@ -1148,44 +1081,35 @@ namespace ket
               }
               else
                 partial_sums_first[thread_index]
-                  = binary_reduction_operation(
-                      partial_sums_first[thread_index],
-                      binary_transform_operation(first1[n], first2[n]));
+                  = binary_reduction_operation(partial_sums_first[thread_index], binary_transform_operation(first1[n], first2[n]));
             });
 
-          return std::accumulate(partial_sums_first, std::end(partial_sums), initial_value, binary_reduction_operation);
+          using std::end;
+          return std::accumulate(partial_sums_first, end(partial_sums), initial_value, binary_reduction_operation);
         }
 
-        template <
-          typename ForwardIterator, typename Value,
-          typename BinaryReductionOperation, typename UnaryTransformOperation>
-        static Value call(
+        template <typename ForwardIterator, typename Value, typename BinaryReductionOperation, typename UnaryTransformOperation>
+        static auto call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
-          ForwardIterator const first, ForwardIterator const last,
-          Value const initial_value,
+          ForwardIterator const first, ForwardIterator const last, Value const initial_value,
           BinaryReductionOperation binary_reduction_operation,
           UnaryTransformOperation unary_transform_operation,
           std::forward_iterator_tag const)
+        -> Value
         {
-          auto is_calleds
-            = std::vector<int>(
-                ::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
-          auto iters
-            = std::vector<ForwardIterator>(::ket::utility::num_threads(parallel_policy));
-          auto partial_sums
-            = std::vector<Value>(::ket::utility::num_threads(parallel_policy));
+          auto is_calleds = std::vector<int>(::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
+          auto iters = std::vector<ForwardIterator>(::ket::utility::num_threads(parallel_policy));
+          auto partial_sums = std::vector<Value>(::ket::utility::num_threads(parallel_policy));
 
-          auto is_calleds_first = std::begin(is_calleds);
-          auto iters_first = std::begin(iters);
-          auto partial_sums_first = std::begin(partial_sums);
+          using std::begin;
+          auto is_calleds_first = begin(is_calleds);
+          auto iters_first = begin(iters);
+          auto partial_sums_first = begin(partial_sums);
 
-          using ::ket::utility::loop_n;
-          using difference_type
-            = typename std::iterator_traits<ForwardIterator>::difference_type;
-          loop_n(
+          using difference_type = typename std::iterator_traits<ForwardIterator>::difference_type;
+          ::ket::utility::loop_n(
             parallel_policy, std::distance(first, last),
-            [first, binary_reduction_operation, unary_transform_operation,
-             is_calleds_first, iters_first, partial_sums_first](
+            [first, binary_reduction_operation, unary_transform_operation, is_calleds_first, iters_first, partial_sums_first](
               difference_type const n, int const thread_index)
             {
               if (not is_calleds_first[thread_index])
@@ -1193,47 +1117,38 @@ namespace ket
                 iters_first[thread_index] = first;
                 std::advance(iters_first[thread_index], n);
 
-                partial_sums_first[thread_index]
-                  = unary_transform_operation(*iters_first[thread_index]++);
+                partial_sums_first[thread_index] = unary_transform_operation(*iters_first[thread_index]++);
                 is_calleds_first[thread_index] = static_cast<int>(true);
               }
               else
                 partial_sums_first[thread_index]
-                  = binary_reduction_operation(
-                      partial_sums_first[thread_index],
-                      unary_transform_operation(*iters_first[thread_index]++));
+                  = binary_reduction_operation(partial_sums_first[thread_index], unary_transform_operation(*iters_first[thread_index]++));
             });
 
-          return std::accumulate(partial_sums_first, std::end(partial_sums), initial_value, binary_reduction_operation);
+          using std::end;
+          return std::accumulate(partial_sums_first, end(partial_sums), initial_value, binary_reduction_operation);
         }
 
-        template <
-          typename RandomAccessIterator, typename Value,
-          typename BinaryReductionOperation, typename UnaryTransformOperation>
-        static Value call(
+        template <typename RandomAccessIterator, typename Value, typename BinaryReductionOperation, typename UnaryTransformOperation>
+        static auto call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
-          RandomAccessIterator const first, RandomAccessIterator const last,
-          Value const initial_value,
+          RandomAccessIterator const first, RandomAccessIterator const last, Value const initial_value,
           BinaryReductionOperation binary_reduction_operation,
           UnaryTransformOperation unary_transform_operation,
           std::random_access_iterator_tag const)
+        -> Value
         {
-          auto is_calleds
-            = std::vector<int>(
-                ::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
-          auto partial_sums
-            = std::vector<Value>(::ket::utility::num_threads(parallel_policy));
+          auto is_calleds = std::vector<int>(::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
+          auto partial_sums = std::vector<Value>(::ket::utility::num_threads(parallel_policy));
 
-          auto is_calleds_first = std::begin(is_calleds);
-          auto partial_sums_first = std::begin(partial_sums);
+          using std::begin;
+          auto is_calleds_first = begin(is_calleds);
+          auto partial_sums_first = begin(partial_sums);
 
-          using ::ket::utility::loop_n;
-          using difference_type
-            = typename std::iterator_traits<RandomAccessIterator>::difference_type;
-          loop_n(
+          using difference_type = typename std::iterator_traits<RandomAccessIterator>::difference_type;
+          ::ket::utility::loop_n(
             parallel_policy, last - first,
-            [first, binary_reduction_operation, unary_transform_operation,
-             is_calleds_first, partial_sums_first](
+            [first, binary_reduction_operation, unary_transform_operation, is_calleds_first, partial_sums_first](
               difference_type const n, int const thread_index)
             {
               if (not is_calleds_first[thread_index])
@@ -1243,11 +1158,11 @@ namespace ket
               }
               else
                 partial_sums_first[thread_index]
-                  = binary_reduction_operation(
-                      partial_sums_first[thread_index], unary_transform_operation(first[n]));
+                  = binary_reduction_operation(partial_sums_first[thread_index], unary_transform_operation(first[n]));
             });
 
-          return std::accumulate(partial_sums_first, std::end(partial_sums), initial_value, binary_reduction_operation);
+          using std::end;
+          return std::accumulate(partial_sums_first, end(partial_sums), initial_value, binary_reduction_operation);
         }
       }; // struct transform_reduce< ::ket::utility::policy::parallel<NumThreads> >
     } // namespace dispatch
@@ -1260,25 +1175,25 @@ namespace ket
         typename ParallelPolicy,
         typename RangeSize, typename ForwardIterator, typename BinaryOperation,
         typename Allocator1, typename Value, typename Allocator2, typename Allocator3>
-      inline void post_inclusive_scan(
+      inline auto post_inclusive_scan(
         ParallelPolicy const parallel_policy,
         RangeSize const range_size, ForwardIterator d_first, BinaryOperation binary_operation,
         std::vector<int, Allocator1>& is_calleds,
         std::vector<Value, Allocator2>& partial_sums,
         std::vector<ForwardIterator, Allocator3>& outs)
+      -> void
       {
-        auto is_calleds_first = std::begin(is_calleds);
-        auto partial_sums_first = std::begin(partial_sums);
-        auto outs_first = std::begin(outs);
+        using std::begin;
+        auto is_calleds_first = begin(is_calleds);
+        auto partial_sums_first = begin(partial_sums);
+        auto outs_first = begin(outs);
 
-        std::fill(is_calleds_first, std::end(is_calleds), static_cast<int>(false));
+        using std::end;
+        std::fill(is_calleds_first, end(is_calleds), static_cast<int>(false));
 
-        std::partial_sum(
-          partial_sums_first, std::end(partial_sums),
-          partial_sums_first, binary_operation);
+        std::partial_sum(partial_sums_first, end(partial_sums), partial_sums_first, binary_operation);
 
-        using ::ket::utility::loop_n;
-        loop_n(
+        ::ket::utility::loop_n(
           parallel_policy, range_size,
           [d_first, binary_operation, is_calleds_first, partial_sums_first, outs_first](
             RangeSize const n, int const thread_index)
@@ -1294,8 +1209,7 @@ namespace ket
             }
 
             *outs_first[thread_index]++
-              = binary_operation(
-                  partial_sums_first[thread_index - 1], *outs_first[thread_index]);
+              = binary_operation(partial_sums_first[thread_index - 1], *outs_first[thread_index]);
           });
       }
 
@@ -1303,28 +1217,26 @@ namespace ket
         typename ParallelPolicy,
         typename RangeSize, typename RandomAccessIterator, typename BinaryOperation,
         typename Value, typename Allocator>
-      inline void post_inclusive_scan(
+      inline auto post_inclusive_scan(
         ParallelPolicy const parallel_policy,
         RangeSize const range_size, RandomAccessIterator d_first, BinaryOperation binary_operation,
         std::vector<Value, Allocator>& partial_sums)
+      -> void
       {
-        auto partial_sums_first = std::begin(partial_sums);
+        using std::begin;
+        auto partial_sums_first = begin(partial_sums);
 
-        std::partial_sum(
-          partial_sums_first, std::end(partial_sums),
-          partial_sums_first, binary_operation);
+        using std::end;
+        std::partial_sum(partial_sums_first, end(partial_sums), partial_sums_first, binary_operation);
 
-        using ::ket::utility::loop_n;
-        loop_n(
+        ::ket::utility::loop_n(
           parallel_policy, range_size,
-          [d_first, binary_operation, partial_sums_first](
-            RangeSize const n, int const thread_index)
+          [d_first, binary_operation, partial_sums_first](RangeSize const n, int const thread_index)
           {
             if (thread_index == 0)
               return;
 
-            d_first[n]
-              = binary_operation(partial_sums_first[thread_index - 1], d_first[n]);
+            d_first[n] = binary_operation(partial_sums_first[thread_index - 1], d_first[n]);
           });
       }
     } // namespace parallel_loop_n_detail
@@ -1335,32 +1247,26 @@ namespace ket
       struct inclusive_scan< ::ket::utility::policy::parallel<NumThreads> >
       {
         template <typename ForwardIterator1, typename ForwardIterator2>
-        static ForwardIterator2 call(
+        static auto call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
-          ForwardIterator1 const first, ForwardIterator1 const last,
-          ForwardIterator2 const d_first,
+          ForwardIterator1 const first, ForwardIterator1 const last, ForwardIterator2 const d_first,
           std::forward_iterator_tag const, std::forward_iterator_tag const)
+        -> ForwardIterator2
         {
-          auto is_calleds
-            = std::vector<int>(
-                ::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
-          auto iters
-            = std::vector<ForwardIterator1>(::ket::utility::num_threads(parallel_policy));
-          auto outs
-            = std::vector<ForwardIterator2>(::ket::utility::num_threads(parallel_policy));
+          auto is_calleds = std::vector<int>(::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
+          auto iters = std::vector<ForwardIterator1>(::ket::utility::num_threads(parallel_policy));
+          auto outs = std::vector<ForwardIterator2>(::ket::utility::num_threads(parallel_policy));
           using value_type = typename std::iterator_traits<ForwardIterator1>::value_type;
-          auto partial_sums
-            = std::vector<value_type>(::ket::utility::num_threads(parallel_policy));
+          auto partial_sums = std::vector<value_type>(::ket::utility::num_threads(parallel_policy));
 
-          auto is_calleds_first = std::begin(is_calleds);
-          auto iters_first = std::begin(iters);
-          auto outs_first = std::begin(outs);
-          auto partial_sums_first = std::begin(partial_sums);
+          using std::begin;
+          auto is_calleds_first = begin(is_calleds);
+          auto iters_first = begin(iters);
+          auto outs_first = begin(outs);
+          auto partial_sums_first = begin(partial_sums);
 
-          using ::ket::utility::loop_n;
-          using difference_type
-            = typename std::iterator_traits<ForwardIterator1>::difference_type;
-          loop_n(
+          using difference_type = typename std::iterator_traits<ForwardIterator1>::difference_type;
+          ::ket::utility::loop_n(
             parallel_policy, std::distance(first, last),
             [first, d_first, is_calleds_first, iters_first, outs_first, partial_sums_first](
               difference_type const n, int const thread_index)
@@ -1381,15 +1287,13 @@ namespace ket
               *outs_first[thread_index]++ = partial_sums_first[thread_index];
             });
 
-          std::partial_sum(
-            partial_sums_first, std::end(partial_sums), partial_sums_first);
-          std::fill(
-            is_calleds_first, std::end(is_calleds), static_cast<int>(false));
+          using std::end;
+          std::partial_sum(partial_sums_first, end(partial_sums), partial_sums_first);
+          std::fill(is_calleds_first, end(is_calleds), static_cast<int>(false));
 
-          loop_n(
+          ::ket::utility::loop_n(
             parallel_policy, std::distance(first, last),
-            [d_first, is_calleds_first, outs_first, partial_sums_first](
-              difference_type const n, int const thread_index)
+            [d_first, is_calleds_first, outs_first, partial_sums_first](difference_type const n, int const thread_index)
             {
               if (thread_index == 0)
                 return;
@@ -1408,29 +1312,24 @@ namespace ket
         }
 
         template <typename RandomAccessIterator1, typename RandomAccessIterator2>
-        static RandomAccessIterator2 call(
+        static auto call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
-          RandomAccessIterator1 const first, RandomAccessIterator1 const last,
-          RandomAccessIterator2 const d_first,
+          RandomAccessIterator1 const first, RandomAccessIterator1 const last, RandomAccessIterator2 const d_first,
           std::random_access_iterator_tag const, std::random_access_iterator_tag const)
+        -> RandomAccessIterator2
         {
-          auto is_calleds
-            = std::vector<int>(
-                ::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
-          using value_type
-            = typename std::iterator_traits<RandomAccessIterator1>::value_type;
+          auto is_calleds = std::vector<int>(::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
+          using value_type = typename std::iterator_traits<RandomAccessIterator1>::value_type;
           auto partial_sums = std::vector<value_type>(::ket::utility::num_threads(parallel_policy));
 
-          auto is_calleds_first = std::begin(is_calleds);
-          auto partial_sums_first = std::begin(partial_sums);
+          using std::begin;
+          auto is_calleds_first = begin(is_calleds);
+          auto partial_sums_first = begin(partial_sums);
 
-          using ::ket::utility::loop_n;
-          using difference_type
-            = typename std::iterator_traits<RandomAccessIterator1>::difference_type;
-          loop_n(
+          using difference_type = typename std::iterator_traits<RandomAccessIterator1>::difference_type;
+          ::ket::utility::loop_n(
             parallel_policy, last - first,
-            [first, d_first, is_calleds_first, partial_sums_first](
-              difference_type const n, int const thread_index)
+            [first, d_first, is_calleds_first, partial_sums_first](difference_type const n, int const thread_index)
             {
               if (not is_calleds_first[thread_index])
               {
@@ -1443,13 +1342,12 @@ namespace ket
               d_first[n] = partial_sums_first[thread_index];
             });
 
-          std::partial_sum(
-            partial_sums_first, std::end(partial_sums), partial_sums_first);
+          using std::end;
+          std::partial_sum(partial_sums_first, end(partial_sums), partial_sums_first);
 
-          loop_n(
+          ::ket::utility::loop_n(
             parallel_policy, last - first,
-            [d_first, partial_sums_first](
-              difference_type const n, int const thread_index)
+            [d_first, partial_sums_first](difference_type const n, int const thread_index)
             {
               if (thread_index == 0)
                 return;
@@ -1460,39 +1358,29 @@ namespace ket
           return d_first + (last - first);
         }
 
-        template <
-          typename ForwardIterator1, typename ForwardIterator2,
-          typename BinaryOperation>
-        static ForwardIterator2 call(
+        template <typename ForwardIterator1, typename ForwardIterator2, typename BinaryOperation>
+        static auto call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
-          ForwardIterator1 const first, ForwardIterator1 const last,
-          ForwardIterator2 const d_first,
-          BinaryOperation binary_operation,
-          std::forward_iterator_tag const, std::forward_iterator_tag const)
+          ForwardIterator1 const first, ForwardIterator1 const last, ForwardIterator2 const d_first,
+          BinaryOperation binary_operation, std::forward_iterator_tag const, std::forward_iterator_tag const)
+        -> ForwardIterator2
         {
-          auto is_calleds
-            = std::vector<int>(
-                ::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
-          auto iters
-            = std::vector<ForwardIterator1>(::ket::utility::num_threads(parallel_policy));
-          auto outs
-            = std::vector<ForwardIterator2>(::ket::utility::num_threads(parallel_policy));
+          auto is_calleds = std::vector<int>(::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
+          auto iters = std::vector<ForwardIterator1>(::ket::utility::num_threads(parallel_policy));
+          auto outs = std::vector<ForwardIterator2>(::ket::utility::num_threads(parallel_policy));
           using value_type = typename std::iterator_traits<ForwardIterator1>::value_type;
-          auto partial_sums
-            = std::vector<value_type>(::ket::utility::num_threads(parallel_policy));
+          auto partial_sums = std::vector<value_type>(::ket::utility::num_threads(parallel_policy));
 
-          auto is_calleds_first = std::begin(is_calleds);
-          auto iters_first = std::begin(iters);
-          auto outs_first = std::begin(outs);
-          auto partial_sums_first = std::begin(partial_sums);
+          using std::begin;
+          auto is_calleds_first = begin(is_calleds);
+          auto iters_first = begin(iters);
+          auto outs_first = begin(outs);
+          auto partial_sums_first = begin(partial_sums);
 
-          using ::ket::utility::loop_n;
-          using difference_type
-            = typename std::iterator_traits<ForwardIterator1>::difference_type;
-          loop_n(
+          using difference_type = typename std::iterator_traits<ForwardIterator1>::difference_type;
+          ::ket::utility::loop_n(
             parallel_policy, std::distance(first, last),
-            [first, d_first, binary_operation,
-             is_calleds_first, iters_first, outs_first, partial_sums_first](
+            [first, d_first, binary_operation, is_calleds_first, iters_first, outs_first, partial_sums_first](
               difference_type const n, int const thread_index)
             {
               if (not is_calleds_first[thread_index])
@@ -1507,47 +1395,37 @@ namespace ket
               }
               else
                 partial_sums_first[thread_index]
-                  = binary_operation(
-                      partial_sums_first[thread_index], *iters_first[thread_index]++);
+                  = binary_operation(partial_sums_first[thread_index], *iters_first[thread_index]++);
 
               *outs_first[thread_index]++ = partial_sums_first[thread_index];
             });
 
           ::ket::utility::parallel_loop_n_detail::post_inclusive_scan(
-            parallel_policy, std::distance(first, last), d_first, binary_operation,
-            is_calleds, partial_sums, outs);
+            parallel_policy, std::distance(first, last), d_first, binary_operation, is_calleds, partial_sums, outs);
 
           return outs.back();
         }
 
-        template <
-          typename RandomAccessIterator1, typename RandomAccessIterator2,
-          typename BinaryOperation>
-        static RandomAccessIterator2 call(
+        template <typename RandomAccessIterator1, typename RandomAccessIterator2, typename BinaryOperation>
+        static auto call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
-          RandomAccessIterator1 const first, RandomAccessIterator1 const last,
-          RandomAccessIterator2 const d_first,
+          RandomAccessIterator1 const first, RandomAccessIterator1 const last, RandomAccessIterator2 const d_first,
           BinaryOperation binary_operation,
           std::random_access_iterator_tag const, std::random_access_iterator_tag const)
+        -> RandomAccessIterator2
         {
-          auto is_calleds
-            = std::vector<int>(
-                ::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
-          using value_type
-            = typename std::iterator_traits<RandomAccessIterator1>::value_type;
-          auto partial_sums
-            = std::vector<value_type>(::ket::utility::num_threads(parallel_policy));
+          auto is_calleds = std::vector<int>(::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
+          using value_type = typename std::iterator_traits<RandomAccessIterator1>::value_type;
+          auto partial_sums = std::vector<value_type>(::ket::utility::num_threads(parallel_policy));
 
-          auto is_calleds_first = std::begin(is_calleds);
-          auto partial_sums_first = std::begin(partial_sums);
+          using std::begin;
+          auto is_calleds_first = begin(is_calleds);
+          auto partial_sums_first = begin(partial_sums);
 
-          using ::ket::utility::loop_n;
-          using difference_type
-            = typename std::iterator_traits<RandomAccessIterator1>::difference_type;
-          loop_n(
+          using difference_type = typename std::iterator_traits<RandomAccessIterator1>::difference_type;
+          ::ket::utility::loop_n(
             parallel_policy, last - first,
-            [first, d_first, binary_operation, is_calleds_first, partial_sums_first](
-              difference_type const n, int const thread_index)
+            [first, d_first, binary_operation, is_calleds_first, partial_sums_first](difference_type const n, int const thread_index)
             {
               if (not is_calleds_first[thread_index])
               {
@@ -1555,8 +1433,7 @@ namespace ket
                 is_calleds_first[thread_index] = static_cast<int>(true);
               }
               else
-                partial_sums_first[thread_index]
-                  = binary_operation(partial_sums_first[thread_index], first[n]);
+                partial_sums_first[thread_index] = binary_operation(partial_sums_first[thread_index], first[n]);
 
               d_first[n] = partial_sums_first[thread_index];
             });
@@ -1567,39 +1444,30 @@ namespace ket
           return d_first + (last - first);
         }
 
-        template <
-          typename ForwardIterator1, typename ForwardIterator2,
-          typename BinaryOperation, typename Value>
-        static ForwardIterator2 call(
+        template <typename ForwardIterator1, typename ForwardIterator2, typename BinaryOperation, typename Value>
+        static auto call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
-          ForwardIterator1 const first, ForwardIterator1 const last,
-          ForwardIterator2 const d_first,
+          ForwardIterator1 const first, ForwardIterator1 const last, ForwardIterator2 const d_first,
           BinaryOperation binary_operation, Value const initial_value,
           std::forward_iterator_tag const, std::forward_iterator_tag const)
+        -> ForwardIterator2
         {
-          auto is_calleds
-            = std::vector<int>(
-                ::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
-          auto iters
-            = std::vector<ForwardIterator1>(::ket::utility::num_threads(parallel_policy));
-          auto outs
-            = std::vector<ForwardIterator2>(::ket::utility::num_threads(parallel_policy));
+          auto is_calleds = std::vector<int>(::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
+          auto iters = std::vector<ForwardIterator1>(::ket::utility::num_threads(parallel_policy));
+          auto outs = std::vector<ForwardIterator2>(::ket::utility::num_threads(parallel_policy));
           using value_type = typename std::iterator_traits<ForwardIterator1>::value_type;
-          auto partial_sums
-            = std::vector<value_type>(::ket::utility::num_threads(parallel_policy));
+          auto partial_sums = std::vector<value_type>(::ket::utility::num_threads(parallel_policy));
 
-          auto is_calleds_first = std::begin(is_calleds);
-          auto iters_first = std::begin(iters);
-          auto outs_first = std::begin(outs);
-          auto partial_sums_first = std::begin(partial_sums);
+          using std::begin;
+          auto is_calleds_first = begin(is_calleds);
+          auto iters_first = begin(iters);
+          auto outs_first = begin(outs);
+          auto partial_sums_first = begin(partial_sums);
 
-          using ::ket::utility::loop_n;
-          using difference_type
-            = typename std::iterator_traits<ForwardIterator1>::difference_type;
-          loop_n(
+          using difference_type = typename std::iterator_traits<ForwardIterator1>::difference_type;
+          ::ket::utility::loop_n(
             parallel_policy, std::distance(first, last),
-            [first, d_first, binary_operation, initial_value,
-             is_calleds_first, iters_first, outs_first, partial_sums_first](
+            [first, d_first, binary_operation, initial_value, is_calleds_first, iters_first, outs_first, partial_sums_first](
               difference_type const n, int const thread_index)
             {
               if (not is_calleds_first[thread_index])
@@ -1617,43 +1485,35 @@ namespace ket
               }
               else
                 partial_sums_first[thread_index]
-                  = binary_operation(
-                      partial_sums_first[thread_index], *iters_first[thread_index]++);
+                  = binary_operation(partial_sums_first[thread_index], *iters_first[thread_index]++);
 
               *outs_first[thread_index]++ = partial_sums_first[thread_index];
             });
 
           ::ket::utility::parallel_loop_n_detail::post_inclusive_scan(
-            parallel_policy, std::distance(first, last), d_first, binary_operation,
-            is_calleds, partial_sums, outs);
+            parallel_policy, std::distance(first, last), d_first, binary_operation, is_calleds, partial_sums, outs);
 
           return outs.back();
         }
 
-        template <
-          typename RandomAccessIterator1, typename RandomAccessIterator2,
-          typename BinaryOperation, typename Value>
-        static RandomAccessIterator2 call(
+        template <typename RandomAccessIterator1, typename RandomAccessIterator2, typename BinaryOperation, typename Value>
+        static auto call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
-          RandomAccessIterator1 const first, RandomAccessIterator1 const last,
-          RandomAccessIterator2 const d_first,
+          RandomAccessIterator1 const first, RandomAccessIterator1 const last, RandomAccessIterator2 const d_first,
           BinaryOperation binary_operation, Value const initial_value,
           std::random_access_iterator_tag const, std::random_access_iterator_tag const)
+        -> RandomAccessIterator2
         {
-          auto is_calleds
-            = std::vector<int>(
-                ::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
+          auto is_calleds = std::vector<int>(::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
           using value_type = typename std::iterator_traits<RandomAccessIterator1>::value_type;
-          auto partial_sums
-            = std::vector<value_type>(::ket::utility::num_threads(parallel_policy));
+          auto partial_sums = std::vector<value_type>(::ket::utility::num_threads(parallel_policy));
 
-          auto is_calleds_first = std::begin(is_calleds);
-          auto partial_sums_first = std::begin(partial_sums);
+          using std::begin;
+          auto is_calleds_first = begin(is_calleds);
+          auto partial_sums_first = begin(partial_sums);
 
-          using ::ket::utility::loop_n;
-          using difference_type
-            = typename std::iterator_traits<RandomAccessIterator1>::difference_type;
-          loop_n(
+          using difference_type = typename std::iterator_traits<RandomAccessIterator1>::difference_type;
+          ::ket::utility::loop_n(
             parallel_policy, last - first,
             [first, d_first, binary_operation, initial_value, is_calleds_first, partial_sums_first](
               difference_type const n, int const thread_index)
@@ -1667,8 +1527,7 @@ namespace ket
                 is_calleds_first[thread_index] = static_cast<int>(true);
               }
               else
-                partial_sums_first[thread_index]
-                  = binary_operation(partial_sums_first[thread_index], first[n]);
+                partial_sums_first[thread_index] = binary_operation(partial_sums_first[thread_index], first[n]);
 
               d_first[n] = partial_sums_first[thread_index];
             });
@@ -1688,36 +1547,28 @@ namespace ket
       template <typename NumThreads>
       struct transform_inclusive_scan< ::ket::utility::policy::parallel<NumThreads> >
       {
-        template <
-          typename ForwardIterator1, typename ForwardIterator2,
-          typename BinaryOperation, typename UnaryOperation>
-        static ForwardIterator2 call(
+        template <typename ForwardIterator1, typename ForwardIterator2, typename BinaryOperation, typename UnaryOperation>
+        static auto call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
-          ForwardIterator1 const first, ForwardIterator1 const last,
-          ForwardIterator2 const d_first,
+          ForwardIterator1 const first, ForwardIterator1 const last, ForwardIterator2 const d_first,
           BinaryOperation binary_operation, UnaryOperation unary_operation,
           std::forward_iterator_tag const, std::forward_iterator_tag const)
+        -> ForwardIterator2
         {
-          auto is_calleds
-            = std::vector<int>(
-                ::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
-          auto iters
-            = std::vector<ForwardIterator1>(::ket::utility::num_threads(parallel_policy));
-          auto outs
-            = std::vector<ForwardIterator2>(::ket::utility::num_threads(parallel_policy));
+          auto is_calleds = std::vector<int>(::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
+          auto iters = std::vector<ForwardIterator1>(::ket::utility::num_threads(parallel_policy));
+          auto outs = std::vector<ForwardIterator2>(::ket::utility::num_threads(parallel_policy));
           using value_type = typename std::iterator_traits<ForwardIterator1>::value_type;
-          auto partial_sums
-            = std::vector<value_type>(::ket::utility::num_threads(parallel_policy));
+          auto partial_sums = std::vector<value_type>(::ket::utility::num_threads(parallel_policy));
 
-          auto is_calleds_first = std::begin(is_calleds);
-          auto iters_first = std::begin(iters);
-          auto outs_first = std::begin(outs);
-          auto partial_sums_first = std::begin(partial_sums);
+          using std::begin;
+          auto is_calleds_first = begin(is_calleds);
+          auto iters_first = begin(iters);
+          auto outs_first = begin(outs);
+          auto partial_sums_first = begin(partial_sums);
 
-          using ::ket::utility::loop_n;
-          using difference_type
-            = typename std::iterator_traits<ForwardIterator1>::difference_type;
-          loop_n(
+          using difference_type = typename std::iterator_traits<ForwardIterator1>::difference_type;
+          ::ket::utility::loop_n(
             parallel_policy, std::distance(first, last),
             [first, d_first, binary_operation, unary_operation,
              is_calleds_first, iters_first, outs_first, partial_sums_first](
@@ -1730,53 +1581,42 @@ namespace ket
                 std::advance(iters_first[thread_index], n);
                 std::advance(outs_first[thread_index], n);
 
-                partial_sums_first[thread_index]
-                  = unary_operation(*iters_first[thread_index]++);
+                partial_sums_first[thread_index] = unary_operation(*iters_first[thread_index]++);
                 is_calleds_first[thread_index] = static_cast<int>(true);
               }
               else
                 partial_sums_first[thread_index]
-                  = binary_operation(
-                      partial_sums_first[thread_index],
-                      unary_operation(*iters_first[thread_index]++));
+                  = binary_operation(partial_sums_first[thread_index], unary_operation(*iters_first[thread_index]++));
 
               *outs_first[thread_index]++ = partial_sums_first[thread_index];
             });
 
           ::ket::utility::parallel_loop_n_detail::post_inclusive_scan(
-            parallel_policy, std::distance(first, last), d_first, binary_operation,
-            is_calleds, partial_sums, outs);
+            parallel_policy, std::distance(first, last), d_first, binary_operation, is_calleds, partial_sums, outs);
 
           return outs.back();
         }
 
-        template <
-          typename RandomAccessIterator1, typename RandomAccessIterator2,
-          typename BinaryOperation, typename UnaryOperation>
-        static RandomAccessIterator2 call(
+        template <typename RandomAccessIterator1, typename RandomAccessIterator2, typename BinaryOperation, typename UnaryOperation>
+        static auto call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
-          RandomAccessIterator1 const first, RandomAccessIterator1 const last,
-          RandomAccessIterator2 const d_first,
+          RandomAccessIterator1 const first, RandomAccessIterator1 const last, RandomAccessIterator2 const d_first,
           BinaryOperation binary_operation, UnaryOperation unary_operation,
           std::random_access_iterator_tag const, std::random_access_iterator_tag const)
+        -> RandomAccessIterator2
         {
-          auto is_calleds
-            = std::vector<int>(
-                ::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
+          auto is_calleds = std::vector<int>(::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
           using value_type = typename std::iterator_traits<RandomAccessIterator1>::value_type;
-          auto partial_sums
-            = std::vector<value_type>(::ket::utility::num_threads(parallel_policy));
+          auto partial_sums = std::vector<value_type>(::ket::utility::num_threads(parallel_policy));
 
-          auto is_calleds_first = std::begin(is_calleds);
-          auto partial_sums_first = std::begin(partial_sums);
+          using std::begin;
+          auto is_calleds_first = begin(is_calleds);
+          auto partial_sums_first = begin(partial_sums);
 
-          using ::ket::utility::loop_n;
-          using difference_type
-            = typename std::iterator_traits<RandomAccessIterator1>::difference_type;
-          loop_n(
+          using difference_type = typename std::iterator_traits<RandomAccessIterator1>::difference_type;
+          ::ket::utility::loop_n(
             parallel_policy, last - first,
-            [first, d_first, binary_operation, unary_operation,
-             is_calleds_first, partial_sums_first](
+            [first, d_first, binary_operation, unary_operation, is_calleds_first, partial_sums_first](
               difference_type const n, int const thread_index)
             {
               if (not is_calleds_first[thread_index])
@@ -1786,8 +1626,7 @@ namespace ket
               }
               else
                 partial_sums_first[thread_index]
-                  = binary_operation(
-                      partial_sums_first[thread_index], unary_operation(first[n]));
+                  = binary_operation(partial_sums_first[thread_index], unary_operation(first[n]));
 
               d_first[n] = partial_sums_first[thread_index];
             });
@@ -1801,35 +1640,27 @@ namespace ket
         template <
           typename ForwardIterator1, typename ForwardIterator2,
           typename BinaryOperation, typename UnaryOperation, typename Value>
-        static ForwardIterator2 call(
+        static auto call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
-          ForwardIterator1 const first, ForwardIterator1 const last,
-          ForwardIterator2 const d_first,
-          BinaryOperation binary_operation, UnaryOperation unary_operation,
-          Value const initial_value,
+          ForwardIterator1 const first, ForwardIterator1 const last, ForwardIterator2 const d_first,
+          BinaryOperation binary_operation, UnaryOperation unary_operation, Value const initial_value,
           std::forward_iterator_tag const, std::forward_iterator_tag const)
+        -> ForwardIterator2
         {
-          auto is_calleds
-            = std::vector<int>(
-                ::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
-          auto iters
-            = std::vector<ForwardIterator1>(::ket::utility::num_threads(parallel_policy));
-          auto outs
-            = std::vector<ForwardIterator2>(::ket::utility::num_threads(parallel_policy));
+          auto is_calleds = std::vector<int>(::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
+          auto iters = std::vector<ForwardIterator1>(::ket::utility::num_threads(parallel_policy));
+          auto outs = std::vector<ForwardIterator2>(::ket::utility::num_threads(parallel_policy));
           using value_type = typename std::iterator_traits<ForwardIterator1>::value_type;
-          auto partial_sums
-            = std::vector<value_type>(::ket::utility::num_threads(parallel_policy));
+          auto partial_sums = std::vector<value_type>(::ket::utility::num_threads(parallel_policy));
 
-          auto is_calleds_first = std::begin(is_calleds);
-          auto iters_first = std::begin(iters);
-          auto outs_first = std::begin(outs);
-          auto partial_sums_first = std::begin(partial_sums);
+          using std::begin;
+          auto is_calleds_first = begin(is_calleds);
+          auto iters_first = begin(iters);
+          auto outs_first = begin(outs);
+          auto partial_sums_first = begin(partial_sums);
 
-          using ::ket::utility::loop_n;
-          typedef
-            typename std::iterator_traits<ForwardIterator1>::difference_type
-            difference_type;
-          loop_n(
+          using difference_type = typename std::iterator_traits<ForwardIterator1>::difference_type;
+          ::ket::utility::loop_n(
             parallel_policy, std::distance(first, last),
             [first, d_first, binary_operation, unary_operation, initial_value,
              is_calleds_first, iters_first, outs_first, partial_sums_first](
@@ -1844,23 +1675,20 @@ namespace ket
 
                 partial_sums_first[thread_index]
                   = thread_index == 0
-                    ? binary_operation(
-                        initial_value, unary_operation(*iters_first[thread_index]++))
+                    ? binary_operation(initial_value, unary_operation(*iters_first[thread_index]++))
                     : unary_operation(*iters_first[thread_index]++);
                 is_calleds_first[thread_index] = static_cast<int>(true);
               }
               else
                 partial_sums_first[thread_index]
                   = binary_operation(
-                      partial_sums_first[thread_index],
-                      unary_operation(*iters_first[thread_index]++));
+                      partial_sums_first[thread_index], unary_operation(*iters_first[thread_index]++));
 
               *outs_first[thread_index]++ = partial_sums_first[thread_index];
             });
 
           ::ket::utility::parallel_loop_n_detail::post_inclusive_scan(
-            parallel_policy, std::distance(first, last), d_first, binary_operation,
-            is_calleds, partial_sums, outs);
+            parallel_policy, std::distance(first, last), d_first, binary_operation, is_calleds, partial_sums, outs);
 
           return outs.back();
         }
@@ -1868,46 +1696,38 @@ namespace ket
         template <
           typename RandomAccessIterator1, typename RandomAccessIterator2,
           typename BinaryOperation, typename UnaryOperation, typename Value>
-        static RandomAccessIterator2 call(
+        static auto call(
           ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
-          RandomAccessIterator1 const first, RandomAccessIterator1 const last,
-          RandomAccessIterator2 const d_first,
-          BinaryOperation binary_operation, UnaryOperation unary_operation,
-          Value const initial_value,
+          RandomAccessIterator1 const first, RandomAccessIterator1 const last, RandomAccessIterator2 const d_first,
+          BinaryOperation binary_operation, UnaryOperation unary_operation, Value const initial_value,
           std::random_access_iterator_tag const, std::random_access_iterator_tag const)
+        -> RandomAccessIterator2
         {
-          auto is_calleds
-            = std::vector<int>(
-                ::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
+          auto is_calleds = std::vector<int>(::ket::utility::num_threads(parallel_policy), static_cast<int>(false));
           using value_type = typename std::iterator_traits<RandomAccessIterator1>::value_type;
-          auto partial_sums
-            = std::vector<value_type>(::ket::utility::num_threads(parallel_policy));
+          auto partial_sums = std::vector<value_type>(::ket::utility::num_threads(parallel_policy));
 
-          auto is_calleds_first = std::begin(is_calleds);
-          auto partial_sums_first = std::begin(partial_sums);
+          using std::begin;
+          auto is_calleds_first = begin(is_calleds);
+          auto partial_sums_first = begin(partial_sums);
 
-          using ::ket::utility::loop_n;
-          using difference_type
-            = typename std::iterator_traits<RandomAccessIterator1>::difference_type;
-          loop_n(
+          using difference_type = typename std::iterator_traits<RandomAccessIterator1>::difference_type;
+          ::ket::utility::loop_n(
             parallel_policy, last - first,
-            [first, d_first, binary_operation, unary_operation,
-             initial_value, is_calleds_first, partial_sums_first](
+            [first, d_first, binary_operation, unary_operation, initial_value, is_calleds_first, partial_sums_first](
               difference_type const n, int const thread_index)
             {
               if (not is_calleds_first[thread_index])
               {
                 partial_sums_first[thread_index]
                   = thread_index == 0
-                    ? binary_operation(
-                        initial_value, unary_operation(first[n]))
+                    ? binary_operation(initial_value, unary_operation(first[n]))
                     : unary_operation(first[n]);
                 is_calleds_first[thread_index] = static_cast<int>(true);
               }
               else
                 partial_sums_first[thread_index]
-                  = binary_operation(
-                      partial_sums_first[thread_index], unary_operation(first[n]));
+                  = binary_operation(partial_sums_first[thread_index], unary_operation(first[n]));
 
               d_first[n] = partial_sums_first[thread_index];
             });

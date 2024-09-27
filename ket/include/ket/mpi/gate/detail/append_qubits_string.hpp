@@ -23,11 +23,11 @@ namespace ket
         namespace append_qubits_string_detail
         {
           template <typename Character, typename CharacterTraits, typename Allocator>
-          inline void insert(std::basic_ostringstream<Character, CharacterTraits, Allocator>&)
+          inline auto insert(std::basic_ostringstream<Character, CharacterTraits, Allocator>&) -> void
           { }
 
           template <typename Character, typename CharacterTraits, typename Allocator, typename StateInteger, typename BitInteger, typename... Qubits>
-          inline void insert(std::basic_ostringstream<Character, CharacterTraits, Allocator>& output_string_stream, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
+          inline auto insert(std::basic_ostringstream<Character, CharacterTraits, Allocator>& output_string_stream, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits) -> void
           {
             output_string_stream << ' ' << qubit;
             ::ket::mpi::utility::logger_detail::insert(output_string_stream, qubits...);
@@ -35,8 +35,8 @@ namespace ket
         } // namespace append_qubits_string_detail
 
         template <typename Character, typename CharacterTraits, typename Allocator, typename... Qubits>
-        inline std::basic_string<Character, CharacterTraits, Allocator>
-        append_qubits_string(std::basic_string<Character, CharacterTraits, Allocator> const& base_str, Qubits const... qubits)
+        inline auto append_qubits_string(std::basic_string<Character, CharacterTraits, Allocator> const& base_str, Qubits const... qubits)
+        -> std::basic_string<Character, CharacterTraits, Allocator>
         {
           auto output_string_stream = std::basic_ostringstream<Character, CharacterTraits, Allocator>{base_str, std::ios_base::ate};
           ::ket::mpi::gate::detail::append_qubits_string_detail::insert(output_string_stream, ::ket::remove_control(qubits)...);
@@ -44,8 +44,8 @@ namespace ket
         }
 # else // KET_PRINT_LOG
         template <typename Character, typename CharacterTraits, typename Allocator, typename... Qubits>
-        inline std::basic_string<Character, CharacterTraits, Allocator>
-        append_qubits_string(std::basic_string<Character, CharacterTraits, Allocator> const& base_str, Qubits const...)
+        inline auto append_qubits_string(std::basic_string<Character, CharacterTraits, Allocator> const& base_str, Qubits const...)
+        -> std::basic_string<Character, CharacterTraits, Allocator>
         { return base_str; }
 # endif // KET_PRINT_LOG
       } // namespace detail

@@ -8,7 +8,7 @@ namespace ket
   namespace utility
   {
     template <typename InputIterator, typename Value>
-    inline bool contains(InputIterator const first, InputIterator const last, Value const& value)
+    inline auto contains(InputIterator const first, InputIterator const last, Value const& value) -> bool
     { return std::find(first, last, value) != last; }
   } // namespace utility
 } // namespace ket

@@ -26,10 +26,11 @@ namespace ket
     // SWAP_{1,2} (a_{00} |00> + a_{01} |01> + a_{10} |10> + a_{11} |11>)
     //   = a_{00} |00> + a_{10} |01> + a_{01} |10> + a_{11} |11>
     template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger>
-    inline void swap(
+    inline auto swap(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       ::ket::qubit<StateInteger, BitInteger> const qubit1, ::ket::qubit<StateInteger, BitInteger> const qubit2)
+    -> void
     {
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
@@ -49,10 +50,8 @@ namespace ket
           xor lower_bits_mask;
       auto const upper_bits_mask = compl (lower_bits_mask bitor middle_bits_mask);
 
-      using ::ket::utility::loop_n;
-      loop_n(
-        parallel_policy,
-        static_cast<StateInteger>(last - first) >> 2u,
+      ::ket::utility::loop_n(
+        parallel_policy, static_cast<StateInteger>(last - first) >> 2u,
         [first, qubit1_mask, qubit2_mask, lower_bits_mask, middle_bits_mask, upper_bits_mask](
           StateInteger const value_wo_qubits, int const)
         {
@@ -72,11 +71,12 @@ namespace ket
 
     // C...CSWAP_{tt'c...c'} or CnSWAP_{tt'c...c'}
     template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger, typename... ControlQubits>
-    inline void swap(
+    inline auto swap(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       ::ket::qubit<StateInteger, BitInteger> const target_qubit1, ::ket::qubit<StateInteger, BitInteger> const target_qubit2,
       ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ControlQubits const... control_qubits)
+    -> void
     {
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
@@ -106,61 +106,70 @@ namespace ket
     }
 
     template <typename RandomAccessIterator, typename StateInteger, typename BitInteger, typename... ControlQubits>
-    inline void swap(
+    inline auto swap(
       RandomAccessIterator const first, RandomAccessIterator const last,
       ::ket::qubit<StateInteger, BitInteger> const target_qubit1, ::ket::qubit<StateInteger, BitInteger> const target_qubit2,
       ControlQubits const... control_qubits)
+    -> void
     { ::ket::gate::swap(::ket::utility::policy::make_sequential(), first, last, target_qubit1, target_qubit2, control_qubits...); }
 
     namespace ranges
     {
       template <typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename... ControlQubits>
-      inline RandomAccessRange& swap(
+      inline auto swap(
         ParallelPolicy const parallel_policy, RandomAccessRange& state,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit1, ::ket::qubit<StateInteger, BitInteger> const target_qubit2,
         ControlQubits const... control_qubits)
+      -> RandomAccessRange&
       {
-        ::ket::gate::swap(parallel_policy, std::begin(state), std::end(state), target_qubit1, target_qubit2, control_qubits...);
+        using std::begin;
+        using std::end;
+        ::ket::gate::swap(parallel_policy, begin(state), end(state), target_qubit1, target_qubit2, control_qubits...);
         return state;
       }
 
       template <typename RandomAccessRange, typename StateInteger, typename BitInteger, typename... ControlQubits>
-      inline RandomAccessRange& swap(
+      inline auto swap(
         RandomAccessRange& state,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit1, ::ket::qubit<StateInteger, BitInteger> const target_qubit2,
         ControlQubits const... control_qubits)
+      -> RandomAccessRange&
       { return ::ket::gate::ranges::swap(::ket::utility::policy::make_sequential(), state, target_qubit1, target_qubit2, control_qubits...); }
     } // namespace ranges
 
     template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger, typename... ControlQubits>
-    inline void adj_swap(
+    inline auto adj_swap(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       ::ket::qubit<StateInteger, BitInteger> const target_qubit1, ::ket::qubit<StateInteger, BitInteger> const target_qubit2,
       ControlQubits const... control_qubits)
+    -> void
     { ::ket::gate::swap(parallel_policy, first, last, target_qubit1, target_qubit2, control_qubits...); }
 
     template <typename RandomAccessIterator, typename StateInteger, typename BitInteger, typename... ControlQubits>
-    inline void adj_swap(
+    inline auto adj_swap(
       RandomAccessIterator const first, RandomAccessIterator const last,
       ::ket::qubit<StateInteger, BitInteger> const target_qubit1, ::ket::qubit<StateInteger, BitInteger> const target_qubit2,
       ControlQubits const... control_qubits)
+    -> void
     { ::ket::gate::swap(first, last, target_qubit1, target_qubit2, control_qubits...); }
 
     namespace ranges
     {
       template <typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename... ControlQubits>
-      inline RandomAccessRange& adj_swap(
+      inline auto adj_swap(
         ParallelPolicy const parallel_policy, RandomAccessRange& state,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit1, ::ket::qubit<StateInteger, BitInteger> const target_qubit2,
         ControlQubits const... control_qubits)
+      -> RandomAccessRange&
       { return ::ket::gate::ranges::swap(parallel_policy, state, target_qubit1, target_qubit2, control_qubits...); }
 
       template <typename RandomAccessRange, typename StateInteger, typename BitInteger, typename... ControlQubits>
-      inline RandomAccessRange& adj_swap(
+      inline auto adj_swap(
         RandomAccessRange& state,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit1, ::ket::qubit<StateInteger, BitInteger> const target_qubit2,
         ControlQubits const... control_qubits)
+      -> RandomAccessRange&
       { return ::ket::gate::ranges::swap(state, target_qubit1, target_qubit2, control_qubits...); }
     } // namespace ranges
   } // namespace gate

@@ -12,17 +12,19 @@ namespace ket
   template <
     typename Character, typename CharacterTraits,
     typename StateInteger, typename BitInteger>
-  inline std::basic_ostream<Character, CharacterTraits>& operator<<(
+  inline auto operator<<(
     std::basic_ostream<Character, CharacterTraits>& output_stream,
     ::ket::qubit<StateInteger, BitInteger> const qubit)
+  -> std::basic_ostream<Character, CharacterTraits>&
   { return output_stream << static_cast<BitInteger>(qubit); }
 
   template <
     typename Character, typename CharacterTraits,
     typename StateInteger, typename BitInteger>
-  inline std::basic_istream<Character, CharacterTraits>& operator>>(
+  inline auto operator>>(
     std::basic_istream<Character, CharacterTraits>& input_stream,
     ::ket::qubit<StateInteger, BitInteger>& qubit)
+  -> std::basic_istream<Character, CharacterTraits>&
   { return input_stream >> static_cast<BitInteger>(qubit); }
 } // namespace ket
 

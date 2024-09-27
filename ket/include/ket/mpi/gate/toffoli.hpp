@@ -1,12 +1,8 @@
 #ifndef KET_MPI_GATE_TOFFOLI_HPP
 # define KET_MPI_GATE_TOFFOLI_HPP
 
-# include <boost/config.hpp>
-
 # include <vector>
 # include <array>
-
-# include <boost/range/value_type.hpp>
 
 # include <yampi/environment.hpp>
 # include <yampi/datatype_base.hpp>
@@ -19,7 +15,7 @@
 #   include <ket/control_io.hpp>
 # endif // KET_PRINT_LOG
 # include <ket/gate/toffoli.hpp>
-# include <ket/mpi/permutated.hpp>
+# include <ket/utility/meta/ranges.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/simple_mpi.hpp>
 # include <ket/mpi/utility/for_each_local_range.hpp>
@@ -38,56 +34,12 @@ namespace ket
       // TOFFOLI_{t,c1,c2}
       // TOFFOLI_{1,2,3} (a_{000} |000> + a_{001} |001> + a_{010} |010> + a_{011} |011> + a_{100} |100> + a_{101} |101> + a_{110} |110> + a_{111} |111>)
       //   = a_{000} |000> + a_{001} |001> + a_{010} |010> + a_{011} |011> + a_{100} |100> + a_{101} |101> + a_{111} |110> + a_{110} |111>
-# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
-      namespace toffoli_detail
-      {
-        template <typename ParallelPolicy, typename TargetQubit, typename ControlQubit>
-        struct call_toffoli
-        {
-          ParallelPolicy parallel_policy_;
-          ::ket::mpi::permutated<TargetQubit> permutated_target_qubit_;
-          ::ket::mpi::permutated<ControlQubit> permutated_control_qubit1_;
-          ::ket::mpi::permutated<ControlQubit> permutated_control_qubit2_;
-
-          call_toffoli(
-            ParallelPolicy const parallel_policy,
-            ::ket::mpi::permutated<TargetQubit> const permutated_target_qubit,
-            ::ket::mpi::permutated<ControlQubit> const permutated_control_qubit1,
-            ::ket::mpi::permutated<ControlQubit> const permutated_control_qubit2)
-            : parallel_policy_{parallel_policy},
-              permutated_target_qubit_{permutated_target_qubit},
-              permutated_control_qubit1_{permutated_control_qubit1},
-              permutated_control_qubit2_{permutated_control_qubit2}
-          { }
-
-          template <typename RandomAccessIterator>
-          void operator()(
-            RandomAccessIterator const first, RandomAccessIterator const last) const
-          {
-            ::ket::gate::toffoli(
-              parallel_policy_, first, last,
-              permutated_target_qubit_.qubit(),
-              permutated_control_qubit1_.qubit(), permutated_control_qubit2_.qubit());
-          }
-        }; // struct call_toffoli<ParallelPolicy, TargetQubit, ControlQubit>
-
-        template <typename ParallelPolicy, typename TargetQubit, typename ControlQubit>
-        inline call_toffoli<ParallelPolicy, TargetQubit, ControlQubit>
-        make_call_toffoli(
-          ParallelPolicy const parallel_policy,
-          ::ket::mpi::permutated<TargetQubit> const permutated_target_qubit,
-          ::ket::mpi::permutated<ControlQubit> const permutated_control_qubit1,
-          ::ket::mpi::permutated<ControlQubit> const permutated_control_qubit2)
-        { return {parallel_policy, permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2}; }
-      } // namespace toffoli_detail
-
-# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
       namespace local
       {
         template <
           typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename Allocator>
-        inline RandomAccessRange& toffoli(
+        inline auto toffoli(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -95,6 +47,7 @@ namespace ket
           ::ket::qubit<StateInteger, BitInteger> const target_qubit,
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
+        -> RandomAccessRange&
         {
           auto const permutated_target_qubit = permutation[target_qubit];
           auto const permutated_control_qubit1 = permutation[control_qubit1];
@@ -135,7 +88,6 @@ namespace ket
             return ::ket::mpi::gate::page::toffoli_cp(
               parallel_policy, local_state, permutated_target_qubit, permutated_control_qubit2, permutated_control_qubit1);
 
-# ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::utility::for_each_local_range(
             mpi_policy, local_state, communicator, environment,
             [parallel_policy, permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2](
@@ -146,87 +98,23 @@ namespace ket
                 permutated_target_qubit.qubit(),
                 permutated_control_qubit1.qubit(), permutated_control_qubit2.qubit());
             });
-# else // BOOST_NO_CXX14_GENERIC_LAMBDAS
-          return ::ket::mpi::utility::for_each_local_range(
-            mpi_policy, local_state, communicator, environment,
-            ::ket::mpi::gate::toffoli_detail::make_call_toffoli(
-              parallel_policy,
-              permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2));
-# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }
       } // namespace local
 
-      // [[deprecated]]
       template <
         typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator>
-      inline RandomAccessRange& toffoli(
+      [[deprecated]] inline auto toffoli(
         MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
-        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment)
-      {
-        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Toffoli "}, target_qubit, ' ', control_qubit1, ' ', control_qubit2), environment};
-
-        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-        auto const qubits
-          = std::array<qubit_type, 3u>{target_qubit, control_qubit1.qubit(), control_qubit2.qubit()};
-        ::ket::mpi::utility::maybe_interchange_qubits(
-          mpi_policy, parallel_policy,
-          local_state, qubits, permutation, buffer, communicator, environment);
-
-        return ::ket::mpi::gate::local::toffoli(
-          mpi_policy, parallel_policy, local_state, permutation, communicator, environment, target_qubit, control_qubit1, control_qubit2);
-      }
-
-      // [[deprecated]]
-      template <
-        typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange,
-        typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename DerivedDatatype>
-      inline RandomAccessRange& toffoli(
-        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
-        RandomAccessRange& local_state,
-        ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
-        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
-        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::datatype_base<DerivedDatatype> const& datatype,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment)
-      {
-        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Toffoli "}, target_qubit, ' ', control_qubit1, ' ', control_qubit2), environment};
-
-        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-        auto const qubits
-          = std::array<qubit_type, 3u>{target_qubit, control_qubit1.qubit(), control_qubit2.qubit()};
-        ::ket::mpi::utility::maybe_interchange_qubits(
-          mpi_policy, parallel_policy,
-          local_state, qubits, permutation, buffer, datatype, communicator, environment);
-
-        return ::ket::mpi::gate::local::toffoli(
-          mpi_policy, parallel_policy, local_state, permutation, communicator, environment, target_qubit, control_qubit1, control_qubit2);
-      }
-
-      template <
-        typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange,
-        typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator>
-      inline RandomAccessRange& toffoli(
-        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
-        RandomAccessRange& local_state,
-        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
-        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::communicator const& communicator, yampi::environment const& environment,
-        ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
+        std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+        yampi::communicator const& communicator, yampi::environment const& environment)
+      -> RandomAccessRange&
       {
         ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Toffoli "}, target_qubit, ' ', control_qubit1, ' ', control_qubit2), environment};
 
@@ -245,16 +133,17 @@ namespace ket
         typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>
-      inline RandomAccessRange& toffoli(
+      [[deprecated]] inline auto toffoli(
         MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
-        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
-        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::datatype_base<DerivedDatatype> const& datatype,
-        yampi::communicator const& communicator, yampi::environment const& environment,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+        yampi::datatype_base<DerivedDatatype> const& datatype,
+        yampi::communicator const& communicator, yampi::environment const& environment)
+      -> RandomAccessRange&
       {
         ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Toffoli "}, target_qubit, ' ', control_qubit1, ' ', control_qubit2), environment};
 
@@ -269,20 +158,75 @@ namespace ket
           mpi_policy, parallel_policy, local_state, permutation, communicator, environment, target_qubit, control_qubit1, control_qubit2);
       }
 
-      // [[deprecated]]
+      template <
+        typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange,
+        typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator>
+      inline auto toffoli(
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+        RandomAccessRange& local_state,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+        yampi::communicator const& communicator, yampi::environment const& environment,
+        ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
+      -> RandomAccessRange&
+      {
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Toffoli "}, target_qubit, ' ', control_qubit1, ' ', control_qubit2), environment};
+
+        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+        auto const qubits
+          = std::array<qubit_type, 3u>{target_qubit, control_qubit1.qubit(), control_qubit2.qubit()};
+        ::ket::mpi::utility::maybe_interchange_qubits(
+          mpi_policy, parallel_policy,
+          local_state, qubits, permutation, buffer, communicator, environment);
+
+        return ::ket::mpi::gate::local::toffoli(
+          mpi_policy, parallel_policy, local_state, permutation, communicator, environment, target_qubit, control_qubit1, control_qubit2);
+      }
+
+      template <
+        typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange,
+        typename StateInteger, typename BitInteger,
+        typename Allocator, typename BufferAllocator, typename DerivedDatatype>
+      inline auto toffoli(
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+        RandomAccessRange& local_state,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+        yampi::datatype_base<DerivedDatatype> const& datatype,
+        yampi::communicator const& communicator, yampi::environment const& environment,
+        ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
+      -> RandomAccessRange&
+      {
+        ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Toffoli "}, target_qubit, ' ', control_qubit1, ' ', control_qubit2), environment};
+
+        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+        auto const qubits
+          = std::array<qubit_type, 3u>{target_qubit, control_qubit1.qubit(), control_qubit2.qubit()};
+        ::ket::mpi::utility::maybe_interchange_qubits(
+          mpi_policy, parallel_policy,
+          local_state, qubits, permutation, buffer, datatype, communicator, environment);
+
+        return ::ket::mpi::gate::local::toffoli(
+          mpi_policy, parallel_policy, local_state, permutation, communicator, environment, target_qubit, control_qubit1, control_qubit2);
+      }
+
       template <
         typename RandomAccessRange,
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator>
-      inline RandomAccessRange& toffoli(
+      [[deprecated]] inline auto toffoli(
         RandomAccessRange& local_state,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
-        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment)
+        std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+        yampi::communicator const& communicator, yampi::environment const& environment)
+      -> RandomAccessRange&
       {
         return ::ket::mpi::gate::toffoli(
           ::ket::mpi::utility::policy::make_simple_mpi(),
@@ -290,21 +234,20 @@ namespace ket
           local_state, permutation, buffer, communicator, environment, target_qubit, control_qubit1, control_qubit2);
       }
 
-      // [[deprecated]]
       template <
         typename RandomAccessRange,
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>
-      inline RandomAccessRange& toffoli(
+      [[deprecated]] inline auto toffoli(
         RandomAccessRange& local_state,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
-        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::datatype_base<DerivedDatatype> const& datatype,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment)
+        yampi::communicator const& communicator, yampi::environment const& environment)
+      -> RandomAccessRange&
       {
         return ::ket::mpi::gate::toffoli(
           ::ket::mpi::utility::policy::make_simple_mpi(),
@@ -315,14 +258,15 @@ namespace ket
       template <
         typename RandomAccessRange,
         typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator>
-      inline RandomAccessRange& toffoli(
+      inline auto toffoli(
         RandomAccessRange& local_state,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
-        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
+      -> RandomAccessRange&
       {
         return ::ket::mpi::gate::toffoli(
           ::ket::mpi::utility::policy::make_simple_mpi(),
@@ -334,15 +278,16 @@ namespace ket
         typename RandomAccessRange,
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>
-      inline RandomAccessRange& toffoli(
+      inline auto toffoli(
         RandomAccessRange& local_state,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
-        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
+      -> RandomAccessRange&
       {
         return ::ket::mpi::gate::toffoli(
           ::ket::mpi::utility::policy::make_simple_mpi(),
@@ -350,43 +295,41 @@ namespace ket
           local_state, permutation, buffer, datatype, communicator, environment, target_qubit, control_qubit1, control_qubit2);
       }
 
-      // [[deprecated]]
       template <
         typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator>
-      inline RandomAccessRange& toffoli(
+      [[deprecated]] inline auto toffoli(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
-        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment)
+        std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+        yampi::communicator const& communicator, yampi::environment const& environment)
+      -> RandomAccessRange&
       {
         return ::ket::mpi::gate::toffoli(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
           local_state, permutation, buffer, communicator, environment, target_qubit, control_qubit1, control_qubit2);
       }
 
-      // [[deprecated]]
       template <
         typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>
-      inline RandomAccessRange& toffoli(
+      [[deprecated]] inline auto toffoli(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
-        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::datatype_base<DerivedDatatype> const& datatype,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment)
+        yampi::communicator const& communicator, yampi::environment const& environment)
+      -> RandomAccessRange&
       {
         return ::ket::mpi::gate::toffoli(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
@@ -396,15 +339,16 @@ namespace ket
       template <
         typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator>
-      inline RandomAccessRange& toffoli(
+      inline auto toffoli(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
-        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
+      -> RandomAccessRange&
       {
         return ::ket::mpi::gate::toffoli(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
@@ -415,72 +359,29 @@ namespace ket
         typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>
-      inline RandomAccessRange& toffoli(
+      inline auto toffoli(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
-        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
+      -> RandomAccessRange&
       {
         return ::ket::mpi::gate::toffoli(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
           local_state, permutation, buffer, datatype, communicator, environment, target_qubit, control_qubit1, control_qubit2);
       }
 
-# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
-      namespace toffoli_detail
-      {
-        template <typename ParallelPolicy, typename TargetQubit, typename ControlQubit>
-        struct call_adj_toffoli
-        {
-          ParallelPolicy parallel_policy_;
-          ::ket::mpi::permutated<TargetQubit> permutated_target_qubit_;
-          ::ket::mpi::permutated<ControlQubit> permutated_control_qubit1_;
-          ::ket::mpi::permutated<ControlQubit> permutated_control_qubit2_;
-
-          call_adj_toffoli(
-            ParallelPolicy const parallel_policy,
-            ::ket::mpi::permutated<TargetQubit> const permutated_target_qubit,
-            ::ket::mpi::permutated<ControlQubit> const permutated_control_qubit1,
-            ::ket::mpi::permutated<ControlQubit> const permutated_control_qubit2)
-            : parallel_policy_{parallel_policy},
-              permutated_target_qubit_{permutated_target_qubit},
-              permutated_control_qubit1_{permutated_control_qubit1},
-              permutated_control_qubit2_{permutated_control_qubit2}
-          { }
-
-          template <typename RandomAccessIterator>
-          void operator()(
-            RandomAccessIterator const first, RandomAccessIterator const last) const
-          {
-            ::ket::gate::adj_toffoli(
-              parallel_policy_, first, last,
-              permutated_target_qubit_.qubit(),
-              permutated_control_qubit1_.qubit(), permutated_control_qubit2_.qubit());
-          }
-        }; // struct call_adj_toffoli<ParallelPolicy, TargetQubit, ControlQubit>
-
-        template <typename ParallelPolicy, typename TargetQubit, typename ControlQubit>
-        inline call_adj_toffoli<ParallelPolicy, TargetQubit, ControlQubit>
-        make_call_adj_toffoli(
-          ParallelPolicy const parallel_policy,
-          ::ket::mpi::permutated<TargetQubit> const permutated_target_qubit,
-          ::ket::mpi::permutated<ControlQubit> const permutated_control_qubit1,
-          ::ket::mpi::permutated<ControlQubit> const permutated_control_qubit2)
-        { return {parallel_policy, permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2}; }
-      } // namespace toffoli_detail
-
-# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
       namespace local
       {
         template <
           typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange,
           typename StateInteger, typename BitInteger, typename Allocator>
-        inline RandomAccessRange& adj_toffoli(
+        inline auto adj_toffoli(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -488,6 +389,7 @@ namespace ket
           ::ket::qubit<StateInteger, BitInteger> const target_qubit,
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
+        -> RandomAccessRange&
         {
           auto const permutated_target_qubit = permutation[target_qubit];
           auto const permutated_control_qubit1 = permutation[control_qubit1];
@@ -528,7 +430,6 @@ namespace ket
             return ::ket::mpi::gate::page::adj_toffoli_cp(
               parallel_policy, local_state, permutated_target_qubit, permutated_control_qubit2, permutated_control_qubit1);
 
-# ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           return ::ket::mpi::utility::for_each_local_range(
             mpi_policy, local_state, communicator, environment,
             [parallel_policy, permutated_target_qubit,
@@ -540,31 +441,23 @@ namespace ket
                 permutated_target_qubit.qubit(),
                 permutated_control_qubit1.qubit(), permutated_control_qubit2.qubit());
             });
-# else // BOOST_NO_CXX14_GENERIC_LAMBDAS
-          return ::ket::mpi::utility::for_each_local_range(
-            mpi_policy, local_state, communicator, environment,
-            ::ket::mpi::gate::toffoli_detail::make_call_adj_toffoli(
-              parallel_policy,
-              permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2));
-# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
         }
       } // namespace local
 
-      // [[deprecated]]
       template <
         typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator>
-      inline RandomAccessRange& adj_toffoli(
+      [[deprecated]] inline auto adj_toffoli(
         MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
-        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment)
+        std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+        yampi::communicator const& communicator, yampi::environment const& environment)
+      -> RandomAccessRange&
       {
         ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(Toffoli) "}, target_qubit, ' ', control_qubit1, ' ', control_qubit2), environment};
 
@@ -579,22 +472,21 @@ namespace ket
           mpi_policy, parallel_policy, local_state, permutation, communicator, environment, target_qubit, control_qubit1, control_qubit2);
       }
 
-      // [[deprecated]]
       template <
         typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>
-      inline RandomAccessRange& adj_toffoli(
+      [[deprecated]] inline auto adj_toffoli(
         MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
-        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::datatype_base<DerivedDatatype> const& datatype,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment)
+        yampi::communicator const& communicator, yampi::environment const& environment)
+      -> RandomAccessRange&
       {
         ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(Toffoli) "}, target_qubit, ' ', control_qubit1, ' ', control_qubit2), environment};
 
@@ -612,15 +504,16 @@ namespace ket
       template <
         typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator>
-      inline RandomAccessRange& adj_toffoli(
+      inline auto adj_toffoli(
         MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
-        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
+      -> RandomAccessRange&
       {
         ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(Toffoli) "}, target_qubit, ' ', control_qubit1, ' ', control_qubit2), environment};
 
@@ -639,17 +532,18 @@ namespace ket
         typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>
-      inline RandomAccessRange& adj_toffoli(
+      inline auto adj_toffoli(
         MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
-        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator,
         yampi::environment const& environment,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
+      -> RandomAccessRange&
       {
         ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(Toffoli) "}, target_qubit, ' ', control_qubit1, ' ', control_qubit2), environment};
 
@@ -664,20 +558,19 @@ namespace ket
           mpi_policy, parallel_policy, local_state, permutation, communicator, environment, target_qubit, control_qubit1, control_qubit2);
       }
 
-      // [[deprecated]]
       template <
         typename RandomAccessRange,
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator>
-      inline RandomAccessRange& adj_toffoli(
+      [[deprecated]] inline auto adj_toffoli(
         RandomAccessRange& local_state,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
-        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment)
+        std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+        yampi::communicator const& communicator, yampi::environment const& environment)
+      -> RandomAccessRange&
       {
         return ::ket::mpi::gate::adj_toffoli(
           ::ket::mpi::utility::policy::make_simple_mpi(),
@@ -685,21 +578,20 @@ namespace ket
           local_state, permutation, buffer, communicator, environment, target_qubit, control_qubit1, control_qubit2);
       }
 
-      // [[deprecated]]
       template <
         typename RandomAccessRange,
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>
-      inline RandomAccessRange& adj_toffoli(
+      [[deprecated]] inline auto adj_toffoli(
         RandomAccessRange& local_state,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
-        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::datatype_base<DerivedDatatype> const& datatype,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment)
+        yampi::communicator const& communicator, yampi::environment const& environment)
+      -> RandomAccessRange&
       {
         return ::ket::mpi::gate::adj_toffoli(
           ::ket::mpi::utility::policy::make_simple_mpi(),
@@ -710,14 +602,15 @@ namespace ket
       template <
         typename RandomAccessRange,
         typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator>
-      inline RandomAccessRange& adj_toffoli(
+      inline auto adj_toffoli(
         RandomAccessRange& local_state,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
-        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
+      -> RandomAccessRange&
       {
         return ::ket::mpi::gate::adj_toffoli(
           ::ket::mpi::utility::policy::make_simple_mpi(),
@@ -729,15 +622,16 @@ namespace ket
         typename RandomAccessRange,
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>
-      inline RandomAccessRange& adj_toffoli(
+      inline auto adj_toffoli(
         RandomAccessRange& local_state,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
-        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
+      -> RandomAccessRange&
       {
         return ::ket::mpi::gate::adj_toffoli(
           ::ket::mpi::utility::policy::make_simple_mpi(),
@@ -745,43 +639,41 @@ namespace ket
           local_state, permutation, buffer, datatype, communicator, environment, target_qubit, control_qubit1, control_qubit2);
       }
 
-      // [[deprecated]]
       template <
         typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator>
-      inline RandomAccessRange& adj_toffoli(
+      [[deprecated]] inline auto adj_toffoli(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
-        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment)
+        std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+        yampi::communicator const& communicator, yampi::environment const& environment)
+      -> RandomAccessRange&
       {
         return ::ket::mpi::gate::adj_toffoli(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
           local_state, permutation, buffer, communicator, environment, target_qubit, control_qubit1, control_qubit2);
       }
 
-      // [[deprecated]]
       template <
         typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>
-      inline RandomAccessRange& adj_toffoli(
+      [[deprecated]] inline auto adj_toffoli(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
-        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::datatype_base<DerivedDatatype> const& datatype,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment)
+        yampi::communicator const& communicator, yampi::environment const& environment)
+      -> RandomAccessRange&
       {
         return ::ket::mpi::gate::adj_toffoli(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
@@ -791,15 +683,16 @@ namespace ket
       template <
         typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator>
-      inline RandomAccessRange& adj_toffoli(
+      inline auto adj_toffoli(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
-        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
+      -> RandomAccessRange&
       {
         return ::ket::mpi::gate::adj_toffoli(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
@@ -810,16 +703,17 @@ namespace ket
         typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger,
         typename Allocator, typename BufferAllocator, typename DerivedDatatype>
-      inline RandomAccessRange& adj_toffoli(
+      inline auto adj_toffoli(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
-        std::vector<typename boost::range_value<RandomAccessRange>::type, BufferAllocator>& buffer,
+        std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
+      -> RandomAccessRange&
       {
         return ::ket::mpi::gate::adj_toffoli(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,

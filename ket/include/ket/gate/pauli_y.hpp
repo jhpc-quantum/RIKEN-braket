@@ -28,10 +28,11 @@ namespace ket
     // Y_i or Y1_i
     // Y_1 (a_0 |0> + a_1 |1>) = -i a_1 |0> + i a_0 |1>
     template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger>
-    inline void pauli_y(
+    inline auto pauli_y(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       ::ket::qubit<StateInteger, BitInteger> const qubit)
+    -> void
     {
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
@@ -44,16 +45,12 @@ namespace ket
       auto const lower_bits_mask = qubit_mask - StateInteger{1u};
       auto const upper_bits_mask = compl lower_bits_mask;
 
-      using ::ket::utility::loop_n;
-      loop_n(
-        parallel_policy,
-        static_cast<StateInteger>(last - first) >> 1u,
+      ::ket::utility::loop_n(
+        parallel_policy, static_cast<StateInteger>(last - first) >> 1u,
         [first, qubit_mask, lower_bits_mask, upper_bits_mask](StateInteger const value_wo_qubit, int const)
         {
           // xxxxx0xxxxxx
-          auto const zero_index
-            = ((value_wo_qubit bitand upper_bits_mask) << 1u)
-              bitor (value_wo_qubit bitand lower_bits_mask);
+          auto const zero_index = ((value_wo_qubit bitand upper_bits_mask) << 1u) bitor (value_wo_qubit bitand lower_bits_mask);
           // xxxxx1xxxxxx
           auto const one_index = zero_index bitor qubit_mask;
           auto const zero_iter = first + zero_index;
@@ -71,10 +68,11 @@ namespace ket
     // YY_{1,2} (a_{00} |00> + a_{01} |01> + a_{10} |10> + a{11} |11>)
     //   = -a_{11} |00> + a_{10} |01> + a_{01} |10> - a_{00} |11>
     template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger>
-    inline void pauli_y(
+    inline auto pauli_y(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       ::ket::qubit<StateInteger, BitInteger> const qubit1, ::ket::qubit<StateInteger, BitInteger> const qubit2)
+    -> void
     {
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
@@ -95,10 +93,8 @@ namespace ket
           xor lower_bits_mask;
       auto const upper_bits_mask = compl (lower_bits_mask bitor middle_bits_mask);
 
-      using ::ket::utility::loop_n;
-      loop_n(
-        parallel_policy,
-        static_cast<StateInteger>(last - first) >> 2u,
+      ::ket::utility::loop_n(
+        parallel_policy, static_cast<StateInteger>(last - first) >> 2u,
         [first, qubit1_mask, qubit2_mask, lower_bits_mask, middle_bits_mask, upper_bits_mask](
           StateInteger const value_wo_qubits, int const)
         {
@@ -120,7 +116,7 @@ namespace ket
           std::iter_swap(qubit1_on_iter, qubit2_on_iter);
 
           using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
-          using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
+          using real_type = ::ket::utility::meta::real_t<complex_type>;
           *off_iter *= real_type{-1.0};
           *qubit12_on_iter *= real_type{-1.0};
         });
@@ -130,11 +126,12 @@ namespace ket
     // CY_{1,2} (a_{00} |00> + a_{01} |01> + a_{10} |10> + a{11} |11>)
     //   = a_{00} |00> + a_{01} |01> - i a_{11} |10> + i a_{10} |11>
     template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger>
-    inline void pauli_y(
+    inline auto pauli_y(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       ::ket::qubit<StateInteger, BitInteger> const target_qubit,
       ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit)
+    -> void
     {
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
@@ -155,10 +152,8 @@ namespace ket
           xor lower_bits_mask;
       auto const upper_bits_mask = compl (lower_bits_mask bitor middle_bits_mask);
 
-      using ::ket::utility::loop_n;
-      loop_n(
-        parallel_policy,
-        static_cast<StateInteger>(last - first) >> 2u,
+      ::ket::utility::loop_n(
+        parallel_policy, static_cast<StateInteger>(last - first) >> 2u,
         [first, target_qubit_mask, control_qubit_mask, lower_bits_mask, middle_bits_mask, upper_bits_mask](
           StateInteger const value_wo_qubits, int const)
         {
@@ -184,10 +179,11 @@ namespace ket
 
     // C...CY...Y_{t...t'c...c'} = C...C(Y_t ... Y_t')_{c...c'}, CnY...Y_{...}, C...CYm_{...}, or CnYm_{...}
     template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger, typename Qubit2, typename Qubit3, typename... Qubits>
-    inline void pauli_y(
+    inline auto pauli_y(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       ::ket::qubit<StateInteger, BitInteger> const qubit1, Qubit2 const qubit2, Qubit3 const qubit3, Qubits const... qubits)
+    -> void
     {
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
@@ -256,50 +252,57 @@ namespace ket
     }
 
     template <typename RandomAccessIterator, typename StateInteger, typename BitInteger, typename... Qubits>
-    inline void pauli_y(
+    inline auto pauli_y(
       RandomAccessIterator const first, RandomAccessIterator const last,
       ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
+    -> void
     { ::ket::gate::pauli_y(::ket::utility::policy::make_sequential(), first, last, qubit, qubits...); }
 
     namespace ranges
     {
       template <typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename... Qubits>
-      inline RandomAccessRange& pauli_y(
+      inline auto pauli_y(
         ParallelPolicy const parallel_policy, RandomAccessRange& state,
         ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
+      -> RandomAccessRange&
       {
-        ::ket::gate::pauli_y(parallel_policy, std::begin(state), std::end(state), qubit, qubits...);
+        using std::begin;
+        using std::end;
+        ::ket::gate::pauli_y(parallel_policy, begin(state), end(state), qubit, qubits...);
         return state;
       }
 
       template <typename RandomAccessRange, typename StateInteger, typename BitInteger, typename... Qubits>
-      inline RandomAccessRange& pauli_y(RandomAccessRange& state, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
+      inline auto pauli_y(RandomAccessRange& state, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits) -> RandomAccessRange&
       { return ::ket::gate::ranges::pauli_y(::ket::utility::policy::make_sequential(), state, qubit, qubits...); }
     } // namespace ranges
 
     template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger, typename... Qubits>
-    inline void adj_pauli_y(
+    inline auto adj_pauli_y(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
+    -> void
     { ::ket::gate::pauli_y(parallel_policy, first, last, qubit, qubits...); }
 
     template <typename RandomAccessIterator, typename StateInteger, typename BitInteger, typename... Qubits>
-    inline void adj_pauli_y(
+    inline auto adj_pauli_y(
       RandomAccessIterator const first, RandomAccessIterator const last,
       ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
+    -> void
     { ::ket::gate::pauli_y(first, last, qubit, qubits...); }
 
     namespace ranges
     {
       template <typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename... Qubits>
-      inline RandomAccessRange& adj_pauli_y(
+      inline auto adj_pauli_y(
         ParallelPolicy const parallel_policy, RandomAccessRange& state,
         ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
+      -> RandomAccessRange&
       { return ::ket::gate::ranges::pauli_y(parallel_policy, state, qubit, qubits...); }
 
       template <typename RandomAccessRange, typename StateInteger, typename BitInteger, typename... Qubits>
-      inline RandomAccessRange& adj_pauli_y(RandomAccessRange& state, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
+      inline auto adj_pauli_y(RandomAccessRange& state, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits) -> RandomAccessRange&
       { return ::ket::gate::ranges::pauli_y(state, qubit, qubits...); }
     } // namespace ranges
   } // namespace gate

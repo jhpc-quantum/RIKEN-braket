@@ -168,7 +168,7 @@ ifneq ($(findstring fn01sv,$(nodename)),)
 else
   CXX = mpiCC
 endif
-common_flags = -fopenmp -std=c++17 -Wall
+common_flags = -fopenmp -std=c++14 -Wall
 cxx_flags =
 
 $(bin_dir)/$(target): $(objects)

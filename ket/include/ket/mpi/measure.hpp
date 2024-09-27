@@ -5,9 +5,6 @@
 # include <vector>
 # include <iterator>
 
-# include <boost/range/size.hpp>
-# include <boost/range/value_type.hpp>
-
 # include <yampi/environment.hpp>
 # include <yampi/datatype_base.hpp>
 # include <yampi/communicator.hpp>
@@ -21,6 +18,7 @@
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/positive_random_value_upto.hpp>
 # include <ket/utility/meta/real_of.hpp>
+# include <ket/utility/meta/ranges.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/simple_mpi.hpp>
 # include <ket/mpi/utility/logger.hpp>
@@ -39,17 +37,16 @@ namespace ket
       typename MpiPolicy, typename ParallelPolicy,
       typename LocalState, typename RandomNumberGenerator,
       typename StateInteger, typename BitInteger, typename Allocator>
-    inline StateInteger measure(
+    inline auto measure(
       MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       LocalState& local_state, RandomNumberGenerator& random_number_generator,
-      ::ket::mpi::qubit_permutation<
-        StateInteger, BitInteger, Allocator>& permutation,
-      yampi::communicator const& communicator,
-      yampi::environment const& environment)
+      ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+      yampi::communicator const& communicator, yampi::environment const& environment)
+    -> StateInteger
     {
       ket::mpi::utility::log_with_time_guard<char> print{"Measurement", environment};
 
-      using complex_type = typename boost::range_value<LocalState>::type;
+      using complex_type = ::ket::utility::meta::range_value_t<LocalState>;
       using std::real;
       auto const total_probability
         = real(::ket::mpi::utility::transform_inclusive_scan_self(
@@ -63,31 +60,30 @@ namespace ket
       auto const present_rank = communicator.rank(environment);
       constexpr auto root_rank = yampi::rank{0};
 
-      using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
+      using real_type = ::ket::utility::meta::real_t<complex_type>;
       auto total_probabilities = std::vector<real_type>{};
       if (present_rank == root_rank)
         total_probabilities.resize(communicator.size(environment));
 
+      using std::begin;
       yampi::gather(
-        yampi::make_buffer(total_probability), std::begin(total_probabilities),
+        yampi::make_buffer(total_probability), begin(total_probabilities),
         root_rank, communicator, environment);
 
       auto random_value = real_type{};
       auto result_rank = yampi::rank{};
       if (present_rank == root_rank)
       {
-        ::ket::utility::ranges::inclusive_scan(
-          total_probabilities, std::begin(total_probabilities));
+        ::ket::utility::ranges::inclusive_scan(total_probabilities, begin(total_probabilities));
 
         random_value
           = ::ket::utility::positive_random_value_upto(
               total_probabilities.back(), random_number_generator);
+        using std::end;
         result_rank
           = static_cast<yampi::rank>(static_cast<StateInteger>(
-              std::upper_bound(
-                std::begin(total_probabilities),
-                std::end(total_probabilities), random_value)
-              - std::begin(total_probabilities)));
+              std::upper_bound(begin(total_probabilities), end(total_probabilities), random_value)
+              - begin(total_probabilities)));
       }
 
       auto result_mpi_rank = result_rank.mpi_rank();
@@ -114,14 +110,12 @@ namespace ket
                 { using std::real; return real(lhs) < real(rhs); },
                 environment));
 
-        using ::ket::mpi::utility::rank_index_to_qubit_value;
         permutated_result
-          = rank_index_to_qubit_value(
-              mpi_policy, local_state, result_rank, local_result);
+          = ::ket::mpi::utility::rank_index_to_qubit_value(mpi_policy, local_state, result_rank, local_result);
 
         ::ket::mpi::utility::fill(
           mpi_policy, parallel_policy, local_state, complex_type{real_type{0}}, communicator, environment);
-        std::begin(local_state)[local_result] = complex_type{real_type{1}};
+        begin(local_state)[local_result] = complex_type{real_type{1}};
       }
       else
         ::ket::mpi::utility::fill(
@@ -129,8 +123,7 @@ namespace ket
 
       yampi::broadcast(yampi::make_buffer(permutated_result), result_rank, communicator, environment);
 
-      using ::ket::mpi::inverse_permutate_bits;
-      return inverse_permutate_bits(permutation, permutated_result);
+      return ::ket::mpi::inverse_permutate_bits(permutation, permutated_result);
     }
 
     template <
@@ -138,7 +131,7 @@ namespace ket
       typename LocalState, typename RandomNumberGenerator,
       typename StateInteger, typename BitInteger, typename Allocator,
       typename DerivedDatatype1, typename DerivedDatatype2>
-    inline StateInteger measure(
+    inline auto measure(
       MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       LocalState& local_state, RandomNumberGenerator& random_number_generator,
       ::ket::mpi::qubit_permutation<
@@ -147,11 +140,12 @@ namespace ket
       yampi::datatype_base<DerivedDatatype2> const& real_datatype,
       yampi::communicator const& communicator,
       yampi::environment const& environment)
+    -> StateInteger
     {
       ket::mpi::utility::log_with_time_guard<char> print{"Measurement", environment};
 
-      using complex_type = typename boost::range_value<LocalState>::type;
-      using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
+      using complex_type = ::ket::utility::meta::range_value_t<LocalState>;
+      using real_type = ::ket::utility::meta::real_t<complex_type>;
       using std::real;
       auto const total_probability
         = real(::ket::mpi::utility::transform_inclusive_scan_self(
@@ -169,8 +163,9 @@ namespace ket
       if (present_rank == root_rank)
         total_probabilities.resize(communicator.size(environment));
 
+      using std::begin;
       yampi::gather(
-        yampi::make_buffer(total_probability, real_datatype), std::begin(total_probabilities),
+        yampi::make_buffer(total_probability, real_datatype), begin(total_probabilities),
         root_rank, communicator, environment);
 
       auto random_value = real_type{};
@@ -178,17 +173,15 @@ namespace ket
       if (present_rank == root_rank)
       {
         ::ket::utility::ranges::inclusive_scan(
-          total_probabilities, std::begin(total_probabilities));
+          total_probabilities, begin(total_probabilities));
 
         random_value
-          = ::ket::utility::positive_random_value_upto(
-              total_probabilities.back(), random_number_generator);
+          = ::ket::utility::positive_random_value_upto(total_probabilities.back(), random_number_generator);
+        using std::end;
         result_rank
           = static_cast<yampi::rank>(static_cast<StateInteger>(
-              std::upper_bound(
-                std::begin(total_probabilities),
-                std::end(total_probabilities), random_value)
-              - std::begin(total_probabilities)));
+              std::upper_bound(begin(total_probabilities), end(total_probabilities), random_value)
+              - begin(total_probabilities)));
       }
 
       auto result_mpi_rank = result_rank.mpi_rank();
@@ -215,14 +208,12 @@ namespace ket
                 { using std::real; return real(lhs) < real(rhs); },
                 environment));
 
-        using ::ket::mpi::utility::rank_index_to_qubit_value;
         permutated_result
-          = rank_index_to_qubit_value(
-              mpi_policy, local_state, result_rank, local_result);
+          = ::ket::mpi::utility::rank_index_to_qubit_value(mpi_policy, local_state, result_rank, local_result);
 
         ::ket::mpi::utility::fill(
           mpi_policy, parallel_policy, local_state, complex_type{real_type{0}}, communicator, environment);
-        std::begin(local_state)[local_result] = complex_type{real_type{1}};
+        begin(local_state)[local_result] = complex_type{real_type{1}};
       }
       else
         ::ket::mpi::utility::fill(
@@ -230,39 +221,35 @@ namespace ket
 
       yampi::broadcast(yampi::make_buffer(permutated_result, state_integer_datatype), result_rank, communicator, environment);
 
-      using ::ket::mpi::inverse_permutate_bits;
-      return inverse_permutate_bits(permutation, permutated_result);
+      return ::ket::mpi::inverse_permutate_bits(permutation, permutated_result);
     }
 
     template <
       typename LocalState, typename RandomNumberGenerator,
       typename StateInteger, typename BitInteger, typename Allocator>
-    inline StateInteger measure(
+    inline auto measure(
       LocalState& local_state, RandomNumberGenerator& random_number_generator,
-      ::ket::mpi::qubit_permutation<
-        StateInteger, BitInteger, Allocator>& permutation,
-      yampi::communicator const& communicator,
-      yampi::environment const& environment)
+      ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+      yampi::communicator const& communicator, yampi::environment const& environment)
+    -> StateInteger
     {
       return ::ket::mpi::measure(
         ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
-        local_state, random_number_generator, permutation,
-        communicator, environment);
+        local_state, random_number_generator, permutation, communicator, environment);
     }
 
     template <
       typename LocalState, typename RandomNumberGenerator,
       typename StateInteger, typename BitInteger, typename Allocator,
       typename DerivedDatatype1, typename DerivedDatatype2>
-    inline StateInteger measure(
+    inline auto measure(
       LocalState& local_state, RandomNumberGenerator& random_number_generator,
-      ::ket::mpi::qubit_permutation<
-        StateInteger, BitInteger, Allocator>& permutation,
+      ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
       yampi::datatype_base<DerivedDatatype1> const& state_integer_datatype,
       yampi::datatype_base<DerivedDatatype2> const& real_datatype,
-      yampi::communicator const& communicator,
-      yampi::environment const& environment)
+      yampi::communicator const& communicator, yampi::environment const& environment)
+    -> StateInteger
     {
       return ::ket::mpi::measure(
         ::ket::mpi::utility::policy::make_simple_mpi(),
@@ -277,21 +264,22 @@ namespace ket
       typename MpiPolicy, typename ParallelPolicy,
       typename LocalState, typename RandomNumberGenerator,
       typename StateInteger, typename BitInteger, typename Allocator>
-    inline StateInteger fast_measure(
+    inline auto fast_measure(
       MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       LocalState& local_state, RandomNumberGenerator& random_number_generator,
-      ::ket::mpi::qubit_permutation<
-        StateInteger, BitInteger, Allocator>& permutation,
-      yampi::communicator const& communicator,
-      yampi::environment const& environment)
+      ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+      yampi::communicator const& communicator, yampi::environment const& environment)
+    -> StateInteger
     {
       ket::mpi::utility::log_with_time_guard<char> print{"Measurement (fast)", environment};
 
-      using complex_type = typename boost::range_value<LocalState>::type;
-      using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
-      auto partial_sum_probabilities = std::vector<real_type>(boost::size(local_state), real_type{0});
+      using complex_type = ::ket::utility::meta::range_value_t<LocalState>;
+      using real_type = ::ket::utility::meta::real_t<complex_type>;
+      using std::begin;
+      using std::end;
+      auto partial_sum_probabilities = std::vector<real_type>(std::distance(begin(local_state), end(local_state)), real_type{0});
       ::ket::mpi::utility::transform_inclusive_scan(
-        parallel_policy, local_state, std::begin(partial_sum_probabilities),
+        parallel_policy, local_state, begin(partial_sum_probabilities),
         [](real_type const& lhs, real_type const& rhs) { return lhs + rhs; },
         [](complex_type const& value) { using std::norm; return norm(value); },
         environment);
@@ -303,27 +291,22 @@ namespace ket
       if (present_rank == root_rank)
         total_probabilities.resize(communicator.size(environment));
 
-      using std::real;
       yampi::gather(
-        yampi::make_buffer(partial_sum_probabilities.back()), std::begin(total_probabilities),
+        yampi::make_buffer(partial_sum_probabilities.back()), begin(total_probabilities),
         root_rank, communicator, environment);
 
       auto random_value = real_type{};
       auto result_rank = yampi::rank{};
       if (present_rank == root_rank)
       {
-        ::ket::utility::ranges::inclusive_scan(
-          total_probabilities, std::begin(total_probabilities));
+        ::ket::utility::ranges::inclusive_scan(total_probabilities, begin(total_probabilities));
 
         random_value
-          = ::ket::utility::positive_random_value_upto(
-              total_probabilities.back(), random_number_generator);
+          = ::ket::utility::positive_random_value_upto(total_probabilities.back(), random_number_generator);
         result_rank
           = static_cast<yampi::rank>(static_cast<StateInteger>(
-              std::upper_bound(
-                std::begin(total_probabilities),
-                std::end(total_probabilities), random_value)
-              - std::begin(total_probabilities)));
+              std::upper_bound(begin(total_probabilities), end(total_probabilities), random_value)
+              - begin(total_probabilities)));
       }
 
       auto result_mpi_rank = result_rank.mpi_rank();
@@ -344,18 +327,14 @@ namespace ket
       {
         auto const local_result
           = static_cast<StateInteger>(
-              std::upper_bound(
-                std::begin(partial_sum_probabilities),
-                std::end(partial_sum_probabilities), random_value)
-              - std::begin(partial_sum_probabilities));
-        using ::ket::mpi::utility::rank_index_to_qubit_value;
+              std::upper_bound(begin(partial_sum_probabilities), end(partial_sum_probabilities), random_value)
+              - begin(partial_sum_probabilities));
         permutated_result
-          = rank_index_to_qubit_value(
-              mpi_policy, local_state, result_rank, local_result);
+          = ::ket::mpi::utility::rank_index_to_qubit_value(mpi_policy, local_state, result_rank, local_result);
 
         ::ket::mpi::utility::fill(
           mpi_policy, parallel_policy, local_state, complex_type{real_type{0}}, communicator, environment);
-        std::begin(local_state)[local_result] = complex_type{real_type{1}};
+        begin(local_state)[local_result] = complex_type{real_type{1}};
       }
       else
         ::ket::mpi::utility::fill(
@@ -363,8 +342,7 @@ namespace ket
 
       yampi::broadcast(yampi::make_buffer(permutated_result), result_rank, communicator, environment);
 
-      using ::ket::mpi::inverse_permutate_bits;
-      return inverse_permutate_bits(permutation, permutated_result);
+      return ::ket::mpi::inverse_permutate_bits(permutation, permutated_result);
     }
 
     template <
@@ -372,23 +350,24 @@ namespace ket
       typename LocalState, typename RandomNumberGenerator,
       typename StateInteger, typename BitInteger, typename Allocator,
       typename DerivedDatatype1, typename DerivedDatatype2>
-    inline StateInteger fast_measure(
+    inline auto fast_measure(
       MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       LocalState& local_state, RandomNumberGenerator& random_number_generator,
-      ::ket::mpi::qubit_permutation<
-        StateInteger, BitInteger, Allocator>& permutation,
+      ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
       yampi::datatype_base<DerivedDatatype1> const& state_integer_datatype,
       yampi::datatype_base<DerivedDatatype2> const& real_datatype,
-      yampi::communicator const& communicator,
-      yampi::environment const& environment)
+      yampi::communicator const& communicator, yampi::environment const& environment)
+    -> StateInteger
     {
       ket::mpi::utility::log_with_time_guard<char> print{"Measurement (fast)", environment};
 
-      using complex_type = typename boost::range_value<LocalState>::type;
-      using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
-      auto partial_sum_probabilities = std::vector<real_type>(boost::size(local_state), real_type{0});
+      using complex_type = ::ket::utility::meta::range_value_t<LocalState>;
+      using real_type = ::ket::utility::meta::real_t<complex_type>;
+      using std::begin;
+      using std::end;
+      auto partial_sum_probabilities = std::vector<real_type>(std::distance(begin(local_state), end(local_state)), real_type{0});
       ::ket::mpi::utility::transform_inclusive_scan(
-        parallel_policy, local_state, std::begin(partial_sum_probabilities),
+        parallel_policy, local_state, begin(partial_sum_probabilities),
         [](real_type const& lhs, real_type const& rhs) { return lhs + rhs; },
         [](complex_type const& value) { using std::norm; return norm(value); },
         environment);
@@ -402,25 +381,21 @@ namespace ket
 
       using std::real;
       yampi::gather(
-        yampi::make_buffer(partial_sum_probabilities.back(), real_datatype), std::begin(total_probabilities),
+        yampi::make_buffer(partial_sum_probabilities.back(), real_datatype), begin(total_probabilities),
         root_rank, communicator, environment);
 
       auto random_value = real_type{};
       auto result_rank = yampi::rank{};
       if (present_rank == root_rank)
       {
-        ::ket::utility::ranges::inclusive_scan(
-          total_probabilities, std::begin(total_probabilities));
+        ::ket::utility::ranges::inclusive_scan(total_probabilities, begin(total_probabilities));
 
         random_value
-          = ::ket::utility::positive_random_value_upto(
-              total_probabilities.back(), random_number_generator);
+          = ::ket::utility::positive_random_value_upto(total_probabilities.back(), random_number_generator);
         result_rank
           = static_cast<yampi::rank>(static_cast<StateInteger>(
-              std::upper_bound(
-                std::begin(total_probabilities),
-                std::end(total_probabilities), random_value)
-              - std::begin(total_probabilities)));
+              std::upper_bound(begin(total_probabilities), end(total_probabilities), random_value)
+              - begin(total_probabilities)));
       }
 
       auto result_mpi_rank = result_rank.mpi_rank();
@@ -441,18 +416,14 @@ namespace ket
       {
         auto const local_result
           = static_cast<StateInteger>(
-              std::upper_bound(
-                std::begin(partial_sum_probabilities),
-                std::end(partial_sum_probabilities), random_value)
-              - std::begin(partial_sum_probabilities));
-        using ::ket::mpi::utility::rank_index_to_qubit_value;
+              std::upper_bound(begin(partial_sum_probabilities), end(partial_sum_probabilities), random_value)
+              - begin(partial_sum_probabilities));
         permutated_result
-          = rank_index_to_qubit_value(
-              mpi_policy, local_state, result_rank, local_result);
+          = ::ket::mpi::utility::rank_index_to_qubit_value(mpi_policy, local_state, result_rank, local_result);
 
         ::ket::mpi::utility::fill(
           mpi_policy, parallel_policy, local_state, complex_type{real_type{0}}, communicator, environment);
-        std::begin(local_state)[local_result] = complex_type{real_type{1}};
+        begin(local_state)[local_result] = complex_type{real_type{1}};
       }
       else
         ::ket::mpi::utility::fill(
@@ -460,39 +431,35 @@ namespace ket
 
       yampi::broadcast(yampi::make_buffer(permutated_result, state_integer_datatype), result_rank, communicator, environment);
 
-      using ::ket::mpi::inverse_permutate_bits;
-      return inverse_permutate_bits(permutation, permutated_result);
+      return ::ket::mpi::inverse_permutate_bits(permutation, permutated_result);
     }
 
     template <
       typename LocalState, typename RandomNumberGenerator,
       typename StateInteger, typename BitInteger, typename Allocator>
-    inline StateInteger fast_measure(
+    inline auto fast_measure(
       LocalState& local_state, RandomNumberGenerator& random_number_generator,
-      ::ket::mpi::qubit_permutation<
-        StateInteger, BitInteger, Allocator>& permutation,
-      yampi::communicator const& communicator,
-      yampi::environment const& environment)
+      ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+      yampi::communicator const& communicator, yampi::environment const& environment)
+    -> StateInteger
     {
       return ::ket::mpi::fast_measure(
         ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
-        local_state, random_number_generator, permutation,
-        communicator, environment);
+        local_state, random_number_generator, permutation, communicator, environment);
     }
 
     template <
       typename LocalState, typename RandomNumberGenerator,
       typename StateInteger, typename BitInteger, typename Allocator,
       typename DerivedDatatype1, typename DerivedDatatype2>
-    inline StateInteger fast_measure(
+    inline auto fast_measure(
       LocalState& local_state, RandomNumberGenerator& random_number_generator,
-      ::ket::mpi::qubit_permutation<
-        StateInteger, BitInteger, Allocator>& permutation,
+      ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
       yampi::datatype_base<DerivedDatatype1> const& state_integer_datatype,
       yampi::datatype_base<DerivedDatatype2> const& real_datatype,
-      yampi::communicator const& communicator,
-      yampi::environment const& environment)
+      yampi::communicator const& communicator, yampi::environment const& environment)
+    -> StateInteger
     {
       return ::ket::mpi::fast_measure(
         ::ket::mpi::utility::policy::make_simple_mpi(),

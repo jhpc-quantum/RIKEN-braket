@@ -10,18 +10,16 @@ namespace ket
   namespace utility
   {
     template <typename Real, typename RandomNumberGenerator>
-    inline typename std::enable_if<std::is_floating_point<Real>::value, Real>::type
-    positive_random_value_upto(
-      Real const maximum_value, RandomNumberGenerator& random_number_generator)
+    inline typename std::enable_if_t<std::is_floating_point<Real>::value, Real>
+    positive_random_value_upto(Real const maximum_value, RandomNumberGenerator& random_number_generator)
     {
       auto distribution = std::uniform_real_distribution<Real>{Real{0}, maximum_value};
       return distribution(random_number_generator);
     }
 
     template <typename Integer, typename RandomNumberGenerator>
-    inline typename std::enable_if<not std::is_floating_point<Integer>::value, Integer>::type
-    positive_random_value_upto(
-      Integer const maximum_value, RandomNumberGenerator& random_number_generator)
+    inline typename std::enable_if_t<not std::is_floating_point<Integer>::value, Integer>
+    positive_random_value_upto(Integer const maximum_value, RandomNumberGenerator& random_number_generator)
     {
       return static_cast<Integer>(
         ::ket::utility::positive_random_value_upto(

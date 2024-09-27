@@ -1,8 +1,6 @@
 #ifndef KET_MPI_STATE_HPP
 # define KET_MPI_STATE_HPP
 
-# include <boost/config.hpp>
-
 # include <cstddef>
 # include <cassert>
 # include <iterator>
@@ -22,7 +20,6 @@
 
 # include <boost/range/sub_range.hpp>
 # include <boost/range/iterator_range.hpp>
-# include <boost/range/iterator.hpp>
 
 # include <yampi/environment.hpp>
 # include <yampi/buffer.hpp>
@@ -36,6 +33,7 @@
 # include <ket/control.hpp>
 # include <ket/utility/integer_exp2.hpp>
 # include <ket/utility/loop_n.hpp>
+# include <ket/utility/meta/ranges.hpp>
 # include <ket/mpi/permutated.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
@@ -64,10 +62,7 @@ namespace ket
     {
       template <typename State>
       class state_iterator
-        : public boost::iterators::iterator_facade<
-            state_iterator<State>,
-            typename State::value_type,
-            std::random_access_iterator_tag>
+        : public boost::iterators::iterator_facade<state_iterator<State>, typename State::value_type, std::random_access_iterator_tag>
       {
         State* state_ptr_;
         int index_;
@@ -84,20 +79,20 @@ namespace ket
         { }
 
 
-        typename State::value_type& dereference() const
+        auto dereference() const -> typename State::value_type&
         { return const_cast<typename State::value_type&>((*state_ptr_)[index_]); }
 
-        bool equal(state_iterator const& other) const
+        auto equal(state_iterator const& other) const -> bool
         { return state_ptr_ == other.state_ptr_ and index_ == other.index_; }
 
-        state_iterator& increment() { ++index_; return *this; }
-        state_iterator& decrement() { --index_; return *this; }
-        state_iterator& advance(typename State::difference_type const n)
+        auto increment() -> state_iterator& { ++index_; return *this; }
+        auto decrement() -> state_iterator& { --index_; return *this; }
+        auto advance(typename State::difference_type const n) -> state_iterator&
         { index_ += n; return *this; }
-        typename State::difference_type distance_to(state_iterator const& other) const
+        auto distance_to(state_iterator const& other) const -> typename State::difference_type
         { return other.index_-index_; }
 
-        void swap(state_iterator& other) noexcept
+        auto swap(state_iterator& other) noexcept -> void
         {
           using std::swap;
           swap(state_ptr_, other.state_ptr_);
@@ -106,9 +101,10 @@ namespace ket
       }; // class state_iterator<State>
 
       template <typename State>
-      inline void swap(
+      inline auto swap(
         ::ket::mpi::state_detail::state_iterator<State>& lhs,
         ::ket::mpi::state_detail::state_iterator<State>& rhs) noexcept
+      -> void
       { lhs.swap(rhs); }
     } // namespace state_detail
 
@@ -125,8 +121,7 @@ namespace ket
       data_type data_;
 
      public:
-      using page_range_type
-        = boost::iterator_range<typename boost::range_iterator<data_type>::type>;
+      using page_range_type = boost::iterator_range< ::ket::utility::meta::iterator_t<data_type> >;
 
      private:
       std::size_t num_local_qubits_;
@@ -220,11 +215,8 @@ namespace ket
       state(
         BitInteger const num_local_qubits, BitInteger const num_page_qubits,
         StateInteger const initial_integer,
-        ::ket::mpi::qubit_permutation<
-          StateInteger, BitInteger, PermutationAllocator> const&
-          permutation,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment)
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, PermutationAllocator> const& permutation,
+        yampi::communicator const& communicator, yampi::environment const& environment)
         : data_{generate_initial_data(
             ::ket::mpi::utility::policy::make_simple_mpi(),
             num_local_qubits, StateInteger{1u} << num_page_qubits,
@@ -242,10 +234,8 @@ namespace ket
         MpiPolicy const& mpi_policy,
         BitInteger const num_local_qubits, BitInteger const num_page_qubits,
         StateInteger const initial_integer,
-        ::ket::mpi::qubit_permutation<
-          StateInteger, BitInteger, PermutationAllocator> const& permutation,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment)
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, PermutationAllocator> const& permutation,
+        yampi::communicator const& communicator, yampi::environment const& environment)
         : data_{generate_initial_data(
             mpi_policy, num_local_qubits, StateInteger{1u} << num_page_qubits, initial_integer, permutation, communicator, environment)},
           num_local_qubits_{static_cast<std::size_t>(num_local_qubits)},
@@ -256,15 +246,15 @@ namespace ket
           buffer_range_{generate_initial_buffer_range(data_, num_pages_, num_data_blocks_)}
       { assert(num_page_qubits_ >= BitInteger{1u} and num_local_qubits_ > num_page_qubits_); }
 
-      void assign(std::initializer_list<value_type> initializer_list)
+      auto assign(std::initializer_list<value_type> initializer_list) -> void
       { assign(initializer_list, std::size_t{1u}, std::size_t{1u}); }
 
       template <typename BitInteger>
-      void assign(std::initializer_list<value_type> initializer_list, BitInteger const num_page_qubits)
+      auto assign(std::initializer_list<value_type> initializer_list, BitInteger const num_page_qubits) -> void
       { assign(initializer_list, num_page_qubits, std::size_t{1u}); }
 
       template <typename BitInteger, typename StateInteger>
-      void assign(std::initializer_list<value_type> initializer_list, BitInteger const num_page_qubits, StateInteger const num_data_blocks)
+      auto assign(std::initializer_list<value_type> initializer_list, BitInteger const num_page_qubits, StateInteger const num_data_blocks) -> void
       {
         initialize_data(data_, initializer_list, std::size_t{1u} << num_page_qubits, static_cast<std::size_t>(num_data_blocks));
 
@@ -281,25 +271,22 @@ namespace ket
       }
 
       template <typename BitInteger, typename StateInteger, typename PermutationAllocator>
-      void assign(
+      auto assign(
         BitInteger const num_local_qubits, BitInteger const num_page_qubits,
         StateInteger const initial_integer,
-        ::ket::mpi::qubit_permutation<
-          StateInteger, BitInteger, PermutationAllocator> const&
-          permutation,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment)
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, PermutationAllocator> const& permutation,
+        yampi::communicator const& communicator, yampi::environment const& environment)
+      -> void
       { assign(::ket::mpi::utility::policy::make_simple_mpi(), num_local_qubits, num_page_qubits, initial_integer, permutation, communicator, environment); }
 
       template <typename MpiPolicy, typename BitInteger, typename StateInteger, typename PermutationAllocator>
-      void assign(
+      auto assign(
         MpiPolicy const& mpi_policy,
         BitInteger const num_local_qubits, BitInteger const num_page_qubits,
         StateInteger const initial_integer,
-        ::ket::mpi::qubit_permutation<
-          StateInteger, BitInteger, PermutationAllocator> const& permutation,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment)
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, PermutationAllocator> const& permutation,
+        yampi::communicator const& communicator, yampi::environment const& environment)
+      -> void
       {
         initialize_data(data_, mpi_policy, num_local_qubits, StateInteger{1u} << num_page_qubits, initial_integer, permutation, communicator, environment);
 
@@ -315,7 +302,7 @@ namespace ket
       }
 
       template <typename PairOrTuple>
-      size_type page_range_index(PairOrTuple const& data_block_page_etc_indices) const
+      auto page_range_index(PairOrTuple const& data_block_page_etc_indices) const -> size_type
       {
         auto const data_block_index = std::get<0u>(data_block_page_etc_indices);
         auto const page_index = std::get<1u>(data_block_page_etc_indices);
@@ -324,16 +311,17 @@ namespace ket
         return static_cast<size_type>(data_block_index * num_pages_ + page_index);
       }
 
-      std::pair<size_type, size_type> data_block_page_indices(size_type const page_range_index) const
+      auto data_block_page_indices(size_type const page_range_index) const -> std::pair<size_type, size_type>
       {
         assert(page_range_index >= size_type{0u} and page_range_index < num_data_blocks_ * num_pages_);
         return {page_range_index / num_pages_, page_range_index % num_pages_};
       }
 
       template <typename DataBlockIndex, typename PageIndex>
-      void swap_pages(
+      auto swap_pages(
         std::pair<DataBlockIndex, PageIndex> const& data_block_page_indices1,
         std::pair<DataBlockIndex, PageIndex> const& data_block_page_indices2)
+      -> void
       {
         assert(data_block_page_indices1 != data_block_page_indices2);
         using std::swap;
@@ -343,17 +331,17 @@ namespace ket
       }
 
       template <typename DataBlockIndex, typename PageIndex>
-      void swap_buffer_and_page(
-        std::pair<DataBlockIndex, PageIndex> const& data_block_page_indices)
+      auto swap_buffer_and_page(std::pair<DataBlockIndex, PageIndex> const& data_block_page_indices) -> void
       {
         using std::swap;
         swap(buffer_range_, page_ranges_[page_range_index(data_block_page_indices)]);
       }
 
       template <typename DataBlockIndex, typename PageIndex, typename NonpageIndex>
-      void swap_values(
+      auto swap_values(
         std::tuple<DataBlockIndex, PageIndex, NonpageIndex> const& data_block_page_nonpage_indices1,
         std::tuple<DataBlockIndex, PageIndex, NonpageIndex> const& data_block_page_nonpage_indices2)
+      -> void
       {
         assert(
           std::get<0u>(data_block_page_nonpage_indices1) != std::get<0u>(data_block_page_nonpage_indices2)
@@ -369,91 +357,93 @@ namespace ket
           and nonpage_index2 < ::ket::utility::integer_exp2<size_type>(num_local_qubits_ - num_page_qubits_));
 
         using std::swap;
+        using std::begin;
         swap(
-          std::begin(page_ranges_[page_range_index(data_block_page_nonpage_indices1)])[nonpage_index1],
-          std::begin(page_ranges_[page_range_index(data_block_page_nonpage_indices2)])[nonpage_index2]);
+          begin(page_ranges_[page_range_index(data_block_page_nonpage_indices1)])[nonpage_index1],
+          begin(page_ranges_[page_range_index(data_block_page_nonpage_indices2)])[nonpage_index2]);
       }
 
       template <typename DataBlockIndex, typename PageIndex>
-      page_range_type const& page_range(std::pair<DataBlockIndex, PageIndex> const& data_block_page_indices) const
+      auto page_range(std::pair<DataBlockIndex, PageIndex> const& data_block_page_indices) const -> page_range_type const&
       { return page_ranges_[page_range_index(data_block_page_indices)]; }
 
-      page_range_type const& buffer_range() const
-      { return buffer_range_; }
+      auto buffer_range() const -> page_range_type const& { return buffer_range_; }
 
-      std::size_t num_local_qubits() const noexcept { assert(num_local_qubits_ > num_page_qubits_); return num_local_qubits_; }
-      std::size_t num_page_qubits() const noexcept { assert(num_page_qubits_ >= std::size_t{1u}); return num_page_qubits_; }
-      std::size_t num_pages() const noexcept { assert(num_pages_ >= std::size_t{2u}); return num_pages_; }
-      std::size_t num_data_blocks() const noexcept { assert(num_data_blocks_ >= std::size_t{1u}); return num_data_blocks_; }
+      auto num_local_qubits() const noexcept -> std::size_t { assert(num_local_qubits_ > num_page_qubits_); return num_local_qubits_; }
+      auto num_page_qubits() const noexcept -> std::size_t { assert(num_page_qubits_ >= std::size_t{1u}); return num_page_qubits_; }
+      auto num_pages() const noexcept -> std::size_t { assert(num_pages_ >= std::size_t{2u}); return num_pages_; }
+      auto num_data_blocks() const noexcept -> std::size_t { assert(num_data_blocks_ >= std::size_t{1u}); return num_data_blocks_; }
 
-      bool operator==(state const& other) const noexcept
+      auto operator==(state const& other) const noexcept -> bool
       { return num_local_qubits_ == other.num_local_qubits_ and num_data_blocks_ == other.num_data_blocks_ and std::equal(begin(), end(), other.begin()); }
-      bool operator<(state const& other) const noexcept { return std::lexicographical_compare(begin(), end(), other.begin(), other.end()); }
+      auto operator<(state const& other) const noexcept -> bool { return std::lexicographical_compare(begin(), end(), other.begin(), other.end()); }
 
       // Element access
-      reference at(size_type const index)
+      auto at(size_type const index) -> reference
       {
+        using std::begin;
         return data_.at(
-          (std::begin(page_ranges_[page_range_index(get_data_block_page_indices(index))]) - std::begin(data_))
+          (begin(page_ranges_[page_range_index(get_data_block_page_indices(index))]) - begin(data_))
           + get_nonpage_index(index));
       }
 
-      const_reference at(size_type const index) const
+      auto at(size_type const index) const -> const_reference
       {
+        using std::begin;
         return data_.at(
-          (std::begin(page_ranges_[page_range_index(get_data_block_page_indices(index))]) - std::begin(data_))
+          (begin(page_ranges_[page_range_index(get_data_block_page_indices(index))]) - begin(data_))
           + get_nonpage_index(index));
       }
 
-      reference operator[](size_type const index)
+      auto operator[](size_type const index) -> reference
       {
         assert(index < ::ket::utility::integer_exp2<size_type>(num_local_qubits_) * num_data_blocks_);
-        return std::begin(page_ranges_[page_range_index(get_data_block_page_indices(index))])[get_nonpage_index(index)];
+        using std::begin;
+        return begin(page_ranges_[page_range_index(get_data_block_page_indices(index))])[get_nonpage_index(index)];
       }
 
-      const_reference operator[](size_type const index) const
+      auto operator[](size_type const index) const -> const_reference
       {
         assert(index < ::ket::utility::integer_exp2<size_type>(num_local_qubits_) * num_data_blocks_);
-        return std::begin(page_ranges_[page_range_index(get_data_block_page_indices(index))])[get_nonpage_index(index)];
+        using std::begin;
+        return begin(page_ranges_[page_range_index(get_data_block_page_indices(index))])[get_nonpage_index(index)];
       }
 
-      reference front() { return *std::begin(page_ranges_[page_range_index(get_data_block_page_indices(0u))]); }
-      const_reference front() const { return *std::begin(page_ranges_[page_range_index(get_data_block_page_indices(0u))]); }
+      auto front() -> reference { using std::begin; return *begin(page_ranges_[page_range_index(get_data_block_page_indices(0u))]); }
+      auto front() const -> const_reference { using std::begin; return *begin(page_ranges_[page_range_index(get_data_block_page_indices(0u))]); }
 
-      reference back() { return *--std::end(page_ranges_[page_range_index(get_data_block_page_indices((1u << num_local_qubits_) - 1u))]); }
-      const_reference back() const { return *--std::end(page_ranges_[page_range_index(get_data_block_page_indices((1u << num_local_qubits_) - 1u))]); }
+      auto back() -> reference { using std::end; return *--end(page_ranges_[page_range_index(get_data_block_page_indices((1u << num_local_qubits_) - 1u))]); }
+      auto back() const -> const_reference { using std::end; return *--end(page_ranges_[page_range_index(get_data_block_page_indices((1u << num_local_qubits_) - 1u))]); }
 
       // Iterators
-      iterator begin() noexcept { return iterator{*this, 0}; }
-      const_iterator begin() const noexcept { return const_iterator{*this, 0}; }
-      const_iterator cbegin() const noexcept { return const_iterator{*this, 0}; }
-      iterator end() noexcept
-      { return iterator{*this, static_cast<int>(1u << num_local_qubits_)}; }
-      const_iterator end() const noexcept
-      { return const_iterator{*this, static_cast<int>(1u << num_local_qubits_)}; }
-      const_iterator cend() const noexcept
-      { return const_iterator{*this, static_cast<int>(1u << num_local_qubits_)}; }
-      reverse_iterator rbegin() noexcept { return reverse_iterator{this->end()}; }
-      const_reverse_iterator rbegin() const noexcept { return const_reverse_iterator{this->end()}; }
-      const_reverse_iterator crbegin() const noexcept { return const_reverse_iterator{this->cend()}; }
-      reverse_iterator rend() noexcept { return reverse_iterator{this->begin()}; }
-      const_reverse_iterator rend() const noexcept { return const_reverse_iterator{this->begin()}; }
-      const_reverse_iterator crend() const noexcept { return const_reverse_iterator{this->cbegin()}; }
+      auto begin() noexcept -> iterator { return iterator{*this, 0}; }
+      auto begin() const noexcept -> const_iterator { return const_iterator{*this, 0}; }
+      auto cbegin() const noexcept -> const_iterator { return const_iterator{*this, 0}; }
+      auto end() noexcept -> iterator { return iterator{*this, static_cast<int>(1u << num_local_qubits_)}; }
+      auto end() const noexcept -> const_iterator { return const_iterator{*this, static_cast<int>(1u << num_local_qubits_)}; }
+      auto cend() const noexcept -> const_iterator { return const_iterator{*this, static_cast<int>(1u << num_local_qubits_)}; }
+      auto rbegin() noexcept -> reverse_iterator { return reverse_iterator{this->end()}; }
+      auto rbegin() const noexcept -> const_reverse_iterator { return const_reverse_iterator{this->end()}; }
+      auto crbegin() const noexcept -> const_reverse_iterator { return const_reverse_iterator{this->cend()}; }
+      auto rend() noexcept -> reverse_iterator { return reverse_iterator{this->begin()}; }
+      auto rend() const noexcept -> const_reverse_iterator { return const_reverse_iterator{this->begin()}; }
+      auto crend() const noexcept -> const_reverse_iterator { return const_reverse_iterator{this->cbegin()}; }
 
       // Capacity
-      size_type size() const noexcept { return data_.size() - boost::size(buffer_range_); }
-      size_type max_size() const noexcept { return data_.max_size() - boost::size(buffer_range_); }
-      void reserve(size_type const new_capacity) { data_.reserve(new_capacity + boost::size(buffer_range_)); }
-      size_type capacity() const noexcept { return data_.capacity() - boost::size(buffer_range_); }
-      void shrink_to_fit() { data_.shrink_to_fit(); }
+      auto size() const noexcept -> size_type { using std::begin; using std::end; return data_.size() - static_cast<size_type>(std::distance(begin(buffer_range_), end(buffer_range_))); }
+      auto max_size() const noexcept -> size_type { using std::begin; using std::end; return data_.max_size() - static_cast<size_type>(std::distance(begin(buffer_range_), end(buffer_range_))); }
+      auto reserve(size_type const new_capacity) -> void { using std::begin; using std::end; data_.reserve(new_capacity + static_cast<size_type>(std::distance(begin(buffer_range_), end(buffer_range_)))); }
+      auto capacity() const noexcept -> size_type { using std::begin; using std::end; return data_.capacity() - static_cast<size_type>(std::distance(begin(buffer_range_), end(buffer_range_))); }
+      auto shrink_to_fit() -> void { data_.shrink_to_fit(); }
 
       // Modifiers
-      void swap(state& other)
-        noexcept(
-          KET_is_nothrow_swappable<data_type>::value
-          and KET_is_nothrow_swappable<std::size_t>::value
-          and KET_is_nothrow_swappable<std::vector<page_range_type>>::value
-          and KET_is_nothrow_swappable<page_range_type>::value )
+      auto swap(state& other)
+      noexcept(
+        KET_is_nothrow_swappable<data_type>::value
+        and KET_is_nothrow_swappable<std::size_t>::value
+        and KET_is_nothrow_swappable<std::vector<page_range_type>>::value
+        and KET_is_nothrow_swappable<page_range_type>::value )
+      -> void
       {
         using std::swap;
         swap(data_, other.data_);
@@ -467,10 +457,11 @@ namespace ket
       }
 
      private:
-      void initialize_data(
+      auto initialize_data(
         data_type& data,
         std::initializer_list<value_type> initializer_list,
         std::size_t const num_pages, std::size_t const num_data_blocks) const
+      -> void
       {
         auto const state_size = initializer_list.size();
         auto const data_size = state_size + state_size / num_pages / num_data_blocks;
@@ -486,7 +477,7 @@ namespace ket
       template <
         typename MpiPolicy, typename BitInteger, typename StateInteger,
         typename PermutationAllocator>
-      void initialize_data(
+      auto initialize_data(
         data_type& data,
         MpiPolicy const& mpi_policy,
         BitInteger const num_local_qubits, StateInteger const num_pages,
@@ -496,6 +487,7 @@ namespace ket
           permutation,
         yampi::communicator const& communicator,
         yampi::environment const& environment) const
+      -> void
       {
         auto const data_block_size = ::ket::utility::integer_exp2<std::size_t>(num_local_qubits);
         auto const num_data_blocks = ::ket::mpi::utility::policy::num_data_blocks(mpi_policy, communicator, environment);
@@ -508,10 +500,9 @@ namespace ket
         data.reserve(data_size);
         data.assign(state_size, value_type{0});
 
-        using ::ket::mpi::permutate_bits;
         auto const rank_index
           = ::ket::mpi::utility::qubit_value_to_rank_index(
-              mpi_policy, data, permutate_bits(permutation, initial_integer),
+              mpi_policy, data, ::ket::mpi::permutate_bits(permutation, initial_integer),
               communicator, environment);
 
         if (communicator.rank(environment) == rank_index.first)
@@ -520,10 +511,11 @@ namespace ket
         data.resize(data_size);
       }
 
-      data_type generate_initial_data(
+      auto generate_initial_data(
         std::initializer_list<value_type> initializer_list,
         std::size_t const num_pages, std::size_t const num_data_blocks,
         allocator_type const& allocator) const
+      -> data_type
       {
         auto result = data_type{allocator};
         initialize_data(result, initializer_list, num_pages, num_data_blocks);
@@ -533,7 +525,7 @@ namespace ket
       template <
         typename MpiPolicy, typename BitInteger, typename StateInteger,
         typename PermutationAllocator>
-      data_type generate_initial_data(
+      auto generate_initial_data(
         MpiPolicy const& mpi_policy,
         BitInteger const num_local_qubits, StateInteger const num_pages,
         StateInteger const initial_integer,
@@ -542,41 +534,44 @@ namespace ket
           permutation,
         yampi::communicator const& communicator,
         yampi::environment const& environment) const
+      -> data_type
       {
         auto result = data_type{};
         initialize_data(result, mpi_policy, num_local_qubits, num_pages, initial_integer, permutation, communicator, environment);
         return result;
       }
 
-      std::vector<page_range_type>
-      generate_initial_page_ranges(data_type& data, std::size_t const num_pages, std::size_t const num_data_blocks) const
+      auto generate_initial_page_ranges(data_type& data, std::size_t const num_pages, std::size_t const num_data_blocks) const
+      -> std::vector<page_range_type>
       {
         assert(data.size() % (num_pages * num_data_blocks + 1u) == 0u);
         auto const page_size = static_cast<size_type>(data.size() / (num_pages * num_data_blocks + 1u));
 
         auto result = std::vector<page_range_type>{};
         result.reserve(num_pages * num_data_blocks);
+        using std::begin;
         for (auto page_range_index = std::size_t{0u}; page_range_index < num_pages * num_data_blocks; ++page_range_index)
           result.push_back(
             boost::make_iterator_range(
-              std::begin(data) + page_range_index * page_size,
-              std::begin(data) + (page_range_index + 1u) * page_size));
+              begin(data) + page_range_index * page_size,
+              begin(data) + (page_range_index + 1u) * page_size));
 
         return result;
       }
 
-      page_range_type generate_initial_buffer_range(data_type& data, std::size_t const num_pages, std::size_t const num_data_blocks) const
+      auto generate_initial_buffer_range(data_type& data, std::size_t const num_pages, std::size_t const num_data_blocks) const -> page_range_type
       {
         assert(data.size() % (num_pages * num_data_blocks + 1u) == 0u);
         auto const page_size = static_cast<size_type>(data.size() / (num_pages * num_data_blocks + 1u));
 
+        using std::begin;
         return boost::make_iterator_range(
-          std::begin(data) + num_pages * num_data_blocks * page_size,
-          std::begin(data) + (num_pages * num_data_blocks + 1u) * page_size);
+          begin(data) + num_pages * num_data_blocks * page_size,
+          begin(data) + (num_pages * num_data_blocks + 1u) * page_size);
       }
 
      public:
-      std::pair<size_type, size_type> get_data_block_page_indices(size_type const index) const
+      auto get_data_block_page_indices(size_type const index) const -> std::pair<size_type, size_type>
       {
         auto const data_block_size = ::ket::utility::integer_exp2<size_type>(num_local_qubits_);
         assert(index < data_block_size * num_data_blocks_);
@@ -587,7 +582,7 @@ namespace ket
           (((num_pages_ - 1u) << num_nonpage_local_qubits) bitand (index % data_block_size)) >> num_nonpage_local_qubits);
       }
 
-      size_type get_nonpage_index(size_type const index) const
+      auto get_nonpage_index(size_type const index) const -> size_type
       {
         auto const data_block_size = ::ket::utility::integer_exp2<size_type>(num_local_qubits_);
         assert(index < data_block_size * num_data_blocks_);
@@ -598,9 +593,10 @@ namespace ket
     }; // class state<Complex, has_page_qubits, Allocator>
 
     template <typename StateInteger, typename BitInteger, typename Complex, bool has_page_qubits, typename Allocator>
-    inline bool is_page_qubit(
+    inline auto is_page_qubit(
       ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit,
       ::ket::mpi::state<Complex, has_page_qubits, Allocator> const& local_state)
+    -> bool
     {
       auto const num_local_qubits = static_cast<BitInteger>(local_state.num_local_qubits());
       auto const num_page_qubits = static_cast<BitInteger>(local_state.num_page_qubits());
@@ -610,9 +606,10 @@ namespace ket
     }
 
     template <typename StateInteger, typename BitInteger, typename Complex, bool has_page_qubits, typename Allocator>
-    inline bool is_page_qubit(
+    inline auto is_page_qubit(
       ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit,
       ::ket::mpi::state<Complex, has_page_qubits, Allocator> const& local_state)
+    -> bool
     { return ::ket::mpi::is_page_qubit(::ket::mpi::remove_control(permutated_control_qubit), local_state); }
 
     namespace state_detail
@@ -620,10 +617,11 @@ namespace ket
       template <
         typename Complex, bool has_page_qubits, typename Allocator,
         typename StateInteger, typename BitInteger>
-      void interpage_swap(
+      inline auto interpage_swap(
         ::ket::mpi::state<Complex, has_page_qubits, Allocator>& local_state,
         ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit1,
         ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit2)
+      -> void
       {
         assert(local_state.num_page_qubits() >= 2u);
         assert(::ket::mpi::is_page_qubit(permutated_qubit1, local_state) and ::ket::mpi::is_page_qubit(permutated_qubit2, local_state));
@@ -666,11 +664,12 @@ namespace ket
       template <
         typename ParallelPolicy, typename Complex, bool has_page_qubits, typename Allocator,
         typename StateInteger, typename BitInteger>
-      void swap_page_and_nonpage_qubits(
+      inline auto swap_page_and_nonpage_qubits(
         ParallelPolicy const parallel_policy,
         ::ket::mpi::state<Complex, has_page_qubits, Allocator>& local_state,
         ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit1,
         ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit2)
+      -> void
       {
         assert(
           (::ket::mpi::is_page_qubit(permutated_qubit1, local_state) and (not ::ket::mpi::is_page_qubit(permutated_qubit2, local_state)))
@@ -729,12 +728,13 @@ namespace ket
       template <
         typename ParallelPolicy, typename Complex, bool has_page_qubits, typename Allocator,
         typename StateInteger, typename BitInteger>
-      void swap_nonpage_qubits(
+      inline auto swap_nonpage_qubits(
         ParallelPolicy const parallel_policy,
         ::ket::mpi::state<Complex, has_page_qubits, Allocator>& local_state,
         ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit1,
         ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit2,
         yampi::communicator const& communicator, yampi::environment const& environment)
+      -> void
       {
         assert((not ::ket::mpi::is_page_qubit(permutated_qubit1, local_state)) and (not ::ket::mpi::is_page_qubit(permutated_qubit2, local_state)));
 # ifndef NDEBUG
@@ -749,16 +749,18 @@ namespace ket
           for (auto page_index = std::size_t{0u}; page_index < num_pages; ++page_index)
           {
             auto const data_block_page_indices = std::make_pair(data_block_index, page_index);
+            auto const& data_block_page = local_state.page_range(data_block_page_indices);
+
             using page_range_type
-              = typename std::remove_reference<
-                  typename std::remove_cv<
-                    decltype(local_state.page_range(data_block_page_indices))>::type>::type;
+              = std::remove_reference_t<std::remove_cv_t<decltype(local_state.page_range(data_block_page_indices))>>;
             using swap_permutated_local_qubits_type
               = ::ket::mpi::utility::dispatch::swap_permutated_local_qubits<page_range_type>;
+            using std::begin;
+            using std::end;
             swap_permutated_local_qubits_type::call(
-              parallel_policy, local_state.page_range(data_block_page_indices),
+              parallel_policy, data_block_page,
               permutated_qubit1, permutated_qubit2,
-              StateInteger{1u}, static_cast<StateInteger>(boost::size(local_state.page_range(data_block_page_indices))),
+              StateInteger{1u}, static_cast<StateInteger>(std::distance(begin(data_block_page), end(data_block_page))),
               communicator, environment);
           }
       }
@@ -769,13 +771,14 @@ namespace ket
         template <
           typename ParallelPolicy, typename Complex, typename Allocator,
           typename StateInteger, typename BitInteger>
-        static void call(
+        static auto call(
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, has_page_qubits, Allocator>& local_state,
           ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit1,
           ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit2,
           StateInteger const, StateInteger const,
           yampi::communicator const& communicator, yampi::environment const& environment)
+        -> void
         {
 # ifndef NDEBUG
           using permutated_qubit_type = ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >;
@@ -807,7 +810,7 @@ namespace ket
       {
         template <
           typename Allocator, typename Complex, typename Allocator_, typename StateInteger>
-        static void call(
+        static auto call(
           ::ket::mpi::state<Complex, has_page_qubits, Allocator>& local_state,
           std::vector<Complex, Allocator_>&,
           StateInteger const data_block_index, StateInteger const data_block_size,
@@ -815,11 +818,11 @@ namespace ket
           StateInteger const source_local_last_index,
           yampi::rank const target_rank,
           yampi::communicator const& communicator, yampi::environment const& environment)
+        -> void
         {
           using page_range_type
             = typename ::ket::mpi::state<Complex, has_page_qubits, Allocator>::page_range_type;
-          using page_iterator
-            = typename boost::range_iterator<page_range_type>::type;
+          using page_iterator = ::ket::utility::meta::iterator_t<page_range_type>;
           do_call(
             local_state, data_block_index, data_block_size,
             source_local_first_index, source_local_last_index,
@@ -838,7 +841,7 @@ namespace ket
         template <
           typename Allocator, typename Complex, typename Allocator_, typename StateInteger,
           typename DerivedDatatype>
-        static void call(
+        static auto call(
           ::ket::mpi::state<Complex, has_page_qubits, Allocator>& local_state,
           std::vector<Complex, Allocator_>&,
           StateInteger const data_block_index, StateInteger const data_block_size,
@@ -846,11 +849,11 @@ namespace ket
           StateInteger const source_local_last_index,
           yampi::datatype_base<DerivedDatatype> const& datatype, yampi::rank const target_rank,
           yampi::communicator const& communicator, yampi::environment const& environment)
+        -> void
         {
           using page_range_type
             = typename ::ket::mpi::state<Complex, has_page_qubits, Allocator>::page_range_type;
-          using page_iterator
-            = typename boost::range_iterator<page_range_type>::type;
+          using page_iterator = ::ket::utility::meta::iterator_t<page_range_type>;
           do_call(
             local_state, data_block_index, data_block_size,
             source_local_first_index, source_local_last_index,
@@ -869,11 +872,12 @@ namespace ket
        private:
         template <
           typename Allocator, typename Complex, typename StateInteger, typename Function>
-        static void do_call(
+        static auto do_call(
           ::ket::mpi::state<Complex, has_page_qubits, Allocator>& local_state,
           StateInteger const data_block_index, StateInteger const data_block_size,
           StateInteger const source_local_first_index, StateInteger const source_local_last_index,
           Function&& yampi_swap)
+        -> void
         {
           assert(data_block_index >= StateInteger{0u} and data_block_index < local_state.num_data_blocks());
           assert(data_block_size == ::ket::utility::integer_exp2<std::size_t>(local_state.num_local_qubits()));
@@ -887,19 +891,18 @@ namespace ket
           assert(front_data_block_page_indices.first == data_block_index);
           assert(back_data_block_page_indices.first == data_block_index);
 
-          auto const front_page_index
-            = static_cast<StateInteger>(front_data_block_page_indices.second);
-          auto const back_page_index
-            = static_cast<StateInteger>(back_data_block_page_indices.second);
+          auto const front_page_index = static_cast<StateInteger>(front_data_block_page_indices.second);
+          auto const back_page_index = static_cast<StateInteger>(back_data_block_page_indices.second);
 
           for (auto page_index = front_page_index; page_index <= back_page_index; ++page_index)
           {
             auto const page_range = local_state.page_range(std::make_pair(data_block_index, page_index));
-            auto const page_size = boost::size(page_range);
-
-            auto const page_first = std::begin(page_range);
-            auto const page_last = std::end(page_range);
-            auto const buffer_first = std::begin(local_state.buffer_range());
+            using std::begin;
+            using std::end;
+            auto const page_first = begin(page_range);
+            auto const page_last = end(page_range);
+            auto const page_size = static_cast<StateInteger>(std::distance(page_first, page_last));
+            auto const buffer_first = begin(local_state.buffer_range());
 
             auto const first_index
               = page_index == front_page_index
@@ -929,38 +932,48 @@ namespace ket
       struct for_each_local_range
       {
         template <typename MpiPolicy, typename Complex, typename Allocator, typename Function>
-        static ::ket::mpi::state<Complex, has_page_qubits, Allocator>& call(
+        static auto call(
           MpiPolicy const&,
           ::ket::mpi::state<Complex, has_page_qubits, Allocator>& local_state,
           yampi::communicator const&, yampi::environment const&,
           Function&& function)
+        -> ::ket::mpi::state<Complex, has_page_qubits, Allocator>&
         {
           // Gates should not be on page qubits
           auto const num_data_blocks = local_state.num_data_blocks();
           auto const num_pages = local_state.num_pages();
           for (auto data_block_index = std::size_t{0u}; data_block_index < num_data_blocks; ++data_block_index)
             for (auto page_index = std::size_t{0u}; page_index < num_pages; ++page_index)
+            {
+              using std::begin;
+              using std::end;
               function(
-                std::begin(local_state.page_range(std::make_pair(data_block_index, page_index))),
-                std::end(local_state.page_range(std::make_pair(data_block_index, page_index))));
+                begin(local_state.page_range(std::make_pair(data_block_index, page_index))),
+                end(local_state.page_range(std::make_pair(data_block_index, page_index))));
+            }
           return local_state;
         }
 
         template <typename MpiPolicy, typename Complex, typename Allocator, typename Function>
-        static ::ket::mpi::state<Complex, has_page_qubits, Allocator> const& call(
+        static auto call(
           MpiPolicy const&,
           ::ket::mpi::state<Complex, has_page_qubits, Allocator> const& local_state,
           yampi::communicator const&, yampi::environment const&,
           Function&& function)
+        -> ::ket::mpi::state<Complex, has_page_qubits, Allocator> const&
         {
           // Gates should not be on page qubits
           auto const num_data_blocks = local_state.num_data_blocks();
           auto const num_pages = local_state.num_pages();
           for (auto data_block_index = std::size_t{0u}; data_block_index < num_data_blocks; ++data_block_index)
             for (auto page_index = std::size_t{0u}; page_index < num_pages; ++page_index)
+            {
+              using std::begin;
+              using std::end;
               function(
-                std::begin(local_state.page_range(std::make_pair(data_block_index, page_index))),
-                std::end(local_state.page_range(std::make_pair(data_block_index, page_index))));
+                begin(local_state.page_range(std::make_pair(data_block_index, page_index))),
+                end(local_state.page_range(std::make_pair(data_block_index, page_index))));
+            }
           return local_state;
         }
       }; // struct for_each_local_range<has_page_qubits>
@@ -969,11 +982,12 @@ namespace ket
       struct swap_local_data
       {
         template <typename Complex, typename Allocator, typename StateInteger>
-        static void call(
+        static auto call(
           ::ket::mpi::state<Complex, has_page_qubits, Allocator>& local_state,
           StateInteger const data_block_index1, StateInteger const local_first_index1, StateInteger const local_last_index1,
           StateInteger const data_block_index2, StateInteger const local_first_index2,
           StateInteger const data_block_size)
+        -> void 
         {
           auto const first_index1 = data_block_index1 * data_block_size + local_first_index1;
           auto const last_index1 = first_index1 + (local_last_index1 - local_first_index1);
@@ -999,9 +1013,10 @@ namespace ket
           auto const nonpage_first_index2 = static_cast<StateInteger>(local_state.get_nonpage_index(first_index2));
           auto const nonpage_last_index2 = static_cast<StateInteger>(local_state.get_nonpage_index(last_index2 - StateInteger{1u})) + StateInteger{1u};
 
-          auto const first1 = std::begin(local_state.page_range(front_data_block_page_indices1)) + nonpage_first_index1;
-          auto const last1 = std::begin(local_state.page_range(back_data_block_page_indices1)) + nonpage_last_index1;
-          auto const last2 = std::begin(local_state.page_range(back_data_block_page_indices2)) + nonpage_last_index2;
+          using std::begin;
+          auto const first1 = begin(local_state.page_range(front_data_block_page_indices1)) + nonpage_first_index1;
+          auto const last1 = begin(local_state.page_range(back_data_block_page_indices1)) + nonpage_last_index1;
+          auto const last2 = begin(local_state.page_range(back_data_block_page_indices2)) + nonpage_last_index2;
 
           if (nonpage_first_index1 == nonpage_first_index2)
           {
@@ -1019,12 +1034,13 @@ namespace ket
               auto const page_range2 = local_state.page_range(data_block_page_indices2);
 
               if (page_index1 == front_page_index1)
-                std::swap_ranges(std::begin(page_range1), first1, std::begin(page_range2));
+                std::swap_ranges(begin(page_range1), first1, begin(page_range2));
 
               if (page_index1 == back_page_index1)
               {
                 assert(page_index2 == back_page_index2);
-                std::swap_ranges(last1, std::end(page_range1), last2);
+                using std::end;
+                std::swap_ranges(last1, end(page_range1), last2);
               }
 
               local_state.swap_pages(data_block_page_indices1, data_block_page_indices2);
@@ -1035,15 +1051,16 @@ namespace ket
             auto page_index1 = front_page_index1;
             auto page_index2 = front_page_index2;
             auto the_first1 = first1;
-            auto the_first2 = std::begin(local_state.page_range(front_data_block_page_indices2)) + nonpage_first_index2;
+            auto the_first2 = begin(local_state.page_range(front_data_block_page_indices2)) + nonpage_first_index2;
 
             while (true)
             {
               auto const page_range1 = local_state.page_range(std::make_pair(data_block_index1, page_index1));
               auto const page_range2 = local_state.page_range(std::make_pair(data_block_index2, page_index2));
 
-              auto const the_last1 = page_index1 == back_page_index1 ? last1 : std::end(page_range1);
-              auto const the_last2 = page_index2 == back_page_index2 ? last2 : std::end(page_range2);
+              using std::end;
+              auto const the_last1 = page_index1 == back_page_index1 ? last1 : end(page_range1);
+              auto const the_last2 = page_index2 == back_page_index2 ? last2 : end(page_range2);
 
               auto const size1 = the_last1 - the_first1;
               auto const size2 = the_last2 - the_first2;
@@ -1063,7 +1080,7 @@ namespace ket
                 the_first2 = the_last2;
 
                 ++page_index2;
-                the_first2 = std::begin(local_state.page_range(std::make_pair(data_block_index2, page_index2)));
+                the_first2 = begin(local_state.page_range(std::make_pair(data_block_index2, page_index2)));
               }
               else // size1 < size2
               {
@@ -1074,7 +1091,7 @@ namespace ket
                 the_first1 = the_last1;
 
                 ++page_index1;
-                the_first1 = std::begin(local_state.page_range(std::make_pair(data_block_index1, page_index1)));
+                the_first1 = begin(local_state.page_range(std::make_pair(data_block_index1, page_index1)));
               }
             }
           }
@@ -1090,19 +1107,18 @@ namespace ket
           typename Complex, typename Allocator,
           typename StateInteger, typename BitInteger,
           std::size_t num_local_control_qubits, typename Function>
-        static void call(
+        static auto call(
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, has_page_qubits, Allocator>& local_state,
           StateInteger const data_block_index, StateInteger const,
           StateInteger const last_local_qubit_value,
-          std::array<
-            ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >,
-            num_local_control_qubits> local_permutated_control_qubits,
+          std::array< ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >, num_local_control_qubits> local_permutated_control_qubits,
           Function&& function)
+        -> void
         {
-          std::sort(
-            std::begin(local_permutated_control_qubits),
-            std::end(local_permutated_control_qubits));
+          using std::begin;
+          using std::end;
+          std::sort(begin(local_permutated_control_qubits), end(local_permutated_control_qubits));
 
           impl(
             parallel_policy, local_state,
@@ -1116,25 +1132,25 @@ namespace ket
           typename Complex, typename Allocator,
           typename StateInteger, typename BitInteger,
           std::size_t num_local_control_qubits, typename Function>
-        static void impl(
+        static auto impl(
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, has_page_qubits, Allocator>& local_state,
           StateInteger const data_block_index,
           StateInteger const last_local_qubit_value,
-          std::array<
-            ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >,
-            num_local_control_qubits> const& sorted_local_permutated_control_qubits,
+          std::array< ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >, num_local_control_qubits> const& sorted_local_permutated_control_qubits,
           Function&& function)
+        -> void
         {
           static constexpr auto zero_state_integer = StateInteger{0u};
 
           using permutated_control_qubit_type
             = ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >;
+          using std::begin;
+          using std::end;
           // 000101000100
           auto const mask
             = std::accumulate(
-                std::begin(sorted_local_permutated_control_qubits),
-                std::end(sorted_local_permutated_control_qubits),
+                begin(sorted_local_permutated_control_qubits), end(sorted_local_permutated_control_qubits),
                 zero_state_integer,
                 [](StateInteger const& partial_mask, permutated_control_qubit_type const& permutated_control_qubit)
                 {
@@ -1148,9 +1164,8 @@ namespace ket
           auto const num_pages = local_state.num_pages();
           for (auto page_index = std::size_t{0u}; page_index < num_pages; ++page_index)
           {
-            auto const first = std::begin(local_state.page_range(std::make_pair(data_block_index, page_index)));
-            using ::ket::utility::loop_n;
-            loop_n(
+            auto const first = begin(local_state.page_range(std::make_pair(data_block_index, page_index)));
+            ::ket::utility::loop_n(
               parallel_policy, last_integer,
               [&function, &sorted_local_permutated_control_qubits, mask, first](StateInteger state_integer, int const)
               {
@@ -1161,9 +1176,7 @@ namespace ket
                 {
                   auto const lower_mask = (one_state_integer << permutated_control_qubit) - one_state_integer;
                   auto const upper_mask = compl lower_mask;
-                  state_integer
-                    = (state_integer bitand lower_mask)
-                      bitor ((state_integer bitand upper_mask) << 1u);
+                  state_integer = (state_integer bitand lower_mask) bitor ((state_integer bitand upper_mask) << 1u);
                 }
 
                 // xxx1x1xxx1xx
@@ -1180,219 +1193,26 @@ namespace ket
       struct transform_inclusive_scan
       {
 # ifdef KET_USE_PARALLEL_EXECUTE_FOR_TRANSFORM_INCLUSIVE_SCAN
-#   ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
-        template <
-          typename PartialSums, typename ParallelPolicy,
-          typename LocalState, typename ForwardIterator,
-          typename BinaryOperation, typename UnaryOperation>
-        class process_in_execute
-        {
-          unsigned int num_threads_;
-          PartialSums& partial_sums_;
-          ParallelPolicy parallel_policy_;
-          LocalState& local_state_;
-          ForwardIterator d_first_;
-          BinaryOperation binary_operation_;
-          UnaryOperation unary_operation_;
-
-         public:
-          process_in_execute(
-            unsigned int num_threads, PartialSums& partial_sums,
-            ParallelPolicy parallel_policy,
-            LocalState& local_state, ForwardIterator d_first,
-            BinaryOperation binary_operation, UnaryOperation unary_operation)
-            : num_threads_{num_threads},
-              partial_sums_{partial_sums},
-              parallel_policy_{parallel_policy},
-              local_state_{local_state},
-              d_first_{d_first},
-              binary_operation_{binary_operation},
-              unary_operation_{unary_operation}
-          { }
-
-          template <typename Executor>
-          void operator()(int const thread_index, Executor& executor)
-          {
-            auto d_page_first = d_first_;
-
-            for (auto data_block_index = std::size_t{0u}; data_block_index < local_state_.data_block_index(); ++data_block_index)
-              for (auto page_index = std::size_t{0u}; page_index < local_state.num_pages(); ++page_index)
-              {
-                auto const first = std::begin(local_state_.page_range(std::make_pair(data_block_index, page_index)));
-                auto d_iter = d_page_first;
-                auto is_called = false;
-                auto const page_range_index = local_state.page_range_index(std::make_pair(data_block_index, page_index));
-
-                using difference_type
-                  = typename std::iterator_traits<typename std::remove_cv<decltype(first)>::type>::difference_type;
-                ::ket::utility::loop_n_in_execute(
-                  parallel_policy_,
-                  boost::size(local_state_.page_range(std::make_pair(data_block_index, page_index))), thread_index,
-                  [page_range_index, first, &d_iter, &is_called, this](
-                    difference_type const n, int const thread_index)
-                  {
-                    auto const partial_sums_index = this->num_threads_ * page_range_index + thread_index;
-                    if (not is_called)
-                    {
-                      std::advance(d_iter, n);
-                      this->partial_sums_[partial_sums_index] = this->unary_operation_(first[n]);
-                      is_called = true;
-                    }
-                    else
-                      this->partial_sums_[partial_sums_index]
-                        = this->binary_operation_(
-                            this->partial_sums_[partial_sums_index], this->unary_operation_(first[n]));
-
-                    *d_iter++ = this->partial_sums_[patial_sums_index];
-                  });
-
-                std::advance(d_page_first, boost::size(local_state_.page_range(std::make_pair(data_block_index, page_index))));
-              }
-
-            post_process(
-              parallel_policy_, local_state_, d_first_, binary_operation_,
-              partial_sums_, thread_index, executor);
-          }
-        }; // struct process_in_execute<PartialSums, ParallelPolicy, LocalState, ForwardIterator, BinaryOperation, UnaryOperation>
-
-        template <
-          typename PartialSums, typename ParallelPolicy,
-          typename LocalState, typename ForwardIterator,
-          typename BinaryOperation, typename UnaryOperation>
-        static process_in_execute<PartialSums, ParallelPolicy, LocalState, ForwardIterator, BinaryOperation, UnaryOperation>
-        make_process_in_execute(
-          unsigned int num_threads, PartialSums& partial_sums,
-          ParallelPolicy parallel_policy,
-          LocalState& local_state, ForwardIterator d_first,
-          BinaryOperation binary_operation, UnaryOperation unary_operation)
-        {
-          using result_type
-            = process_in_execute<PartialSums, ParallelPolicy, LocalState, ForwardIterator, BinaryOperation, UnaryOperation>;
-          return result_type{
-            num_threads, partial_sums, parallel_policy, local_state, d_first, binary_operation, unary_operation};
-        }
-
-        template <
-          typename PartialSums, typename ParallelPolicy,
-          typename LocalState, typename ForwardIterator,
-          typename BinaryOperation, typename UnaryOperation, typename Complex>
-        class process_in_execute_with_initial_value
-        {
-          unsigned int num_threads_;
-          PartialSums& partial_sums_;
-          ParallelPolicy parallel_policy_;
-          LocalState& local_state_;
-          ForwardIterator d_first_;
-          BinaryOperation binary_operation_;
-          UnaryOperation unary_operation_;
-          Complex initial_value_;
-
-         public:
-          process_in_execute_with_initial_value(
-            unsigned int num_threads, PartialSums& partial_sums,
-            ParallelPolicy parallel_policy,
-            LocalState& local_state, ForwardIterator d_first,
-            BinaryOperation binary_operation, UnaryOperation unary_operation,
-            Complex initial_value)
-            : num_threads_{num_threads},
-              partial_sums_{partial_sums},
-              parallel_policy_{parallel_policy},
-              local_state_{local_state},
-              d_first_{d_first},
-              binary_operation_{binary_operation},
-              unary_operation_{unary_operation},
-              initial_value_{initial_value}
-          { }
-
-          template <typename Executor>
-          void operator()(int const thread_index, Executor& executor)
-          {
-            auto d_page_first = d_first_;
-
-            for (auto data_block_index = std::size_t{0u}; data_block_index < local_state_.num_data_blocks(); ++data_block_index)
-              for (auto page_index = std::size_t{0u}; page_index < local_state.num_pages(); ++page_index)
-              {
-                auto const first = std::begin(local_state_.page_range(std::make_pair(data_block_index, page_index)));
-                auto d_iter = d_page_first;
-                auto is_called = false;
-                auto const page_range_index = local_state.page_range_index(std::make_pair(data_block_index, page_index));
-
-                using difference_type
-                  = typename std::iterator_traits<typename std::remove_cv<decltype(first)>::type>::difference_type;
-                ::ket::utility::loop_n_in_execute(
-                  parallel_policy_,
-                  boost::size(local_state_.page_range(std::make_pair(data_block_index, page_index))), thread_index,
-                  [page_range_index, first, &d_iter, &is_called, this](
-                    difference_type const n, int const thread_index)
-                  {
-                    auto const partial_sums_index = this->num_threads_ * page_range_index + thread_index;
-                    if (not is_called)
-                    {
-                      std::advance(d_iter, n);
-                      this->partial_sums_[partial_sums_index]
-                        = thread_index == 0
-                          ? this->binary_operation_(this->initial_value_, this->unary_operation_(first[n]))
-                          : this->unary_operation_(first[n]);
-                      is_called = true;
-                    }
-                    else
-                      this->partial_sums_[partial_sums_index]
-                        = this->binary_operation_(this->partial_sums_[partial_sums_index], this->unary_operation_(first[n]));
-
-                    *d_iter++ = this->partial_sums_[partial_sums_index];
-                  });
-
-                std::advance(d_page_first, boost::size(local_state_.page_range(std::make_pair(data_block_index, page_index))));
-              }
-
-            post_process(
-              parallel_policy_, local_state_, d_first_, binary_operation_,
-              partial_sums_, thread_index, executor);
-          }
-        }; // struct process_in_execute_with_initial_value<PartialSums, ParallelPolicy, LocalState, ForwardIterator, BinaryOperation, UnaryOperation, Complex>
-
-        template <
-          typename PartialSums, typename ParallelPolicy,
-          typename LocalState, typename ForwardIterator,
-          typename BinaryOperation, typename UnaryOperation, typename Complex>
-        static process_in_execute_with_initial_value<
-          PartialSums, ParallelPolicy, LocalState, ForwardIterator, BinaryOperation, UnaryOperation, Complex>
-        make_process_in_execute_with_initial_value(
-          unsigned int num_threads, PartialSums& partial_sums,
-          ParallelPolicy parallel_policy,
-          LocalState& local_state, ForwardIterator d_first,
-          BinaryOperation binary_operation, UnaryOperation unary_operation,
-          Complex initial_value)
-        {
-          using result_type
-            = process_in_execute_with_initial_value<
-                PartialSums, ParallelPolicy, LocalState, ForwardIterator, BinaryOperation, UnaryOperation, Complex>;
-          return result_type{
-            num_threads, partial_sums, parallel_policy,
-            local_state, d_first, binary_operation, unary_operation, initial_value};
-        }
-#   endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
-
         template <
           typename ParallelPolicy,
           typename Complex, typename Allocator, typename ForwardIterator,
           typename BinaryOperation, typename UnaryOperation>
-        static Complex call(
+        static auto call(
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, has_page_qubits, Allocator> const& local_state,
           ForwardIterator d_first,
           BinaryOperation binary_operation, UnaryOperation unary_operation,
           yampi::environment const&)
+        -> Complex
         {
           auto const num_pages = local_state.num_pages();
           auto const num_data_blocks = local_state.num_data_blocks();
           auto const num_threads = static_cast<unsigned int>(::ket::utility::num_threads(parallel_policy));
           auto partial_sums = std::vector<Complex>(num_threads * num_data_blocks * num_pages);
 
-#   ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           ::ket::utility::execute(
             parallel_policy,
-            [num_data_blocks, num_threads, &partial_sums,
+            [num_pages, num_data_blocks, num_threads, &partial_sums,
              parallel_policy, &local_state, d_first, binary_operation, unary_operation](
               int const thread_index, auto& executor)
             {
@@ -1401,17 +1221,19 @@ namespace ket
               for (auto data_block_index = std::size_t{0u}; data_block_index < num_data_blocks; ++data_block_index)
                 for (auto page_index = std::size_t{0u}; page_index < num_pages; ++page_index)
                 {
-                  auto const first = std::begin(local_state.page_range(std::make_pair(data_block_index, page_index)));
+                  auto const& page_range = local_state.page_range(std::make_pair(data_block_index, page_index));
+                  using std::begin;
+                  using std::end;
+                  auto const first = begin(page_range);
+                  auto const page_range_size = std::distance(first, end(page_range));
                   auto d_iter = d_page_first;
                   auto is_called = false;
-                  auto const page_range_index
-                    = local_state.page_range_index(std::make_pair(data_block_index, page_index));
+                  auto const page_range_index = local_state.page_range_index(std::make_pair(data_block_index, page_index));
 
-                  using difference_type
-                    = typename std::iterator_traits<typename std::remove_cv<decltype(first)>::type>::difference_type;
+                  using difference_type = typename std::iterator_traits<std::remove_cv_t<decltype(first)>>::difference_type;
                   ::ket::utility::loop_n_in_execute(
                     parallel_policy,
-                    boost::size(local_state.page_range(std::make_pair(data_block_index, page_index))), thread_index,
+                    page_range_size, thread_index,
                     [page_range_index, first, &d_iter, &is_called, num_threads, &partial_sums,
                      binary_operation, unary_operation](
                       difference_type const n, int const thread_index)
@@ -1430,20 +1252,13 @@ namespace ket
                       *d_iter++ = partial_sums[partial_sums_index];
                     });
 
-                  std::advance(d_page_first, boost::size(local_state.page_range(std::make_pair(data_block_index, page_index))));
+                  std::advance(d_page_first, page_range_size);
                 }
 
               post_process(
                 parallel_policy, local_state, d_first, binary_operation,
                 partial_sums, thread_index, executor);
             });
-#   else // BOOST_NO_CXX14_GENERIC_LAMBDAS
-          ::ket::utility::execute(
-            parallel_policy,
-            make_process_in_execute(
-              num_threads, partial_sums, parallel_policy, local_state, d_first,
-              binary_operation, unary_operation));
-#   endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 
           return partial_sums.back();
         }
@@ -1452,22 +1267,22 @@ namespace ket
           typename ParallelPolicy,
           typename Complex, typename Allocator, typename ForwardIterator,
           typename BinaryOperation, typename UnaryOperation>
-        static Complex call(
+        static auto call(
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, has_page_qubits, Allocator> const& local_state,
           ForwardIterator d_first,
           BinaryOperation binary_operation, UnaryOperation unary_operation,
           Complex const initial_value, yampi::environment const&)
+        -> Complex
         {
           auto const num_pages = local_state.num_pages();
           auto const num_data_blocks = local_state.num_data_blocks();
           auto const num_threads = static_cast<unsigned int>(::ket::utility::num_threads(parallel_policy));
           auto partial_sums = std::vector<Complex>(num_threads * num_data_blocks * num_pages);
 
-#   ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           ::ket::utility::execute(
             parallel_policy,
-            [num_data_blocks, num_threads, &partial_sums,
+            [num_pages, num_data_blocks, num_threads, &partial_sums,
              parallel_policy, &local_state, d_first, binary_operation, unary_operation,
              initial_value](
               int const thread_index, auto& executor)
@@ -1477,17 +1292,19 @@ namespace ket
               for (auto data_block_index = std::size_t{0u}; data_block_index < num_data_blocks; ++data_block_index)
                 for (auto page_index = std::size_t{0u}; page_index < num_pages; ++page_index)
                 {
-                  auto const first = std::begin(local_state.page_range(std::make_pair(data_block_index, page_index)));
+                  auto const& page_range = local_state.page_range(std::make_pair(data_block_index, page_index));
+                  using std::begin;
+                  using std::end;
+                  auto const first = begin(page_range);
+                  auto const page_range_size = std::distance(first, end(page_range));
                   auto d_iter = d_page_first;
                   auto is_called = false;
-                  auto const page_range_index
-                    = local_state.page_range_index(std::make_pair(data_block_index, page_index));
+                  auto const page_range_index = local_state.page_range_index(std::make_pair(data_block_index, page_index));
 
-                  using difference_type
-                    = typename std::iterator_traits<typename std::remove_cv<decltype(first)>::type>::difference_type;
+                  using difference_type = typename std::iterator_traits<std::remove_cv_t<decltype(first)>>::difference_type;
                   ::ket::utility::loop_n_in_execute(
                     parallel_policy,
-                    boost::size(local_state.page_range(std::make_pair(data_block_index, page_index))), thread_index,
+                    page_range_size, thread_index,
                     [page_range_index, first, &d_iter, &is_called, num_threads, &partial_sums,
                      binary_operation, unary_operation, initial_value](
                       difference_type const n, int const thread_index)
@@ -1509,20 +1326,13 @@ namespace ket
                       *d_iter++ = partial_sums[partial_sums_index];
                     });
 
-                  std::advance(d_page_first, boost::size(local_state.page_range(std::make_pair(data_block_index, page_index))));
+                  std::advance(d_page_first, page_range_size);
                 }
 
               post_process(
                 parallel_policy, local_state, d_first, binary_operation,
                 partial_sums, thread_index, executor);
             });
-#   else // BOOST_NO_CXX14_GENERIC_LAMBDAS
-          ::ket::utility::execute(
-            parallel_policy,
-            make_process_in_execute_with_initial_value(
-              num_threads, partial_sums, parallel_policy, local_state, d_first,
-              binary_operation, unary_operation, initial_value));
-#   endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 
           return partial_sums.back();
         }
@@ -1532,12 +1342,13 @@ namespace ket
           typename ParallelPolicy,
           typename Complex, typename Allocator, typename ForwardIterator,
           typename BinaryOperation, typename Executor>
-        static void post_process(
+        static auto post_process(
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, has_page_qubits, Allocator>& local_state,
           ForwardIterator d_first, BinaryOperation binary_operation,
           std::vector<Complex>& partial_sums, int const thread_index,
           Executor& executor)
+        -> void
         {
           ::ket::utility::barrier(parallel_policy, executor);
 
@@ -1545,9 +1356,9 @@ namespace ket
             parallel_policy, executor,
             [&partial_sums, binary_operation]
             {
-              std::partial_sum(
-                std::begin(partial_sums), std::end(partial_sums),
-                std::begin(partial_sums), binary_operation);
+              using std::begin;
+              using std::end;
+              std::partial_sum(begin(partial_sums), end(partial_sums), begin(partial_sums), binary_operation);
             });
 
           auto d_page_first = d_first;
@@ -1559,17 +1370,20 @@ namespace ket
           for (auto data_block_index = std::size_t{0u}; data_block_index < num_data_blocks; ++data_block_index)
             for (auto page_index = std::size_t{0u}; page_index < num_pages; ++page_index)
             {
+              auto const& page_range = local_state.page_range(std::make_pair(data_block_index, page_index));
+              using std::begin;
+              using std::end;
+              auto const page_range_size = std::distance(begin(page_range), end(page_range));
               auto d_iter = d_page_first;
               auto is_called = false;
-              auto const page_range_index
-                = local_state.page_range_index(std::make_pair(data_block_index, page_index));
+              auto const page_range_index = local_state.page_range_index(std::make_pair(data_block_index, page_index));
 
-              using page_range_type = typename local_state_type::page_range_type;
-              using page_iterator = typename boost::range_iterator<page_range_type>::type;
+              using page_range_type = typename ::ket::mpi::state<Complex, has_page_qubits, Allocator>::page_range_type;
+              using page_iterator = ::ket::utility::meta::iterator_t<page_range_type>;
               using difference_type = typename std::iterator_traits<page_iterator>::difference_type;
               ::ket::utility::loop_n_in_execute(
                 parallel_policy,
-                boost::size(local_state.page_range(std::make_pair(data_block_index, page_index))), thread_index,
+                page_range_size, thread_index,
                 [page_range_index, &d_iter, &is_called,
                  num_threads, &partial_sums, binary_operation](
                   difference_type const n, int const thread_index)
@@ -1589,7 +1403,7 @@ namespace ket
                   ++d_iter;
                 });
 
-              std::advance(d_page_first, boost::size(local_state.page_range(std::make_pair(data_block_index, page_index))));
+              std::advance(d_page_first, page_range_size);
             }
         }
 # else // KET_USE_PARALLEL_EXECUTE_FOR_TRANSFORM_INCLUSIVE_SCAN
@@ -1597,12 +1411,13 @@ namespace ket
           typename ParallelPolicy,
           typename Complex, typename Allocator, typename ForwardIterator,
           typename BinaryOperation, typename UnaryOperation>
-        static Complex call(
+        static auto call(
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, has_page_qubits, Allocator> const& local_state,
           ForwardIterator const d_first,
           BinaryOperation binary_operation, UnaryOperation unary_operation,
           yampi::environment const& environment)
+        -> Complex
         {
           return impl(
             typename std::iterator_traits<ForwardIterator>::iterator_category(),
@@ -1614,12 +1429,13 @@ namespace ket
           typename ParallelPolicy,
           typename Complex, typename Allocator, typename ForwardIterator,
           typename BinaryOperation, typename UnaryOperation>
-        static Complex call(
+        static auto call(
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, has_page_qubits, Allocator> const& local_state,
           ForwardIterator const d_first,
           BinaryOperation binary_operation, UnaryOperation unary_operation,
           Complex const initial_value, yampi::environment const& environment)
+        -> Complex
         {
           return impl(
             typename std::iterator_traits<ForwardIterator>::iterator_category(),
@@ -1632,20 +1448,23 @@ namespace ket
           typename ParallelPolicy,
           typename Complex, typename Allocator, typename ForwardIterator,
           typename BinaryOperation, typename UnaryOperation>
-        static Complex impl(
+        static auto impl(
           std::forward_iterator_tag const,
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, has_page_qubits, Allocator> const& local_state,
           ForwardIterator d_first,
           BinaryOperation binary_operation, UnaryOperation unary_operation,
           yampi::environment const&)
+        -> Complex
         {
           auto prev_d_first = d_first;
+          auto const& page_range = local_state.page_range(std::make_pair(0u, 0u));
           d_first
             = ::ket::utility::ranges::transform_inclusive_scan(
-                parallel_policy,
-                local_state.page_range(std::make_pair(0u, 0u)), d_first, binary_operation, unary_operation);
-          std::advance(prev_d_first, boost::size(local_state.page_range(std::make_pair(0u, 0u))) - 1);
+                parallel_policy, page_range, d_first, binary_operation, unary_operation);
+          using std::begin;
+          using std::end;
+          std::advance(prev_d_first, std::distance(begin(page_range), end(page_range)) - 1);
           auto partial_sum = *prev_d_first;
 
           auto const num_pages = local_state.num_pages();
@@ -1653,14 +1472,13 @@ namespace ket
           for (auto page_range_index = std::size_t{1u}; page_range_index < num_pages * num_data_blocks; ++page_range_index)
           {
             auto const data_block_page_indices = local_state.data_block_page_indices(page_range_index);
+            auto const& page_range = local_state.page_range(data_block_page_indices);
 
             prev_d_first = d_first;
             d_first
               = ::ket::utility::ranges::transform_inclusive_scan(
-                  parallel_policy,
-                  local_state.page_range(data_block_page_indices), d_first,
-                  binary_operation, unary_operation, partial_sum);
-            std::advance(prev_d_first, boost::size(local_state.page_range(data_block_page_indices)) - 1);
+                  parallel_policy, page_range, d_first, binary_operation, unary_operation, partial_sum);
+            std::advance(prev_d_first, std::distance(begin(page_range), end(page_range)) - 1);
             partial_sum = *prev_d_first;
           }
 
@@ -1671,13 +1489,14 @@ namespace ket
           typename ParallelPolicy,
           typename Complex, typename Allocator, typename ForwardIterator,
           typename BinaryOperation, typename UnaryOperation>
-        static Complex impl(
+        static auto impl(
           std::forward_iterator_tag const,
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, has_page_qubits, Allocator> const& local_state,
           ForwardIterator d_first,
           BinaryOperation binary_operation, UnaryOperation unary_operation,
           Complex const initial_value, yampi::environment const&)
+        -> Complex
         {
           auto partial_sum = initial_value;
 
@@ -1686,13 +1505,15 @@ namespace ket
           for (auto data_block_index = std::size_t{0u}; data_block_index < num_data_blocks; ++data_block_index)
             for (auto page_index = std::size_t{0u}; page_index < num_pages; ++page_index)
             {
+              auto const& page_range = local_state.page_range(std::make_pair(data_block_index, page_index));
+
               auto prev_d_first = d_first;
               d_first
                 = ::ket::utility::ranges::transform_inclusive_scan(
-                    parallel_policy,
-                    local_state.page_range(std::make_pair(data_block_index, page_index)), d_first,
-                    binary_operation, unary_operation, partial_sum);
-              std::advance(prev_d_first, boost::size(local_state.page_range(std::make_pair(data_block_index, page_index))) - 1);
+                    parallel_policy, page_range, d_first, binary_operation, unary_operation, partial_sum);
+              using std::begin;
+              using std::end;
+              std::advance(prev_d_first, std::distance(begin(page_range), end(page_range)) - 1);
               partial_sum = *prev_d_first;
             }
 
@@ -1703,13 +1524,14 @@ namespace ket
           typename ParallelPolicy,
           typename Complex, typename Allocator, typename BidirectionalIterator,
           typename BinaryOperation, typename UnaryOperation>
-        static Complex impl(
+        static auto impl(
           std::bidirectional_iterator_tag const,
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, has_page_qubits, Allocator> const& local_state,
           BidirectionalIterator const d_first,
           BinaryOperation binary_operation, UnaryOperation unary_operation,
           yampi::environment const&)
+        -> Complex
         {
           d_first
             = ::ket::utility::ranges::transform_inclusive_scan(
@@ -1738,13 +1560,14 @@ namespace ket
           typename ParallelPolicy,
           typename Complex, typename Allocator, typename BidirectionalIterator,
           typename BinaryOperation, typename UnaryOperation>
-        static Complex impl(
+        static auto impl(
           std::bidirectional_iterator_tag const,
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, has_page_qubits, Allocator> const& local_state,
           BidirectionalIterator const d_first,
           BinaryOperation binary_operation, UnaryOperation unary_operation,
           Complex const initial_value, yampi::environment const&)
+        -> Complex
         {
           auto partial_sum = initial_value;
 
@@ -1770,208 +1593,42 @@ namespace ket
       struct transform_inclusive_scan_self
       {
 # ifdef KET_USE_PARALLEL_EXECUTE_FOR_TRANSFORM_INCLUSIVE_SCAN
-#   ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
-        template <
-          typename PartialSums, typename ParallelPolicy, typename LocalState,
-          typename BinaryOperation, typename UnaryOperation>
-        class process_in_execute
-        {
-          unsigned int num_threads_;
-          PartialSums& partial_sums_;
-          ParallelPolicy parallel_policy_;
-          LocalState& local_state_;
-          BinaryOperation binary_operation_;
-          UnaryOperation unary_operation_;
-
-         public:
-          process_in_execute(
-            unsigned int num_threads, PartialSums& partial_sums,
-            ParallelPolicy parallel_policy, LocalState& local_state,
-            BinaryOperation binary_operation, UnaryOperation unary_operation)
-            : num_threads_{num_threads},
-              partial_sums_{partial_sums},
-              parallel_policy_{parallel_policy},
-              local_state_{local_state},
-              binary_operation_{binary_operation},
-              unary_operation_{unary_operation}
-          { }
-
-          template <typename Executor>
-          void operator()(int const thread_index, Executor& executor)
-          {
-            for (auto data_block_index = std::size_t{0u}; data_block_index < local_state_.num_data_blocks(); ++data_block_index)
-              for (auto page_index = std::size_t{0u}; page_index < local_state.num_pages(); ++page_index)
-              {
-                auto const first = std::begin(local_state_.page_range(std::make_pair(data_block_index, page_index)));
-                auto is_called = false;
-                auto const page_range_index
-                  = local_state.page_range_index(std::make_pair(data_block_index, page_index));
-
-                using difference_type
-                  = typename std::iterator_traits<typename std::remove_cv<decltype(first)>::type>::difference_type;
-                ::ket::utility::loop_n_in_execute(
-                  parallel_policy_,
-                  boost::size(local_state_.page_range(std::make_pair(data_block_index, page_index))), thread_index,
-                  [page_range_index, first, &is_called, this](difference_type const n, int const thread_index)
-                  {
-                    auto const partial_sums_index = this->num_threads_ * page_range_index + thread_index;
-                    if (not is_called)
-                    {
-                      this->partial_sums_[partial_sums_index] = this->unary_operation_(first[n]);
-                      is_called = true;
-                    }
-                    else
-                      this->partial_sums_[partial_sums_index]
-                        = this->binary_operation_(this->partial_sums_[partial_sums_index], this->unary_operation_(first[n]));
-
-                    first[n] = this->partial_sums_[partial_sums_index];
-                  });
-              }
-
-            post_process(
-              parallel_policy_, local_state_, binary_operation_,
-              partial_sums_, thread_index, executor);
-          }
-        }; // struct process_in_execute<PartialSums, ParallelPolicy, LocalState, BinaryOperation, UnaryOperation>
-
-        template <
-          typename PartialSums, typename ParallelPolicy, typename LocalState,
-          typename BinaryOperation, typename UnaryOperation>
-        static process_in_execute<PartialSums, ParallelPolicy, LocalState, BinaryOperation, UnaryOperation>
-        make_process_in_execute(
-          unsigned int num_threads, PartialSums& partial_sums,
-          ParallelPolicy parallel_policy, LocalState& local_state,
-          BinaryOperation binary_operation, UnaryOperation unary_operation)
-        {
-          using result_type
-            = process_in_execute<PartialSums, ParallelPolicy, LocalState, BinaryOperation, UnaryOperation>;
-          return result_type{
-            num_threads, partial_sums, parallel_policy, local_state, binary_operation, unary_operation};
-        }
-
-        template <
-          typename PartialSums, typename ParallelPolicy, typename LocalState,
-          typename BinaryOperation, typename UnaryOperation, typename Complex>
-        class process_in_execute_with_initial_value
-        {
-          unsigned int num_threads_;
-          PartialSums& partial_sums_;
-          ParallelPolicy parallel_policy_;
-          LocalState& local_state_;
-          BinaryOperation binary_operation_;
-          UnaryOperation unary_operation_;
-          Complex initial_value_;
-
-         public:
-          process_in_execute_with_initial_value(
-            unsigned int num_threads, PartialSums& partial_sums,
-            ParallelPolicy parallel_policy, LocalState& local_state,
-            BinaryOperation binary_operation, UnaryOperation unary_operation,
-            Complex initial_value)
-            : num_threads_{num_threads},
-              partial_sums_{partial_sums},
-              parallel_policy_{parallel_policy},
-              local_state_{local_state},
-              binary_operation_{binary_operation},
-              unary_operation_{unary_operation},
-              initial_value_{initial_value}
-          { }
-
-          template <typename Executor>
-          void operator()(int const thread_index, Executor& executor)
-          {
-            for (auto data_block_index = std::size_t{0u}; data_block_index < local_state_.num_data_blocks(); ++data_block_index)
-              for (auto page_index = std::size_t{0u}; page_index < local_state.num_pages(); ++page_index)
-              {
-                auto const first = std::begin(local_state_.page_range(std::make_pair(data_block_index, page_index)));
-                auto is_called = false;
-                auto const page_range_index
-                  = local_state.page_range_index(std::make_pair(data_block_index, page_index));
-
-                using difference_type
-                  = typename std::iterator_traits<typename std::remove_cv<decltype(first)>::type>::difference_type;
-                ::ket::utility::loop_n_in_execute(
-                  parallel_policy_,
-                  boost::size(local_state_.page_range(std::make_pair(data_block_index, page_index))), thread_index,
-                  [page_range_index, first, &is_called, this](difference_type const n, int const thread_index)
-                  {
-                    auto const partial_sums_index = this->num_threads_ * page_range_index + thread_index;
-                    if (not is_called)
-                    {
-                      this->partial_sums_[partial_sums_index]
-                        = page_index == 0 && thread_index == 0
-                          ? this->binary_operation_(this->initial_value_, this->unary_operation_(first[n]))
-                          : this->unary_operation_(first[n]);
-                      is_called = true;
-                    }
-                    else
-                      this->partial_sums_[partial_sums_index]
-                        = this->binary_operation_(this->partial_sums_[partial_sums_index], this->unary_operation_(first[n]));
-
-                    first[n] = this->partial_sums_[partial_sums_index];
-                  });
-              }
-
-            post_process(
-              parallel_policy_, local_state_, binary_operation_,
-              partial_sums_, thread_index, executor);
-          }
-        }; // struct process_in_execute_with_initial_value<PartialSums, ParallelPolicy, LocalState, BinaryOperation, UnaryOperation, Complex>
-
-        template <
-          typename PartialSums, typename ParallelPolicy, typename LocalState,
-          typename BinaryOperation, typename UnaryOperation, typename Complex>
-        static process_in_execute_with_initial_value<
-          PartialSums, ParallelPolicy, LocalState, BinaryOperation, UnaryOperation, Complex>
-        make_process_in_execute_with_initial_value(
-          unsigned int num_threads, PartialSums& partial_sums,
-          ParallelPolicy parallel_policy, LocalState& local_state,
-          BinaryOperation binary_operation, UnaryOperation unary_operation, Complex initial_value)
-        {
-          using result_type
-            = process_in_execute_with_initial_value<
-                PartialSums, ParallelPolicy, LocalState, BinaryOperation, UnaryOperation, Complex>;
-          return result_type{
-            num_threads, partial_sums, parallel_policy,
-            local_state, binary_operation, unary_operation, initial_value};
-        }
-#   endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
-
         template <
           typename ParallelPolicy,
           typename Complex, typename Allocator,
           typename BinaryOperation, typename UnaryOperation>
-        static Complex call(
+        static auto call(
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, has_page_qubits, Allocator>& local_state,
           BinaryOperation binary_operation, UnaryOperation unary_operation,
           yampi::environment const&)
+        -> Complex
         {
           auto const num_threads = static_cast<unsigned int>(::ket::utility::num_threads(parallel_policy));
           auto const num_pages = local_state.num_pages();
           auto const num_data_blocks = local_state.num_data_blocks();
           auto partial_sums = std::vector<Complex>(num_threads * num_data_blocks * num_pages);
 
-#   ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           ::ket::utility::execute(
             parallel_policy,
-            [num_threads, num_data_blocks, &partial_sums,
+            [num_threads, num_pages, num_data_blocks, &partial_sums,
              parallel_policy, &local_state, binary_operation, unary_operation](
               int const thread_index, auto& executor)
             {
               for (auto data_block_index = std::size_t{0u}; data_block_index < num_data_blocks; ++data_block_index)
                 for (auto page_index = std::size_t{0u}; page_index < num_pages; ++page_index)
                 {
-                  auto const first = std::begin(local_state.page_range(std::make_pair(data_block_index, page_index)));
+                  auto const& page_range = local_state.page_range(std::make_pair(data_block_index, page_index));
+                  using std::begin;
+                  auto const first = begin(page_range);
                   bool is_called = false;
-                  auto const page_range_index
-                    = local_state.page_range_index(std::make_pair(data_block_index, page_index));
+                  auto const page_range_index = local_state.page_range_index(std::make_pair(data_block_index, page_index));
 
-                  using difference_type
-                    = typename std::iterator_traits<typename std::remove_cv<decltype(first)>::type>::difference_type;
+                  using difference_type = typename std::iterator_traits<std::remove_cv_t<decltype(first)>>::difference_type;
+                  using std::end;
                   ::ket::utility::loop_n_in_execute(
                     parallel_policy,
-                    boost::size(local_state.page_range(std::make_pair(data_block_index, page_index))), thread_index,
+                    std::distance(first, end(page_range)), thread_index,
                     [page_range_index, first, &is_called, num_threads, &partial_sums,
                      binary_operation, unary_operation](
                       difference_type const n, int const thread_index)
@@ -1994,13 +1651,6 @@ namespace ket
                 parallel_policy, local_state, binary_operation,
                 partial_sums, thread_index, executor);
             });
-#   else // BOOST_NO_CXX14_GENERIC_LAMBDAS
-          ::ket::utility::execute(
-            parallel_policy,
-            make_process_in_execute(
-              num_threads, partial_sums, parallel_policy, local_state,
-              binary_operation, unary_operation));
-#   endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 
           return partial_sums.back();
         }
@@ -2009,21 +1659,21 @@ namespace ket
           typename ParallelPolicy,
           typename Complex, typename Allocator,
           typename BinaryOperation, typename UnaryOperation>
-        static Complex call(
+        static auto call(
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, has_page_qubits, Allocator>& local_state,
           BinaryOperation binary_operation, UnaryOperation unary_operation,
           Complex const initial_value, yampi::environment const&)
+        -> Complex
         {
           auto const num_threads = static_cast<unsigned int>(::ket::utility::num_threads(parallel_policy));
           auto const num_pages = local_state.num_pages();
           auto const num_data_blocks = local_state.num_data_blocks();
           auto partial_sums = std::vector<Complex>(num_threads * num_data_blocks * num_pages);
 
-#   ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
           ::ket::utility::execute(
             parallel_policy,
-            [num_threads, num_data_blocks, &partial_sums,
+            [num_threads, num_pages, num_data_blocks, &partial_sums,
              parallel_policy, &local_state, binary_operation, unary_operation,
              initial_value](
               int const thread_index, auto& executor)
@@ -2031,17 +1681,18 @@ namespace ket
               for (auto data_block_index = std::size_t{0u}; data_block_index < num_data_blocks; ++data_block_index)
                 for (auto page_index = std::size_t{0u}; page_index < num_pages; ++page_index)
                 {
-                  auto const first = std::begin(local_state.page_range(std::make_pair(data_block_index, page_index)));
+                  auto const& page_range = local_state.page_range(std::make_pair(data_block_index, page_index));
+                  using std::begin;
+                  auto const first = begin(page_range);
                   auto is_called = false;
-                  auto const page_range_index
-                    = local_state.page_range_index(std::make_pair(data_block_index, page_index));
+                  auto const page_range_index = local_state.page_range_index(std::make_pair(data_block_index, page_index));
 
-                  using difference_type
-                    = typename std::iterator_traits<typename std::remove_cv<decltype(first)>::type>::difference_type;
+                  using difference_type = typename std::iterator_traits<std::remove_cv_t<decltype(first)>>::difference_type;
+                  using std::end;
                   ::ket::utility::loop_n_in_execute(
                     parallel_policy,
-                    boost::size(local_state.page_range(std::make_pair(data_block_index, page_index))), thread_index,
-                    [page_range_index, first, &is_called, num_threads, &partial_sums,
+                    std::distance(first, end(page_range)), thread_index,
+                    [page_index, page_range_index, first, &is_called, num_threads, &partial_sums,
                      binary_operation, unary_operation, initial_value](
                       difference_type const n, int const thread_index)
                     {
@@ -2066,13 +1717,6 @@ namespace ket
                 parallel_policy, local_state, binary_operation,
                 partial_sums, thread_index, executor);
             });
-#   else // BOOST_NO_CXX14_GENERIC_LAMBDAS
-          ::ket::utility::execute(
-            parallel_policy,
-            make_process_in_execute_with_initial_value(
-              num_threads, partial_sums, parallel_policy, local_state,
-              binary_operation, unary_operation, initial_value));
-#   endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
 
           return partial_sums.back();
         }
@@ -2082,12 +1726,13 @@ namespace ket
           typename ParallelPolicy,
           typename Complex, typename Allocator, typename BinaryOperation,
           typename Executor>
-        static void post_process(
+        static auto post_process(
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, has_page_qubits, Allocator>& local_state,
           BinaryOperation binary_operation,
           std::vector<Complex>& partial_sums, int const thread_index,
           Executor& executor)
+        -> void
         {
           ::ket::utility::barrier(parallel_policy, executor);
 
@@ -2095,9 +1740,9 @@ namespace ket
             parallel_policy, executor,
             [&partial_sums, binary_operation]
             {
-              std::partial_sum(
-                std::begin(partial_sums), std::end(partial_sums),
-                std::begin(partial_sums), binary_operation);
+              using std::begin;
+              using std::end;
+              std::partial_sum(begin(partial_sums), end(partial_sums), begin(partial_sums), binary_operation);
             });
 
           auto const num_threads = static_cast<unsigned int>(::ket::utility::num_threads(parallel_policy));
@@ -2107,15 +1752,16 @@ namespace ket
           for (auto data_block_index = std::size_t{0u}; data_block_index < num_data_blocks; ++data_block_index)
             for (auto page_index = std::size_t{0u}; page_index < num_pages; ++page_index)
             {
-              auto const first = std::begin(local_state.page_range(std::make_pair(data_block_index, page_index)));
-              auto const page_range_index
-                = local_state.page_range_index(std::make_pair(data_block_index, page_index));
+              auto const& page_range = local_state.page_range(std::make_pair(data_block_index, page_index));
+              using std::begin;
+              auto const first = begin(page_range);
+              auto const page_range_index = local_state.page_range_index(std::make_pair(data_block_index, page_index));
 
-              using difference_type
-                = typename std::iterator_traits<typename std::remove_cv<decltype(first)>::type>::difference_type;
+              using difference_type = typename std::iterator_traits<std::remove_cv_t<decltype(first)>>::difference_type;
+              using std::end;
               ::ket::utility::loop_n_in_execute(
                 parallel_policy,
-                boost::size(local_state.page_range(std::make_pair(data_block_index, page_index))), thread_index,
+                std::distance(first, end(page_range)), thread_index,
                 [page_range_index, first, num_threads, &partial_sums, binary_operation](
                   difference_type const n, int const thread_index)
                 {
@@ -2132,18 +1778,21 @@ namespace ket
           typename ParallelPolicy,
           typename Complex, typename Allocator,
           typename BinaryOperation, typename UnaryOperation>
-        static Complex call(
+        static auto call(
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, has_page_qubits, Allocator>& local_state,
           BinaryOperation binary_operation, UnaryOperation unary_operation,
           yampi::environment const&)
+        -> Complex
         {
+          using std::begin;
           ::ket::utility::ranges::transform_inclusive_scan(
             parallel_policy,
             local_state.page_range(std::make_pair(0u, 0u)),
-            std::begin(local_state.page_range(std::make_pair(0u, 0u))),
+            begin(local_state.page_range(std::make_pair(0u, 0u))),
             binary_operation, unary_operation);
-          auto partial_sum = *std::prev(std::end(local_state.page_range(std::make_pair(0u, 0u))));
+          using std::end;
+          auto partial_sum = *std::prev(end(local_state.page_range(std::make_pair(0u, 0u))));
 
           auto const num_pages = local_state.num_pages();
           auto const num_data_blocks = local_state.num_data_blocks();
@@ -2154,9 +1803,9 @@ namespace ket
             ::ket::utility::ranges::transform_inclusive_scan(
               parallel_policy,
               local_state.page_range(data_block_page_indices),
-              std::begin(local_state.page_range(data_block_page_indices)),
+              begin(local_state.page_range(data_block_page_indices)),
               binary_operation, unary_operation, partial_sum);
-            partial_sum = *std::prev(std::end(local_state.page_range(data_block_page_indices)));
+            partial_sum = *std::prev(end(local_state.page_range(data_block_page_indices)));
           }
 
           return partial_sum;
@@ -2166,11 +1815,12 @@ namespace ket
           typename ParallelPolicy,
           typename Complex, typename Allocator,
           typename BinaryOperation, typename UnaryOperation>
-        static Complex call(
+        static auto call(
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, has_page_qubits, Allocator>& local_state,
           BinaryOperation binary_operation, UnaryOperation unary_operation,
           Complex const initial_value, yampi::environment const&)
+        -> Complex
         {
           auto partial_sum = initial_value;
 
@@ -2179,12 +1829,14 @@ namespace ket
           for (auto data_block_index = std::size_t{0u}; data_block_index < num_data_blocks; ++data_block_index)
             for (auto page_index = std::size_t{0u}; page_index < num_pages; ++page_index)
             {
+              using std::begin;
               ::ket::utility::ranges::transform_inclusive_scan(
                 parallel_policy,
                 local_state.page_range(std::make_pair(data_block_index, page_index)),
-                std::begin(local_state.page_range(std::make_pair(data_block_index, page_index))),
+                begin(local_state.page_range(std::make_pair(data_block_index, page_index))),
                 binary_operation, unary_operation, partial_sum);
-              partial_sum = *std::prev(std::end(local_state.page_range(std::make_pair(data_block_index, page_index))));
+              using std::end;
+              partial_sum = *std::prev(end(local_state.page_range(std::make_pair(data_block_index, page_index))));
             }
 
           return partial_sum;
@@ -2197,9 +1849,10 @@ namespace ket
       struct upper_bound
       {
         template <typename Complex, typename Allocator, typename Compare>
-        static typename ::ket::mpi::state<Complex, has_page_qubits, Allocator>::difference_type call(
+        static auto call(
           ::ket::mpi::state<Complex, has_page_qubits, Allocator> const& local_state,
           Complex const& value, Compare compare, yampi::environment const&)
+        -> typename ::ket::mpi::state<Complex, has_page_qubits, Allocator>::difference_type
         {
           auto const num_pages = local_state.num_pages();
           auto const num_data_blocks = local_state.num_data_blocks();
@@ -2209,12 +1862,13 @@ namespace ket
             for (auto page_index = std::size_t{0u}; page_index < num_pages; ++page_index)
             {
               auto const page_range = local_state.page_range(std::make_pair(data_block_index, page_index));
-              if (not compare(value, *std::prev(std::end(page_range))))
+              using std::end;
+              if (not compare(value, *std::prev(end(page_range))))
                 continue;
 
+              using std::begin;
               auto const index_in_page
-                = std::upper_bound(std::begin(page_range), std::end(page_range), value, compare)
-                  - std::begin(page_range);
+                = std::upper_bound(begin(page_range), end(page_range), value, compare) - begin(page_range);
 
               auto const num_nonpage_local_qubits = local_state.num_local_qubits() - local_state.num_page_qubits();
               return static_cast<difference_type>((data_block_index << local_state.num_local_qubits()) bitor (page_index << num_nonpage_local_qubits) bitor index_in_page);
@@ -2287,11 +1941,8 @@ namespace ket
       template <typename BitInteger, typename StateInteger, typename PermutationAllocator>
       state(
         BitInteger const num_local_qubits, StateInteger const initial_integer,
-        ::ket::mpi::qubit_permutation<
-          StateInteger, BitInteger, PermutationAllocator> const&
-          permutation,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment)
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, PermutationAllocator> const& permutation,
+        yampi::communicator const& communicator, yampi::environment const& environment)
         : data_{generate_initial_data(
             ::ket::mpi::utility::policy::make_simple_mpi(),
             num_local_qubits, initial_integer, permutation, communicator, environment)},
@@ -2302,22 +1953,19 @@ namespace ket
       template <typename MpiPolicy, typename BitInteger, typename StateInteger, typename PermutationAllocator>
       state(
         MpiPolicy const& mpi_policy, BitInteger const num_local_qubits, StateInteger const initial_integer,
-        ::ket::mpi::qubit_permutation<
-          StateInteger, BitInteger, PermutationAllocator> const&
-          permutation,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment)
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, PermutationAllocator> const& permutation,
+        yampi::communicator const& communicator, yampi::environment const& environment)
         : data_{generate_initial_data(
             mpi_policy, num_local_qubits, initial_integer, permutation, communicator, environment)},
           num_local_qubits_{num_local_qubits},
           num_data_blocks_{::ket::mpi::utility::policy::num_data_blocks(mpi_policy, communicator, environment)}
       { }
 
-      void assign(std::initializer_list<value_type> initializer_list)
+      auto assign(std::initializer_list<value_type> initializer_list) -> void
       { assign(initializer_list, 1u); }
 
       template <typename StateInteger>
-      void assign(std::initializer_list<value_type> initializer_list, StateInteger const num_data_blocks)
+      auto assign(std::initializer_list<value_type> initializer_list, StateInteger const num_data_blocks) -> void
       {
         data_.assign(initializer_list);
         num_local_qubits_ = ::ket::utility::integer_log2(initializer_list.size() / num_data_blocks);
@@ -2327,69 +1975,64 @@ namespace ket
       }
 
       template <typename BitInteger, typename StateInteger, typename PermutationAllocator>
-      void assign(
+      auto assign(
         BitInteger const num_local_qubits, StateInteger const initial_integer,
-        ::ket::mpi::qubit_permutation<
-          StateInteger, BitInteger, PermutationAllocator> const&
-          permutation,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment)
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, PermutationAllocator> const& permutation,
+        yampi::communicator const& communicator, yampi::environment const& environment)
+      -> void
       { assign(::ket::mpi::utility::policy::make_simple_mpi(), num_local_qubits, initial_integer, permutation, communicator, environment); }
 
       template <typename MpiPolicy, typename BitInteger, typename StateInteger, typename PermutationAllocator>
-      void assign(
+      auto assign(
         MpiPolicy const& mpi_policy, BitInteger const num_local_qubits, StateInteger const initial_integer,
-        ::ket::mpi::qubit_permutation<
-          StateInteger, BitInteger, PermutationAllocator> const&
-          permutation,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment)
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, PermutationAllocator> const& permutation,
+        yampi::communicator const& communicator, yampi::environment const& environment)
+      -> void
       {
         initialize_data(data_, mpi_policy, num_local_qubits, initial_integer, permutation, communicator, environment);
         num_local_qubits_ = num_local_qubits;
         num_data_blocks_ = ::ket::mpi::utility::policy::num_data_blocks(mpi_policy, communicator, environment);
       }
 
-      std::size_t num_local_qubits() const { return num_local_qubits_; }
-      std::size_t num_data_blocks() const { return num_data_blocks_; }
+      auto num_local_qubits() const -> std::size_t { return num_local_qubits_; }
+      auto num_data_blocks() const -> std::size_t { return num_data_blocks_; }
 
-      bool operator==(state const& other) const { return data_ == other.data_; }
-      bool operator<(state const& other) const { return data_ < other.data_; }
+      auto operator==(state const& other) const -> bool { return data_ == other.data_; }
+      auto operator<(state const& other) const -> bool { return data_ < other.data_; }
 
       // Element access
-      reference at(size_type const position) { return data_.at(position); }
-      const_reference at(size_type const position) const { return data_.at(position); }
-      reference operator[](size_type const position) { return data_[position]; }
-      const_reference operator[](size_type const position) const { return data_[position]; }
-      reference front() { return data_.front(); }
-      const_reference front() const { return data_.front(); }
-      reference back() { return data_.back(); }
-      const_reference back() const { return data_.back(); }
+      auto at(size_type const position) -> reference { return data_.at(position); }
+      auto at(size_type const position) const -> const_reference { return data_.at(position); }
+      auto operator[](size_type const position) -> reference { return data_[position]; }
+      auto operator[](size_type const position) const -> const_reference { return data_[position]; }
+      auto front() -> reference { return data_.front(); }
+      auto front() const -> const_reference { return data_.front(); }
+      auto back() -> reference { return data_.back(); }
+      auto back() const -> const_reference { return data_.back(); }
 
       // Iterators
-      iterator begin() noexcept { return data_.begin(); }
-      const_iterator begin() const noexcept { return data_.begin(); }
-      const_iterator cbegin() const noexcept { return data_.cbegin(); }
-      iterator end() noexcept { return data_.end(); }
-      const_iterator end() const noexcept { return data_.end(); }
-      const_iterator cend() const noexcept { return data_.cend(); }
-      reverse_iterator rbegin() noexcept { return data_.rbegin(); }
-      const_reverse_iterator rbegin() const noexcept { return data_.rbegin(); }
-      const_reverse_iterator crbegin() const noexcept { return data_.crbegin(); }
-      reverse_iterator rend() noexcept { return data_.rend(); }
-      const_reverse_iterator rend() const noexcept { return data_.rend(); }
-      const_reverse_iterator crend() const noexcept { return data_.crend(); }
+      auto begin() noexcept -> iterator { return data_.begin(); }
+      auto begin() const noexcept -> const_iterator { return data_.begin(); }
+      auto cbegin() const noexcept -> const_iterator { return data_.cbegin(); }
+      auto end() noexcept -> iterator { return data_.end(); }
+      auto end() const noexcept -> const_iterator { return data_.end(); }
+      auto cend() const noexcept -> const_iterator { return data_.cend(); }
+      auto rbegin() noexcept -> reverse_iterator { return data_.rbegin(); }
+      auto rbegin() const noexcept -> const_reverse_iterator { return data_.rbegin(); }
+      auto crbegin() const noexcept -> const_reverse_iterator { return data_.crbegin(); }
+      auto rend() noexcept -> reverse_iterator { return data_.rend(); }
+      auto rend() const noexcept -> const_reverse_iterator { return data_.rend(); }
+      auto crend() const noexcept -> const_reverse_iterator { return data_.crend(); }
 
       // Capacity
-      size_type size() const noexcept { return data_.size(); }
-      size_type max_size() const noexcept { return data_.max_size(); } 
-      void reserve(size_type const new_capacity) { data_.reserve(new_capacity); }
-      size_type capacity() const noexcept { return data_.capacity(); }
-      void shrink_to_fit() { data_.shrink_to_fit(); }
+      auto size() const noexcept -> size_type { return data_.size(); }
+      auto max_size() const noexcept -> size_type { return data_.max_size(); } 
+      auto reserve(size_type const new_capacity) -> void { data_.reserve(new_capacity); }
+      auto capacity() const noexcept -> size_type { return data_.capacity(); }
+      auto shrink_to_fit() -> void { data_.shrink_to_fit(); }
 
       // Modifiers
-      void swap(state& other)
-        noexcept(KET_is_nothrow_swappable<data_type>::value)
+      auto swap(state& other) noexcept(KET_is_nothrow_swappable<data_type>::value) -> void
       {
         using std::swap;
         swap(data_, other.data_);
@@ -2397,43 +2040,37 @@ namespace ket
         swap(num_data_blocks_, other.num_data_blocks_);
       }
 
-      data_type& data() { return data_; }
-      data_type const& data() const { return data_; }
+      auto data() -> data_type& { return data_; }
+      auto data() const -> data_type const& { return data_; }
 
      private:
       template <typename MpiPolicy, typename BitInteger, typename StateInteger, typename PermutationAllocator>
-      void initialize_data(
+      auto initialize_data(
         data_type& data,
         MpiPolicy const& mpi_policy, BitInteger const num_local_qubits, StateInteger const initial_integer,
-        ::ket::mpi::qubit_permutation<
-          StateInteger, BitInteger, PermutationAllocator> const&
-          permutation,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment) const
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, PermutationAllocator> const& permutation,
+        yampi::communicator const& communicator, yampi::environment const& environment) const
+      -> void
       {
         data.assign(
           ::ket::utility::integer_exp2<std::size_t>(num_local_qubits)
             * ::ket::mpi::utility::policy::num_data_blocks(mpi_policy, communicator, environment),
           value_type{0});
 
-        using ::ket::mpi::permutate_bits;
         auto const rank_index
           = ::ket::mpi::utility::qubit_value_to_rank_index(
-              mpi_policy, data, permutate_bits(permutation, initial_integer),
-              communicator, environment);
+              mpi_policy, data, ::ket::mpi::permutate_bits(permutation, initial_integer), communicator, environment);
 
         if (communicator.rank(environment) == rank_index.first)
           data[rank_index.second] = value_type{1};
       }
 
       template <typename MpiPolicy, typename BitInteger, typename StateInteger, typename PermutationAllocator>
-      data_type generate_initial_data(
+      auto generate_initial_data(
         MpiPolicy const& mpi_policy, BitInteger const num_local_qubits, StateInteger const initial_integer,
-        ::ket::mpi::qubit_permutation<
-          StateInteger, BitInteger, PermutationAllocator> const&
-          permutation,
-        yampi::communicator const& communicator,
-        yampi::environment const& environment) const
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, PermutationAllocator> const& permutation,
+        yampi::communicator const& communicator, yampi::environment const& environment) const
+      -> data_type
       {
         auto result = data_type{};
         initialize_data(result, mpi_policy, num_local_qubits, initial_integer, permutation, communicator, environment);
@@ -2442,27 +2079,31 @@ namespace ket
     }; // class state<Complex, false, Allocator>
 
     template <typename Complex, bool has_page_qubits, typename Allocator>
-    inline bool operator!=(
+    inline auto operator!=(
       ::ket::mpi::state<Complex, has_page_qubits, Allocator> const& lhs,
       ::ket::mpi::state<Complex, has_page_qubits, Allocator> const& rhs)
+    -> bool
     { return not(lhs == rhs); }
 
     template <typename Complex, bool has_page_qubits, typename Allocator>
-    inline bool operator>(
+    inline auto operator>(
       ::ket::mpi::state<Complex, has_page_qubits, Allocator> const& lhs,
       ::ket::mpi::state<Complex, has_page_qubits, Allocator> const& rhs)
+    -> bool
     { return rhs < lhs; }
 
     template <typename Complex, bool has_page_qubits, typename Allocator>
-    inline bool operator<=(
+    inline auto operator<=(
       ::ket::mpi::state<Complex, has_page_qubits, Allocator> const& lhs,
       ::ket::mpi::state<Complex, has_page_qubits, Allocator> const& rhs)
+    -> bool
     { return not(lhs > rhs); }
 
     template <typename Complex, bool has_page_qubits, typename Allocator>
-    inline bool operator>=(
+    inline auto operator>=(
       ::ket::mpi::state<Complex, has_page_qubits, Allocator> const& lhs,
       ::ket::mpi::state<Complex, has_page_qubits, Allocator> const& rhs)
+    -> bool
     { return not(lhs < rhs); }
 
     template <typename Complex,  bool has_page_qubits, typename Allocator>
@@ -2482,13 +2123,14 @@ namespace ket
         template <
           typename ParallelPolicy, typename Complex, typename Allocator,
           typename StateInteger, typename BitInteger>
-        static void call(
+        static auto call(
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, false, Allocator>& local_state,
           ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit1,
           ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit2,
           StateInteger const num_data_blocks, StateInteger const data_block_size,
           yampi::communicator const& communicator, yampi::environment const& environment)
+        -> void
         {
           ::ket::mpi::utility::detail::swap_permutated_local_qubits(
             parallel_policy, local_state.data(), permutated_qubit1, permutated_qubit2,
@@ -2501,7 +2143,7 @@ namespace ket
       {
         template <
           typename Allocator, typename Complex, typename Allocator_, typename StateInteger>
-        static void call(
+        static auto call(
           ::ket::mpi::state<Complex, false, Allocator>& local_state,
           std::vector<Complex, Allocator_>& buffer,
           StateInteger const data_block_index, StateInteger const data_block_size,
@@ -2509,6 +2151,7 @@ namespace ket
           StateInteger const source_local_last_index,
           yampi::rank const target_rank,
           yampi::communicator const& communicator, yampi::environment const& environment)
+        -> void
         {
           assert(data_block_index < local_state.num_data_blocks());
           assert(data_block_size == ::ket::utility::integer_exp2<std::size_t>(local_state.num_local_qubits()));
@@ -2522,7 +2165,7 @@ namespace ket
         template <
           typename Allocator, typename Complex, typename Allocator_, typename StateInteger,
           typename DerivedDatatype>
-        static void call(
+        static auto call(
           ::ket::mpi::state<Complex, false, Allocator>& local_state,
           std::vector<Complex, Allocator_>& buffer,
           StateInteger const data_block_index, StateInteger const data_block_size,
@@ -2530,6 +2173,7 @@ namespace ket
           StateInteger const source_local_last_index,
           yampi::datatype_base<DerivedDatatype> const& datatype, yampi::rank const target_rank,
           yampi::communicator const& communicator, yampi::environment const& environment)
+        -> void
         {
           assert(data_block_index < local_state.num_data_blocks());
           assert(data_block_size == ::ket::utility::integer_exp2<std::size_t>(local_state.num_local_qubits()));
@@ -2544,15 +2188,13 @@ namespace ket
       template <>
       struct for_each_local_range<false>
       {
-        template <
-          typename MpiPolicy,
-          typename Complex, typename Allocator,
-          typename Function>
-        static ::ket::mpi::state<Complex, false, Allocator>& call(
+        template <typename MpiPolicy, typename Complex, typename Allocator, typename Function>
+        static auto call(
           MpiPolicy const& mpi_policy,
           ::ket::mpi::state<Complex, false, Allocator>& local_state,
           yampi::communicator const& communicator, yampi::environment const& environment,
           Function&& function)
+        -> ::ket::mpi::state<Complex, false, Allocator>&
         {
           ::ket::mpi::utility::for_each_local_range(
             mpi_policy, local_state.data(),
@@ -2561,15 +2203,13 @@ namespace ket
           return local_state;
         }
 
-        template <
-          typename MpiPolicy,
-          typename Complex, typename Allocator,
-          typename Function>
-        static ::ket::mpi::state<Complex, false, Allocator> const& call(
+        template <typename MpiPolicy, typename Complex, typename Allocator, typename Function>
+        static auto call(
           MpiPolicy const& mpi_policy,
           ::ket::mpi::state<Complex, false, Allocator> const& local_state,
           yampi::communicator const& communicator, yampi::environment const& environment,
           Function&& function)
+        -> ::ket::mpi::state<Complex, false, Allocator> const&
         {
           ::ket::mpi::utility::for_each_local_range(
             mpi_policy, local_state.data(),
@@ -2583,11 +2223,12 @@ namespace ket
       struct swap_local_data<false>
       {
         template <typename Complex, typename Allocator, typename StateInteger>
-        static void call(
+        static auto call(
           ::ket::mpi::state<Complex, false, Allocator>& local_state,
           StateInteger const data_block_index1, StateInteger const local_first_index1, StateInteger const local_last_index1,
           StateInteger const data_block_index2, StateInteger const local_first_index2,
           StateInteger const data_block_size)
+        -> void
         {
           ::ket::mpi::utility::detail::swap_local_data(
             local_state.data(),
@@ -2605,19 +2246,17 @@ namespace ket
           typename Complex, typename Allocator,
           typename StateInteger, typename BitInteger,
           std::size_t num_local_control_qubits, typename Function>
-        static void call(
+        static auto call(
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, false, Allocator>& local_state,
           StateInteger const data_block_index, StateInteger const data_block_size,
           StateInteger const last_local_qubit_value,
-          std::array<
-            ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >,
-            num_local_control_qubits> local_permutated_control_qubits,
+          std::array< ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >, num_local_control_qubits > const& local_permutated_control_qubits,
           Function&& function)
+        -> void
         {
-          using data_type = typename std::remove_cv<typename std::remove_reference<decltype(local_state.data())>::type>::type;
-          using for_each_in_diagonal_loop_type
-            = ::ket::mpi::utility::dispatch::for_each_in_diagonal_loop<data_type>;
+          using data_type = std::remove_cv_t<std::remove_reference_t<decltype(local_state.data())>>;
+          using for_each_in_diagonal_loop_type = ::ket::mpi::utility::dispatch::for_each_in_diagonal_loop<data_type>;
           for_each_in_diagonal_loop_type::call(
             parallel_policy, local_state.data(),
             data_block_index, data_block_size, last_local_qubit_value,
@@ -2633,12 +2272,13 @@ namespace ket
           typename ParallelPolicy,
           typename Complex, typename Allocator, typename ForwardIterator,
           typename BinaryOperation, typename UnaryOperation>
-        static Complex call(
+        static auto call(
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, false, Allocator> const& local_state,
           ForwardIterator const d_first,
           BinaryOperation binary_operation, UnaryOperation unary_operation,
           yampi::environment const& environment)
+        -> Complex
         {
           return ::ket::mpi::utility::transform_inclusive_scan(
             parallel_policy,
@@ -2650,12 +2290,13 @@ namespace ket
           typename ParallelPolicy,
           typename Complex, typename Allocator, typename ForwardIterator,
           typename BinaryOperation, typename UnaryOperation>
-        static Complex call(
+        static auto call(
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, false, Allocator> const& local_state,
           ForwardIterator const d_first,
           BinaryOperation binary_operation, UnaryOperation unary_operation,
           Complex const initial_value, yampi::environment const& environment)
+        -> Complex
         {
           return ::ket::mpi::utility::transform_inclusive_scan(
             parallel_policy,
@@ -2671,11 +2312,12 @@ namespace ket
           typename ParallelPolicy,
           typename Complex, typename Allocator,
           typename BinaryOperation, typename UnaryOperation>
-        static Complex call(
+        static auto call(
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, false, Allocator>& local_state,
           BinaryOperation binary_operation, UnaryOperation unary_operation,
           yampi::environment const& environment)
+        -> Complex
         {
           return ::ket::mpi::utility::transform_inclusive_scan_self(
             parallel_policy,
@@ -2687,11 +2329,12 @@ namespace ket
           typename ParallelPolicy,
           typename Complex, typename Allocator,
           typename BinaryOperation, typename UnaryOperation>
-        static Complex call(
+        static auto call(
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, false, Allocator>& local_state,
           BinaryOperation binary_operation, UnaryOperation unary_operation,
           Complex const initial_value, yampi::environment const& environment)
+        -> Complex
         {
           return ::ket::mpi::utility::transform_inclusive_scan_self(
             parallel_policy,
@@ -2704,13 +2347,11 @@ namespace ket
       struct upper_bound<false>
       {
         template <typename Complex, typename Allocator, typename Compare>
-        static typename ::ket::mpi::state<Complex, false, Allocator>::difference_type call(
+        static auto call(
           ::ket::mpi::state<Complex, false, Allocator> const& local_state,
           Complex const& value, Compare compare, yampi::environment const& environment)
-        {
-          return ::ket::mpi::utility::upper_bound(
-            local_state.data(), value, compare, environment);
-        }
+        -> typename ::ket::mpi::state<Complex, false, Allocator>::difference_type
+        { return ::ket::mpi::utility::upper_bound(local_state.data(), value, compare, environment); }
       }; // struct upper_bound<false>
     } // namespace state_detail
 
@@ -2719,31 +2360,35 @@ namespace ket
       template <
         typename StateInteger, typename BitInteger,
         typename Complex, typename Allocator>
-      inline constexpr bool is_on_page(
+      inline constexpr auto is_on_page(
         ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit,
         ::ket::mpi::state<Complex, false, Allocator> const& local_state)
+      -> bool
       { return false; }
 
       template <
         typename StateInteger, typename BitInteger,
         typename Complex, typename Allocator>
-      inline constexpr bool is_on_page(
+      inline constexpr auto is_on_page(
         ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit,
         ::ket::mpi::state<Complex, false, Allocator> const& local_state)
+      -> bool
       { return false; }
 
       template <
         typename StateInteger, typename BitInteger, typename Complex, typename Allocator>
-      inline bool is_on_page(
+      inline auto is_on_page(
         ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit,
         ::ket::mpi::state<Complex, true, Allocator> const& local_state)
+      -> bool
       { return ::ket::mpi::is_page_qubit(permutated_qubit, local_state); }
 
       template <
         typename StateInteger, typename BitInteger, typename Complex, typename Allocator>
-      inline bool is_on_page(
+      inline auto is_on_page(
         ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit,
         ::ket::mpi::state<Complex, true, Allocator> const& local_state)
+      -> bool
       { return ::ket::mpi::is_page_qubit(permutated_control_qubit, local_state); }
     } // namespace page
 
@@ -2758,13 +2403,14 @@ namespace ket
         struct swap_permutated_local_qubits< ::ket::mpi::state<Complex, has_page_qubits, Allocator> >
         {
           template <typename ParallelPolicy, typename StateInteger, typename BitInteger>
-          static void call(
+          static auto call(
             ParallelPolicy const parallel_policy,
             ::ket::mpi::state<Complex, has_page_qubits, Allocator>& local_state,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit1,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit2,
             StateInteger const num_data_blocks, StateInteger const data_block_size,
             yampi::communicator const& communicator, yampi::environment const& environment)
+          -> void
           {
             ::ket::mpi::state_detail::swap_permutated_local_qubits<has_page_qubits>::call(
               parallel_policy, local_state, permutated_qubit1, permutated_qubit2,
@@ -2779,7 +2425,7 @@ namespace ket
         struct interchange_qubits< ::ket::mpi::state<Complex, has_page_qubits, Allocator> >
         {
           template <typename Allocator_, typename StateInteger>
-          static void call(
+          static auto call(
             ::ket::mpi::state<Complex, has_page_qubits, Allocator>& local_state,
             std::vector<Complex, Allocator_>& buffer,
             StateInteger const data_block_index, StateInteger const data_block_size,
@@ -2787,6 +2433,7 @@ namespace ket
             StateInteger const source_local_last_index,
             yampi::rank const target_rank,
             yampi::communicator const& communicator, yampi::environment const& environment)
+          -> void
           {
             ::ket::mpi::state_detail::interchange_qubits<has_page_qubits>::call(
               local_state, buffer, data_block_index, data_block_size,
@@ -2795,7 +2442,7 @@ namespace ket
           }
 
           template <typename Allocator_, typename StateInteger, typename DerivedDatatype>
-          static void call(
+          static auto call(
             ::ket::mpi::state<Complex, has_page_qubits, Allocator>& local_state,
             std::vector<Complex, Allocator_>& buffer,
             StateInteger const data_block_index, StateInteger const data_block_size,
@@ -2803,6 +2450,7 @@ namespace ket
             StateInteger const source_local_last_index,
             yampi::datatype_base<DerivedDatatype> const& datatype, yampi::rank const target_rank,
             yampi::communicator const& communicator, yampi::environment const& environment)
+          -> void
           {
             ::ket::mpi::state_detail::interchange_qubits<has_page_qubits>::call(
               local_state, buffer, data_block_index, data_block_size,
@@ -2818,27 +2466,27 @@ namespace ket
         struct for_each_local_range< ::ket::mpi::state<Complex, has_page_qubits, Allocator> >
         {
           template <typename MpiPolicy, typename Function>
-          static ::ket::mpi::state<Complex, has_page_qubits, Allocator>& call(
+          static auto call(
             MpiPolicy const& mpi_policy,
             ::ket::mpi::state<Complex, has_page_qubits, Allocator>& local_state,
             yampi::communicator const& communicator, yampi::environment const& environment,
             Function&& function)
+          -> ::ket::mpi::state<Complex, has_page_qubits, Allocator>&
           {
-            using for_each_local_range_type
-              = ::ket::mpi::state_detail::for_each_local_range<has_page_qubits>;
+            using for_each_local_range_type = ::ket::mpi::state_detail::for_each_local_range<has_page_qubits>;
             return for_each_local_range_type::call(
               mpi_policy, local_state, communicator, environment, std::forward<Function>(function));
           }
 
           template <typename MpiPolicy, typename Function>
-          static ::ket::mpi::state<Complex, has_page_qubits, Allocator> const& call(
+          static auto call(
             MpiPolicy const& mpi_policy,
             ::ket::mpi::state<Complex, has_page_qubits, Allocator> const& local_state,
             yampi::communicator const& communicator, yampi::environment const& environment,
             Function&& function)
+          -> ::ket::mpi::state<Complex, has_page_qubits, Allocator> const&
           {
-            using for_each_local_range_type
-              = ::ket::mpi::state_detail::for_each_local_range<has_page_qubits>;
+            using for_each_local_range_type = ::ket::mpi::state_detail::for_each_local_range<has_page_qubits>;
             return for_each_local_range_type::call(
               mpi_policy, local_state, communicator, environment, std::forward<Function>(function));
           }
@@ -2851,14 +2499,14 @@ namespace ket
         struct swap_local_data< ::ket::mpi::state<Complex, has_page_qubits, Allocator> >
         {
           template <typename StateInteger>
-          static void call(
+          static auto call(
             ::ket::mpi::state<Complex, has_page_qubits, Allocator>& local_state,
             StateInteger const data_block_index1, StateInteger const local_first_index1, StateInteger const local_last_index1,
             StateInteger const data_block_index2, StateInteger const local_first_index2,
             StateInteger const data_block_size)
+          -> void
           {
-            using swap_local_data_type
-              = ::ket::mpi::state_detail::swap_local_data<has_page_qubits>;
+            using swap_local_data_type = ::ket::mpi::state_detail::swap_local_data<has_page_qubits>;
             swap_local_data_type::call(
               local_state,
               data_block_index1, local_first_index1, local_last_index1,
@@ -2887,69 +2535,75 @@ namespace ket
           static auto call_begin(
             ::ket::mpi::state<Complex, true, Allocator>& local_state,
             std::vector<Complex, BufferAllocator>&)
-            -> typename boost::range_iterator<decltype(local_state.buffer_range())>::type
-          { return std::begin(local_state.buffer_range()); }
+            -> ::ket::utility::meta::iterator_t<decltype(local_state.buffer_range())>
+          { using std::begin; return begin(local_state.buffer_range()); }
 
           template <typename BufferAllocator>
           static auto call_begin(
             ::ket::mpi::state<Complex, true, Allocator> const& local_state,
             std::vector<Complex, BufferAllocator> const&)
-            -> typename boost::range_iterator<decltype(local_state.buffer_range())>::type
-          { return std::begin(local_state.buffer_range()); }
+            -> ::ket::utility::meta::iterator_t<decltype(local_state.buffer_range())>
+          { using std::begin; return begin(local_state.buffer_range()); }
 
           template <typename BufferAllocator>
           static auto call_end(
             ::ket::mpi::state<Complex, true, Allocator>& local_state,
             std::vector<Complex, BufferAllocator>&)
-            -> typename boost::range_iterator<decltype(local_state.buffer_range())>::type
-          { return std::end(local_state.buffer_range()); }
+            -> ::ket::utility::meta::iterator_t<decltype(local_state.buffer_range())>
+          { using std::end; return end(local_state.buffer_range()); }
 
           template <typename BufferAllocator>
           static auto call_end(
             ::ket::mpi::state<Complex, true, Allocator> const& local_state,
             std::vector<Complex, BufferAllocator> const&)
-            -> typename boost::range_iterator<decltype(local_state.buffer_range())>::type
-          { return std::end(local_state.buffer_range()); }
+            -> ::ket::utility::meta::iterator_t<decltype(local_state.buffer_range())>
+          { using std::end; return end(local_state.buffer_range()); }
         }; // struct buffer_range< ::ket::mpi::state<Complex, true, Allocator> >
 
         template <typename Complex, typename Allocator>
         struct buffer_range< ::ket::mpi::state<Complex, false, Allocator> >
         {
           template <typename BufferAllocator>
-          static boost::iterator_range<typename std::vector<Complex, BufferAllocator>::iterator> call(
+          static auto call(
             ::ket::mpi::state<Complex, false, Allocator>&,
             std::vector<Complex, BufferAllocator>& buffer)
-          { return boost::make_iterator_range(std::begin(buffer), std::end(buffer)); }
+          -> boost::iterator_range<typename std::vector<Complex, BufferAllocator>::iterator>
+          { using std::begin; using std::end; return boost::make_iterator_range(begin(buffer), end(buffer)); }
 
           template <typename BufferAllocator>
-          static boost::iterator_range<typename std::vector<Complex, BufferAllocator>::const_iterator> call(
+          static auto call(
             ::ket::mpi::state<Complex, false, Allocator> const&,
             std::vector<Complex, BufferAllocator> const& buffer)
-          { return boost::make_iterator_range(std::begin(buffer), std::end(buffer)); }
+          -> boost::iterator_range<typename std::vector<Complex, BufferAllocator>::const_iterator>
+          { using std::begin; using std::end; return boost::make_iterator_range(begin(buffer), end(buffer)); }
 
           template <typename BufferAllocator>
-          static typename std::vector<Complex, BufferAllocator>::iterator call_begin(
+          static auto call_begin(
             ::ket::mpi::state<Complex, false, Allocator>&,
             std::vector<Complex, BufferAllocator>& buffer)
-          { return std::begin(buffer); }
+          -> typename std::vector<Complex, BufferAllocator>::iterator
+          { using std::begin; return begin(buffer); }
 
           template <typename BufferAllocator>
-          static typename std::vector<Complex, BufferAllocator>::const_iterator call_begin(
+          static auto call_begin(
             ::ket::mpi::state<Complex, false, Allocator> const&,
             std::vector<Complex, BufferAllocator> const& buffer)
-          { return std::begin(buffer); }
+          -> typename std::vector<Complex, BufferAllocator>::const_iterator
+          { using std::begin; return begin(buffer); }
 
           template <typename BufferAllocator>
-          static typename std::vector<Complex, BufferAllocator>::iterator call_end(
+          static auto call_end(
             ::ket::mpi::state<Complex, false, Allocator>&,
             std::vector<Complex, BufferAllocator> const& buffer)
-          { return std::end(buffer); }
+          -> typename std::vector<Complex, BufferAllocator>::iterator
+          { using std::end; return end(buffer); }
 
           template <typename BufferAllocator>
-          static typename std::vector<Complex, BufferAllocator>::const_iterator call_end(
+          static auto call_end(
             ::ket::mpi::state<Complex, false, Allocator> const&,
             std::vector<Complex, BufferAllocator> const& buffer)
-          { return std::end(buffer); }
+          -> typename std::vector<Complex, BufferAllocator>::const_iterator
+          { using std::end; return end(buffer); }
         }; // struct buffer_range< ::ket::mpi::state<Complex, false, Allocator> >
 
 # ifdef KET_USE_DIAGONAL_LOOP
@@ -2963,15 +2617,14 @@ namespace ket
             typename ParallelPolicy,
             typename StateInteger, typename BitInteger,
             std::size_t num_local_control_qubits, typename Function>
-          static void call(
+          static auto call(
             ParallelPolicy const parallel_policy,
             ::ket::mpi::state<Complex, has_page_qubits, Allocator>& local_state,
             StateInteger const data_block_index, StateInteger const data_block_size,
             StateInteger const last_local_qubit_value,
-            std::array<
-              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >,
-              num_local_control_qubits> const& local_permutated_control_qubits,
+            std::array< ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >, num_local_control_qubits> const& local_permutated_control_qubits,
             Function&& function)
+          -> void
           {
             ::ket::mpi::state_detail::for_each_in_diagonal_loop<has_page_qubits>::call(
               parallel_policy,
@@ -2991,37 +2644,35 @@ namespace ket
           template <
             typename ParallelPolicy, typename ForwardIterator,
             typename BinaryOperation, typename UnaryOperation>
-          static Complex call(
+          static auto call(
             ParallelPolicy const parallel_policy,
             ::ket::mpi::state<Complex, has_page_qubits, Allocator> const& local_state,
             ForwardIterator const d_first,
             BinaryOperation binary_operation, UnaryOperation unary_operation,
             yampi::environment const& environment)
+          -> Complex
           {
-            using transform_inclusive_scan_type
-              = ::ket::mpi::state_detail::transform_inclusive_scan<has_page_qubits>;
+            using transform_inclusive_scan_type = ::ket::mpi::state_detail::transform_inclusive_scan<has_page_qubits>;
             return transform_inclusive_scan_type::call(
               parallel_policy,
-              local_state, d_first, binary_operation, unary_operation,
-              environment);
+              local_state, d_first, binary_operation, unary_operation, environment);
           }
 
           template <
             typename ParallelPolicy, typename ForwardIterator,
             typename BinaryOperation, typename UnaryOperation>
-          static Complex call(
+          static auto call(
             ParallelPolicy const parallel_policy,
             ::ket::mpi::state<Complex, has_page_qubits, Allocator> const& local_state,
             ForwardIterator const d_first,
             BinaryOperation binary_operation, UnaryOperation unary_operation,
             Complex const initial_value, yampi::environment const& environment)
+          -> Complex
           {
-            using transform_inclusive_scan_type
-              = ::ket::mpi::state_detail::transform_inclusive_scan<has_page_qubits>;
+            using transform_inclusive_scan_type = ::ket::mpi::state_detail::transform_inclusive_scan<has_page_qubits>;
             return transform_inclusive_scan_type::call(
               parallel_policy,
-              local_state, d_first, binary_operation, unary_operation,
-              initial_value, environment);
+              local_state, d_first, binary_operation, unary_operation, initial_value, environment);
           }
         }; // struct transform_inclusive_scan< ::ket::mpi::state<Complex, has_page_qubits, Allocator> >
 
@@ -3035,14 +2686,14 @@ namespace ket
           template <
             typename ParallelPolicy,
             typename BinaryOperation, typename UnaryOperation>
-          static Complex call(
+          static auto call(
             ParallelPolicy const parallel_policy,
             ::ket::mpi::state<Complex, has_page_qubits, Allocator>& local_state,
             BinaryOperation binary_operation, UnaryOperation unary_operation,
             yampi::environment const& environment)
+          -> Complex
           {
-            using transform_inclusive_scan_self_type
-              = ::ket::mpi::state_detail::transform_inclusive_scan_self<has_page_qubits>;
+            using transform_inclusive_scan_self_type = ::ket::mpi::state_detail::transform_inclusive_scan_self<has_page_qubits>;
             return transform_inclusive_scan_self_type::call(
               parallel_policy,
               local_state, binary_operation, unary_operation, environment);
@@ -3051,14 +2702,14 @@ namespace ket
           template <
             typename ParallelPolicy,
             typename BinaryOperation, typename UnaryOperation>
-          static Complex call(
+          static auto call(
             ParallelPolicy const parallel_policy,
             ::ket::mpi::state<Complex, has_page_qubits, Allocator>& local_state,
             BinaryOperation binary_operation, UnaryOperation unary_operation,
             Complex const initial_value, yampi::environment const& environment)
+          -> Complex
           {
-            using transform_inclusive_scan_self_type
-              = ::ket::mpi::state_detail::transform_inclusive_scan_self<has_page_qubits>;
+            using transform_inclusive_scan_self_type = ::ket::mpi::state_detail::transform_inclusive_scan_self<has_page_qubits>;
             return transform_inclusive_scan_self_type::call(
               parallel_policy,
               local_state, binary_operation, unary_operation, initial_value, environment);
@@ -3069,16 +2720,15 @@ namespace ket
         struct upper_bound;
 
         template <typename Complex, bool has_page_qubits, typename Allocator>
-        struct upper_bound<
-          ::ket::mpi::state<Complex, has_page_qubits, Allocator> >
+        struct upper_bound< ::ket::mpi::state<Complex, has_page_qubits, Allocator> >
         {
           template <typename Compare>
-          static typename ::ket::mpi::state<Complex, has_page_qubits, Allocator>::difference_type call(
+          static auto call(
             ::ket::mpi::state<Complex, has_page_qubits, Allocator> const& local_state,
             Complex const& value, Compare compare, yampi::environment const& environment)
+          -> typename ::ket::mpi::state<Complex, has_page_qubits, Allocator>::difference_type
           {
-            using upper_bound_type
-              = ::ket::mpi::state_detail::upper_bound<has_page_qubits>;
+            using upper_bound_type = ::ket::mpi::state_detail::upper_bound<has_page_qubits>;
             return upper_bound_type::call(local_state, value, compare, environment);
           }
         }; // struct upper_bound< ::ket::mpi::state<Complex, has_page_qubits, Allocator> >

@@ -1,16 +1,9 @@
 #ifndef KET_MPI_GATE_PAGE_DETAIL_EXPONENTIAL_PAULI_Z2_P_DIAGONAL_HPP
 # define KET_MPI_GATE_PAGE_DETAIL_EXPONENTIAL_PAULI_Z2_P_DIAGONAL_HPP
 
-# include <boost/config.hpp>
-
 # include <cassert>
 # include <iterator>
 # include <utility>
-# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
-#   include <memory>
-# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
-
-# include <boost/range/size.hpp>
 
 # include <ket/qubit.hpp>
 # include <ket/utility/integer_exp2.hpp>
@@ -37,70 +30,16 @@ namespace ket
           namespace exponential_pauli_z2_p_detail
           {
             // 2_p_l: only one qubit of eZZ is on page and the other qubit is local
-# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
-            template <typename Complex, typename StateInteger>
-            struct do_exponential_pauli_z_coeff2_p_l
-            {
-              Complex const* phase_coefficient_ptr_;
-              Complex const* conj_phase_coefficient_ptr_;
-              StateInteger nonpage_permutated_qubit_mask_;
-              StateInteger nonpage_lower_bits_mask_;
-              StateInteger nonpage_upper_bits_mask_;
-
-              do_exponential_pauli_z_coeff2_p_l(
-                Complex const& phase_coefficient, Complex const& conj_phase_coefficient,
-                StateInteger const nonpage_permutated_qubit_mask,
-                StateInteger const nonpage_lower_bits_mask,
-                StateInteger const nonpage_upper_bits_mask) noexcept
-                : phase_coefficient_ptr_{std::addressof(phase_coefficient)},
-                  conj_phase_coefficient_ptr_{std::addressof(conj_phase_coefficient)},
-                  nonpage_permutated_qubit_mask_{nonpage_permutated_qubit_mask},
-                  nonpage_lower_bits_mask_{nonpage_lower_bits_mask},
-                  nonpage_upper_bits_mask_{nonpage_upper_bits_mask}
-              { }
-
-              template <typename Iterator>
-              void operator()(
-                Iterator const zero_first, Iterator const one_first,
-                StateInteger const index_wo_nonpage_qubit, int const) const
-              {
-                auto const zero_index
-                  = ((index_wo_nonpage_qubit bitand nonpage_upper_bits_mask_) << 1u)
-                    bitor (index_wo_nonpage_qubit bitand nonpage_lower_bits_mask_);
-                auto const one_index = zero_index bitor nonpage_permutated_qubit_mask_;
-
-                auto const iter_00 = zero_first + zero_index;
-                auto const iter_01_or_10 = zero_first + one_index;
-                auto const iter_10_or_01 = one_first + zero_index;
-                auto const iter_11 = one_first + one_index;
-
-                *iter_00 *= *phase_coefficient_ptr_;
-                *iter_01_or_10 *= *conj_phase_coefficient_ptr_;
-                *iter_10_or_01 *= *conj_phase_coefficient_ptr_;
-                *iter_11 *= *phase_coefficient_ptr_;
-              }
-            }; // struct do_exponential_pauli_z_coeff2_p_l<Complex, StateInteger>
-
-            template <typename Complex, typename StateInteger>
-            inline ::ket::mpi::gate::page::detail::exponential_pauli_z2_p_detail::do_exponential_pauli_z_coeff2_p_l<Complex, StateInteger>
-            make_do_exponential_pauli_z_coeff2_p_l(
-              Complex const& phase_coefficient, Complex const& conj_phase_coefficient,
-              StateInteger const nonpage_permutated_qubit_mask,
-              StateInteger const nonpage_lower_bits_mask,
-              StateInteger const nonpage_upper_bits_mask)
-            { return {phase_coefficient, conj_phase_coefficient, nonpage_permutated_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask}; }
-# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
-
             template <
               typename ParallelPolicy,
               typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
-            inline ::ket::mpi::state<Complex, true, Allocator>&
-            exponential_pauli_z_coeff2_p_l(
+            inline auto exponential_pauli_z_coeff2_p_l(
               ParallelPolicy const parallel_policy,
               ::ket::mpi::state<Complex, true, Allocator>& local_state,
               Complex const& phase_coefficient,
               ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const page_permutated_qubit,
               ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const nonpage_permutated_qubit)
+            -> ::ket::mpi::state<Complex, true, Allocator>&
             {
               using std::conj;
               auto const conj_phase_coefficient = conj(phase_coefficient);
@@ -112,7 +51,6 @@ namespace ket
               auto const nonpage_lower_bits_mask = nonpage_permutated_qubit_mask - StateInteger{1u};
               auto const nonpage_upper_bits_mask = compl nonpage_lower_bits_mask;
 
-# ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
               return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
                 parallel_policy, local_state, page_permutated_qubit,
                 [&phase_coefficient, &conj_phase_coefficient,
@@ -134,21 +72,13 @@ namespace ket
                   *iter_10_or_01 *= conj_phase_coefficient;
                   *iter_11 *= phase_coefficient;
                 });
-# else // BOOST_NO_CXX14_GENERIC_LAMBDAS
-              return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
-                parallel_policy, local_state, page_permutated_qubit,
-                ::ket::mpi::gate::page::detail::exponential_pauli_z2_p_detail::make_do_exponential_pauli_z_coeff2_p_l(
-                  phase_coefficient, conj_phase_coefficient,
-                  nonpage_permutated_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask));
-# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
             }
 
             // 2_p_u: only one qubit of eZZ is on page and the other qubit is unit
             template <
               typename StateInteger, typename BitInteger, typename NumProcesses,
               typename ParallelPolicy, typename Complex, typename Allocator>
-            inline ::ket::mpi::state<Complex, false, Allocator>&
-            exponential_pauli_z_coeff2_p_u(
+            [[noreturn]] inline auto exponential_pauli_z_coeff2_p_u(
               ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const&,
               ParallelPolicy const,
               ::ket::mpi::state<Complex, false, Allocator>&,
@@ -157,13 +87,13 @@ namespace ket
               ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const,
               yampi::rank const rank,
               ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const)
+            -> ::ket::mpi::state<Complex, false, Allocator>&
             { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"exponential_pauli_z2_p_tu"}; }
 
             template <
               typename StateInteger, typename BitInteger, typename NumProcesses,
               typename ParallelPolicy, typename Complex, typename Allocator>
-            inline ::ket::mpi::state<Complex, true, Allocator>&
-            exponential_pauli_z_coeff2_p_u(
+            inline auto exponential_pauli_z_coeff2_p_u(
               ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
               ParallelPolicy const parallel_policy,
               ::ket::mpi::state<Complex, true, Allocator>& local_state,
@@ -172,6 +102,7 @@ namespace ket
               ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const nonpage_permutated_qubit,
               yampi::rank const rank,
               ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const least_permutated_unit_qubit)
+            -> ::ket::mpi::state<Complex, true, Allocator>&
             {
               using std::conj;
               auto const conj_phase_coefficient = conj(phase_coefficient);
@@ -208,13 +139,14 @@ namespace ket
                     auto const one_page_index = zero_page_index bitor page_permutated_qubit_mask;
 
                     auto const zero_page_range = local_state.page_range(std::make_pair(data_block_index, zero_page_index));
-                    auto const zero_first = std::begin(zero_page_range);
-                    auto const one_first = std::begin(local_state.page_range(std::make_pair(data_block_index, one_page_index)));
+                    using std::begin;
+                    auto const zero_first = begin(zero_page_range);
+                    auto const one_first = begin(local_state.page_range(std::make_pair(data_block_index, one_page_index)));
 
-                    using ::ket::utility::loop_n;
-                    loop_n(
+                    using std::end;
+                    ::ket::utility::loop_n(
                       parallel_policy,
-                      boost::size(zero_page_range),
+                      static_cast<StateInteger>(std::distance(begin(zero_page_range), end(zero_page_range))),
                       [zero_first, one_first, &phase_coefficient, &conj_phase_coefficient](StateInteger const index, int const)
                       {
                         *(zero_first + index) *= phase_coefficient;
@@ -232,13 +164,15 @@ namespace ket
                     auto const one_page_index = zero_page_index bitor page_permutated_qubit_mask;
 
                     auto const zero_page_range = local_state.page_range(std::make_pair(data_block_index, zero_page_index));
-                    auto const zero_first = std::begin(zero_page_range);
-                    auto const one_first = std::begin(local_state.page_range(std::make_pair(data_block_index, one_page_index)));
+                    using std::begin;
+                    auto const zero_first = begin(zero_page_range);
+                    auto const one_first = begin(local_state.page_range(std::make_pair(data_block_index, one_page_index)));
 
-                    using ::ket::utility::loop_n;
-                    loop_n(
+                    using std::begin;
+                    using std::end;
+                    ::ket::utility::loop_n(
                       parallel_policy,
-                      boost::size(zero_page_range),
+                      static_cast<StateInteger>(std::distance(begin(zero_page_range), end(zero_page_range))),
                       [zero_first, one_first, &phase_coefficient, &conj_phase_coefficient](StateInteger const index, int const)
                       {
                         *(zero_first + index) *= conj_phase_coefficient;
@@ -251,63 +185,10 @@ namespace ket
             }
 
             // 2_p_g: only one qubit of eZZ is on page and the other qubit is global
-# ifdef BOOST_NO_CXX14_GENERIC_LAMBDAS
-            template <typename Complex>
-            struct do_exponential_pauli_z_coeff2_p_g0
-            {
-              Complex const* phase_coefficient_ptr_;
-              Complex const* conj_phase_coefficient_ptr_;
-
-              do_exponential_pauli_z_coeff2_p_g0(Complex const& phase_coefficient, Complex const& conj_phase_coefficient) noexcept
-                : phase_coefficient_ptr_{std::addressof(phase_coefficient)},
-                  conj_phase_coefficient_ptr_{std::addressof(conj_phase_coefficient)}
-              { }
-
-              template <typename Iterator, typename StateInteger>
-              void operator()(
-                Iterator const zero_first, Iterator const one_first, StateInteger const index, int const) const
-              {
-                *(zero_first + index) *= *phase_coefficient_ptr_;
-                *(one_first + index) *= *conj_phase_coefficient_ptr_;
-              }
-            }; // struct do_exponential_pauli_z_coeff2_p_g0<Complex>
-
-            template <typename Complex>
-            inline ::ket::mpi::gate::page::detail::exponential_pauli_z2_p_detail::do_exponential_pauli_z_coeff2_p_g0<Complex>
-            make_do_exponential_pauli_z_coeff2_p_g0(Complex const& phase_coefficient, Complex const& conj_phase_coefficient)
-            { return {phase_coefficient, conj_phase_coefficient}; }
-
-            template <typename Complex>
-            struct do_exponential_pauli_z_coeff2_p_g1
-            {
-              Complex const* phase_coefficient_ptr_;
-              Complex const* conj_phase_coefficient_ptr_;
-
-              do_exponential_pauli_z_coeff2_p_g1(Complex const& phase_coefficient, Complex const& conj_phase_coefficient) noexcept
-                : phase_coefficient_ptr_{std::addressof(phase_coefficient)},
-                  conj_phase_coefficient_ptr_{std::addressof(conj_phase_coefficient)}
-              { }
-
-              template <typename Iterator, typename StateInteger>
-              void operator()(
-                Iterator const zero_first, Iterator const one_first, StateInteger const index, int const) const
-              {
-                *(zero_first + index) *= *conj_phase_coefficient_ptr_;
-                *(one_first + index) *= *phase_coefficient_ptr_;
-              }
-            }; // struct do_exponential_pauli_z_coeff2_p_g1<Complex>
-
-            template <typename Complex>
-            inline ::ket::mpi::gate::page::detail::exponential_pauli_z2_p_detail::do_exponential_pauli_z_coeff2_p_g1<Complex>
-            make_do_exponential_pauli_z_coeff2_p_g1(Complex const& phase_coefficient, Complex const& conj_phase_coefficient)
-            { return {phase_coefficient, conj_phase_coefficient}; }
-# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
-
             template <
               typename ParallelPolicy,
               typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
-            inline ::ket::mpi::state<Complex, true, Allocator>&
-            exponential_pauli_z_coeff2_p_g(
+            inline auto exponential_pauli_z_coeff2_p_g(
               ParallelPolicy const parallel_policy,
               ::ket::mpi::state<Complex, true, Allocator>& local_state,
               Complex const& phase_coefficient,
@@ -315,6 +196,7 @@ namespace ket
               ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const nonpage_permutated_qubit,
               ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const least_permutated_global_qubit,
               StateInteger const global_qubit_value)
+            -> ::ket::mpi::state<Complex, true, Allocator>&
             {
               using std::conj;
               auto const conj_phase_coefficient = conj(phase_coefficient);
@@ -325,7 +207,6 @@ namespace ket
               auto const nonpage_permutated_qubit_mask
                 = StateInteger{1u} << (nonpage_permutated_qubit - least_permutated_global_qubit);
 
-# ifndef BOOST_NO_CXX14_GENERIC_LAMBDAS
               if ((global_qubit_value bitand nonpage_permutated_qubit_mask) == StateInteger{0u})
                 return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
                   parallel_policy, local_state, page_permutated_qubit,
@@ -344,16 +225,6 @@ namespace ket
                     *(zero_first + index) *= conj_phase_coefficient;
                     *(one_first + index) *= phase_coefficient;
                   });
-# else // BOOST_NO_CXX14_GENERIC_LAMBDAS
-              if ((global_qubit_value bitand nonpage_permutated_qubit_mask) == StateInteger{0u})
-                return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-                  parallel_policy, local_state, page_permutated_qubit,
-                  ::ket::mpi::gate::page::detail::exponential_pauli_z2_p_detail::make_do_exponential_pauli_z_coeff2_p_g0(phase_coefficient, conj_phase_coefficient));
-              else // nonpage_qubit is |1>
-                return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
-                  parallel_policy, local_state, page_permutated_qubit,
-                  ::ket::mpi::gate::page::detail::exponential_pauli_z2_p_detail::make_do_exponential_pauli_z_coeff2_p_g1(phase_coefficient, conj_phase_coefficient));
-# endif // BOOST_NO_CXX14_GENERIC_LAMBDAS
             }
           } // namespace exponential_pauli_z2_p_detail
 
@@ -361,33 +232,33 @@ namespace ket
             typename MpiPolicy, typename ParallelPolicy,
             typename RandomAccessRange, typename Complex,
             typename StateInteger, typename BitInteger>
-          [[noreturn]] inline RandomAccessRange& exponential_pauli_z_coeff2_p(
+          [[noreturn]] inline auto exponential_pauli_z_coeff2_p(
             MpiPolicy const&, ParallelPolicy const,
             RandomAccessRange& local_state,
             Complex const&,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const,
             yampi::rank const)
+          -> RandomAccessRange&
           { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"exponential_pauli_z2_p"}; }
 
           template <
             typename ParallelPolicy,
             typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
-          [[noreturn]] inline ::ket::mpi::state<Complex, false, Allocator>&
-          exponential_pauli_z_coeff2_p(
+          [[noreturn]] inline auto exponential_pauli_z_coeff2_p(
             ::ket::mpi::utility::policy::simple_mpi const, ParallelPolicy const,
             ::ket::mpi::state<Complex, false, Allocator>& local_state,
             Complex const&,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const,
             yampi::rank const)
+          -> ::ket::mpi::state<Complex, false, Allocator>&
           { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"exponential_pauli_z2_p"}; }
 
           template <
             typename StateInteger, typename BitInteger, typename NumProcesses,
             typename ParallelPolicy, typename Complex, typename Allocator>
-          [[noreturn]] inline ::ket::mpi::state<Complex, false, Allocator>&
-          exponential_pauli_z_coeff2_p(
+          [[noreturn]] inline auto exponential_pauli_z_coeff2_p(
             ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const&,
             ParallelPolicy const,
             ::ket::mpi::state<Complex, false, Allocator>& local_state,
@@ -395,13 +266,13 @@ namespace ket
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const,
             yampi::rank const)
+          -> ::ket::mpi::state<Complex, false, Allocator>&
           { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"exponential_pauli_z2_p"}; }
 
           template <
             typename ParallelPolicy,
             typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
-          inline ::ket::mpi::state<Complex, true, Allocator>&
-          exponential_pauli_z_coeff2_p(
+          inline auto exponential_pauli_z_coeff2_p(
             ::ket::mpi::utility::policy::simple_mpi const mpi_policy,
             ParallelPolicy const parallel_policy,
             ::ket::mpi::state<Complex, true, Allocator>& local_state,
@@ -409,6 +280,7 @@ namespace ket
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const page_permutated_qubit,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const nonpage_permutated_qubit,
             yampi::rank const rank)
+          -> ::ket::mpi::state<Complex, true, Allocator>&
           {
             assert(::ket::mpi::page::is_on_page(page_permutated_qubit, local_state));
             assert(not ::ket::mpi::page::is_on_page(nonpage_permutated_qubit, local_state));
@@ -430,8 +302,7 @@ namespace ket
           template <
             typename StateInteger, typename BitInteger, typename NumProcesses,
             typename ParallelPolicy, typename Complex, typename Allocator>
-          inline ::ket::mpi::state<Complex, true, Allocator>&
-          exponential_pauli_z_coeff2_p(
+          inline auto exponential_pauli_z_coeff2_p(
             ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
             ParallelPolicy const parallel_policy,
             ::ket::mpi::state<Complex, true, Allocator>& local_state,
@@ -439,6 +310,7 @@ namespace ket
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const page_permutated_qubit,
             ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const nonpage_permutated_qubit,
             yampi::rank const rank)
+          -> ::ket::mpi::state<Complex, true, Allocator>&
           {
             assert(::ket::mpi::page::is_on_page(page_permutated_qubit, local_state));
             assert(not ::ket::mpi::page::is_on_page(nonpage_permutated_qubit, local_state));

@@ -6,14 +6,12 @@
 # include <iterator>
 # include <type_traits>
 
-# include <boost/range/size.hpp>
-# include <boost/range/value_type.hpp>
-
 # include <ket/qubit.hpp>
 # include <ket/meta/state_integer_of.hpp>
 # include <ket/meta/bit_integer_of.hpp>
 # include <ket/utility/integer_exp2.hpp>
 # include <ket/utility/meta/real_of.hpp>
+# include <ket/utility/meta/ranges.hpp>
 
 
 namespace ket
@@ -21,7 +19,7 @@ namespace ket
   namespace shor_box_detail
   {
     template <typename StateInteger, typename BitInteger>
-    inline StateInteger reverse_bits(StateInteger const integer, BitInteger const num_bits)
+    inline constexpr auto reverse_bits(StateInteger const integer, BitInteger const num_bits) -> StateInteger
     {
       auto result = StateInteger{0u};
 
@@ -33,22 +31,31 @@ namespace ket
     }
 
     template <typename UnsignedInteger, typename Qubits>
-    inline UnsignedInteger make_filtered_integer(UnsignedInteger const unsigned_integer, Qubits const& qubits)
+    inline auto make_filtered_integer(UnsignedInteger const unsigned_integer, Qubits const& qubits) -> UnsignedInteger
     {
-      auto const num_qubits = boost::size(qubits);
-      auto const qubits_first = std::begin(qubits);
+      static_assert(std::is_unsigned<UnsignedInteger>::value, "UnsignedInteger should be unsigned.");
+
+      using bit_integer_type = ::ket::meta::bit_integer_t< ::ket::utility::meta::range_value_t<Qubits> >;
+      static_assert(std::is_unsigned< ::ket::meta::state_integer_t< ::ket::utility::meta::range_value_t<Qubits> > >::value, "StateInteger should be unsigned");
+      static_assert(std::is_unsigned<bit_integer_type>::value, "BitInteger should be unsigned");
+
+      using std::begin;
+      using std::end;
+      auto const qubits_first = begin(qubits);
+      auto const num_qubits = static_cast<bit_integer_type>(std::distance(qubits_first, end(qubits)));
 
       auto result = UnsignedInteger{0u};
-      for (auto index = decltype(num_qubits){0u}; index < num_qubits; ++index)
+      for (auto index = bit_integer_type{0u}; index < num_qubits; ++index)
         result |= ((unsigned_integer >> index) bitand UnsignedInteger{1u}) << *(qubits_first + index);
 
       return result;
     }
 
     template <typename StateInteger, typename Qubits>
-    inline StateInteger calculate_index(
+    inline auto calculate_index(
       StateInteger const exponent, Qubits const& exponent_qubits,
       StateInteger const modular_exponentiation_value, Qubits const& modular_exponentiation_qubits)
+    -> StateInteger
     {
       return
         ::ket::shor_box_detail::make_filtered_integer(exponent, exponent_qubits)
@@ -60,27 +67,28 @@ namespace ket
   template <
     typename ParallelPolicy,
     typename RandomAccessIterator, typename StateInteger, typename Qubits>
-  inline void shor_box(
+  inline auto shor_box(
     ParallelPolicy const parallel_policy,
     RandomAccessIterator const first, RandomAccessIterator const last,
     StateInteger const base, StateInteger const divisor,
     Qubits const& exponent_qubits, Qubits const& modular_exponentiation_qubits)
+  -> void
   {
-    using qubit_type = typename boost::range_value<Qubits>::type;
-    using bit_integer_type = typename ::ket::meta::bit_integer_of<qubit_type>::type;
+    using qubit_type = ::ket::utility::meta::range_value_t<Qubits>;
+    using bit_integer_type = ::ket::meta::bit_integer_t<qubit_type>;
     static_assert(
-      (std::is_same<
-         StateInteger, typename ::ket::meta::state_integer_of<qubit_type>::type>::value),
+      (std::is_same<StateInteger, ::ket::meta::state_integer_t<qubit_type>>::value),
       "StateInteger should be state_integer_type of qubit_type");
     static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
     static_assert(std::is_unsigned<bit_integer_type>::value, "BitInteger should be unsigned");
 
     using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
-    using real_type = typename ::ket::utility::meta::real_of<complex_type>::type;
-    ::ket::utility::fill(
-      parallel_policy, first, last, complex_type{real_type{0}});
+    using real_type = ::ket::utility::meta::real_t<complex_type>;
+    ::ket::utility::fill(parallel_policy, first, last, complex_type{real_type{0}});
 
-    auto const num_exponent_qubits = static_cast<bit_integer_type>(boost::size(exponent_qubits));
+    using std::begin;
+    using std::end;
+    auto const num_exponent_qubits = static_cast<bit_integer_type>(std::distance(begin(exponent_qubits), end(exponent_qubits)));
     auto const num_exponents = ::ket::utility::integer_exp2<StateInteger>(num_exponent_qubits);
     auto modular_exponentiation_value = StateInteger{1u};
 
@@ -103,21 +111,23 @@ namespace ket
 
     /*
     // preliminary implement of parallel shor box
-    auto const num_exponent_qubits = boost::size(exponent_qubits);
-    auto const num_modular_exponentiation_qubits = boost::size(modular_exponentiation_qubits);
+    using std::begin;
+    using std::end;
+    auto const num_exponent_qubits = static_cast<bit_integer_type>(std::distance(begin(exponent_qubits), end(exponent_qubits)));
+    auto const num_modular_exponentiation_qubits
+      = static_cast<bit_integer_type>(std::distance(begin(modular_exponentiation_qubits), end(modular_exponentiation_qubits)));
 
-    using qubit_type = typename boost::range_value<Qubits>::type;
+    using qubit_type = ::ket::utility::meta::range_value_t<Qubits>;
 
     static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
     static_assert(
-      std::is_unsigned<typename ::ket::meta::bit_integer_of<qubit_type>::type>::value,
+      std::is_unsigned< ::ket::meta::bit_integer_t<qubit_type> >::value,
       "BitInteger should be unsigned");
 
     auto modular_squares = std::vector<StateInteger>{};
     modular_squares.reserve(num_exponent_qubits);
     modular_squares.push_back(base);
-    using ::ket::utility::loop_n;
-    loop_n(
+    ::ket::utility::loop_n(
       ::ket::utility::policy::make_sequential(), num_exponent_qubits - decltype(num_exponent_qubits){1u},
       [&modular_squares, divisor](decltype(num_exponent_qubits) const, int const)
       { modular_squares.push_back((modular_squares.back() * modular_squares.back()) % divisor); });
@@ -125,9 +135,8 @@ namespace ket
     auto modular_exponentiation_values = std::vector<StateInteger>{};
     modular_exponentiation_values.reserve(::ket::utility::num_threads());
 
-    using ::ket::utility::loop_n;
-    loop_n(
-      parallel_policy, static_cast<StateInteger>(boost::size(state)),
+    ::ket::utility::loop_n(
+      parallel_policy, static_cast<StateInteger>(std::distance(begin(state), end(state))),
       [first](StateInteger const index, int const)
       { *(first + index) = complex_type{real_type{0}}; });
 
@@ -136,7 +145,7 @@ namespace ket
     auto const num_exponents = ::ket::utility::integer_exp2<StateInteger>(num_exponent_qubits);
     auto modular_exponentiation_value = StateInteger{1u};
     auto const num_threads = ::ket::utility::num_threads();
-    loop_n(
+    ::ket::utility::loop_n(
       parallel_policy, num_exponents,
       [](StateInteger const exponent, int const thread_index)
       {
@@ -164,15 +173,15 @@ namespace ket
   }
 
   template <typename RandomAccessIterator, typename StateInteger, typename Qubits>
-  inline void shor_box(
+  inline auto shor_box(
     RandomAccessIterator const first, RandomAccessIterator const last,
     StateInteger const base, StateInteger const divisor,
     Qubits const& exponent_qubits, Qubits const& modular_exponentiation_qubits)
+  -> void
   {
     ::ket::shor_box(
       ::ket::utility::policy::make_sequential(),
-      first, last,
-      base, divisor, exponent_qubits, modular_exponentiation_qubits);
+      first, last, base, divisor, exponent_qubits, modular_exponentiation_qubits);
   }
 
   namespace ranges
@@ -180,27 +189,32 @@ namespace ket
     template <
       typename ParallelPolicy,
       typename RandomAccessRange, typename StateInteger, typename Qubits>
-    inline RandomAccessRange& shor_box(
+    inline auto shor_box(
       ParallelPolicy const parallel_policy, RandomAccessRange& state,
       StateInteger const base, StateInteger const divisor,
       Qubits const& exponent_qubits, Qubits const& modular_exponentiation_qubits)
+    -> RandomAccessRange&
     {
+      using std::begin;
+      using std::end;
       ::ket::shor_box(
-        parallel_policy, std::begin(state), std::end(state),
+        parallel_policy, begin(state), end(state),
         base, divisor, exponent_qubits, modular_exponentiation_qubits);
       return state;
     }
 
     template <typename RandomAccessRange, typename StateInteger, typename Qubits>
-    inline RandomAccessRange& shor_box(
+    inline auto shor_box(
       RandomAccessRange& state,
       StateInteger const base, StateInteger const divisor,
       Qubits const& exponent_qubits, Qubits const& modular_exponentiation_qubits)
+    -> RandomAccessRange&
     {
+      using std::begin;
+      using std::end;
       ::ket::shor_box(
         ::ket::utility::policy::make_sequential(),
-        std::begin(state), std::end(state),
-        base, divisor, exponent_qubits, modular_exponentiation_qubits);
+        begin(state), end(state), base, divisor, exponent_qubits, modular_exponentiation_qubits);
       return state;
     }
   } // namespace ranges

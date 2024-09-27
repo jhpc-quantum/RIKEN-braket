@@ -3,11 +3,10 @@
 
 # include <iterator>
 
-# include <boost/range/value_type.hpp>
-
 # include <yampi/environment.hpp>
 
 # include <ket/utility/loop_n.hpp>
+# include <ket/utility/meta/ranges.hpp>
 
 
 namespace ket
@@ -24,31 +23,36 @@ namespace ket
           template <
             typename ParallelPolicy,
             typename LocalState, typename BinaryOperation, typename UnaryOperation>
-          static typename boost::range_value<LocalState>::type call(
+          static auto call(
             ParallelPolicy const parallel_policy, LocalState& local_state,
             BinaryOperation binary_operation, UnaryOperation unary_operation,
             yampi::environment const&)
+          -> ::ket::utility::meta::range_value_t<LocalState>
           {
+            using std::begin;
             ::ket::utility::ranges::transform_inclusive_scan(
-              parallel_policy,
-              local_state, std::begin(local_state), binary_operation, unary_operation);
-            return *std::prev(std::end(local_state));
+              parallel_policy, local_state, begin(local_state), binary_operation, unary_operation);
+
+            using std::end;
+            return *std::prev(end(local_state));
           }
 
           template <
             typename ParallelPolicy,
-            typename LocalState, typename BinaryOperation, typename UnaryOperation,
-            typename Value>
-          static typename boost::range_value<LocalState>::type call(
+            typename LocalState, typename BinaryOperation, typename UnaryOperation, typename Value>
+          static auto call(
             ParallelPolicy const parallel_policy, LocalState& local_state,
             BinaryOperation binary_operation, UnaryOperation unary_operation,
             Value const initial_value, yampi::environment const&)
+          -> ::ket::utility::meta::range_value_t<LocalState>
           {
+            using std::begin;
             ::ket::utility::ranges::transform_inclusive_scan(
               parallel_policy,
-              local_state, std::begin(local_state),
-              binary_operation, unary_operation, initial_value);
-            return *std::prev(std::end(local_state));
+              local_state, begin(local_state), binary_operation, unary_operation, initial_value);
+
+            using std::end;
+            return *std::prev(end(local_state));
           }
         };
       } // namespace dispatch
@@ -56,11 +60,11 @@ namespace ket
       template <
         typename ParallelPolicy,
         typename LocalState, typename BinaryOperation, typename UnaryOperation>
-      inline typename boost::range_value<LocalState>::type
-      transform_inclusive_scan_self(
+      inline auto transform_inclusive_scan_self(
         ParallelPolicy const parallel_policy, LocalState& local_state,
         BinaryOperation binary_operation, UnaryOperation unary_operation,
         yampi::environment const& environment)
+      -> ::ket::utility::meta::range_value_t<LocalState>
       {
         return ::ket::mpi::utility::dispatch::transform_inclusive_scan_self<LocalState>::call(
           parallel_policy,
@@ -70,12 +74,12 @@ namespace ket
       template <
         typename ParallelPolicy,
         typename LocalState, typename BinaryOperation, typename UnaryOperation, typename Value>
-      inline typename boost::range_value<LocalState>::type
-      transform_inclusive_scan_self(
+      inline auto transform_inclusive_scan_self(
         ParallelPolicy const parallel_policy, LocalState& local_state,
         BinaryOperation binary_operation, UnaryOperation unary_operation,
         Value const initial_value,
         yampi::environment const& environment)
+      -> ::ket::utility::meta::range_value_t<LocalState>
       {
         return ::ket::mpi::utility::dispatch::transform_inclusive_scan_self<LocalState>::call(
           parallel_policy,

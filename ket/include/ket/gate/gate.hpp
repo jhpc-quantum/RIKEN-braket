@@ -28,14 +28,14 @@ namespace ket
     namespace gate_detail
     {
       template <typename StateInteger, std::size_t num_operated_qubits>
-      inline void do_make_qubit_masks(std::array<StateInteger, num_operated_qubits>&)
+      inline auto do_make_qubit_masks(std::array<StateInteger, num_operated_qubits>&) -> void
       { }
 
       template <typename StateInteger, std::size_t num_operated_qubits, typename Qubit, typename... Qubits>
-      inline void do_make_qubit_masks(std::array<StateInteger, num_operated_qubits>& result, Qubit&& qubit, Qubits&&... qubits)
+      inline auto do_make_qubit_masks(std::array<StateInteger, num_operated_qubits>& result, Qubit&& qubit, Qubits&&... qubits) -> void
       {
         static_assert(
-          std::is_same<StateInteger, typename ::ket::meta::state_integer_of<typename std::remove_reference<Qubit>::type>::type>::value,
+          std::is_same<StateInteger, ::ket::meta::state_integer_t<std::remove_reference_t<Qubit>>>::value,
           "state_integer_type of Qubit should be the same as StateInteger");
 
         result[num_operated_qubits - 1u - sizeof...(Qubits)] = StateInteger{1u} << qubit;
@@ -43,43 +43,49 @@ namespace ket
       }
 
       template <typename Qubit, typename... Qubits>
-      inline void make_qubit_masks(
-        std::array<typename ::ket::meta::state_integer_of<typename std::remove_reference<Qubit>::type>::type, sizeof...(Qubits) + 1u>& result,
+      inline auto make_qubit_masks(
+        std::array< ::ket::meta::state_integer_t<std::remove_reference_t<Qubit>>, sizeof...(Qubits) + 1u >& result,
         Qubit&& qubit, Qubits&&... qubits)
+      -> void
       {
-        using state_integer_type = typename ::ket::meta::state_integer_of<typename std::remove_reference<Qubit>::type>::type;
+        using state_integer_type = ::ket::meta::state_integer_t<std::remove_reference_t<Qubit>>;
         static_assert(std::is_unsigned<state_integer_type>::value, "state_integer_type of Qubit should be unsigned");
 
         do_make_qubit_masks(result, std::forward<Qubit>(qubit), std::forward<Qubits>(qubits)...);
       }
 
       template <typename Qubit, typename... Qubits>
-      inline void make_index_masks(
-        std::array<typename ::ket::meta::state_integer_of<typename std::remove_reference<Qubit>::type>::type, sizeof...(Qubits) + 2u>& result,
+      inline auto make_index_masks(
+        std::array< ::ket::meta::state_integer_t<std::remove_reference_t<Qubit>>, sizeof...(Qubits) + 2u >& result,
         Qubit&& qubit, Qubits&&... qubits)
+      -> void
       {
-        using state_integer_type = typename ::ket::meta::state_integer_of<typename std::remove_reference<Qubit>::type>::type;
+        using state_integer_type = ::ket::meta::state_integer_t<std::remove_reference_t<Qubit>>;
         static_assert(std::is_unsigned<state_integer_type>::value, "state_integer_type of Qubit should be unsigned");
 
         static constexpr auto num_operated_qubits = sizeof...(Qubits) + 1u;
-        using bit_integer_type = typename ::ket::meta::bit_integer_of<typename std::remove_reference<Qubit>::type>::type;
+        using bit_integer_type = ::ket::meta::bit_integer_t<std::remove_reference_t<Qubit>>;
         using qubit_type = ::ket::qubit<state_integer_type, bit_integer_type>;
         auto sorted_qubits = std::array<qubit_type, num_operated_qubits>{::ket::remove_control(qubit), ::ket::remove_control(qubits)...};
-        std::sort(std::begin(sorted_qubits), std::end(sorted_qubits));
+
+        using std::begin;
+        using std::end;
+        std::sort(begin(sorted_qubits), end(sorted_qubits));
 
         for (auto index = 0u; index < num_operated_qubits; ++index)
           result[index] = (state_integer_type{1u} << (sorted_qubits[index] - index)) - state_integer_type{1u};
         result.back() = compl state_integer_type{0u};
 
-        std::adjacent_difference(std::begin(result), std::end(result), std::begin(result));
+        std::adjacent_difference(begin(result), end(result), begin(result));
       }
 
       template <typename StateInteger, std::size_t num_operated_qubits>
-      inline void make_indices(
+      inline auto make_indices(
         std::array<StateInteger, ::ket::utility::integer_exp2<std::size_t>(num_operated_qubits)>& result,
         StateInteger const index_wo_qubits,
         std::array<StateInteger, num_operated_qubits> const& qubit_masks,
         std::array<StateInteger, num_operated_qubits + 1u> const& index_masks)
+      -> void
       {
         // xx0xx0xx0xx
         result[0u] = StateInteger{0u};
@@ -118,21 +124,19 @@ namespace ket
     //     { std::iter_swap(first + indices[0b10u], first + indices[0b11u]); },
     //     target_qubit, control_qubit);
     template <typename ParallelPolicy, typename RandomAccessIterator, typename Function, typename Qubit, typename... Qubits>
-    inline void gate(
+    inline auto gate(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Function&& function, Qubit&& qubit, Qubits&&... qubits)
+    -> void
     {
-      using state_integer_type = typename ::ket::meta::state_integer_of<typename std::remove_reference<Qubit>::type>::type;
-      using bit_integer_type = typename ::ket::meta::bit_integer_of<typename std::remove_reference<Qubit>::type>::type;
+      using state_integer_type = ::ket::meta::state_integer_t<std::remove_reference_t<Qubit>>;
+      using bit_integer_type = ::ket::meta::bit_integer_t<std::remove_reference_t<Qubit>>;
       static_assert(std::is_unsigned<state_integer_type>::value, "state_integer_type of Qubit should be unsigned");
       static_assert(std::is_unsigned<bit_integer_type>::value, "bit_integer_type of Qubit should be unsigned");
+      assert(::ket::utility::integer_exp2<state_integer_type>(qubit) < static_cast<state_integer_type>(last - first));
       assert(
-        ::ket::utility::integer_exp2<state_integer_type>(qubit)
-        < static_cast<state_integer_type>(last - first));
-      assert(
-        ::ket::utility::integer_exp2<state_integer_type>(
-          ::ket::utility::integer_log2<bit_integer_type>(last - first))
+        ::ket::utility::integer_exp2<state_integer_type>(::ket::utility::integer_log2<bit_integer_type>(last - first))
         == static_cast<state_integer_type>(last - first));
 
       static constexpr auto num_operated_qubits = sizeof...(Qubits) + 1u;
@@ -142,10 +146,8 @@ namespace ket
       ::ket::gate::gate_detail::make_index_masks(index_masks, std::forward<Qubit>(qubit), std::forward<Qubits>(qubits)...);
 
       auto indices = std::array<state_integer_type, ::ket::utility::integer_exp2<std::size_t>(num_operated_qubits)>{};
-      using ::ket::utility::loop_n;
-      loop_n(
-        parallel_policy,
-        static_cast<state_integer_type>(last - first) >> num_operated_qubits,
+      ::ket::utility::loop_n(
+        parallel_policy, static_cast<state_integer_type>(last - first) >> num_operated_qubits,
         [first, &function, &qubit_masks, &index_masks, &indices](state_integer_type const index_wo_qubits, int const thread_index)
         {
           // ex. qubit_masks[0]=00000100000; qubit_masks[1]=00100000000; qubit_masks[2]=00000000100;
@@ -157,9 +159,10 @@ namespace ket
     }
 
     template <typename RandomAccessIterator, typename Function, typename Qubit, typename... Qubits>
-    inline void gate(
+    inline auto gate(
       RandomAccessIterator const first, RandomAccessIterator const last,
       Function&& function, Qubit&& qubit, Qubits&&... qubits)
+    -> void
     {
       ::ket::gate::gate(
         ::ket::utility::policy::make_sequential(),
@@ -170,20 +173,21 @@ namespace ket
     namespace ranges
     {
       template <typename ParallelPolicy, typename RandomAccessRange, typename Function, typename Qubit, typename... Qubits>
-      inline RandomAccessRange& gate(
+      inline auto gate(
         ParallelPolicy const parallel_policy, RandomAccessRange& state,
         Function&& function, Qubit&& qubit, Qubits&&... qubits)
+      -> RandomAccessRange&
       {
+        using std::begin;
+        using std::end;
         ::ket::gate::gate(
-          parallel_policy,
-          std::begin(state), std::end(state), std::forward<Function>(function),
+          parallel_policy, begin(state), end(state), std::forward<Function>(function),
           std::forward<Qubit>(qubit), std::forward<Qubits>(qubits)...);
         return state;
       }
 
       template <typename RandomAccessRange, typename Function, typename Qubit, typename... Qubits>
-      inline RandomAccessRange& gate(
-        RandomAccessRange& state, Function&& function, Qubit&& qubit, Qubits&&... qubits)
+      inline auto gate(RandomAccessRange& state, Function&& function, Qubit&& qubit, Qubits&&... qubits) -> RandomAccessRange&
       {
         return ::ket::gate::ranges::gate(
           ::ket::utility::policy::make_sequential(),

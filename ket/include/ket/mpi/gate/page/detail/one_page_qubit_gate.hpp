@@ -5,8 +5,6 @@
 # include <cassert>
 # include <iterator>
 
-# include <boost/range/size.hpp>
-
 # include <ket/meta/bit_integer_of.hpp>
 # include <ket/meta/state_integer_of.hpp>
 # include <ket/utility/loop_n.hpp>
@@ -31,34 +29,37 @@ namespace ket
             std::size_t num_operated_nonpage_qubits,
             typename ParallelPolicy,
             typename RandomAccessRange, typename Qubit, typename Function>
-          [[noreturn]] inline RandomAccessRange& one_page_qubit_gate(
+          [[noreturn]] inline auto one_page_qubit_gate(
             ParallelPolicy const,
             RandomAccessRange&, ::ket::mpi::permutated<Qubit> const, Function&&)
+          -> RandomAccessRange&
           { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"one_page_qubit_gate"}; }
 
           template <
             std::size_t num_operated_nonpage_qubits,
             typename ParallelPolicy,
             typename Complex, typename Allocator, typename Qubit, typename Function>
-          [[noreturn]] inline ::ket::mpi::state<Complex, false, Allocator>& one_page_qubit_gate(
+          [[noreturn]] inline auto one_page_qubit_gate(
             ParallelPolicy const,
             ::ket::mpi::state<Complex, false, Allocator>&, ::ket::mpi::permutated<Qubit> const, Function&&)
+          -> ::ket::mpi::state<Complex, false, Allocator>&
           { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"one_page_qubit_gate"}; }
 
           template <
             std::size_t num_operated_nonpage_qubits,
             typename ParallelPolicy,
             typename Complex, typename Allocator, typename Qubit, typename Function>
-          inline ::ket::mpi::state<Complex, true, Allocator>& one_page_qubit_gate(
+          inline auto one_page_qubit_gate(
             ParallelPolicy const parallel_policy,
             ::ket::mpi::state<Complex, true, Allocator>& local_state,
             ::ket::mpi::permutated<Qubit> const permutated_qubit,
             Function&& function)
+          -> ::ket::mpi::state<Complex, true, Allocator>&
           {
             assert(::ket::mpi::page::is_on_page(permutated_qubit, local_state));
 
-            using bit_integer_type = typename ::ket::meta::bit_integer_of<Qubit>::type;
-            using state_integer_type = typename ::ket::meta::state_integer_of<Qubit>::type;
+            using bit_integer_type = ::ket::meta::bit_integer_t<Qubit>;
+            using state_integer_type = ::ket::meta::state_integer_t<Qubit>;
             auto const num_nonpage_local_qubits
               = static_cast<bit_integer_type>(local_state.num_local_qubits() - local_state.num_page_qubits());
             auto const permutated_qubit_mask
@@ -80,16 +81,18 @@ namespace ket
 
                 auto const zero_page_range = local_state.page_range(std::make_pair(data_block_index, zero_page_index));
                 auto const one_page_range = local_state.page_range(std::make_pair(data_block_index, one_page_index));
-                assert(boost::size(zero_page_range) == boost::size(one_page_range));
-                assert(::ket::utility::integer_exp2<std::size_t>(::ket::utility::integer_log2<std::size_t>(boost::size(zero_page_range))) == static_cast<std::size_t>(boost::size(zero_page_range)));
+                using std::begin;
+                auto const zero_first = begin(zero_page_range);
+                auto const one_first = begin(one_page_range);
 
-                auto const zero_first = std::begin(zero_page_range);
-                auto const one_first = std::begin(one_page_range);
+                using std::end;
+                auto const page_range_size = static_cast<state_integer_type>(std::distance(begin(zero_page_range), end(zero_page_range)));
+                assert(page_range_size == static_cast<state_integer_type>(std::distance(begin(one_page_range), end(one_page_range))));
+                assert(::ket::utility::integer_exp2<std::size_t>(::ket::utility::integer_log2<std::size_t>(page_range_size)) == static_cast<std::size_t>(page_range_size));
 
-                using ::ket::utility::loop_n;
-                loop_n(
+                ::ket::utility::loop_n(
                   parallel_policy,
-                  boost::size(zero_page_range) >> num_operated_nonpage_qubits,
+                  page_range_size >> num_operated_nonpage_qubits,
                   [zero_first, one_first, &function](state_integer_type const index_wo_nonpage_qubits, int const thread_index)
                   { function(zero_first, one_first, index_wo_nonpage_qubits, thread_index); });
               }

@@ -15,12 +15,12 @@ namespace ket
     typename ParallelPolicy,
     typename StateInteger, typename Allocator,
     typename RandomAccessIterator, typename RandomNumberGenerator>
-  inline void generate_events(
+  inline auto generate_events(
     ParallelPolicy const parallel_policy,
     std::vector<StateInteger, Allocator>& result,
     RandomAccessIterator const first, RandomAccessIterator const last,
-    int const num_events,
-    RandomNumberGenerator& random_number_generator)
+    int const num_events, RandomNumberGenerator& random_number_generator)
+  -> void
   {
     result.clear();
     result.reserve(num_events);
@@ -42,8 +42,7 @@ namespace ket
         = std::upper_bound(
             first, last,
             static_cast<complex_type>(
-              ::ket::utility::positive_random_value_upto(
-                total_probability, random_number_generator)),
+              ::ket::utility::positive_random_value_upto(total_probability, random_number_generator)),
             [](complex_type const& lhs, complex_type const& rhs)
             { return real(lhs) < real(rhs); });
 
@@ -55,28 +54,26 @@ namespace ket
     typename ParallelPolicy,
     typename StateInteger, typename Allocator,
     typename RandomAccessIterator, typename RandomNumberGenerator>
-  inline void generate_events(
+  inline auto generate_events(
     ParallelPolicy const parallel_policy,
     std::vector<StateInteger, Allocator>& result,
     RandomAccessIterator const first, RandomAccessIterator const last,
-    int const num_events,
-    RandomNumberGenerator const&,
+    int const num_events, RandomNumberGenerator const&,
     typename RandomNumberGenerator::result_type const seed)
+  -> void
   {
     RandomNumberGenerator random_number_generator(seed);
-    ::ket::generate_events(
-      parallel_policy,
-      result, first, last, num_events, random_number_generator);
+    ::ket::generate_events(parallel_policy, result, first, last, num_events, random_number_generator);
   }
 
   template <
     typename StateInteger, typename Allocator,
     typename RandomAccessIterator, typename RandomNumberGenerator>
-  inline void generate_events(
+  inline auto generate_events(
     std::vector<StateInteger, Allocator>& result,
     RandomAccessIterator const first, RandomAccessIterator const last,
-    int const num_events,
-    RandomNumberGenerator const& random_number_generator)
+    int const num_events, RandomNumberGenerator const& random_number_generator)
+  -> void
   {
     ::ket::generate_events(
       ::ket::utility::policy::make_sequential(),
@@ -86,12 +83,12 @@ namespace ket
   template <
     typename StateInteger, typename Allocator,
     typename RandomAccessIterator, typename RandomNumberGenerator>
-  inline void generate_events(
+  inline auto generate_events(
     std::vector<StateInteger, Allocator>& result,
     RandomAccessIterator const first, RandomAccessIterator const last,
-    int const num_events,
-    RandomNumberGenerator const&,
+    int const num_events, RandomNumberGenerator const&,
     typename RandomNumberGenerator::result_type const seed)
+  -> void
   {
     RandomNumberGenerator random_number_generator(seed);
     ::ket::generate_events(
@@ -103,55 +100,55 @@ namespace ket
   namespace ranges
   {
     template <typename ParallelPolicy, typename StateInteger, typename Allocator, typename RandomAccessRange, typename RandomNumberGenerator>
-    inline void generate_events(
+    inline auto generate_events(
       ParallelPolicy const parallel_policy,
       std::vector<StateInteger, Allocator>& result,
       RandomAccessRange& state,
-      int const num_events,
-      RandomNumberGenerator& random_number_generator)
+      int const num_events, RandomNumberGenerator& random_number_generator)
+    -> void
     {
-      ::ket::generate_events(
-        parallel_policy,
-        result, std::begin(state), std::end(state), num_events, random_number_generator);
+      using std::begin;
+      using std::end;
+      ::ket::generate_events(parallel_policy, result, begin(state), end(state), num_events, random_number_generator);
     }
 
     template <typename ParallelPolicy, typename StateInteger, typename Allocator, typename RandomAccessRange, typename RandomNumberGenerator>
-    inline void generate_events(
+    inline auto generate_events(
       ParallelPolicy const parallel_policy,
       std::vector<StateInteger, Allocator>& result,
       RandomAccessRange& state,
-      int const num_events,
-      RandomNumberGenerator const& random_number_generator,
+      int const num_events, RandomNumberGenerator const& random_number_generator,
       typename RandomNumberGenerator::result_type const seed)
+    -> void
     {
-      ::ket::generate_events(
-        parallel_policy,
-        result, std::begin(state), std::end(state),
-        num_events, random_number_generator, seed);
+      using std::begin;
+      using std::end;
+      ::ket::generate_events(parallel_policy, result, begin(state), end(state), num_events, random_number_generator, seed);
     }
 
     template <typename StateInteger, typename Allocator, typename RandomAccessRange, typename RandomNumberGenerator>
-    inline void generate_events(
+    inline auto generate_events(
       std::vector<StateInteger, Allocator>& result,
       RandomAccessRange& state,
-      int const num_events,
-      RandomNumberGenerator& random_number_generator)
+      int const num_events, RandomNumberGenerator& random_number_generator)
+    -> void
     {
-      ::ket::generate_events(
-        result, std::begin(state), std::end(state), num_events, random_number_generator);
+      using std::begin;
+      using std::end;
+      ::ket::generate_events(result, begin(state), end(state), num_events, random_number_generator);
     }
 
     template <typename StateInteger, typename Allocator, typename RandomAccessRange, typename RandomNumberGenerator>
-    inline void generate_events(
+    inline auto generate_events(
       std::vector<StateInteger, Allocator>& result,
       RandomAccessRange& state,
-      int const num_events,
-      RandomNumberGenerator const& random_number_generator,
+      int const num_events, RandomNumberGenerator const& random_number_generator,
       typename RandomNumberGenerator::result_type const seed)
+    -> void
     {
-      ::ket::generate_events(
-        result, std::begin(state), std::end(state),
-        num_events, random_number_generator, seed);
+      using std::begin;
+      using std::end;
+      ::ket::generate_events(result, begin(state), end(state), num_events, random_number_generator, seed);
     }
   } // namespace ranges
 } // namespace ket

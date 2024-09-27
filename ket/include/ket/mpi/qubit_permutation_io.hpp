@@ -16,12 +16,12 @@ namespace ket
     template <
       typename Character, typename CharacterTraits,
       typename StateInteger, typename BitInteger, typename Allocator>
-    inline std::basic_ostream<Character, CharacterTraits>& operator<<(
+    inline auto operator<<(
       std::basic_ostream<Character, CharacterTraits>& output_stream,
-      ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const&
-        permutation)
+      ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const& permutation)
+    -> std::basic_ostream<Character, CharacterTraits>&
     {
-      using qubit_type = ket::qubit<StateInteger, BitInteger>;
+      using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
       auto const last_qubit = qubit_type{static_cast<BitInteger>(permutation.size())};
 
       for (auto qubit = qubit_type{0u}; qubit < last_qubit; ++qubit)

@@ -881,7 +881,7 @@ namespace bra
   {
     return ket::mpi::gate::projective_measurement(
       mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, real_pair_datatype_, root, communicator_, environment_, qubit, random_number_generator_);
+      data_, permutation_, buffer_, real_pair_datatype_, root, communicator_, environment_, random_number_generator_, qubit);
   }
 
   void paged_unit_mpi_state::do_expectation_values(yampi::rank const root)
