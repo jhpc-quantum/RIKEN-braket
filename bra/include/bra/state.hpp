@@ -23,7 +23,6 @@
 #   include <ket/mpi/qubit_permutation.hpp>
 
 #   include <yampi/allocator.hpp>
-#   include <yampi/datatype.hpp>
 #   include <yampi/rank.hpp>
 #   include <yampi/communicator.hpp>
 #   include <yampi/environment.hpp>
@@ -105,7 +104,6 @@ namespace bra
 
     permutation_type permutation_;
     std::vector<complex_type, yampi::allocator<complex_type>> buffer_;
-    yampi::datatype real_pair_datatype_;
     yampi::communicator const& communicator_;
     yampi::environment const& environment_;
 # endif // BRA_NO_MPI
