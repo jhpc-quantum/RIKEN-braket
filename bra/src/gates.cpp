@@ -461,6 +461,20 @@ namespace bra
         add_u(columns);
       else if (mnemonic == "V")
         add_v(columns);
+      else if (mnemonic == "EXIT")
+      {
+        if (boost::size(columns) != 1u)
+          throw wrong_mnemonics_error{columns};
+
+#ifndef BRA_NO_MPI
+        data_.push_back(
+          std::unique_ptr< ::bra::gate::gate >{new ::bra::gate::exit{root_}});
+#else // BRA_NO_MPI
+        data_.push_back(
+          std::unique_ptr< ::bra::gate::gate >{new ::bra::gate::exit{}});
+#endif // BRA_NO_MPI
+        break;
+      }
       else if (mnemonic == "EX")
         add_ex(columns);
       else if (mnemonic == "EXX")
@@ -594,20 +608,6 @@ namespace bra
         boost::algorithm::to_upper(columns[1u]);
 
         add_depolarizing(columns, mnemonic);
-      }
-      else if (mnemonic == "EXIT")
-      {
-        if (boost::size(columns) != 1u)
-          throw wrong_mnemonics_error{columns};
-
-#ifndef BRA_NO_MPI
-        data_.push_back(
-          std::unique_ptr< ::bra::gate::gate >{new ::bra::gate::exit{root_}});
-#else // BRA_NO_MPI
-        data_.push_back(
-          std::unique_ptr< ::bra::gate::gate >{new ::bra::gate::exit{}});
-#endif // BRA_NO_MPI
-        break;
       }
       else if (mnemonic.size() >= 2u and mnemonic.front() == 'C') // controlled gates
         interpret_controlled_gates(columns, mnemonic);
