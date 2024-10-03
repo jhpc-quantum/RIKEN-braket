@@ -9,7 +9,7 @@
 #include <iostream>
 
 
-/// @brief Usage出力
+/// @brief Usage
 static void Usage() {
   std::cerr << "Usage: qasminterpreter ";
   std::cerr << "[-I<include-dir> [ -I<include-dir> ...]] ";
@@ -17,15 +17,19 @@ static void Usage() {
 }
 namespace qip {
 
-/// @brief 量子回路のゲートの情報を保持する変数宣言
-/// @note 現時点では、複数回qubit宣言には対応していない。
+/// @brief Declare variables that hold information about the gates of the quantum circuit
+/// @note At this time, multiple qubit declarations are not supported.
 qipIrTy qasmir;
-/// @brief ketの呼び出しを行うためのクラス宣言
+/// @brief Class declaration for calling ket
 ketInfo ki;
 
 }
 
-/// @brief 量子回路IRをダンプする
+/// @brief Dumping a quantum circuit IR
+/// @note At this time, runtime options to control dump output are not supported.
+/// @todo The intermediate code dump should be tied to the input code.
+///       - The id should show the gate type
+///       - Quantum bit numbers should be displayed in the specified order
 static void printSqcIr() {
   std::cout << "qipIrTy" << std::endl;
   std::cout << " <qubits> : " << qip::qasmir.qubits << std::endl;
@@ -54,7 +58,7 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  // MPI実行の準備
+  // Prepare for MPI execution
   qip::ki.environment  = new yampi::environment(argc, argv, yampi::thread_support::funneled);
   qip::ki.communicator = new yampi::communicator(yampi::tags::world_communicator);
   qip::ki.rank         = qip::ki.communicator->rank(*(qip::ki.environment));
@@ -80,21 +84,21 @@ int main(int argc, char *argv[]) {
   auto *statementList = QASM::ASTStatementBuilder::Instance().List();
   qip::frontend::openqasm3::IRGenQASM3Visitor visitor(std::cout);
 
-  // ASTを辿り、量子回路IRを生成
+  // Trace AST and generate quantum circuit IR.
   visitor.setStatementList(statementList);
   visitor.walkAST();
 
-  // 量子回路IRのダンプ
+  // Quantum circuit IR dump output.
   printSqcIr();
 
-  // ket呼び出し
-  // 初期化
+  // Call ket
+  // initialization
   qip::initialize();
 
-  // ゲート適用
+  // Apply gate
   qip::addGate();
 
-  // 終了処理
+  // Finalize
   qip::finalize();
 
   // If the ASTObjectTracker is not enabled, this is a no-op.

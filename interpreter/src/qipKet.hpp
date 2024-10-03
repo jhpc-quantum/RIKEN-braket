@@ -34,10 +34,10 @@ using complexTy = std::complex<double>;
 using qubitTy = ket::qubit<stateIntegerTy, bitIntegerTye>;
 using permutatedQubitTy = ket::mpi::permutated<qubitTy>;
 
-/// @brief ket呼び出しを行うためのクラス
+/// @brief Class for making ket calls
 class ketInfo {
 public:
-  qint              nqubits;         ///< 量子ビット数
+  qint              nqubits;         ///< number of quantum bit
   yampi::environment  *environment;
   yampi::communicator *communicator;
   yampi::rank rank;
@@ -48,21 +48,21 @@ public:
   int myrank;
 };
 
-/// @brief 初期化
+/// @brief initialization
 void initialize();
 
-/// @brief 終了処理
+/// @brief Finalize
 void finalize();
 
-/// @brief ゲート適用
+/// @brief Gate Application
 void addGate();
 
-/// @brief アダマールゲート適用
-/// @param [in] ginfo ゲート操作の情報
+/// @brief Application of hadamard Gate
+/// @param [in] ginfo Gate operation information
 void addHGate(gateInfoTy *ginfo);
 
-/// @brief CNOTゲート適用
-/// @param [in] ginfo ゲート操作の情報
+/// @brief Application of CNOT Gate
+/// @param [in] ginfo Gate operation information
 void addCXGate(gateInfoTy *ginfo);
 
 }

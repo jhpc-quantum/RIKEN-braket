@@ -2,27 +2,27 @@
 #define SQC_TYPES_H
 
 /// @def MAX_INFO
-/// @brief 量子回路IRの上限数
-/// @note 現時点では、複数回のqubit宣言には対応していないため、未使用
+/// @brief Upper limit number of quantum circuit IR
+/// @note Not used because multiple qubit declarations are not supported at this time.
 #define MAX_INFO 48
 
 /// @def MAX_N_GATES
-/// @brief ゲート操作情報数の上限
+/// @brief Upper limit of gate operation information
 #define MAX_N_GATES 128
 
 /// @def MAX_I_ARGS
-/// @brief 整数パラメタ数の上限
+/// @brief Upper limit on integer parameter number
 #define MAX_I_ARGS  8
 
 /// @def MAX_R_ARGS
-/// @brief 浮動小数点数パラメタ数の上限
+/// @brief Upper limit on the number of floating-point parameters
 #define MAX_R_ARGS  8
 
 namespace qip {
 
-typedef int qint;  ///< 量子ビットの型
+typedef int qint;  ///< Quantum bit type
 
-/// \brief 量子回路IRでの操作を表すenum
+/// \brief enum representing operations in a quantum circuit IR
 enum enumGates{
     HGate,
     CXGate,
@@ -38,30 +38,30 @@ enum enumGates{
     NGates /// Number of gates
 };
 
-/// @brief ゲート操作を定義する構造体
-/// @details 量子回路の１つのゲートなどの操作を表現する構造体。
-///          パラメータが何を意味するかは、操作ごとに設計する。
-///          例えば、id=_CXGateの場合、
-///          niarg=2, rarg=0であり、iarg[0]が制御qubit番号、iarg[1]が標的qubit番号となっている。
+/// @brief Structure defining gate operations
+/// @details A structure that represents a single gate or other operation of a quantum circuit.
+///          What the parameters mean is designed for each operation.
+///          or example,
+///             for id=_CXGate, niarg=2, rarg=0, iarg[0] is the control qubit number and iarg[1] is the target qubit number.
 typedef struct{
-  qint   id;                ///< ゲート種別（enumGates）
-  int    niarg;             ///< 整数パラメタの数
-  int    nrarg;             ///< 浮動小数点数パラメタの数
-  qint   iarg[MAX_I_ARGS];  ///< 整数パラメタ
-  double rarg[MAX_R_ARGS];  ///< 浮動小数点数パラメタ
+  qint   id;                ///< Gate Type（enumGates）
+  int    niarg;             ///< Number of integer parameters
+  int    nrarg;             ///< Number of floating point number parameters
+  qint   iarg[MAX_I_ARGS];  ///< Integer parameters
+  double rarg[MAX_R_ARGS];  ///< Floating point number parameters
 } gateInfoTy;
 
-/// @brief 量子回路のIRを表現する構造体
-/// @note 現時点では、ゲートなどの操作を表現する構造体領域をMAX_N_GATES数分確保しており、
-///       MAX_N_GATES以上の操作を保持することはできない。
+/// @brief Structures representing IRs in quantum circuits
+/// @note At present, the structure area for representing operations such as gates is reserved for the number of MAX_N_GATES, 
+///       and cannot hold more than MAX_N_GATES operations.
 typedef struct{
   // --- common parameters ---
-  int            nprocs;  ///< プロセス数
-  qint           qubits;             ///< 量子ビット数
-  int            ngates;             ///< ゲート操作の情報数
-  gateInfoTy     gate[MAX_N_GATES];  ///< ゲート操作の情報
+  int            nprocs;  ///< Number of processes
+  qint           qubits;             ///< Number of quantum bit
+  int            ngates;             ///< Number of gate operation information
+  gateInfoTy     gate[MAX_N_GATES];  ///< Gate operation information
 } qipInfoTy;
 
-typedef qipInfoTy qipIrTy;  ///< 量子回路IRの型
+typedef qipInfoTy qipIrTy;  ///< Type of quantum circuit IR
 }
 #endif // SQC_TYPES_H

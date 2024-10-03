@@ -2,14 +2,14 @@
 
 namespace qip {
 
-extern qipIrTy qasmir;  ///< 量子回路IR
-extern ketInfo ki;  ///< ket呼び出しクラス
+extern qipIrTy qasmir;  ///< Variable that holds information on the gate of a quantum circuit
+extern ketInfo ki;  ///< Class declaration for calling ket
 
 }
 
 void qip::initialize() {
 
-  // 並列実行するための計算
+  // Perform calculations for parallel execution
   auto const numGqubits = ket::utility::integer_log2<bitIntegerTye>(ki.nprocs);
   ki.nqubits = qasmir.qubits;
   auto const numQubits = bitIntegerTye{(unsigned int) qasmir.qubits};
@@ -25,7 +25,7 @@ void qip::initialize() {
 }
 
 void qip::finalize() {
-  // 解放処理
+  // delete
   if (ki.permutation) {
     delete ki.permutation;
   }
@@ -57,7 +57,7 @@ void qip::addGate() {
 void qip::addHGate(gateInfoTy *ginfo) {
   auto buffer = std::vector < complexTy > {};
 
-  // アダマール
+  // hadamard
   ket::mpi::gate::hadamard(*(ki.localState),
                            qubitTy{bitIntegerTye{(unsigned int) (ginfo->iarg[0])}},
                            *(ki.permutation),
@@ -69,9 +69,9 @@ void qip::addHGate(gateInfoTy *ginfo) {
 void qip::addCXGate(gateInfoTy *ginfo) {
   auto buffer = std::vector < complexTy > {};
 
-  // ターゲットビット
+  // target bit
   qubitTy target_qubit{bitIntegerTye{(unsigned int) (ginfo->iarg[1])}};
-  // コントロールビット
+  // control bit
   ket::control <qubitTy> control_qubit{qubitTy{bitIntegerTye{(unsigned int) (ginfo->iarg[0])}}};
 
   // CNOT

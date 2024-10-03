@@ -39,7 +39,7 @@
 
 namespace qip {
 
-extern qipIrTy qasmir;  ///< 量子回路IR
+extern qipIrTy qasmir;  ///< Variable that holds information on the gate of a quantum circuit
 
 }
 
@@ -99,25 +99,25 @@ void IRGenQASM3Visitor::visit(const ASTGenericGateOpNode *node) {
 }
 
 void IRGenQASM3Visitor::visit(const ASTGateNode *node) {
-  // パラメタ数
+  // number of parameters
   const size_t numParams = node->ParamsSize();
-  // 量子ビット数
+  // number of quantum bit
   const size_t numQubits = node->QubitsSize();
 
-  // パラメタの情報取得
+  // Obtain parameter information.
   for (size_t i = 0; i < numParams; i++) {
     visit(node->GetParam(i));
   }
 
-  // 量子ビットの情報取得
+  // Obtaining information on qubits.
   for (size_t i = 0; i < numQubits; i++) {
     visit(node->GetQubit(i));
   }
 
-  // 整数パラメタ数に量子ビット数設定
+  // Set the number of qubits to an integer parameter number.
   qasmir.gate[qasmir.ngates].niarg = node->GetNumQCParams();
 
-  // 整数パラメタに量子ビット番号設定
+  // Set the integer parameter to a qubit number.
   for (size_t i = 0; i < node->GetNumQCParams(); i++) {
     auto *paramId = node->GetQCParams()[i]->GetIdentifier();
     assert(paramId);
@@ -196,7 +196,7 @@ void IRGenQASM3Visitor::visit(const ASTKernelDeclarationNode *node) {
 }
 
 void IRGenQASM3Visitor::visit(const ASTQubitContainerNode *node) {
-  // 宣言された量子ビット数取得
+  // Get the number of declared qubits.
   qasmir.qubits = node->Size();
 }
 

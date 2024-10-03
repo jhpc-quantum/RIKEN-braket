@@ -6,7 +6,7 @@
 namespace qip::frontend::openqasm3 {
 
 /// @class IRGenQASM3Visitor
-/// @brief 量子回路IR生成
+/// @brief Generate IRs for quantum circuits.
 class IRGenQASM3Visitor : public BaseQASM3Visitor {
 private:
   std::ostream &vStream; // visitor output stream
@@ -43,32 +43,32 @@ public:
 
   void visit(const QASM::ASTGenericGateOpNode *) override;
 
-  /// @brief ゲート適用の情報取得
-  /// @details ASTGateNodeから量子ビット数と量子ビット番号を取得し、ゲート操作情報に設定する。
+  /// @brief Obtain information on gate application
+  /// @details Obtain the number of qubits and the qubit number from the ASTGateNode and set them to the gate operation information.
   /// @param [in] node ASTGateNode
   void visit(const QASM::ASTGateNode *) override;
 
-  /// @brief アダマールゲート適用の情報取得
-  /// @details ゲート操作情報に"_HGate"を設定する。
-  ///          量子ビット数と量子ビット番号を取得するvisit関数を呼び出す。
+  /// @brief Obtain information on the application of hadamard gate
+  /// @details Set “_HGate” for gate operation information.
+  ///          Call the visit function to obtain the number of qubits and the qubit number.
   /// @param [in] node ASTHGateOpNode
   void visit(const QASM::ASTHGateOpNode *) override;
 
   void visit(const QASM::ASTUGateOpNode *) override;
 
-  /// @brief CNOTゲート適用の情報取得
-  /// @details ゲート操作情報に"_CXGate"を設定する。
-  ///          量子ビット数と量子ビット番号を取得するvisit関数を呼び出す。
+  /// @brief Obtain information on CNOT gate application
+  /// @details Set “_CXGate” for gate operation information.
+  ///          Call the visit function to obtain the number of qubits and the qubit number.
   /// @param [in] node ASTHGateOpNode
   void visit(const QASM::ASTCXGateOpNode *) override;
 
   void visit(const QASM::ASTResetNode *) override;
 
-  /// @brief measureの情報取得
-  /// @details ターゲットの量子ビットの情報を取得するvisit関数を呼び出す。
+  /// @brief Get measure information
+  /// @details Call the visit function to obtain information about the target qubit.
   /// @param [in] node ASTMeasureNode
   ///
-  /// @note 中間コード生成は未実装
+  /// @note Intermediate code generation is not implemented.
   void visit(const QASM::ASTMeasureNode *) override;
 
   void visit(const QASM::ASTDelayStatementNode *) override;
@@ -77,20 +77,20 @@ public:
 
   void visit(const QASM::ASTBarrierNode *) override;
 
-  /// @brief 量子ビット、古典ビットの情報取得
-  /// @details 量子ビット、古典ビットの情報を取得するvisit関数を呼び出す。
+  /// @brief Obtain information on qubits and classical bits
+  /// @details Call the visit function to obtain information on the quantum and classical bits.
   /// @param [in] node ASTDeclarationNode
   void visit(const QASM::ASTDeclarationNode *) override;
 
   void visit(const QASM::ASTKernelDeclarationNode *) override;
 
-  /// @brief 量子ビット数の取得
+  /// @brief Get the number of qubits
   /// @param [in] node ASTQubitContainerNode
   void visit(const QASM::ASTQubitContainerNode *) override;
 
   void visit(const QASM::ASTQubitNode *) override;
 
-  /// @brief 古典ビットの情報取得
+  /// @brief Obtain information on classical bits
   /// @param [in] node ASTCBitNode
   void visit(const QASM::ASTCBitNode *) override;
 
