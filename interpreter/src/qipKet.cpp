@@ -1,3 +1,6 @@
+/// @file qipKet.cpp
+/// @brief Process of calling ket.
+
 #include"qipKet.hpp"
 
 namespace qip {

@@ -1,3 +1,7 @@
+/// @file IRGenQASM3Visitor.cpp
+/// @brief Visitor to traverse the AST of OpenQASM 3 and generate IR.
+/// @note Include doxygen comments only where used.
+
 #include "IRGenQASM3Visitor.h"
 
 #include "BaseQASM3Visitor.h"

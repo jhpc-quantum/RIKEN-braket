@@ -54,6 +54,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file BaseQASM3Visitor.cpp
+/// @brief Base visitor to traverse the AST of OpenQASM 3.
+/// @note Include doxygen comments only if they are modified or used.
+
 #include "BaseQASM3Visitor.h"
 
 #include <cassert>

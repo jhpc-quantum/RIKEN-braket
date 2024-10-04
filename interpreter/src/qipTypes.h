@@ -1,3 +1,6 @@
+/// @file qipTypes.h
+/// @brief Type declaration.
+
 #ifndef SQC_TYPES_H
 #define SQC_TYPES_H
 

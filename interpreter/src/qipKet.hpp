@@ -1,3 +1,5 @@
+/// @file qipKet.hpp
+/// @brief Header file for the process of calling ket.
 
 #ifndef _QIPKET_HPP_
 #define _QIPKET_HPP_

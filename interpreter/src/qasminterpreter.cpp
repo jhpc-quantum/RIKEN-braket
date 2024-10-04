@@ -1,3 +1,6 @@
+/// @file qasminterpreter.cpp
+/// @brief Performs the main processing of the OpenQASM 3 interpreter.
+
 #include "IRGenQASM3Visitor.h"
 #include "qipTypes.h"
 #include "qipKet.hpp"
