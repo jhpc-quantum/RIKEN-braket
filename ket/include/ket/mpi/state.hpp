@@ -419,9 +419,9 @@ namespace ket
       auto begin() noexcept -> iterator { return iterator{*this, 0}; }
       auto begin() const noexcept -> const_iterator { return const_iterator{*this, 0}; }
       auto cbegin() const noexcept -> const_iterator { return const_iterator{*this, 0}; }
-      auto end() noexcept -> iterator { return iterator{*this, static_cast<int>(1u << num_local_qubits_)}; }
-      auto end() const noexcept -> const_iterator { return const_iterator{*this, static_cast<int>(1u << num_local_qubits_)}; }
-      auto cend() const noexcept -> const_iterator { return const_iterator{*this, static_cast<int>(1u << num_local_qubits_)}; }
+      auto end() noexcept -> iterator { return iterator{*this, ::ket::utility::integer_exp2<int>(num_local_qubits_) * static_cast<int>(num_data_blocks_)}; }
+      auto end() const noexcept -> const_iterator { return const_iterator{*this, ::ket::utility::integer_exp2<int>(num_local_qubits_) * static_cast<int>(num_data_blocks_)}; }
+      auto cend() const noexcept -> const_iterator { return const_iterator{*this, ::ket::utility::integer_exp2<int>(num_local_qubits_) * static_cast<int>(num_data_blocks_)}; }
       auto rbegin() noexcept -> reverse_iterator { return reverse_iterator{this->end()}; }
       auto rbegin() const noexcept -> const_reverse_iterator { return const_reverse_iterator{this->end()}; }
       auto crbegin() const noexcept -> const_reverse_iterator { return const_reverse_iterator{this->cend()}; }
