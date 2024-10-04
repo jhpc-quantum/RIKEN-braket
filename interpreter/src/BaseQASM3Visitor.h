@@ -14,6 +14,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+/// @file BaseQASM3Visitor.h
+/// @brief Header file for the base visitor traversing the OpenQASM 3 AST.
+/// @note Include doxygen comments only if they are modified or used.
+
 #ifndef VISITOR_BASE_VISITOR_H
 #define VISITOR_BASE_VISITOR_H
 
@@ -34,6 +38,8 @@
 
 namespace qip::frontend::openqasm3 {
 
+/// @class BaseQASM3Visitor
+/// @brief Visitor class as the base of OpenQASM 3.
 class BaseQASM3Visitor {
 
 protected:
