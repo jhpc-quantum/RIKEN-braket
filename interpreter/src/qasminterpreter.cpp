@@ -30,6 +30,7 @@ ketInfo ki;
 /// @todo The intermediate code dump should be tied to the input code.
 ///       - The id should show the gate type
 ///       - Quantum bit numbers should be displayed in the specified order
+///       - Specify dump output as an option
 static void printSqcIr() {
   std::cout << "qipIrTy" << std::endl;
   std::cout << " <qubits> : " << qip::qasmir.qubits << std::endl;

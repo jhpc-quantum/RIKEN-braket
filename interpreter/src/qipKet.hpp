@@ -38,12 +38,12 @@ using permutatedQubitTy = ket::mpi::permutated<qubitTy>;
 class ketInfo {
 public:
   qint              nqubits;         ///< number of quantum bit
-  yampi::environment  *environment;
-  yampi::communicator *communicator;
-  yampi::rank rank;
-  yampi::rank root;
-  ket::mpi::state<complexTy, false, yampi::allocator<complexTy>> *localState;
-  ket::mpi::qubit_permutation<stateIntegerTy, bitIntegerTye> *permutation;
+  yampi::environment  *environment;  ///< environment
+  yampi::communicator *communicator; ///< communicator
+  yampi::rank rank;  ///< rank
+  yampi::rank root;  ///< root rank
+  ket::mpi::state<complexTy, false, yampi::allocator<complexTy>> *localState;  ///< local state
+  ket::mpi::qubit_permutation<stateIntegerTy, bitIntegerTye> *permutation;     ///< qubit permutation
   int nprocs;
   int myrank;
 };

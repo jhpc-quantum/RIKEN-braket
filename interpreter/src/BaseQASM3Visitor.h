@@ -34,6 +34,8 @@
 
 namespace qip::frontend::openqasm3 {
 
+/// @class BaseQASM3Visitor
+/// @brief Visitor class as the base of OpenQASM 3.
 class BaseQASM3Visitor {
 
 protected:
