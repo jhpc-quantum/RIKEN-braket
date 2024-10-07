@@ -170,6 +170,6 @@ $ export LD_LIBRARY_PATH=./qe-qasm/build/lib:$LD_LIBRARY_PATH
 4) execution
 ```bash
 $ cd ./RIKEN-braket/interpreter/
-$ mpiexec -n 1 ./qasminterpreter -I ../../qe-qasm/tests/include ./sample/test_h_cx.qasm
+$ mpiexec -n 1 ./build/qasminterpreter -I ../../qe-qasm/tests/include ./sample/test_h_cx.qasm
 ```
 
