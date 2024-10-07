@@ -30,4 +30,4 @@ qipKet.o: src/qipKet.cpp
 	$(CC) $(CFLAGS) -c src/qipKet.cpp -o $(OBJDIR)/qipKet.o
 
 clean:
-	rm $(OBJDIR)/*.o $(OBJDIR)/qasminterpreter
+	rm -fr $(OBJDIR)
