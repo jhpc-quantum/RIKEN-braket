@@ -99,7 +99,22 @@ void IRGenQASM3Visitor::visit(const ASTGateDeclarationNode *node) {
 }
 
 void IRGenQASM3Visitor::visit(const ASTGenericGateOpNode *node) {
-  assert(0 && "ASTGenericGateOpNode");
+  const ASTGateNode *gateNode = node->GetGateNode();
+  const std::string &gateName = gateNode->GetName();
+
+  if (gateName == "cz") {
+    qasmir.gate[qasmir.ngates].id = CZGate;
+  }
+  else if (gateName == "s") {
+    qasmir.gate[qasmir.ngates].id = SGate;
+  }
+  else if (gateName == "sdg") {
+    qasmir.gate[qasmir.ngates].id = SdgGate;
+  }
+
+  visit(gateNode);
+
+  qasmir.ngates++;
 }
 
 void IRGenQASM3Visitor::visit(const ASTGateNode *node) {
