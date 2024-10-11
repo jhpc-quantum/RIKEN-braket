@@ -21,6 +21,8 @@
 #include <ket/mpi/qubit_permutation.hpp>
 #include <ket/mpi/gate/controlled_not.hpp>
 #include <ket/mpi/gate/hadamard.hpp>
+#include <ket/mpi/gate/controlled_phase_shift.hpp>
+#include <ket/mpi/gate/phase_shift.hpp>
 #include <yampi/allocator.hpp>
 #include <yampi/rank.hpp>
 #include <yampi/communicator.hpp>
@@ -66,6 +68,18 @@ void addHGate(gateInfoTy *ginfo);
 /// @brief Application of CNOT Gate
 /// @param [in] ginfo Gate operation information
 void addCXGate(gateInfoTy *ginfo);
+
+/// @brief Application of CZ Gate
+/// @param [in] ginfo Gate operation information
+void addCZGate(gateInfoTy *ginfo);
+
+/// @brief Application of S Gate
+/// @param [in] ginfo Gate operation information
+void addSGate(gateInfoTy *ginfo);
+
+/// @brief Application of Sdg Gate
+/// @param [in] ginfo Gate operation information
+void addSdgGate(gateInfoTy *ginfo);
 
 }
 #endif // _QIPKET_HPP_
