@@ -74,7 +74,7 @@ namespace ket
         ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Clear "}, qubit), environment};
 
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-        auto qubits = std::array<qubit_type, 1u>{qubit};
+        std::array<qubit_type, 1u> qubits{qubit};
         ::ket::mpi::utility::maybe_interchange_qubits(
           mpi_policy, parallel_policy,
           local_state, qubits, permutation, buffer, communicator, environment);
@@ -101,7 +101,7 @@ namespace ket
         ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Clear "}, qubit), environment};
 
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-        auto qubits = std::array<qubit_type, 1u>{qubit};
+        std::array<qubit_type, 1u> qubits{qubit};
         ::ket::mpi::utility::maybe_interchange_qubits(
           mpi_policy, parallel_policy,
           local_state, qubits, permutation, buffer, datatype, communicator, environment);
@@ -125,7 +125,7 @@ namespace ket
         ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Clear "}, qubit), environment};
 
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-        auto qubits = std::array<qubit_type, 1u>{qubit};
+        std::array<qubit_type, 1u> qubits{qubit};
         ::ket::mpi::utility::maybe_interchange_qubits(
           mpi_policy, parallel_policy,
           local_state, qubits, permutation, buffer, communicator, environment);
@@ -151,7 +151,7 @@ namespace ket
         ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Clear "}, qubit), environment};
 
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-        auto qubits = std::array<qubit_type, 1u>{qubit};
+        std::array<qubit_type, 1u> qubits{qubit};
         ::ket::mpi::utility::maybe_interchange_qubits(
           mpi_policy, parallel_policy,
           local_state, qubits, permutation, buffer, datatype, communicator, environment);

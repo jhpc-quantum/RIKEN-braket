@@ -87,7 +87,7 @@ namespace ket
         -> RandomAccessRange&
         {
           using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-          auto qubits = std::array<qubit_type, 2u>{target_qubit, control_qubit.qubit()};
+          std::array<qubit_type, 2u> qubits{target_qubit, control_qubit.qubit()};
           ::ket::mpi::utility::maybe_interchange_qubits(
             mpi_policy, parallel_policy,
             local_state, qubits, permutation, buffer, communicator, environment);
@@ -116,7 +116,7 @@ namespace ket
         -> RandomAccessRange&
         {
           using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-          auto qubits = std::array<qubit_type, 2u>{target_qubit, control_qubit.qubit()};
+          std::array<qubit_type, 2u> qubits{target_qubit, control_qubit.qubit()};
           ::ket::mpi::utility::maybe_interchange_qubits(
             mpi_policy, parallel_policy,
             local_state, qubits, permutation, buffer, datatype, communicator, environment);

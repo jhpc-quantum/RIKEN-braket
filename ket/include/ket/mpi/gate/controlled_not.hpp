@@ -96,7 +96,7 @@ namespace ket
         ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"CNOT "}, target_qubit, ' ', control_qubit), environment};
 
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-        auto qubits = std::array<qubit_type, 2u>{target_qubit, control_qubit.qubit()};
+        std::array<qubit_type, 2u> qubits{target_qubit, control_qubit.qubit()};
         ::ket::mpi::utility::maybe_interchange_qubits(
           mpi_policy, parallel_policy,
           local_state, qubits, permutation, buffer, communicator, environment);
@@ -123,7 +123,7 @@ namespace ket
         ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"CNOT "}, target_qubit, ' ', control_qubit), environment};
 
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-        auto qubits = std::array<qubit_type, 2u>{target_qubit, control_qubit.qubit()};
+        std::array qubits<qubit_type, 2u>{target_qubit, control_qubit.qubit()};
         ::ket::mpi::utility::maybe_interchange_qubits(
           mpi_policy, parallel_policy,
           local_state, qubits, permutation, buffer, datatype, communicator, environment);
@@ -384,7 +384,7 @@ namespace ket
         ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(CNOT) "}, target_qubit, ' ', control_qubit), environment};
 
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-        auto qubits = std::array<qubit_type, 2u>{target_qubit, control_qubit.qubit()};
+        std::array<qubit_type, 2u> qubits{target_qubit, control_qubit.qubit()};
         ::ket::mpi::utility::maybe_interchange_qubits(
           mpi_policy, parallel_policy,
           local_state, qubits, permutation, buffer, communicator, environment);
@@ -411,7 +411,7 @@ namespace ket
         ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(CNOT) "}, target_qubit, ' ', control_qubit), environment};
 
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-        auto qubits = std::array<qubit_type, 2u>{target_qubit, control_qubit.qubit()};
+        std::array<qubit_type, 2u> qubits{target_qubit, control_qubit.qubit()};
         ::ket::mpi::utility::maybe_interchange_qubits(
           mpi_policy, parallel_policy,
           local_state, qubits, permutation, buffer, datatype, communicator, environment);

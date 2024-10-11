@@ -535,7 +535,7 @@ namespace ket
             auto const least_unit_permutated_qubit
               = permutated_qubit_type{::ket::mpi::utility::policy::num_local_qubits(mpi_policy, local_state, communicator, environment)};
 
-            auto permutated_nonlocal_swap_qubits = std::array<permutated_qubit_type, num_qubits_of_operation>{};
+            std::array<permutated_qubit_type, num_qubits_of_operation> permutated_nonlocal_swap_qubits{};
             for (auto index = std::size_t{0u}; index < num_qubits_of_operation; ++index)
               permutated_nonlocal_swap_qubits[index] = permutation[qubits[index]];
 
@@ -628,7 +628,7 @@ namespace ket
             auto const least_unit_permutated_qubit
               = permutated_qubit_type{::ket::mpi::utility::policy::num_local_qubits(mpi_policy, local_state, communicator, environment)};
 
-            auto permutated_nonlocal_swap_qubits = std::array<permutated_qubit_type, num_qubits_of_operation>{};
+            std::array<permutated_qubit_type, num_qubits_of_operation> permutated_nonlocal_swap_qubits{};
             for (auto index = std::size_t{0u}; index < num_qubits_of_operation; ++index)
               permutated_nonlocal_swap_qubits[index] = permutation[qubits[index]];
 
@@ -889,7 +889,7 @@ namespace ket
             auto const present_local_rank = local_communicator.rank(environment);
 
             // initialization of permutated_nonlocal_qubit_masks (000001000000, 000000001000, 001000000000)
-            auto permutated_nonlocal_qubit_masks = std::array<StateInteger, num_qubits_of_operation>{};
+            std::array<StateInteger, num_qubits_of_operation> permutated_nonlocal_qubit_masks{};
             std::transform(
               begin(permutated_nonlocal_swap_qubits), end(permutated_nonlocal_swap_qubits),
               begin(permutated_nonlocal_qubit_masks),
@@ -1109,8 +1109,7 @@ namespace ket
 
               // initialization of permutated_nonlocal_qubit_index_pairs ({sorted_nonlocal_qubit, corresponding_index_in_some_arrays}, ...)
               using permutated_nonlocal_qubit_index_pair_type = std::pair<permutated_qubit_type, std::size_t>;
-              auto permutated_nonlocal_qubit_index_pairs
-                = std::array<permutated_nonlocal_qubit_index_pair_type, num_qubits_of_operation>{};
+              std::array<permutated_nonlocal_qubit_index_pair_type, num_qubits_of_operation> permutated_nonlocal_qubit_index_pairs{};
               for (auto index = std::size_t{0u}; index < num_qubits_of_operation; ++index)
                 permutated_nonlocal_qubit_index_pairs[index]
                   = std::make_pair(permutated_nonlocal_swap_qubits[index], index);
@@ -1121,14 +1120,13 @@ namespace ket
                 { return lhs.first < rhs.first;});
 
               // initialization of permutated_nonlocal_qubit_masks (000001000000, 000000001000, 001000000000)
-              auto permutated_nonlocal_qubit_masks = std::array<StateInteger, num_qubits_of_operation>{};
+              std::array<StateInteger, num_qubits_of_operation> permutated_nonlocal_qubit_masks{};
               for (auto index = std::size_t{0u}; index < num_qubits_of_operation; ++index)
                 permutated_nonlocal_qubit_masks[index]
                   = (StateInteger{1u} << permutated_nonlocal_swap_qubits[index]) >> least_unit_permutated_qubit;
 
               // initialization of nonlocal_qubit_value_masks (000000111, 000011000, 001100000, 110000000)
-              auto nonlocal_qubit_value_masks
-                = std::array<StateInteger, num_qubits_of_operation + std::size_t{1u}>{};
+              std::array<StateInteger, num_qubits_of_operation + std::size_t{1u}> nonlocal_qubit_value_masks{};
               for (auto index = std::size_t{0u}; index < num_qubits_of_operation; ++index)
                 nonlocal_qubit_value_masks[index]
                   = (permutated_nonlocal_qubit_masks[permutated_nonlocal_qubit_index_pairs[index].second] >> index)
@@ -1387,8 +1385,8 @@ namespace ket
           {
             using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
             using permutated_qubit_type = ::ket::mpi::permutated<qubit_type>;
-            auto permutated_local_swap_qubits = std::array<permutated_qubit_type, num_qubits_of_operation>{};
-            auto local_swap_qubits = std::array<qubit_type, num_qubits_of_operation>{};
+            std::array<permutated_qubit_type, num_qubits_of_operation> permutated_local_swap_qubits{};
+            std::array<qubit_type, num_qubits_of_operation> local_swap_qubits{};
             initialize_local_swap_qubits(
               mpi_policy, parallel_policy, local_swap_qubits, permutated_local_swap_qubits,
               local_state, least_unit_permutated_qubit, unswappable_qubits, permutation, communicator, environment);
@@ -1420,8 +1418,8 @@ namespace ket
           {
             using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
             using permutated_qubit_type = ::ket::mpi::permutated<qubit_type>;
-            auto permutated_local_swap_qubits = std::array<permutated_qubit_type, num_qubits_of_operation>{};
-            auto local_swap_qubits = std::array<qubit_type, num_qubits_of_operation>{};
+            std::array<permutated_qubit_type, num_qubits_of_operation> permutated_local_swap_qubits{};
+            std::array<qubit_type, num_qubits_of_operation> local_swap_qubits{};
             initialize_local_swap_qubits(
               mpi_policy, parallel_policy, local_swap_qubits, permutated_local_swap_qubits,
               local_state, least_unit_permutated_qubit, unswappable_qubits, permutation, communicator, environment);
@@ -1453,14 +1451,14 @@ namespace ket
             assert(new_unswappable_qubit_index < num_qubits_of_operation);
 
             using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-            auto new_qubits = std::array<qubit_type, num_qubits_of_operation - 1u>{};
+            std::array<qubit_type, num_qubits_of_operation - 1u> new_qubits{};
             using std::begin;
             using std::end;
             std::copy(
               begin(qubits) + new_unswappable_qubit_index + 1u, end(qubits),
               std::copy_n(begin(qubits), new_unswappable_qubit_index, begin(new_qubits)));
 
-            auto new_unswappable_qubits = std::array<qubit_type, num_unswappable_qubits + 1u>{};
+            std::array<qubit_type, num_unswappable_qubits + 1u> new_unswappable_qubits{};
             std::copy(begin(unswappable_qubits), end(unswappable_qubits), begin(new_unswappable_qubits));
             new_unswappable_qubits.back() = qubits[new_unswappable_qubit_index];
 
@@ -1491,14 +1489,14 @@ namespace ket
             assert(new_unswappable_qubit_index < num_qubits_of_operation);
 
             using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-            auto new_qubits = std::array<qubit_type, num_qubits_of_operation - 1u>{};
+            std::array<qubit_type, num_qubits_of_operation - 1u> new_qubits{};
             using std::begin;
             using std::end;
             std::copy(
               begin(qubits) + new_unswappable_qubit_index + 1u, end(qubits),
               std::copy_n(begin(qubits), new_unswappable_qubit_index, begin(new_qubits)));
 
-            auto new_unswappable_qubits = std::array<qubit_type, num_unswappable_qubits + 1u>{};
+            std::array<qubit_type, num_unswappable_qubits + 1u> new_unswappable_qubits{};
             std::copy(begin(unswappable_qubits), end(unswappable_qubits), begin(new_unswappable_qubits));
             new_unswappable_qubits.back() = qubits[new_unswappable_qubit_index];
 
@@ -1632,8 +1630,8 @@ namespace ket
           -> void
           {
             using permutated_control_qubit_type = ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >;
-            auto unit_permutated_control_qubits = std::array<permutated_control_qubit_type, 0u>{};
-            auto local_permutated_control_qubits = std::array<permutated_control_qubit_type, 0u>{};
+            std::array<permutated_control_qubit_type, 0u> unit_permutated_control_qubits{};
+            std::array<permutated_control_qubit_type, 0u> local_permutated_control_qubits{};
 
             auto const present_rank = communicator.rank(environment);
             auto const present_rank_in_unit = ::ket::mpi::utility::policy::rank_in_unit(mpi_policy, present_rank);
@@ -1669,8 +1667,8 @@ namespace ket
           -> void
           {
             using permutated_control_qubit_type = ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >;
-            auto unit_permutated_control_qubits = std::array<permutated_control_qubit_type, 0u>{};
-            auto local_permutated_control_qubits = std::array<permutated_control_qubit_type, 0u>{};
+            std::array<permutated_control_qubit_type, 0u> unit_permutated_control_qubits{};
+            std::array<permutated_control_qubit_type, 0u> local_permutated_control_qubits{};
 
             auto const present_rank = communicator.rank(environment);
             auto const present_rank_in_unit = ::ket::mpi::utility::policy::rank_in_unit(mpi_policy, present_rank);
@@ -1715,8 +1713,7 @@ namespace ket
             if (permutated_control_qubit < least_unit_permutated_qubit)
             {
               using permutated_control_qubit_type = ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >;
-              auto new_local_permutated_control_qubits
-                = std::array<permutated_control_qubit_type, num_local_control_qubits + 1u>{};
+              std::array<permutated_control_qubit_type, num_local_control_qubits + 1u> new_local_permutated_control_qubits{};
               using std::begin;
               using std::end;
               std::copy(
@@ -1735,8 +1732,7 @@ namespace ket
             else if (permutated_control_qubit < least_global_permutated_qubit)
             {
               using permutated_control_qubit_type = ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >;
-              auto new_unit_permutated_control_qubits
-                = std::array<permutated_control_qubit_type, num_unit_control_qubits + 1u>{};
+              std::array<permutated_control_qubit_type, num_unit_control_qubits + 1u> new_unit_permutated_control_qubits{};
               using std::begin;
               using std::end;
               std::copy(
@@ -1942,8 +1938,7 @@ namespace ket
             if (permutated_control_qubit < least_unit_permutated_qubit)
             {
               using permutated_control_qubit_type = ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >;
-              auto new_local_permutated_control_qubits
-                = std::array<permutated_control_qubit_type, num_local_control_qubits + 1u>{};
+              std::array<permutated_control_qubit_type, num_local_control_qubits + 1u> new_local_permutated_control_qubits{};
               using std::begin;
               using std::end;
               std::copy(
@@ -1962,8 +1957,7 @@ namespace ket
             else if (permutated_control_qubit < least_global_permutated_qubit)
             {
               using permutated_control_qubit_type = ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >;
-              auto new_unit_permutated_control_qubits
-                = std::array<permutated_control_qubit_type, num_unit_control_qubits + 1u>{};
+              std::array<permutated_control_qubit_type, num_unit_control_qubits + 1u> new_unit_permutated_control_qubits{};
               using std::begin;
               using std::end;
               std::copy(

@@ -52,7 +52,7 @@ namespace ket
       ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Spin "}, qubit), environment};
 
       using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-      auto qubits = std::array<qubit_type, 1u>{qubit};
+      std::array<qubit_type, 1u> qubits{qubit};
       ::ket::mpi::utility::maybe_interchange_qubits(
         mpi_policy, parallel_policy,
         local_state, qubits, permutation, buffer, communicator, environment);
@@ -60,7 +60,7 @@ namespace ket
       using complex_type = ::ket::utility::meta::range_value_t<LocalState>;
       using real_type = ::ket::utility::meta::real_t<complex_type>;
       using spin_type = std::array<real_type, 3u>;
-      auto spin = spin_type{};
+      spin_type spin{};
 
       auto const permutated_qubit = permutation[qubit];
       if (::ket::mpi::page::is_on_page(permutated_qubit, local_state))
@@ -128,7 +128,7 @@ namespace ket
       ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Spin "}, qubit), environment};
 
       using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-      auto qubits = std::array<qubit_type, 1u>{qubit};
+      std::array<qubit_type, 1u> qubits{qubit};
       ::ket::mpi::utility::maybe_interchange_qubits(
         mpi_policy, parallel_policy,
         local_state, qubits, permutation, buffer, complex_datatype, communicator, environment);
@@ -136,7 +136,7 @@ namespace ket
       using complex_type = ::ket::utility::meta::range_value_t<LocalState>;
       using real_type = ::ket::utility::meta::real_t<complex_type>;
       using spin_type = std::array<real_type, 3u>;
-      auto spin = spin_type{};
+      spin_type spin{};
 
       auto const permutated_qubit = permutation[qubit];
       if (::ket::mpi::page::is_on_page(permutated_qubit, local_state))
@@ -384,7 +384,7 @@ namespace ket
       ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Spin "}, qubit), environment};
 
       using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-      auto qubits = std::array<qubit_type, 1u>{qubit};
+      std::array<qubit_type, 1u> qubits{qubit};
       ::ket::mpi::utility::maybe_interchange_qubits(
         mpi_policy, parallel_policy,
         local_state, qubits, permutation, buffer, communicator, environment);
@@ -392,7 +392,7 @@ namespace ket
       using complex_type = ::ket::utility::meta::range_value_t<LocalState>;
       using real_type = ::ket::utility::meta::real_t<complex_type>;
       using spin_type = std::array<real_type, 3u>;
-      auto spin = spin_type{};
+      spin_type spin{};
 
       auto const permutated_qubit = permutation[qubit];
       if (::ket::mpi::page::is_on_page(permutated_qubit, local_state))
@@ -463,7 +463,7 @@ namespace ket
       ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Spin "}, qubit), environment};
 
       using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-      auto qubits = std::array<qubit_type, 1u>{qubit};
+      std::array<qubit_type, 1u> qubits{qubit};
       ::ket::mpi::utility::maybe_interchange_qubits(
         mpi_policy, parallel_policy,
         local_state, qubits, permutation, buffer, complex_datatype, communicator, environment);
@@ -471,7 +471,7 @@ namespace ket
       using complex_type = ::ket::utility::meta::range_value_t<LocalState>;
       using real_type = ::ket::utility::meta::real_t<complex_type>;
       using spin_type = std::array<real_type, 3u>;
-      auto spin = spin_type{};
+      spin_type spin{};
 
       auto const permutated_qubit = permutation[qubit];
       if (::ket::mpi::page::is_on_page(permutated_qubit, local_state))

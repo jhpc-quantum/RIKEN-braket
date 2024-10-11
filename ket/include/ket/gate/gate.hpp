@@ -68,7 +68,6 @@ namespace ket
 
         static constexpr auto num_operated_qubits = sizeof...(Qubits) + 2u;
         using qubit_type = ::ket::qubit<state_integer_type, bit_integer_type>;
-        //auto sorted_qubits = std::array<qubit_type, num_operated_qubits>{::ket::remove_control(qubit1), ::ket::remove_control(qubit2), ::ket::remove_control(qubits)...};
         std::array<qubit_type, num_operated_qubits> sorted_qubits{::ket::remove_control(qubit1), ::ket::remove_control(qubit2), ::ket::remove_control(qubits)...};
 
         using std::begin;
@@ -168,9 +167,9 @@ namespace ket
         == static_cast<state_integer_type>(last - first));
 
       static constexpr auto num_operated_qubits = sizeof...(Qubits) + 1u;
-      auto qubit_masks = std::array<state_integer_type, num_operated_qubits>{};
+      std::array<state_integer_type, num_operated_qubits> qubit_masks{};
       ::ket::gate::gate_detail::make_qubit_masks(qubit_masks, qubit, qubits...);
-      auto index_masks = std::array<state_integer_type, num_operated_qubits + 1u>{};
+      std::array<state_integer_type, num_operated_qubits + 1u> index_masks{};
       ::ket::gate::gate_detail::make_index_masks(index_masks, std::forward<Qubit>(qubit), std::forward<Qubits>(qubits)...);
 
       using indices_type = std::array<state_integer_type, ::ket::utility::integer_exp2<std::size_t>(num_operated_qubits)>;

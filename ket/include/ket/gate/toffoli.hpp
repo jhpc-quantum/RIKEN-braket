@@ -45,7 +45,7 @@ namespace ket
         == static_cast<StateInteger>(last - first));
 
       using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-      auto sorted_qubits = std::array<qubit_type, 3u>{target_qubit, control_qubit1.qubit(), control_qubit2.qubit()};
+      std::array<qubit_type, 3u> sorted_qubits{target_qubit, control_qubit1.qubit(), control_qubit2.qubit()};
       using std::begin;
       using std::end;
       std::sort(begin(sorted_qubits), end(sorted_qubits));
@@ -55,7 +55,7 @@ namespace ket
         = ::ket::utility::integer_exp2<StateInteger>(control_qubit1)
           bitor ::ket::utility::integer_exp2<StateInteger>(control_qubit2);
 
-      auto bits_mask = std::array<StateInteger, 4u>{};
+      std::array<StateInteger, 4u> bits_mask{};
       bits_mask[0u] = ::ket::utility::integer_exp2<StateInteger>(sorted_qubits[0u]) - StateInteger{1u};
       bits_mask[1u]
         = (::ket::utility::integer_exp2<StateInteger>(sorted_qubits[1u] - BitInteger{1u}) - StateInteger{1u})
