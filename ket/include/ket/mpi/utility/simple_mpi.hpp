@@ -847,7 +847,7 @@ namespace ket
             using std::end;
             std::copy(
               begin(qubits) + new_unswappable_qubit_index + 1u, end(qubits),
-              std::copy(begin(qubits), begin(qubits) + new_unswappable_qubit_index, begin(new_qubits)));
+              std::copy_n(begin(qubits), new_unswappable_qubit_index, begin(new_qubits)));
 
             auto new_unswappable_qubits = std::array<qubit_type, num_unswappable_qubits + 1u>{};
             std::copy(begin(unswappable_qubits), end(unswappable_qubits), begin(new_unswappable_qubits));
@@ -886,7 +886,7 @@ namespace ket
             using std::end;
             std::copy(
               begin(qubits) + new_unswappable_qubit_index + 1u, end(qubits),
-              std::copy(begin(qubits), begin(qubits) + new_unswappable_qubit_index, begin(new_qubits)));
+              std::copy_n(begin(qubits), new_unswappable_qubit_index, begin(new_qubits)));
 
             auto new_unswappable_qubits = std::array<qubit_type, num_unswappable_qubits + 1u>{};
             std::copy(begin(unswappable_qubits), end(unswappable_qubits), begin(new_unswappable_qubits));
