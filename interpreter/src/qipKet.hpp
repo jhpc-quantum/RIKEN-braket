@@ -81,5 +81,9 @@ void addSGate(gateInfoTy *ginfo);
 /// @param [in] ginfo Gate operation information
 void addSdgGate(gateInfoTy *ginfo);
 
+/// @brief Application of RX Gate
+/// @param [in] ginfo Gate operation information
+void addRXGate(gateInfoTy *ginfo);
+
 }
 #endif // _QIPKET_HPP_

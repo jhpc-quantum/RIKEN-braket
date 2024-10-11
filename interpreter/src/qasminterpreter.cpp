@@ -49,7 +49,7 @@ static void printSqcIr() {
       std::cout << "  <iarg[" << j << "]> : " << qip::qasmir.gate[i].iarg[j] << std::endl;
     }
     for (int j = 0; j < nrarg; j++) {
-      std::cout << " <rarg[" << j << "]> : " << qip::qasmir.gate[i].rarg[j] << std::endl;
+      std::cout << "  <rarg[" << j << "]> : " << qip::qasmir.gate[i].rarg[j] << std::endl;
     }
   }
 }

@@ -111,6 +111,9 @@ void IRGenQASM3Visitor::visit(const ASTGenericGateOpNode *node) {
   else if (gateName == "sdg") {
     qasmir.gate[qasmir.ngates].id = SdgGate;
   }
+  else if (gateName == "rx") {
+    qasmir.gate[qasmir.ngates].id = RXGate;
+  }
   else {
     assert(0 && "ASTGenericGateOpNode");
   }
@@ -134,6 +137,22 @@ void IRGenQASM3Visitor::visit(const ASTGateNode *node) {
   // Obtaining information on qubits.
   for (size_t i = 0; i < numQubits; i++) {
     visit(node->GetQubit(i));
+  }
+
+  // Set the number of arguments to a real parameter number.
+  qasmir.gate[qasmir.ngates].nrarg = node->GetNumParams();
+
+  // Set the value of the argument to the real parameter.
+  for (size_t i = 0; i < node->GetNumParams(); i++) {
+    if (!node->GetIdentifier()) {
+      assert(0 && "ASTGateNode");
+    }
+    auto param = node->GetParam(i);
+    double value = 0.0;
+    if (!param->IsNan()) {
+      value = param->AsDouble();
+    }
+    qasmir.gate[qasmir.ngates].rarg[i] = value;
   }
 
   // Set the number of qubits to an integer parameter number.
@@ -282,7 +301,6 @@ void IRGenQASM3Visitor::visit(const ASTMPComplexNode *node) {
 }
 
 void IRGenQASM3Visitor::visit(const ASTAngleNode *node) {
-  assert(0 && "ASTAngleNode");
 }
 
 void IRGenQASM3Visitor::visit(const ASTBoolNode *node) {
