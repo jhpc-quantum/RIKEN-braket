@@ -305,11 +305,9 @@ namespace ket
           ::ket::qubit<StateInteger, BitInteger> const qubit1, Qubit2 const qubit2, Qubit3 const qubit3, Qubits const... qubits)
         -> RandomAccessRange&
         {
-          using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-          std::array<qubit_type, sizeof...(Qubits) + 3u> qubit_array{qubit1, ::ket::remove_control(qubit2), ::ket::remove_control(qubit3), ::ket::remove_control(qubits)...};
           ::ket::mpi::utility::maybe_interchange_qubits(
             mpi_policy, parallel_policy,
-            local_state, qubit_array, permutation, buffer, communicator, environment);
+            local_state, permutation, buffer, communicator, environment, qubit1, qubit2, qubit3, qubits...);
 
           return ::ket::mpi::gate::local::exponential_pauli_z_coeff(
             mpi_policy, parallel_policy,
@@ -332,11 +330,9 @@ namespace ket
           ::ket::qubit<StateInteger, BitInteger> const qubit1, Qubit2 const qubit2, Qubit3 const qubit3, Qubits const... qubits)
         -> RandomAccessRange&
         {
-          using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-          std::array<qubit_type, sizeof...(Qubits) + 3u> qubit_array{qubit1, ::ket::remove_control(qubit2), ::ket::remove_control(qubit3), ::ket::remove_control(qubits)...};
           ::ket::mpi::utility::maybe_interchange_qubits(
             mpi_policy, parallel_policy,
-            local_state, qubit_array, permutation, buffer, datatype, communicator, environment);
+            local_state, permutation, buffer, datatype, communicator, environment, qubit1, qubit2, qubit3, qubits...);
 
           return ::ket::mpi::gate::local::exponential_pauli_z_coeff(
             mpi_policy, parallel_policy,

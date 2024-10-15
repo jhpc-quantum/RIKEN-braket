@@ -32,10 +32,10 @@ namespace ket
           ParallelPolicy const parallel_policy,
           LocalState& local_state,
           ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
-          UnswappableQubits const& unswappable_qubits,
-          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_local_swap_qubit,
           StateInteger const num_data_blocks, StateInteger const data_block_size,
-          yampi::communicator const& communicator, yampi::environment const& environment)
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          UnswappableQubits const& unswappable_qubits,
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_local_swap_qubit)
         -> ::ket::qubit<StateInteger, BitInteger>
         {
           using qubit_type = ket::qubit<StateInteger, BitInteger>;
@@ -66,6 +66,26 @@ namespace ket
           ::ket::mpi::permutate(permutation, local_swap_qubit, other_qubit);
 
           return ::ket::mpi::inverse(permutation)[permutated_local_swap_qubit];
+        }
+
+        template <
+          typename ParallelPolicy, typename LocalState,
+          typename StateInteger, typename BitInteger, typename Allocator,
+          typename UnswappableQubits>
+        [[deprecated]] inline auto make_local_swap_qubit(
+          ParallelPolicy const parallel_policy,
+          LocalState& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          UnswappableQubits const& unswappable_qubits,
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_local_swap_qubit,
+          StateInteger const num_data_blocks, StateInteger const data_block_size,
+          yampi::communicator const& communicator, yampi::environment const& environment)
+        -> ::ket::qubit<StateInteger, BitInteger>
+        {
+          return ::ket::mpi::utility::detail::make_local_swap_qubit(
+            parallel_policy, local_state, permutation,
+            num_data_blocks, data_block_size, communicator, environment,
+            unswappable_qubits, permutated_local_swap_qubit);
         }
       } // namespace detail
     } // namespace utility
