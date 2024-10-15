@@ -140,10 +140,11 @@ void IRGenQASM3Visitor::visit(const ASTGateNode *node) {
   }
 
   // Set the number of arguments to a real parameter number.
-  qasmir.gate[qasmir.ngates].nrarg = node->GetNumParams();
+  const size_t nParams = node->GetNumParams();
+  qasmir.gate[qasmir.ngates].nrarg = nParams;
 
   // Set the value of the argument to the real parameter.
-  for (size_t i = 0; i < node->GetNumParams(); i++) {
+  for (size_t i = 0; i < nParams; i++) {
     if (!node->GetIdentifier()) {
       assert(0 && "ASTGateNode");
     }
@@ -156,10 +157,11 @@ void IRGenQASM3Visitor::visit(const ASTGateNode *node) {
   }
 
   // Set the number of qubits to an integer parameter number.
-  qasmir.gate[qasmir.ngates].niarg = node->GetNumQCParams();
+  const size_t nQCParams = node->GetNumQCParams();
+  qasmir.gate[qasmir.ngates].niarg = nQCParams;
 
   // Set the integer parameter to a qubit number.
-  for (size_t i = 0; i < node->GetNumQCParams(); i++) {
+  for (size_t i = 0; i < nQCParams; i++) {
     auto *paramId = node->GetQCParams()[i]->GetIdentifier();
     assert(paramId);
 
