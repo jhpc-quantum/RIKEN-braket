@@ -51,6 +51,7 @@ public:
   /// @brief Obtain information on Generic gate application
   /// @details Set the ID to the gate operation information.
   ///          Call the visit function to obtain the number of qubits and the qubit number.
+  ///          Get the argument Double value.
   /// @param [in] node ASTGenericGateOpNode
   void visit(const QASM::ASTGenericGateOpNode *node) override;
 
@@ -127,7 +128,9 @@ public:
 
   void visit(const QASM::ASTMPComplexNode *) override;
 
-  void visit(const QASM::ASTAngleNode *) override;
+  /// @brief Get information on Angle
+  /// @param [in] node ASTAngleNode
+  void visit(const QASM::ASTAngleNode *node) override;
 
   void visit(const QASM::ASTBoolNode *) override;
 

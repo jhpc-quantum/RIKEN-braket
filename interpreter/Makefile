@@ -1,7 +1,7 @@
 CC = mpicxx
 
 CFLAGS = -fopenmp -DKET_USE_OPENMP -DKET_PRINT_LOG -I../ket/include/ -I../yampi/include/ -I../../qe-qasm/include -O3 -std=c++17
-LIBS = -fopenmp -lm -L../../qe-qasm/build/lib -lqasmAST -lqasmDIAG -lqasmFrontend -lqasmParser
+LIBS = -fopenmp -lm -L../../qe-qasm/build/lib -lqasmAST -lqasmDIAG -lqasmFrontend -lqasmParser -lmpfr
 LIBFLAGS = -Wl,--rpath=../../qe-qasm/build/lib
 
 .PHONY : all clean

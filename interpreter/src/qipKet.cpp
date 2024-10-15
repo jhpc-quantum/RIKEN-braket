@@ -59,6 +59,9 @@ void qip::addGate() {
     case SdgGate:
       addSdgGate(&qip::qasmir.gate[i]);
       break;
+    case RXGate:
+      addRXGate(&qip::qasmir.gate[i]);
+      break;
     default:
       assert(0 && "Unsupported Gate");
     }
@@ -150,5 +153,28 @@ void qip::addSdgGate(gateInfoTy *ginfo) {
                               buffer,
                               *(ki.communicator),
                               *(ki.environment));
+
+}
+
+void qip::addRXGate(gateInfoTy *ginfo) {
+  auto buffer = std::vector < complexTy > {};
+
+  // target bit
+  qubitTy target_qubit{bitIntegerTye{(unsigned int) (ginfo->iarg[1])}};
+  // control bit
+  ket::control <qubitTy> control_qubit{qubitTy{bitIntegerTye{(unsigned int) (ginfo->iarg[0])}}};
+
+  double theta = ginfo->rarg[0];
+
+  // rx
+  ket::mpi::gate::phase_shift3(*(ki.localState),
+                               theta,
+                               -M_PI/2.0,
+                               M_PI/2.0,
+                               target_qubit,
+                               *(ki.permutation),
+                               buffer,
+                               *(ki.communicator),
+                               *(ki.environment));
 
 }
