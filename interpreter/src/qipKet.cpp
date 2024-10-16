@@ -180,9 +180,29 @@ void qip::addRXGate(gateInfoTy *ginfo) {
 
 }
 
+namespace bpt = boost::property_tree;
+typedef bpt::ptree JSON;
+namespace boost { namespace property_tree {
+/// @brief Output numbers in json format
+/// @param [in] path File path
+/// @param [in] ptree Property tree 
+    inline void write_jsonEx(const std::string & path, const JSON & ptree)
+    {
+        std::ostringstream oss;
+        bpt::write_json(oss, ptree);
+        std::regex reg("\\\"([0-9]+\\.{0,1}[0-9]*)\\\"");
+        std::string result = std::regex_replace(oss.str(), reg, "$1");
+
+        std::ofstream file;
+        file.open(path);
+        file << result;
+        file.close();
+    }
+} }
+
 using spin_type = std::array<double, 3u>;
 using spins_allocator_type = yampi::allocator<spin_type>;
-using namespace boost::property_tree;
+using namespace bpt;
 namespace fs = std::filesystem;
 
 void qip::measurement(std::string inputFile) {
@@ -192,11 +212,11 @@ void qip::measurement(std::string inputFile) {
           *(ki.localState), *(qip::ki.permutation), numQubits, buffer, *(qip::ki.communicator), *(ki.environment));
 
   qint i = 0;
-  ptree pt;
-  ptree child;
+  JSON pt;
+  JSON child;
   for (auto const& spin: expectation_values) {
     {
-      ptree info;
+      JSON info;
       info.put("qubit", i);
       info.put("Qx", 0.5 - static_cast<double>(spin[0u]));
       info.put("Qy", 0.5 - static_cast<double>(spin[1u]));
@@ -209,6 +229,6 @@ void qip::measurement(std::string inputFile) {
   fs::path pInput = inputFile;
   pInput.replace_extension(".json");
   std::string pjson = "./" + pInput.filename().string<char>();
-  write_json(pjson, pt);
+  write_jsonEx(pjson, pt);
 
 }

@@ -11,6 +11,7 @@
 #include <omp.h>
 #include <stdio.h>
 #include <filesystem>
+#include <regex>
 
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
