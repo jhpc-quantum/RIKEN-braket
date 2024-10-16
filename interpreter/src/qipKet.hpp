@@ -62,26 +62,32 @@ void finalize();
 void addGate();
 
 /// @brief Application of hadamard Gate
+/// @details Call ket::mpi::gate::hadamard().
 /// @param [in] ginfo Gate operation information
 void addHGate(gateInfoTy *ginfo);
 
 /// @brief Application of CNOT Gate
+/// @details Call ket::mpi::gate::controlled_not().
 /// @param [in] ginfo Gate operation information
 void addCXGate(gateInfoTy *ginfo);
 
 /// @brief Application of CZ Gate
+/// @details Call ket::mpi::gate::controlled_phase_shift(pi) .
 /// @param [in] ginfo Gate operation information
 void addCZGate(gateInfoTy *ginfo);
 
 /// @brief Application of S Gate
+/// @details Call ket::mpi::gate::phase_shift(pi*0.5) .
 /// @param [in] ginfo Gate operation information
 void addSGate(gateInfoTy *ginfo);
 
 /// @brief Application of Sdg Gate
+/// @details Call ket::mpi::gate::phase_shift(-pi*0.5) .
 /// @param [in] ginfo Gate operation information
 void addSdgGate(gateInfoTy *ginfo);
 
 /// @brief Application of RX Gate
+/// @details Call ket::mpi::gate::phase_shift3(theta, -pi/2, pi/2) .
 /// @param [in] ginfo Gate operation information
 void addRXGate(gateInfoTy *ginfo);
 
