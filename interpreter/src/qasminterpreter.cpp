@@ -62,6 +62,25 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  // Get the path of the input file
+  std::string inputFile;
+  bool push = false;
+  for (int I = 1; I < argc; ++I) {
+    if ((argv[I][0] == '-') && (argv[I][1] == 'I')) {
+      if (argv[I][2] == '.' || argv[I][2] == '/') {
+        push = false;
+      } else {
+        push = true;
+      }
+    } else {
+      if (push) {
+        push = false;
+      } else {
+        inputFile = argv[I];
+      }
+    }
+  }
+
   // Prepare for MPI execution
   qip::ki.environment  = new yampi::environment(argc, argv, yampi::thread_support::funneled);
   qip::ki.communicator = new yampi::communicator(yampi::tags::world_communicator);
@@ -100,7 +119,7 @@ int main(int argc, char *argv[]) {
   qip::initialize();
 
   // Apply gate
-  qip::addGate();
+  qip::addGate(inputFile);
 
   // Finalize
   qip::finalize();

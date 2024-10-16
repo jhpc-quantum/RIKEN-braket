@@ -38,7 +38,7 @@ void qip::finalize() {
   MPI_Finalize();
 }
 
-void qip::addGate() {
+void qip::addGate(std::string inputFile) {
   int n = qip::qasmir.ngates;
 
   // Apply all gates
@@ -67,6 +67,7 @@ void qip::addGate() {
     }
   }
   MPI_Barrier(MPI_COMM_WORLD);
+  measurement(inputFile);
 }
 
 void qip::addHGate(gateInfoTy *ginfo) {
@@ -176,5 +177,38 @@ void qip::addRXGate(gateInfoTy *ginfo) {
                                buffer,
                                *(ki.communicator),
                                *(ki.environment));
+
+}
+
+using spin_type = std::array<double, 3u>;
+using spins_allocator_type = yampi::allocator<spin_type>;
+using namespace boost::property_tree;
+namespace fs = std::filesystem;
+
+void qip::measurement(std::string inputFile) {
+  const unsigned numQubits = qasmir.qubits;
+  auto buffer = std::vector < complexTy > {};
+  auto expectation_values = ket::mpi::all_spin_expectation_values<spins_allocator_type>(
+          *(ki.localState), *(qip::ki.permutation), numQubits, buffer, *(qip::ki.communicator), *(ki.environment));
+
+  qint i = 0;
+  ptree pt;
+  ptree child;
+  for (auto const& spin: expectation_values) {
+    {
+      ptree info;
+      info.put("qubit", i);
+      info.put("Qx", 0.5 - static_cast<double>(spin[0u]));
+      info.put("Qy", 0.5 - static_cast<double>(spin[1u]));
+      info.put("Qz", 0.5 - static_cast<double>(spin[2u]));
+      child.push_back(std::make_pair("", info));
+    }
+    i++;
+  }
+  pt.add_child("Expectation values of spins", child);
+  fs::path pInput = inputFile;
+  pInput.replace_extension(".json");
+  std::string pjson = "./" + pInput.filename().string<char>();
+  write_json(pjson, pt);
 
 }
