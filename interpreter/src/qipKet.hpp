@@ -66,8 +66,7 @@ void initialize();
 void finalize();
 
 /// @brief Gate Application
-/// @param [in] inputFile OpenQASM input file
-void addGate(std::string inputFile);
+void addGate();
 
 /// @brief Application of hadamard Gate
 /// @param [in] ginfo Gate operation information
@@ -93,9 +92,10 @@ void addSdgGate(gateInfoTy *ginfo);
 /// @param [in] ginfo Gate operation information
 void addRXGate(gateInfoTy *ginfo);
 
-/// @brief Equivalent to "begin measurement"
-/// @param [in] inputFile OpenQASM input file
-void measurement(std::string inputFile);
+/// @brief Output spin expectation in json format
+/// @param [in] outputFile json output file
+/// @note Equivalent to "begin measurement"
+void measurement(std::string outputFile);
 
 }
 #endif // _QIPKET_HPP_

@@ -38,7 +38,7 @@ void qip::finalize() {
   MPI_Finalize();
 }
 
-void qip::addGate(std::string inputFile) {
+void qip::addGate() {
   int n = qip::qasmir.ngates;
 
   // Apply all gates
@@ -67,7 +67,6 @@ void qip::addGate(std::string inputFile) {
     }
   }
   MPI_Barrier(MPI_COMM_WORLD);
-  measurement(inputFile);
 }
 
 void qip::addHGate(gateInfoTy *ginfo) {
@@ -202,10 +201,30 @@ namespace boost { namespace property_tree {
 
 using spin_type = std::array<double, 3u>;
 using spins_allocator_type = yampi::allocator<spin_type>;
-using namespace bpt;
-namespace fs = std::filesystem;
 
-void qip::measurement(std::string inputFile) {
+/// @note The information to be output in json format is as follows.
+///       - "qubit" : Quantum bit number
+///       - "Qx", "Qy", "Qz" : Spin Expectation
+/// Example)
+/// ```
+/// {
+///     "Expectation values of spins": [
+///         {
+///             "qubit": 0,
+///             "Qx": 0.5,
+///             "Qy": 0.5,
+///             "Qz": 0.5
+///         },
+///         {
+///             "qubit": 1,
+///             "Qx": 0.5,
+///             "Qy": 0.5,
+///             "Qz": 0.5
+///         }
+///     ]
+/// }
+/// ```
+void qip::measurement(std::string outputFile) {
   const unsigned numQubits = qasmir.qubits;
   auto buffer = std::vector < complexTy > {};
   auto expectation_values = ket::mpi::all_spin_expectation_values<spins_allocator_type>(
@@ -226,9 +245,6 @@ void qip::measurement(std::string inputFile) {
     i++;
   }
   pt.add_child("Expectation values of spins", child);
-  fs::path pInput = inputFile;
-  pInput.replace_extension(".json");
-  std::string pjson = "./" + pInput.filename().string<char>();
-  write_jsonEx(pjson, pt);
+  write_jsonEx(outputFile, pt);
 
 }
