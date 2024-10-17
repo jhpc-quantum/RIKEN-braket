@@ -94,8 +94,8 @@ void addRXGate(gateInfoTy *ginfo);
 
 /// @brief Output spin expectation in json format
 /// @param [in] outputFile json output file
-/// @note Equivalent to "begin measurement"
-void measurement(std::string outputFile);
+/// @note Equivalent to “BEGIN MEASUREMENT” in bra.
+void outputSpinExpectation(std::string outputFile);
 
 }
 #endif // _QIPKET_HPP_

@@ -202,6 +202,7 @@ namespace boost { namespace property_tree {
 using spin_type = std::array<double, 3u>;
 using spins_allocator_type = yampi::allocator<spin_type>;
 
+/// @note Spin expectation calculation is performed with reference to the bra process.
 /// @note The information to be output in json format is as follows.
 ///       - "qubit" : Quantum bit number
 ///       - "Qx", "Qy", "Qz" : Spin Expectation
@@ -213,18 +214,18 @@ using spins_allocator_type = yampi::allocator<spin_type>;
 ///             "qubit": 0,
 ///             "Qx": 0.5,
 ///             "Qy": 0.5,
-///             "Qz": 0.5
+///             "Qz": 0.0
 ///         },
 ///         {
 ///             "qubit": 1,
 ///             "Qx": 0.5,
 ///             "Qy": 0.5,
-///             "Qz": 0.5
+///             "Qz": 0.0
 ///         }
 ///     ]
 /// }
 /// ```
-void qip::measurement(std::string outputFile) {
+void qip::outputSpinExpectation(std::string outputFile) {
   const unsigned numQubits = qasmir.qubits;
   auto buffer = std::vector < complexTy > {};
   auto expectation_values = ket::mpi::all_spin_expectation_values<spins_allocator_type>(

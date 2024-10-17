@@ -36,10 +36,10 @@ namespace fs = std::filesystem;
 /// @return output file path
 /// @note Generate output file paths according to the following rules.
 ///       - The output file should be in json format
-///       - Output files are created in the current directory
+///       - Output file are created in the current directory
 ///       - The file name of the output file is the input file with the extension changed to “json”
 std::string getOutputFile(int argc, char *const argv[]) {
-  // Get the path of the input file
+  // Get input filename
   std::string inputFile;
   bool push = false;
   for (int I = 1; I < argc; ++I) {
@@ -142,8 +142,8 @@ int main(int argc, char *argv[]) {
   // Get the path of the output file
   std::string outputFile = getOutputFile(argc, argv);
 
-  // Measurement
-  qip::measurement(outputFile);
+  // Output spin expectation
+  qip::outputSpinExpectation(outputFile);
 
   // Finalize
   qip::finalize();
