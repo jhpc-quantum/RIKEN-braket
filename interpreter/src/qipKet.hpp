@@ -98,6 +98,26 @@ void addSdgGate(gateInfoTy *ginfo);
 /// @param [in] ginfo Gate operation information
 void addRXGate(gateInfoTy *ginfo);
 
+/// @brief Application of RY Gate
+/// @details Call ket::mpi::gate::phase_shift3(theta, 0.0, 0.0) .
+/// @param [in] ginfo Gate operation information
+void addRYGate(gateInfoTy *ginfo);
+
+/// @brief Application of RZ Gate
+/// @details Call ket::mpi::gate::phase_shift * exp (-i * theta /2.0) .
+/// @param [in] ginfo Gate operation information
+void addRZGate(gateInfoTy *ginfo);
+
+/// @brief Application of X Gate
+/// @details Call ket::mpi::gate::pauli_x() .
+/// @param [in] ginfo Gate operation information
+void addXGate(gateInfoTy *ginfo);
+
+/// @brief Application of U1 Gate
+/// @details Call ket::mpi::gate::ket::mpi::gate::phase_shift(λ) .
+/// @param [in] ginfo Gate operation information
+void addU1Gate(gateInfoTy *ginfo);
+
 /// @brief Output spin expectation in json format
 /// @param [in] outputFile json output file
 /// @note Equivalent to “BEGIN MEASUREMENT” in bra.

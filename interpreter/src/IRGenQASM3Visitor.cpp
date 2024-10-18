@@ -114,6 +114,18 @@ void IRGenQASM3Visitor::visit(const ASTGenericGateOpNode *node) {
   else if (gateName == "rx") {
     qasmir.gate[qasmir.ngates].id = RXGate;
   }
+  else if (gateName == "ry") {
+    qasmir.gate[qasmir.ngates].id = RYGate;
+  }
+  else if (gateName == "rz") {
+    qasmir.gate[qasmir.ngates].id = RZGate;
+  }
+  else if (gateName == "x") {
+    qasmir.gate[qasmir.ngates].id = XGate;
+  }
+  else if (gateName == "u1") {
+    qasmir.gate[qasmir.ngates].id = U1Gate;
+  }
   else {
     assert(0 && "ASTGenericGateOpNode");
   }
