@@ -178,3 +178,74 @@ void qip::addRXGate(gateInfoTy *ginfo) {
                                *(ki.environment));
 
 }
+
+namespace bpt = boost::property_tree;
+typedef bpt::ptree JSON;
+namespace boost { namespace property_tree {
+/// @brief Output numbers in json format
+/// @param [in] path File path
+/// @param [in] ptree Property tree 
+    inline void write_jsonEx(const std::string & path, const JSON & ptree)
+    {
+        std::ostringstream oss;
+        bpt::write_json(oss, ptree);
+        std::regex reg("\\\"([0-9]+\\.{0,1}[0-9]*)\\\"");
+        std::string result = std::regex_replace(oss.str(), reg, "$1");
+
+        std::ofstream file;
+        file.open(path);
+        file << result;
+        file.close();
+    }
+} }
+
+using spin_type = std::array<double, 3u>;
+using spins_allocator_type = yampi::allocator<spin_type>;
+
+/// @note Spin expectation calculation is performed with reference to the bra process.
+/// @note The information to be output in json format is as follows.
+///       - "qubit" : Quantum bit number
+///       - "Qx", "Qy", "Qz" : Spin Expectation
+/// Example)
+/// ```
+/// {
+///     "Expectation values of spins": [
+///         {
+///             "qubit": 0,
+///             "Qx": 0.5,
+///             "Qy": 0.5,
+///             "Qz": 0.0
+///         },
+///         {
+///             "qubit": 1,
+///             "Qx": 0.5,
+///             "Qy": 0.5,
+///             "Qz": 0.0
+///         }
+///     ]
+/// }
+/// ```
+void qip::outputSpinExpectation(std::string outputFile) {
+  const unsigned numQubits = qasmir.qubits;
+  auto buffer = std::vector < complexTy > {};
+  auto expectation_values = ket::mpi::all_spin_expectation_values<spins_allocator_type>(
+          *(ki.localState), *(qip::ki.permutation), numQubits, buffer, *(qip::ki.communicator), *(ki.environment));
+
+  qint i = 0;
+  JSON pt;
+  JSON child;
+  for (auto const& spin: expectation_values) {
+    {
+      JSON info;
+      info.put("qubit", i);
+      info.put("Qx", 0.5 - static_cast<double>(spin[0u]));
+      info.put("Qy", 0.5 - static_cast<double>(spin[1u]));
+      info.put("Qz", 0.5 - static_cast<double>(spin[2u]));
+      child.push_back(std::make_pair("", info));
+    }
+    i++;
+  }
+  pt.add_child("Expectation values of spins", child);
+  write_jsonEx(outputFile, pt);
+
+}

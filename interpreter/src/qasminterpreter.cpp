@@ -28,6 +28,43 @@ ketInfo ki;
 
 }
 
+namespace fs = std::filesystem;
+
+/// @brief Get output file path
+/// @param [in] argc number of command line arguments
+/// @param [in] argv command line argument
+/// @return output file path
+/// @note Generate output file paths according to the following rules.
+///       - The output file should be in json format
+///       - Output file are created in the current directory
+///       - The file name of the output file is the input file with the extension changed to “json”
+std::string getOutputFile(int argc, char *const argv[]) {
+  // Get input filename
+  std::string inputFile;
+  bool push = false;
+  for (int I = 1; I < argc; ++I) {
+    if ((argv[I][0] == '-') && (argv[I][1] == 'I')) {
+      if (argv[I][2] == '.' || argv[I][2] == '/') {
+        push = false;
+      } else {
+        push = true;
+      }
+    } else {
+      if (push) {
+        push = false;
+      } else {
+        inputFile = argv[I];
+      }
+    }
+  }
+  // Generate json file path
+  fs::path pInput = inputFile;
+  pInput.replace_extension(".json");
+  std::string outputFile = "./" + pInput.filename().string<char>();
+
+  return outputFile;
+}
+
 /// @brief Dumping a quantum circuit IR
 /// @note At this time, runtime options to control dump output are not supported.
 /// @todo The intermediate code dump should be tied to the input code.
@@ -101,6 +138,12 @@ int main(int argc, char *argv[]) {
 
   // Apply gate
   qip::addGate();
+
+  // Get the path of the output file
+  std::string outputFile = getOutputFile(argc, argv);
+
+  // Output spin expectation
+  qip::outputSpinExpectation(outputFile);
 
   // Finalize
   qip::finalize();

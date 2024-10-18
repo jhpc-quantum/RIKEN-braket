@@ -5,11 +5,17 @@
 #define _QIPKET_HPP_
 
 #include <iostream>
+#include <string>
 #include <vector>
 #include <random>
 #include <omp.h>
 #include <stdio.h>
+#include <filesystem>
+#include <regex>
 
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/json_parser.hpp>
+#include <boost/foreach.hpp>
 #include <boost/optional.hpp>
 #include <boost/range/empty.hpp>
 #include <boost/range/size.hpp>
@@ -23,6 +29,7 @@
 #include <ket/mpi/gate/hadamard.hpp>
 #include <ket/mpi/gate/controlled_phase_shift.hpp>
 #include <ket/mpi/gate/phase_shift.hpp>
+#include <ket/mpi/all_spin_expectation_values.hpp>
 #include <yampi/allocator.hpp>
 #include <yampi/rank.hpp>
 #include <yampi/communicator.hpp>
@@ -90,6 +97,11 @@ void addSdgGate(gateInfoTy *ginfo);
 /// @details Call ket::mpi::gate::phase_shift3(theta, -pi/2, pi/2) .
 /// @param [in] ginfo Gate operation information
 void addRXGate(gateInfoTy *ginfo);
+
+/// @brief Output spin expectation in json format
+/// @param [in] outputFile json output file
+/// @note Equivalent to “BEGIN MEASUREMENT” in bra.
+void outputSpinExpectation(std::string outputFile);
 
 }
 #endif // _QIPKET_HPP_
