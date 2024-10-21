@@ -216,6 +216,12 @@ void qip::addRYGate(gateInfoTy *ginfo) {
 
 /// @attention RZ gate is not supported. The process of applying coefficients is not yet implemented.
 void qip::addRZGate(gateInfoTy *ginfo) {
+  std::cerr << "RZ gate is not supported.\n";
+  std::cout << std::flush;
+  abort();
+  // The rz gate shall be unsupported.
+  // Because it is unclear how to realize “gate rz(λ) a { gphase(-λ/2); U(0, 0, λ) a; }” in ket.
+#if 0
   auto buffer = std::vector < complexTy > {};
 
   // target bit
@@ -234,8 +240,8 @@ void qip::addRZGate(gateInfoTy *ginfo) {
                               *(ki.communicator),
                               *(ki.environment));
   complexTy c{cos(theta/2.0),-sin(theta/2.0)};
-//  ket::mpi::gate::mult(*(ki.localState), c, *(ki.permutation), buffer, *(ki.communicator), *(ki.environment));
-
+  ket::mpi::gate::mult(*(ki.localState), c, *(ki.permutation), buffer, *(ki.communicator), *(ki.environment));
+#endif
 }
 
 void qip::addXGate(gateInfoTy *ginfo) {

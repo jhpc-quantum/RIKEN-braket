@@ -25,7 +25,8 @@ namespace qip {
 qipIrTy qasmir;
 /// @brief Class declaration for calling ket
 ketInfo ki;
-
+/// @brief Parse error flag
+bool parseErrFlag = false;
 }
 
 namespace fs = std::filesystem;
@@ -91,6 +92,16 @@ static void printSqcIr() {
   }
 }
 
+/// @brief Output message and abort when an error occurs
+void checkPerseError() {
+  if (qip::parseErrFlag) {
+    std::cerr << "Error detected in parse. Processing is aborted.\n";
+    std::cerr << std::flush;
+    abort();
+  }
+}
+
+
 int main(int argc, char *argv[]) {
   std::ios::sync_with_stdio(false);
 
@@ -128,6 +139,8 @@ int main(int argc, char *argv[]) {
   // Trace AST and generate quantum circuit IR.
   visitor.setStatementList(statementList);
   visitor.walkAST();
+
+  checkPerseError();
 
   // Quantum circuit IR dump output.
   printSqcIr();
