@@ -69,28 +69,54 @@ void finalize();
 void addGate();
 
 /// @brief Application of hadamard Gate
+/// @details Call ket::mpi::gate::hadamard().
 /// @param [in] ginfo Gate operation information
 void addHGate(gateInfoTy *ginfo);
 
 /// @brief Application of CNOT Gate
+/// @details Call ket::mpi::gate::controlled_not().
 /// @param [in] ginfo Gate operation information
 void addCXGate(gateInfoTy *ginfo);
 
 /// @brief Application of CZ Gate
+/// @details Call ket::mpi::gate::controlled_phase_shift(pi) .
 /// @param [in] ginfo Gate operation information
 void addCZGate(gateInfoTy *ginfo);
 
 /// @brief Application of S Gate
+/// @details Call ket::mpi::gate::phase_shift(pi*0.5) .
 /// @param [in] ginfo Gate operation information
 void addSGate(gateInfoTy *ginfo);
 
 /// @brief Application of Sdg Gate
+/// @details Call ket::mpi::gate::phase_shift(-pi*0.5) .
 /// @param [in] ginfo Gate operation information
 void addSdgGate(gateInfoTy *ginfo);
 
 /// @brief Application of RX Gate
+/// @details Call ket::mpi::gate::phase_shift3(theta, -pi/2, pi/2) .
 /// @param [in] ginfo Gate operation information
 void addRXGate(gateInfoTy *ginfo);
+
+/// @brief Application of RY Gate
+/// @details Call ket::mpi::gate::phase_shift3(theta, 0.0, 0.0) .
+/// @param [in] ginfo Gate operation information
+void addRYGate(gateInfoTy *ginfo);
+
+/// @brief Application of RZ Gate
+/// @details Call ket::mpi::gate::phase_shift * exp (-i * theta /2.0) .
+/// @param [in] ginfo Gate operation information
+void addRZGate(gateInfoTy *ginfo);
+
+/// @brief Application of X Gate
+/// @details Call ket::mpi::gate::pauli_x() .
+/// @param [in] ginfo Gate operation information
+void addXGate(gateInfoTy *ginfo);
+
+/// @brief Application of U1 Gate
+/// @details Call ket::mpi::gate::ket::mpi::gate::phase_shift(λ) .
+/// @param [in] ginfo Gate operation information
+void addU1Gate(gateInfoTy *ginfo);
 
 /// @brief Output spin expectation in json format
 /// @param [in] outputFile json output file

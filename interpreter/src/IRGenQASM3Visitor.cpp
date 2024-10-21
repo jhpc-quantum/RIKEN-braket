@@ -41,9 +41,13 @@
 #include <stdexcept>
 #include <string>
 
+#define SET_ERROR_INFO(msg)  std::cerr << "Unsupported : " << "\"" << msg << "\"" << "\n"; \
+  qip::parseErrFlag = true;
+
 namespace qip {
 
 extern qipIrTy qasmir;  ///< Variable that holds information on the gate of a quantum circuit
+extern bool parseErrFlag;  ///< parse error flag
 
 }
 
@@ -52,47 +56,47 @@ using namespace QASM;
 namespace qip::frontend::openqasm3 {
 
 void IRGenQASM3Visitor::visit(const ASTForStatementNode *node) {
-  assert(0 && "ASTForStatementNode");
+  SET_ERROR_INFO("For Statement");
 }
 
 void IRGenQASM3Visitor::visit(const ASTForLoopNode *node) {
-  assert(0 && "ASTForLoopNode");
+  SET_ERROR_INFO("For Loop");
 }
 
 void IRGenQASM3Visitor::visit(const ASTIfStatementNode *node) {
-  assert(0 && "ASTIfStatementNode");
+  SET_ERROR_INFO("If Statement");
 }
 
 void IRGenQASM3Visitor::visit(const ASTElseStatementNode *node) {
-  assert(0 && "ASTElseStatementNode");
+  SET_ERROR_INFO("Else Statement");
 }
 
 void IRGenQASM3Visitor::visit(const ASTSwitchStatementNode *node) {
-  assert(0 && "ASTSwitchStatementNode");
+  SET_ERROR_INFO("Switch Statement");
 }
 
 void IRGenQASM3Visitor::visit(const ASTWhileStatementNode *node) {
-  assert(0 && "ASTWhileStatementNode");
+  SET_ERROR_INFO("While Statement");
 }
 
 void IRGenQASM3Visitor::visit(const ASTWhileLoopNode *node) {
-  assert(0 && "ASTWhileLoopNode");
+  SET_ERROR_INFO("While Loop");
 }
 
 void IRGenQASM3Visitor::visit(const ASTReturnStatementNode *node) {
-  assert(0 && "ASTReturnStatementNode");
+  SET_ERROR_INFO("Return Statement");
 }
 
 void IRGenQASM3Visitor::visit(const ASTResultNode *node) {
-  assert(0 && "ASTResultNode");
+  SET_ERROR_INFO("Result");
 }
 
 void IRGenQASM3Visitor::visit(const ASTFunctionDeclarationNode *node) {
-  assert(0 && "ASTFunctionDeclarationNode");
+  SET_ERROR_INFO("Function Declaration");
 }
 
 void IRGenQASM3Visitor::visit(const ASTFunctionDefinitionNode *node) {
-  assert(0 && "ASTFunctionDefinitionNode");
+  SET_ERROR_INFO("Function Definition");
 }
 
 void IRGenQASM3Visitor::visit(const ASTGateDeclarationNode *node) {
@@ -114,8 +118,20 @@ void IRGenQASM3Visitor::visit(const ASTGenericGateOpNode *node) {
   else if (gateName == "rx") {
     qasmir.gate[qasmir.ngates].id = RXGate;
   }
+  else if (gateName == "ry") {
+    qasmir.gate[qasmir.ngates].id = RYGate;
+  }
+  else if (gateName == "rz") {
+    qasmir.gate[qasmir.ngates].id = RZGate;
+  }
+  else if (gateName == "x") {
+    qasmir.gate[qasmir.ngates].id = XGate;
+  }
+  else if (gateName == "u1") {
+    qasmir.gate[qasmir.ngates].id = U1Gate;
+  }
   else {
-    assert(0 && "ASTGenericGateOpNode");
+    SET_ERROR_INFO("Generic Gate");
   }
 
   visit(gateNode);
@@ -181,7 +197,7 @@ void IRGenQASM3Visitor::visit(const ASTHGateOpNode *node) {
 }
 
 void IRGenQASM3Visitor::visit(const ASTUGateOpNode *node) {
-  assert(0 && "ASTUGateOpNode");
+  SET_ERROR_INFO("U Gate");
 }
 
 void IRGenQASM3Visitor::visit(const ASTCXGateOpNode *node) {
@@ -194,7 +210,7 @@ void IRGenQASM3Visitor::visit(const ASTCXGateOpNode *node) {
 }
 
 void IRGenQASM3Visitor::visit(const ASTResetNode *node) {
-  assert(0 && "ASTResetNode");
+  SET_ERROR_INFO("Reset");
 }
 
 void IRGenQASM3Visitor::visit(const ASTMeasureNode *node) {
@@ -205,15 +221,15 @@ void IRGenQASM3Visitor::visit(const ASTMeasureNode *node) {
 }
 
 void IRGenQASM3Visitor::visit(const ASTDelayStatementNode *node) {
-  assert(0 && "ASTDelayStatementNode");
+  SET_ERROR_INFO("Delay Statement");
 }
 
 void IRGenQASM3Visitor::visit(const ASTDelayNode *node) {
-  assert(0 && "ASTDelayNode");
+  SET_ERROR_INFO("Delay");
 }
 
 void IRGenQASM3Visitor::visit(const ASTBarrierNode *node) {
-  assert(0 && "ASTBarrierNode");
+  SET_ERROR_INFO("Barrier");
 }
 
 void IRGenQASM3Visitor::visit(const ASTDeclarationNode *node) {
@@ -235,7 +251,7 @@ void IRGenQASM3Visitor::visit(const ASTDeclarationNode *node) {
 }
 
 void IRGenQASM3Visitor::visit(const ASTKernelDeclarationNode *node) {
-  assert(0 && "ASTKernelDeclarationNode");
+  SET_ERROR_INFO("Kernel Declaration");
 }
 
 void IRGenQASM3Visitor::visit(const ASTQubitContainerNode *node) {
@@ -244,7 +260,7 @@ void IRGenQASM3Visitor::visit(const ASTQubitContainerNode *node) {
 }
 
 void IRGenQASM3Visitor::visit(const ASTQubitNode *node) {
-  assert(0 && "ASTQubitNode");
+  SET_ERROR_INFO("Qubit");
 }
 
 void IRGenQASM3Visitor::visit(const ASTCBitNode *node) {
@@ -255,86 +271,86 @@ void IRGenQASM3Visitor::visit(const ASTCBitNode *node) {
 }
 
 void IRGenQASM3Visitor::visit(const ASTDurationNode *node) {
-  assert(0 && "ASTDurationNode");
+  SET_ERROR_INFO("Duration");
 }
 
 void IRGenQASM3Visitor::visit(const ASTStretchStatementNode *node) {
-  assert(0 && "ASTStretchStatementNode");
+  SET_ERROR_INFO("Stretch Statement");
 }
 
 void IRGenQASM3Visitor::visit(const ASTStretchNode *node) {
-  assert(0 && "ASTStretchNode");
+  SET_ERROR_INFO("Stretch");
 }
 
 void IRGenQASM3Visitor::visit(const ASTIdentifierRefNode *node) {
-  assert(0 && "ASTIdentifierRefNode");
+  SET_ERROR_INFO("Identifier Ref");
 }
 
 void IRGenQASM3Visitor::visit(const ASTIdentifierNode *node) {
-  assert(0 && "ASTIdentifierNode");
+  SET_ERROR_INFO("Identifier");
 }
 
 void IRGenQASM3Visitor::visit(const ASTBinaryOpNode *node) {
-  assert(0 && "ASTBinaryOpNode");
+  SET_ERROR_INFO("Binary");
 }
 
 void IRGenQASM3Visitor::visit(const ASTUnaryOpNode *node) {
-  assert(0 && "ASTUnaryOpNode");
+  SET_ERROR_INFO("Unary");
 }
 
 void IRGenQASM3Visitor::visit(const ASTIntNode *node) {
-  assert(0 && "ASTIntNode");
+  SET_ERROR_INFO("Int");
 }
 
 void IRGenQASM3Visitor::visit(const ASTMPIntegerNode *node) {
-  assert(0 && "ASTMPIntegerNode");
+  SET_ERROR_INFO("MP Integer");
 }
 
 void IRGenQASM3Visitor::visit(const ASTFloatNode *node) {
-  assert(0 && "ASTFloatNode");
+  SET_ERROR_INFO("Float");
 }
 
 void IRGenQASM3Visitor::visit(const ASTMPDecimalNode *node) {
-  assert(0 && "ASTMPDecimalNode");
+  SET_ERROR_INFO("MP Decimal");
 }
 
 void IRGenQASM3Visitor::visit(const ASTMPComplexNode *node) {
-  assert(0 && "ASTMPComplexNode");
+  SET_ERROR_INFO("MP Complex");
 }
 
 void IRGenQASM3Visitor::visit(const ASTAngleNode *node) {
 }
 
 void IRGenQASM3Visitor::visit(const ASTBoolNode *node) {
-  assert(0 && "ASTBoolNode");
+  SET_ERROR_INFO("Bool");
 }
 
 void IRGenQASM3Visitor::visit(const ASTCastExpressionNode *node) {
-  assert(0 && "ASTCastExpressionNode");
+  SET_ERROR_INFO("Cast Expression");
 }
 
 void IRGenQASM3Visitor::visit(const ASTKernelNode *node) {
-  assert(0 && "ASTKernelNode");
+  SET_ERROR_INFO("Kernel");
 }
 
 void IRGenQASM3Visitor::visit(const ASTDeclarationList *list) {
-  assert(0 && "ASTDeclarationList");
+  SET_ERROR_INFO("Declaration List");
 }
 
 void IRGenQASM3Visitor::visit(const ASTFunctionCallNode *node) {
-  assert(0 && "ASTFunctionCallNode");
+  SET_ERROR_INFO("Function Call");
 }
 
 void IRGenQASM3Visitor::visit(const QASM::ASTVoidNode *) {
-  assert(0 && "QASM::ASTVoidNode");
+  SET_ERROR_INFO("Void");
 }
 
 void IRGenQASM3Visitor::visit(const QASM::ASTOperatorNode *node) {
-  assert(0 && "QASM::ASTOperatorNode");
+  SET_ERROR_INFO("Operator");
 }
 
 void IRGenQASM3Visitor::visit(const QASM::ASTOperandNode *node) {
-  assert(0 && "QASM::ASTOperandNode");
+  SET_ERROR_INFO("Operand");
 }
 
 } // namespace qip::frontend::openqasm3
