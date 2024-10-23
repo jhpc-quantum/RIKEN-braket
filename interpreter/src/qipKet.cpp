@@ -1,5 +1,7 @@
 /// @file qipKet.cpp
 /// @brief Process of calling ket.
+///
+/// Copyright (c) RIKEN, Japan. All rights reserved.
 
 #include"qipKet.hpp"
 
@@ -214,14 +216,7 @@ void qip::addRYGate(gateInfoTy *ginfo) {
 
 }
 
-/// @attention RZ gate is not supported. The process of applying coefficients is not yet implemented.
 void qip::addRZGate(gateInfoTy *ginfo) {
-  std::cerr << "RZ gate is not supported.\n";
-  std::cout << std::flush;
-  abort();
-  // The rz gate shall be unsupported.
-  // Because it is unclear how to realize “gate rz(λ) a { gphase(-λ/2); U(0, 0, λ) a; }” in ket.
-#if 0
   auto buffer = std::vector < complexTy > {};
 
   // target bit
@@ -232,16 +227,14 @@ void qip::addRZGate(gateInfoTy *ginfo) {
   double theta = ginfo->rarg[0];
 
   // rz
-  ket::mpi::gate::phase_shift(*(ki.localState),
-                              theta,
+  ket::mpi::gate::exponential_pauli_z(*(ki.localState),
+                              theta/2.0,
                               target_qubit,
                               *(ki.permutation),
                               buffer,
                               *(ki.communicator),
                               *(ki.environment));
-  complexTy c{cos(theta/2.0),-sin(theta/2.0)};
-  ket::mpi::gate::mult(*(ki.localState), c, *(ki.permutation), buffer, *(ki.communicator), *(ki.environment));
-#endif
+
 }
 
 void qip::addXGate(gateInfoTy *ginfo) {

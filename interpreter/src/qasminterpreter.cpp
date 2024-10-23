@@ -1,5 +1,7 @@
 /// @file qasminterpreter.cpp
 /// @brief Performs the main processing of the OpenQASM 3 interpreter.
+///
+/// Copyright (c) RIKEN, Japan. All rights reserved.
 
 #include "IRGenQASM3Visitor.h"
 #include "qipTypes.h"

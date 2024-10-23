@@ -1,5 +1,7 @@
 /// @file IRGenQASM3Visitor.h
 /// @brief Visitor header file that traverses the OpenQASM 3 AST to generate IRs.
+///
+/// Copyright (c) RIKEN, Japan. All rights reserved.
 /// @note Include doxygen comments only where used.
 
 #ifndef VISITOR_IR_GEN_VISITOR_H
@@ -81,6 +83,7 @@ public:
   /// @param [in] node ASTMeasureNode
   ///
   /// @note Intermediate code generation is not implemented.
+  /// @attention measure is a feature that does not exist in ket and is therefore not supported.
   void visit(const QASM::ASTMeasureNode *node) override;
 
   void visit(const QASM::ASTDelayStatementNode *) override;
@@ -104,6 +107,7 @@ public:
 
   /// @brief Obtain information on classical bits
   /// @param [in] node ASTCBitNode
+  /// @attention CBit used in measure that does not exist in ket is not supported.
   void visit(const QASM::ASTCBitNode *node) override;
 
   void visit(const QASM::ASTDurationNode *) override;
