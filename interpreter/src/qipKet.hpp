@@ -29,6 +29,7 @@
 #include <ket/mpi/gate/hadamard.hpp>
 #include <ket/mpi/gate/controlled_phase_shift.hpp>
 #include <ket/mpi/gate/phase_shift.hpp>
+#include <ket/mpi/gate/exponential_pauli_z.hpp>
 #include <ket/mpi/all_spin_expectation_values.hpp>
 #include <yampi/allocator.hpp>
 #include <yampi/rank.hpp>
@@ -104,7 +105,7 @@ void addRXGate(gateInfoTy *ginfo);
 void addRYGate(gateInfoTy *ginfo);
 
 /// @brief Application of RZ Gate
-/// @details Call ket::mpi::gate::phase_shift * exp (-i * theta /2.0) .
+/// @details Call ket::mpi::gate::exponential_pauli_z(theta/2.0) .
 /// @param [in] ginfo Gate operation information
 void addRZGate(gateInfoTy *ginfo);
 
