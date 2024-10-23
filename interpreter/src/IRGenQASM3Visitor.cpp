@@ -217,6 +217,7 @@ void IRGenQASM3Visitor::visit(const ASTResetNode *node) {
 
 void IRGenQASM3Visitor::visit(const ASTMeasureNode *node) {
   SET_ERROR_INFO("Measure");
+  // measure is a feature that does not exist in ket and is therefore not supported.
 #if 0
   const ASTQubitContainerNode *qubitNode = node->GetTarget();
   visit(qubitNode);
@@ -270,6 +271,7 @@ void IRGenQASM3Visitor::visit(const ASTQubitNode *node) {
 
 void IRGenQASM3Visitor::visit(const ASTCBitNode *node) {
   SET_ERROR_INFO("C Bit");
+  // CBit used in measure that does not exist in ket is not supported.
 #if 0
   if (const auto *nodeGateOp =
           dynamic_cast<const ASTMeasureNode *>(node->GetGateQOp())) {
