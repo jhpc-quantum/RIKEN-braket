@@ -1,6 +1,8 @@
 /// @file IRGenQASM3Visitor.h
 /// @brief Visitor header file that traverses the OpenQASM 3 AST to generate IRs.
 /// @note Include doxygen comments only where used.
+///
+/// Copyright (c) RIKEN, Japan. All rights reserved.
 
 #ifndef VISITOR_IR_GEN_VISITOR_H
 #define VISITOR_IR_GEN_VISITOR_H

@@ -1,5 +1,7 @@
 /// @file qipKet.cpp
 /// @brief Process of calling ket.
+///
+/// Copyright (c) RIKEN, Japan. All rights reserved.
 
 #include"qipKet.hpp"
 

@@ -1,5 +1,7 @@
 /// @file qipKet.hpp
 /// @brief Header file for the process of calling ket.
+///
+/// Copyright (c) RIKEN, Japan. All rights reserved.
 
 #ifndef _QIPKET_HPP_
 #define _QIPKET_HPP_
