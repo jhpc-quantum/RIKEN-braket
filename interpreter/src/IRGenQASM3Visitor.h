@@ -76,11 +76,6 @@ public:
 
   void visit(const QASM::ASTResetNode *) override;
 
-  /// @brief Get measure information
-  /// @details Call the visit function to obtain information about the target qubit.
-  /// @param [in] node ASTMeasureNode
-  ///
-  /// @note Intermediate code generation is not implemented.
   void visit(const QASM::ASTMeasureNode *node) override;
 
   void visit(const QASM::ASTDelayStatementNode *) override;
@@ -102,8 +97,6 @@ public:
 
   void visit(const QASM::ASTQubitNode *) override;
 
-  /// @brief Obtain information on classical bits
-  /// @param [in] node ASTCBitNode
   void visit(const QASM::ASTCBitNode *node) override;
 
   void visit(const QASM::ASTDurationNode *) override;

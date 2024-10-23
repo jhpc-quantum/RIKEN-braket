@@ -214,10 +214,7 @@ void IRGenQASM3Visitor::visit(const ASTResetNode *node) {
 }
 
 void IRGenQASM3Visitor::visit(const ASTMeasureNode *node) {
-  const ASTQubitContainerNode *qubitNode = node->GetTarget();
-  visit(qubitNode);
-  if (const ASTCBitNode *bits = node->GetResult())
-    visit(bits);
+  SET_ERROR_INFO("Measure");
 }
 
 void IRGenQASM3Visitor::visit(const ASTDelayStatementNode *node) {
@@ -264,10 +261,7 @@ void IRGenQASM3Visitor::visit(const ASTQubitNode *node) {
 }
 
 void IRGenQASM3Visitor::visit(const ASTCBitNode *node) {
-  if (const auto *nodeGateOp =
-          dynamic_cast<const ASTMeasureNode *>(node->GetGateQOp())) {
-    visit(nodeGateOp);
-  }
+  SET_ERROR_INFO("C Bit");
 }
 
 void IRGenQASM3Visitor::visit(const ASTDurationNode *node) {
