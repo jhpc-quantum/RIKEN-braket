@@ -120,12 +120,6 @@ int main(int argc, char *argv[]) {
   MPI_Comm_rank(MPI_COMM_WORLD, &(qip::ki.myrank));
   qip::ki.root         = yampi::rank{0};
 
-  // Enabling the ASTObjectTracker is optional.
-  // Nothing bad will happen if it's not enabled. By default, the memory
-  // allocated by the AST Generator is handed over unmanaged, and will be
-  // automatically released at program exit.
-  // The ASTObjectTracker manages the memory dynamically allocated by the
-  // AST Generator. It is enabled here for illustration purposes.
   QASM::ASTObjectTracker::Instance().Enable();
 
   // Parse
