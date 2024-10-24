@@ -1,0 +1,3 @@
+QUBITS         2
+EY             0 1
+BEGIN MEASUREMENT
