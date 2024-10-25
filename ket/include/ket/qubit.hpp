@@ -23,15 +23,15 @@ namespace ket
       : bit_{static_cast<BitInteger>(bit)}
     { }
 
-    explicit operator BitInteger() const { return bit_; }
+    explicit constexpr operator BitInteger() const { return bit_; }
 
-    auto operator++() noexcept -> qubit& { ++bit_; return *this; }
-    auto operator++(int) noexcept -> qubit { auto result = *this; ++(*this); return result; }
-    auto operator--() noexcept -> qubit& { --bit_; return *this; }
-    auto operator--(int) noexcept -> qubit { auto result = *this; --(*this); return result; }
-    auto operator+=(BitInteger const bit) noexcept -> qubit& { bit_ += bit; return *this; }
-    auto operator-=(BitInteger const bit) noexcept -> qubit& { bit_ -= bit; return *this; }
-    auto operator-(qubit const& other) const noexcept -> BitInteger { return bit_ - other.bit_; }
+    constexpr auto operator++() noexcept -> qubit& { ++bit_; return *this; }
+    constexpr auto operator++(int) noexcept -> qubit { auto result = *this; ++(*this); return result; }
+    constexpr auto operator--() noexcept -> qubit& { --bit_; return *this; }
+    constexpr auto operator--(int) noexcept -> qubit { auto result = *this; --(*this); return result; }
+    constexpr auto operator+=(BitInteger const bit) noexcept -> qubit& { bit_ += bit; return *this; }
+    constexpr auto operator-=(BitInteger const bit) noexcept -> qubit& { bit_ -= bit; return *this; }
+    constexpr auto operator-(qubit const& other) const noexcept -> BitInteger { return bit_ - other.bit_; }
   }; // class qubit<StateInteger, BitInteger>
 
   template <typename StateInteger, typename BitInteger>

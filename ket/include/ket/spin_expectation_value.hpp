@@ -25,7 +25,7 @@ namespace ket
   {
     using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
     using hd_spin_type = std::array<long double, 3u>;
-    constexpr auto zero_spin = hd_spin_type{ };
+    constexpr hd_spin_type zero_spin{ };
     auto spins_in_threads
       = std::vector<hd_spin_type>(::ket::utility::num_threads(parallel_policy), zero_spin);
 
@@ -63,10 +63,7 @@ namespace ket
 
     using real_type = ::ket::utility::meta::real_t<complex_type>;
     using spin_type = std::array<real_type, 3u>;
-    auto spin = spin_type{};
-    spin[0u] = static_cast<real_type>(hd_spin[0u]);
-    spin[1u] = static_cast<real_type>(hd_spin[1u]);
-    spin[2u] = static_cast<real_type>(hd_spin[2u]);
+    spin_type spin{static_cast<real_type>(hd_spin[0u]), static_cast<real_type>(hd_spin[1u]), static_cast<real_type>(hd_spin[2u])};
 
     using boost::math::constants::half;
     spin[2u] *= half<real_type>();

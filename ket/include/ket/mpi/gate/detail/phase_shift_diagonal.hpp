@@ -52,9 +52,6 @@ namespace ket
         -> RandomAccessRange&
         {
           auto const permutated_qubit = permutation[qubit];
-          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
-            mpi_policy, local_state, communicator, environment, permutated_qubit);
-
           if (::ket::mpi::page::is_on_page(permutated_qubit, local_state))
             return ::ket::mpi::gate::page::phase_shift_coeff(
               parallel_policy, local_state, phase_coefficient, permutated_qubit);
@@ -87,9 +84,6 @@ namespace ket
         {
           auto const permutated_target_qubit = permutation[target_qubit];
           auto const permutated_control_qubit = permutation[control_qubit];
-          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
-            mpi_policy, local_state, communicator, environment, permutated_target_qubit, permutated_control_qubit);
-
           if (::ket::mpi::page::is_on_page(permutated_target_qubit, local_state))
           {
             if (::ket::mpi::page::is_on_page(permutated_control_qubit, local_state))
@@ -253,11 +247,9 @@ namespace ket
           ControlQubits const... control_qubits)
         -> RandomAccessRange&
         {
-          using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-          auto qubit_array = std::array<qubit_type, sizeof...(ControlQubits) + 3u>{target_qubit, ::ket::remove_control(control_qubit1), ::ket::remove_control(control_qubit2), ::ket::remove_control(control_qubits)...};
           ::ket::mpi::utility::maybe_interchange_qubits(
             mpi_policy, parallel_policy,
-            local_state, qubit_array, permutation, buffer, communicator, environment);
+            local_state, permutation, buffer, communicator, environment, target_qubit, control_qubit1, control_qubit2, control_qubits...);
 
           return ::ket::mpi::gate::local::phase_shift_coeff(
             mpi_policy, parallel_policy, local_state, permutation, communicator, environment, phase_coefficient, target_qubit, control_qubit1, control_qubit2, control_qubits...);
@@ -282,11 +274,9 @@ namespace ket
           ControlQubits const... control_qubits)
         -> RandomAccessRange&
         {
-          using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-          auto qubit_array = std::array<qubit_type, sizeof...(ControlQubits) + 3u>{target_qubit, ::ket::remove_control(control_qubit1), ::ket::remove_control(control_qubit2), ::ket::remove_control(control_qubits)...};
           ::ket::mpi::utility::maybe_interchange_qubits(
             mpi_policy, parallel_policy,
-            local_state, qubit_array, permutation, buffer, datatype, communicator, environment);
+            local_state, permutation, buffer, datatype, communicator, environment, target_qubit, control_qubit1, control_qubit2, control_qubits...);
 
           return ::ket::mpi::gate::local::phase_shift_coeff(
             mpi_policy, parallel_policy, local_state, permutation, communicator, environment, phase_coefficient, target_qubit, control_qubit1, control_qubit2, control_qubits...);
@@ -1563,11 +1553,9 @@ namespace ket
           ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
         -> RandomAccessRange&
         {
-          using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-          auto qubit_array = std::array<qubit_type, sizeof...(ControlQubits) + 1u>{target_qubit, ::ket::remove_control(control_qubits)...};
           ::ket::mpi::utility::maybe_interchange_qubits(
             mpi_policy, parallel_policy,
-            local_state, qubit_array, permutation, buffer, communicator, environment);
+            local_state, permutation, buffer, communicator, environment, target_qubit, control_qubits...);
 
           return ::ket::mpi::gate::local::phase_shift2(
             mpi_policy, parallel_policy, local_state, permutation, communicator, environment, phase1, phase2, target_qubit, control_qubits...);
@@ -1589,11 +1577,9 @@ namespace ket
           ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
         -> RandomAccessRange&
         {
-          using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-          auto qubit_array = std::array<qubit_type, sizeof...(ControlQubits) + 1u>{target_qubit, ::ket::remove_control(control_qubits)...};
           ::ket::mpi::utility::maybe_interchange_qubits(
             mpi_policy, parallel_policy,
-            local_state, qubit_array, permutation, buffer, datatype, communicator, environment);
+            local_state, permutation, buffer, datatype, communicator, environment, target_qubit, control_qubits...);
 
           return ::ket::mpi::gate::local::phase_shift2(
             mpi_policy, parallel_policy, local_state, permutation, communicator, environment, phase1, phase2, target_qubit, control_qubits...);
@@ -1984,11 +1970,9 @@ namespace ket
           ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
         -> RandomAccessRange&
         {
-          using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-          auto qubit_array = std::array<qubit_type, sizeof...(ControlQubits) + 1u>{target_qubit, ::ket::remove_control(control_qubits)...};
           ::ket::mpi::utility::maybe_interchange_qubits(
             mpi_policy, parallel_policy,
-            local_state, qubit_array, permutation, buffer, communicator, environment);
+            local_state, permutation, buffer, communicator, environment, target_qubit, control_qubits...);
 
           return ::ket::mpi::gate::local::adj_phase_shift2(
             mpi_policy, parallel_policy, local_state, permutation, communicator, environment, phase1, phase2, target_qubit, control_qubits...);
@@ -2010,11 +1994,9 @@ namespace ket
           ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
         -> RandomAccessRange&
         {
-          using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-          auto qubit_array = std::array<qubit_type, sizeof...(ControlQubits) + 1u>{target_qubit, ::ket::remove_control(control_qubits)...};
           ::ket::mpi::utility::maybe_interchange_qubits(
             mpi_policy, parallel_policy,
-            local_state, qubit_array, permutation, buffer, datatype, communicator, environment);
+            local_state, permutation, buffer, datatype, communicator, environment, target_qubit, control_qubits...);
 
           return ::ket::mpi::gate::local::adj_phase_shift2(
             mpi_policy, parallel_policy, local_state, permutation, communicator, environment, phase1, phase2, target_qubit, control_qubits...);
@@ -2406,11 +2388,9 @@ namespace ket
           ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
         -> RandomAccessRange&
         {
-          using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-          auto qubit_array = std::array<qubit_type, sizeof...(ControlQubits) + 1u>{target_qubit, ::ket::remove_control(control_qubits)...};
           ::ket::mpi::utility::maybe_interchange_qubits(
             mpi_policy, parallel_policy,
-            local_state, qubit_array, permutation, buffer, communicator, environment);
+            local_state, permutation, buffer, communicator, environment, target_qubit, control_qubits...);
 
           return ::ket::mpi::gate::local::phase_shift3(
             mpi_policy, parallel_policy, local_state, permutation, communicator, environment, phase1, phase2, phase3, target_qubit, control_qubits...);
@@ -2432,11 +2412,9 @@ namespace ket
           ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
         -> RandomAccessRange&
         {
-          using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-          auto qubit_array = std::array<qubit_type, sizeof...(ControlQubits) + 1u>{target_qubit, ::ket::remove_control(control_qubits)...};
           ::ket::mpi::utility::maybe_interchange_qubits(
             mpi_policy, parallel_policy,
-            local_state, qubit_array, permutation, buffer, datatype, communicator, environment);
+            local_state, permutation, buffer, datatype, communicator, environment, target_qubit, control_qubits...);
 
           return ::ket::mpi::gate::local::phase_shift3(
             mpi_policy, parallel_policy, local_state, permutation, communicator, environment, phase1, phase2, phase3, target_qubit, control_qubits...);
@@ -2834,11 +2812,9 @@ namespace ket
           ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
         -> RandomAccessRange&
         {
-          using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-          auto qubit_array = std::array<qubit_type, sizeof...(ControlQubits) + 1u>{target_qubit, ::ket::remove_control(control_qubits)...};
           ::ket::mpi::utility::maybe_interchange_qubits(
             mpi_policy, parallel_policy,
-            local_state, qubit_array, permutation, buffer, communicator, environment);
+            local_state, permutation, buffer, communicator, environment, target_qubit, control_qubits...);
 
           return ::ket::mpi::gate::local::adj_phase_shift3(
             mpi_policy, parallel_policy, local_state, permutation, communicator, environment, phase1, phase2, phase3, target_qubit, control_qubits...);
@@ -2860,11 +2836,9 @@ namespace ket
           ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
         -> RandomAccessRange&
         {
-          using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-          auto qubit_array = std::array<qubit_type, sizeof...(ControlQubits) + 1u>{target_qubit, ::ket::remove_control(control_qubits)...};
           ::ket::mpi::utility::maybe_interchange_qubits(
             mpi_policy, parallel_policy,
-            local_state, qubit_array, permutation, buffer, datatype, communicator, environment);
+            local_state, permutation, buffer, datatype, communicator, environment, target_qubit, control_qubits...);
 
           return ::ket::mpi::gate::local::adj_phase_shift3(
             mpi_policy, parallel_policy, local_state, permutation, communicator, environment, phase1, phase2, phase3, target_qubit, control_qubits...);

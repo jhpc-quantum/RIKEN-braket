@@ -92,7 +92,7 @@ namespace ket
                   yampi::make_buffer(present_first, present_first + remainder_size),
                   yampi::make_buffer(begin(buffer), begin(buffer) + remainder_size),
                   target_rank, communicator, environment);
-                std::copy(begin(buffer), begin(buffer) + remainder_size, present_first);
+                std::copy_n(begin(buffer), remainder_size, present_first);
               }
             }
 #endif // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
@@ -163,7 +163,7 @@ namespace ket
                   yampi::make_buffer(present_first, present_first + remainder_size, datatype),
                   yampi::make_buffer(begin(buffer), begin(buffer) + remainder_size, datatype),
                   target_rank, communicator, environment);
-                std::copy(begin(buffer), begin(buffer) + remainder_size, present_first);
+                std::copy_n(begin(buffer), remainder_size, present_first);
               }
             }
 #endif // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS

@@ -79,16 +79,15 @@ namespace ket
                         permutated_control_qubit2 - static_cast<BitInteger>(num_nonpage_local_qubits));
 
             using permutated_qubit_type = ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >;
-            auto sorted_permutated_qubits
-              = std::array<permutated_qubit_type, 3u>{
-                  permutated_target_qubit,
-                  ::ket::mpi::remove_control(permutated_control_qubit1),
-                  ::ket::mpi::remove_control(permutated_control_qubit2)};
+            std::array<permutated_qubit_type, 3u> sorted_permutated_qubits{
+              permutated_target_qubit,
+              ::ket::mpi::remove_control(permutated_control_qubit1),
+              ::ket::mpi::remove_control(permutated_control_qubit2)};
             using std::begin;
             using std::end;
             std::sort(begin(sorted_permutated_qubits), end(sorted_permutated_qubits));
 
-            auto bits_mask = std::array<StateInteger, 4u>{};
+            std::array<StateInteger, 4u> bits_mask{};
             bits_mask[0u]
               = ::ket::utility::integer_exp2<StateInteger>(
                   sorted_permutated_qubits[0u] - static_cast<BitInteger>(num_nonpage_local_qubits))
