@@ -30,15 +30,15 @@ namespace ket
       : qubit_{bit}
     { }
 
-    auto qubit() -> qubit_type& { return qubit_; }
-    auto qubit() const -> qubit_type const& { return qubit_; }
+    constexpr auto qubit() -> qubit_type& { return qubit_; }
+    constexpr auto qubit() const -> qubit_type const& { return qubit_; }
 
-    auto operator++() noexcept -> control& { ++qubit_; return *this; }
-    auto operator++(int) noexcept -> control { auto result = *this; ++(*this); return result; }
-    auto operator--() noexcept -> control& { --qubit_; return *this; }
-    auto operator--(int) noexcept -> control { auto result = *this; --(*this); return result; }
-    auto operator+=(bit_integer_type const bit) noexcept -> control& { qubit_ += bit; return *this; }
-    auto operator-=(bit_integer_type const bit) noexcept -> control& { qubit_ -= bit; return *this; }
+    constexpr auto operator++() noexcept -> control& { ++qubit_; return *this; }
+    constexpr auto operator++(int) noexcept -> control { auto result = *this; ++(*this); return result; }
+    constexpr auto operator--() noexcept -> control& { --qubit_; return *this; }
+    constexpr auto operator--(int) noexcept -> control { auto result = *this; --(*this); return result; }
+    constexpr auto operator+=(bit_integer_type const bit) noexcept -> control& { qubit_ += bit; return *this; }
+    constexpr auto operator-=(bit_integer_type const bit) noexcept -> control& { qubit_ -= bit; return *this; }
   }; // class control<Qubit>
 
   template <typename Qubit>
