@@ -289,6 +289,10 @@ namespace bra
     std::tuple< ::bra::generate_statement, int, int > read_generate_statement(columns_type const& columns) const;
     std::tuple< ::bra::depolarizing_statement, real_type, real_type, real_type, int > read_depolarizing_statement(columns_type const& columns) const;
 
+    void add_i(columns_type const& columns);
+    void add_ii(columns_type const& columns);
+    void add_is(columns_type const& columns, std::string const& mnemonic);
+    void add_in(columns_type const& columns, std::string const& mnemonic);
     void add_h(columns_type const& columns);
     void add_not(columns_type const& columns);
     void add_x(columns_type const& columns);
@@ -340,6 +344,11 @@ namespace bra
     void add_depolarizing(columns_type const& columns, std::string const& mnemonic);
 
     void interpret_controlled_gates(columns_type const& columns, std::string const& mnemonic);
+    void add_ci(columns_type const& columns, int const num_control_qubits);
+    void add_cis(columns_type const& columns, int const num_control_qubits, std::string const& noncontrol_mnemonic);
+    void add_cin(
+      columns_type const& columns, int const num_control_qubits,
+      std::string const& noncontrol_mnemonic, std::string const& mnemonic);
     void add_ch(columns_type const& columns, int const num_control_qubits);
     void add_cnot(columns_type const& columns, int const num_control_qubits);
     void add_cx(columns_type const& columns, int const num_control_qubits);

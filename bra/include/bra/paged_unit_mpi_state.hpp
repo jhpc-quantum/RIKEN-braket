@@ -65,6 +65,12 @@ namespace bra
     unsigned int do_num_page_qubits() const override;
     unsigned int do_num_pages() const override;
 
+    void do_i_gate(qubit_type const qubit) override;
+    void do_adj_i_gate(qubit_type const qubit) override;
+    void do_ii_gate(qubit_type const qubit1, qubit_type const qubit2) override;
+    void do_adj_ii_gate(qubit_type const qubit1, qubit_type const qubit2) override;
+    void do_in_gate(std::vector<qubit_type> const& qubits) override;
+    void do_adj_in_gate(std::vector<qubit_type> const& qubits) override;
     void do_hadamard(qubit_type const qubit) override;
     void do_adj_hadamard(qubit_type const qubit) override;
     void do_not_(qubit_type const qubit) override;
@@ -172,6 +178,16 @@ namespace bra
       std::vector<qubit_type> const& modular_exponentiation_qubits) override;
     void do_clear(qubit_type const qubit) override;
     void do_set(qubit_type const qubit) override;
+    void do_controlled_i_gate(
+      qubit_type const target_qubit, control_qubit_type const control_qubit) override;
+    void do_adj_controlled_i_gate(
+      qubit_type const target_qubit, control_qubit_type const control_qubit) override;
+    void do_multi_controlled_in_gate(
+      std::vector<qubit_type> const& target_qubits,
+      std::vector<control_qubit_type> const& control_qubits) override;
+    void do_adj_multi_controlled_in_gate(
+      std::vector<qubit_type> const& target_qubits,
+      std::vector<control_qubit_type> const& control_qubits) override;
     void do_controlled_hadamard(
       qubit_type const target_qubit, control_qubit_type const control_qubit) override;
     void do_adj_controlled_hadamard(
