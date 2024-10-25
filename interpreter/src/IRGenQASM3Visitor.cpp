@@ -133,7 +133,7 @@ void IRGenQASM3Visitor::visit(const ASTGenericGateOpNode *node) {
     qasmir.gate[qasmir.ngates].id = U1Gate;
   }
   else {
-    SET_ERROR_INFO("Generic Gate");
+    SET_ERROR_INFO(gateName);
   }
 
   visit(gateNode);
@@ -271,7 +271,7 @@ void IRGenQASM3Visitor::visit(const ASTQubitNode *node) {
 }
 
 void IRGenQASM3Visitor::visit(const ASTCBitNode *node) {
-  SET_ERROR_INFO("C Bit");
+  SET_ERROR_INFO("Bit");
 
   // CBit used in measure that does not exist in ket is not supported.
 #if 0
