@@ -4,6 +4,7 @@
 # include <cassert>
 # include <vector>
 # include <algorithm>
+# include <numeric>
 # include <iterator>
 # include <memory>
 # include <utility>

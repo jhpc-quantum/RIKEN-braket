@@ -5,6 +5,7 @@
 # include <yampi/environment.hpp>
 
 # include <ket/mpi/utility/unit_mpi.hpp>
+# include <ket/mpi/gate/identity.hpp>
 # include <ket/mpi/gate/hadamard.hpp>
 # include <ket/mpi/gate/not_.hpp>
 # include <ket/mpi/gate/pauli_x.hpp>
@@ -77,6 +78,106 @@ namespace bra
         mpi_policy_, num_local_qubits, num_page_qubits, initial_integer,
         permutation_, communicator, environment}
   { }
+
+  void paged_unit_mpi_state::do_i_gate(qubit_type const qubit)
+  {
+    ket::mpi::gate::identity(
+      mpi_policy_, parallel_policy_,
+      data_, permutation_, buffer_, communicator_, environment_, qubit);
+  }
+
+  void paged_unit_mpi_state::do_adj_i_gate(qubit_type const qubit)
+  {
+    ket::mpi::gate::adj_identity(
+      mpi_policy_, parallel_policy_,
+      data_, permutation_, buffer_, communicator_, environment_, qubit);
+  }
+
+  void paged_unit_mpi_state::do_ii_gate(qubit_type const qubit1, qubit_type const qubit2)
+  {
+    ket::mpi::gate::identity(
+      mpi_policy_, parallel_policy_,
+      data_, permutation_, buffer_, communicator_, environment_, qubit1, qubit2);
+  }
+
+  void paged_unit_mpi_state::do_adj_ii_gate(qubit_type const qubit1, qubit_type const qubit2)
+  {
+    ket::mpi::gate::adj_identity(
+      mpi_policy_, parallel_policy_,
+      data_, permutation_, buffer_, communicator_, environment_, qubit1, qubit2);
+  }
+
+  void paged_unit_mpi_state::do_in_gate(std::vector<qubit_type> const& qubits)
+  {
+    auto const num_qubits = qubits.size();
+    assert(num_qubits > 2u);
+
+    switch (num_qubits)
+    {
+     case 3u:
+      ket::mpi::gate::identity(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubits[0u], qubits[1u], qubits[2u]);
+      break;
+
+     case 4u:
+      ket::mpi::gate::identity(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+      break;
+
+     case 5u:
+      ket::mpi::gate::identity(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubits[0u], qubits[1u], qubits[2u], qubits[3u], qubits[4u]);
+      break;
+
+     case 6u:
+      ket::mpi::gate::identity(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubits[0u], qubits[1u], qubits[2u], qubits[3u], qubits[4u], qubits[5u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_qubits};
+    }
+  }
+
+  void paged_unit_mpi_state::do_adj_in_gate(std::vector<qubit_type> const& qubits)
+  {
+    auto const num_qubits = qubits.size();
+    assert(num_qubits > 2u);
+
+    switch (num_qubits)
+    {
+     case 3u:
+      ket::mpi::gate::adj_identity(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubits[0u], qubits[1u], qubits[2u]);
+      break;
+
+     case 4u:
+      ket::mpi::gate::adj_identity(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubits[0u], qubits[1u], qubits[2u], qubits[3u]);
+      break;
+
+     case 5u:
+      ket::mpi::gate::adj_identity(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubits[0u], qubits[1u], qubits[2u], qubits[3u], qubits[4u]);
+      break;
+
+     case 6u:
+      ket::mpi::gate::adj_identity(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubits[0u], qubits[1u], qubits[2u], qubits[3u], qubits[4u], qubits[5u]);
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_qubits};
+    }
+  }
 
   void paged_unit_mpi_state::do_hadamard(qubit_type const qubit)
   {
@@ -937,6 +1038,304 @@ namespace bra
     ket::mpi::gate::set(
       mpi_policy_, parallel_policy_,
       data_, permutation_, buffer_, communicator_, environment_, qubit);
+  }
+
+  void paged_unit_mpi_state::do_controlled_i_gate(
+    qubit_type const target_qubit, control_qubit_type const control_qubit)
+  {
+    ket::mpi::gate::identity(
+      mpi_policy_, parallel_policy_,
+      data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
+  }
+
+  void paged_unit_mpi_state::do_adj_controlled_i_gate(
+    qubit_type const target_qubit, control_qubit_type const control_qubit)
+  {
+    ket::mpi::gate::adj_identity(
+      mpi_policy_, parallel_policy_,
+      data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
+  }
+
+  void paged_unit_mpi_state::do_multi_controlled_in_gate(
+    std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_target_qubits = target_qubits.size();
+    auto const num_control_qubits = control_qubits.size();
+    auto const num_qubits = num_target_qubits + num_control_qubits;
+    assert(num_target_qubits > 0u);
+    assert(num_control_qubits > 1u);
+    assert(num_qubits > 2u);
+
+    switch (num_target_qubits)
+    {
+     case 1u:
+      switch (num_control_qubits)
+      {
+       case 2u:
+        ket::mpi::gate::identity(
+          mpi_policy_, parallel_policy_,
+          data_, permutation_, buffer_, communicator_, environment_, target_qubits[0u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::mpi::gate::identity(
+          mpi_policy_, parallel_policy_,
+          data_, permutation_, buffer_, communicator_, environment_, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       case 4u:
+        ket::mpi::gate::identity(
+          mpi_policy_, parallel_policy_,
+          data_, permutation_, buffer_, communicator_, environment_, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+        break;
+
+       case 5u:
+        ket::mpi::gate::identity(
+          mpi_policy_, parallel_policy_,
+          data_, permutation_, buffer_, communicator_, environment_, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u], control_qubits[4u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 2u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::mpi::gate::identity(
+          mpi_policy_, parallel_policy_,
+          data_, permutation_, buffer_, communicator_, environment_, target_qubits[0u], target_qubits[1u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::mpi::gate::identity(
+          mpi_policy_, parallel_policy_,
+          data_, permutation_, buffer_, communicator_, environment_, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::mpi::gate::identity(
+          mpi_policy_, parallel_policy_,
+          data_, permutation_, buffer_, communicator_, environment_, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       case 4u:
+        ket::mpi::gate::identity(
+          mpi_policy_, parallel_policy_,
+          data_, permutation_, buffer_, communicator_, environment_, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 3u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::mpi::gate::identity(
+          mpi_policy_, parallel_policy_,
+          data_, permutation_, buffer_, communicator_, environment_, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::mpi::gate::identity(
+          mpi_policy_, parallel_policy_,
+          data_, permutation_, buffer_, communicator_, environment_, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::mpi::gate::identity(
+          mpi_policy_, parallel_policy_,
+          data_, permutation_, buffer_, communicator_, environment_, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 4u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::mpi::gate::identity(
+          mpi_policy_, parallel_policy_,
+          data_, permutation_, buffer_, communicator_, environment_, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::mpi::gate::identity(
+          mpi_policy_, parallel_policy_,
+          data_, permutation_, buffer_, communicator_, environment_, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 5u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::mpi::gate::identity(
+          mpi_policy_, parallel_policy_,
+          data_, permutation_, buffer_, communicator_, environment_, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], target_qubits[4u], control_qubits[0u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_qubits};
+    }
+  }
+
+  void paged_unit_mpi_state::do_adj_multi_controlled_in_gate(
+    std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
+  {
+    auto const num_target_qubits = target_qubits.size();
+    auto const num_control_qubits = control_qubits.size();
+    auto const num_qubits = num_target_qubits + num_control_qubits;
+    assert(num_target_qubits > 0u);
+    assert(num_control_qubits > 1u);
+    assert(num_qubits > 2u);
+
+    switch (num_target_qubits)
+    {
+     case 1u:
+      switch (num_control_qubits)
+      {
+       case 2u:
+        ket::mpi::gate::adj_identity(
+          mpi_policy_, parallel_policy_,
+          data_, permutation_, buffer_, communicator_, environment_, target_qubits[0u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::mpi::gate::adj_identity(
+          mpi_policy_, parallel_policy_,
+          data_, permutation_, buffer_, communicator_, environment_, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       case 4u:
+        ket::mpi::gate::adj_identity(
+          mpi_policy_, parallel_policy_,
+          data_, permutation_, buffer_, communicator_, environment_, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+        break;
+
+       case 5u:
+        ket::mpi::gate::adj_identity(
+          mpi_policy_, parallel_policy_,
+          data_, permutation_, buffer_, communicator_, environment_, target_qubits[0u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u], control_qubits[4u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 2u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::mpi::gate::adj_identity(
+          mpi_policy_, parallel_policy_,
+          data_, permutation_, buffer_, communicator_, environment_, target_qubits[0u], target_qubits[1u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::mpi::gate::adj_identity(
+          mpi_policy_, parallel_policy_,
+          data_, permutation_, buffer_, communicator_, environment_, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::mpi::gate::adj_identity(
+          mpi_policy_, parallel_policy_,
+          data_, permutation_, buffer_, communicator_, environment_, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       case 4u:
+        ket::mpi::gate::adj_identity(
+          mpi_policy_, parallel_policy_,
+          data_, permutation_, buffer_, communicator_, environment_, target_qubits[0u], target_qubits[1u], control_qubits[0u], control_qubits[1u], control_qubits[2u], control_qubits[3u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 3u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::mpi::gate::adj_identity(
+          mpi_policy_, parallel_policy_,
+          data_, permutation_, buffer_, communicator_, environment_, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::mpi::gate::adj_identity(
+          mpi_policy_, parallel_policy_,
+          data_, permutation_, buffer_, communicator_, environment_, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       case 3u:
+        ket::mpi::gate::adj_identity(
+          mpi_policy_, parallel_policy_,
+          data_, permutation_, buffer_, communicator_, environment_, target_qubits[0u], target_qubits[1u], target_qubits[2u], control_qubits[0u], control_qubits[1u], control_qubits[2u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 4u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::mpi::gate::adj_identity(
+          mpi_policy_, parallel_policy_,
+          data_, permutation_, buffer_, communicator_, environment_, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], control_qubits[0u]);
+        break;
+
+       case 2u:
+        ket::mpi::gate::adj_identity(
+          mpi_policy_, parallel_policy_,
+          data_, permutation_, buffer_, communicator_, environment_, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], control_qubits[0u], control_qubits[1u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     case 5u:
+      switch (num_control_qubits)
+      {
+       case 1u:
+        ket::mpi::gate::adj_identity(
+          mpi_policy_, parallel_policy_,
+          data_, permutation_, buffer_, communicator_, environment_, target_qubits[0u], target_qubits[1u], target_qubits[2u], target_qubits[3u], target_qubits[4u], control_qubits[0u]);
+        break;
+
+       default:
+        throw bra::too_many_qubits_error{num_qubits};
+      }
+      break;
+
+     default:
+      throw bra::too_many_qubits_error{num_qubits};
+    }
   }
 
   void paged_unit_mpi_state::do_controlled_hadamard(

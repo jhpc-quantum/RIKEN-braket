@@ -38,6 +38,9 @@
 #include <bra/state.hpp>
 #include <bra/utility/to_integer.hpp>
 #include <bra/gate/gate.hpp>
+#include <bra/gate/i_gate.hpp>
+#include <bra/gate/ii_gate.hpp>
+#include <bra/gate/in_gate.hpp>
 #include <bra/gate/hadamard.hpp>
 #include <bra/gate/not_.hpp>
 #include <bra/gate/pauli_x.hpp>
@@ -86,6 +89,8 @@
 #include <bra/gate/set.hpp>
 #include <bra/gate/depolarizing_channel.hpp>
 #include <bra/gate/exit.hpp>
+#include <bra/gate/controlled_i_gate.hpp>
+#include <bra/gate/multi_controlled_in_gate.hpp>
 #include <bra/gate/controlled_hadamard.hpp>
 #include <bra/gate/multi_controlled_hadamard.hpp>
 #include <bra/gate/controlled_not.hpp>
@@ -391,7 +396,16 @@ namespace bra
       else if (mnemonic == "RANDOM") // RANDOM PERMUTATION
         throw unsupported_mnemonic_error{mnemonic};
       else if (mnemonic == "I")
-        continue;
+        add_i(columns);
+      else if (mnemonic == "II")
+        add_ii(columns);
+      else if (mnemonic.size() >= 3u
+               and std::all_of(
+                     std::begin(mnemonic), std::end(mnemonic),
+                     [](char const character) { return character == 'I'; }))
+        add_is(columns, mnemonic);
+      else if (mnemonic.size() >= 2u and mnemonic.front() == 'I')
+        add_in(columns, mnemonic);
       else if (mnemonic == "H")
         add_h(columns);
       else if (mnemonic == "NOT")
@@ -1270,6 +1284,71 @@ namespace bra
     return std::make_tuple(::bra::depolarizing_statement::channel, px, py, pz, seed);
   }
 
+  void gates::add_i(gates::columns_type const& columns)
+  {
+    data_.push_back(
+      std::unique_ptr< ::bra::gate::gate >{
+        new ::bra::gate::i_gate{read_target(columns)}});
+  }
+
+  void gates::add_ii(gates::columns_type const& columns)
+  {
+    auto target1 = qubit_type{};
+    auto target2 = qubit_type{};
+    std::tie(target1, target2) = read_2targets(columns);
+
+    data_.push_back(
+      std::unique_ptr< ::bra::gate::gate >{
+        new ::bra::gate::ii_gate{target1, target2}});
+  }
+
+  void gates::add_is(gates::columns_type const& columns, std::string const& mnemonic)
+  {
+    auto targets = std::vector<qubit_type>(mnemonic.size());
+    read_multi_targets(columns, targets);
+
+    data_.push_back(
+      std::unique_ptr< ::bra::gate::gate >{
+        new ::bra::gate::in_gate{std::move(targets)}});
+  }
+
+  void gates::add_in(gates::columns_type const& columns, std::string const& mnemonic)
+  {
+    auto const possible_digits_first = std::next(std::begin(mnemonic));
+    auto const possible_digits_last = std::end(mnemonic);
+    if (not std::all_of(
+              possible_digits_first, possible_digits_last,
+              [](unsigned char const character) { return std::isdigit(character); }))
+      throw unsupported_mnemonic_error{mnemonic};
+
+    auto const num_qubits = ::bra::utility::to_integer<int>(possible_digits_first, possible_digits_last);
+    if (num_qubits == 1)
+      data_.push_back(
+        std::unique_ptr< ::bra::gate::gate >{
+          new ::bra::gate::i_gate{read_target(columns)}});
+    else if (num_qubits == 2)
+    {
+      auto target1 = qubit_type{};
+      auto target2 = qubit_type{};
+      std::tie(target1, target2) = read_2targets(columns);
+
+      data_.push_back(
+        std::unique_ptr< ::bra::gate::gate >{
+          new ::bra::gate::ii_gate{target1, target2}});
+    }
+    else if (num_qubits >= 3)
+    {
+      auto targets = std::vector<qubit_type>(num_qubits);
+      read_multi_targets(columns, targets);
+
+      data_.push_back(
+        std::unique_ptr< ::bra::gate::gate >{
+          new ::bra::gate::in_gate{std::move(targets)}});
+    }
+    else
+      throw unsupported_mnemonic_error{mnemonic};
+  }
+
   void gates::add_h(gates::columns_type const& columns)
   {
     data_.push_back(
@@ -1999,7 +2078,16 @@ namespace bra
         ? std::string{cs_last, std::end(mnemonic)}
         : std::string{possible_digits_last, std::end(mnemonic)};
 
-    if (noncontrol_mnemonic == "H")
+    if (noncontrol_mnemonic == "I")
+      add_ci(columns, num_control_qubits);
+    else if (noncontrol_mnemonic.size() >= 2u
+             and std::all_of(
+                   std::begin(noncontrol_mnemonic), std::end(noncontrol_mnemonic),
+                   [](char const character) { return character == 'I'; }))
+      add_cis(columns, num_control_qubits, noncontrol_mnemonic);
+    else if (noncontrol_mnemonic.size() >= 2u and noncontrol_mnemonic.front() == 'I')
+      add_cin(columns, num_control_qubits, noncontrol_mnemonic, mnemonic);
+    else if (noncontrol_mnemonic == "H")
       add_ch(columns, num_control_qubits);
     else if (noncontrol_mnemonic == "NOT")
       add_cnot(columns, num_control_qubits);
@@ -2094,6 +2182,79 @@ namespace bra
       add_cezn(columns, num_control_qubits, noncontrol_mnemonic, mnemonic);
     else if (noncontrol_mnemonic == "ESWAP")
       add_ceswap(columns, num_control_qubits);
+    else
+      throw unsupported_mnemonic_error{mnemonic};
+  }
+
+  void gates::add_ci(gates::columns_type const& columns, int const num_control_qubits)
+  {
+    if (num_control_qubits == 1)
+    {
+      auto control = control_qubit_type{};
+      auto target = qubit_type{};
+      std::tie(control, target) = read_control_target(columns);
+
+      data_.push_back(
+        std::unique_ptr< ::bra::gate::gate >{
+          new ::bra::gate::controlled_i_gate{target, control}});
+    }
+    else // num_control_qubits >= 2
+    {
+      auto controls = std::vector<control_qubit_type>(num_control_qubits);
+      auto targets = std::vector<qubit_type>(1u);
+      read_multi_controls_multi_targets(columns, controls, targets);
+
+      data_.push_back(
+        std::unique_ptr< ::bra::gate::gate >{
+          new ::bra::gate::multi_controlled_in_gate{std::move(targets), std::move(controls)}});
+    }
+  }
+
+  void gates::add_cis(
+    gates::columns_type const& columns, int const num_control_qubits,
+    std::string const& noncontrol_mnemonic)
+  {
+    auto controls = std::vector<control_qubit_type>(num_control_qubits);
+    auto targets = std::vector<qubit_type>(noncontrol_mnemonic.size());
+    read_multi_controls_multi_targets(columns, controls, targets);
+
+    data_.push_back(
+      std::unique_ptr< ::bra::gate::gate >{
+        new ::bra::gate::multi_controlled_in_gate{std::move(targets), std::move(controls)}});
+  }
+
+  void gates::add_cin(
+    gates::columns_type const& columns, int const num_control_qubits,
+    std::string const& noncontrol_mnemonic, std::string const& mnemonic)
+  {
+    auto const possible_digits_first = std::next(std::begin(noncontrol_mnemonic));
+    auto const possible_digits_last = std::end(noncontrol_mnemonic);
+    if (not std::all_of(
+              possible_digits_first, possible_digits_last,
+              [](unsigned char const character) { return std::isdigit(character); }))
+      throw unsupported_mnemonic_error{mnemonic};
+
+    auto const num_target_qubits = ::bra::utility::to_integer<int>(possible_digits_first, possible_digits_last);
+    if (num_control_qubits == 1 and num_target_qubits == 1)
+    {
+      auto control = control_qubit_type{};
+      auto target = qubit_type{};
+      std::tie(control, target) = read_control_target(columns);
+
+      data_.push_back(
+        std::unique_ptr< ::bra::gate::gate >{
+          new ::bra::gate::controlled_i_gate{target, control}});
+    }
+    else if (num_target_qubits >= 1)
+    {
+      auto controls = std::vector<control_qubit_type>(num_control_qubits);
+      auto targets = std::vector<qubit_type>(num_target_qubits);
+      read_multi_controls_multi_targets(columns, controls, targets);
+
+      data_.push_back(
+        std::unique_ptr< ::bra::gate::gate >{
+          new ::bra::gate::multi_controlled_in_gate{std::move(targets), std::move(controls)}});
+    }
     else
       throw unsupported_mnemonic_error{mnemonic};
   }

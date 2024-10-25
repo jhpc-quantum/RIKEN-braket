@@ -26,11 +26,32 @@ namespace ket
           inline auto insert(std::basic_ostringstream<Character, CharacterTraits, Allocator>&) -> void
           { }
 
-          template <typename Character, typename CharacterTraits, typename Allocator, typename StateInteger, typename BitInteger, typename... Qubits>
-          inline auto insert(std::basic_ostringstream<Character, CharacterTraits, Allocator>& output_string_stream, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits) -> void
+          template <typename CharacterTraits, typename Allocator, typename StateInteger, typename BitInteger, typename... Qubits>
+          inline auto insert(std::basic_ostringstream<char, CharacterTraits, Allocator>& output_string_stream, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits) -> void
           {
             output_string_stream << ' ' << qubit;
-            ::ket::mpi::utility::logger_detail::insert(output_string_stream, qubits...);
+            ::ket::mpi::gate::detail::append_qubits_string_detail::insert(output_string_stream, qubits...);
+          }
+
+          template <typename CharacterTraits, typename Allocator, typename StateInteger, typename BitInteger, typename... Qubits>
+          inline auto insert(std::basic_ostringstream<wchar_t, CharacterTraits, Allocator>& output_string_stream, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits) -> void
+          {
+            output_string_stream << L' ' << qubit;
+            ::ket::mpi::gate::detail::append_qubits_string_detail::insert(output_string_stream, qubits...);
+          }
+
+          template <typename CharacterTraits, typename Allocator, typename StateInteger, typename BitInteger, typename... Qubits>
+          inline auto insert(std::basic_ostringstream<char16_t, CharacterTraits, Allocator>& output_string_stream, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits) -> void
+          {
+            output_string_stream << u' ' << qubit;
+            ::ket::mpi::gate::detail::append_qubits_string_detail::insert(output_string_stream, qubits...);
+          }
+
+          template <typename CharacterTraits, typename Allocator, typename StateInteger, typename BitInteger, typename... Qubits>
+          inline auto insert(std::basic_ostringstream<char32_t, CharacterTraits, Allocator>& output_string_stream, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits) -> void
+          {
+            output_string_stream << U' ' << qubit;
+            ::ket::mpi::gate::detail::append_qubits_string_detail::insert(output_string_stream, qubits...);
           }
         } // namespace append_qubits_string_detail
 
