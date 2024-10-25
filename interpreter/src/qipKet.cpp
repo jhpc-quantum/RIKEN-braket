@@ -181,15 +181,13 @@ void qip::addRXGate(gateInfoTy *ginfo) {
   double theta = ginfo->rarg[0];
 
   // rx
-  ket::mpi::gate::phase_shift3(*(ki.localState),
-                               theta,
-                               -M_PI/2.0,
-                               M_PI/2.0,
-                               target_qubit,
-                               *(ki.permutation),
-                               buffer,
-                               *(ki.communicator),
-                               *(ki.environment));
+  ket::mpi::gate::exponential_pauli_x(*(ki.localState),
+                              theta/2.0,
+                              target_qubit,
+                              *(ki.permutation),
+                              buffer,
+                              *(ki.communicator),
+                              *(ki.environment));
 
 }
 
@@ -204,15 +202,13 @@ void qip::addRYGate(gateInfoTy *ginfo) {
   double theta = ginfo->rarg[0];
 
   // ry
-  ket::mpi::gate::phase_shift3(*(ki.localState),
-                               theta,
-                               0.0,
-                               0.0,
-                               target_qubit,
-                               *(ki.permutation),
-                               buffer,
-                               *(ki.communicator),
-                               *(ki.environment));
+  ket::mpi::gate::exponential_pauli_y(*(ki.localState),
+                              theta/2.0,
+                              target_qubit,
+                              *(ki.permutation),
+                              buffer,
+                              *(ki.communicator),
+                              *(ki.environment));
 
 }
 
