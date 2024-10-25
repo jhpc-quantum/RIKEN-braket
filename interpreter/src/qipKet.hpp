@@ -99,12 +99,12 @@ void addSGate(gateInfoTy *ginfo);
 void addSdgGate(gateInfoTy *ginfo);
 
 /// @brief Application of RX Gate
-/// @details Call ket::mpi::gate::phase_shift3(theta, -pi/2, pi/2) .
+/// @details Call ket::mpi::gate::exponential_pauli_x(theta/2.0) .
 /// @param [in] ginfo Gate operation information
 void addRXGate(gateInfoTy *ginfo);
 
 /// @brief Application of RY Gate
-/// @details Call ket::mpi::gate::phase_shift3(theta, 0.0, 0.0) .
+/// @details Call ket::mpi::gate::exponential_pauli_y(theta/2.0) .
 /// @param [in] ginfo Gate operation information
 void addRYGate(gateInfoTy *ginfo);
 
