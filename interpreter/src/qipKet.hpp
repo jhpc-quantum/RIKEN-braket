@@ -31,6 +31,8 @@
 #include <ket/mpi/gate/hadamard.hpp>
 #include <ket/mpi/gate/controlled_phase_shift.hpp>
 #include <ket/mpi/gate/phase_shift.hpp>
+#include <ket/mpi/gate/exponential_pauli_x.hpp>
+#include <ket/mpi/gate/exponential_pauli_y.hpp>
 #include <ket/mpi/gate/exponential_pauli_z.hpp>
 #include <ket/mpi/all_spin_expectation_values.hpp>
 #include <yampi/allocator.hpp>
