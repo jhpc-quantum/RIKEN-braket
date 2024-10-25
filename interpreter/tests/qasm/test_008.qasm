@@ -3,4 +3,4 @@ include "stdgates.inc";
 
 qubit[2] q;
 
-ry(1) q[0];
+ry(1.570796) q[0];
