@@ -52,9 +52,6 @@ namespace ket
         -> RandomAccessRange&
         {
           auto const permutated_qubit = permutation[qubit];
-          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
-            mpi_policy, local_state, communicator, environment, permutated_qubit);
-
           if (::ket::mpi::page::is_on_page(permutated_qubit, local_state))
             return ::ket::mpi::gate::page::phase_shift_coeff(
               parallel_policy, local_state, phase_coefficient, permutated_qubit);
@@ -87,9 +84,6 @@ namespace ket
         {
           auto const permutated_target_qubit = permutation[target_qubit];
           auto const permutated_control_qubit = permutation[control_qubit];
-          ::ket::mpi::gate::detail::assert_all_qubits_are_local(
-            mpi_policy, local_state, communicator, environment, permutated_target_qubit, permutated_control_qubit);
-
           if (::ket::mpi::page::is_on_page(permutated_target_qubit, local_state))
           {
             if (::ket::mpi::page::is_on_page(permutated_control_qubit, local_state))
