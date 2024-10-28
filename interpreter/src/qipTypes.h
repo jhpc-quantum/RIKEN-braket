@@ -13,7 +13,7 @@
 
 /// @def MAX_N_GATES
 /// @brief Upper limit of gate operation information
-#define MAX_N_GATES 128
+#define MAX_N_GATES 40000
 
 /// @def MAX_I_ARGS
 /// @brief Upper limit on integer parameter number
