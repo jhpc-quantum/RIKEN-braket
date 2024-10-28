@@ -13,7 +13,8 @@
 
 /// @def MAX_N_GATES
 /// @brief Upper limit of gate operation information
-#define MAX_N_GATES 128
+/// @note The maximum number of gates in the VQE-generated-dataset used in the test is 36500, so we have matched it.
+#define MAX_N_GATES 40000
 
 /// @def MAX_I_ARGS
 /// @brief Upper limit on integer parameter number
