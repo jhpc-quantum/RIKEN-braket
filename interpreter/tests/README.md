@@ -45,5 +45,5 @@ $ bash UnitTest_all.sh
 #### `RIKEN-braket/interpreter/tests/tools/run_compute_node.sh`：Script to run UnitTest_all.sh in Fugaku
 #### Example：
 ```
-$ qsub run_compute_node.sh
+$ pjsub run_compute_node.sh
 ```
