@@ -7,3 +7,8 @@ void IRGenQASM3Visitor::visit(const ASTDelayNode *node) {
   SET_ERROR_INFO("Delay");
 }
 ```
+
+SET_ERROR_INF generates a message that an unsupported syntax was used, as shown below. It also sets an error flag.
+```
+Unsupported : "Delay"
+```
