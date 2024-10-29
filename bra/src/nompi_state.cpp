@@ -40,22 +40,22 @@ namespace bra
       data_{make_initial_data(initial_integer, total_num_qubits)}
   { }
 
-  void paged_simple_mpi_state::do_i_gate(qubit_type const)
+  void nompi_state::do_i_gate(qubit_type const)
   { }
 
-  void paged_simple_mpi_state::do_adj_i_gate(qubit_type const)
+  void nompi_state::do_adj_i_gate(qubit_type const)
   { }
 
-  void paged_simple_mpi_state::do_ii_gate(qubit_type const, qubit_type const)
+  void nompi_state::do_ii_gate(qubit_type const, qubit_type const)
   { }
 
-  void paged_simple_mpi_state::do_adj_ii_gate(qubit_type const, qubit_type const)
+  void nompi_state::do_adj_ii_gate(qubit_type const, qubit_type const)
   { }
 
-  void paged_simple_mpi_state::do_in_gate(std::vector<qubit_type> const&)
+  void nompi_state::do_in_gate(std::vector<qubit_type> const&)
   { }
 
-  void paged_simple_mpi_state::do_adj_in_gate(std::vector<qubit_type> const&)
+  void nompi_state::do_adj_in_gate(std::vector<qubit_type> const&)
   { }
 
   void nompi_state::do_hadamard(qubit_type const qubit)
@@ -621,17 +621,17 @@ namespace bra
   void nompi_state::do_set(qubit_type const qubit)
   { ket::gate::ranges::set(parallel_policy_, data_, qubit); }
 
-  void paged_simple_mpi_state::do_controlled_i_gate(qubit_type const, control_qubit_type const)
+  void nompi_state::do_controlled_i_gate(qubit_type const, control_qubit_type const)
   { }
 
-  void paged_simple_mpi_state::do_adj_controlled_i_gate(qubit_type const, control_qubit_type const)
+  void nompi_state::do_adj_controlled_i_gate(qubit_type const, control_qubit_type const)
   { }
 
-  void paged_simple_mpi_state::do_multi_controlled_in_gate(
+  void nompi_state::do_multi_controlled_in_gate(
     std::vector<qubit_type> const&, std::vector<control_qubit_type> const&)
   { }
 
-  void paged_simple_mpi_state::do_adj_multi_controlled_in_gate(
+  void nompi_state::do_adj_multi_controlled_in_gate(
     std::vector<qubit_type> const&, std::vector<control_qubit_type> const&)
   { }
 
