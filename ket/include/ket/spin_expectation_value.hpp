@@ -29,13 +29,21 @@ namespace ket
     auto spins_in_threads
       = std::vector<hd_spin_type>(::ket::utility::num_threads(parallel_policy), zero_spin);
 
-    ::ket::gate::gate(
-      parallel_policy, first, last,
-      [&spins_in_threads](RandomAccessIterator const first, std::array<StateInteger, 2u> const& indices, int const thread_index)
+    auto const qubit_mask = ::ket::utility::integer_exp2<StateInteger>(qubit);
+    auto const lower_bits_mask = qubit_mask - StateInteger{1u};
+    auto const upper_bits_mask = compl lower_bits_mask;
+
+    ::ket::utility::loop_n(
+      parallel_policy, static_cast<StateInteger>(last - first) >> 1u,
+      [first, &spins_in_threads, qubit_mask, lower_bits_mask, upper_bits_mask](StateInteger const value_wo_qubit, int const thread_index)
       {
+        // xxxxx0xxxxxx
+        auto const zero_index = ((value_wo_qubit bitand upper_bits_mask) << 1u) bitor (value_wo_qubit bitand lower_bits_mask);
+        // xxxxx1xxxxxx
+        auto const one_index = zero_index bitor qubit_mask;
         using std::conj;
-        auto const conj_zero_value = conj(*(first + indices[0b0u]));
-        auto const one_value = *(first + indices[0b1u]);
+        auto const conj_zero_value = conj(*(first + zero_index));
+        auto const one_value = *(first + one_index);
         auto const conj_zero_times_one = conj_zero_value * one_value;
 
         using std::real;
@@ -45,8 +53,7 @@ namespace ket
         using std::norm;
         spins_in_threads[thread_index][2u]
           += static_cast<long double>(norm(conj_zero_value)) - static_cast<long double>(norm(one_value));
-      },
-      qubit);
+      });
 
     using std::begin;
     using std::end;
