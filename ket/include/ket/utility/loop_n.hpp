@@ -233,6 +233,179 @@ namespace ket
     }
 
 
+    // copy
+    namespace dispatch
+    {
+      template <typename ParallelPolicy>
+      struct copy
+      {
+        template <typename ForwardIterator1, typename ForwardIterator2, typename Category1, typename Category2>
+        static auto call(
+          ParallelPolicy const parallel_policy,
+          ForwardIterator1 const first, ForwardIterator1 const last, ForwardIterator2 const d_first,
+          Category1 const iterator_category1, Category2 const iterator_category2)
+        -> ForwardIterator2;
+      }; // struct copy<ParallelPolicy>
+
+      template <>
+      struct copy< ::ket::utility::policy::sequential >
+      {
+        template <typename ForwardIterator1, typename ForwardIterator2>
+        static auto call(
+          ::ket::utility::policy::sequential const,
+          ForwardIterator1 const first, ForwardIterator1 const last, ForwardIterator2 const d_first,
+          std::forward_iterator_tag const, std::forward_iterator_tag const)
+        -> ForwardIterator2
+        { return std::copy(first, last, d_first); }
+      }; // struct copy< ::ket::utility::policy::sequential >
+    } // namespace dispatch
+
+    template <typename ParallelPolicy, typename ForwardIterator1, typename ForwardIterator2>
+    inline auto copy(
+      ParallelPolicy const parallel_policy,
+      ForwardIterator1 const first, ForwardIterator1 const last, ForwardIterator2 const d_first)
+    -> ForwardIterator2
+    {
+      return ::ket::utility::dispatch::copy<ParallelPolicy>::call(
+        parallel_policy, first, last, d_first,
+        typename std::iterator_traits<ForwardIterator1>::iterator_category{},
+        typename std::iterator_traits<ForwardIterator2>::iterator_category{});
+    }
+
+    template <typename ForwardIterator1, typename ForwardIterator2>
+    inline auto copy(ForwardIterator1 const first, ForwardIterator1 const last, ForwardIterator2 const d_first) -> ForwardIterator2
+    { return ::ket::utility::copy(::ket::utility::policy::make_sequential(), first, last, d_first); }
+
+    namespace ranges
+    {
+      template <typename ParallelPolicy, typename ForwardRange, typename ForwardIterator>
+      inline auto copy(ParallelPolicy const parallel_policy, ForwardRange const& range, ForwardIterator const d_first) -> ForwardIterator
+      {
+        using std::begin;
+        using std::end;
+        return ::ket::utility::copy(parallel_policy, begin(range), end(range), d_first);
+      }
+
+      template <typename ForwardRange, typename ForwardIterator>
+      inline auto copy(ForwardRange const& range, ForwardIterator const d_first) -> ForwardIterator
+      {
+        using std::begin;
+        using std::end;
+        return ::ket::utility::copy(begin(range), end(range), d_first);
+      }
+    } // namespace ranges
+
+
+    // copy_if
+    namespace dispatch
+    {
+      template <typename ParallelPolicy>
+      struct copy_if
+      {
+        template <typename ForwardIterator1, typename ForwardIterator2, typename UnaryPredicate, typename Category1, typename Category2>
+        static auto call(
+          ParallelPolicy const parallel_policy,
+          ForwardIterator1 const first, ForwardIterator1 const last, ForwardIterator2 const d_first,
+          UnaryPredicate const unary_predicate,
+          Category1 const iterator_category1, Category2 const iterator_category2)
+        -> ForwardIterator2;
+      }; // struct copy_if<ParallelPolicy>
+
+      template <>
+      struct copy_if< ::ket::utility::policy::sequential >
+      {
+        template <typename ForwardIterator1, typename ForwardIterator2, typename UnaryPredicate>
+        static auto call(
+          ::ket::utility::policy::sequential const,
+          ForwardIterator1 const first, ForwardIterator1 const last, ForwardIterator2 const d_first,
+          UnaryPredicate const unary_predicate,
+          std::forward_iterator_tag const, std::forward_iterator_tag const)
+        -> ForwardIterator2
+        { return std::copy_if(first, last, d_first, unary_predicate); }
+      }; // struct copy_if< ::ket::utility::policy::sequential >
+    } // namespace dispatch
+
+    template <typename ParallelPolicy, typename ForwardIterator1, typename ForwardIterator2, typename UnaryPredicate>
+    inline auto copy_if(
+      ParallelPolicy const parallel_policy,
+      ForwardIterator1 const first, ForwardIterator1 const last, ForwardIterator2 const d_first,
+      UnaryPredicate const unary_predicate)
+    -> ForwardIterator2
+    {
+      return ::ket::utility::dispatch::copy_if<ParallelPolicy>::call(
+        parallel_policy, first, last, d_first, unary_predicate,
+        typename std::iterator_traits<ForwardIterator1>::iterator_category{},
+        typename std::iterator_traits<ForwardIterator2>::iterator_category{});
+    }
+
+    template <typename ForwardIterator1, typename ForwardIterator2, typename UnaryPredicate>
+    inline auto copy_if(ForwardIterator1 const first, ForwardIterator1 const last, ForwardIterator2 const d_first, UnaryPredicate const unary_predicate) -> ForwardIterator2
+    { return ::ket::utility::copy_if(::ket::utility::policy::make_sequential(), first, last, d_first, unary_predicate); }
+
+    namespace ranges
+    {
+      template <typename ParallelPolicy, typename ForwardRange, typename ForwardIterator, typename UnaryPredicate>
+      inline auto copy_if(ParallelPolicy const parallel_policy, ForwardRange const& range, ForwardIterator const d_first, UnaryPredicate const unary_predicate) -> ForwardIterator
+      {
+        using std::begin;
+        using std::end;
+        return ::ket::utility::copy_if(parallel_policy, begin(range), end(range), d_first, unary_predicate);
+      }
+
+      template <typename ForwardRange, typename ForwardIterator, typename UnaryPredicate>
+      inline auto copy_if(ForwardRange const& range, ForwardIterator const d_first, UnaryPredicate const unary_predicate) -> ForwardIterator
+      {
+        using std::begin;
+        using std::end;
+        return ::ket::utility::copy_if(begin(range), end(range), d_first, unary_predicate);
+      }
+    } // namespace ranges
+
+
+    // copy_n
+    namespace dispatch
+    {
+      template <typename ParallelPolicy>
+      struct copy_n
+      {
+        template <typename ForwardIterator1, typename Size, typename ForwardIterator2, typename Category1, typename Category2>
+        static auto call(
+          ParallelPolicy const parallel_policy,
+          ForwardIterator1 const first, Size const count, ForwardIterator2 const d_first,
+          Category1 const iterator_category1, Category2 const iterator_category2)
+        -> ForwardIterator2;
+      }; // struct copy_n<ParallelPolicy>
+
+      template <>
+      struct copy_n< ::ket::utility::policy::sequential >
+      {
+        template <typename ForwardIterator1, typename Size, typename ForwardIterator2>
+        static auto call(
+          ::ket::utility::policy::sequential const,
+          ForwardIterator1 const first, Size const count, ForwardIterator2 const d_first,
+          std::forward_iterator_tag const, std::forward_iterator_tag const)
+        -> ForwardIterator2
+        { return std::copy_n(first, count, d_first); }
+      }; // struct copy_n< ::ket::utility::policy::sequential >
+    } // namespace dispatch
+
+    template <typename ParallelPolicy, typename ForwardIterator1, typename Size, typename ForwardIterator2>
+    inline auto copy_n(
+      ParallelPolicy const parallel_policy,
+      ForwardIterator1 const first, Size const count, ForwardIterator2 const d_first)
+    -> ForwardIterator2
+    {
+      return ::ket::utility::dispatch::copy_n<ParallelPolicy>::call(
+        parallel_policy, first, count, d_first,
+        typename std::iterator_traits<ForwardIterator1>::iterator_category{},
+        typename std::iterator_traits<ForwardIterator2>::iterator_category{});
+    }
+
+    template <typename ForwardIterator1, typename Size, typename ForwardIterator2>
+    inline auto copy_n(ForwardIterator1 const first, Size const count, ForwardIterator2 const d_first) -> ForwardIterator2
+    { return ::ket::utility::copy_n(::ket::utility::policy::make_sequential(), first, count, d_first); }
+
+
     // fill
     namespace dispatch
     {
@@ -256,7 +429,7 @@ namespace ket
           ForwardIterator const first, ForwardIterator const last, Value const& value,
           std::forward_iterator_tag const)
         -> void
-        { return std::fill(first, last, value); }
+        { std::fill(first, last, value); }
       }; // struct fill< ::ket::utility::policy::sequential >
     } // namespace dispatch
 
