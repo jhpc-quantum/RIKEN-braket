@@ -118,16 +118,16 @@ namespace ket
       constexpr auto num_qubits = num_control_qubits + BitInteger{1u};
       constexpr auto num_indices = ::ket::utility::integer_exp2<std::size_t>(num_qubits);
 
-      // 0b11...10u
-      constexpr auto indices_index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << std::size_t{1u};
-      // 0b11...11u
-      constexpr auto indices_index1 = indices_index0 bitor std::size_t{1u};
-
       ::ket::gate::gate(
         parallel_policy, first, last,
         [&one_plus_phase_coefficient, &one_minus_phase_coefficient](
-          RandomAccessIterator const first, std::array<StateInteger, num_indices> const& indices, int const)
+          auto const first, std::array<StateInteger, num_indices> const& indices, int const)
         {
+          // 0b11...10u
+          constexpr auto indices_index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << std::size_t{1u};
+          // 0b11...11u
+          constexpr auto indices_index1 = indices_index0 bitor std::size_t{1u};
+
           auto const control_on_iter = first + indices[indices_index0];
           auto const target_control_on_iter = first + indices[indices_index1];
           auto const control_on_iter_value = *control_on_iter;

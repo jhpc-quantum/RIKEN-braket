@@ -122,22 +122,22 @@ namespace ket
       constexpr auto num_qubits = num_control_qubits + BitInteger{2u};
       constexpr auto num_indices = ::ket::utility::integer_exp2<std::size_t>(num_qubits);
 
-      // 0b11...100u
-      constexpr auto indices_index00 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{2u};
-      // 0b11...101u
-      constexpr auto indices_index01 = indices_index00 bitor std::size_t{1u};
-      // 0b11...110u
-      constexpr auto indices_index10 = indices_index00 bitor (std::size_t{1u} << BitInteger{1u});
-      // 0b11...111u
-      constexpr auto indices_index11 = indices_index10 bitor std::size_t{1u};
-
       using std::imag;
       auto const i_sin_theta = ::ket::utility::imaginary_unit<Complex>() * imag(phase_coefficient);
 
       ::ket::gate::gate(
         parallel_policy, first, last,
-        [&phase_coefficient, &i_sin_theta](RandomAccessIterator const first, std::array<StateInteger, num_indices> const& indices, int const)
+        [&phase_coefficient, &i_sin_theta](auto const first, std::array<StateInteger, num_indices> const& indices, int const)
         {
+          // 0b11...100u
+          constexpr auto indices_index00 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{2u};
+          // 0b11...101u
+          constexpr auto indices_index01 = indices_index00 bitor std::size_t{1u};
+          // 0b11...110u
+          constexpr auto indices_index10 = indices_index00 bitor (std::size_t{1u} << BitInteger{1u});
+          // 0b11...111u
+          constexpr auto indices_index11 = indices_index10 bitor std::size_t{1u};
+
           *(first + indices[indices_index00]) *= phase_coefficient;
           *(first + indices[indices_index11]) *= phase_coefficient;
 

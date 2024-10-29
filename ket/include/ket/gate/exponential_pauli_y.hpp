@@ -238,9 +238,6 @@ namespace ket
       constexpr auto num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
       constexpr auto half_num_target_indices = num_target_indices / std::size_t{2u};
 
-      // 0b1...10...0u
-      constexpr auto base_indices_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
-
       using std::real;
       using std::imag;
       auto const cos_theta = real(phase_coefficient);
@@ -265,8 +262,11 @@ namespace ket
 
       ::ket::gate::gate(
         parallel_policy, first, last,
-        [cos_theta, &sin_part](RandomAccessIterator const first, std::array<StateInteger, num_indices> const& indices, int const)
+        [cos_theta, &sin_part](auto const first, std::array<StateInteger, num_indices> const& indices, int const)
         {
+          // 0b1...10...0u
+          constexpr auto base_indices_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
+
           for (auto i = std::size_t{0u}; i < half_num_target_indices; ++i)
           {
             auto const j = num_target_indices - std::size_t{1u} - i;

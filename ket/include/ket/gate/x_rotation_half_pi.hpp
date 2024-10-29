@@ -147,15 +147,15 @@ namespace ket
       constexpr auto num_qubits = num_control_qubits + BitInteger{1u};
       constexpr auto num_indices = ::ket::utility::integer_exp2<std::size_t>(num_qubits);
 
-      // 0b11...10u
-      constexpr auto indices_index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{1u};
-      // 0b11...11u
-      constexpr auto indices_index1 = indices_index0 bitor std::size_t{1u};
-
       ::ket::gate::gate(
         parallel_policy, first, last,
-        [](RandomAccessIterator const first, std::array<StateInteger, num_indices> const& indices, int const)
+        [](auto const first, std::array<StateInteger, num_indices> const& indices, int const)
         {
+          // 0b11...10u
+          constexpr auto indices_index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{1u};
+          // 0b11...11u
+          constexpr auto indices_index1 = indices_index0 bitor std::size_t{1u};
+
           auto const iter0 = first + indices[indices_index0];
           auto const iter1 = first + indices[indices_index1];
           auto const iter0_value = *iter0;
@@ -317,15 +317,15 @@ namespace ket
       constexpr auto num_qubits = num_control_qubits + BitInteger{1u};
       constexpr auto num_indices = ::ket::utility::integer_exp2<std::size_t>(num_qubits);
 
-      // 0b11...10u
-      constexpr auto indices_index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{1u};
-      // 0b11...11u
-      constexpr auto indices_index1 = indices_index0 bitor std::size_t{1u};
-
       ::ket::gate::gate(
         parallel_policy, first, last,
-        [](RandomAccessIterator const first, std::array<StateInteger, num_indices> const& indices, int const)
+        [](auto const first, std::array<StateInteger, num_indices> const& indices, int const)
         {
+          // 0b11...10u
+          constexpr auto indices_index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{1u};
+          // 0b11...11u
+          constexpr auto indices_index1 = indices_index0 bitor std::size_t{1u};
+
           auto const iter0 = first + indices[indices_index0];
           auto const iter1 = first + indices[indices_index1];
           auto const iter0_value = *iter0;

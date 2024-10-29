@@ -58,15 +58,17 @@ namespace ket
       constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 2u);
       constexpr auto num_indices = ::ket::utility::integer_exp2<std::size_t>(num_control_qubits + BitInteger{1u});
 
-      // 0b11...10u
-      constexpr auto index0 = ((StateInteger{1u} << num_control_qubits) - StateInteger{1u}) << BitInteger{1u};
-      // 0b11...11u
-      constexpr auto index1 = index0 bitor StateInteger{1u};
-
       ::ket::gate::gate(
         parallel_policy, first, last,
-        [](RandomAccessIterator const first, std::array<StateInteger, num_indices> const& indices, int const)
-        { std::iter_swap(first + indices[index0], first + indices[index1]); },
+        [](auto const first, std::array<StateInteger, num_indices> const& indices, int const)
+        {
+          // 0b11...10u
+          constexpr auto index0 = ((StateInteger{1u} << num_control_qubits) - StateInteger{1u}) << BitInteger{1u};
+          // 0b11...11u
+          constexpr auto index1 = index0 bitor StateInteger{1u};
+
+          std::iter_swap(first + indices[index0], first + indices[index1]);
+        },
         target_qubit, control_qubit1, control_qubit2, control_qubits...);
     }
 

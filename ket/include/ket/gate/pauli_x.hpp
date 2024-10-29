@@ -180,13 +180,13 @@ namespace ket
       constexpr auto num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
       constexpr auto half_num_target_indices = num_target_indices / std::size_t{2u};
 
-      // 0b1...10...0u
-      constexpr auto base_indices_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
-
       ::ket::gate::gate(
         parallel_policy, first, last,
-        [](RandomAccessIterator const first, std::array<StateInteger, num_indices> const& indices, int const)
+        [](auto const first, std::array<StateInteger, num_indices> const& indices, int const)
         {
+          // 0b1...10...0u
+          constexpr auto base_indices_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
+
           for (auto i = std::size_t{0u}; i < half_num_target_indices; ++i)
           {
             auto const iter1 = first + indices[base_indices_index + i];

@@ -91,17 +91,19 @@ namespace ket
       constexpr auto num_qubits = num_control_qubits + BitInteger{2u};
       constexpr auto num_indices = ::ket::utility::integer_exp2<std::size_t>(num_qubits);
 
-      // 0b11...100u
-      constexpr auto base_indices_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{2u};
-      // 0b11...101u
-      constexpr auto indices_index01 = base_indices_index bitor std::size_t{1u};
-      // 0b11...110u
-      constexpr auto indices_index10 = base_indices_index bitor (std::size_t{1u} << BitInteger{1u});
-
       ::ket::gate::gate(
         parallel_policy, first, last,
-        [](RandomAccessIterator const first, std::array<StateInteger, num_indices> const& indices, int const)
-        { std::iter_swap(first + indices[indices_index01], first + indices[indices_index10]); },
+        [](auto const first, std::array<StateInteger, num_indices> const& indices, int const)
+        {
+          // 0b11...100u
+          constexpr auto base_indices_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{2u};
+          // 0b11...101u
+          constexpr auto indices_index01 = base_indices_index bitor std::size_t{1u};
+          // 0b11...110u
+          constexpr auto indices_index10 = base_indices_index bitor (std::size_t{1u} << BitInteger{1u});
+
+          std::iter_swap(first + indices[indices_index01], first + indices[indices_index10]);
+        },
         target_qubit1, target_qubit2, control_qubit, control_qubits...);
     }
 
