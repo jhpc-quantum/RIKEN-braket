@@ -29,7 +29,9 @@ namespace ket
           template <typename Tuple, typename T>
           static constexpr auto call(Tuple&& tuple, std::array<T, count>& array) -> std::array<T, count>&
           {
-            static_assert(std::is_convertible<std::tuple_element_t<index, std::remove_cv_t<std::remove_reference_t<Tuple>>>, T>::value);
+            static_assert(
+              std::is_convertible<std::tuple_element_t<index, std::remove_cv_t<std::remove_reference_t<Tuple>>>, T>::value,
+              "Tuple's elements should be convertible to T");
             array[index] = static_cast<T>(std::get<index>(tuple));
             return ::ket::utility::tuple::impl::to_array<index + 1u, count>::call(std::forward<Tuple>(tuple), array);
           }
