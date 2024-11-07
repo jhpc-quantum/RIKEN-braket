@@ -311,7 +311,7 @@ namespace ket
           "bit_integer_type's of Qubit1, Qubit2, Qubit3, and Qubits should be the same");
 # endif // __cpp_constexpr >= 201603
 
-        static constexpr auto num_operated_qubits = sizeof...(Qubits) + 3u;
+        constexpr auto num_operated_qubits = sizeof...(Qubits) + 3u;
         using qubit_type = ::ket::qubit<StateInteger, bit_integer_type>;
         std::array<qubit_type, num_operated_qubits> qubits_array{
           ::ket::remove_control(std::forward<Qubit1>(qubit1)), ::ket::remove_control(std::forward<Qubit2>(qubit2)),
@@ -875,7 +875,7 @@ namespace ket
         static_assert(std::is_unsigned<state_integer_type>::value, "state_integer_type of Qubit should be unsigned");
         static_assert(std::is_unsigned<bit_integer_type>::value, "bit_integer_type of Qubit should be unsigned");
 
-        static constexpr auto num_operated_qubits = sizeof...(Qubits) + 1u;
+        constexpr auto num_operated_qubits = sizeof...(Qubits) + 1u;
 
 #   ifndef NDEBUG
         auto const state_size = static_cast<state_integer_type>(last - first);
@@ -942,7 +942,7 @@ namespace ket
       static_assert(std::is_unsigned<state_integer_type>::value, "state_integer_type of Qubit should be unsigned");
       static_assert(std::is_unsigned<bit_integer_type>::value, "bit_integer_type of Qubit should be unsigned");
 
-      static constexpr auto num_operated_qubits = sizeof...(Qubits) + 1u;
+      constexpr auto num_operated_qubits = sizeof...(Qubits) + 1u;
 
 # ifndef KET_USE_ON_CACHE_STATE_VECTOR
       ::ket::gate::nocache::gate(

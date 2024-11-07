@@ -437,7 +437,7 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
       -> RandomAccessRange&
       {
-        static constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
+        constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
         ::ket::mpi::utility::log_with_time_guard<char> print{
           ::ket::mpi::gate::detail::append_qubits_string(
             ::ket::mpi::utility::generate_logger_string(
@@ -466,7 +466,7 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
       -> RandomAccessRange&
       {
-        static constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
+        constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
         ::ket::mpi::utility::log_with_time_guard<char> print{
           ::ket::mpi::gate::detail::append_qubits_string(
             ::ket::mpi::utility::generate_logger_string(
@@ -868,7 +868,7 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
       -> RandomAccessRange&
       {
-        static constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
+        constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
         ::ket::mpi::utility::log_with_time_guard<char> print{
           ::ket::mpi::gate::detail::append_qubits_string(
             ::ket::mpi::utility::generate_logger_string(
@@ -897,7 +897,7 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
       -> RandomAccessRange&
       {
-        static constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
+        constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
         ::ket::mpi::utility::log_with_time_guard<char> print{
           ::ket::mpi::gate::detail::append_qubits_string(
             ::ket::mpi::utility::generate_logger_string(
@@ -1299,7 +1299,7 @@ namespace ket
         Real const phase, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
       -> RandomAccessRange&
       {
-        static constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
+        constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
         ::ket::mpi::utility::log_with_time_guard<char> print{
           ::ket::mpi::gate::detail::append_qubits_string(
             ::ket::mpi::utility::generate_logger_string(
@@ -1326,7 +1326,7 @@ namespace ket
         Real const phase, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
       -> RandomAccessRange&
       {
-        static constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
+        constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
         ::ket::mpi::utility::log_with_time_guard<char> print{
           ::ket::mpi::gate::detail::append_qubits_string(
             ::ket::mpi::utility::generate_logger_string(
@@ -1720,7 +1720,7 @@ namespace ket
         Real const phase, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
       -> RandomAccessRange&
       {
-        static constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
+        constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
         ::ket::mpi::utility::log_with_time_guard<char> print{
           ::ket::mpi::gate::detail::append_qubits_string(
             ::ket::mpi::utility::generate_logger_string(
@@ -1747,7 +1747,7 @@ namespace ket
         Real const phase, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
       -> RandomAccessRange&
       {
-        static constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
+        constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
         ::ket::mpi::utility::log_with_time_guard<char> print{
           ::ket::mpi::gate::detail::append_qubits_string(
             ::ket::mpi::utility::generate_logger_string(

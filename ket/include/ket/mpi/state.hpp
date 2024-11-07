@@ -1141,7 +1141,7 @@ namespace ket
           Function&& function)
         -> void
         {
-          static constexpr auto zero_state_integer = StateInteger{0u};
+          constexpr auto zero_state_integer = StateInteger{0u};
 
           using permutated_control_qubit_type
             = ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >;
@@ -1154,7 +1154,7 @@ namespace ket
                 zero_state_integer,
                 [](StateInteger const& partial_mask, permutated_control_qubit_type const& permutated_control_qubit)
                 {
-                  static constexpr auto one_state_integer = StateInteger{1u};
+                  constexpr auto one_state_integer = StateInteger{1u};
                   return partial_mask bitor (one_state_integer << permutated_control_qubit);
                 });
 
@@ -1169,7 +1169,7 @@ namespace ket
               parallel_policy, last_integer,
               [&function, &sorted_local_permutated_control_qubits, mask, first](StateInteger state_integer, int const)
               {
-                static constexpr auto one_state_integer = StateInteger{1u};
+                constexpr auto one_state_integer = StateInteger{1u};
 
                 // xxx0x0xxx0xx
                 for (permutated_control_qubit_type const& permutated_control_qubit: sorted_local_permutated_control_qubits)
