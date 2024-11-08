@@ -2594,7 +2594,7 @@ namespace ket
           template <typename BufferAllocator>
           static auto call_end(
             ::ket::mpi::state<Complex, false, Allocator>&,
-            std::vector<Complex, BufferAllocator> const& buffer)
+            std::vector<Complex, BufferAllocator>& buffer)
           -> typename std::vector<Complex, BufferAllocator>::iterator
           { using std::end; return end(buffer); }
 

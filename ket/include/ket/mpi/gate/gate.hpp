@@ -90,8 +90,9 @@ namespace ket
           //   - yyyy: chunk qubits
 
           // Case 1) All operated qubits are on-cache qubits
-          if (::ket::utility::all_in_state_vector(num_on_cache_qubits, permutated_qubit.qubit(), permutated_qubits.qubits()...))
+          if (::ket::utility::all_in_state_vector(num_on_cache_qubits, permutated_qubit.qubit(), permutated_qubits.qubit()...))
           {
+            constexpr auto num_operated_qubits = sizeof...(Qubits) + 1u;
             std::array<state_integer_type, num_operated_qubits> qubit_masks{};
             ::ket::gate::gate_detail::make_qubit_masks(qubit_masks, permutated_qubit.qubit(), permutated_qubits.qubit()...);
             std::array<state_integer_type, num_operated_qubits + 1u> index_masks{};
