@@ -19,6 +19,8 @@ namespace ket
       {
         BitInteger num_qubits_;
 
+        is_in_state_vector(BitInteger const num_qubits) : num_qubits_{num_qubits} { }
+
         template <typename Qubit>
         constexpr auto operator()(Qubit&& qubit) const noexcept
         { return std::forward<Qubit>(qubit) < std::remove_cv_t<std::remove_reference_t<decltype(qubit)>>{num_qubits_}; }
@@ -29,13 +31,19 @@ namespace ket
     template <typename BitInteger, typename Qubit, typename... Qubits>
     inline constexpr auto all_in_state_vector(BitInteger const num_qubits, Qubit&& qubit, Qubits&&... qubits) -> bool
     {
-# if __cpp_constexpr >= 201603
+# if __cpp_constexpr >= 201603L
+#   if __cpp_generic_lambdas >= 201707L
       return ::ket::utility::variadic::all_of(
-        [num_qubits](auto&& qubit) { return std::forward<Qubit>(qubit) < std::remove_cv_t<std::remove_reference_t<decltype(qubit)>>{num_qubits}; },
+        [num_qubits]<typename Qubit_>(Qubit_&& qubit) { return std::forward<Qubit_>(qubit) < std::remove_cv_t<std::remove_reference_t<Qubit_>>{num_qubits}; },
         std::forward<Qubit>(qubit), std::forward<Qubits>(qubits)...);
+#   else // __cpp_generic_lambdas >= 201707L
+      return ::ket::utility::variadic::all_of(
+        [num_qubits](auto&& qubit) { return std::forward<decltype(qubit)>(qubit) < std::remove_cv_t<std::remove_reference_t<decltype(qubit)>>{num_qubits}; },
+        std::forward<Qubit>(qubit), std::forward<Qubits>(qubits)...);
+#   endif // __cpp_generic_lambdas >= 201707L
 # else // __cpp_constexpr >= 201603
       return ::ket::utility::variadic::all_of(
-        ::ket::utility::all_in_state_vector_detail::is_in_state_vector<BitInteger>{},
+        ::ket::utility::all_in_state_vector_detail::is_in_state_vector<BitInteger>{num_qubits},
         std::forward<Qubit>(qubit), std::forward<Qubits>(qubits)...);
 # endif // __cpp_constexpr >= 201603
     }
