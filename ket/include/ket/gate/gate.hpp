@@ -175,7 +175,7 @@ namespace ket
         } // namespace ranges
       } // namespace runtime
 
-# if __cpp_constexpr < 201603
+# if __cpp_constexpr < 201603L
       template <typename U>
       struct is_same_to
       {
@@ -200,26 +200,26 @@ namespace ket
         template <typename Qubit>
         constexpr auto operator()(Qubit) const noexcept { return ::ket::meta::bit_integer_t<Qubit>{}; }
       }; // struct bit_integer_of
-# endif // __cpp_constexpr < 201603
+# endif // __cpp_constexpr < 201603L
 
       template <typename StateInteger, typename... Qubits>
       inline auto make_qubit_masks(std::array<StateInteger, sizeof...(Qubits)>& result, Qubits&&... qubits) -> void
       {
         static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
-# if __cpp_constexpr >= 201603
+# if __cpp_constexpr >= 201603L
         static_assert(
           ::ket::utility::variadic::proj::all_of(
             [](auto integer) { return std::is_same<decltype(integer), StateInteger>::value; },
             [](auto qubit) { return ::ket::meta::state_integer_t<decltype(qubit)>{}; },
             std::remove_cv_t<std::remove_reference_t<Qubits>>{}...),
           "state_integer_type's of Qubits should be the same to StateInteger");
-# else // __cpp_constexpr >= 201603
+# else // __cpp_constexpr >= 201603L
         static_assert(
           ::ket::utility::variadic::proj::all_of(
             ::ket::gate::gate_detail::is_same_to<StateInteger>{}, ::ket::gate::gate_detail::state_integer_of{},
             std::remove_cv_t<std::remove_reference_t<Qubits>>{}...),
           "state_integer_type's of Qubits should be the same to StateInteger");
-# endif // __cpp_constexpr >= 201603
+# endif // __cpp_constexpr >= 201603L
 
         ::ket::utility::tuple::to_array(
           ::ket::utility::variadic::transform([](auto&& qubit) { return StateInteger{1u} << qubit; }, std::forward<Qubits>(qubits)...),
@@ -233,19 +233,19 @@ namespace ket
       -> void
       {
         static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
-# if __cpp_constexpr >= 201603
+# if __cpp_constexpr >= 201603L
         static_assert(
           ::ket::utility::tuple::proj::all_of(
             Qubits{},
             [](auto integer) { return std::is_same<decltype(integer), StateInteger>::value; },
             [](auto qubit) { return ::ket::meta::state_integer_t<decltype(qubit)>{}; }),
           "state_integer_type's of all elements of Qubits should be the same to StateInteger");
-# else // __cpp_constexpr >= 201603
+# else // __cpp_constexpr >= 201603L
         static_assert(
           ::ket::utility::tuple::proj::all_of(
             Qubits{}, ::ket::gate::gate_detail::is_same_to<StateInteger>{}, ::ket::gate::gate_detail::state_integer_of{}),
           "state_integer_type's of all elements of Qubits should be the same to StateInteger");
-# endif // __cpp_constexpr >= 201603
+# endif // __cpp_constexpr >= 201603L
 
         ::ket::utility::tuple::to_array(
           ::ket::utility::tuple::transform(qubits, [](auto const qubit) { return StateInteger{1u} << qubit; }),
@@ -275,7 +275,7 @@ namespace ket
       -> void
       {
         static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
-# if __cpp_constexpr >= 201603
+# if __cpp_constexpr >= 201603L
         static_assert(
           ::ket::utility::variadic::proj::all_of(
             [](auto integer) { return std::is_same<decltype(integer), StateInteger>::value; },
@@ -283,18 +283,18 @@ namespace ket
             std::remove_cv_t<std::remove_reference_t<Qubit1>>{}, std::remove_cv_t<std::remove_reference_t<Qubit2>>{},
             std::remove_cv_t<std::remove_reference_t<Qubit3>>{}, std::remove_cv_t<std::remove_reference_t<Qubits>>{}...),
           "state_integer_type's of Qubit1, Qubit2, Qubit3, and Qubits should be same to StateInteger");
-# else // __cpp_constexpr >= 201603
+# else // __cpp_constexpr >= 201603L
         static_assert(
           ::ket::utility::variadic::proj::all_of(
             ::ket::gate::gate_detail::is_same_to<StateInteger>{}, ::ket::gate::gate_detail::state_integer_of{},
             std::remove_cv_t<std::remove_reference_t<Qubit1>>{}, std::remove_cv_t<std::remove_reference_t<Qubit2>>{},
             std::remove_cv_t<std::remove_reference_t<Qubit3>>{}, std::remove_cv_t<std::remove_reference_t<Qubits>>{}...),
           "state_integer_type's of Qubit1, Qubit2, Qubit3, and Qubits should be same to StateInteger");
-# endif // __cpp_constexpr >= 201603
+# endif // __cpp_constexpr >= 201603L
 
         using bit_integer_type = ::ket::meta::bit_integer_t<std::remove_cv_t<std::remove_reference_t<Qubit1>>>;
         static_assert(std::is_unsigned<bit_integer_type>::value, "bit_integer_type of Qubit1 should be unsigned");
-# if __cpp_constexpr >= 201603
+# if __cpp_constexpr >= 201603L
         static_assert(
           ::ket::utility::variadic::proj::all_of(
             [](auto integer) { return std::is_same<decltype(integer), bit_integer_type>::value; },
@@ -302,14 +302,14 @@ namespace ket
             std::remove_cv_t<std::remove_reference_t<Qubit2>>{}, std::remove_cv_t<std::remove_reference_t<Qubit3>>{},
             std::remove_cv_t<std::remove_reference_t<Qubits>>{}...),
           "bit_integer_type's of Qubit1, Qubit2, Qubit3, and Qubits should be the same");
-# else // __cpp_constexpr >= 201603
+# else // __cpp_constexpr >= 201603L
         static_assert(
           ::ket::utility::variadic::proj::all_of(
             ::ket::gate::gate_detail::is_same_to<bit_integer_type>{}, ::ket::gate::gate_detail::bit_integer_of{},
             std::remove_cv_t<std::remove_reference_t<Qubit2>>{}, std::remove_cv_t<std::remove_reference_t<Qubit3>>{},
             std::remove_cv_t<std::remove_reference_t<Qubits>>{}...),
           "bit_integer_type's of Qubit1, Qubit2, Qubit3, and Qubits should be the same");
-# endif // __cpp_constexpr >= 201603
+# endif // __cpp_constexpr >= 201603L
 
         constexpr auto num_operated_qubits = sizeof...(Qubits) + 3u;
         using qubit_type = ::ket::qubit<StateInteger, bit_integer_type>;
@@ -323,20 +323,20 @@ namespace ket
       inline auto make_index_masks(std::array<StateInteger, 3u>& result, Qubit1&& qubit1, Qubit2&& qubit2) -> void
       {
         static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
-# if __cpp_constexpr >= 201603
+# if __cpp_constexpr >= 201603L
         static_assert(
           ::ket::utility::variadic::proj::all_of(
             [](auto integer) { return std::is_same<decltype(integer), StateInteger>::value; },
             [](auto qubit) { return ::ket::meta::state_integer_t<decltype(qubit)>{}; },
             std::remove_cv_t<std::remove_reference_t<Qubit1>>{}, std::remove_cv_t<std::remove_reference_t<Qubit2>>{}),
           "state_integer_type's of Qubit1, Qubit2, Qubit3, and Qubits should be same to StateInteger");
-# else // __cpp_constexpr >= 201603
+# else // __cpp_constexpr >= 201603L
         static_assert(
           ::ket::utility::variadic::proj::all_of(
             ::ket::gate::gate_detail::is_same_to<StateInteger>{}, ::ket::gate::gate_detail::state_integer_of{},
             std::remove_cv_t<std::remove_reference_t<Qubit1>>{}, std::remove_cv_t<std::remove_reference_t<Qubit2>>{}),
           "state_integer_type's of Qubit1, Qubit2, Qubit3, and Qubits should be same to StateInteger");
-# endif // __cpp_constexpr >= 201603
+# endif // __cpp_constexpr >= 201603L
 
         auto const raw_qubit1 = ::ket::remove_control(std::forward<Qubit1>(qubit1));
         auto const raw_qubit2 = ::ket::remove_control(std::forward<Qubit2>(qubit2));
@@ -365,35 +365,35 @@ namespace ket
       -> void
       {
         static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
-# if __cpp_constexpr >= 201603
+# if __cpp_constexpr >= 201603L
         static_assert(
           ::ket::utility::tuple::proj::all_of(
             Qubits{},
             [](auto integer) { return std::is_same<decltype(integer), StateInteger>::value; },
             [](auto qubit) { return ::ket::meta::state_integer_t<decltype(qubit)>{}; }),
           "state_integer_type's of all elements of Qubits should be the same to StateInteger");
-# else // __cpp_constexpr >= 201603
+# else // __cpp_constexpr >= 201603L
         static_assert(
           ::ket::utility::tuple::proj::all_of(
             Qubits{}, ::ket::gate::gate_detail::is_same_to<StateInteger>{}, ::ket::gate::gate_detail::state_integer_of{}),
           "state_integer_type's of all elements of Qubits should be the same to StateInteger");
-# endif // __cpp_constexpr >= 201603
+# endif // __cpp_constexpr >= 201603L
 
         using bit_integer_type = ::ket::meta::bit_integer_t<std::remove_cv_t<std::remove_reference_t<std::tuple_element_t<0u, Qubits>>>>;
         static_assert(std::is_unsigned<bit_integer_type>::value, "bit_integer_type of the first element of Qubits should be unsigned");
-# if __cpp_constexpr >= 201603
+# if __cpp_constexpr >= 201603L
         static_assert(
           ::ket::utility::tuple::proj::all_of(
             Qubits{},
             [](auto integer) { return std::is_same<decltype(integer), bit_integer_type>::value; },
             [](auto qubit) { return ::ket::meta::bit_integer_t<decltype(qubit)>{}; }),
           "bit_integer_type's of all elements of Qubits should be the same");
-# else // __cpp_constexpr >= 201603
+# else // __cpp_constexpr >= 201603L
         static_assert(
           ::ket::utility::tuple::proj::all_of(
             Qubits{}, ::ket::gate::gate_detail::is_same_to<bit_integer_type>{}, ::ket::gate::gate_detail::bit_integer_of{}),
           "bit_integer_type's of all elements of Qubits should be the same");
-# endif // __cpp_constexpr >= 201603
+# endif // __cpp_constexpr >= 201603L
 
         using qubit_type = ::ket::qubit<StateInteger, bit_integer_type>;
         std::array<qubit_type, std::tuple_size<Qubits>::value> qubits_array;
@@ -407,20 +407,20 @@ namespace ket
       inline auto make_index_masks(std::tuple<Qubit1&&, Qubit2&&> const qubits, std::array<StateInteger, 3u>& result) -> void
       {
         static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
-# if __cpp_constexpr >= 201603
+# if __cpp_constexpr >= 201603L
         static_assert(
           ::ket::utility::variadic::proj::all_of(
             [](auto integer) { return std::is_same<decltype(integer), StateInteger>::value; },
             [](auto qubit) { return ::ket::meta::state_integer_t<decltype(qubit)>{}; },
             std::remove_cv_t<std::remove_reference_t<Qubit1>>{}, std::remove_cv_t<std::remove_reference_t<Qubit2>>{}),
           "state_integer_type's of Qubit1 and Qubit2 should be same to StateInteger");
-# else // __cpp_constexpr >= 201603
+# else // __cpp_constexpr >= 201603L
         static_assert(
           ::ket::utility::variadic::all_of(
             ::ket::gate::gate_detail::is_same_to<StateInteger>{}, ::ket::gate::gate_detail::state_integer_of{},
             std::remove_cv_t<std::remove_reference_t<Qubit1>>{}, std::remove_cv_t<std::remove_reference_t<Qubit2>>{}),
           "state_integer_type's of Qubit1 and Qubit2 should be same to StateInteger");
-# endif // __cpp_constexpr >= 201603
+# endif // __cpp_constexpr >= 201603L
 
         auto const raw_qubit1 = ::ket::remove_control(std::forward<Qubit1&&>(std::get<0u>(qubits)));
         auto const raw_qubit2 = ::ket::remove_control(std::forward<Qubit2&&>(std::get<1u>(qubits)));
@@ -882,7 +882,7 @@ namespace ket
         auto const num_qubits = ::ket::utility::integer_log2<bit_integer_type>(state_size);
 #   endif // NDEBUG
         assert(::ket::utility::integer_exp2<state_integer_type>(num_qubits) == state_size);
-        assert(::ket::utility::all_in_state_vector(state_size, qubit, qubits...));
+        assert(::ket::utility::all_in_state_vector(num_qubits, qubit, qubits...));
 
         std::array<state_integer_type, num_operated_qubits> qubit_masks{};
         ::ket::gate::gate_detail::make_qubit_masks(qubit_masks, qubit, qubits...);
@@ -952,7 +952,7 @@ namespace ket
       auto const state_size = static_cast<state_integer_type>(last - first);
       auto const num_qubits = ::ket::utility::integer_log2<bit_integer_type>(state_size);
       assert(::ket::utility::integer_exp2<state_integer_type>(num_qubits) == state_size);
-      assert(::ket::utility::all_in_state_vector(state_size, qubit, qubits...));
+      assert(::ket::utility::all_in_state_vector(num_qubits, qubit, qubits...));
 
 #   ifndef KET_DEFAULT_NUM_ON_CACHE_QUBITS
 #     define KET_DEFAULT_NUM_ON_CACHE_QUBITS 16

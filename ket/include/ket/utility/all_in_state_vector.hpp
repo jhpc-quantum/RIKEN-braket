@@ -11,7 +11,7 @@ namespace ket
 {
   namespace utility
   {
-# if __cpp_constexpr < 201603
+# if __cpp_constexpr < 201603L
     namespace all_in_state_vector_detail
     {
       template <typename BitInteger>
@@ -27,7 +27,7 @@ namespace ket
       }; // struct is_in_state_vector<BitInteger>
     } // namespace all_in_state_vector_detail
 
-# endif // __cpp_constexpr >= 201603
+# endif // __cpp_constexpr >= 201603L
     template <typename BitInteger, typename Qubit, typename... Qubits>
     inline constexpr auto all_in_state_vector(BitInteger const num_qubits, Qubit&& qubit, Qubits&&... qubits) -> bool
     {
@@ -41,11 +41,11 @@ namespace ket
         [num_qubits](auto&& qubit) { return std::forward<decltype(qubit)>(qubit) < std::remove_cv_t<std::remove_reference_t<decltype(qubit)>>{num_qubits}; },
         std::forward<Qubit>(qubit), std::forward<Qubits>(qubits)...);
 #   endif // __cpp_generic_lambdas >= 201707L
-# else // __cpp_constexpr >= 201603
+# else // __cpp_constexpr >= 201603L
       return ::ket::utility::variadic::all_of(
         ::ket::utility::all_in_state_vector_detail::is_in_state_vector<BitInteger>{num_qubits},
         std::forward<Qubit>(qubit), std::forward<Qubits>(qubits)...);
-# endif // __cpp_constexpr >= 201603
+# endif // __cpp_constexpr >= 201603L
     }
   } // namespace utility
 } // namespace ket
