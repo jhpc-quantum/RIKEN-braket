@@ -3,8 +3,6 @@
 
 # include <cmath>
 
-# include <boost/math/constants/constants.hpp>
-
 # include <ket/qubit.hpp>
 # include <ket/utility/meta/real_of.hpp>
 # include <ket/mpi/permutated.hpp>
@@ -21,56 +19,87 @@ namespace ket
     {
       namespace page
       {
+        // zero_probability
         template <
           typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger>
-        [[noreturn]] inline auto clear(
+        [[noreturn]] inline auto zero_probability(
           ParallelPolicy const,
-          RandomAccessRange& local_state,
+          RandomAccessRange const& local_state,
           ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const)
-        -> RandomAccessRange&
-        { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"clear"}; }
+        -> ::ket::utility::meta::real_t< ::ket::utility::meta::range_value_t<RandomAccessRange> >
+        { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"zero_probability"}; }
 
         template <
           typename ParallelPolicy,
           typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
-        [[noreturn]] inline auto clear(
+        [[noreturn]] inline auto zero_probability(
           ParallelPolicy const,
-          ::ket::mpi::state<Complex, false, Allocator>& local_state,
+          ::ket::mpi::state<Complex, false, Allocator> const& local_state,
           ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const)
-        -> ::ket::mpi::state<Complex, false, Allocator>&
-        { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"clear"}; }
+        -> ::ket::utility::meta::real_t<Complex>
+        { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"zero_probability"}; }
 
         template <
           typename ParallelPolicy,
           typename Complex, typename Allocator, typename StateInteger, typename BitInteger>
-        inline auto clear(
+        inline auto zero_probability(
           ParallelPolicy const parallel_policy,
           ::ket::mpi::state<Complex, true, Allocator>& local_state,
           ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit)
-        -> ::ket::mpi::state<Complex, true, Allocator>&
+        -> ::ket::utility::meta::real_t<Complex>
         {
-          using real_type = ::ket::utility::meta::real_t<Complex>;
-          auto zero_probability = real_type{0};
+          auto zero_probability = 0.0l;
 
           ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             parallel_policy, local_state, permutated_qubit,
-            [&zero_probability](auto const zero_first, auto const one_first, StateInteger const index, int const)
+            [&zero_probability](auto const zero_first, auto const, StateInteger const index, int const)
             {
-              *(one_first + index) = Complex{0};
-
               using std::norm;
-              zero_probability += norm(*(zero_first + index));
+              zero_probability += static_cast<long double>(norm(*(zero_first + index)));
             });
 
-          using std::pow;
-          using boost::math::constants::half;
-          auto const multiplier = pow(zero_probability, -half<real_type>());
+          using real_type = ::ket::utility::meta::real_t<Complex>;
+          return static_cast<real_type>(zero_probability);
+        }
 
-          return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
+        // do_clear
+        template <
+          typename ParallelPolicy,
+          typename RandomAccessRange, typename Real, typename StateInteger, typename BitInteger>
+        [[noreturn]] inline auto do_clear(
+          ParallelPolicy const,
+          RandomAccessRange& local_state,
+          Real const, ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const)
+        -> void
+        { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"do_clear"}; }
+
+        template <
+          typename ParallelPolicy,
+          typename Complex, typename Allocator, typename Real, typename StateInteger, typename BitInteger>
+        [[noreturn]] inline auto do_clear(
+          ParallelPolicy const,
+          ::ket::mpi::state<Complex, false, Allocator>& local_state,
+          Real const, ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const)
+        -> void
+        { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"do_clear"}; }
+
+        template <
+          typename ParallelPolicy,
+          typename Complex, typename Allocator, typename Real, typename StateInteger, typename BitInteger>
+        inline auto do_clear(
+          ParallelPolicy const parallel_policy,
+          ::ket::mpi::state<Complex, true, Allocator>& local_state,
+          Real const multiplier, ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit)
+        -> void
+        {
+          ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             parallel_policy, local_state, permutated_qubit,
-            [multiplier](auto const zero_first, auto const, StateInteger const index, int const)
-            { *(zero_first + index) *= multiplier; });
+            [multiplier](auto const zero_first, auto const one_first, StateInteger const index, int const)
+            {
+              *(zero_first + index) *= multiplier;
+              *(one_first + index) = Complex{Real{0}};
+            });
         }
       } // namespace page
     } // namespace gate
