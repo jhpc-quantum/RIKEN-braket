@@ -174,7 +174,7 @@ namespace ket
         std::array<StateInteger, num_fused_qubits> const& fused_qubit_masks, std::array<StateInteger, num_fused_qubits + 1u> const& fused_index_masks,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
       -> void
-      { ::ket::gate::fused::hadamard(first, indices, target_qubit, control_qubits...); }
+      { ::ket::gate::fused::hadamard(first, fused_index_wo_qubits, fused_qubit_masks, fused_index_masks, target_qubit, control_qubits...); }
     } // namespace fused
   } // namespace gate
 } // namespace ket
