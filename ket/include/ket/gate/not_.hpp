@@ -12,6 +12,7 @@
 # include <ket/control.hpp>
 # include <ket/gate/pauli_x.hpp>
 # include <ket/gate/gate.hpp>
+# include <ket/gate/utility/index_with_qubits.hpp>
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/integer_exp2.hpp>
 # ifndef NDEBUG
@@ -56,18 +57,19 @@ namespace ket
     -> void
     {
       constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 2u);
-      constexpr auto num_indices = ::ket::utility::integer_exp2<std::size_t>(num_control_qubits + BitInteger{1u});
 
       ::ket::gate::gate(
         parallel_policy, first, last,
-        [](auto const first, std::array<StateInteger, num_indices> const& indices, int const)
+        [](auto const first, StateInteger const index_wo_qubits, std::array<StateInteger, num_qubits> const& qubit_masks, std::array<StateInteger, num_qubits + 1u> const& index_masks, int const)
         {
           // 0b11...10u
           constexpr auto index0 = ((StateInteger{1u} << num_control_qubits) - StateInteger{1u}) << BitInteger{1u};
           // 0b11...11u
           constexpr auto index1 = index0 bitor StateInteger{1u};
 
-          std::iter_swap(first + indices[index0], first + indices[index1]);
+          std::iter_swap(
+            first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index0, qubit_masks, index_masks),
+            first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index1, qubit_masks, index_masks));
         },
         target_qubit, control_qubit1, control_qubit2, control_qubits...);
     }

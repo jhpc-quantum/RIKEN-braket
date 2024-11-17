@@ -102,7 +102,7 @@ namespace ket
             // Assume on-cache qubits are less significant than page qubits
             return ::ket::mpi::utility::for_each_local_range(
               mpi_policy, local_state, communicator, environment,
-              [parallel_policy, qubit_masks, index_masks, &function](auto const first, auto const last)
+              [parallel_policy, &qubit_masks, &index_masks, &function](auto const first, auto const last)
               {
                 for (auto iter = first; iter < last; iter += on_cache_state_size)
                   ::ket::gate::gate_detail::gate(parallel_policy, iter, iter + on_cache_state_size, qubit_masks, index_masks, function);

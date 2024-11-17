@@ -11,6 +11,7 @@
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
 # include <ket/gate/gate.hpp>
+# include <ket/gate/utility/index_with_qubits.hpp>
 # include <ket/gate/meta/num_control_qubits.hpp>
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/integer_exp2.hpp>
@@ -175,15 +176,14 @@ namespace ket
       constexpr auto num_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
       constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubit2, Qubit3, Qubits...>::value;
       constexpr auto num_target_qubits = num_qubits - num_control_qubits;
-      constexpr auto num_indices = ::ket::utility::integer_exp2<std::size_t>(num_qubits);
       constexpr auto num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
 
       ::ket::gate::gate(
         parallel_policy, first, last,
-        [](auto const first, std::array<StateInteger, num_indices> const& indices, int const)
+        [](auto const first, StateInteger const index_wo_qubits, std::array<StateInteger, num_qubits> const& qubit_masks, std::array<StateInteger, num_qubits + 1u> const& index_masks, int const)
         {
           // 0b1...10...0u
-          constexpr auto base_indices_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
+          constexpr auto base_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
 
           for (auto i = std::size_t{0u}; i < num_target_indices; ++i)
           {
@@ -200,7 +200,7 @@ namespace ket
             using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
             using real_type = ::ket::utility::meta::real_t<complex_type>;
             if (num_ones_in_i % BitInteger{2u} == BitInteger{1u})
-              *(first + indices[base_indices_index + i]) *= real_type{-1.0};
+              *(first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, base_index + i, qubit_masks, index_masks)) *= real_type{-1.0};
           }
         },
         qubit1, qubit2, qubit3, qubits...);

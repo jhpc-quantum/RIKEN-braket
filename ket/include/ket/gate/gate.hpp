@@ -14,6 +14,7 @@
 
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
+# include <ket/gate/utility/index_with_qubits.hpp>
 # include <ket/meta/state_integer_of.hpp>
 # include <ket/meta/bit_integer_of.hpp>
 # include <ket/utility/loop_n.hpp>
@@ -98,45 +99,6 @@ namespace ket
           return ::ket::gate::gate_detail::runtime::unsafe::make_index_masks(sorted_qubits, d_first);
         }
 
-        template <typename RandomAccessIterator, typename InputIterator, typename StateInteger, typename OutputIterator>
-        inline auto make_indices(
-          RandomAccessIterator const qubit_masks_first, RandomAccessIterator const qubit_masks_last,
-          InputIterator index_masks_first, InputIterator const index_masks_last,
-          StateInteger const index_wo_qubits, OutputIterator d_first)
-        -> OutputIterator
-        {
-          static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
-          static_assert(std::is_same<typename std::iterator_traits<RandomAccessIterator>::value_type, StateInteger>::value, "value_type of RandomAccessIterator and StateInteger should be the same");
-          static_assert(std::is_same<typename std::iterator_traits<InputIterator>::value_type, StateInteger>::value, "value_type of InputIterator and StateInteger should be the same");
-          assert(std::distance(qubit_masks_first, qubit_masks_last) + 1 == std::distance(index_masks_first, index_masks_last));
-
-          if (qubit_masks_first == qubit_masks_last)
-          {
-            *d_first++ = index_wo_qubits;
-            return d_first;
-          }
-
-          // xx0xx0xx0xx
-          auto base_index = StateInteger{0u};
-          auto const num_index_masks = std::distance(index_masks_first, index_masks_last);
-          for (auto index_masks_index = decltype(num_index_masks){0}; index_masks_index < num_index_masks; ++index_masks_index)
-            base_index |= (index_wo_qubits bitand *index_masks_first++) << index_masks_index;
-          *d_first++ = base_index;
-
-          auto const num_operated_qubits = std::distance(qubit_masks_first, qubit_masks_last);
-          auto const num_indices = ::ket::utility::integer_exp2<std::size_t>(num_operated_qubits);
-          for (auto n = std::size_t{1u}; n < num_indices; ++n)
-          {
-            auto index = base_index;
-            for (auto qubit_masks_index = decltype(num_operated_qubits){0}; qubit_masks_index < num_operated_qubits; ++qubit_masks_index)
-              if (((StateInteger{1u} << qubit_masks_index) bitand n) != StateInteger{0u})
-                index |= qubit_masks_first[qubit_masks_index];
-            *d_first++ = index;
-          }
-
-          return d_first;
-        }
-
         namespace ranges
         {
           template <typename Range, typename OutputIterator>
@@ -155,22 +117,6 @@ namespace ket
             using std::end;
             auto const qubits_last = end(qubits);
             return ::ket::gate::gate_detail::runtime::make_index_masks(begin(std::forward<Range>(qubits)), qubits_last, d_first);
-          }
-
-          template <typename RandomAccessRange, typename Range, typename StateInteger, typename ForwardIterator>
-          inline auto make_indices(
-            RandomAccessRange&& qubit_masks, Range&& index_masks,
-            StateInteger const index_wo_qubits, ForwardIterator result)
-          -> ForwardIterator
-          {
-            using std::begin;
-            using std::end;
-            auto const qubit_masks_last = end(qubit_masks);
-            auto const index_masks_last = end(index_masks);
-            return ::ket::gate::gate_detail::runtime::make_indices(
-              begin(std::forward<RandomAccessRange>(qubit_masks)), qubit_masks_last,
-              begin(std::forward<Range>(index_masks)), index_masks_last,
-              index_wo_qubits, result);
           }
         } // namespace ranges
       } // namespace runtime
@@ -442,41 +388,6 @@ namespace ket
         result[1u] = compl result[0u];
       }
 
-      template <typename StateInteger, std::size_t num_operated_qubits>
-      inline constexpr auto make_indices(
-        std::array<StateInteger, ::ket::utility::integer_exp2<std::size_t>(num_operated_qubits)>& result,
-        StateInteger const index_wo_qubits,
-        std::array<StateInteger, num_operated_qubits> const& qubit_masks,
-        std::array<StateInteger, num_operated_qubits + 1u> const& index_masks)
-      -> void
-      {
-        // xx0xx0xx0xx
-        result[0u] = StateInteger{0u};
-        for (auto index_mask_index = std::size_t{0u}; index_mask_index < num_operated_qubits + std::size_t{1u}; ++index_mask_index)
-          result[0u] |= (index_wo_qubits bitand index_masks[index_mask_index]) << index_mask_index;
-
-        constexpr auto num_indices = ::ket::utility::integer_exp2<std::size_t>(num_operated_qubits);
-        for (auto n = std::size_t{1u}; n < num_indices; ++n)
-        {
-          result[n] = result[0u];
-          for (auto qubit_index = std::size_t{0u}; qubit_index < num_operated_qubits; ++qubit_index)
-            if (((StateInteger{1u} << qubit_index) bitand n) != StateInteger{0u})
-              result[n] |= qubit_masks[qubit_index];
-        }
-      }
-
-      template <typename StateInteger>
-      inline constexpr auto make_indices(
-        std::array<StateInteger, 2u>& result, StateInteger const index_wo_qubits,
-        std::array<StateInteger, 1u> const& qubit_masks, std::array<StateInteger, 2u> const& index_masks)
-      -> void
-      {
-        // xx0xx
-        result[0u] = (index_wo_qubits bitand index_masks[0u]) bitor ((index_wo_qubits bitand index_masks[1u]) << 1u);
-        // xx1xx
-        result[1u] = result[0u] bitor qubit_masks[0u];
-      }
-
       template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, std::size_t num_operated_qubits, typename Function>
       inline auto gate(
         ParallelPolicy const parallel_policy,
@@ -486,28 +397,20 @@ namespace ket
         Function&& function)
       -> void
       {
-        using indices_type = std::array<StateInteger, ::ket::utility::integer_exp2<std::size_t>(num_operated_qubits)>;
-        auto indices_vector = std::vector<indices_type>(::ket::utility::num_threads(parallel_policy));
         ::ket::utility::loop_n(
           parallel_policy, static_cast<StateInteger>(last - first) >> num_operated_qubits,
-          [first, &function, qubit_masks, index_masks, &indices_vector](StateInteger const index_wo_qubits, int const thread_index)
-          {
-            // ex. qubit_masks[0]=00000100000; qubit_masks[1]=00100000000; qubit_masks[2]=00000000100;
-            // indices[0b000]=xx0xx0xx0xx; indices[0b001]=xx0xx1xx0xx; indices[0b010]=xx1xx0xx0xx; indices[0b011]=xx1xx1xx0xx;
-            // indices[0b100]=xx0xx0xx1xx; indices[0b101]=xx0xx1xx1xx; indices[0b110]=xx1xx0xx1xx; indices[0b111]=xx1xx1xx1xx;
-            ::ket::gate::gate_detail::make_indices(indices_vector[thread_index], index_wo_qubits, qubit_masks, index_masks);
-            function(first, indices_vector[thread_index], thread_index);
-          });
+          [first, &function, &qubit_masks, &index_masks](StateInteger const index_wo_qubits, int const thread_index)
+          { function(first, index_wo_qubits, qubit_masks, index_masks, thread_index); });
       }
     } // namespace gate_detail
 
     // USAGE:
     // - for Hadamard gate
     //   ::ket::gate::gate(parallel_policy, first, last,
-    //     [](auto const first, auto const& indices, int const)
+    //     [](auto const first, auto const index_wo_qubits, auto const& qubit_masks, auto const& index_masks, int const)
     //     {
-    //       auto const zero_iter = first + indices[0b0u];
-    //       auto const one_iter = first + indices[0b1u];
+    //       auto const zero_iter = first + ket::gate::utility::index_with_qubits(index_wo_qubits, 0b0u, qubit_masks, index_masks);
+    //       auto const one_iter = first + ket::gate::utility::index_with_qubits(index_wo_qubits, 0b1u, qubit_masks, index_masks);
     //       auto const zero_iter_value = *zero_iter;
     //
     //       *zero_iter += *one_iter;
@@ -518,8 +421,12 @@ namespace ket
     //     qubit);
     // - for CNOT gate
     //   ::ket::gate::gate(parallel_policy, first, last,
-    //     [](auto const first, auto const& indices, int const)
-    //     { std::iter_swap(first + indices[0b10u], first + indices[0b11u]); },
+    //     [](auto const first, auto const index_wo_qubits, auto const& qubit_masks, auto const& index_masks, int const)
+    //     {
+    //       std::iter_swap(
+    //         first + ket::gate::utility::index_with_qubits(index_wo_qubits, 0b10u, qubit_masks, index_masks),
+    //         first + ket::gate::utility::index_with_qubits(index_wo_qubits, 0b11u, qubit_masks, index_masks));
+    //     },
     //     target_qubit, control_qubit);
 # ifdef KET_USE_ON_CACHE_STATE_VECTOR
     namespace cache
@@ -605,28 +512,22 @@ namespace ket
             std::array<state_integer_type, num_operated_qubits + bit_integer_type{1u}> tag_index_masks;
             ::ket::gate::gate_detail::make_index_masks(tag_index_masks, ::ket::remove_control(qubit) - num_nontag_qubits, (::ket::remove_control(qubits) - num_nontag_qubits)...);
 
-            // tag_indices
-            constexpr auto num_tag_indices = num_chunks_in_on_cache_state;// ::ket::utility::integer_exp2<state_integer_type>(num_operated_qubits);
-            std::array<state_integer_type, num_tag_indices> tag_indices;
-
             auto const tag_loop_size = ::ket::utility::integer_exp2<state_integer_type>(num_tag_qubits - num_operated_qubits);
             for (auto tag_index_wo_qubits = state_integer_type{0u}; tag_index_wo_qubits < tag_loop_size; ++tag_index_wo_qubits)
             {
-              ::ket::gate::gate_detail::make_indices(tag_indices, tag_index_wo_qubits, tag_qubit_masks, tag_index_masks);
-
-              for (auto index = state_integer_type{0u}; index < num_tag_indices; ++index)
+              for (auto chunk_index = state_integer_type{0u}; chunk_index < num_chunks_in_on_cache_state; ++chunk_index)
                 ::ket::utility::copy_n(
                   parallel_policy,
-                  state_first + tag_indices[index] * chunk_size, chunk_size,
-                  on_cache_state_first + index * chunk_size);
+                  state_first + ::ket::gate::utility::index_with_qubits(tag_index_wo_qubits, chunk_index, tag_qubit_masks, tag_index_masks) * chunk_size, chunk_size,
+                  on_cache_state_first + chunk_index * chunk_size);
 
               ::ket::gate::gate_detail::gate(parallel_policy, on_cache_state_first, on_cache_state_last, on_cache_qubit_masks, on_cache_index_masks, std::forward<Function>(function));
 
-              for (auto index = state_integer_type{0u}; index < num_tag_indices; ++index)
+              for (auto chunk_index = state_integer_type{0u}; chunk_index < num_chunks_in_on_cache_state; ++chunk_index)
                 ::ket::utility::copy_n(
                   parallel_policy,
-                  on_cache_state_first + index * chunk_size, chunk_size,
-                  state_first + tag_indices[index] * chunk_size);
+                  on_cache_state_first + chunk_index * chunk_size, chunk_size,
+                  state_first + ::ket::gate::utility::index_with_qubits(tag_index_wo_qubits, chunk_index, tag_qubit_masks, tag_index_masks) * chunk_size);
             }
 
             return;
@@ -681,32 +582,22 @@ namespace ket
           ::ket::gate::gate_detail::runtime::ranges::make_index_masks(operated_tag_qubits, std::back_inserter(tag_index_masks));
           assert(tag_index_masks.size() == operated_tag_qubits.size() + 1u);
 
-          // tag_indices
-          auto const num_tag_indices = num_chunks_in_on_cache_state;// ::ket::utility::integer_exp2<state_integer_type>(operated_tag_qubits.size());
-          auto tag_indices = std::vector<state_integer_type>{};
-          tag_indices.reserve(num_tag_indices);
-
           auto const tag_loop_size = ::ket::utility::integer_exp2<state_integer_type>(num_tag_qubits - num_chunk_qubits); // num_chunk_qubits == operated_tag_qubits.size()
           for (auto tag_index_wo_qubits = state_integer_type{0u}; tag_index_wo_qubits < tag_loop_size; ++tag_index_wo_qubits)
           {
-            tag_indices.clear();
-            ::ket::gate::gate_detail::runtime::ranges::make_indices(
-              tag_qubit_masks, tag_index_masks, tag_index_wo_qubits, std::back_inserter(tag_indices));
-            assert(tag_indices.size() == num_tag_indices);
-
-            for (auto index = state_integer_type{0u}; index < num_tag_indices; ++index)
+            for (auto chunk_index = state_integer_type{0u}; chunk_index < num_chunks_in_on_cache_state; ++chunk_index)
               ::ket::utility::copy_n(
                 parallel_policy,
-                state_first + tag_indices[index] * chunk_size, chunk_size,
-                on_cache_state_first + index * chunk_size);
+                state_first + ::ket::gate::utility::index_with_qubits(tag_index_wo_qubits, chunk_index, begin(tag_qubit_masks), end(tag_qubit_masks), begin(tag_index_masks), end(tag_index_masks)) * chunk_size, chunk_size,
+                on_cache_state_first + chunk_index * chunk_size);
 
             ::ket::gate::gate_detail::gate(parallel_policy, on_cache_state_first, on_cache_state_last, on_cache_qubit_masks, on_cache_index_masks, std::forward<Function>(function));
 
-            for (auto index = state_integer_type{0u}; index < num_tag_indices; ++index)
+            for (auto chunk_index = state_integer_type{0u}; chunk_index < num_chunks_in_on_cache_state; ++chunk_index)
               ::ket::utility::copy_n(
                 parallel_policy,
-                on_cache_state_first + index * chunk_size, chunk_size,
-                state_first + tag_indices[index] * chunk_size);
+                on_cache_state_first + chunk_index * chunk_size, chunk_size,
+                state_first + ::ket::gate::utility::index_with_qubits(tag_index_wo_qubits, chunk_index, begin(tag_qubit_masks), end(tag_qubit_masks), begin(tag_index_masks), end(tag_index_masks)) * chunk_size);
           }
         }
 

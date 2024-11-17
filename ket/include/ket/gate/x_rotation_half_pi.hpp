@@ -12,6 +12,7 @@
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
 # include <ket/gate/gate.hpp>
+# include <ket/gate/utility/index_with_qubits.hpp>
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/integer_exp2.hpp>
 # ifndef NDEBUG
@@ -145,27 +146,26 @@ namespace ket
 
       constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 2u);
       constexpr auto num_qubits = num_control_qubits + BitInteger{1u};
-      constexpr auto num_indices = ::ket::utility::integer_exp2<std::size_t>(num_qubits);
 
       ::ket::gate::gate(
         parallel_policy, first, last,
-        [](auto const first, std::array<StateInteger, num_indices> const& indices, int const)
+        [](auto const first, StateInteger const index_wo_qubits, std::array<StateInteger, num_qubits> const& qubit_masks, std::array<StateInteger, num_qubits + 1u> const& index_masks, int const)
         {
           // 0b11...10u
-          constexpr auto indices_index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{1u};
+          constexpr auto index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{1u};
           // 0b11...11u
-          constexpr auto indices_index1 = indices_index0 bitor std::size_t{1u};
+          constexpr auto index1 = index0 bitor std::size_t{1u};
 
-          auto const iter0 = first + indices[indices_index0];
-          auto const iter1 = first + indices[indices_index1];
-          auto const iter0_value = *iter0;
+          auto const iter0 = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index0, qubit_masks, index_masks);
+          auto const iter1 = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index1, qubit_masks, index_masks);
+          auto const value0 = *iter0;
 
-          using complex_type = std::remove_const_t<decltype(iter0_value)>;
+          using complex_type = std::remove_const_t<decltype(value0)>;
           using real_type = ::ket::utility::meta::real_t<complex_type>;
           using boost::math::constants::one_div_root_two;
           *iter0 += ::ket::utility::imaginary_unit<complex_type>() * (*iter1);
           *iter0 *= one_div_root_two<real_type>();
-          *iter1 += ::ket::utility::imaginary_unit<complex_type>() * iter0_value;
+          *iter1 += ::ket::utility::imaginary_unit<complex_type>() * value0;
           *iter1 *= one_div_root_two<real_type>();
         },
         target_qubit, control_qubit1, control_qubit2, control_qubits...);
@@ -315,27 +315,26 @@ namespace ket
 
       constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 2u);
       constexpr auto num_qubits = num_control_qubits + BitInteger{1u};
-      constexpr auto num_indices = ::ket::utility::integer_exp2<std::size_t>(num_qubits);
 
       ::ket::gate::gate(
         parallel_policy, first, last,
-        [](auto const first, std::array<StateInteger, num_indices> const& indices, int const)
+        [](auto const first, StateInteger const index_wo_qubits, std::array<StateInteger, num_qubits> const& qubit_masks, std::array<StateInteger, num_qubits + 1u> const& index_masks, int const)
         {
           // 0b11...10u
-          constexpr auto indices_index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{1u};
+          constexpr auto index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{1u};
           // 0b11...11u
-          constexpr auto indices_index1 = indices_index0 bitor std::size_t{1u};
+          constexpr auto index1 = index0 bitor std::size_t{1u};
 
-          auto const iter0 = first + indices[indices_index0];
-          auto const iter1 = first + indices[indices_index1];
-          auto const iter0_value = *iter0;
+          auto const iter0 = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index0, qubit_masks, index_masks);
+          auto const iter1 = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index1, qubit_masks, index_masks);
+          auto const value0 = *iter0;
 
-          using complex_type = std::remove_const_t<decltype(iter0_value)>;
+          using complex_type = std::remove_const_t<decltype(value0)>;
           using real_type = ::ket::utility::meta::real_t<complex_type>;
           using boost::math::constants::one_div_root_two;
           *iter0 -= ::ket::utility::imaginary_unit<complex_type>() * (*iter1);
           *iter0 *= one_div_root_two<real_type>();
-          *iter1 -= ::ket::utility::imaginary_unit<complex_type>() * iter0_value;
+          *iter1 -= ::ket::utility::imaginary_unit<complex_type>() * value0;
           *iter1 *= one_div_root_two<real_type>();
         },
         target_qubit, control_qubit1, control_qubit2, control_qubits...);
