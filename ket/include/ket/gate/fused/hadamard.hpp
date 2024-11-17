@@ -13,6 +13,7 @@
 
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
+# include <ket/gate/utility/index_with_qubits.hpp>
 # include <ket/gate/fused/gate.hpp>
 # include <ket/utility/integer_exp2.hpp>
 # include <ket/utility/integer_log2.hpp>
@@ -27,9 +28,10 @@ namespace ket
     {
       // H_i
       // H_1 (a_0 |0> + a_1 |1>) = (a_0 + a_1)/sqrt(2) |0> + (a_0 - a_1)/sqrt(2) |1>
-      template <typename RandomAccessIterator, typename StateInteger, std::size_t num_indices, typename BitInteger>
+      template <typename RandomAccessIterator, typename StateInteger, std::size_t num_fused_qubits, typename BitInteger>
       inline auto hadamard(
-        RandomAccessIterator const first, std::array<StateInteger, num_indices> const& indices,
+        RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+        std::array<StateInteger, num_fused_qubits> const& fused_qubit_masks, std::array<StateInteger, num_fused_qubits + 1u> const& fused_index_masks,
         ::ket::qubit<StateInteger, BitInteger> const qubit)
       -> void
       {
@@ -37,23 +39,21 @@ namespace ket
         static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
 
         constexpr auto num_operated_qubits = BitInteger{1u};
-        constexpr auto num_fused_qubits = ::ket::utility::integer_log2<BitInteger>(num_indices);
-        static_assert(::ket::utility::integer_exp2<StateInteger>(num_fused_qubits) == num_indices, "num_indices should be the power of num_fused_qubits");
         assert(qubit < ::ket::make_qubit<StateInteger>(num_fused_qubits));
 
         auto const qubit_mask = ::ket::utility::integer_exp2<StateInteger>(qubit);
         auto const lower_bits_mask = qubit_mask - StateInteger{1u};
         auto const upper_bits_mask = compl lower_bits_mask;
 
-        constexpr auto count = num_indices >> num_operated_qubits;
+        constexpr auto count = ::ket::utility::integer_exp2<StateInteger>(num_fused_qubits) >> num_operated_qubits;
         for (auto index_wo_qubit = std::size_t{0u}; index_wo_qubit < count; ++index_wo_qubit)
         {
           // xxxxx0xxxxxx
           auto const zero_index = ((index_wo_qubit bitand upper_bits_mask) << 1u) bitor (index_wo_qubit bitand lower_bits_mask);
           // xxxxx1xxxxxx
           auto const one_index = zero_index bitor qubit_mask;
-          auto const zero_iter = first + indices[zero_index];
-          auto const one_iter = first + indices[one_index];
+          auto const zero_iter = first + ::ket::gate::utility::index_with_qubits(fused_index_wo_qubits, zero_index, fused_qubit_masks, fused_index_masks);
+          auto const one_iter = first + ::ket::gate::utility::index_with_qubits(fused_index_wo_qubits, one_index, fused_qubit_masks, fused_index_masks);
           auto const zero_iter_value = *zero_iter;
 
           using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
@@ -69,9 +69,10 @@ namespace ket
       // CH_{tc} or C1H_{tc}
       // CH_{1,2} (a_{00} |00> + a_{01} |01> + a_{10} |10> + a_{11} |11>)
       //   = a_{00} |00> + a_{01} |01> + (a_{10} + a_{11})/sqrt(2) |10> + (a_{10} - a_{11})/sqrt(2) |11>
-      template <typename RandomAccessIterator, typename StateInteger, std::size_t num_indices, typename BitInteger>
+      template <typename RandomAccessIterator, typename StateInteger, std::size_t num_fused_qubits, typename BitInteger>
       inline auto hadamard(
-        RandomAccessIterator const first, std::array<StateInteger, num_indices> const& indices,
+        RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+        std::array<StateInteger, num_fused_qubits> const& fused_qubit_masks, std::array<StateInteger, num_fused_qubits + 1u> const& fused_index_masks,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit)
       -> void
@@ -80,8 +81,6 @@ namespace ket
         static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
 
         constexpr auto num_operated_qubits = BitInteger{2u};
-        constexpr auto num_fused_qubits = ::ket::utility::integer_log2<BitInteger>(num_indices);
-        static_assert(::ket::utility::integer_exp2<StateInteger>(num_fused_qubits) == num_indices, "num_indices should be the power of num_fused_qubits");
         assert(target_qubit < ::ket::make_qubit<StateInteger>(num_fused_qubits));
         assert(control_qubit < ::ket::make_qubit<StateInteger>(num_fused_qubits));
 
@@ -94,7 +93,7 @@ namespace ket
             xor lower_bits_mask;
         auto const upper_bits_mask = compl (lower_bits_mask bitor middle_bits_mask);
 
-        constexpr auto count = num_indices >> num_operated_qubits;
+        constexpr auto count = ::ket::utility::integer_exp2<StateInteger>(num_fused_qubits) >> num_operated_qubits;
         for (auto index_wo_qubits = std::size_t{0u}; index_wo_qubits < count; ++index_wo_qubits)
         {
           // xxx0_txxx0_cxxx
@@ -106,8 +105,8 @@ namespace ket
           auto const control_on_index = base_index bitor control_qubit_mask;
           // xxx1_txxx1_cxxx
           auto const target_control_on_index = control_on_index bitor target_qubit_mask;
-          auto const control_on_iter = first + indices[control_on_index];
-          auto const target_control_on_iter = first + indices[target_control_on_index];
+          auto const control_on_iter = first + ::ket::gate::utility::index_with_qubits(fused_index_wo_qubits, control_on_index, fused_qubit_masks, fused_index_masks);
+          auto const target_control_on_iter = first + ::ket::gate::utility::index_with_qubits(fused_index_wo_qubits, target_control_on_index, fused_qubit_masks, fused_index_masks);
           auto const control_on_iter_value = *control_on_iter;
 
           using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
@@ -121,9 +120,10 @@ namespace ket
       }
 
       // C...CH_{tc...c'} or CnH_{tc...c'}
-      template <typename RandomAccessIterator, typename StateInteger, std::size_t num_indices, typename BitInteger, typename... ControlQubits>
+      template <typename RandomAccessIterator, typename StateInteger, std::size_t num_fused_qubits, typename BitInteger, typename... ControlQubits>
       inline auto hadamard(
-        RandomAccessIterator const first, std::array<StateInteger, num_indices> const& indices,
+        RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+        std::array<StateInteger, num_fused_qubits> const& fused_qubit_masks, std::array<StateInteger, num_fused_qubits + 1u> const& fused_index_masks,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2, ControlQubits const... control_qubits)
@@ -131,18 +131,30 @@ namespace ket
       {
         constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 2u);
         constexpr auto num_operated_qubits = num_control_qubits + BitInteger{1u};
-        constexpr auto index_map_size = ::ket::utility::integer_exp2<std::size_t>(num_operated_qubits);
-        ::ket::gate::fused::gate(
-          first, indices,
-          [](auto const first, std::array<StateInteger, num_indices> const& indices, std::array<StateInteger, index_map_size> const& index_map)
+        ::ket::gate::fused::gate<num_fused_qubits>(
+          first,
+          [fused_index_wo_qubits, &fused_qubit_masks, &fused_index_masks](
+            auto const first, StateInteger const operated_index_wo_qubits,
+            std::array<StateInteger, num_operated_qubits> const& operated_qubit_masks,
+            std::array<StateInteger, num_operated_qubits + 1u> const& operated_index_masks)
           {
             // 0b11...10u
             constexpr auto index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{1u};
             // 0b11...11u
             constexpr auto index1 = index0 bitor std::size_t{1u};
 
-            auto const iter0 = first + indices[index_map[index0]];
-            auto const iter1 = first + indices[index_map[index1]];
+            auto const iter0
+              = first
+                + ::ket::gate::utility::index_with_qubits(
+                    fused_index_wo_qubits,
+                    ::ket::gate::utility::index_with_qubits(operated_index_wo_qubits, index0, operated_qubit_masks, operated_index_masks),
+                    fused_qubit_masks, fused_index_masks);
+            auto const iter1
+              = first
+                + ::ket::gate::utility::index_with_qubits(
+                    fused_index_wo_qubits,
+                    ::ket::gate::utility::index_with_qubits(operated_index_wo_qubits, index1, operated_qubit_masks, operated_index_masks),
+                    fused_qubit_masks, fused_index_masks);
             auto const iter0_value = *iter0;
 
             using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;

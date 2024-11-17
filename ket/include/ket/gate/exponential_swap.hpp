@@ -12,6 +12,7 @@
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
 # include <ket/gate/gate.hpp>
+# include <ket/gate/utility/index_with_qubits.hpp>
 # include <ket/gate/meta/num_control_qubits.hpp>
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/integer_exp2.hpp>
@@ -120,29 +121,29 @@ namespace ket
 
       constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 1u);
       constexpr auto num_qubits = num_control_qubits + BitInteger{2u};
-      constexpr auto num_indices = ::ket::utility::integer_exp2<std::size_t>(num_qubits);
 
       using std::imag;
       auto const i_sin_theta = ::ket::utility::imaginary_unit<Complex>() * imag(phase_coefficient);
 
       ::ket::gate::gate(
         parallel_policy, first, last,
-        [&phase_coefficient, &i_sin_theta](auto const first, std::array<StateInteger, num_indices> const& indices, int const)
+        [&phase_coefficient, &i_sin_theta](
+          auto const first, StateInteger const index_wo_qubits, std::array<StateInteger, num_qubits> const& qubit_masks, std::array<StateInteger, num_qubits + 1u> const& index_masks, int const)
         {
           // 0b11...100u
-          constexpr auto indices_index00 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{2u};
+          constexpr auto index00 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{2u};
           // 0b11...101u
-          constexpr auto indices_index01 = indices_index00 bitor std::size_t{1u};
+          constexpr auto index01 = index00 bitor std::size_t{1u};
           // 0b11...110u
-          constexpr auto indices_index10 = indices_index00 bitor (std::size_t{1u} << BitInteger{1u});
+          constexpr auto index10 = index00 bitor (std::size_t{1u} << BitInteger{1u});
           // 0b11...111u
-          constexpr auto indices_index11 = indices_index10 bitor std::size_t{1u};
+          constexpr auto index11 = index10 bitor std::size_t{1u};
 
-          *(first + indices[indices_index00]) *= phase_coefficient;
-          *(first + indices[indices_index11]) *= phase_coefficient;
+          *(first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index00, qubit_masks, index_masks)) *= phase_coefficient;
+          *(first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index11, qubit_masks, index_masks)) *= phase_coefficient;
 
-          auto const qubit1_on_iter = first + indices[indices_index01];
-          auto const qubit2_on_iter = first + indices[indices_index10];
+          auto const qubit1_on_iter = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index01, qubit_masks, index_masks);
+          auto const qubit2_on_iter = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index10, qubit_masks, index_masks);
           auto const qubit1_on_iter_value = *qubit1_on_iter;
           using std::real;
           using std::imag;

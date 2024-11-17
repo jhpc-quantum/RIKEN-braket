@@ -11,6 +11,7 @@
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
 # include <ket/gate/gate.hpp>
+# include <ket/gate/utility/index_with_qubits.hpp>
 # include <ket/gate/meta/num_control_qubits.hpp>
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/integer_exp2.hpp>
@@ -176,23 +177,20 @@ namespace ket
       constexpr auto num_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
       constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubit2, Qubit3, Qubits...>::value;
       constexpr auto num_target_qubits = num_qubits - num_control_qubits;
-      constexpr auto num_indices = ::ket::utility::integer_exp2<std::size_t>(num_qubits);
       constexpr auto num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
       constexpr auto half_num_target_indices = num_target_indices / std::size_t{2u};
 
       ::ket::gate::gate(
         parallel_policy, first, last,
-        [](auto const first, std::array<StateInteger, num_indices> const& indices, int const)
+        [](auto const first, StateInteger const index_wo_qubits, std::array<StateInteger, num_qubits> const& qubit_masks, std::array<StateInteger, num_qubits + 1u> const& index_masks, int const)
         {
           // 0b1...10...0u
-          constexpr auto base_indices_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
+          constexpr auto base_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
 
           for (auto i = std::size_t{0u}; i < half_num_target_indices; ++i)
-          {
-            auto const iter1 = first + indices[base_indices_index + i];
-            auto const iter2 = first + indices[base_indices_index + (num_target_indices - std::size_t{1u} - i)];
-            std::iter_swap(iter1, iter2);
-          }
+            std::iter_swap(
+              first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, base_index + i, qubit_masks, index_masks),
+              first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, base_index + (num_target_indices - std::size_t{1u} - i), qubit_masks, index_masks));
         },
         qubit1, qubit2, qubit3, qubits...);
     }
