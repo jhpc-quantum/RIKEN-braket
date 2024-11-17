@@ -168,9 +168,10 @@ namespace ket
           target_qubit, control_qubit1, control_qubit2, control_qubits...);
       }
 
-      template <typename RandomAccessIterator, typename StateInteger, std::size_t num_indices, typename BitInteger, typename... ControlQubits>
+      template <typename RandomAccessIterator, typename StateInteger, std::size_t num_fused_qubits, typename BitInteger, typename... ControlQubits>
       inline auto adj_hadamard(
-        RandomAccessIterator const first, std::array<StateInteger, num_indices> const& indices,
+        RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+        std::array<StateInteger, num_fused_qubits> const& fused_qubit_masks, std::array<StateInteger, num_fused_qubits + 1u> const& fused_index_masks,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
       -> void
       { ::ket::gate::fused::hadamard(first, indices, target_qubit, control_qubits...); }
