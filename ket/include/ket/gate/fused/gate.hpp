@@ -62,8 +62,9 @@ namespace ket
           "bit_integer_type's of Qubit and Qubits should be the same");
 # endif // __cpp_constexpr >= 201603L
 
+        assert(::ket::utility::all_in_state_vector(static_cast<bit_integer_type>(num_fused_qubits), qubit, qubits...));
+
         constexpr auto num_operated_qubits = static_cast<bit_integer_type>(sizeof...(Qubits) + 1u);
-        assert(::ket::utility::all_in_state_vector(num_fused_qubits, qubit, qubits...));
 
         std::array<state_integer_type, num_operated_qubits> operated_qubit_masks{};
         ::ket::gate::gate_detail::make_qubit_masks(operated_qubit_masks, qubit, qubits...);
