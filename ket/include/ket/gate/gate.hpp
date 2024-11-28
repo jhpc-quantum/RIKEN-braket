@@ -18,7 +18,6 @@
 # include <ket/meta/state_integer_of.hpp>
 # include <ket/meta/bit_integer_of.hpp>
 # include <ket/utility/loop_n.hpp>
-# include <ket/utility/contains.hpp>
 # include <ket/utility/integer_exp2.hpp>
 # include <ket/utility/integer_log2.hpp>
 # if !defined(NDEBUG) || defined(KET_USE_ON_CACHE_STATE_VECTOR)
@@ -466,7 +465,7 @@ namespace ket
           // xxxx|yyyy|zzzzzz: (local) qubits
           // * xxxx: off-cache qubits
           // * yyyy|zzzzzz: on-cache qubits
-          //   - yyyy: chunk qubits
+          //   - yyyy: chunk qubits (chunk qubits are determined dynamically, and sometimes there is no chunk qubit)
           // * xxxx|yyyy: tag qubits
           // * zzzzzz: nontag qubits
 
@@ -481,15 +480,18 @@ namespace ket
           auto const operated_on_cache_qubits_last
             = std::lower_bound(begin(sorted_qubits), end(sorted_qubits), least_significant_off_cache_qubit);
           auto const operated_on_cache_qubits_first = begin(sorted_qubits);
-          auto const num_operated_on_cache_qubits = static_cast<bit_integer_type>(operated_on_cache_qubits_last - operated_on_cache_qubits_first);
-          auto const num_operated_off_cache_qubits = num_operated_qubits - num_operated_on_cache_qubits;
-          assert(num_operated_off_cache_qubits > bit_integer_type{0u});
+          auto const operated_off_cache_qubits_first = operated_on_cache_qubits_last;
+          auto const operated_off_cache_qubits_last = end(sorted_qubits);
+          // from Assumption: Case 2) Some of the operated qubits are off-cache qubits
+          assert(operated_off_cache_qubits_first != operated_off_cache_qubits_last);
 
           // Case 2-1) There is no operated on-cache qubit
-          if (num_operated_on_cache_qubits == bit_integer_type{0u})
+          //   ex: xxxx|yyy|zzzzzzz
+          //       ^^ ^             <- operated qubits
+          if (operated_on_cache_qubits_first == operated_on_cache_qubits_last)
           {
             // num_chunk_qubits, chunk_size, least_significant_chunk_qubit, num_tag_qubits, num_nontag_qubits
-            constexpr auto num_chunk_qubits = num_operated_qubits; // num_operated_qubits == num_operated_off_cache_qubits;
+            constexpr auto num_chunk_qubits = num_operated_qubits;
             constexpr auto num_chunks_in_on_cache_state = ::ket::utility::integer_exp2<state_integer_type>(num_chunk_qubits);
             auto const chunk_size = on_cache_state_size / num_chunks_in_on_cache_state;
             auto const least_significant_chunk_qubit = least_significant_off_cache_qubit - num_chunk_qubits;
@@ -533,12 +535,17 @@ namespace ket
             return;
           }
 
-          // Case 2-2) There are some operated on-cache qubits (num_operated_on_cache_qubits > 0)
+          // Case 2-2) There are some operated on-cache qubits
+          //   ex: xxxx|yyy|zzzzzzz
+          //        ^^   ^    ^     <- operated qubits
           // least_significant_chunk_qubit, num_chunk_qubits, chunk_size, num_tag_qubits, num_nontag_qubits
+          assert(operated_on_cache_qubits_first != operated_on_cache_qubits_last);
           auto operated_on_cache_qubits_iter = std::prev(operated_on_cache_qubits_last);
           auto free_most_significant_on_cache_qubit = least_significant_off_cache_qubit - bit_integer_type{1u};
-          for (auto num_found_off_cache_chunk_qubits = bit_integer_type{0u};
-               num_found_off_cache_chunk_qubits < num_operated_off_cache_qubits; ++num_found_off_cache_chunk_qubits)
+          auto const num_operated_off_cache_qubits
+            = static_cast<bit_integer_type>(operated_off_cache_qubits_last - operated_off_cache_qubits_first);
+          for (auto num_found_operated_off_cache_qubits = bit_integer_type{0u};
+               num_found_operated_off_cache_qubits < num_operated_off_cache_qubits; ++num_found_operated_off_cache_qubits)
             while (free_most_significant_on_cache_qubit-- == *operated_on_cache_qubits_iter)
               if (operated_on_cache_qubits_iter != operated_on_cache_qubits_first)
                 --operated_on_cache_qubits_iter;
@@ -678,9 +685,12 @@ namespace ket
         // xxxx|yyyy|zzzzzz: (local) qubits
         // * xxxx: off-cache qubits
         // * yyyy|zzzzzz: on-cache qubits
-        //   - yyyy: chunk qubits
+        //   - yyyy: chunk qubits (chunk qubits are determined dynamically, and sometimes there is no chunk qubit)
+
 
         // Case 1) All operated qubits are on-cache qubits
+        //   ex: xxxx|zzzzzzzzzz
+        //             ^  ^   ^  <- operated qubits
         if (::ket::utility::all_in_state_vector(num_on_cache_qubits, qubit, qubits...))
         {
           std::array<state_integer_type, num_operated_qubits> qubit_masks{};
@@ -699,6 +709,8 @@ namespace ket
         }
 
         // Case 2) Some of the operated qubits are off-cache qubits
+        //   ex: xxxx|yyyy|zzzzzz
+        //         ^   ^     ^    <- operated qubits
         ::ket::gate::cache::unsafe::gate(
           parallel_policy,
           state_first, state_last, on_cache_state_first, on_cache_state_last,
@@ -861,9 +873,11 @@ namespace ket
       // xxxx|yyyy|zzzzzz: (local) qubits
       // * xxxx: off-cache qubits
       // * yyyy|zzzzzz: on-cache qubits
-      //   - yyyy: chunk qubits
+      //   - yyyy: chunk qubits (chunk qubits are determined dynamically, and sometimes there is no chunk qubit)
 
       // Case 1) All operated qubits are on-cache qubits
+      //   ex: xxxx|zzzzzzzzzz
+      //             ^  ^   ^  <- operated qubits
       if (::ket::utility::all_in_state_vector(num_on_cache_qubits, qubit, qubits...))
       {
         std::array<state_integer_type, num_operated_qubits> qubit_masks{};
@@ -878,6 +892,8 @@ namespace ket
       }
 
       // Case 2) Some of the operated qubits are off-cache qubits
+      //   ex: xxxx|yyyy|zzzzzz
+      //         ^   ^     ^    <- operated qubits
       auto on_cache_state = std::vector<typename std::iterator_traits<RandomAccessIterator>::value_type>(on_cache_state_size);
 
       using std::begin;
