@@ -2357,39 +2357,27 @@ namespace ket
 
     namespace page
     {
-      template <
-        typename StateInteger, typename BitInteger,
-        typename Complex, typename Allocator>
-      inline constexpr auto is_on_page(
-        ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit,
-        ::ket::mpi::state<Complex, false, Allocator> const& local_state)
-      -> bool
-      { return false; }
+      namespace dispatch
+      {
+        template <typename LocalState_>
+        struct is_on_page;
 
-      template <
-        typename StateInteger, typename BitInteger,
-        typename Complex, typename Allocator>
-      inline constexpr auto is_on_page(
-        ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit,
-        ::ket::mpi::state<Complex, false, Allocator> const& local_state)
-      -> bool
-      { return false; }
+        template <typename Complex, typename Allocator>
+        struct is_on_page< ::ket::mpi::state<Complex, false, Allocator> >
+        {
+          template <typename Qubit>
+          static constexpr auto call(::ket::mpi::permutated<Qubit> const, ::ket::mpi::state<Complex, false, Allocator> const&) -> bool
+          { return false; }
+        }; // struct is_on_page< ::ket::mpi::state<Complex, false, Allocator> >
 
-      template <
-        typename StateInteger, typename BitInteger, typename Complex, typename Allocator>
-      inline auto is_on_page(
-        ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit,
-        ::ket::mpi::state<Complex, true, Allocator> const& local_state)
-      -> bool
-      { return ::ket::mpi::is_page_qubit(permutated_qubit, local_state); }
-
-      template <
-        typename StateInteger, typename BitInteger, typename Complex, typename Allocator>
-      inline auto is_on_page(
-        ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit,
-        ::ket::mpi::state<Complex, true, Allocator> const& local_state)
-      -> bool
-      { return ::ket::mpi::is_page_qubit(permutated_control_qubit, local_state); }
+        template <typename Complex, typename Allocator>
+        struct is_on_page< ::ket::mpi::state<Complex, true, Allocator> >
+        {
+          template <typename Qubit>
+          static constexpr auto call(::ket::mpi::permutated<Qubit> const permutated_qubit, ::ket::mpi::state<Complex, true, Allocator> const& local_state) -> bool
+          { return ::ket::mpi::is_page_qubit(permutated_qubit, local_state); }
+        }; // struct is_on_page< ::ket::mpi::state<Complex, true, Allocator> >
+      } // namespace dispatch
     } // namespace page
 
     namespace utility
