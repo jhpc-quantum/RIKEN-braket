@@ -103,8 +103,6 @@ namespace ket
             "bit_integer_type's of Qubit and Qubits should be the same");
 # endif // __cpp_constexpr >= 201603L
 
-          constexpr auto num_operated_qubits = bit_integer_type{sizeof...(Qubits) + 1u};
-
           // Case 1) should be resolved before calling this function
           assert(::ket::mpi::page::any_on_page(local_state, permutated_qubit, permutated_qubits...));
 
@@ -117,6 +115,9 @@ namespace ket
           assert(static_cast<bit_integer_type>(local_state.num_local_qubits()) > num_on_cache_qubits); // because num_page_qubits >= 1
           auto const num_off_cache_qubits = static_cast<bit_integer_type>(local_state.num_local_qubits()) - num_on_cache_qubits;
           assert(static_cast<bit_integer_type>(local_state.num_page_qubits()) <= num_off_cache_qubits);
+
+          constexpr auto num_operated_qubits = bit_integer_type{sizeof...(Qubits) + 1u};
+          assert(num_operated_qubits < num_on_cache_qubits);
 
           // ppxx|yyyy|zzzzzz: local qubits
           // * ppxx: off-cache qubits

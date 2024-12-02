@@ -461,6 +461,7 @@ namespace ket
           assert(not ::ket::utility::all_in_state_vector(num_on_cache_qubits, qubit, qubits...));
 
           constexpr auto num_operated_qubits = bit_integer_type{sizeof...(Qubits) + 1u};
+          assert(num_operated_qubits < num_on_cache_qubits);
 
           // xxxx|yyyy|zzzzzz: (local) qubits
           // * xxxx: off-cache qubits
