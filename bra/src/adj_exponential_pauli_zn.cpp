@@ -16,6 +16,10 @@ namespace bra
 {
   namespace gate
   {
+    adj_exponential_pauli_zn::adj_exponential_pauli_zn(real_type const phase, std::vector<qubit_type> const& qubits)
+      : ::bra::gate::gate{}, phase_{phase}, qubits_{qubits}, name_{std::string{"e"}.append(qubits_.size(), 'Z').append("+")}
+    { }
+
     adj_exponential_pauli_zn::adj_exponential_pauli_zn(real_type const phase, std::vector<qubit_type>&& qubits)
       : ::bra::gate::gate{}, phase_{phase}, qubits_{std::move(qubits)}, name_{std::string{"e"}.append(qubits_.size(), 'Z').append("+")}
     { }

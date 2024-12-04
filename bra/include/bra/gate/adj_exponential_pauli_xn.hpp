@@ -27,6 +27,7 @@ namespace bra
       std::string name_;
 
      public:
+      adj_exponential_pauli_xn(real_type const phase, std::vector<qubit_type> const& qubits);
       adj_exponential_pauli_xn(real_type const phase, std::vector<qubit_type>&& qubits);
 
       ~adj_exponential_pauli_xn() = default;

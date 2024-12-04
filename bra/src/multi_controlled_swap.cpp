@@ -19,6 +19,14 @@ namespace bra
   {
     multi_controlled_swap::multi_controlled_swap(
       qubit_type const target_qubit1, qubit_type const target_qubit2,
+      std::vector<control_qubit_type> const& control_qubits)
+      : ::bra::gate::gate{}, target_qubit1_{target_qubit1}, target_qubit2_{target_qubit2},
+        control_qubits_{control_qubits},
+        name_{std::string(control_qubits_.size(), 'C').append("SWAP")}
+    { }
+
+    multi_controlled_swap::multi_controlled_swap(
+      qubit_type const target_qubit1, qubit_type const target_qubit2,
       std::vector<control_qubit_type>&& control_qubits)
       : ::bra::gate::gate{}, target_qubit1_{target_qubit1}, target_qubit2_{target_qubit2},
         control_qubits_{std::move(control_qubits)},

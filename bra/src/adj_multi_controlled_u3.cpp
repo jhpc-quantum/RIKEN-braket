@@ -19,6 +19,15 @@ namespace bra
   {
     adj_multi_controlled_u3::adj_multi_controlled_u3(
       real_type const& phase1, real_type const& phase2, real_type const& phase3,
+      qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
+      : ::bra::gate::gate{},
+        phase1_{phase1}, phase2_{phase2}, phase3_{phase3},
+        target_qubit_{target_qubit}, control_qubits_{control_qubits},
+        name_{std::string(control_qubits_.size(), 'C').append("U3+")}
+    { }
+
+    adj_multi_controlled_u3::adj_multi_controlled_u3(
+      real_type const& phase1, real_type const& phase2, real_type const& phase3,
       qubit_type const target_qubit, std::vector<control_qubit_type>&& control_qubits)
       : ::bra::gate::gate{},
         phase1_{phase1}, phase2_{phase2}, phase3_{phase3},

@@ -25,6 +25,7 @@ namespace bra
       std::string name_;
 
      public:
+      explicit pauli_xn(std::vector<qubit_type> const& qubits);
       explicit pauli_xn(std::vector<qubit_type>&& qubits);
 
       ~pauli_xn() = default;

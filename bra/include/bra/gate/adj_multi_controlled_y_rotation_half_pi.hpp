@@ -29,6 +29,10 @@ namespace bra
      public:
       adj_multi_controlled_y_rotation_half_pi(
         qubit_type const target_qubit,
+        std::vector<control_qubit_type> const& control_qubits);
+
+      adj_multi_controlled_y_rotation_half_pi(
+        qubit_type const target_qubit,
         std::vector<control_qubit_type>&& control_qubits);
 
       ~adj_multi_controlled_y_rotation_half_pi() = default;

@@ -19,6 +19,16 @@ namespace bra
   {
     adj_multi_controlled_s_gate::adj_multi_controlled_s_gate(
       complex_type const& phase_coefficient,
+      qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
+      : ::bra::gate::gate{},
+        phase_coefficient_{phase_coefficient},
+        target_qubit_{target_qubit},
+        control_qubits_{control_qubits},
+        name_{std::string(control_qubits_.size(), 'C').append("S+")}
+    { }
+
+    adj_multi_controlled_s_gate::adj_multi_controlled_s_gate(
+      complex_type const& phase_coefficient,
       qubit_type const target_qubit, std::vector<control_qubit_type>&& control_qubits)
       : ::bra::gate::gate{},
         phase_coefficient_{phase_coefficient},
