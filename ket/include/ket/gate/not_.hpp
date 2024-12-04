@@ -57,6 +57,7 @@ namespace ket
     -> void
     {
       constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 2u);
+      constexpr auto num_qubits = num_control_qubits + BitInteger{1u};
 
       ::ket::gate::gate(
         parallel_policy, first, last,
