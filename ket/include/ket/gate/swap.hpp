@@ -88,12 +88,42 @@ namespace ket
         ::ket::utility::integer_exp2<StateInteger>(::ket::utility::integer_log2<BitInteger>(last - first))
         == static_cast<StateInteger>(last - first));
 
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+      using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
       constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 1u);
-      constexpr auto num_qubits = num_control_qubits + BitInteger{2u};
+      constexpr auto num_operated_qubits = num_control_qubits + BitInteger{2u};
 
       ::ket::gate::gate(
         parallel_policy, first, last,
-        [](auto const first, StateInteger const index_wo_qubits, std::array<StateInteger, num_qubits> const& qubit_masks, std::array<StateInteger, num_qubits + 1u> const& index_masks, int const)
+        [](
+          auto const first, StateInteger const index_wo_qubits,
+          std::array<qubit_type, num_operated_qubits> const& unsorted_qubits,
+          std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& sorted_qubits_with_sentinel,
+          int const)
+        {
+          // 0b11...100u
+          constexpr auto base_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{2u};
+          // 0b11...101u
+          constexpr auto index01 = base_index bitor std::size_t{1u};
+          // 0b11...110u
+          constexpr auto index10 = base_index bitor (std::size_t{1u} << BitInteger{1u});
+
+          std::iter_swap(
+            first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index01, unsorted_qubits, sorted_qubits_with_sentinel),
+            first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index10, unsorted_qubits, sorted_qubits_with_sentinel));
+        },
+        target_qubit1, target_qubit2, control_qubit, control_qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+      constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 1u);
+      constexpr auto num_operated_qubits = num_control_qubits + BitInteger{2u};
+
+      ::ket::gate::gate(
+        parallel_policy, first, last,
+        [](
+          auto const first, StateInteger const index_wo_qubits,
+          std::array<StateInteger, num_operated_qubits> const& qubit_masks,
+          std::array<StateInteger, num_operated_qubits + 1u> const& index_masks,
+          int const)
         {
           // 0b11...100u
           constexpr auto base_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{2u};
@@ -107,6 +137,7 @@ namespace ket
             first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index10, qubit_masks, index_masks));
         },
         target_qubit1, target_qubit2, control_qubit, control_qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
     }
 
     template <typename RandomAccessIterator, typename StateInteger, typename BitInteger, typename... ControlQubits>

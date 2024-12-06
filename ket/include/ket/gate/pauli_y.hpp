@@ -60,7 +60,7 @@ namespace ket
           std::iter_swap(zero_iter, one_iter);
 
           using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
-          *zero_iter *= -::ket::utility::imaginary_unit<complex_type>();
+          *zero_iter *= ::ket::utility::minus_imaginary_unit<complex_type>();
           *one_iter *= ::ket::utility::imaginary_unit<complex_type>();
         });
     }
@@ -173,7 +173,7 @@ namespace ket
           std::iter_swap(control_on_iter, target_control_on_iter);
 
           using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
-          *control_on_iter *= -::ket::utility::imaginary_unit<complex_type>();
+          *control_on_iter *= ::ket::utility::minus_imaginary_unit<complex_type>();
           *target_control_on_iter *= ::ket::utility::imaginary_unit<complex_type>();
         });
     }
@@ -192,32 +192,21 @@ namespace ket
         ::ket::utility::integer_exp2<StateInteger>(::ket::utility::integer_log2<BitInteger>(last - first))
         == static_cast<StateInteger>(last - first));
 
-      constexpr auto num_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+      using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+      constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
       constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubit2, Qubit3, Qubits...>::value;
-      constexpr auto num_target_qubits = num_qubits - num_control_qubits;
+      constexpr auto num_target_qubits = num_operated_qubits - num_control_qubits;
       constexpr auto num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
       constexpr auto half_num_target_indices = num_target_indices / std::size_t{2u};
 
-      using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
-      auto coefficient = complex_type{};
-      switch (num_target_qubits % BitInteger{4u})
-      {
-       case BitInteger{0u}:
-        coefficient = complex_type{1};
-
-       case BitInteger{1u}:
-        coefficient = ::ket::utility::imaginary_unit<complex_type>();
-
-       case BitInteger{2u}:
-        coefficient = complex_type{-1};
-
-       default: //case BitInteger{3u}:
-        coefficient = -::ket::utility::imaginary_unit<complex_type>();
-      }
-
       ::ket::gate::gate(
         parallel_policy, first, last,
-        [&coefficient](auto const first, StateInteger const index_wo_qubits, std::array<StateInteger, num_qubits> const& qubit_masks, std::array<StateInteger, num_qubits + 1u> const& index_masks, int const)
+        [](
+          auto const first, StateInteger const index_wo_qubits,
+          std::array<qubit_type, num_operated_qubits> const& unsorted_qubits,
+          std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& sorted_qubits_with_sentinel,
+          int const)
         {
           // 0b1...10...0u
           constexpr auto base_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
@@ -241,6 +230,72 @@ namespace ket
               j_tmp >>= BitInteger{1u};
             }
 
+            using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+            constexpr auto residual = num_target_qubits % BitInteger{4u};
+            constexpr auto coefficient
+              = residual == BitInteger{0u}
+                ? complex_type{1}
+                : residual == BitInteger{1u}
+                  ? ::ket::utility::imaginary_unit<complex_type>()
+                  : residual == BitInteger{2u}
+                    ? complex_type{-1}
+                    : ::ket::utility::minus_imaginary_unit<complex_type>();
+            auto iter1 = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, base_index + i, unsorted_qubits, sorted_qubits_with_sentinel);
+            auto iter2 = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, base_index + j, unsorted_qubits, sorted_qubits_with_sentinel);
+            std::iter_swap(iter1, iter2);
+            *iter1 *= (num_target_qubits - num_ones_in_i) % BitInteger{2u} == BitInteger{0u} ? coefficient : -coefficient;
+            *iter2 *= (num_target_qubits - num_ones_in_j) % BitInteger{2u} == BitInteger{0u} ? coefficient : -coefficient;
+          }
+        },
+        qubit1, qubit2, qubit3, qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+      constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+      constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubit2, Qubit3, Qubits...>::value;
+      constexpr auto num_target_qubits = num_operated_qubits - num_control_qubits;
+      constexpr auto num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
+      constexpr auto half_num_target_indices = num_target_indices / std::size_t{2u};
+
+      ::ket::gate::gate(
+        parallel_policy, first, last,
+        [](
+          auto const first, StateInteger const index_wo_qubits,
+          std::array<StateInteger, num_operated_qubits> const& qubit_masks,
+          std::array<StateInteger, num_operated_qubits + 1u> const& index_masks,
+          int const)
+        {
+          // 0b1...10...0u
+          constexpr auto base_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
+
+          for (auto i = std::size_t{0u}; i < half_num_target_indices; ++i)
+          {
+            auto const j = num_target_indices - std::size_t{1u} - i;
+
+            auto num_ones_in_i = BitInteger{0u};
+            auto num_ones_in_j = BitInteger{0u};
+            auto i_tmp = i;
+            auto j_tmp = j;
+            for (auto count = BitInteger{0u}; count < num_target_qubits; ++count)
+            {
+              if ((i_tmp bitand std::size_t{1u}) == std::size_t{1u})
+                ++num_ones_in_i;
+              if ((j_tmp bitand std::size_t{1u}) == std::size_t{1u})
+                ++num_ones_in_j;
+
+              i_tmp >>= BitInteger{1u};
+              j_tmp >>= BitInteger{1u};
+            }
+
+            using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+            constexpr auto residual = num_target_qubits % BitInteger{4u};
+            constexpr auto coefficient
+              = residual == BitInteger{0u}
+                ? complex_type{1}
+                : residual == BitInteger{1u}
+                  ? ::ket::utility::imaginary_unit<complex_type>()
+                  : residual == BitInteger{2u}
+                    ? complex_type{-1}
+                    : ::ket::utility::minus_imaginary_unit<complex_type>();
+
             auto iter1 = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, base_index + i, qubit_masks, index_masks);
             auto iter2 = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, base_index + j, qubit_masks, index_masks);
             std::iter_swap(iter1, iter2);
@@ -249,6 +304,7 @@ namespace ket
           }
         },
         qubit1, qubit2, qubit3, qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
     }
 
     template <typename RandomAccessIterator, typename StateInteger, typename BitInteger, typename... Qubits>

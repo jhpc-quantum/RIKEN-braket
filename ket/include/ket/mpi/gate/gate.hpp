@@ -2,7 +2,9 @@
 # define KET_MPI_GATE_GATE_HPP
 
 # include <algorithm>
-# include <array>
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+#   include <array>
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
 # include <vector>
 # include <iterator>
 # include <utility>
@@ -110,6 +112,18 @@ namespace ket
             // Case 1-2) All operated qubits are on-cache qubits
             //   ex: ppxx|zzzzzzzzzz
             //             ^   ^ ^   <- operated qubits
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+            if (::ket::utility::all_in_state_vector(num_on_cache_qubits, permutated_qubit.qubit(), permutated_qubits.qubit()...))
+              return ::ket::mpi::utility::for_each_local_range(
+                mpi_policy, local_state, communicator, environment,
+                [parallel_policy, &function, permutated_qubit, permutated_qubits...](auto const first, auto const last)
+                {
+                  for (auto iter = first; iter < last; iter += on_cache_state_size)
+                    ::ket::gate::nocache::gate(
+                      parallel_policy, iter, iter + on_cache_state_size, function,
+                      permutated_qubit.qubit(), permutated_qubits.qubit()...);
+                });
+# else // KET_USE_BIT_MASKS_EXPLICITLY
             if (::ket::utility::all_in_state_vector(num_on_cache_qubits, permutated_qubit.qubit(), permutated_qubits.qubit()...))
             {
               constexpr auto num_operated_qubits = bit_integer_type{sizeof...(Qubits) + 1u};
@@ -126,6 +140,7 @@ namespace ket
                     ::ket::gate::gate_detail::gate(parallel_policy, iter, iter + on_cache_state_size, qubit_masks, index_masks, function);
                 });
             }
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
 
             // Case 1-3) Some of the operated qubits are off-cache qubits (but not page qubits)
             //   ex1: ppxx|yy|zzzzzzzz

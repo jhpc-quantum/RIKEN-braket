@@ -33,29 +33,31 @@ namespace ket
       template <typename BitInteger_>
       explicit constexpr permutated(BitInteger_ const bit) noexcept
         : qubit_{bit}
-      { }
+      { static_assert(std::is_integral<BitInteger_>::value and std::is_unsigned<BitInteger_>::value, "BitInteger_ should be an unsigned integral type"); }
 
-      auto qubit() -> qubit_type& { return qubit_; }
-      auto qubit() const -> qubit_type const& { return qubit_; }
+      constexpr auto qubit() -> qubit_type& { return qubit_; }
+      constexpr auto qubit() const -> qubit_type const& { return qubit_; }
 
-      auto operator++() noexcept -> permutated& { ++qubit_; return *this; }
-      auto operator++(int) noexcept -> permutated
+      constexpr auto operator++() noexcept -> permutated& { ++qubit_; return *this; }
+      constexpr auto operator++(int) noexcept -> permutated { auto result = *this; ++(*this); return result; }
+      constexpr auto operator--() noexcept -> permutated& { --qubit_; return *this; }
+      constexpr auto operator--(int) noexcept -> permutated { auto result = *this; --(*this); return result; }
+
+      template <typename Integer>
+      constexpr auto operator+=(Integer const bit) noexcept -> permutated&
       {
-        auto result = *this;
-        ++(*this);
-        return result;
+        static_assert(std::is_integral<Integer>::value, "Integer should be an integral type");
+        qubit_ += bit;
+        return *this;
       }
-      auto operator--() noexcept -> permutated& { --qubit_; return *this; }
-      auto operator--(int) noexcept -> permutated
+
+      template <typename Integer>
+      constexpr auto operator-=(Integer const bit) noexcept -> permutated&
       {
-        auto result = *this;
-        --(*this);
-        return result;
+        static_assert(std::is_integral<Integer>::value, "Integer should be an integral type");
+        qubit_ -= bit;
+        return *this;
       }
-      auto operator+=(bit_integer_type const bit) noexcept -> permutated&
-      { qubit_ += bit; return *this; }
-      auto operator-=(bit_integer_type const bit) noexcept -> permutated&
-      { qubit_ -= bit; return *this; }
     }; // class permutated<Qubit>
 
     template <typename Qubit1, typename Qubit2>
@@ -142,29 +144,21 @@ namespace ket
       return permutated_qubit1.qubit() >= permutated_qubit2.qubit();
     }
 
-    template <typename Qubit>
-    inline constexpr auto operator+(
-      ::ket::mpi::permutated<Qubit> permutated_qubit, typename ::ket::mpi::permutated<Qubit>::bit_integer_type const bit) noexcept
-    -> ::ket::mpi::permutated<Qubit>
+    template <typename Qubit, typename Integer>
+    inline constexpr auto operator+(::ket::mpi::permutated<Qubit> permutated_qubit, Integer const bit) noexcept -> ::ket::mpi::permutated<Qubit>
     { return permutated_qubit += bit; }
 
-    template <typename Qubit>
-    inline constexpr auto operator+(
-      typename ::ket::mpi::permutated<Qubit>::bit_integer_type const bit, ::ket::mpi::permutated<Qubit> const permutated_qubit) noexcept
-    -> ::ket::mpi::permutated<Qubit>
+    template <typename Integer, typename Qubit>
+    inline constexpr auto operator+(Integer const bit, ::ket::mpi::permutated<Qubit> const permutated_qubit) noexcept -> ::ket::mpi::permutated<Qubit>
     { return permutated_qubit + bit; }
 
     template <typename Qubit1, typename Qubit2>
-    inline auto operator+(
-      ::ket::mpi::permutated<Qubit1> const permutated_qubit1,
-      ::ket::mpi::permutated<Qubit2> const permutated_qubit2)
+    inline auto operator+(::ket::mpi::permutated<Qubit1> const permutated_qubit1, ::ket::mpi::permutated<Qubit2> const permutated_qubit2)
     -> ::ket::mpi::permutated<Qubit1>
     = delete;
 
-    template <typename Qubit>
-    inline constexpr auto operator-(
-      ::ket::mpi::permutated<Qubit> permutated_qubit, typename ::ket::mpi::permutated<Qubit>::bit_integer_type const bit) noexcept
-    -> ::ket::mpi::permutated<Qubit>
+    template <typename Qubit, typename Integer>
+    inline constexpr auto operator-(::ket::mpi::permutated<Qubit> permutated_qubit, Integer const bit) noexcept -> ::ket::mpi::permutated<Qubit>
     { return permutated_qubit -= bit; }
 
     template <typename Qubit1, typename Qubit2>
@@ -182,16 +176,15 @@ namespace ket
       return permutated_qubit1.qubit() - permutated_qubit2.qubit();
     }
 
-    template <typename Value, typename Qubit>
-    inline constexpr std::enable_if_t<std::is_integral<Value>::value, Value>
-    operator<<(Value const value, ::ket::mpi::permutated<Qubit> const permutated_qubit) noexcept
-    { return value << permutated_qubit.qubit(); }
+    template <typename UnsignedInteger, typename Qubit>
+    inline constexpr std::enable_if_t<std::is_integral<UnsignedInteger>::value and std::is_unsigned<UnsignedInteger>::value, UnsignedInteger>
+    operator<<(UnsignedInteger const unsigned_integer, ::ket::mpi::permutated<Qubit> const permutated_qubit) noexcept
+    { return unsigned_integer << permutated_qubit.qubit(); }
 
-    template <typename Value, typename Qubit>
-    inline constexpr std::enable_if_t<std::is_integral<Value>::value, Value>
-    operator>>(Value const value, ::ket::mpi::permutated<Qubit> const permutated_qubit) noexcept
-    { return value >> permutated_qubit.qubit(); }
-
+    template <typename UnsignedInteger, typename Qubit>
+    inline constexpr std::enable_if_t<std::is_integral<UnsignedInteger>::value and std::is_unsigned<UnsignedInteger>::value, UnsignedInteger>
+    operator>>(UnsignedInteger const unsigned_integer, ::ket::mpi::permutated<Qubit> const permutated_qubit) noexcept
+    { return unsigned_integer >> permutated_qubit.qubit(); }
 
     template <typename Qubit>
     inline constexpr auto make_permutated(Qubit const qubit) -> ::ket::mpi::permutated<Qubit>
@@ -221,73 +214,78 @@ namespace ket
       -> decltype(::ket::mpi::permutated_detail::remove_control<Qubit>::call(permutated_qubit))
     { return ::ket::mpi::permutated_detail::remove_control<Qubit>::call(permutated_qubit); }
 
-
-    namespace permutated_literals
+    namespace literals
     {
-      inline constexpr auto operator"" _pq(unsigned long long int const bit) noexcept
-      -> ::ket::mpi::permutated< ::ket::qubit<std::uint64_t, unsigned int> >
-      { return ::ket::mpi::permutated< ::ket::qubit<std::uint64_t, unsigned int> >{static_cast<unsigned int>(bit)}; }
+      inline namespace permutated_literals
+      {
+        inline constexpr auto operator"" _pq(unsigned long long int const bit) noexcept
+        -> ::ket::mpi::permutated< ::ket::qubit<std::uint64_t, unsigned int> >
+        { return ::ket::mpi::permutated< ::ket::qubit<std::uint64_t, unsigned int> >{static_cast<unsigned int>(bit)}; }
 
-      inline constexpr auto operator"" _pqs(unsigned long long int const bit) noexcept
-      -> ::ket::mpi::permutated< ::ket::qubit<std::uint64_t, unsigned short int> >
-      { return ::ket::mpi::permutated< ::ket::qubit<std::uint64_t, unsigned short int> >{static_cast<unsigned short>(bit)}; }
+        inline constexpr auto operator"" _pqs(unsigned long long int const bit) noexcept
+        -> ::ket::mpi::permutated< ::ket::qubit<std::uint64_t, unsigned short int> >
+        { return ::ket::mpi::permutated< ::ket::qubit<std::uint64_t, unsigned short int> >{static_cast<unsigned short>(bit)}; }
 
-      inline constexpr auto operator"" _pql(unsigned long long int const bit) noexcept
-      -> ::ket::mpi::permutated< ::ket::qubit<std::uint64_t, unsigned long int> >
-      { return ::ket::mpi::permutated< ::ket::qubit<std::uint64_t, unsigned long int> >{static_cast<unsigned long>(bit)}; }
+        inline constexpr auto operator"" _pql(unsigned long long int const bit) noexcept
+        -> ::ket::mpi::permutated< ::ket::qubit<std::uint64_t, unsigned long int> >
+        { return ::ket::mpi::permutated< ::ket::qubit<std::uint64_t, unsigned long int> >{static_cast<unsigned long>(bit)}; }
 
-      inline constexpr auto operator"" _pqll(unsigned long long int const bit) noexcept
-      -> ::ket::mpi::permutated< ::ket::qubit<std::uint64_t, unsigned long long int> >
-      { return ::ket::mpi::permutated< ::ket::qubit<std::uint64_t, unsigned long long int> >{bit}; }
+        inline constexpr auto operator"" _pqll(unsigned long long int const bit) noexcept
+        -> ::ket::mpi::permutated< ::ket::qubit<std::uint64_t, unsigned long long int> >
+        { return ::ket::mpi::permutated< ::ket::qubit<std::uint64_t, unsigned long long int> >{bit}; }
 
-      inline constexpr auto operator"" _pq8(unsigned long long int const bit) noexcept
-      -> ::ket::mpi::permutated< ::ket::qubit<std::uint64_t, std::uint8_t> >
-      { return ::ket::mpi::permutated< ::ket::qubit<std::uint64_t, std::uint8_t> >{static_cast<std::uint8_t>(bit)}; }
+        inline constexpr auto operator"" _pq8(unsigned long long int const bit) noexcept
+        -> ::ket::mpi::permutated< ::ket::qubit<std::uint64_t, std::uint8_t> >
+        { return ::ket::mpi::permutated< ::ket::qubit<std::uint64_t, std::uint8_t> >{static_cast<std::uint8_t>(bit)}; }
 
-      inline constexpr auto operator"" _pq16(unsigned long long int const bit) noexcept
-      -> ::ket::mpi::permutated< ::ket::qubit<std::uint64_t, std::uint16_t> >
-      { return ::ket::mpi::permutated< ::ket::qubit<std::uint64_t, std::uint16_t> >{static_cast<std::uint16_t>(bit)}; }
+        inline constexpr auto operator"" _pq16(unsigned long long int const bit) noexcept
+        -> ::ket::mpi::permutated< ::ket::qubit<std::uint64_t, std::uint16_t> >
+        { return ::ket::mpi::permutated< ::ket::qubit<std::uint64_t, std::uint16_t> >{static_cast<std::uint16_t>(bit)}; }
 
-      inline constexpr auto operator"" _pq32(unsigned long long int const bit) noexcept
-      -> ::ket::mpi::permutated< ::ket::qubit<std::uint64_t, std::uint32_t> >
-      { return ::ket::mpi::permutated< ::ket::qubit<std::uint64_t, std::uint32_t> >{static_cast<std::uint32_t>(bit)}; }
+        inline constexpr auto operator"" _pq32(unsigned long long int const bit) noexcept
+        -> ::ket::mpi::permutated< ::ket::qubit<std::uint64_t, std::uint32_t> >
+        { return ::ket::mpi::permutated< ::ket::qubit<std::uint64_t, std::uint32_t> >{static_cast<std::uint32_t>(bit)}; }
 
-      inline constexpr auto operator"" _pq64(unsigned long long int const bit) noexcept
-      -> ::ket::mpi::permutated< ::ket::qubit<std::uint64_t, std::uint64_t> >
-      { return ::ket::mpi::permutated< ::ket::qubit<std::uint64_t, std::uint64_t> >{static_cast<std::uint64_t>(bit)}; }
+        inline constexpr auto operator"" _pq64(unsigned long long int const bit) noexcept
+        -> ::ket::mpi::permutated< ::ket::qubit<std::uint64_t, std::uint64_t> >
+        { return ::ket::mpi::permutated< ::ket::qubit<std::uint64_t, std::uint64_t> >{static_cast<std::uint64_t>(bit)}; }
 
-      inline constexpr auto operator"" _pcq(unsigned long long int const bit) noexcept
-      -> ::ket::mpi::permutated< ::ket::control< ::ket::qubit<std::uint64_t, unsigned int> > >
-      { return ::ket::mpi::permutated< ::ket::control< ::ket::qubit<std::uint64_t, unsigned int> > >{static_cast<unsigned int>(bit)}; }
+        inline constexpr auto operator"" _pcq(unsigned long long int const bit) noexcept
+        -> ::ket::mpi::permutated< ::ket::control< ::ket::qubit<std::uint64_t, unsigned int> > >
+        { return ::ket::mpi::permutated< ::ket::control< ::ket::qubit<std::uint64_t, unsigned int> > >{static_cast<unsigned int>(bit)}; }
 
-      inline constexpr auto operator"" _pcqs(unsigned long long int const bit) noexcept
-        -> ::ket::mpi::permutated< ::ket::control< ::ket::qubit<std::uint64_t, unsigned short int> > >
-      { return ::ket::mpi::permutated< ::ket::control< ::ket::qubit<std::uint64_t, unsigned short int> > >{static_cast<unsigned short>(bit)}; }
+        inline constexpr auto operator"" _pcqs(unsigned long long int const bit) noexcept
+          -> ::ket::mpi::permutated< ::ket::control< ::ket::qubit<std::uint64_t, unsigned short int> > >
+        { return ::ket::mpi::permutated< ::ket::control< ::ket::qubit<std::uint64_t, unsigned short int> > >{static_cast<unsigned short>(bit)}; }
 
-      inline constexpr auto operator"" _pcql(unsigned long long int const bit) noexcept
-      -> ::ket::mpi::permutated< ::ket::control< ::ket::qubit<std::uint64_t, unsigned long int> > >
-      { return ::ket::mpi::permutated< ::ket::control< ::ket::qubit<std::uint64_t, unsigned long int> > >{static_cast<unsigned long>(bit)}; }
+        inline constexpr auto operator"" _pcql(unsigned long long int const bit) noexcept
+        -> ::ket::mpi::permutated< ::ket::control< ::ket::qubit<std::uint64_t, unsigned long int> > >
+        { return ::ket::mpi::permutated< ::ket::control< ::ket::qubit<std::uint64_t, unsigned long int> > >{static_cast<unsigned long>(bit)}; }
 
-      inline constexpr auto operator"" _pcqll(unsigned long long int const bit) noexcept
-      -> ::ket::mpi::permutated< ::ket::control< ::ket::qubit<std::uint64_t, unsigned long long int> > >
-      { return ::ket::mpi::permutated< ::ket::control< ::ket::qubit<std::uint64_t, unsigned long long int> > >{bit}; }
+        inline constexpr auto operator"" _pcqll(unsigned long long int const bit) noexcept
+        -> ::ket::mpi::permutated< ::ket::control< ::ket::qubit<std::uint64_t, unsigned long long int> > >
+        { return ::ket::mpi::permutated< ::ket::control< ::ket::qubit<std::uint64_t, unsigned long long int> > >{bit}; }
 
-      inline constexpr auto operator"" _pcq8(unsigned long long int const bit) noexcept
-      -> ::ket::mpi::permutated< ::ket::control< ::ket::qubit<std::uint64_t, std::uint8_t> > >
-      { return ::ket::mpi::permutated< ::ket::control< ::ket::qubit<std::uint64_t, std::uint8_t> > >{static_cast<std::uint8_t>(bit)}; }
+        inline constexpr auto operator"" _pcq8(unsigned long long int const bit) noexcept
+        -> ::ket::mpi::permutated< ::ket::control< ::ket::qubit<std::uint64_t, std::uint8_t> > >
+        { return ::ket::mpi::permutated< ::ket::control< ::ket::qubit<std::uint64_t, std::uint8_t> > >{static_cast<std::uint8_t>(bit)}; }
 
-      inline constexpr auto operator"" _pcq16(unsigned long long int const bit) noexcept
-      -> ::ket::mpi::permutated< ::ket::control< ::ket::qubit<std::uint64_t, std::uint16_t> > >
-      { return ::ket::mpi::permutated< ::ket::control< ::ket::qubit<std::uint64_t, std::uint16_t> > >{static_cast<std::uint16_t>(bit)}; }
+        inline constexpr auto operator"" _pcq16(unsigned long long int const bit) noexcept
+        -> ::ket::mpi::permutated< ::ket::control< ::ket::qubit<std::uint64_t, std::uint16_t> > >
+        { return ::ket::mpi::permutated< ::ket::control< ::ket::qubit<std::uint64_t, std::uint16_t> > >{static_cast<std::uint16_t>(bit)}; }
 
-      inline constexpr auto operator"" _pcq32(unsigned long long int const bit) noexcept
-      -> ::ket::mpi::permutated< ::ket::control< ::ket::qubit<std::uint64_t, std::uint32_t> > >
-      { return ::ket::mpi::permutated< ::ket::control< ::ket::qubit<std::uint64_t, std::uint32_t> > >{static_cast<std::uint32_t>(bit)}; }
+        inline constexpr auto operator"" _pcq32(unsigned long long int const bit) noexcept
+        -> ::ket::mpi::permutated< ::ket::control< ::ket::qubit<std::uint64_t, std::uint32_t> > >
+        { return ::ket::mpi::permutated< ::ket::control< ::ket::qubit<std::uint64_t, std::uint32_t> > >{static_cast<std::uint32_t>(bit)}; }
 
-      inline constexpr auto operator"" _pcq64(unsigned long long int const bit) noexcept
-      -> ::ket::mpi::permutated< ::ket::control< ::ket::qubit<std::uint64_t, std::uint64_t> > >
-      { return ::ket::mpi::permutated< ::ket::control< ::ket::qubit<std::uint64_t, std::uint64_t> > >{static_cast<std::uint64_t>(bit)}; }
-    } // namespace permutated_literals
+        inline constexpr auto operator"" _pcq64(unsigned long long int const bit) noexcept
+        -> ::ket::mpi::permutated< ::ket::control< ::ket::qubit<std::uint64_t, std::uint64_t> > >
+        { return ::ket::mpi::permutated< ::ket::control< ::ket::qubit<std::uint64_t, std::uint64_t> > >{static_cast<std::uint64_t>(bit)}; }
+      } // namespace permutated_literals
+    } // namespace literals
+
+    namespace [[deprecated]] permutated_literals
+    { using namespace ::ket::mpi::literals::permutated_literals; }
   } // namespace mpi
 } // namespace ket
 
