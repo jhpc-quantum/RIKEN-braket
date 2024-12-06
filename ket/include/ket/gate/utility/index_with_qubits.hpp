@@ -14,6 +14,63 @@ namespace ket
   {
     namespace utility
     {
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+      template <typename StateInteger, typename UnsignedInteger, typename RandomAccessIterator1, typename RandomAccessIterator2>
+      inline constexpr auto index_with_qubits(
+        StateInteger const index_wo_qubits, UnsignedInteger const qubits_value,
+        RandomAccessIterator1 const unsorted_qubits_first, RandomAccessIterator1 const unsorted_qubits_last,
+        RandomAccessIterator2 const sorted_qubits_with_sentinel_first, RandomAccessIterator2 const sorted_qubits_with_sentinel_last)
+      -> StateInteger
+      {
+        static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+        static_assert(std::is_unsigned<UnsignedInteger>::value, "UnsignedInteger should be unsigned");
+        assert(sorted_qubits_with_sentinel_last - sorted_qubits_with_sentinel_first == unsorted_qubits_last - unsorted_qubits_first + 1);
+        assert(qubits_value >> (unsorted_qubits_last - unsorted_qubits_first) == UnsignedInteger{0u});
+
+        // xx0xx0xx0xx
+        auto result = index_wo_qubits bitand ((StateInteger{1u} << *sorted_qubits_with_sentinel_first) - StateInteger{1u});
+        for (auto iter = std::next(sorted_qubits_with_sentinel_first); iter != sorted_qubits_with_sentinel_last; ++iter)
+        {
+          auto const index = iter - sorted_qubits_with_sentinel_first;
+          result |= (index_wo_qubits bitand (((StateInteger{1u} << (*iter - index)) - StateInteger{1u}) - ((StateInteger{1u} << (*std::prev(iter) - (index - 1))) - StateInteger{1u}))) << index;
+        }
+
+        for (auto iter = unsorted_qubits_first; iter != unsorted_qubits_last; ++iter)
+        {
+          auto const index = iter - unsorted_qubits_first;
+          if (((StateInteger{1u} << index) bitand static_cast<StateInteger>(qubits_value)) != StateInteger{0u})
+            result |= StateInteger{1u} << *iter;
+        }
+
+        return result;
+      }
+
+      //template <typename StateInteger, typename UnsignedInteger, typename BitInteger, BitInteger num_operated_qubits>
+      template <typename StateInteger, typename UnsignedInteger, typename BitInteger, std::size_t num_operated_qubits>
+      inline constexpr auto index_with_qubits(
+        StateInteger const index_wo_qubits, UnsignedInteger const qubits_value,
+        std::array< ::ket::qubit<StateInteger, BitInteger>, num_operated_qubits > const& unsorted_qubits,
+        std::array< ::ket::qubit<StateInteger, BitInteger>, num_operated_qubits + 1u > const& sorted_qubits_with_sentinel)
+      -> StateInteger
+      {
+        static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+        static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
+        static_assert(std::is_unsigned<UnsignedInteger>::value, "UnsignedInteger should be unsigned");
+        static_assert(num_operated_qubits >= BitInteger{1u});
+        assert(qubits_value >> num_operated_qubits == UnsignedInteger{0u});
+
+        // xx0xx0xx0xx
+        auto result = index_wo_qubits bitand ((StateInteger{1u} << sorted_qubits_with_sentinel.front()) - StateInteger{1u});
+        for (auto index = BitInteger{1u}; index <= num_operated_qubits; ++index)
+          result |= (index_wo_qubits bitand (((StateInteger{1u} << (sorted_qubits_with_sentinel[index] - index)) - StateInteger{1u}) - ((StateInteger{1u} << (sorted_qubits_with_sentinel[index - BitInteger{1u}] - (index - BitInteger{1u}))) - StateInteger{1u}))) << index;
+
+        for (auto index = BitInteger{0u}; index < num_operated_qubits; ++index)
+          if (((StateInteger{1u} << index) bitand static_cast<StateInteger>(qubits_value)) != StateInteger{0u})
+            result |= StateInteger{1u} << unsorted_qubits[index];
+
+        return result;
+      }
+# else // KET_USE_BIT_MASKS_EXPLICITLY
       template <typename StateInteger, typename UnsignedInteger, typename RandomAccessIterator1, typename RandomAccessIterator2>
       inline constexpr auto index_with_qubits(
         StateInteger const index_wo_qubits, UnsignedInteger const qubits_value,
@@ -59,6 +116,7 @@ namespace ket
 
         return result;
       }
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
     } // namespace utility
   } // namespace gate
 } // namespace ket
