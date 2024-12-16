@@ -1,9 +1,16 @@
 #ifndef BRA_NO_MPI
 # include <vector>
 
+# include <boost/preprocessor/arithmetic/dec.hpp>
+# include <boost/preprocessor/arithmetic/inc.hpp>
+# include <boost/preprocessor/punctuation/comma_if.hpp>
+# include <boost/preprocessor/repetition/repeat.hpp>
+# include <boost/preprocessor/repetition/repeat_from_to.hpp>
+
 # include <yampi/communicator.hpp>
 # include <yampi/environment.hpp>
 
+# include <ket/mpi/gate/gate.hpp>
 # include <ket/mpi/gate/identity.hpp>
 # include <ket/mpi/gate/hadamard.hpp>
 # include <ket/mpi/gate/not_.hpp>
@@ -1030,7 +1037,7 @@ namespace bra
   void simple_mpi_state::do_expectation_values(yampi::rank const root)
   {
     maybe_expectation_values_
-      = ket::mpi::all_spin_expectation_values<spins_allocator_type>(
+      = ket::mpi::all_spin_expectation_values<typename spins_type::allocator_type>(
           mpi_policy_, parallel_policy_,
           data_, permutation_, total_num_qubits_, buffer_, root, communicator_, environment_);
   }
@@ -1066,6 +1073,61 @@ namespace bra
       mpi_policy_, parallel_policy_,
       data_, base, divisor, exponent_qubits, modular_exponentiation_qubits,
       permutation_, communicator_, environment_);
+  }
+
+  void simple_mpi_state::do_begin_fusion() { }
+
+# ifndef BRA_MAX_NUM_FUSED_QUBITS
+#   ifdef KET_DEFAULT_NUM_ON_CACHE_QUBITS
+#     define BRA_MAX_NUM_FUSED_QUBITS BOOST_PP_DEC(KET_DEFAULT_NUM_ON_CACHE_QUBITS)
+#   else // KET_DEFAULT_NUM_ON_CACHE_QUBITS
+#     define BRA_MAX_NUM_FUSED_QUBITS 10
+#   endif // KET_DEFAULT_NUM_ON_CACHE_QUBITS
+# endif // BRA_MAX_NUM_FUSED_QUBITS
+  void simple_mpi_state::do_end_fusion()
+  {
+    switch (fused_qubits_.size())
+    {
+# define QUBITS(z, n, qubits) BOOST_PP_COMMA_IF(n) qubits[n]
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+#   define CASE_N(z, num_fused_qubits, _) \
+     case num_fused_qubits:\
+      ket::mpi::gate::gate(\
+        mpi_policy_, parallel_policy_,\
+        data_, permutation_, buffer_, communicator_, environment_,\
+        [this](\
+          auto const first, ::bra::state_integer_type const index_wo_qubits,\
+          std::array< ::bra::qubit_type, num_fused_qubits > const& unsorted_fused_qubits,\
+          std::array< ::bra::qubit_type, num_fused_qubits + 1u > const& sorted_fused_qubits_with_sentinel,\
+          int const)\
+        {\
+          for (auto const& gate_ptr: this->fused_gates_)\
+            gate_ptr->call(std::addressof(*first), index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);\
+        }, BOOST_PP_REPEAT_ ## z(num_fused_qubits, QUBITS, fused_qubits_));\
+      break;\
+
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+#   define CASE_N(z, num_fused_qubits, _) \
+     case num_fused_qubits:\
+      ket::mpi::gate::gate(\
+        mpi_policy_, parallel_policy_,\
+        data_, permutation_, buffer_, communicator_, environment_,\
+        [this](\
+          auto const first, ::bra::state_integer_type const index_wo_qubits,\
+          std::array< ::bra::state_integer_type, num_fused_qubits > const& qubit_masks,\
+          std::array< ::bra::state_integer_type, num_fused_qubits + 1u > const& index_masks,\
+          int const)\
+        {\
+          for (auto const& gate_ptr: this->fused_gates_)\
+            gate_ptr->call(std::addressof(*first), index_wo_qubits, qubit_masks, index_masks);\
+        }, BOOST_PP_REPEAT_ ## z(num_fused_qubits, QUBITS, fused_qubits_));\
+      break;\
+
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_FUSED_QUBITS), CASE_N, nil)
+# undef CASE_N
+# undef QUBITS
+    }
   }
 
   void simple_mpi_state::do_clear(qubit_type const qubit)

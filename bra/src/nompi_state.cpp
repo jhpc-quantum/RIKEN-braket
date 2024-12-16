@@ -1,6 +1,13 @@
 #ifdef BRA_NO_MPI
 # include <vector>
 
+# include <boost/preprocessor/arithmetic/dec.hpp>
+# include <boost/preprocessor/arithmetic/inc.hpp>
+# include <boost/preprocessor/punctuation/comma_if.hpp>
+# include <boost/preprocessor/repetition/repeat.hpp>
+# include <boost/preprocessor/repetition/repeat_from_to.hpp>
+
+# include <ket/gate/gate.hpp>
 # include <ket/gate/hadamard.hpp>
 # include <ket/gate/not_.hpp>
 # include <ket/gate/pauli_x.hpp>
@@ -31,6 +38,7 @@
 
 namespace bra
 {
+# ifndef KET_USE_ON_CACHE_STATE_VECTOR
   nompi_state::nompi_state(
     ::bra::state::state_integer_type const initial_integer,
     unsigned int const total_num_qubits,
@@ -39,6 +47,20 @@ namespace bra
       parallel_policy_{num_threads},
       data_{make_initial_data(initial_integer, total_num_qubits)}
   { }
+# else // KET_USE_ON_CACHE_STATE_VECTOR
+#   ifndef KET_DEFAULT_NUM_ON_CACHE_QUBITS
+#     define KET_DEFAULT_NUM_ON_CACHE_QUBITS 16
+#   endif // KET_DEFAULT_NUM_ON_CACHE_QUBITS
+  nompi_state::nompi_state(
+    ::bra::state::state_integer_type const initial_integer,
+    unsigned int const total_num_qubits,
+    unsigned int num_threads, ::bra::state::seed_type const seed)
+    : ::bra::state{total_num_qubits, seed},
+      parallel_policy_{num_threads},
+      data_{make_initial_data(initial_integer, total_num_qubits)},
+      on_cache_data_{::ket::utility::integer_exp2< ::bra::state_integer_type >(KET_DEFAULT_NUM_ON_CACHE_QUBITS)}
+  { }
+# endif // KET_USE_ON_CACHE_STATE_VECTOR
 
   void nompi_state::do_i_gate(qubit_type const)
   { }
@@ -613,6 +635,95 @@ namespace bra
     ket::ranges::shor_box(
       parallel_policy_,
       data_, base, divisor, exponent_qubits, modular_exponentiation_qubits);
+  }
+
+  void nompi_state::do_begin_fusion() { }
+
+# ifndef BRA_MAX_NUM_FUSED_QUBITS
+#   ifdef KET_DEFAULT_NUM_ON_CACHE_QUBITS
+#     define BRA_MAX_NUM_FUSED_QUBITS BOOST_PP_DEC(KET_DEFAULT_NUM_ON_CACHE_QUBITS)
+#   else // KET_DEFAULT_NUM_ON_CACHE_QUBITS
+#     define BRA_MAX_NUM_FUSED_QUBITS 10
+#   endif // KET_DEFAULT_NUM_ON_CACHE_QUBITS
+# endif // BRA_MAX_NUM_FUSED_QUBITS
+  void nompi_state::do_end_fusion()
+  {
+    switch (fused_qubits_.size())
+    {
+# define QUBITS(z, n, qubits) BOOST_PP_COMMA_IF(n) qubits[n]
+# ifndef KET_USE_ON_CACHE_STATE_VECTOR
+#   ifndef KET_USE_BIT_MASKS_EXPLICITLY
+#     define CASE_N(z, num_fused_qubits, _) \
+     case num_fused_qubits:\
+      ket::gate::ranges::gate(\
+        parallel_policy_, data_,\
+        [this](\
+          auto const first, ::bra::state_integer_type const index_wo_qubits,\
+          std::array< ::bra::qubit_type, num_fused_qubits > const& unsorted_fused_qubits,\
+          std::array< ::bra::qubit_type, num_fused_qubits + 1u > const& sorted_fused_qubits_with_sentinel,\
+          int const)\
+        {\
+          for (auto const& gate_ptr: this->fused_gates_)\
+            gate_ptr->call(std::addressof(*first), index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);\
+        }, BOOST_PP_REPEAT_ ## z(num_fused_qubits, QUBITS, fused_qubits_));\
+      break;\
+
+#   else // KET_USE_BIT_MASKS_EXPLICITLY
+#     define CASE_N(z, num_fused_qubits, _) \
+     case num_fused_qubits:\
+      ket::gate::ranges::gate(\
+        parallel_policy_, data_,\
+        [this](\
+          auto const first, ::bra::state_integer_type const index_wo_qubits,\
+          std::array< ::bra::state_integer_type, num_fused_qubits > const& qubit_masks,\
+          std::array< ::bra::state_integer_type, num_fused_qubits + 1u > const& index_masks,\
+          int const)\
+        {\
+          for (auto const& gate_ptr: this->fused_gates_)\
+            gate_ptr->call(std::addressof(*first), index_wo_qubits, qubit_masks, index_masks);\
+        }, BOOST_PP_REPEAT_ ## z(num_fused_qubits, QUBITS, fused_qubits_));\
+      break;\
+
+#   endif // KET_USE_BIT_MASKS_EXPLICITLY
+# else // KET_USE_ON_CACHE_STATE_VECTOR
+#   ifndef KET_USE_BIT_MASKS_EXPLICITLY
+#     define CASE_N(z, num_fused_qubits, _) \
+     case num_fused_qubits:\
+      ket::gate::cache::ranges::gate(\
+        parallel_policy_, data_, on_cache_data_,\
+        [this](\
+          auto const first, ::bra::state_integer_type const index_wo_qubits,\
+          std::array< ::bra::qubit_type, num_fused_qubits > const& unsorted_fused_qubits,\
+          std::array< ::bra::qubit_type, num_fused_qubits + 1u > const& sorted_fused_qubits_with_sentinel,\
+          int const)\
+        {\
+          for (auto const& gate_ptr: this->fused_gates_)\
+            gate_ptr->call(std::addressof(*first), index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);\
+        }, BOOST_PP_REPEAT_ ## z(num_fused_qubits, QUBITS, fused_qubits_));\
+      break;\
+
+#   else // KET_USE_BIT_MASKS_EXPLICITLY
+#     define CASE_N(z, num_fused_qubits, _) \
+     case num_fused_qubits:\
+      ket::gate::cache::ranges::gate(\
+        parallel_policy_, data_, on_cache_data_,\
+        [this](\
+          auto const first, ::bra::state_integer_type const index_wo_qubits,\
+          std::array< ::bra::state_integer_type, num_fused_qubits > const& qubit_masks,\
+          std::array< ::bra::state_integer_type, num_fused_qubits + 1u > const& index_masks,\
+          int const)\
+        {\
+          for (auto const& gate_ptr: this->fused_gates_)\
+            gate_ptr->call(std::addressof(*first), index_wo_qubits, qubit_masks, index_masks);\
+        }, BOOST_PP_REPEAT_ ## z(num_fused_qubits, QUBITS, fused_qubits_));\
+      break;\
+
+#   endif // KET_USE_BIT_MASKS_EXPLICITLY
+# endif // KET_USE_ON_CACHE_STATE_VECTOR
+BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_FUSED_QUBITS), CASE_N, nil)
+# undef CASE_N
+# undef QUBITS
+    }
   }
 
   void nompi_state::do_clear(qubit_type const qubit)

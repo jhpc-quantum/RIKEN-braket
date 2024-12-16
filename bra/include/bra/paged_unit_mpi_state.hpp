@@ -9,7 +9,6 @@
 #   include <ket/mpi/utility/unit_mpi.hpp>
 #   include <ket/mpi/state.hpp>
 
-#   include <yampi/allocator.hpp>
 #   include <yampi/rank.hpp>
 #   include <yampi/communicator.hpp>
 #   include <yampi/environment.hpp>
@@ -27,7 +26,7 @@ namespace bra
       = ket::mpi::utility::policy::unit_mpi< ::bra::state::state_integer_type, ::bra::state::bit_integer_type, unsigned int >;
     unit_mpi_policy_type mpi_policy_;
 
-    using data_type = ket::mpi::state<complex_type, true, yampi::allocator<complex_type>>;
+    using data_type = ket::mpi::state<complex_type, true>;
     data_type data_;
 
    public:
@@ -176,6 +175,8 @@ namespace bra
       state_integer_type const divisor, state_integer_type const base,
       std::vector<qubit_type> const& exponent_qubits,
       std::vector<qubit_type> const& modular_exponentiation_qubits) override;
+    void do_begin_fusion() override;
+    void do_end_fusion() override;
     void do_clear(qubit_type const qubit) override;
     void do_set(qubit_type const qubit) override;
     void do_controlled_i_gate(
