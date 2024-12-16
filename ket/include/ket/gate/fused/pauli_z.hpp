@@ -145,18 +145,13 @@ namespace ket
             = ((index_wo_qubits bitand upper_bits_mask) << 2u)
               bitor ((index_wo_qubits bitand middle_bits_mask) << 1u)
               bitor (index_wo_qubits bitand lower_bits_mask);
-          // xxx0_txxx1_cxxx
-          auto const control_on_index = base_index bitor control_qubit_mask;
           // xxx1_txxx1_cxxx
-          auto const target_control_on_index = control_on_index bitor target_qubit_mask;
-          auto const control_on_iter = first + ::ket::gate::utility::index_with_qubits(fused_index_wo_qubits, control_on_index, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);
+          auto const target_control_on_index = base_index bitor control_qubit_mask bitor target_qubit_mask;
           auto const target_control_on_iter = first + ::ket::gate::utility::index_with_qubits(fused_index_wo_qubits, target_control_on_index, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);
 
-          std::iter_swap(control_on_iter, target_control_on_iter);
-
           using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
-          *control_on_iter *= ::ket::utility::minus_imaginary_unit<complex_type>();
-          *target_control_on_iter *= ::ket::utility::imaginary_unit<complex_type>();
+          using real_type = ::ket::utility::meta::real_t<complex_type>;
+          *target_control_on_iter *= real_type{-1.0};
         }
       }
 
@@ -340,18 +335,13 @@ namespace ket
             = ((index_wo_qubits bitand upper_bits_mask) << 2u)
               bitor ((index_wo_qubits bitand middle_bits_mask) << 1u)
               bitor (index_wo_qubits bitand lower_bits_mask);
-          // xxx0_txxx1_cxxx
-          auto const control_on_index = base_index bitor control_qubit_mask;
           // xxx1_txxx1_cxxx
-          auto const target_control_on_index = control_on_index bitor target_qubit_mask;
-          auto const control_on_iter = first + ::ket::gate::utility::index_with_qubits(fused_index_wo_qubits, control_on_index, fused_qubit_masks, fused_index_masks);
+          auto const target_control_on_index = base_index bitor control_qubit_mask bitor target_qubit_mask;
           auto const target_control_on_iter = first + ::ket::gate::utility::index_with_qubits(fused_index_wo_qubits, target_control_on_index, fused_qubit_masks, fused_index_masks);
 
-          std::iter_swap(control_on_iter, target_control_on_iter);
-
           using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
-          *control_on_iter *= ::ket::utility::minus_imaginary_unit<complex_type>();
-          *target_control_on_iter *= ::ket::utility::imaginary_unit<complex_type>();
+          using real_type = ::ket::utility::meta::real_t<complex_type>;
+          *target_control_on_iter *= real_type{-1.0};
         }
       }
 

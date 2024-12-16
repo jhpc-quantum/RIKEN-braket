@@ -45,7 +45,8 @@ namespace ket
         assert(qubit < sentinel_qubit);
 
         using qubit_type = ::ket::qubit<state_integer_type, bit_integer_type>;
-        constexpr auto num_operated_qubits = bit_integer_type{2u};
+        constexpr auto num_operated_qubits = bit_integer_type{1u};
+        static_assert(num_fused_qubits >= num_operated_qubits, "num_fused_qubits should be greater than or equal to the number of operated qubits");
         std::array<qubit_type, num_operated_qubits + bit_integer_type{1u}> sorted_operated_qubits_with_sentinel{::ket::remove_control(qubit), sentinel_qubit};
 
         std::array<qubit_type, num_operated_qubits> unsorted_operated_qubits{::ket::remove_control(std::forward<Qubit>(qubit))};
@@ -78,6 +79,7 @@ namespace ket
 
         using qubit_type = ::ket::qubit<state_integer_type, bit_integer_type>;
         constexpr auto num_operated_qubits = bit_integer_type{2u};
+        static_assert(num_fused_qubits >= num_operated_qubits, "num_fused_qubits should be greater than or equal to the number of operated qubits");
         auto const minmax_qubits = std::minmax(qubit1, qubit2);
         std::array<qubit_type, num_operated_qubits + bit_integer_type{1u}> sorted_operated_qubits_with_sentinel{
           ::ket::remove_control(minmax_qubits.first), ::ket::remove_control(minmax_qubits.last), sentinel_qubit};
@@ -136,6 +138,7 @@ namespace ket
 
         using qubit_type = ::ket::qubit<state_integer_type, bit_integer_type>;
         constexpr auto num_operated_qubits = static_cast<bit_integer_type>(sizeof...(Qubits) + 3u);
+        static_assert(num_fused_qubits >= num_operated_qubits, "num_fused_qubits should be greater than or equal to the number of operated qubits");
         std::array<qubit_type, num_operated_qubits + bit_integer_type{1u}> sorted_operated_qubits_with_sentinel{
           ::ket::remove_control(qubit1), ::ket::remove_control(qubit2),
           ::ket::remove_control(qubit3), ::ket::remove_control(qubits)...,
@@ -194,6 +197,7 @@ namespace ket
         assert(::ket::utility::all_in_state_vector(static_cast<bit_integer_type>(num_fused_qubits), qubit, qubits...));
 
         constexpr auto num_operated_qubits = static_cast<bit_integer_type>(sizeof...(Qubits) + 1u);
+        static_assert(num_fused_qubits >= num_operated_qubits, "num_fused_qubits should be greater than or equal to the number of operated qubits");
 
         std::array<state_integer_type, num_operated_qubits> operated_qubit_masks{};
         ::ket::gate::gate_detail::make_qubit_masks(operated_qubit_masks, qubit, qubits...);

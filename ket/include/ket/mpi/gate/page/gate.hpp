@@ -111,10 +111,12 @@ namespace ket
             assert(::ket::mpi::page::any_on_page(local_state, permutated_qubit, permutated_qubits...));
 
             assert(local_state.num_local_qubits() > local_state.num_page_qubits());
-            auto const num_nonpage_qubits = static_cast<bit_integer_type>(local_state.num_local_qubits() - local_state.num_page_qubits());
             auto const on_cache_state_size = static_cast<StateInteger>(on_cache_state_last - on_cache_state_first);
             auto const num_on_cache_qubits = ::ket::utility::integer_log2<bit_integer_type>(on_cache_state_size);
             assert(::ket::utility::integer_exp2<StateInteger>(num_on_cache_qubits) == on_cache_state_size);
+#   ifndef NDEBUG
+            auto const num_nonpage_qubits = static_cast<bit_integer_type>(local_state.num_local_qubits() - local_state.num_page_qubits());
+#   endif // NDEBUG
             assert(num_nonpage_qubits >= num_on_cache_qubits);
             assert(static_cast<bit_integer_type>(local_state.num_local_qubits()) > num_on_cache_qubits); // because num_page_qubits >= 1
             auto const num_off_cache_qubits = static_cast<bit_integer_type>(local_state.num_local_qubits()) - num_on_cache_qubits;
@@ -366,10 +368,12 @@ namespace ket
           assert(::ket::mpi::page::any_on_page(local_state, permutated_qubit, permutated_qubits...));
 
           assert(local_state.num_local_qubits() > local_state.num_page_qubits());
-          auto const num_nonpage_qubits = static_cast<bit_integer_type>(local_state.num_local_qubits() - local_state.num_page_qubits());
           auto const on_cache_state_size = static_cast<StateInteger>(on_cache_state_last - on_cache_state_first);
           auto const num_on_cache_qubits = ::ket::utility::integer_log2<bit_integer_type>(on_cache_state_size);
           assert(::ket::utility::integer_exp2<StateInteger>(num_on_cache_qubits) == on_cache_state_size);
+#   ifndef NDEBUG
+          auto const num_nonpage_qubits = static_cast<bit_integer_type>(local_state.num_local_qubits() - local_state.num_page_qubits());
+#   endif // NDEBUG
           assert(num_nonpage_qubits >= num_on_cache_qubits);
           assert(static_cast<bit_integer_type>(local_state.num_local_qubits()) > num_on_cache_qubits); // because num_page_qubits >= 1
           auto const num_off_cache_qubits = static_cast<bit_integer_type>(local_state.num_local_qubits()) - num_on_cache_qubits;

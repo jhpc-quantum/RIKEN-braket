@@ -846,13 +846,13 @@ namespace ket
       static_assert(std::is_unsigned<state_integer_type>::value, "state_integer_type of Qubit should be unsigned");
       static_assert(std::is_unsigned<bit_integer_type>::value, "bit_integer_type of Qubit should be unsigned");
 
-      constexpr auto num_operated_qubits = sizeof...(Qubits) + 1u;
-
 # ifndef KET_USE_ON_CACHE_STATE_VECTOR
       ::ket::gate::nocache::gate(
         parallel_policy, first, last, std::forward<Function>(function), std::forward<Qubit>(qubit), std::forward<Qubits>(qubits)...);
       return;
 # else // KET_USE_ON_CACHE_STATE_VECTOR
+      constexpr auto num_operated_qubits = sizeof...(Qubits) + 1u;
+
       auto const state_size = static_cast<state_integer_type>(last - first);
       auto const num_qubits = ::ket::utility::integer_log2<bit_integer_type>(state_size);
       assert(::ket::utility::integer_exp2<state_integer_type>(num_qubits) == state_size);
