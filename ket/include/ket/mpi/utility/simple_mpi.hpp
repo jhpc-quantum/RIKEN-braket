@@ -310,6 +310,7 @@ namespace ket
             auto const local_state_size = static_cast<StateInteger>(std::distance(begin(local_state), end(local_state)));
 # endif // NDEBUG
             assert(::ket::utility::integer_exp2<StateInteger>(::ket::utility::integer_log2<BitInteger>(local_state_size)) == local_state_size);
+            assert(num_qubits_of_operation <= ::ket::mpi::utility::policy::num_local_qubits(mpi_policy, local_state, communicator, environment));
 
             using permutated_qubit_type = ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >;
             auto const least_global_permutated_qubit
@@ -396,6 +397,7 @@ namespace ket
             auto const local_state_size = static_cast<StateInteger>(std::distance(begin(local_state), end(local_state)));
 # endif // NDEBUG
             assert(::ket::utility::integer_exp2<StateInteger>(::ket::utility::integer_log2<BitInteger>(local_state_size)) == local_state_size);
+            assert(num_qubits_of_operation <= ::ket::mpi::utility::policy::num_local_qubits(mpi_policy, local_state, communicator, environment));
 
             using permutated_qubit_type = ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >;
             auto const least_global_permutated_qubit

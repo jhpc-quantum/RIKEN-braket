@@ -530,6 +530,7 @@ namespace ket
             static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
 
             assert(communicator.size(environment) > 1);
+            assert(num_qubits_of_operation <= ::ket::mpi::utility::policy::num_local_qubits(mpi_policy, local_state, communicator, environment));
 
             using permutated_qubit_type = ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >;
             auto const least_unit_permutated_qubit
@@ -625,6 +626,7 @@ namespace ket
             static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
 
             assert(communicator.size(environment) > 1);
+            assert(num_qubits_of_operation <= ::ket::mpi::utility::policy::num_local_qubits(mpi_policy, local_state, communicator, environment));
 
             using permutated_qubit_type = ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >;
             auto const least_unit_permutated_qubit
