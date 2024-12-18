@@ -129,8 +129,8 @@
 
 namespace bra
 {
-  too_many_qubits_error::too_many_qubits_error(std::size_t const num_qubits)
-    : std::runtime_error{std::string{"the number of qubits "}.append(std::to_string(num_qubits)).append(" is larger than 6").c_str()}
+  too_many_operated_qubits_error::too_many_operated_qubits_error(std::size_t const num_operated_qubits, std::size_t const max_num_operated_qubits)
+    : std::runtime_error{std::string{"the number of operated qubits ("}.append(std::to_string(num_operated_qubits)).append(") is larger than its maximum value (").append(std::to_string(max_num_operated_qubits)).append(")").c_str()}
   { }
 
   unsupported_fused_gate_error::unsupported_fused_gate_error(std::string const& mnemonic)

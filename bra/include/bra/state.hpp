@@ -51,12 +51,12 @@ namespace bra
 {
   enum class finished_process : int { operations, begin_measurement, generate_events, ket_measure };
 
-  class too_many_qubits_error
+  class too_many_operated_qubits_error
     : public std::runtime_error
   {
    public:
-    too_many_qubits_error(std::size_t const num_qubits);
-  }; // class too_many_qubits_error
+    too_many_operated_qubits_error(std::size_t const num_operated_qubits, std::size_t const max_num_operated_qubits);
+  }; // class too_many_operated_qubits_error
 
   class unsupported_fused_gate_error
     : public std::runtime_error
