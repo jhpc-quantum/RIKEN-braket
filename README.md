@@ -8,7 +8,7 @@ Documents of [*bra*](docs/bra.md) and [*ket*](docs/ket.md) are on `docs/` direct
 
 ## Getting Started
 
-**RIKEN-braket** requires a C++11 compliant compiler and [Boost C++ library](https://www.boost.org/).
+**RIKEN-braket** requires a C++14 compliant compiler and [Boost C++ library](https://www.boost.org/).
 Any [MPI](https://www.mpi-forum.org/) libaries are also required if you would like to use **RIKEN-braket** in massively parallel supercomputers.
 
 You can retrieve the current status of **RIKEN-braket** by cloning the repository:
@@ -88,8 +88,9 @@ int main(int argc, char* argv[])
   auto buffer = std::vector<complex_type>{};
 
   using qubit_type = ket::qubit<state_integer_type, bit_integer_type>;
-  auto const last_qubit = qubit_type{num_qubits};
-  for (auto qubit = qubit_type{bit_integer_type{0}}; qubit < last_qubit; ++qubit)
+  auto const last_qubit = ket::make_qubit<state_integer_type>(num_qubits);
+  using namespace ket::literals::qubit_literals;
+  for (auto qubit = 0_q; qubit < last_qubit; ++qubit)
     ket::mpi::gate::hadamard(local_state, qubit, permutation, buffer, communicator, environment);
 }
 ```

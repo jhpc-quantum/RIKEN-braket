@@ -6,7 +6,7 @@
 
 ## Requirements
 
-*ket* requires a C++11 compliant compiler and the [Boost C++ library](https://www.boost.org/).
+*ket* requires a C++14 compliant compiler and the [Boost C++ library](https://www.boost.org/).
 Any [MPI](https://www.mpi-forum.org/) libaries are also required if you would like to use *ket* in massively parallel supercomputers.
 
 ## Directory structure
@@ -25,8 +25,8 @@ ket
 
 * `ket/include/ket/`: `ket::qubit<S,B>` and `ket::control<Q>` classes to represent indices of target and control qubits
 * `ket/include/ket/gate/`: non-MPI versions of quantum gate functions
-* `ket/include/ket/utility`: some utility functions/classes, especially policy class `ket::utility::policy::sequential` to perform non-parallelized gate operation (similar to C++17's `std::sequenced_policy`)
-* `ket/include/ket/utility/parallel`: policy class `ket::utility::policy::parallel<N>` to perform multi-threading gate operation (similar to C++17's `std::parallel_policy<N>`)
+* `ket/include/ket/utility`: some utility functions/classes, especially policy class `ket::utility::policy::sequential` to perform non-parallelized gate operation (similar to C++17's `std::execution::sequenced_policy`)
+* `ket/include/ket/utility/parallel`: policy class `ket::utility::policy::parallel<N>` to perform multi-threading gate operation (similar to C++17's `std::execution::parallel_policy`)
 * `ket/include/ket/mpi/`: MPI-related directory, which includes "page"-aware state-vector class `ket::mpi::state<C>`, permutation matrix class `ket::mpi::qubit_permutation<S,B>`, and `ket::mpi::permutated<Q>` class to represent indices of qubits after permutation
 * `ket/include/ket/mpi/gate`: MPI versions of quantum gate functions
 * `ket/include/ket/mpi/utility/`: some utility function/classes for MPI-related operations, especially policy classes `ket::mpi::utility::policy::simple_mpi` and `ket::mpi::utility::policy::unit_mpi<S,B,N>`
