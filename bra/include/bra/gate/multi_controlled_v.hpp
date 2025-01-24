@@ -34,6 +34,12 @@ namespace bra
         int const phase_exponent,
         complex_type const& phase_coefficient,
         qubit_type const target_qubit,
+        std::vector<control_qubit_type> const& control_qubits);
+
+      multi_controlled_v(
+        int const phase_exponent,
+        complex_type const& phase_coefficient,
+        qubit_type const target_qubit,
         std::vector<control_qubit_type>&& control_qubits);
 
       ~multi_controlled_v() = default;

@@ -16,6 +16,10 @@ namespace bra
 {
   namespace gate
   {
+    adj_pauli_yn::adj_pauli_yn(std::vector<qubit_type> const& qubits)
+      : ::bra::gate::gate{}, qubits_{qubits}, name_{std::string(qubits_.size(), 'Y').append("+")}
+    { }
+
     adj_pauli_yn::adj_pauli_yn(std::vector<qubit_type>&& qubits)
       : ::bra::gate::gate{}, qubits_{std::move(qubits)}, name_{std::string(qubits_.size(), 'Y').append("+")}
     { }

@@ -31,6 +31,10 @@ namespace bra
      public:
       adj_multi_controlled_u1(
         real_type const& phase, qubit_type const target_qubit,
+        std::vector<control_qubit_type> const& control_qubits);
+
+      adj_multi_controlled_u1(
+        real_type const& phase, qubit_type const target_qubit,
         std::vector<control_qubit_type>&& control_qubits);
 
       ~adj_multi_controlled_u1() = default;

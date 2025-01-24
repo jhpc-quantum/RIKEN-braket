@@ -32,6 +32,11 @@ namespace bra
       multi_controlled_s_gate(
         complex_type const& phase_coefficient,
         qubit_type const target_qubit,
+        std::vector<control_qubit_type> const& control_qubits);
+
+      multi_controlled_s_gate(
+        complex_type const& phase_coefficient,
+        qubit_type const target_qubit,
         std::vector<control_qubit_type>&& control_qubits);
 
       ~multi_controlled_s_gate() = default;

@@ -19,6 +19,13 @@ namespace bra
   {
     adj_multi_controlled_y_rotation_half_pi::adj_multi_controlled_y_rotation_half_pi(
       qubit_type const target_qubit,
+      std::vector<control_qubit_type> const& control_qubits)
+      : ::bra::gate::gate{}, target_qubit_{target_qubit}, control_qubits_{control_qubits},
+        name_{std::string(control_qubits_.size(), 'C').append("-Y")}
+    { }
+
+    adj_multi_controlled_y_rotation_half_pi::adj_multi_controlled_y_rotation_half_pi(
+      qubit_type const target_qubit,
       std::vector<control_qubit_type>&& control_qubits)
       : ::bra::gate::gate{}, target_qubit_{target_qubit}, control_qubits_{std::move(control_qubits)},
         name_{std::string(control_qubits_.size(), 'C').append("-Y")}

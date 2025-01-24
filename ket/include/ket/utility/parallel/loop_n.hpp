@@ -4,6 +4,7 @@
 # include <cassert>
 # include <vector>
 # include <iterator>
+# include <algorithm>
 # include <numeric>
 # include <utility>
 # include <mutex> // lock_guard and unique_lock; mutex unless using OpenMP
@@ -467,6 +468,443 @@ namespace ket
         }
       }; // struct single_execute< ::ket::utility::policy::parallel<NumThreads> >
 # endif // defined(_OPENMP) && defined(KET_USE_OPENMP)
+    } // namespace dispatch
+
+
+    // copy
+    namespace dispatch
+    {
+      template <typename NumThreads>
+      struct copy< ::ket::utility::policy::parallel<NumThreads> >
+      {
+        template <typename ForwardIterator1, typename ForwardIterator2>
+        static auto call(
+          ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
+          ForwardIterator1 const first, ForwardIterator1 const last, ForwardIterator2 const d_first,
+          std::forward_iterator_tag const, std::forward_iterator_tag const)
+        -> ForwardIterator2
+        {
+          auto is_calleds
+            = std::vector<int>(
+                static_cast<int>(::ket::utility::num_threads(parallel_policy)),
+                static_cast<int>(false));
+          auto iters = std::vector<ForwardIterator1>(::ket::utility::num_threads(parallel_policy), first);
+          auto d_iters = std::vector<ForwardIterator2>(::ket::utility::num_threads(parallel_policy), d_first);
+          using difference_type = typename std::iterator_traits<ForwardIterator1>::difference_type;
+          ::ket::utility::loop_n(
+            parallel_policy, std::distance(first, last),
+            [&is_calleds, &iters, &d_iters](difference_type const n, int const thread_index)
+            {
+              if (not static_cast<bool>(is_calleds[thread_index]))
+              {
+                std::advance(iters[thread_index], n);
+                std::advance(d_iters[thread_index], n);
+                is_calleds[thread_index] = static_cast<int>(true);
+              }
+              *d_iters[thread_index]++ = *iters[thread_index]++;
+            });
+
+          return d_iters.back();
+        }
+
+        template <typename RandomAccessIterator, typename ForwardIterator>
+        static auto call(
+          ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
+          RandomAccessIterator const first, RandomAccessIterator const last, ForwardIterator const d_first,
+          std::random_access_iterator_tag const, std::forward_iterator_tag const)
+        -> ForwardIterator
+        {
+          auto is_calleds
+            = std::vector<int>(
+                static_cast<int>(::ket::utility::num_threads(parallel_policy)),
+                static_cast<int>(false));
+          auto d_iters = std::vector<ForwardIterator>(::ket::utility::num_threads(parallel_policy), d_first);
+          using difference_type = typename std::iterator_traits<RandomAccessIterator>::difference_type;
+          ::ket::utility::loop_n(
+            parallel_policy, last - first,
+            [first, &is_calleds, &d_iters](difference_type const n, int const thread_index)
+            {
+              if (not static_cast<bool>(is_calleds[thread_index]))
+              {
+                std::advance(d_iters[thread_index], n);
+                is_calleds[thread_index] = static_cast<int>(true);
+              }
+              *d_iters[thread_index]++ = first[n];
+            });
+
+          return d_iters.back();
+        }
+
+        template <typename ForwardIterator, typename RandomAccessIterator>
+        static auto call(
+          ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
+          ForwardIterator const first, ForwardIterator const last, RandomAccessIterator const d_first,
+          std::forward_iterator_tag const, std::random_access_iterator_tag const)
+        -> RandomAccessIterator
+        {
+          auto is_calleds
+            = std::vector<int>(
+                static_cast<int>(::ket::utility::num_threads(parallel_policy)),
+                static_cast<int>(false));
+          auto iters = std::vector<ForwardIterator>(::ket::utility::num_threads(parallel_policy), first);
+          using difference_type = typename std::iterator_traits<ForwardIterator>::difference_type;
+          auto const range_size = std::distance(first, last);
+          ::ket::utility::loop_n(
+            parallel_policy, range_size,
+            [d_first, &is_calleds, &iters](difference_type const n, int const thread_index)
+            {
+              if (not static_cast<bool>(is_calleds[thread_index]))
+              {
+                std::advance(iters[thread_index], n);
+                is_calleds[thread_index] = static_cast<int>(true);
+              }
+              d_first[n] = *iters[thread_index]++;
+            });
+
+          return d_first + range_size;
+        }
+
+        template <typename RandomAccessIterator1, typename RandomAccessIterator2>
+        static auto call(
+          ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
+          RandomAccessIterator1 const first, RandomAccessIterator1 const last, RandomAccessIterator2 const d_first,
+          std::random_access_iterator_tag const, std::random_access_iterator_tag const)
+        -> RandomAccessIterator2
+        {
+          auto const range_size = last - first;
+          using difference_type = typename std::iterator_traits<RandomAccessIterator1>::difference_type;
+          ::ket::utility::loop_n(
+            parallel_policy, range_size,
+            [first, d_first](difference_type const n, int) { d_first[n] = first[n]; });
+
+          return d_first + range_size;
+        }
+      }; // struct copy< ::ket::utility::policy::parallel<NumThreads> >
+    } // namespace dispatch
+
+
+    // copy_if
+    namespace dispatch
+    {
+      template <typename NumThreads>
+      struct copy_if< ::ket::utility::policy::parallel<NumThreads> >
+      {
+        template <typename ForwardIterator1, typename ForwardIterator2, typename UnaryPredicate>
+        static auto call(
+          ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
+          ForwardIterator1 const first, ForwardIterator1 const last, ForwardIterator2 const d_first,
+          UnaryPredicate const unary_predicate,
+          std::forward_iterator_tag const, std::forward_iterator_tag const)
+        -> ForwardIterator2
+        {
+          auto const num_threads = ::ket::utility::num_threads(parallel_policy);
+          using difference_type = typename std::iterator_traits<ForwardIterator1>::difference_type;
+          auto d_steps = std::vector<difference_type>(num_threads, difference_type{0});
+
+          auto is_calleds
+            = std::vector<int>(
+                static_cast<int>(::ket::utility::num_threads(parallel_policy)),
+                static_cast<int>(false));
+          auto iters = std::vector<ForwardIterator1>(::ket::utility::num_threads(parallel_policy), first);
+
+          auto const range_size = std::distance(first, last);
+          ::ket::utility::loop_n(
+            parallel_policy, range_size,
+            [unary_predicate, &d_steps, &is_calleds, &iters](difference_type const n, int const thread_index)
+            {
+              if (not static_cast<bool>(is_calleds[thread_index]))
+              {
+                std::advance(iters[thread_index], n);
+                is_calleds[thread_index] = static_cast<int>(true);
+              }
+
+              if (unary_predicate(*iters[thread_index]))
+                ++d_steps[thread_index];
+            });
+
+          auto d_iters = std::vector<ForwardIterator2>{num_threads, d_first};
+          using std::begin;
+          using std::end;
+          std::transform(
+            begin(d_iters), std::prev(end(d_iters)), begin(d_steps), std::next(begin(d_iters)),
+            [](ForwardIterator2 d_iter, difference_type const d_step)
+            { std::advance(d_iter, d_step); return d_iter; });
+
+          std::fill(begin(is_calleds), end(is_calleds), static_cast<int>(false));
+          std::fill(begin(iters), end(iters), first);
+
+          ::ket::utility::loop_n(
+            parallel_policy, range_size,
+            [unary_predicate, &is_calleds, &iters, &d_iters](difference_type const n, int thread_index)
+            {
+              if (not static_cast<bool>(is_calleds[thread_index]))
+              {
+                std::advance(iters[thread_index], n);
+                is_calleds[thread_index] = static_cast<int>(true);
+              }
+
+              if (unary_predicate(*iters[thread_index]))
+                *d_iters[thread_index]++ = *iters[thread_index]++;
+            });
+
+          return d_iters.back();
+        }
+
+        template <typename RandomAccessIterator, typename ForwardIterator, typename UnaryPredicate>
+        static auto call(
+          ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
+          RandomAccessIterator const first, RandomAccessIterator const last, ForwardIterator const d_first,
+          UnaryPredicate const unary_predicate,
+          std::random_access_iterator_tag const, std::forward_iterator_tag const)
+        -> ForwardIterator
+        {
+          auto const num_threads = ::ket::utility::num_threads(parallel_policy);
+          using difference_type = typename std::iterator_traits<ForwardIterator>::difference_type;
+          auto d_steps = std::vector<difference_type>(num_threads, difference_type{0});
+
+          ::ket::utility::loop_n(
+            parallel_policy, last - first,
+            [first, unary_predicate, &d_steps](difference_type const n, int const thread_index)
+            {
+              if (unary_predicate(first[n]))
+                ++d_steps[thread_index];
+            });
+
+          auto d_iters = std::vector<ForwardIterator>{num_threads, d_first};
+          using std::begin;
+          using std::end;
+          std::transform(
+            begin(d_iters), std::prev(end(d_iters)), begin(d_steps), std::next(begin(d_iters)),
+            [](ForwardIterator d_iter, difference_type const d_step)
+            { std::advance(d_iter, d_step); return d_iter; });
+
+          ::ket::utility::loop_n(
+            parallel_policy, last - first,
+            [first, unary_predicate, &d_iters](difference_type const n, int thread_index)
+            {
+              if (unary_predicate(first[n]))
+                *d_iters[thread_index]++ = first[n];
+            });
+
+          return d_iters.back();
+        }
+
+        template <typename ForwardIterator, typename RandomAccessIterator, typename UnaryPredicate>
+        static auto call(
+          ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
+          ForwardIterator const first, ForwardIterator const last, RandomAccessIterator const d_first,
+          UnaryPredicate const unary_predicate,
+          std::forward_iterator_tag const, std::random_access_iterator_tag const)
+        -> RandomAccessIterator
+        {
+          auto const num_threads = ::ket::utility::num_threads(parallel_policy);
+          using difference_type = typename std::iterator_traits<ForwardIterator>::difference_type;
+          auto d_first_indices = std::vector<difference_type>(num_threads, difference_type{0});
+
+          auto is_calleds
+            = std::vector<int>(
+                static_cast<int>(::ket::utility::num_threads(parallel_policy)),
+                static_cast<int>(false));
+          auto iters = std::vector<ForwardIterator>(::ket::utility::num_threads(parallel_policy), first);
+
+          auto const range_size = std::distance(first, last);
+          ::ket::utility::loop_n(
+            parallel_policy, range_size,
+            [unary_predicate, &d_first_indices, &is_calleds, &iters](difference_type const n, int const thread_index)
+            {
+              if (not static_cast<bool>(is_calleds[thread_index]))
+              {
+                std::advance(iters[thread_index], n);
+                is_calleds[thread_index] = static_cast<int>(true);
+              }
+
+              if (unary_predicate(*iters[thread_index]))
+                ++d_first_indices[thread_index];
+            });
+
+          using std::begin;
+          using std::end;
+          std::partial_sum(begin(d_first_indices), end(d_first_indices), begin(d_first_indices));
+
+          auto d_iters = std::vector<RandomAccessIterator>{num_threads, d_first};
+          std::transform(std::next(begin(d_iters)), end(d_iters), begin(d_first_indices), std::next(begin(d_iters)), std::plus<void>{});
+
+          std::fill(begin(is_calleds), end(is_calleds), static_cast<int>(false));
+          std::fill(begin(iters), end(iters), first);
+
+          ::ket::utility::loop_n(
+            parallel_policy, range_size,
+            [unary_predicate, &is_calleds, &iters, &d_iters](difference_type const n, int thread_index)
+            {
+              if (not static_cast<bool>(is_calleds[thread_index]))
+              {
+                std::advance(iters[thread_index], n);
+                is_calleds[thread_index] = static_cast<int>(true);
+              }
+
+              if (unary_predicate(*iters[thread_index]))
+                *d_iters[thread_index]++ = *iters[thread_index]++;
+            });
+
+          return d_iters.back();
+        }
+
+        template <typename RandomAccessIterator1, typename RandomAccessIterator2, typename UnaryPredicate>
+        static auto call(
+          ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
+          RandomAccessIterator1 const first, RandomAccessIterator1 const last, RandomAccessIterator2 const d_first,
+          UnaryPredicate const unary_predicate,
+          std::random_access_iterator_tag const, std::random_access_iterator_tag const)
+        -> RandomAccessIterator2
+        {
+          auto const num_threads = ::ket::utility::num_threads(parallel_policy);
+          using difference_type = typename std::iterator_traits<RandomAccessIterator1>::difference_type;
+          auto d_first_indices = std::vector<difference_type>(num_threads, difference_type{0});
+
+          ::ket::utility::loop_n(
+            parallel_policy, last - first,
+            [first, unary_predicate, &d_first_indices](difference_type const n, int const thread_index)
+            {
+              if (unary_predicate(first[n]))
+                ++d_first_indices[thread_index];
+            });
+
+          using std::begin;
+          using std::end;
+          std::partial_sum(begin(d_first_indices), end(d_first_indices), begin(d_first_indices));
+
+          auto d_iters = std::vector<RandomAccessIterator2>{num_threads, d_first};
+          std::transform(std::next(begin(d_iters)), end(d_iters), begin(d_first_indices), std::next(begin(d_iters)), std::plus<void>{});
+
+          ::ket::utility::loop_n(
+            parallel_policy, last - first,
+            [first, unary_predicate, &d_iters](difference_type const n, int const thread_index)
+            {
+              if (unary_predicate(first[n]))
+                *d_iters[thread_index]++ = first[n];
+            });
+
+          return d_iters.back();
+        }
+      }; // struct copy_if< ::ket::utility::policy::parallel<NumThreads> >
+    } // namespace dispatch
+
+
+    // copy_n
+    namespace dispatch
+    {
+      template <typename NumThreads>
+      struct copy_n< ::ket::utility::policy::parallel<NumThreads> >
+      {
+        template <typename ForwardIterator1, typename Size, typename ForwardIterator2>
+        static auto call(
+          ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
+          ForwardIterator1 const first, Size const count, ForwardIterator2 const d_first,
+          std::forward_iterator_tag const, std::forward_iterator_tag const)
+        -> ForwardIterator2
+        {
+          if (count <= Size{0})
+            return d_first;
+
+          auto is_calleds
+            = std::vector<int>(
+                static_cast<int>(::ket::utility::num_threads(parallel_policy)),
+                static_cast<int>(false));
+          auto iters = std::vector<ForwardIterator1>(::ket::utility::num_threads(parallel_policy), first);
+          auto d_iters = std::vector<ForwardIterator2>(::ket::utility::num_threads(parallel_policy), d_first);
+          ::ket::utility::loop_n(
+            parallel_policy, count,
+            [&is_calleds, &iters, &d_iters](Size const n, int const thread_index)
+            {
+              if (not static_cast<bool>(is_calleds[thread_index]))
+              {
+                std::advance(iters[thread_index], n);
+                std::advance(d_iters[thread_index], n);
+                is_calleds[thread_index] = static_cast<int>(true);
+              }
+              *d_iters[thread_index]++ = *iters[thread_index]++;
+            });
+
+          return d_iters.back();
+        }
+
+        template <typename RandomAccessIterator, typename Size, typename ForwardIterator>
+        static auto call(
+          ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
+          RandomAccessIterator const first, Size const count, ForwardIterator const d_first,
+          std::random_access_iterator_tag const, std::forward_iterator_tag const)
+        -> ForwardIterator
+        {
+          if (count <= Size{0})
+            return d_first;
+
+          auto is_calleds
+            = std::vector<int>(
+                static_cast<int>(::ket::utility::num_threads(parallel_policy)),
+                static_cast<int>(false));
+          auto d_iters = std::vector<ForwardIterator>(::ket::utility::num_threads(parallel_policy), d_first);
+          ::ket::utility::loop_n(
+            parallel_policy, count,
+            [first, &is_calleds, &d_iters](Size const n, int const thread_index)
+            {
+              if (not static_cast<bool>(is_calleds[thread_index]))
+              {
+                std::advance(d_iters[thread_index], n);
+                is_calleds[thread_index] = static_cast<int>(true);
+              }
+              *d_iters[thread_index]++ = first[n];
+            });
+
+          return d_iters.back();
+        }
+
+        template <typename ForwardIterator, typename Size, typename RandomAccessIterator>
+        static auto call(
+          ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
+          ForwardIterator const first, Size const count, RandomAccessIterator const d_first,
+          std::forward_iterator_tag const, std::random_access_iterator_tag const)
+        -> RandomAccessIterator
+        {
+          if (count <= Size{0})
+            return d_first;
+
+          auto is_calleds
+            = std::vector<int>(
+                static_cast<int>(::ket::utility::num_threads(parallel_policy)),
+                static_cast<int>(false));
+          auto iters = std::vector<ForwardIterator>(::ket::utility::num_threads(parallel_policy), first);
+          ::ket::utility::loop_n(
+            parallel_policy, count,
+            [d_first, &is_calleds, &iters](Size const n, int const thread_index)
+            {
+              if (not static_cast<bool>(is_calleds[thread_index]))
+              {
+                std::advance(iters[thread_index], n);
+                is_calleds[thread_index] = static_cast<int>(true);
+              }
+              d_first[n] = *iters[thread_index]++;
+            });
+
+          return d_first + count;
+        }
+
+        template <typename RandomAccessIterator1, typename Size, typename RandomAccessIterator2>
+        static auto call(
+          ::ket::utility::policy::parallel<NumThreads> const parallel_policy,
+          RandomAccessIterator1 const first, Size const count, RandomAccessIterator2 const d_first,
+          std::random_access_iterator_tag const, std::random_access_iterator_tag const)
+        -> RandomAccessIterator2
+        {
+          if (count <= Size{0})
+            return d_first;
+
+          ::ket::utility::loop_n(
+            parallel_policy, count,
+            [first, d_first](Size const n, int) { d_first[n] = first[n]; });
+
+          return d_first + count;
+        }
+      }; // struct copy_n< ::ket::utility::policy::parallel<NumThreads> >
     } // namespace dispatch
 
 

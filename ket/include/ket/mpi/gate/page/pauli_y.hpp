@@ -47,7 +47,7 @@ namespace ket
               std::iter_swap(zero_iter, one_iter);
 
               using complex_type = ::ket::utility::meta::range_value_t<RandomAccessRange>;
-              *zero_iter *= -::ket::utility::imaginary_unit<complex_type>();
+              *zero_iter *= ::ket::utility::minus_imaginary_unit<complex_type>();
               *one_iter *= ::ket::utility::imaginary_unit<complex_type>();
             });
         }
@@ -185,7 +185,7 @@ namespace ket
               std::iter_swap(control_on_iter, target_control_on_iter);
 
               using complex_type = ::ket::utility::meta::range_value_t<RandomAccessRange>;
-              *control_on_iter *= -::ket::utility::imaginary_unit<complex_type>();
+              *control_on_iter *= ::ket::utility::minus_imaginary_unit<complex_type>();
               *target_control_on_iter *= ::ket::utility::imaginary_unit<complex_type>();
             });
         }
@@ -226,7 +226,7 @@ namespace ket
               std::iter_swap(control_on_iter, target_control_on_iter);
 
               using complex_type = ::ket::utility::meta::range_value_t<RandomAccessRange>;
-              *control_on_iter *= -::ket::utility::imaginary_unit<complex_type>();
+              *control_on_iter *= ::ket::utility::minus_imaginary_unit<complex_type>();
               *target_control_on_iter *= ::ket::utility::imaginary_unit<complex_type>();
             });
         }

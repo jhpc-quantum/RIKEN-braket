@@ -530,6 +530,7 @@ namespace ket
             static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
 
             assert(communicator.size(environment) > 1);
+            assert(num_qubits_of_operation <= ::ket::mpi::utility::policy::num_local_qubits(mpi_policy, local_state, communicator, environment));
 
             using permutated_qubit_type = ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >;
             auto const least_unit_permutated_qubit
@@ -625,6 +626,7 @@ namespace ket
             static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
 
             assert(communicator.size(environment) > 1);
+            assert(num_qubits_of_operation <= ::ket::mpi::utility::policy::num_local_qubits(mpi_policy, local_state, communicator, environment));
 
             using permutated_qubit_type = ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >;
             auto const least_unit_permutated_qubit
@@ -1751,8 +1753,8 @@ namespace ket
             }
             else
             {
-              static constexpr auto zero_state_integer = StateInteger{0u};
-              static constexpr auto one_state_integer = StateInteger{1u};
+              constexpr auto zero_state_integer = StateInteger{0u};
+              constexpr auto one_state_integer = StateInteger{1u};
 
               auto const mask = one_state_integer << (permutated_control_qubit - least_global_permutated_qubit);
 
@@ -1786,8 +1788,8 @@ namespace ket
           {
             auto const permutated_target_qubit = permutation[target_qubit];
 
-            static constexpr auto zero_state_integer = StateInteger{0u};
-            static constexpr auto one_state_integer = StateInteger{1u};
+            constexpr auto zero_state_integer = StateInteger{0u};
+            constexpr auto one_state_integer = StateInteger{1u};
 
             auto const num_data_blocks = ::ket::mpi::utility::policy::num_data_blocks(mpi_policy, present_rank_in_unit);
             auto const data_block_size = ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, present_rank_in_unit);
@@ -1976,8 +1978,8 @@ namespace ket
             }
             else
             {
-              static constexpr auto zero_state_integer = StateInteger{0u};
-              static constexpr auto one_state_integer = StateInteger{1u};
+              constexpr auto zero_state_integer = StateInteger{0u};
+              constexpr auto one_state_integer = StateInteger{1u};
 
               auto const mask
                 = one_state_integer << (permutated_control_qubit - least_global_permutated_qubit);
@@ -2015,8 +2017,8 @@ namespace ket
             auto const permutated_target_qubit1 = permutation[target_qubit1];
             auto const permutated_target_qubit2 = permutation[target_qubit2];
 
-            static constexpr auto zero_state_integer = StateInteger{0u};
-            static constexpr auto one_state_integer = StateInteger{1u};
+            constexpr auto zero_state_integer = StateInteger{0u};
+            constexpr auto one_state_integer = StateInteger{1u};
 
             auto const num_data_blocks = ::ket::mpi::utility::policy::num_data_blocks(mpi_policy, present_rank_in_unit);
             auto const data_block_size = ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, present_rank_in_unit);

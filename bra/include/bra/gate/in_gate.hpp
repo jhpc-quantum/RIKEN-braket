@@ -25,6 +25,7 @@ namespace bra
       std::string name_;
 
      public:
+      explicit in_gate(std::vector<qubit_type> const& qubits);
       explicit in_gate(std::vector<qubit_type>&& qubits);
 
       ~in_gate() = default;

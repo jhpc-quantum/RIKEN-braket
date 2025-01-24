@@ -20,6 +20,9 @@ namespace bra
 
     using data_type = std::vector<complex_type>;
     data_type data_;
+# ifdef KET_USE_ON_CACHE_STATE_VECTOR
+    data_type on_cache_data_;
+# endif // KET_USE_ON_CACHE_STATE_VECTOR
 
    public:
     nompi_state(
@@ -158,6 +161,8 @@ namespace bra
       state_integer_type const divisor, state_integer_type const base,
       std::vector<qubit_type> const& exponent_qubits,
       std::vector<qubit_type> const& modular_exponentiation_qubits) override;
+    void do_begin_fusion() override;
+    void do_end_fusion() override;
     void do_clear(qubit_type const qubit) override;
     void do_set(qubit_type const qubit) override;
     void do_controlled_i_gate(

@@ -21,11 +21,11 @@
 # include <boost/lexical_cast.hpp>
 
 # ifndef BRA_NO_MPI
-#   include <yampi/allocator.hpp>
 #   include <yampi/communicator.hpp>
 #   include <yampi/environment.hpp>
 # endif // BRA_NO_MPI
 
+# include <bra/types.hpp>
 # include <bra/state.hpp>
 # include <bra/gate/gate.hpp>
 
@@ -65,7 +65,8 @@ namespace bra
   }; // class wrong_mpi_communicator_size_error
 # endif // BRA_NO_MPI
 
-  enum class begin_statement : int { measurement, learning_machine };
+  enum class begin_statement : int { measurement, fusion, learning_machine };
+  enum class end_statement : int { fusion };
   enum class bit_statement : int { assignment };
   enum class generate_statement : int { events };
   enum class depolarizing_statement : int { channel };
@@ -73,45 +74,25 @@ namespace bra
   class gates
   {
     using value_type_ = std::unique_ptr< ::bra::gate::gate >;
-# ifndef BRA_NO_MPI
-    using data_type = std::vector<value_type_, yampi::allocator<value_type_>>;
-# else
     using data_type = std::vector<value_type_>;
-# endif
     data_type data_;
 
    public:
-    using bit_integer_type = ::bra::state::bit_integer_type;
-    using state_integer_type = ::bra::state::state_integer_type;
-    using qubit_type = ::bra::state::qubit_type;
-    using control_qubit_type = ::bra::state::control_qubit_type;
-# ifndef BRA_NO_MPI
-    using permutated_qubit_type = ::bra::state::permutated_qubit_type;
-    using permutated_control_qubit_type = ::bra::state::permutated_control_qubit_type;
-# endif
-
-    using real_type = ::bra::state::real_type;
-
     using columns_type = wrong_mnemonics_error::columns_type;
 
    private:
-    bit_integer_type num_qubits_;
+    ::bra::bit_integer_type num_qubits_;
 # ifndef BRA_NO_MPI
-    bit_integer_type num_lqubits_;
-    bit_integer_type num_uqubits_;
+    ::bra::bit_integer_type num_lqubits_;
+    ::bra::bit_integer_type num_uqubits_;
     unsigned int num_processes_per_unit_;
 # endif
-    state_integer_type initial_state_value_;
+    ::bra::state_integer_type initial_state_value_;
 # ifndef BRA_NO_MPI
-    std::vector<permutated_qubit_type> initial_permutation_;
+    std::vector< ::bra::permutated_qubit_type > initial_permutation_;
 # endif
 
-    using complex_type = ::bra::state::complex_type;
-# ifndef BRA_NO_MPI
-    using phase_coefficients_type = std::vector<complex_type, yampi::allocator<complex_type>>;
-# else
-    using phase_coefficients_type = std::vector<complex_type>;
-# endif
+    using phase_coefficients_type = std::vector< ::bra::complex_type >;
     phase_coefficients_type phase_coefficients_;
 
 # ifndef BRA_NO_MPI
@@ -140,7 +121,7 @@ namespace bra
 # ifndef BRA_NO_MPI
     gates(
       std::istream& input_stream,
-      bit_integer_type num_uqubits, unsigned int num_processes_per_unit,
+      ::bra::bit_integer_type num_uqubits, unsigned int num_processes_per_unit,
       yampi::environment const& environment,
       yampi::rank const root = yampi::rank{},
       yampi::communicator const& communicator = yampi::communicator{::yampi::tags::world_communicator},
@@ -152,35 +133,35 @@ namespace bra
 
     bool operator==(gates const& other) const;
 
-    bit_integer_type const& num_qubits() const { return num_qubits_; }
+    ::bra::bit_integer_type const& num_qubits() const { return num_qubits_; }
 # ifndef BRA_NO_MPI
-    bit_integer_type const& num_lqubits() const { return num_lqubits_; }
-    bit_integer_type const& num_uqubits() const { return num_uqubits_; }
+    ::bra::bit_integer_type const& num_lqubits() const { return num_lqubits_; }
+    ::bra::bit_integer_type const& num_uqubits() const { return num_uqubits_; }
     unsigned int const& num_processes_per_unit() const { return num_processes_per_unit_; }
 # endif
-    state_integer_type const& initial_state_value() const { return initial_state_value_; }
+    ::bra::state_integer_type const& initial_state_value() const { return initial_state_value_; }
 # ifndef BRA_NO_MPI
-    std::vector<permutated_qubit_type> const& initial_permutation() const { return initial_permutation_; }
+    std::vector< ::bra::permutated_qubit_type > const& initial_permutation() const { return initial_permutation_; }
 # endif
 
 # ifndef BRA_NO_MPI
     void num_qubits(
-      bit_integer_type const new_num_qubits,
+      ::bra::bit_integer_type const new_num_qubits,
       yampi::communicator const& communicator, yampi::environment const& environment);
     void num_lqubits(
-      bit_integer_type const new_num_lqubits,
+      ::bra::bit_integer_type const new_num_lqubits,
       yampi::communicator const& communicator, yampi::environment const& environment);
 # else // BRA_NO_MPI
-    void num_qubits(bit_integer_type const new_num_qubits);
+    void num_qubits(::bra::bit_integer_type const new_num_qubits);
 # endif // BRA_NO_MPI
 
    private:
 # ifndef BRA_NO_MPI
     void set_num_qubits_params(
-      bit_integer_type const new_num_lqubits, bit_integer_type const num_gqubits,
+      ::bra::bit_integer_type const new_num_lqubits, ::bra::bit_integer_type const num_gqubits,
       yampi::communicator const& communicator, yampi::environment const& environment);
 # else // BRA_NO_MPI
-    void set_num_qubits_params(bit_integer_type const new_num_qubits);
+    void set_num_qubits_params(::bra::bit_integer_type const new_num_qubits);
 # endif // BRA_NO_MPI
 
    public:
@@ -245,49 +226,52 @@ namespace bra
     void swap(gates& other)
       noexcept(
         BRA_is_nothrow_swappable<data_type>::value
-        and BRA_is_nothrow_swappable<bit_integer_type>::value
-        and BRA_is_nothrow_swappable<state_integer_type>::value
-        and BRA_is_nothrow_swappable<qubit_type>::value);
+        and BRA_is_nothrow_swappable< ::bra::bit_integer_type >::value
+        and BRA_is_nothrow_swappable< ::bra::state_integer_type >::value
+        and BRA_is_nothrow_swappable< ::bra::qubit_type >::value);
 
    private:
-    bit_integer_type read_num_qubits(columns_type const& columns) const;
-    state_integer_type read_initial_state_value(columns_type& columns) const;
-    bit_integer_type read_num_mpi_processes(columns_type const& columns) const;
-    state_integer_type read_mpi_buffer_size(columns_type const& columns) const;
+    ::bra::bit_integer_type read_num_qubits(columns_type const& columns) const;
+    ::bra::state_integer_type read_initial_state_value(columns_type& columns) const;
+    ::bra::bit_integer_type read_num_mpi_processes(columns_type const& columns) const;
+    ::bra::state_integer_type read_mpi_buffer_size(columns_type const& columns) const;
 # ifndef BRA_NO_MPI
-    std::vector<permutated_qubit_type> read_initial_permutation(columns_type const& columns) const;
+    std::vector< ::bra::permutated_qubit_type > read_initial_permutation(columns_type const& columns) const;
 # endif
 
-    qubit_type read_target(columns_type const& columns) const;
-    std::tuple<qubit_type, qubit_type> read_2targets(columns_type const& columns) const;
-    void read_multi_targets(columns_type const& columns, std::vector<qubit_type>& targets) const;
-    std::tuple<qubit_type, real_type> read_target_phase(columns_type const& columns) const;
-    std::tuple<qubit_type, real_type, real_type> read_target_2phases(columns_type const& columns) const;
-    std::tuple<qubit_type, real_type, real_type, real_type> read_target_3phases(columns_type const& columns) const;
-    std::tuple<qubit_type, int> read_target_phaseexp(columns_type const& columns) const;
-    std::tuple<qubit_type, qubit_type, real_type> read_2targets_phase(columns_type const& columns) const;
-    real_type read_multi_targets_phase(columns_type const& columns, std::vector<qubit_type>& targets) const;
-    std::tuple<control_qubit_type, qubit_type> read_control_target(columns_type const& columns) const;
-    std::tuple<control_qubit_type, qubit_type, int> read_control_target_phaseexp(columns_type const& columns) const;
-    std::tuple<control_qubit_type, control_qubit_type, qubit_type> read_2controls_target(columns_type const& columns) const;
-    qubit_type read_multi_controls_target(columns_type const& columns, std::vector<control_qubit_type>& controls) const;
-    std::tuple<qubit_type, qubit_type> read_multi_controls_2targets(columns_type const& columns, std::vector<control_qubit_type>& controls) const;
-    void read_multi_controls_multi_targets(columns_type const& columns, std::vector<control_qubit_type>& controls, std::vector<qubit_type>& targets) const;
-    std::tuple<control_qubit_type, qubit_type, real_type> read_control_target_phase(columns_type const& columns) const;
-    std::tuple<qubit_type, real_type> read_multi_controls_target_phase(columns_type const& columns, std::vector<control_qubit_type>& controls) const;
-    std::tuple<control_qubit_type, qubit_type, real_type, real_type> read_control_target_2phases(columns_type const& columns) const;
-    std::tuple<qubit_type, real_type, real_type> read_multi_controls_target_2phases(columns_type const& columns, std::vector<control_qubit_type>& controls) const;
-    std::tuple<control_qubit_type, qubit_type, real_type, real_type, real_type> read_control_target_3phases(columns_type const& columns) const;
-    std::tuple<qubit_type, real_type, real_type, real_type> read_multi_controls_target_3phases(columns_type const& columns, std::vector<control_qubit_type>& controls) const;
-    std::tuple<qubit_type, int> read_multi_controls_target_phaseexp(columns_type const& columns, std::vector<control_qubit_type>& controls) const;
-    real_type read_multi_controls_multi_targets_phase(columns_type const& columns, std::vector<control_qubit_type>& controls, std::vector<qubit_type>& targets) const;
-    std::tuple<qubit_type, qubit_type, real_type> read_multi_controls_2targets_phase(columns_type const& columns, std::vector<control_qubit_type>& controls) const;
+    ::bra::qubit_type read_target(columns_type const& columns) const;
+    std::tuple< ::bra::qubit_type, ::bra::qubit_type > read_2targets(columns_type const& columns) const;
+    void read_multi_targets(columns_type const& columns, std::vector< ::bra::qubit_type >& targets) const;
+    std::tuple< ::bra::qubit_type, ::bra::real_type > read_target_phase(columns_type const& columns) const;
+    std::tuple< ::bra::qubit_type, ::bra::real_type, ::bra::real_type > read_target_2phases(columns_type const& columns) const;
+    std::tuple< ::bra::qubit_type, ::bra::real_type, ::bra::real_type, ::bra::real_type > read_target_3phases(columns_type const& columns) const;
+    std::tuple< ::bra::qubit_type, int > read_target_phaseexp(columns_type const& columns) const;
+    std::tuple< ::bra::qubit_type, ::bra::qubit_type, ::bra::real_type > read_2targets_phase(columns_type const& columns) const;
+    ::bra::real_type read_multi_targets_phase(columns_type const& columns, std::vector< ::bra::qubit_type >& targets) const;
+    std::tuple< ::bra::control_qubit_type, ::bra::qubit_type > read_control_target(columns_type const& columns) const;
+    std::tuple< ::bra::control_qubit_type, ::bra::qubit_type, int > read_control_target_phaseexp(columns_type const& columns) const;
+    std::tuple< ::bra::control_qubit_type, ::bra::control_qubit_type, ::bra::qubit_type > read_2controls_target(columns_type const& columns) const;
+    ::bra::qubit_type read_multi_controls_target(columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const;
+    std::tuple< ::bra::qubit_type, ::bra::qubit_type > read_multi_controls_2targets(columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const;
+    void read_multi_controls_multi_targets(columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls, std::vector< ::bra::qubit_type >& targets) const;
+    std::tuple< ::bra::control_qubit_type, ::bra::qubit_type, ::bra::real_type > read_control_target_phase(columns_type const& columns) const;
+    std::tuple< ::bra::qubit_type, ::bra::real_type > read_multi_controls_target_phase(columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const;
+    std::tuple< ::bra::control_qubit_type, ::bra::qubit_type, ::bra::real_type, ::bra::real_type > read_control_target_2phases(columns_type const& columns) const;
+    std::tuple< ::bra::qubit_type, ::bra::real_type, ::bra::real_type > read_multi_controls_target_2phases(columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const;
+    std::tuple< ::bra::control_qubit_type, ::bra::qubit_type, ::bra::real_type, ::bra::real_type, ::bra::real_type > read_control_target_3phases(columns_type const& columns) const;
+    std::tuple< ::bra::qubit_type, ::bra::real_type, ::bra::real_type, ::bra::real_type > read_multi_controls_target_3phases(columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const;
+    std::tuple< ::bra::qubit_type, int > read_multi_controls_target_phaseexp(columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const;
+    ::bra::real_type read_multi_controls_multi_targets_phase(columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls, std::vector< ::bra::qubit_type >& targets) const;
+    std::tuple< ::bra::qubit_type, ::bra::qubit_type, ::bra::real_type > read_multi_controls_2targets_phase(columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const;
 
     ::bra::begin_statement read_begin_statement(columns_type const& columns) const;
+    ::bra::end_statement read_end_statement(columns_type const& columns) const;
     ::bra::bit_statement read_bit_statement(columns_type const& columns) const;
-    std::tuple<bit_integer_type, state_integer_type, state_integer_type> read_shor_box(columns_type const& columns) const;
+    std::tuple< ::bra::bit_integer_type, ::bra::state_integer_type, ::bra::state_integer_type > read_shor_box(columns_type const& columns) const;
     std::tuple< ::bra::generate_statement, int, int > read_generate_statement(columns_type const& columns) const;
-    std::tuple< ::bra::depolarizing_statement, real_type, real_type, real_type, int > read_depolarizing_statement(columns_type const& columns) const;
+    std::tuple< ::bra::depolarizing_statement, ::bra::real_type, ::bra::real_type, ::bra::real_type, int > read_depolarizing_statement(columns_type const& columns) const;
+
+    void add_begin_fusion(columns_type const& columns);
 
     void add_i(columns_type const& columns);
     void add_ii(columns_type const& columns);

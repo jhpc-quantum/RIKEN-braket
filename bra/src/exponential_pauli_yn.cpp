@@ -16,6 +16,10 @@ namespace bra
 {
   namespace gate
   {
+    exponential_pauli_yn::exponential_pauli_yn(real_type const phase, std::vector<qubit_type> const& qubits)
+      : ::bra::gate::gate{}, phase_{phase}, qubits_{qubits}, name_{std::string{"e"}.append(qubits_.size(), 'Y')}
+    { }
+
     exponential_pauli_yn::exponential_pauli_yn(real_type const phase, std::vector<qubit_type>&& qubits)
       : ::bra::gate::gate{}, phase_{phase}, qubits_{std::move(qubits)}, name_{std::string{"e"}.append(qubits_.size(), 'Y')}
     { }

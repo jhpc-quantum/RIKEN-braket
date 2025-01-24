@@ -310,6 +310,7 @@ namespace ket
             auto const local_state_size = static_cast<StateInteger>(std::distance(begin(local_state), end(local_state)));
 # endif // NDEBUG
             assert(::ket::utility::integer_exp2<StateInteger>(::ket::utility::integer_log2<BitInteger>(local_state_size)) == local_state_size);
+            assert(num_qubits_of_operation <= ::ket::mpi::utility::policy::num_local_qubits(mpi_policy, local_state, communicator, environment));
 
             using permutated_qubit_type = ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >;
             auto const least_global_permutated_qubit
@@ -396,6 +397,7 @@ namespace ket
             auto const local_state_size = static_cast<StateInteger>(std::distance(begin(local_state), end(local_state)));
 # endif // NDEBUG
             assert(::ket::utility::integer_exp2<StateInteger>(::ket::utility::integer_log2<BitInteger>(local_state_size)) == local_state_size);
+            assert(num_qubits_of_operation <= ::ket::mpi::utility::policy::num_local_qubits(mpi_policy, local_state, communicator, environment));
 
             using permutated_qubit_type = ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >;
             auto const least_global_permutated_qubit
@@ -1133,8 +1135,8 @@ namespace ket
             }
             else
             {
-              static constexpr auto zero_state_integer = StateInteger{0u};
-              static constexpr auto one_state_integer = StateInteger{1u};
+              constexpr auto zero_state_integer = StateInteger{0u};
+              constexpr auto one_state_integer = StateInteger{1u};
 
               auto const mask = one_state_integer << (permutated_control_qubit - least_global_permutated_qubit);
 
@@ -1166,7 +1168,7 @@ namespace ket
           {
             auto const permutated_target_qubit = permutation[target_qubit];
 
-            static constexpr auto one_state_integer = StateInteger{1u};
+            constexpr auto one_state_integer = StateInteger{1u};
 
             using std::begin;
             using std::end;
@@ -1181,7 +1183,7 @@ namespace ket
                 parallel_policy, std::forward<LocalState>(local_state), StateInteger{0u}, local_state_size, last_local_qubit_value, local_permutated_control_qubits,
                 [&function0, &function1, mask](auto const iter, StateInteger const state_integer)
                 {
-                  static constexpr auto zero_state_integer = StateInteger{0u};
+                  constexpr auto zero_state_integer = StateInteger{0u};
 
                   if ((state_integer bitand mask) == zero_state_integer)
                     function0(iter, state_integer);
@@ -1193,7 +1195,7 @@ namespace ket
             {
               auto const mask = one_state_integer << (permutated_target_qubit - least_global_permutated_qubit);
 
-              static constexpr auto zero_state_integer = StateInteger{0u};
+              constexpr auto zero_state_integer = StateInteger{0u};
 
               if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand mask) == zero_state_integer)
                 ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
@@ -1248,8 +1250,8 @@ namespace ket
             }
             else
             {
-              static constexpr auto zero_state_integer = StateInteger{0u};
-              static constexpr auto one_state_integer = StateInteger{1u};
+              constexpr auto zero_state_integer = StateInteger{0u};
+              constexpr auto one_state_integer = StateInteger{1u};
 
               auto const mask = one_state_integer << (permutated_control_qubit - least_global_permutated_qubit);
 
@@ -1283,7 +1285,7 @@ namespace ket
             auto const permutated_target_qubit1 = permutation[target_qubit1];
             auto const permutated_target_qubit2 = permutation[target_qubit2];
 
-            static constexpr auto one_state_integer = StateInteger{1u};
+            constexpr auto one_state_integer = StateInteger{1u};
 
             using std::begin;
             using std::end;
@@ -1302,7 +1304,7 @@ namespace ket
                   parallel_policy, std::forward<LocalState>(local_state), StateInteger{0u}, local_state_size, last_local_qubit_value, local_permutated_control_qubits,
                   [&function00, &function01, &function10, &function11, mask1, mask2](auto const iter, StateInteger const state_integer)
                   {
-                    static constexpr auto zero_state_integer = StateInteger{0u};
+                    constexpr auto zero_state_integer = StateInteger{0u};
 
                     if ((state_integer bitand mask1) == zero_state_integer)
                     {
@@ -1324,7 +1326,7 @@ namespace ket
               {
                 auto const mask2 = one_state_integer << (permutated_target_qubit2 - least_global_permutated_qubit);
 
-                static constexpr auto zero_state_integer = StateInteger{0u};
+                constexpr auto zero_state_integer = StateInteger{0u};
 
                 if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand mask2) == zero_state_integer)
                   ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
@@ -1356,7 +1358,7 @@ namespace ket
               {
                 auto const mask2 = one_state_integer << permutated_target_qubit2;
 
-                static constexpr auto zero_state_integer = StateInteger{0u};
+                constexpr auto zero_state_integer = StateInteger{0u};
 
                 if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand mask1) == zero_state_integer)
                   ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
@@ -1383,7 +1385,7 @@ namespace ket
               {
                 auto const mask2 = one_state_integer << (permutated_target_qubit2 - least_global_permutated_qubit);
 
-                static constexpr auto zero_state_integer = StateInteger{0u};
+                constexpr auto zero_state_integer = StateInteger{0u};
 
                 if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand mask1) == zero_state_integer)
                 {

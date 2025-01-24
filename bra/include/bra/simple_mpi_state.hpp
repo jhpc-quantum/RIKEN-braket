@@ -8,7 +8,6 @@
 #   include <ket/utility/parallel/loop_n.hpp>
 #   include <ket/mpi/utility/simple_mpi.hpp>
 
-#   include <yampi/allocator.hpp>
 #   include <yampi/rank.hpp>
 #   include <yampi/communicator.hpp>
 #   include <yampi/environment.hpp>
@@ -24,7 +23,7 @@ namespace bra
     ket::utility::policy::parallel<unsigned int> parallel_policy_;
     ket::mpi::utility::policy::simple_mpi mpi_policy_;
 
-    using data_type = std::vector<complex_type, yampi::allocator<complex_type>>;
+    using data_type = std::vector<complex_type>;
     data_type data_;
 
    public:
@@ -178,6 +177,8 @@ namespace bra
       state_integer_type const divisor, state_integer_type const base,
       std::vector<qubit_type> const& exponent_qubits,
       std::vector<qubit_type> const& modular_exponentiation_qubits) override;
+    void do_begin_fusion() override;
+    void do_end_fusion() override;
     void do_clear(qubit_type const qubit) override;
     void do_set(qubit_type const qubit) override;
     void do_controlled_i_gate(

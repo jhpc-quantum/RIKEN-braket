@@ -33,6 +33,10 @@ namespace bra
      public:
       multi_controlled_u3(
         real_type const& phase1, real_type const& phase2, real_type const& phase3,
+        qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits);
+
+      multi_controlled_u3(
+        real_type const& phase1, real_type const& phase2, real_type const& phase3,
         qubit_type const target_qubit, std::vector<control_qubit_type>&& control_qubits);
 
       ~multi_controlled_u3() = default;

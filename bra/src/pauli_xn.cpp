@@ -16,6 +16,10 @@ namespace bra
 {
   namespace gate
   {
+    pauli_xn::pauli_xn(std::vector<qubit_type> const& qubits)
+      : ::bra::gate::gate{}, qubits_{qubits}, name_{std::string(qubits_.size(), 'X')}
+    { }
+
     pauli_xn::pauli_xn(std::vector<qubit_type>&& qubits)
       : ::bra::gate::gate{}, qubits_{std::move(qubits)}, name_{std::string(qubits_.size(), 'X')}
     { }

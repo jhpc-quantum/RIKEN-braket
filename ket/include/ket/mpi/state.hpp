@@ -37,6 +37,7 @@
 # include <ket/mpi/permutated.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
+# include <ket/mpi/page/page_size.hpp>
 # include <ket/mpi/utility/simple_mpi.hpp>
 # include <ket/mpi/utility/for_each_local_range.hpp>
 # include <ket/mpi/utility/buffer_range.hpp>
@@ -1141,7 +1142,7 @@ namespace ket
           Function&& function)
         -> void
         {
-          static constexpr auto zero_state_integer = StateInteger{0u};
+          constexpr auto zero_state_integer = StateInteger{0u};
 
           using permutated_control_qubit_type
             = ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >;
@@ -1154,7 +1155,7 @@ namespace ket
                 zero_state_integer,
                 [](StateInteger const& partial_mask, permutated_control_qubit_type const& permutated_control_qubit)
                 {
-                  static constexpr auto one_state_integer = StateInteger{1u};
+                  constexpr auto one_state_integer = StateInteger{1u};
                   return partial_mask bitor (one_state_integer << permutated_control_qubit);
                 });
 
@@ -1169,7 +1170,7 @@ namespace ket
               parallel_policy, last_integer,
               [&function, &sorted_local_permutated_control_qubits, mask, first](StateInteger state_integer, int const)
               {
-                static constexpr auto one_state_integer = StateInteger{1u};
+                constexpr auto one_state_integer = StateInteger{1u};
 
                 // xxx0x0xxx0xx
                 for (permutated_control_qubit_type const& permutated_control_qubit: sorted_local_permutated_control_qubits)
@@ -2357,39 +2358,46 @@ namespace ket
 
     namespace page
     {
-      template <
-        typename StateInteger, typename BitInteger,
-        typename Complex, typename Allocator>
-      inline constexpr auto is_on_page(
-        ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit,
-        ::ket::mpi::state<Complex, false, Allocator> const& local_state)
-      -> bool
-      { return false; }
+      namespace dispatch
+      {
+        template <typename LocalState_>
+        struct is_on_page;
 
-      template <
-        typename StateInteger, typename BitInteger,
-        typename Complex, typename Allocator>
-      inline constexpr auto is_on_page(
-        ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit,
-        ::ket::mpi::state<Complex, false, Allocator> const& local_state)
-      -> bool
-      { return false; }
+        template <typename Complex, typename Allocator>
+        struct is_on_page< ::ket::mpi::state<Complex, false, Allocator> >
+        {
+          template <typename Qubit>
+          static constexpr auto call(::ket::mpi::permutated<Qubit> const, ::ket::mpi::state<Complex, false, Allocator> const&) -> bool
+          { return false; }
+        }; // struct is_on_page< ::ket::mpi::state<Complex, false, Allocator> >
 
-      template <
-        typename StateInteger, typename BitInteger, typename Complex, typename Allocator>
-      inline auto is_on_page(
-        ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit,
-        ::ket::mpi::state<Complex, true, Allocator> const& local_state)
-      -> bool
-      { return ::ket::mpi::is_page_qubit(permutated_qubit, local_state); }
+        template <typename Complex, typename Allocator>
+        struct is_on_page< ::ket::mpi::state<Complex, true, Allocator> >
+        {
+          template <typename Qubit>
+          static constexpr auto call(::ket::mpi::permutated<Qubit> const permutated_qubit, ::ket::mpi::state<Complex, true, Allocator> const& local_state) -> bool
+          { return ::ket::mpi::is_page_qubit(permutated_qubit, local_state); }
+        }; // struct is_on_page< ::ket::mpi::state<Complex, true, Allocator> >
 
-      template <
-        typename StateInteger, typename BitInteger, typename Complex, typename Allocator>
-      inline auto is_on_page(
-        ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit,
-        ::ket::mpi::state<Complex, true, Allocator> const& local_state)
-      -> bool
-      { return ::ket::mpi::is_page_qubit(permutated_control_qubit, local_state); }
+        template <typename LocalState_>
+        struct page_size;
+
+        template <typename Complex, typename Allocator>
+        struct page_size< ::ket::mpi::state<Complex, false, Allocator> >
+        {
+          template <typename MpiPolicy>
+          static auto call(MpiPolicy const& mpi_policy, ::ket::mpi::state<Complex, false, Allocator> const& local_state, yampi::communicator const& communicator, yampi::environment const& environment)
+          { return ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment); }
+        }; // struct page_size< ::ket::mpi::state<Complex, false, Allocator> >
+
+        template <typename Complex, typename Allocator>
+        struct page_size< ::ket::mpi::state<Complex, true, Allocator> >
+        {
+          template <typename MpiPolicy>
+          static auto call(MpiPolicy const& mpi_policy, ::ket::mpi::state<Complex, true, Allocator> const& local_state, yampi::communicator const& communicator, yampi::environment const& environment)
+          { return ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment) / local_state.num_pages(); }
+        }; // struct page_size< ::ket::mpi::state<Complex, true, Allocator> >
+      } // namespace dispatch
     } // namespace page
 
     namespace utility
@@ -2594,7 +2602,7 @@ namespace ket
           template <typename BufferAllocator>
           static auto call_end(
             ::ket::mpi::state<Complex, false, Allocator>&,
-            std::vector<Complex, BufferAllocator> const& buffer)
+            std::vector<Complex, BufferAllocator>& buffer)
           -> typename std::vector<Complex, BufferAllocator>::iterator
           { using std::end; return end(buffer); }
 

@@ -18,6 +18,13 @@ namespace bra
   namespace gate
   {
     multi_controlled_exponential_pauli_xn::multi_controlled_exponential_pauli_xn(
+      real_type const& phase, std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
+      : ::bra::gate::gate{},
+        phase_{phase}, target_qubits_{target_qubits}, control_qubits_{control_qubits},
+        name_{std::string(control_qubits_.size(), 'C').append("e").append(target_qubits_.size(), 'X')}
+    { }
+
+    multi_controlled_exponential_pauli_xn::multi_controlled_exponential_pauli_xn(
       real_type const& phase, std::vector<qubit_type>&& target_qubits, std::vector<control_qubit_type>&& control_qubits)
       : ::bra::gate::gate{},
         phase_{phase}, target_qubits_{std::move(target_qubits)}, control_qubits_{std::move(control_qubits)},

@@ -16,6 +16,10 @@ namespace bra
 {
   namespace gate
   {
+    in_gate::in_gate(std::vector<qubit_type> const& qubits)
+      : ::bra::gate::gate{}, qubits_{qubits}, name_{std::string(qubits_.size(), 'I')}
+    { }
+
     in_gate::in_gate(std::vector<qubit_type>&& qubits)
       : ::bra::gate::gate{}, qubits_{std::move(qubits)}, name_{std::string(qubits_.size(), 'I')}
     { }

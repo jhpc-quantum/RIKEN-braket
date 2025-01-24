@@ -19,6 +19,17 @@ namespace bra
   {
     adj_multi_controlled_v::adj_multi_controlled_v(
       int const phase_exponent, complex_type const& phase_coefficient,
+      qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
+      : ::bra::gate::gate{},
+        phase_exponent_{phase_exponent},
+        phase_coefficient_{phase_coefficient},
+        target_qubit_{target_qubit},
+        control_qubits_{control_qubits},
+        name_{std::string(control_qubits_.size(), 'C').append("V+")}
+    { }
+
+    adj_multi_controlled_v::adj_multi_controlled_v(
+      int const phase_exponent, complex_type const& phase_coefficient,
       qubit_type const target_qubit, std::vector<control_qubit_type>&& control_qubits)
       : ::bra::gate::gate{},
         phase_exponent_{phase_exponent},
