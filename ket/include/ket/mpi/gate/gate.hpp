@@ -52,6 +52,12 @@ namespace ket
           Function&& function, ::ket::mpi::permutated<Qubit> const permutated_qubit, ::ket::mpi::permutated<Qubits> const... permutated_qubits)
         -> RandomAccessRange&
         {
+          if (::ket::mpi::page::none_on_page(local_state, permutated_qubit, permutated_qubits...))
+            return ::ket::mpi::utility::for_each_local_range(
+              mpi_policy, local_state, communicator, environment,
+              [parallel_policy, &function, permutated_qubit, permutated_qubits...](auto const first, auto const last)
+              { ::ket::gate::nocache::gate(parallel_policy, first, last, function, permutated_qubit.qubit(), permutated_qubits.qubit()...); });
+
           auto const data_block_size
             = ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment);
           auto const num_data_blocks
@@ -97,41 +103,64 @@ namespace ket
           // Case 1) None of operated qubits is page qubit
           if (::ket::mpi::page::none_on_page(local_state, permutated_qubit, permutated_qubits...))
           {
-            // Case 1-1) page size <= on-cache state size
-            //   ex1: pppp|ppzzzzzzzz
+            // Case 1-1) All operated qubits are on-cache qubits
+            //   ex1: ppxx|zzzzzzzzzz
+            //              ^   ^ ^   <- operated qubits
+            //   ex2: pppp|ppzzzzzzzz
             //               ^  ^  ^  <- operated qubits
-            //   ex2: ....|..ppzzzzzz (num. local qubits <= num. on-cache qubits)
-            //                  ^  ^  <- operated qubits
-            // all operated qubits are non-page qubits, so ket::gate::nocache::gate can be used
-            if (::ket::mpi::page::page_size(mpi_policy, local_state, communicator, environment) <= on_cache_state_size)
-              return ::ket::mpi::utility::for_each_local_range(
-                mpi_policy, local_state, communicator, environment,
-                [parallel_policy, &function, permutated_qubit, permutated_qubits...](auto const first, auto const last)
-                { ::ket::gate::nocache::gate(parallel_policy, first, last, function, permutated_qubit.qubit(), permutated_qubits.qubit()...); });
-
-            // Case 1-2) All operated qubits are on-cache qubits
-            //   ex: ppxx|zzzzzzzzzz
-            //             ^   ^ ^   <- operated qubits
-# ifndef KET_USE_BIT_MASKS_EXPLICITLY
-            if (::ket::utility::all_in_state_vector(num_on_cache_qubits, permutated_qubit.qubit(), permutated_qubits.qubit()...))
-              return ::ket::mpi::utility::for_each_local_range(
-                mpi_policy, local_state, communicator, environment,
-                [parallel_policy, &function, permutated_qubit, permutated_qubits...](auto const first, auto const last)
-                {
-                  for (auto iter = first; iter < last; iter += on_cache_state_size)
-                    ::ket::gate::nocache::gate(
-                      parallel_policy, iter, iter + on_cache_state_size, function,
-                      permutated_qubit.qubit(), permutated_qubits.qubit()...);
-                });
-# else // KET_USE_BIT_MASKS_EXPLICITLY
             if (::ket::utility::all_in_state_vector(num_on_cache_qubits, permutated_qubit.qubit(), permutated_qubits.qubit()...))
             {
               constexpr auto num_operated_qubits = bit_integer_type{sizeof...(Qubits) + 1u};
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+              using qubit_type = ::ket::qubit<state_integer_type, bit_integer_type>;
+              std::array<qubit_type, num_operated_qubits + bit_integer_type{1u}> sorted_qubits_with_sentinel{
+                ::ket::remove_control(permutated_qubit.qubit()), ::ket::remove_control(permutated_qubits.qubit())...,
+                ::ket::make_qubit<state_integer_type>(num_on_cache_qubits)};
+              using std::begin;
+              using std::end;
+              std::sort(begin(sorted_qubits_with_sentinel), std::prev(end(sorted_qubits_with_sentinel)));
+
+              std::array<qubit_type, num_operated_qubits> unsorted_qubits{
+                ::ket::remove_control(permutated_qubit.qubit()), ::ket::remove_control(permutated_qubits.qubit())...};
+# else // KET_USE_BIT_MASKS_EXPLICITLY
               std::array<state_integer_type, num_operated_qubits> qubit_masks{};
               ::ket::gate::gate_detail::make_qubit_masks(qubit_masks, permutated_qubit.qubit(), permutated_qubits.qubit()...);
               std::array<state_integer_type, num_operated_qubits + 1u> index_masks{};
               ::ket::gate::gate_detail::make_index_masks(index_masks, permutated_qubit.qubit(), permutated_qubits.qubit()...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
 
+              // Case 1-1-1) page size <= on-cache state size
+              //   ex1: pppp|ppzzzzzzzz
+              //               ^  ^  ^  <- operated qubits
+              //   ex2: ....|..ppzzzzzz (num. local qubits <= num. on-cache qubits)
+              //                  ^  ^  <- operated qubits
+              // all operated qubits are non-page qubits, so ket::gate::nocache::gate can be used
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+              if (::ket::mpi::page::page_size(mpi_policy, local_state, communicator, environment) <= on_cache_state_size)
+                return ::ket::mpi::utility::for_each_local_range(
+                  mpi_policy, local_state, communicator, environment,
+                  [parallel_policy, &sorted_qubits_with_sentinel, &unsorted_qubits, &function](auto const first, auto const last)
+                  { ::ket::gate::gate_detail::gate(parallel_policy, first, last, unsorted_qubits, sorted_qubits_with_sentinel, function); });
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+              if (::ket::mpi::page::page_size(mpi_policy, local_state, communicator, environment) <= on_cache_state_size)
+                return ::ket::mpi::utility::for_each_local_range(
+                  mpi_policy, local_state, communicator, environment,
+                  [parallel_policy, &qubit_masks, &index_masks, &function](auto const first, auto const last)
+                  { ::ket::gate::gate_detail::gate(parallel_policy, first, last, qubit_masks, index_masks, function); });
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+
+              // Case 1-1-2) page size > on-cache state size
+              //   ex: ppxx|zzzzzzzzzz
+              //             ^   ^ ^   <- operated qubits
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+              return ::ket::mpi::utility::for_each_local_range(
+                mpi_policy, local_state, communicator, environment,
+                [parallel_policy, &sorted_qubits_with_sentinel, &unsorted_qubits, &function](auto const first, auto const last)
+                {
+                  for (auto iter = first; iter < last; iter += on_cache_state_size)
+                    ::ket::gate::gate_detail::gate(parallel_policy, iter, iter + on_cache_state_size, unsorted_qubits, sorted_qubits_with_sentinel, function);
+                });
+# else // KET_USE_BIT_MASKS_EXPLICITLY
               return ::ket::mpi::utility::for_each_local_range(
                 mpi_policy, local_state, communicator, environment,
                 [parallel_policy, &qubit_masks, &index_masks, &function](auto const first, auto const last)
@@ -139,15 +168,15 @@ namespace ket
                   for (auto iter = first; iter < last; iter += on_cache_state_size)
                     ::ket::gate::gate_detail::gate(parallel_policy, iter, iter + on_cache_state_size, qubit_masks, index_masks, function);
                 });
-            }
 # endif // KET_USE_BIT_MASKS_EXPLICITLY
+            }
 
-            // Case 1-3) Some of the operated qubits are off-cache qubits (but not page qubits)
+            // Case 1-2) Some of the operated qubits are off-cache qubits (but not page qubits)
             //   ex1: ppxx|yy|zzzzzzzz
             //          ^^             <- operated qubits
             //   ex2: ppxx|yyy|zzzzzzz
             //           ^ ^^     ^    <- operated qubits
-            // Case 1-3-1) Buffer size is large enough
+            // Case 1-2-1) Buffer size is large enough
             auto const present_buffer_size = static_cast<state_integer_type>(::ket::mpi::utility::buffer_end(local_state, buffer) - ::ket::mpi::utility::buffer_begin(local_state, buffer));
             if (present_buffer_size >= on_cache_state_size)
             {
@@ -163,7 +192,7 @@ namespace ket
                 });
             }
 
-            // Case 1-3-2) Buffer size is small
+            // Case 1-2-2) Buffer size is small
             buffer.resize(on_cache_state_size);
             return ::ket::mpi::utility::for_each_local_range(
               mpi_policy, local_state, communicator, environment,
