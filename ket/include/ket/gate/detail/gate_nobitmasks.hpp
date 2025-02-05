@@ -62,6 +62,21 @@ namespace ket
         constexpr auto operator()(Qubit) const noexcept { return ::ket::meta::bit_integer_t<Qubit>{}; }
       }; // struct bit_integer_of
 # endif // __cpp_constexpr < 201603L
+
+      template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger, std::size_t num_operated_qubits, typename Function>
+      inline auto gate(
+        ParallelPolicy const parallel_policy,
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        std::array< ::ket::qubit<StateInteger, BitInteger>, num_operated_qubits > const& unsorted_qubits,
+        std::array< ::ket::qubit<StateInteger, BitInteger>, num_operated_qubits + 1u > const& sorted_qubits_with_sentinel,
+        Function&& function)
+      -> void
+      {
+        ::ket::utility::loop_n(
+          parallel_policy, static_cast<StateInteger>(last - first) >> num_operated_qubits,
+          [first, &function, &unsorted_qubits, &sorted_qubits_with_sentinel](StateInteger const index_wo_qubits, int const thread_index)
+          { function(first, index_wo_qubits, unsorted_qubits, sorted_qubits_with_sentinel, thread_index); });
+      }
     } // namespace gate_detail
 
     // USAGE:
@@ -115,10 +130,7 @@ namespace ket
 
         std::array<qubit_type, num_operated_qubits> unsorted_qubits{::ket::remove_control(std::forward<Qubit>(qubit))};
 
-        ::ket::utility::loop_n(
-          parallel_policy, state_size >> num_operated_qubits,
-          [first, &function, &unsorted_qubits, &sorted_qubits_with_sentinel](state_integer_type const index_wo_qubits, int const thread_index)
-          { function(first, index_wo_qubits, unsorted_qubits, sorted_qubits_with_sentinel, thread_index); });
+        ::ket::gate::gate_detail::gate(parallel_policy, first, last, unsorted_qubits, sorted_qubits_with_sentinel, std::forward<Function>(function));
       }
 
       template <typename ParallelPolicy, typename RandomAccessIterator, typename Function, typename Qubit1, typename Qubit2>
@@ -157,10 +169,7 @@ namespace ket
         std::array<qubit_type, num_operated_qubits> unsorted_qubits{
           ::ket::remove_control(std::forward<Qubit1>(qubit1)), ::ket::remove_control(std::forward<Qubit2>(qubit2))};
 
-        ::ket::utility::loop_n(
-          parallel_policy, state_size >> num_operated_qubits,
-          [first, &function, &unsorted_qubits, &sorted_qubits_with_sentinel](state_integer_type const index_wo_qubits, int const thread_index)
-          { function(first, index_wo_qubits, unsorted_qubits, sorted_qubits_with_sentinel, thread_index); });
+        ::ket::gate::gate_detail::gate(parallel_policy, first, last, unsorted_qubits, sorted_qubits_with_sentinel, std::forward<Function>(function));
       }
 
       template <typename ParallelPolicy, typename RandomAccessIterator, typename Function, typename Qubit1, typename Qubit2, typename Qubit3, typename... Qubits>
@@ -227,10 +236,7 @@ namespace ket
           ::ket::remove_control(std::forward<Qubit1>(qubit1)), ::ket::remove_control(std::forward<Qubit2>(qubit2)),
           ::ket::remove_control(std::forward<Qubit3>(qubit3)), ::ket::remove_control(std::forward<Qubits>(qubits))...};
 
-        ::ket::utility::loop_n(
-          parallel_policy, state_size >> num_operated_qubits,
-          [first, &function, &unsorted_qubits, &sorted_qubits_with_sentinel](state_integer_type const index_wo_qubits, int const thread_index)
-          { function(first, index_wo_qubits, unsorted_qubits, sorted_qubits_with_sentinel, thread_index); });
+        ::ket::gate::gate_detail::gate(parallel_policy, first, last, unsorted_qubits, sorted_qubits_with_sentinel, std::forward<Function>(function));
       }
 
       template <typename RandomAccessIterator, typename Function, typename Qubit, typename... Qubits>
