@@ -45,7 +45,6 @@ namespace ket
         return result;
       }
 
-      //template <typename StateInteger, typename UnsignedInteger, typename BitInteger, BitInteger num_operated_qubits>
       template <typename StateInteger, typename UnsignedInteger, typename BitInteger, std::size_t num_operated_qubits>
       inline constexpr auto index_with_qubits(
         StateInteger const index_wo_qubits, UnsignedInteger const qubits_value,
@@ -56,7 +55,7 @@ namespace ket
         static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
         static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
         static_assert(std::is_unsigned<UnsignedInteger>::value, "UnsignedInteger should be unsigned");
-        static_assert(num_operated_qubits >= BitInteger{1u});
+        static_assert(num_operated_qubits >= BitInteger{1u}, "num_operated_qubits should be greater than 0");
         assert(qubits_value >> num_operated_qubits == UnsignedInteger{0u});
 
         // xx0xx0xx0xx
@@ -103,6 +102,7 @@ namespace ket
       {
         static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
         static_assert(std::is_unsigned<UnsignedInteger>::value, "UnsignedInteger should be unsigned");
+        static_assert(num_operated_qubits >= BitInteger{1u}, "num_operated_qubits should be greater than 0");
         assert(qubits_value < ::ket::utility::integer_exp2<UnsignedInteger>(num_operated_qubits));
 
         // xx0xx0xx0xx
