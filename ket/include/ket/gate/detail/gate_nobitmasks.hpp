@@ -542,8 +542,6 @@ namespace ket
         auto const num_on_cache_qubits = ::ket::utility::integer_log2<bit_integer_type>(on_cache_state_size);
         assert(num_on_cache_qubits < num_qubits);
 
-        constexpr auto num_operated_qubits = sizeof...(Qubits) + 1u;
-
         // xxxx|yyyy|zzzzzz: (local) qubits
         // * xxxx: off-cache qubits
         // * yyyy|zzzzzz: on-cache qubits
