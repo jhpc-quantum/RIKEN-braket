@@ -193,7 +193,13 @@ namespace ket
             }
 
             // Case 1-2-2) Buffer size is small
+            if (on_cache_state_size > buffer.capacity())
+            {
+              buffer.clear();
+              buffer.shrink_to_fit();
+            }
             buffer.resize(on_cache_state_size);
+
             return ::ket::mpi::utility::for_each_local_range(
               mpi_policy, local_state, communicator, environment,
               [parallel_policy, &buffer, &function, permutated_qubit, permutated_qubits...](auto const first, auto const last)
@@ -233,7 +239,13 @@ namespace ket
           }
 
           // Case 2-2) Buffer size is small
+          if (modified_on_cache_state_size > buffer.capacity())
+          {
+            buffer.clear();
+            buffer.shrink_to_fit();
+          }
           buffer.resize(modified_on_cache_state_size);
+
           for (auto data_block_index = state_integer_type{0u}; data_block_index < num_data_blocks; ++data_block_index)
             ::ket::mpi::gate::page::gate(
               parallel_policy,
