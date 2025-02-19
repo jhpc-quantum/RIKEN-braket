@@ -477,12 +477,6 @@ namespace ket
             std::array< ::ket::qubit<StateInteger, BitInteger>, num_qubits_of_operation >& local_swap_qubits)
           -> void
           {
-# ifdef KET_USE_BARRIER
-            ::yampi::barrier(communicator, environment);
-# endif // KET_USE_BARRIER
-
-            ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"interchange_qubits<"}, num_qubits_of_operation, '>'), environment};
-
 # ifndef NDEBUG
             auto const maybe_io_rank = yampi::lowest_io_process(environment);
             auto const my_rank = yampi::communicator{yampi::tags::world_communicator}.rank(environment);
@@ -773,6 +767,11 @@ namespace ket
             std::array< ::ket::qubit<StateInteger, BitInteger>, num_qubits_of_operation > const& qubits)
           -> void
           {
+# ifdef KET_USE_BARRIER
+            ::yampi::barrier(communicator, environment);
+# endif // KET_USE_BARRIER
+            ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"interchange_qubits<"}, num_qubits_of_operation, '>'), environment};
+
             using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
             using permutated_qubit_type = ::ket::mpi::permutated<qubit_type>;
             std::array<permutated_qubit_type, num_qubits_of_operation> permutated_local_swap_qubits{};
@@ -806,6 +805,11 @@ namespace ket
             std::array< ::ket::qubit<StateInteger, BitInteger>, num_qubits_of_operation > const& qubits)
           -> void
           {
+# ifdef KET_USE_BARRIER
+            ::yampi::barrier(communicator, environment);
+# endif // KET_USE_BARRIER
+            ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"interchange_qubits<"}, num_qubits_of_operation, '>'), environment};
+
             using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
             using permutated_qubit_type = ::ket::mpi::permutated<qubit_type>;
             std::array<permutated_qubit_type, num_qubits_of_operation> permutated_local_swap_qubits{};
