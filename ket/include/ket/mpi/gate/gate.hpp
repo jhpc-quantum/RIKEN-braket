@@ -41,68 +41,85 @@ namespace ket
       namespace local
       {
 # ifndef KET_USE_ON_CACHE_STATE_VECTOR
-        template <
-          typename MpiPolicy, typename ParallelPolicy,
-          typename RandomAccessRange, typename BufferAllocator, typename Function, typename Qubit, typename... Qubits>
-        inline auto gate(
-          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
-          RandomAccessRange& local_state,
-          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >&,
-          yampi::communicator const& communicator, yampi::environment const& environment,
-          Function&& function, ::ket::mpi::permutated<Qubit> const permutated_qubit, ::ket::mpi::permutated<Qubits> const... permutated_qubits)
-        -> RandomAccessRange&
+        namespace nopage
         {
-          if (::ket::mpi::page::none_on_page(local_state, permutated_qubit, permutated_qubits...))
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename BufferAllocator, typename Function, typename Qubit, typename... Qubits>
+          inline auto gate(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >&,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Function&& function, ::ket::mpi::permutated<Qubit> const permutated_qubit, ::ket::mpi::permutated<Qubits> const... permutated_qubits)
+          -> RandomAccessRange&
+          {
             return ::ket::mpi::utility::for_each_local_range(
               mpi_policy, local_state, communicator, environment,
               [parallel_policy, &function, permutated_qubit, permutated_qubits...](auto const first, auto const last)
               { ::ket::gate::nocache::gate(parallel_policy, first, last, function, permutated_qubit.qubit(), permutated_qubits.qubit()...); });
+          }
+        } // namespace nopage
 
-          auto const data_block_size
-            = ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment);
-          auto const num_data_blocks
-            = ::ket::mpi::utility::policy::num_data_blocks(mpi_policy, communicator, environment);
-
-          using std::begin;
-          auto const first = begin(local_state);
-          for (auto data_block_index = decltype(num_data_blocks){0u}; data_block_index < num_data_blocks; ++data_block_index)
-            ::ket::gate::nocache::gate(
-              parallel_policy,
-              first + data_block_index * data_block_size,
-              first + (data_block_index + 1u) * data_block_size,
-              function, permutated_qubit.qubit(), permutated_qubits.qubit()...);
-
-          return local_state;
-        }
-# else // KET_USE_ON_CACHE_STATE_VECTOR
-        template <
-          typename MpiPolicy, typename ParallelPolicy,
-          typename RandomAccessRange, typename BufferAllocator, typename Function, typename Qubit, typename... Qubits>
-        inline auto gate(
-          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
-          RandomAccessRange& local_state,
-          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
-          yampi::communicator const& communicator, yampi::environment const& environment,
-          Function&& function, ::ket::mpi::permutated<Qubit> const permutated_qubit, ::ket::mpi::permutated<Qubits> const... permutated_qubits)
-        -> RandomAccessRange&
+        namespace page
         {
-          using state_integer_type = ::ket::meta::state_integer_t<Qubit>;
-          using bit_integer_type = ::ket::meta::bit_integer_t<Qubit>;
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename BufferAllocator, typename Function, typename Qubit, typename... Qubits>
+          inline auto gate(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >&,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Function&& function, ::ket::mpi::permutated<Qubit> const permutated_qubit, ::ket::mpi::permutated<Qubits> const... permutated_qubits)
+          -> RandomAccessRange&
+          {
+            auto const data_block_size
+              = ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment);
+            auto const num_data_blocks
+              = ::ket::mpi::utility::policy::num_data_blocks(mpi_policy, communicator, environment);
+
+            using std::begin;
+            auto const first = begin(local_state);
+            for (auto data_block_index = decltype(num_data_blocks){0u}; data_block_index < num_data_blocks; ++data_block_index)
+              ::ket::gate::nocache::gate(
+                parallel_policy,
+                first + data_block_index * data_block_size,
+                first + (data_block_index + 1u) * data_block_size,
+                function, permutated_qubit.qubit(), permutated_qubits.qubit()...);
+
+            return local_state;
+          }
+        } // namespace page
+# else // KET_USE_ON_CACHE_STATE_VECTOR
+        // Case 1) None of operated qubits is page qubit
+        namespace nopage
+        {
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename BufferAllocator, typename Function, typename Qubit, typename... Qubits>
+          inline auto gate(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Function&& function, ::ket::mpi::permutated<Qubit> const permutated_qubit, ::ket::mpi::permutated<Qubits> const... permutated_qubits)
+          -> RandomAccessRange&
+          {
+            using state_integer_type = ::ket::meta::state_integer_t<Qubit>;
+            using bit_integer_type = ::ket::meta::bit_integer_t<Qubit>;
 
 #   ifndef KET_DEFAULT_NUM_ON_CACHE_QUBITS
 #     define KET_DEFAULT_NUM_ON_CACHE_QUBITS 16
 #   endif // KET_DEFAULT_NUM_ON_CACHE_QUBITS
-          constexpr auto num_on_cache_qubits = bit_integer_type{KET_DEFAULT_NUM_ON_CACHE_QUBITS};
-          constexpr auto on_cache_state_size = ::ket::utility::integer_exp2<state_integer_type>(num_on_cache_qubits);
+            constexpr auto num_on_cache_qubits = bit_integer_type{KET_DEFAULT_NUM_ON_CACHE_QUBITS};
+            constexpr auto on_cache_state_size = ::ket::utility::integer_exp2<state_integer_type>(num_on_cache_qubits);
 
-          // xxxx|yyyy|zzzzzz: local qubits
-          // * xxxx: off-cache qubits
-          // * yyyy|zzzzzz: on-cache qubits
-          //   - yyyy: chunk qubits (chunk qubits are determined dynamically, and sometimes there is no chunk qubit)
+            // xxxx|yyyy|zzzzzz: local qubits
+            // * xxxx: off-cache qubits
+            // * yyyy|zzzzzz: on-cache qubits
+            //   - yyyy: chunk qubits (chunk qubits are determined dynamically, and sometimes there is no chunk qubit)
 
-          // Case 1) None of operated qubits is page qubit
-          if (::ket::mpi::page::none_on_page(local_state, permutated_qubit, permutated_qubits...))
-          {
             // Case 1-1) All operated qubits are on-cache qubits
             //   ex1: ppxx|zzzzzzzzzz
             //              ^   ^ ^   <- operated qubits
@@ -194,10 +211,7 @@ namespace ket
 
             // Case 1-2-2) Buffer size is small
             if (on_cache_state_size > buffer.capacity())
-            {
-              buffer.clear();
-              buffer.shrink_to_fit();
-            }
+              std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >{}.swap(buffer);
             buffer.resize(on_cache_state_size);
 
             return ::ket::mpi::utility::for_each_local_range(
@@ -210,51 +224,100 @@ namespace ket
                   function, permutated_qubit.qubit(), permutated_qubits.qubit()...);
               });
           }
+        } // namespace nopage
 
-          // Case 2) Some operated qubits are page qubits
-          //   ex1: pppp|ppzzzzzzzz
-          //             ^    ^ ^   <- operated qubits
-          //   ex2: ppxx|zzzzzzzzzz
-          //         ^    ^   ^ ^   <- operated qubits
-          //   ex3: ppxx|zzzzzzzzzz
-          //         ^^   ^     ^   <- operated qubits
-          assert(::ket::mpi::page::any_on_page(local_state, permutated_qubit, permutated_qubits...));
-          // Redefine on-cache state as its size is std::min(on_cache_state_size, page_size), then num. page qubits <= num. off-cache qubits becomes always to hold
-          auto const modified_on_cache_state_size = std::min(on_cache_state_size, ::ket::mpi::page::page_size(mpi_policy, local_state, communicator, environment));
-
-          auto const num_data_blocks = static_cast<state_integer_type>(::ket::mpi::utility::policy::num_data_blocks(mpi_policy, communicator, environment));
-
-          // Case 2-1) Buffer size is large enough
-          auto const present_buffer_size = static_cast<state_integer_type>(::ket::mpi::utility::buffer_end(local_state, buffer) - ::ket::mpi::utility::buffer_begin(local_state, buffer));
-          if (present_buffer_size >= modified_on_cache_state_size)
+        // Case 2) Some operated qubits are page qubits
+        namespace page
+        {
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename BufferAllocator, typename Function, typename Qubit, typename... Qubits>
+          inline auto gate(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Function&& function, ::ket::mpi::permutated<Qubit> const permutated_qubit, ::ket::mpi::permutated<Qubits> const... permutated_qubits)
+          -> RandomAccessRange&
           {
-            auto const buffer_first = ::ket::mpi::utility::buffer_begin(local_state, buffer);
+            using state_integer_type = ::ket::meta::state_integer_t<Qubit>;
+            using bit_integer_type = ::ket::meta::bit_integer_t<Qubit>;
+
+#   ifndef KET_DEFAULT_NUM_ON_CACHE_QUBITS
+#     define KET_DEFAULT_NUM_ON_CACHE_QUBITS 16
+#   endif // KET_DEFAULT_NUM_ON_CACHE_QUBITS
+            constexpr auto num_on_cache_qubits = bit_integer_type{KET_DEFAULT_NUM_ON_CACHE_QUBITS};
+            constexpr auto on_cache_state_size = ::ket::utility::integer_exp2<state_integer_type>(num_on_cache_qubits);
+
+            // xxxx|yyyy|zzzzzz: local qubits
+            // * xxxx: off-cache qubits
+            // * yyyy|zzzzzz: on-cache qubits
+            //   - yyyy: chunk qubits (chunk qubits are determined dynamically, and sometimes there is no chunk qubit)
+
+            //   ex1: pppp|ppzzzzzzzz
+            //             ^    ^ ^   <- operated qubits
+            //   ex2: ppxx|zzzzzzzzzz
+            //         ^    ^   ^ ^   <- operated qubits
+            //   ex3: ppxx|zzzzzzzzzz
+            //         ^^   ^     ^   <- operated qubits
+            assert(::ket::mpi::page::any_on_page(local_state, permutated_qubit, permutated_qubits...));
+            // Redefine on-cache state as its size is std::min(on_cache_state_size, page_size), then num. page qubits <= num. off-cache qubits becomes always to hold
+            auto const modified_on_cache_state_size = std::min(on_cache_state_size, ::ket::mpi::page::page_size(mpi_policy, local_state, communicator, environment));
+
+            auto const num_data_blocks = static_cast<state_integer_type>(::ket::mpi::utility::policy::num_data_blocks(mpi_policy, communicator, environment));
+
+            // Case 2-1) Buffer size is large enough
+            auto const present_buffer_size = static_cast<state_integer_type>(::ket::mpi::utility::buffer_end(local_state, buffer) - ::ket::mpi::utility::buffer_begin(local_state, buffer));
+            if (present_buffer_size >= modified_on_cache_state_size)
+            {
+              auto const buffer_first = ::ket::mpi::utility::buffer_begin(local_state, buffer);
+              for (auto data_block_index = state_integer_type{0u}; data_block_index < num_data_blocks; ++data_block_index)
+                ::ket::mpi::gate::page::gate(
+                  parallel_policy,
+                  local_state, buffer_first, buffer_first + modified_on_cache_state_size, data_block_index,
+                  std::forward<Function>(function), permutated_qubit, permutated_qubits...);
+
+              return local_state;
+            }
+
+            // Case 2-2) Buffer size is small
+            if (modified_on_cache_state_size > buffer.capacity())
+              std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >{}.swap(buffer);
+            buffer.resize(modified_on_cache_state_size);
+
             for (auto data_block_index = state_integer_type{0u}; data_block_index < num_data_blocks; ++data_block_index)
               ::ket::mpi::gate::page::gate(
                 parallel_policy,
-                local_state, buffer_first, buffer_first + modified_on_cache_state_size, data_block_index,
+                local_state, begin(buffer), end(buffer), data_block_index,
                 std::forward<Function>(function), permutated_qubit, permutated_qubits...);
 
             return local_state;
           }
+        } // namespace page
+# endif // KET_USE_ON_CACHE_STATE_VECTOR
 
-          // Case 2-2) Buffer size is small
-          if (modified_on_cache_state_size > buffer.capacity())
-          {
-            buffer.clear();
-            buffer.shrink_to_fit();
-          }
-          buffer.resize(modified_on_cache_state_size);
-
-          for (auto data_block_index = state_integer_type{0u}; data_block_index < num_data_blocks; ++data_block_index)
-            ::ket::mpi::gate::page::gate(
-              parallel_policy,
-              local_state, begin(buffer), end(buffer), data_block_index,
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename BufferAllocator, typename Function, typename Qubit, typename... Qubits>
+        inline auto gate(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          Function&& function, ::ket::mpi::permutated<Qubit> const permutated_qubit, ::ket::mpi::permutated<Qubits> const... permutated_qubits)
+        -> RandomAccessRange&
+        {
+          // Case 1) None of operated qubits is page qubit
+          if (::ket::mpi::page::none_on_page(local_state, permutated_qubit, permutated_qubits...))
+            return ::ket::mpi::gate::local::nopage::gate(
+              mpi_policy, parallel_policy, local_state, buffer, communicator, environment,
               std::forward<Function>(function), permutated_qubit, permutated_qubits...);
 
-          return local_state;
+          // Case 2) Some operated qubits are page qubits
+          return ::ket::mpi::gate::local::page::gate(
+            mpi_policy, parallel_policy, local_state, buffer, communicator, environment,
+            std::forward<Function>(function), permutated_qubit, permutated_qubits...);
         }
-# endif // KET_USE_ON_CACHE_STATE_VECTOR
       } // namespace local
 
       template <

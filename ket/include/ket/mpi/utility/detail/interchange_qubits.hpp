@@ -48,10 +48,7 @@ namespace ket
 #ifndef BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
             auto const new_size = source_local_last_index - source_local_first_index;
             if (new_size > buffer.capacity())
-            {
-              buffer.clear();
-              buffer.shrink_to_fit();
-            }
+              std::vector< ::ket::utility::meta::range_value_t<LocalState>, Allocator >{}.swap(buffer);
             buffer.resize(new_size);
 
             using std::end;
@@ -65,10 +62,7 @@ namespace ket
             {
               auto const new_size = source_local_last_index - source_local_first_index;
               if (new_size > buffer.capacity())
-              {
-                buffer.clear();
-                buffer.shrink_to_fit();
-              }
+                std::vector< ::ket::utility::meta::range_value_t<LocalState>, Allocator >{}.swap(buffer);
               buffer.resize(new_size);
 
               using std::end;
