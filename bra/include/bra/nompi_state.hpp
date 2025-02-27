@@ -3,12 +3,14 @@
 
 # ifdef BRA_NO_MPI
 #   include <vector>
+#   include <memory>
 
 #   include <ket/gate/projective_measurement.hpp>
 #   include <ket/utility/integer_exp2.hpp>
 #   include <ket/utility/parallel/loop_n.hpp>
 
 #   include <bra/state.hpp>
+#   include <bra/fused_gate/fused_gate.hpp>
 
 
 namespace bra
@@ -18,11 +20,14 @@ namespace bra
   {
     ket::utility::policy::parallel<unsigned int> parallel_policy_;
 
-    using data_type = std::vector<complex_type>;
+    using data_type = ::bra::data_type;
     data_type data_;
 # ifdef KET_USE_ON_CACHE_STATE_VECTOR
     data_type on_cache_data_;
 # endif // KET_USE_ON_CACHE_STATE_VECTOR
+
+    using fused_gate_iterator = data_type::iterator;
+    std::vector<std::unique_ptr< ::bra::fused_gate::fused_gate<fused_gate_iterator> >> fused_gates_; // related to begin_fusion/end_fusion
 
    public:
     nompi_state(

@@ -3,6 +3,7 @@
 
 # ifndef BRA_NO_MPI
 #   include <vector>
+#   include <memory>
 
 #   include <ket/gate/projective_measurement.hpp>
 #   include <ket/utility/parallel/loop_n.hpp>
@@ -14,6 +15,7 @@
 #   include <yampi/environment.hpp>
 
 #   include <bra/state.hpp>
+#   include <bra/fused_gate/fused_gate.hpp>
 
 
 namespace bra
@@ -24,8 +26,15 @@ namespace bra
     ket::utility::policy::parallel<unsigned int> parallel_policy_;
     ket::mpi::utility::policy::simple_mpi mpi_policy_;
 
-    using data_type = ket::mpi::state<complex_type, true>;
+    using data_type = ::bra::paged_data_type;
     data_type data_;
+
+    using fused_gate_iterator = ::bra::data_type::iterator;
+    std::vector<std::unique_ptr< ::bra::fused_gate::fused_gate<fused_gate_iterator> >> fused_gates_; // related to begin_fusion/end_fusion
+#   ifndef KET_USE_ON_CACHE_STATE_VECTOR
+    using paged_fused_gate_iterator = data_type::iterator;
+    std::vector<std::unique_ptr< ::bra::fused_gate::fused_gate<paged_fused_gate_iterator> >> paged_fused_gates_; // related to begin_fusion/end_fusion
+#   endif // KET_USE_ON_CACHE_STATE_VECTOR
 
    public:
     paged_simple_mpi_state(

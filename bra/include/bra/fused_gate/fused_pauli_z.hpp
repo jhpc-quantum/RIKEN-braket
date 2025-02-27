@@ -15,8 +15,9 @@ namespace bra
 {
   namespace fused_gate
   {
+    template <typename Iterator>
     class fused_pauli_z final
-      : public ::bra::fused_gate::fused_gate
+      : public ::bra::fused_gate::fused_gate<Iterator>
     {
      private:
       ::bra::qubit_type qubit_;
@@ -41,19 +42,19 @@ namespace bra
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
 #   define DO_CALL(z, num_fused_qubits, _) \
       auto do_call(\
-        ::bra::complex_type* const first, ::bra::state_integer_type const fused_index_wo_qubits,\
+        Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,\
         std::array< ::bra::qubit_type, num_fused_qubits > const& unsorted_fused_qubits,\
         std::array< ::bra::qubit_type, num_fused_qubits + 1u > const& sorted_fused_qubits_with_sentinel) const -> void override;
 # else // KET_USE_BIT_MASKS_EXPLICITLY
 #   define DO_CALL(z, num_fused_qubits, _) \
       auto do_call(\
-        ::bra::complex_type* const first, ::bra::state_integer_type const fused_index_wo_qubits,\
+        Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,\
         std::array< ::bra::state_integer_type, num_fused_qubits > const& qubit_masks,\
         std::array< ::bra::state_integer_type, num_fused_qubits + 1u > const& index_masks) const -> void override;
 # endif // KET_USE_BIT_MASKS_EXPLICITLY
 BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_FUSED_QUBITS), DO_CALL, nil)
 # undef DO_CALL
-    }; // class fused_pauli_z
+    }; // class fused_pauli_z<Iterator>
   } // namespace fused_gate
 } // namespace bra
 

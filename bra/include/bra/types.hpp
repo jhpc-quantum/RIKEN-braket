@@ -3,11 +3,13 @@
 
 # include <cstdint>
 # include <complex>
+# include <vector>
 
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
 # ifndef BRA_NO_MPI
 #   include <ket/mpi/permutated.hpp>
+#   include <ket/mpi/state.hpp>
 # endif // BRA_NO_MPI
 
 
@@ -36,6 +38,11 @@ namespace bra
   using real_type = double;
 # endif // BRA_REAL_TYPE
   using complex_type = std::complex<real_type>;
+
+  using data_type = std::vector<complex_type>;
+# ifndef BRA_NO_MPI
+  using paged_data_type = ket::mpi::state<complex_type, true>;
+# endif // BRA_NO_MPI
 } // namespace bra
 
 
