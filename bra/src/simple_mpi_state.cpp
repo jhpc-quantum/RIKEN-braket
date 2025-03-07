@@ -40,6 +40,104 @@
 
 # include <bra/simple_mpi_state.hpp>
 # include <bra/state.hpp>
+# include <bra/fused_gate/fused_hadamard.hpp>
+# include <bra/fused_gate/fused_not_.hpp>
+# include <bra/fused_gate/fused_pauli_x.hpp>
+# include <bra/fused_gate/fused_pauli_xx.hpp>
+# include <bra/fused_gate/fused_pauli_xn.hpp>
+# include <bra/fused_gate/fused_pauli_y.hpp>
+# include <bra/fused_gate/fused_pauli_yy.hpp>
+# include <bra/fused_gate/fused_pauli_yn.hpp>
+# include <bra/fused_gate/fused_pauli_z.hpp>
+# include <bra/fused_gate/fused_pauli_zz.hpp>
+# include <bra/fused_gate/fused_pauli_zn.hpp>
+# include <bra/fused_gate/fused_swap.hpp>
+# include <bra/fused_gate/fused_u1.hpp>
+# include <bra/fused_gate/fused_adj_u1.hpp>
+# include <bra/fused_gate/fused_u2.hpp>
+# include <bra/fused_gate/fused_adj_u2.hpp>
+# include <bra/fused_gate/fused_u3.hpp>
+# include <bra/fused_gate/fused_adj_u3.hpp>
+# include <bra/fused_gate/fused_phase_shift.hpp>
+# include <bra/fused_gate/fused_adj_phase_shift.hpp>
+# include <bra/fused_gate/fused_x_rotation_half_pi.hpp>
+# include <bra/fused_gate/fused_adj_x_rotation_half_pi.hpp>
+# include <bra/fused_gate/fused_y_rotation_half_pi.hpp>
+# include <bra/fused_gate/fused_adj_y_rotation_half_pi.hpp>
+# include <bra/fused_gate/fused_controlled_v.hpp>
+# include <bra/fused_gate/fused_adj_controlled_v.hpp>
+# include <bra/fused_gate/fused_exponential_pauli_x.hpp>
+# include <bra/fused_gate/fused_adj_exponential_pauli_x.hpp>
+# include <bra/fused_gate/fused_exponential_pauli_xx.hpp>
+# include <bra/fused_gate/fused_adj_exponential_pauli_xx.hpp>
+# include <bra/fused_gate/fused_exponential_pauli_xn.hpp>
+# include <bra/fused_gate/fused_adj_exponential_pauli_xn.hpp>
+# include <bra/fused_gate/fused_exponential_pauli_y.hpp>
+# include <bra/fused_gate/fused_adj_exponential_pauli_y.hpp>
+# include <bra/fused_gate/fused_exponential_pauli_yy.hpp>
+# include <bra/fused_gate/fused_adj_exponential_pauli_yy.hpp>
+# include <bra/fused_gate/fused_exponential_pauli_yn.hpp>
+# include <bra/fused_gate/fused_adj_exponential_pauli_yn.hpp>
+# include <bra/fused_gate/fused_exponential_pauli_z.hpp>
+# include <bra/fused_gate/fused_adj_exponential_pauli_z.hpp>
+# include <bra/fused_gate/fused_exponential_pauli_zz.hpp>
+# include <bra/fused_gate/fused_adj_exponential_pauli_zz.hpp>
+# include <bra/fused_gate/fused_exponential_pauli_zn.hpp>
+# include <bra/fused_gate/fused_adj_exponential_pauli_zn.hpp>
+# include <bra/fused_gate/fused_exponential_swap.hpp>
+# include <bra/fused_gate/fused_adj_exponential_swap.hpp>
+# include <bra/fused_gate/fused_toffoli.hpp>
+# include <bra/fused_gate/fused_controlled_hadamard.hpp>
+# include <bra/fused_gate/fused_multi_controlled_hadamard.hpp>
+# include <bra/fused_gate/fused_controlled_not.hpp>
+# include <bra/fused_gate/fused_multi_controlled_not.hpp>
+# include <bra/fused_gate/fused_controlled_pauli_x.hpp>
+# include <bra/fused_gate/fused_multi_controlled_pauli_xn.hpp>
+# include <bra/fused_gate/fused_controlled_pauli_y.hpp>
+# include <bra/fused_gate/fused_multi_controlled_pauli_yn.hpp>
+# include <bra/fused_gate/fused_controlled_pauli_z.hpp>
+# include <bra/fused_gate/fused_multi_controlled_pauli_zn.hpp>
+# include <bra/fused_gate/fused_multi_controlled_swap.hpp>
+# include <bra/fused_gate/fused_controlled_phase_shift.hpp>
+# include <bra/fused_gate/fused_adj_controlled_phase_shift.hpp>
+# include <bra/fused_gate/fused_multi_controlled_phase_shift.hpp>
+# include <bra/fused_gate/fused_adj_multi_controlled_phase_shift.hpp>
+# include <bra/fused_gate/fused_controlled_u1.hpp>
+# include <bra/fused_gate/fused_adj_controlled_u1.hpp>
+# include <bra/fused_gate/fused_multi_controlled_u1.hpp>
+# include <bra/fused_gate/fused_adj_multi_controlled_u1.hpp>
+# include <bra/fused_gate/fused_controlled_u2.hpp>
+# include <bra/fused_gate/fused_adj_controlled_u2.hpp>
+# include <bra/fused_gate/fused_multi_controlled_u2.hpp>
+# include <bra/fused_gate/fused_adj_multi_controlled_u2.hpp>
+# include <bra/fused_gate/fused_controlled_u3.hpp>
+# include <bra/fused_gate/fused_adj_controlled_u3.hpp>
+# include <bra/fused_gate/fused_multi_controlled_u3.hpp>
+# include <bra/fused_gate/fused_adj_multi_controlled_u3.hpp>
+# include <bra/fused_gate/fused_controlled_x_rotation_half_pi.hpp>
+# include <bra/fused_gate/fused_adj_controlled_x_rotation_half_pi.hpp>
+# include <bra/fused_gate/fused_multi_controlled_x_rotation_half_pi.hpp>
+# include <bra/fused_gate/fused_adj_multi_controlled_x_rotation_half_pi.hpp>
+# include <bra/fused_gate/fused_controlled_y_rotation_half_pi.hpp>
+# include <bra/fused_gate/fused_adj_controlled_y_rotation_half_pi.hpp>
+# include <bra/fused_gate/fused_multi_controlled_y_rotation_half_pi.hpp>
+# include <bra/fused_gate/fused_adj_multi_controlled_y_rotation_half_pi.hpp>
+# include <bra/fused_gate/fused_multi_controlled_v.hpp>
+# include <bra/fused_gate/fused_adj_multi_controlled_v.hpp>
+# include <bra/fused_gate/fused_controlled_exponential_pauli_x.hpp>
+# include <bra/fused_gate/fused_adj_controlled_exponential_pauli_x.hpp>
+# include <bra/fused_gate/fused_multi_controlled_exponential_pauli_xn.hpp>
+# include <bra/fused_gate/fused_adj_multi_controlled_exponential_pauli_xn.hpp>
+# include <bra/fused_gate/fused_controlled_exponential_pauli_y.hpp>
+# include <bra/fused_gate/fused_adj_controlled_exponential_pauli_y.hpp>
+# include <bra/fused_gate/fused_multi_controlled_exponential_pauli_yn.hpp>
+# include <bra/fused_gate/fused_adj_multi_controlled_exponential_pauli_yn.hpp>
+# include <bra/fused_gate/fused_controlled_exponential_pauli_z.hpp>
+# include <bra/fused_gate/fused_adj_controlled_exponential_pauli_z.hpp>
+# include <bra/fused_gate/fused_multi_controlled_exponential_pauli_zn.hpp>
+# include <bra/fused_gate/fused_adj_multi_controlled_exponential_pauli_zn.hpp>
+# include <bra/fused_gate/fused_multi_controlled_exponential_swap.hpp>
+# include <bra/fused_gate/fused_adj_multi_controlled_exponential_swap.hpp>
 
 # ifndef BRA_MAX_NUM_OPERATED_QUBITS
 #   define BRA_MAX_NUM_OPERATED_QUBITS 6
@@ -66,7 +164,8 @@ namespace bra
     : ::bra::state{total_num_qubits, seed, communicator, environment},
       parallel_policy_{num_threads_per_process},
       mpi_policy_{},
-      data_{generate_initial_data(num_local_qubits, initial_integer, communicator, environment)}
+      data_{generate_initial_data(num_local_qubits, initial_integer, communicator, environment)},
+      fused_gates_{}
   { }
 
   simple_mpi_state::simple_mpi_state(
@@ -80,7 +179,8 @@ namespace bra
     : ::bra::state{initial_permutation, seed, communicator, environment},
       parallel_policy_{num_threads_per_process},
       mpi_policy_{},
-      data_{generate_initial_data(num_local_qubits, initial_integer, communicator, environment)}
+      data_{generate_initial_data(num_local_qubits, initial_integer, communicator, environment)},
+      fused_gates_{}
   { }
 # else // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
   simple_mpi_state::simple_mpi_state(
@@ -95,7 +195,8 @@ namespace bra
     : ::bra::state{total_num_qubits, seed, num_elements_in_buffer, communicator, environment},
       parallel_policy_{num_threads_per_process},
       mpi_policy_{},
-      data_{generate_initial_data(num_local_qubits, initial_integer, communicator, environment)}
+      data_{generate_initial_data(num_local_qubits, initial_integer, communicator, environment)},
+      fused_gates_{}
   { }
 
   simple_mpi_state::simple_mpi_state(
@@ -110,7 +211,8 @@ namespace bra
     : ::bra::state{initial_permutation, seed, num_elements_in_buffer, communicator, environment},
       parallel_policy_{num_threads_per_process},
       mpi_policy_{},
-      data_{generate_initial_data(num_local_qubits, initial_integer, communicator, environment)}
+      data_{generate_initial_data(num_local_qubits, initial_integer, communicator, environment)},
+      fused_gates_{}
   { }
 # endif // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
 
@@ -137,6 +239,9 @@ namespace bra
 
   void simple_mpi_state::do_i_gate(qubit_type const qubit)
   {
+    if (is_in_fusion_)
+      return;
+
     ket::mpi::gate::identity(
       mpi_policy_, parallel_policy_,
       data_, permutation_, buffer_, communicator_, environment_, qubit);
@@ -144,6 +249,9 @@ namespace bra
 
   void simple_mpi_state::do_adj_i_gate(qubit_type const qubit)
   {
+    if (is_in_fusion_)
+      return;
+
     ket::mpi::gate::adj_identity(
       mpi_policy_, parallel_policy_,
       data_, permutation_, buffer_, communicator_, environment_, qubit);
@@ -151,6 +259,9 @@ namespace bra
 
   void simple_mpi_state::do_ii_gate(qubit_type const qubit1, qubit_type const qubit2)
   {
+    if (is_in_fusion_)
+      return;
+
     ket::mpi::gate::identity(
       mpi_policy_, parallel_policy_,
       data_, permutation_, buffer_, communicator_, environment_, qubit1, qubit2);
@@ -158,6 +269,9 @@ namespace bra
 
   void simple_mpi_state::do_adj_ii_gate(qubit_type const qubit1, qubit_type const qubit2)
   {
+    if (is_in_fusion_)
+      return;
+
     ket::mpi::gate::adj_identity(
       mpi_policy_, parallel_policy_,
       data_, permutation_, buffer_, communicator_, environment_, qubit1, qubit2);
@@ -165,6 +279,9 @@ namespace bra
 
   void simple_mpi_state::do_in_gate(std::vector<qubit_type> const& qubits)
   {
+    if (is_in_fusion_)
+      return;
+
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
 
@@ -191,6 +308,9 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
 
   void simple_mpi_state::do_adj_in_gate(std::vector<qubit_type> const& qubits)
   {
+    if (is_in_fusion_)
+      return;
+
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
 
@@ -217,62 +337,100 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
 
   void simple_mpi_state::do_hadamard(qubit_type const qubit)
   {
-    ket::mpi::gate::hadamard(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_hadamard<fused_gate_iterator> >(to_qubit_in_fused_gate_.at(qubit)));
+    else
+      ket::mpi::gate::hadamard(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubit);
   }
 
   void simple_mpi_state::do_adj_hadamard(qubit_type const qubit)
   {
-    ket::mpi::gate::adj_hadamard(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_hadamard<fused_gate_iterator> >(to_qubit_in_fused_gate_.at(qubit)));
+    else
+      ket::mpi::gate::adj_hadamard(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubit);
   }
 
   void simple_mpi_state::do_not_(qubit_type const qubit)
   {
-    ket::mpi::gate::not_(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_not_<fused_gate_iterator> >(to_qubit_in_fused_gate_.at(qubit)));
+    else
+      ket::mpi::gate::not_(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubit);
   }
 
   void simple_mpi_state::do_adj_not_(qubit_type const qubit)
   {
-    ket::mpi::gate::adj_not_(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_not_<fused_gate_iterator> >(to_qubit_in_fused_gate_.at(qubit)));
+    else
+      ket::mpi::gate::adj_not_(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubit);
   }
 
   void simple_mpi_state::do_pauli_x(qubit_type const qubit)
   {
-    ket::mpi::gate::pauli_x(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_x<fused_gate_iterator> >(to_qubit_in_fused_gate_.at(qubit)));
+    else
+      ket::mpi::gate::pauli_x(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubit);
   }
 
   void simple_mpi_state::do_adj_pauli_x(qubit_type const qubit)
   {
-    ket::mpi::gate::adj_pauli_x(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_x<fused_gate_iterator> >(to_qubit_in_fused_gate_.at(qubit)));
+    else
+      ket::mpi::gate::adj_pauli_x(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubit);
   }
 
   void simple_mpi_state::do_pauli_xx(qubit_type const qubit1, qubit_type const qubit2)
   {
-    ket::mpi::gate::pauli_x(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, qubit1, qubit2);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_xx<fused_gate_iterator> >(to_qubit_in_fused_gate_.at(qubit1), to_qubit_in_fused_gate_.at(qubit2)));
+    else
+      ket::mpi::gate::pauli_x(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubit1, qubit2);
   }
 
   void simple_mpi_state::do_adj_pauli_xx(qubit_type const qubit1, qubit_type const qubit2)
   {
-    ket::mpi::gate::adj_pauli_x(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, qubit1, qubit2);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_xx<fused_gate_iterator> >(to_qubit_in_fused_gate_.at(qubit1), to_qubit_in_fused_gate_.at(qubit2)));
+    else
+      ket::mpi::gate::adj_pauli_x(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubit1, qubit2);
   }
 
   void simple_mpi_state::do_pauli_xn(std::vector<qubit_type> const& qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto qubits_in_fused_gate = std::vector<qubit_type>{};
+      qubits_in_fused_gate.reserve(qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(qubits), end(qubits), std::back_inserter(qubits_in_fused_gate),
+        [this](::bra::qubit_type const qubit) { return this->to_qubit_in_fused_gate_.at(qubit); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_xn<fused_gate_iterator> >(std::move(qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
 
@@ -299,6 +457,20 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
 
   void simple_mpi_state::do_adj_pauli_xn(std::vector<qubit_type> const& qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto qubits_in_fused_gate = std::vector<qubit_type>{};
+      qubits_in_fused_gate.reserve(qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(qubits), end(qubits), std::back_inserter(qubits_in_fused_gate),
+        [this](::bra::qubit_type const qubit) { return this->to_qubit_in_fused_gate_.at(qubit); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_xn<fused_gate_iterator> >(std::move(qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
 
@@ -325,34 +497,60 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
 
   void simple_mpi_state::do_pauli_y(qubit_type const qubit)
   {
-    ket::mpi::gate::pauli_y(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_y<fused_gate_iterator> >(to_qubit_in_fused_gate_.at(qubit)));
+    else
+      ket::mpi::gate::pauli_y(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubit);
   }
 
   void simple_mpi_state::do_adj_pauli_y(qubit_type const qubit)
   {
-    ket::mpi::gate::adj_pauli_y(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_y<fused_gate_iterator> >(to_qubit_in_fused_gate_.at(qubit)));
+    else
+      ket::mpi::gate::adj_pauli_y(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubit);
   }
 
   void simple_mpi_state::do_pauli_yy(qubit_type const qubit1, qubit_type const qubit2)
   {
-    ket::mpi::gate::pauli_y(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, qubit1, qubit2);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_yy<fused_gate_iterator> >(to_qubit_in_fused_gate_.at(qubit1), to_qubit_in_fused_gate_.at(qubit2)));
+    else
+      ket::mpi::gate::pauli_y(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubit1, qubit2);
   }
 
   void simple_mpi_state::do_adj_pauli_yy(qubit_type const qubit1, qubit_type const qubit2)
   {
-    ket::mpi::gate::adj_pauli_y(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, qubit1, qubit2);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_yy<fused_gate_iterator> >(to_qubit_in_fused_gate_.at(qubit1), to_qubit_in_fused_gate_.at(qubit2)));
+    else
+      ket::mpi::gate::adj_pauli_y(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubit1, qubit2);
   }
 
   void simple_mpi_state::do_pauli_yn(std::vector<qubit_type> const& qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto qubits_in_fused_gate = std::vector<qubit_type>{};
+      qubits_in_fused_gate.reserve(qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(qubits), end(qubits), std::back_inserter(qubits_in_fused_gate),
+        [this](::bra::qubit_type const qubit) { return this->to_qubit_in_fused_gate_.at(qubit); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_yn<fused_gate_iterator> >(std::move(qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
 
@@ -379,6 +577,20 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
 
   void simple_mpi_state::do_adj_pauli_yn(std::vector<qubit_type> const& qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto qubits_in_fused_gate = std::vector<qubit_type>{};
+      qubits_in_fused_gate.reserve(qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(qubits), end(qubits), std::back_inserter(qubits_in_fused_gate),
+        [this](::bra::qubit_type const qubit) { return this->to_qubit_in_fused_gate_.at(qubit); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_yn<fused_gate_iterator> >(std::move(qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
 
@@ -405,34 +617,60 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
 
   void simple_mpi_state::do_pauli_z(qubit_type const qubit)
   {
-    ket::mpi::gate::pauli_z(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_z<fused_gate_iterator> >(to_qubit_in_fused_gate_.at(qubit)));
+    else
+      ket::mpi::gate::pauli_z(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubit);
   }
 
   void simple_mpi_state::do_adj_pauli_z(qubit_type const qubit)
   {
-    ket::mpi::gate::adj_pauli_z(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_z<fused_gate_iterator> >(to_qubit_in_fused_gate_.at(qubit)));
+    else
+      ket::mpi::gate::adj_pauli_z(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubit);
   }
 
   void simple_mpi_state::do_pauli_zz(qubit_type const qubit1, qubit_type const qubit2)
   {
-    ket::mpi::gate::pauli_z(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, qubit1, qubit2);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_zz<fused_gate_iterator> >(to_qubit_in_fused_gate_.at(qubit1), to_qubit_in_fused_gate_.at(qubit2)));
+    else
+      ket::mpi::gate::pauli_z(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubit1, qubit2);
   }
 
   void simple_mpi_state::do_adj_pauli_zz(qubit_type const qubit1, qubit_type const qubit2)
   {
-    ket::mpi::gate::adj_pauli_z(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, qubit1, qubit2);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_zz<fused_gate_iterator> >(to_qubit_in_fused_gate_.at(qubit1), to_qubit_in_fused_gate_.at(qubit2)));
+    else
+      ket::mpi::gate::adj_pauli_z(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubit1, qubit2);
   }
 
   void simple_mpi_state::do_pauli_zn(std::vector<qubit_type> const& qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto qubits_in_fused_gate = std::vector<qubit_type>{};
+      qubits_in_fused_gate.reserve(qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(qubits), end(qubits), std::back_inserter(qubits_in_fused_gate),
+        [this](::bra::qubit_type const qubit) { return this->to_qubit_in_fused_gate_.at(qubit); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_zn<fused_gate_iterator> >(std::move(qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
 
@@ -459,6 +697,20 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
 
   void simple_mpi_state::do_adj_pauli_zn(std::vector<qubit_type> const& qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto qubits_in_fused_gate = std::vector<qubit_type>{};
+      qubits_in_fused_gate.reserve(qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(qubits), end(qubits), std::back_inserter(qubits_in_fused_gate),
+        [this](::bra::qubit_type const qubit) { return this->to_qubit_in_fused_gate_.at(qubit); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_zn<fused_gate_iterator> >(std::move(qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
 
@@ -485,161 +737,239 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
 
   void simple_mpi_state::do_swap(qubit_type const qubit1, qubit_type const qubit2)
   {
-    ket::mpi::gate::swap(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, qubit1, qubit2);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_swap<fused_gate_iterator> >(to_qubit_in_fused_gate_.at(qubit1), to_qubit_in_fused_gate_.at(qubit2)));
+    else
+      ket::mpi::gate::swap(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubit1, qubit2);
   }
 
   void simple_mpi_state::do_adj_swap(qubit_type const qubit1, qubit_type const qubit2)
   {
-    ket::mpi::gate::adj_swap(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, qubit1, qubit2);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_swap<fused_gate_iterator> >(to_qubit_in_fused_gate_.at(qubit1), to_qubit_in_fused_gate_.at(qubit2)));
+    else
+      ket::mpi::gate::adj_swap(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubit1, qubit2);
   }
 
   void simple_mpi_state::do_u1(real_type const phase, qubit_type const qubit)
   {
-    ket::mpi::gate::phase_shift(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase, qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_u1<fused_gate_iterator> >(phase, to_qubit_in_fused_gate_.at(qubit)));
+    else
+      ket::mpi::gate::phase_shift(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, qubit);
   }
 
   void simple_mpi_state::do_adj_u1(real_type const phase, qubit_type const qubit)
   {
-    ket::mpi::gate::adj_phase_shift(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase, qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_u1<fused_gate_iterator> >(phase, to_qubit_in_fused_gate_.at(qubit)));
+    else
+      ket::mpi::gate::adj_phase_shift(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, qubit);
   }
 
   void simple_mpi_state::do_u2(
     real_type const phase1, real_type const phase2, qubit_type const qubit)
   {
-    ket::mpi::gate::phase_shift2(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase1, phase2, qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_u2<fused_gate_iterator> >(phase1, phase2, to_qubit_in_fused_gate_.at(qubit)));
+    else
+      ket::mpi::gate::phase_shift2(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase1, phase2, qubit);
   }
 
   void simple_mpi_state::do_adj_u2(
     real_type const phase1, real_type const phase2, qubit_type const qubit)
   {
-    ket::mpi::gate::adj_phase_shift2(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase1, phase2, qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_u2<fused_gate_iterator> >(phase1, phase2, to_qubit_in_fused_gate_.at(qubit)));
+    else
+      ket::mpi::gate::adj_phase_shift2(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase1, phase2, qubit);
   }
 
   void simple_mpi_state::do_u3(
     real_type const phase1, real_type const phase2, real_type const phase3,
     qubit_type const qubit)
   {
-    ket::mpi::gate::phase_shift3(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase1, phase2, phase3, qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_u3<fused_gate_iterator> >(phase1, phase2, phase3, to_qubit_in_fused_gate_.at(qubit)));
+    else
+      ket::mpi::gate::phase_shift3(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase1, phase2, phase3, qubit);
   }
 
   void simple_mpi_state::do_adj_u3(
     real_type const phase1, real_type const phase2, real_type const phase3,
     qubit_type const qubit)
   {
-    ket::mpi::gate::adj_phase_shift3(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase1, phase2, phase3, qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_u3<fused_gate_iterator> >(phase1, phase2, phase3, to_qubit_in_fused_gate_.at(qubit)));
+    else
+      ket::mpi::gate::adj_phase_shift3(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase1, phase2, phase3, qubit);
   }
 
   void simple_mpi_state::do_phase_shift(
     complex_type const& phase_coefficient, qubit_type const qubit)
   {
-    ket::mpi::gate::phase_shift_coeff(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase_coefficient, qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_phase_shift<fused_gate_iterator> >(phase_coefficient, to_qubit_in_fused_gate_.at(qubit)));
+    else
+      ket::mpi::gate::phase_shift_coeff(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase_coefficient, qubit);
   }
 
   void simple_mpi_state::do_adj_phase_shift(
     complex_type const& phase_coefficient, qubit_type const qubit)
   {
-    ket::mpi::gate::adj_phase_shift_coeff(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase_coefficient, qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_phase_shift<fused_gate_iterator> >(phase_coefficient, to_qubit_in_fused_gate_.at(qubit)));
+    else
+      ket::mpi::gate::adj_phase_shift_coeff(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase_coefficient, qubit);
   }
 
   void simple_mpi_state::do_x_rotation_half_pi(qubit_type const qubit)
   {
-    ket::mpi::gate::x_rotation_half_pi(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_x_rotation_half_pi<fused_gate_iterator> >(to_qubit_in_fused_gate_.at(qubit)));
+    else
+      ket::mpi::gate::x_rotation_half_pi(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubit);
   }
 
   void simple_mpi_state::do_adj_x_rotation_half_pi(qubit_type const qubit)
   {
-    ket::mpi::gate::adj_x_rotation_half_pi(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_x_rotation_half_pi<fused_gate_iterator> >(to_qubit_in_fused_gate_.at(qubit)));
+    else
+      ket::mpi::gate::adj_x_rotation_half_pi(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubit);
   }
 
   void simple_mpi_state::do_y_rotation_half_pi(qubit_type const qubit)
   {
-    ket::mpi::gate::y_rotation_half_pi(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_y_rotation_half_pi<fused_gate_iterator> >(to_qubit_in_fused_gate_.at(qubit)));
+    else
+      ket::mpi::gate::y_rotation_half_pi(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubit);
   }
 
   void simple_mpi_state::do_adj_y_rotation_half_pi(qubit_type const qubit)
   {
-    ket::mpi::gate::adj_y_rotation_half_pi(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_y_rotation_half_pi<fused_gate_iterator> >(to_qubit_in_fused_gate_.at(qubit)));
+    else
+      ket::mpi::gate::adj_y_rotation_half_pi(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, qubit);
   }
 
   void simple_mpi_state::do_controlled_v(
     complex_type const& phase_coefficient,
     qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
-    ket::mpi::gate::controlled_v_coeff(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase_coefficient, target_qubit, control_qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_v<fused_gate_iterator> >(
+          phase_coefficient, to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
+    else
+      ket::mpi::gate::controlled_v_coeff(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase_coefficient, target_qubit, control_qubit);
   }
 
   void simple_mpi_state::do_adj_controlled_v(
     complex_type const& phase_coefficient,
     qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
-    ket::mpi::gate::adj_controlled_v_coeff(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase_coefficient, target_qubit, control_qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_adj_controlled_v<fused_gate_iterator> >(
+          phase_coefficient, to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
+    else
+      ket::mpi::gate::adj_controlled_v_coeff(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase_coefficient, target_qubit, control_qubit);
   }
 
   void simple_mpi_state::do_exponential_pauli_x(real_type const phase, qubit_type const qubit)
   {
-    ket::mpi::gate::exponential_pauli_x(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase, qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_exponential_pauli_x<fused_gate_iterator> >(phase, to_qubit_in_fused_gate_.at(qubit)));
+    else
+      ket::mpi::gate::exponential_pauli_x(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, qubit);
   }
 
   void simple_mpi_state::do_adj_exponential_pauli_x(real_type const phase, qubit_type const qubit)
   {
-    ket::mpi::gate::adj_exponential_pauli_x(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase, qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_exponential_pauli_x<fused_gate_iterator> >(phase, to_qubit_in_fused_gate_.at(qubit)));
+    else
+      ket::mpi::gate::adj_exponential_pauli_x(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, qubit);
   }
 
   void simple_mpi_state::do_exponential_pauli_xx(
     real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
   {
-    ket::mpi::gate::exponential_pauli_x(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase, qubit1, qubit2);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_exponential_pauli_xx<fused_gate_iterator> >(phase, to_qubit_in_fused_gate_.at(qubit1), to_qubit_in_fused_gate_.at(qubit2)));
+    else
+      ket::mpi::gate::exponential_pauli_x(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, qubit1, qubit2);
   }
 
   void simple_mpi_state::do_adj_exponential_pauli_xx(
     real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
   {
-    ket::mpi::gate::adj_exponential_pauli_x(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase, qubit1, qubit2);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_exponential_pauli_xx<fused_gate_iterator> >(phase, to_qubit_in_fused_gate_.at(qubit1), to_qubit_in_fused_gate_.at(qubit2)));
+    else
+      ket::mpi::gate::adj_exponential_pauli_x(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, qubit1, qubit2);
   }
 
   void simple_mpi_state::do_exponential_pauli_xn(
     real_type const phase, std::vector<qubit_type> const& qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto qubits_in_fused_gate = std::vector<qubit_type>{};
+      qubits_in_fused_gate.reserve(qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(qubits), end(qubits), std::back_inserter(qubits_in_fused_gate),
+        [this](::bra::qubit_type const qubit) { return this->to_qubit_in_fused_gate_.at(qubit); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_exponential_pauli_xn<fused_gate_iterator> >(phase, std::move(qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
 
@@ -667,6 +997,20 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
   void simple_mpi_state::do_adj_exponential_pauli_xn(
     real_type const phase, std::vector<qubit_type> const& qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto qubits_in_fused_gate = std::vector<qubit_type>{};
+      qubits_in_fused_gate.reserve(qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(qubits), end(qubits), std::back_inserter(qubits_in_fused_gate),
+        [this](::bra::qubit_type const qubit) { return this->to_qubit_in_fused_gate_.at(qubit); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_exponential_pauli_xn<fused_gate_iterator> >(phase, std::move(qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
 
@@ -693,37 +1037,63 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
 
   void simple_mpi_state::do_exponential_pauli_y(real_type const phase, qubit_type const qubit)
   {
-    ket::mpi::gate::exponential_pauli_y(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase, qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_exponential_pauli_y<fused_gate_iterator> >(phase, to_qubit_in_fused_gate_.at(qubit)));
+    else
+      ket::mpi::gate::exponential_pauli_y(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, qubit);
   }
 
   void simple_mpi_state::do_adj_exponential_pauli_y(real_type const phase, qubit_type const qubit)
   {
-    ket::mpi::gate::adj_exponential_pauli_y(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase, qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_exponential_pauli_y<fused_gate_iterator> >(phase, to_qubit_in_fused_gate_.at(qubit)));
+    else
+      ket::mpi::gate::adj_exponential_pauli_y(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, qubit);
   }
 
   void simple_mpi_state::do_exponential_pauli_yy(
     real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
   {
-    ket::mpi::gate::exponential_pauli_y(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase, qubit1, qubit2);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_exponential_pauli_yy<fused_gate_iterator> >(phase, to_qubit_in_fused_gate_.at(qubit1), to_qubit_in_fused_gate_.at(qubit2)));
+    else
+      ket::mpi::gate::exponential_pauli_y(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, qubit1, qubit2);
   }
 
   void simple_mpi_state::do_adj_exponential_pauli_yy(
     real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
   {
-    ket::mpi::gate::adj_exponential_pauli_y(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase, qubit1, qubit2);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_exponential_pauli_yy<fused_gate_iterator> >(phase, to_qubit_in_fused_gate_.at(qubit1), to_qubit_in_fused_gate_.at(qubit2)));
+    else
+      ket::mpi::gate::adj_exponential_pauli_y(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, qubit1, qubit2);
   }
 
   void simple_mpi_state::do_exponential_pauli_yn(
     real_type const phase, std::vector<qubit_type> const& qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto qubits_in_fused_gate = std::vector<qubit_type>{};
+      qubits_in_fused_gate.reserve(qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(qubits), end(qubits), std::back_inserter(qubits_in_fused_gate),
+        [this](::bra::qubit_type const qubit) { return this->to_qubit_in_fused_gate_.at(qubit); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_exponential_pauli_yn<fused_gate_iterator> >(phase, std::move(qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
 
@@ -751,6 +1121,20 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
   void simple_mpi_state::do_adj_exponential_pauli_yn(
     real_type const phase, std::vector<qubit_type> const& qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto qubits_in_fused_gate = std::vector<qubit_type>{};
+      qubits_in_fused_gate.reserve(qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(qubits), end(qubits), std::back_inserter(qubits_in_fused_gate),
+        [this](::bra::qubit_type const qubit) { return this->to_qubit_in_fused_gate_.at(qubit); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_exponential_pauli_yn<fused_gate_iterator> >(phase, std::move(qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
 
@@ -777,37 +1161,63 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
 
   void simple_mpi_state::do_exponential_pauli_z(real_type const phase, qubit_type const qubit)
   {
-    ket::mpi::gate::exponential_pauli_z(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase, qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_exponential_pauli_z<fused_gate_iterator> >(phase, to_qubit_in_fused_gate_.at(qubit)));
+    else
+      ket::mpi::gate::exponential_pauli_z(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, qubit);
   }
 
   void simple_mpi_state::do_adj_exponential_pauli_z(real_type const phase, qubit_type const qubit)
   {
-    ket::mpi::gate::adj_exponential_pauli_z(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase, qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_exponential_pauli_z<fused_gate_iterator> >(phase, to_qubit_in_fused_gate_.at(qubit)));
+    else
+      ket::mpi::gate::adj_exponential_pauli_z(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, qubit);
   }
 
   void simple_mpi_state::do_exponential_pauli_zz(
     real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
   {
-    ket::mpi::gate::exponential_pauli_z(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase, qubit1, qubit2);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_exponential_pauli_zz<fused_gate_iterator> >(phase, to_qubit_in_fused_gate_.at(qubit1), to_qubit_in_fused_gate_.at(qubit2)));
+    else
+      ket::mpi::gate::exponential_pauli_z(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, qubit1, qubit2);
   }
 
   void simple_mpi_state::do_adj_exponential_pauli_zz(
     real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
   {
-    ket::mpi::gate::adj_exponential_pauli_z(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase, qubit1, qubit2);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_exponential_pauli_zz<fused_gate_iterator> >(phase, to_qubit_in_fused_gate_.at(qubit1), to_qubit_in_fused_gate_.at(qubit2)));
+    else
+      ket::mpi::gate::adj_exponential_pauli_z(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, qubit1, qubit2);
   }
 
   void simple_mpi_state::do_exponential_pauli_zn(
     real_type const phase, std::vector<qubit_type> const& qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto qubits_in_fused_gate = std::vector<qubit_type>{};
+      qubits_in_fused_gate.reserve(qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(qubits), end(qubits), std::back_inserter(qubits_in_fused_gate),
+        [this](::bra::qubit_type const qubit) { return this->to_qubit_in_fused_gate_.at(qubit); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_exponential_pauli_zn<fused_gate_iterator> >(phase, std::move(qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
 
@@ -835,6 +1245,20 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
   void simple_mpi_state::do_adj_exponential_pauli_zn(
     real_type const phase, std::vector<qubit_type> const& qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto qubits_in_fused_gate = std::vector<qubit_type>{};
+      qubits_in_fused_gate.reserve(qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(qubits), end(qubits), std::back_inserter(qubits_in_fused_gate),
+        [this](::bra::qubit_type const qubit) { return this->to_qubit_in_fused_gate_.at(qubit); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_exponential_pauli_zn<fused_gate_iterator> >(phase, std::move(qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
 
@@ -862,35 +1286,55 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
   void simple_mpi_state::do_exponential_swap(
     real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
   {
-    ket::mpi::gate::exponential_swap(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase, qubit1, qubit2);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_exponential_swap<fused_gate_iterator> >(phase, to_qubit_in_fused_gate_.at(qubit1), to_qubit_in_fused_gate_.at(qubit2)));
+    else
+      ket::mpi::gate::exponential_swap(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, qubit1, qubit2);
   }
 
   void simple_mpi_state::do_adj_exponential_swap(
     real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
   {
-    ket::mpi::gate::adj_exponential_swap(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase, qubit1, qubit2);
+    if (is_in_fusion_)
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_exponential_swap<fused_gate_iterator> >(phase, to_qubit_in_fused_gate_.at(qubit1), to_qubit_in_fused_gate_.at(qubit2)));
+    else
+      ket::mpi::gate::adj_exponential_swap(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, qubit1, qubit2);
   }
 
   void simple_mpi_state::do_toffoli(
     qubit_type const target_qubit,
     control_qubit_type const control_qubit1, control_qubit_type const control_qubit2)
   {
-    ket::mpi::gate::toffoli(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit1, control_qubit2);
+    if (is_in_fusion_)
+      fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_toffoli<fused_gate_iterator> >(
+          to_qubit_in_fused_gate_.at(target_qubit),
+          ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit1.qubit())),
+          ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit2.qubit()))));
+    else
+      ket::mpi::gate::toffoli(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit1, control_qubit2);
   }
 
   void simple_mpi_state::do_adj_toffoli(
     qubit_type const target_qubit,
     control_qubit_type const control_qubit1, control_qubit_type const control_qubit2)
   {
-    ket::mpi::gate::adj_toffoli(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit1, control_qubit2);
+    if (is_in_fusion_)
+      fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_toffoli<fused_gate_iterator> >(
+          to_qubit_in_fused_gate_.at(target_qubit),
+          ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit1.qubit())),
+          ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit2.qubit()))));
+    else
+      ket::mpi::gate::adj_toffoli(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit1, control_qubit2);
   }
 
   ::ket::gate::outcome simple_mpi_state::do_projective_measurement(
@@ -978,7 +1422,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
           int const)\
         {\
           for (auto const& gate_ptr: this->fused_gates_)\
-            gate_ptr->call(std::addressof(*first), index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);\
+            gate_ptr->call(first, index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);\
         }, BOOST_PP_REPEAT_ ## z(num_fused_qubits, QUBITS, fused_qubits_));\
       break;\
 
@@ -995,7 +1439,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
           int const)\
         {\
           for (auto const& gate_ptr: this->fused_gates_)\
-            gate_ptr->call(std::addressof(*first), index_wo_qubits, qubit_masks, index_masks);\
+            gate_ptr->call(first, index_wo_qubits, qubit_masks, index_masks);\
         }, BOOST_PP_REPEAT_ ## z(num_fused_qubits, QUBITS, fused_qubits_));\
       break;\
 
@@ -1004,10 +1448,15 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_FUSED_QUBITS), CASE_N, nil)
 # undef CASE_N
 # undef QUBITS
     }
+
+    fused_gates_.clear();
   }
 
   void simple_mpi_state::do_clear(qubit_type const qubit)
   {
+    if (is_in_fusion_)
+      throw ::bra::unsupported_fused_gate_error{"CLEAR"};
+
     ket::mpi::gate::clear(
       mpi_policy_, parallel_policy_,
       data_, permutation_, buffer_, communicator_, environment_, qubit);
@@ -1015,6 +1464,9 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_FUSED_QUBITS), CASE_N, nil)
 
   void simple_mpi_state::do_set(qubit_type const qubit)
   {
+    if (is_in_fusion_)
+      throw ::bra::unsupported_fused_gate_error{"SET"};
+
     ket::mpi::gate::set(
       mpi_policy_, parallel_policy_,
       data_, permutation_, buffer_, communicator_, environment_, qubit);
@@ -1023,6 +1475,9 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_FUSED_QUBITS), CASE_N, nil)
   void simple_mpi_state::do_controlled_i_gate(
     qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
+    if (is_in_fusion_)
+      return;
+
     ket::mpi::gate::identity(
       mpi_policy_, parallel_policy_,
       data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
@@ -1031,6 +1486,9 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_FUSED_QUBITS), CASE_N, nil)
   void simple_mpi_state::do_adj_controlled_i_gate(
     qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
+    if (is_in_fusion_)
+      return;
+
     ket::mpi::gate::adj_identity(
       mpi_policy_, parallel_policy_,
       data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
@@ -1039,6 +1497,9 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_FUSED_QUBITS), CASE_N, nil)
   void simple_mpi_state::do_multi_controlled_in_gate(
     std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+      return;
+
     auto const num_target_qubits = target_qubits.size();
     auto const num_control_qubits = control_qubits.size();
     auto const num_operated_qubits = num_target_qubits + num_control_qubits;
@@ -1083,6 +1544,9 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
   void simple_mpi_state::do_adj_multi_controlled_in_gate(
     std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+      return;
+
     auto const num_target_qubits = target_qubits.size();
     auto const num_control_qubits = control_qubits.size();
     auto const num_operated_qubits = num_target_qubits + num_control_qubits;
@@ -1127,22 +1591,46 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
   void simple_mpi_state::do_controlled_hadamard(
     qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
-    ket::mpi::gate::hadamard(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_hadamard<fused_gate_iterator> >(
+          to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
+    else
+      ket::mpi::gate::hadamard(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
   }
 
   void simple_mpi_state::do_adj_controlled_hadamard(
     qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
-    ket::mpi::gate::adj_hadamard(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_hadamard<fused_gate_iterator> >(
+          to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
+    else
+      ket::mpi::gate::adj_hadamard(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
   }
 
   void simple_mpi_state::do_multi_controlled_hadamard(
     qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
+      control_qubits_in_fused_gate.reserve(control_qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
+        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_hadamard<fused_gate_iterator> >(to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
@@ -1170,6 +1658,20 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
   void simple_mpi_state::do_adj_multi_controlled_hadamard(
     qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
+      control_qubits_in_fused_gate.reserve(control_qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
+        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_hadamard<fused_gate_iterator> >(to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
@@ -1197,22 +1699,46 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
   void simple_mpi_state::do_controlled_not(
     qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
-    ket::mpi::gate::not_(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_not<fused_gate_iterator> >(
+          to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
+    else
+      ket::mpi::gate::not_(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
   }
 
   void simple_mpi_state::do_adj_controlled_not(
     qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
-    ket::mpi::gate::adj_not_(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_not<fused_gate_iterator> >(
+          to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
+    else
+      ket::mpi::gate::adj_not_(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
   }
 
   void simple_mpi_state::do_multi_controlled_not(
     qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
+      control_qubits_in_fused_gate.reserve(control_qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
+        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_not<fused_gate_iterator> >(to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
@@ -1240,6 +1766,20 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
   void simple_mpi_state::do_adj_multi_controlled_not(
     qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
+      control_qubits_in_fused_gate.reserve(control_qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
+        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_not<fused_gate_iterator> >(to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
@@ -1267,22 +1807,52 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
   void simple_mpi_state::do_controlled_pauli_x(
     qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
-    ket::mpi::gate::pauli_x(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_pauli_x<fused_gate_iterator> >(
+          to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
+    else
+      ket::mpi::gate::pauli_x(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
   }
 
   void simple_mpi_state::do_adj_controlled_pauli_x(
     qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
-    ket::mpi::gate::adj_pauli_x(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_pauli_x<fused_gate_iterator> >(
+          to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
+    else
+      ket::mpi::gate::adj_pauli_x(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
   }
 
   void simple_mpi_state::do_multi_controlled_pauli_xn(
     std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto target_qubits_in_fused_gate = std::vector<qubit_type>{};
+      target_qubits_in_fused_gate.reserve(target_qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(target_qubits), end(target_qubits), std::back_inserter(target_qubits_in_fused_gate),
+        [this](::bra::qubit_type const target_qubit) { return this->to_qubit_in_fused_gate_.at(target_qubit); });
+
+      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
+      control_qubits_in_fused_gate.reserve(control_qubits.size());
+      std::transform(
+        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
+        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_pauli_xn<fused_gate_iterator> >(std::move(target_qubits_in_fused_gate), std::move(control_qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_target_qubits = target_qubits.size();
     auto const num_control_qubits = control_qubits.size();
     auto const num_operated_qubits = num_target_qubits + num_control_qubits;
@@ -1327,6 +1897,26 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
   void simple_mpi_state::do_adj_multi_controlled_pauli_xn(
     std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto target_qubits_in_fused_gate = std::vector<qubit_type>{};
+      target_qubits_in_fused_gate.reserve(target_qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(target_qubits), end(target_qubits), std::back_inserter(target_qubits_in_fused_gate),
+        [this](::bra::qubit_type const target_qubit) { return this->to_qubit_in_fused_gate_.at(target_qubit); });
+
+      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
+      control_qubits_in_fused_gate.reserve(control_qubits.size());
+      std::transform(
+        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
+        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_pauli_xn<fused_gate_iterator> >(std::move(target_qubits_in_fused_gate), std::move(control_qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_target_qubits = target_qubits.size();
     auto const num_control_qubits = control_qubits.size();
     auto const num_operated_qubits = num_target_qubits + num_control_qubits;
@@ -1371,22 +1961,52 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
   void simple_mpi_state::do_controlled_pauli_y(
     qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
-    ket::mpi::gate::pauli_y(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_pauli_y<fused_gate_iterator> >(
+          to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
+    else
+      ket::mpi::gate::pauli_y(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
   }
 
   void simple_mpi_state::do_adj_controlled_pauli_y(
     qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
-    ket::mpi::gate::adj_pauli_y(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_pauli_y<fused_gate_iterator> >(
+          to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
+    else
+      ket::mpi::gate::adj_pauli_y(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
   }
 
   void simple_mpi_state::do_multi_controlled_pauli_yn(
     std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto target_qubits_in_fused_gate = std::vector<qubit_type>{};
+      target_qubits_in_fused_gate.reserve(target_qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(target_qubits), end(target_qubits), std::back_inserter(target_qubits_in_fused_gate),
+        [this](::bra::qubit_type const target_qubit) { return this->to_qubit_in_fused_gate_.at(target_qubit); });
+
+      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
+      control_qubits_in_fused_gate.reserve(control_qubits.size());
+      std::transform(
+        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
+        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_pauli_yn<fused_gate_iterator> >(std::move(target_qubits_in_fused_gate), std::move(control_qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_target_qubits = target_qubits.size();
     auto const num_control_qubits = control_qubits.size();
     auto const num_operated_qubits = num_target_qubits + num_control_qubits;
@@ -1431,6 +2051,26 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
   void simple_mpi_state::do_adj_multi_controlled_pauli_yn(
     std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto target_qubits_in_fused_gate = std::vector<qubit_type>{};
+      target_qubits_in_fused_gate.reserve(target_qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(target_qubits), end(target_qubits), std::back_inserter(target_qubits_in_fused_gate),
+        [this](::bra::qubit_type const target_qubit) { return this->to_qubit_in_fused_gate_.at(target_qubit); });
+
+      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
+      control_qubits_in_fused_gate.reserve(control_qubits.size());
+      std::transform(
+        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
+        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_pauli_yn<fused_gate_iterator> >(std::move(target_qubits_in_fused_gate), std::move(control_qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_target_qubits = target_qubits.size();
     auto const num_control_qubits = control_qubits.size();
     auto const num_operated_qubits = num_target_qubits + num_control_qubits;
@@ -1475,22 +2115,52 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
   void simple_mpi_state::do_controlled_pauli_z(
     qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
-    ket::mpi::gate::pauli_z(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_pauli_z<fused_gate_iterator> >(
+          to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
+    else
+      ket::mpi::gate::pauli_z(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
   }
 
   void simple_mpi_state::do_adj_controlled_pauli_z(
     qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
-    ket::mpi::gate::adj_pauli_z(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_pauli_z<fused_gate_iterator> >(
+          to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
+    else
+      ket::mpi::gate::adj_pauli_z(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
   }
 
   void simple_mpi_state::do_multi_controlled_pauli_zn(
     std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto target_qubits_in_fused_gate = std::vector<qubit_type>{};
+      target_qubits_in_fused_gate.reserve(target_qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(target_qubits), end(target_qubits), std::back_inserter(target_qubits_in_fused_gate),
+        [this](::bra::qubit_type const target_qubit) { return this->to_qubit_in_fused_gate_.at(target_qubit); });
+
+      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
+      control_qubits_in_fused_gate.reserve(control_qubits.size());
+      std::transform(
+        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
+        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_pauli_zn<fused_gate_iterator> >(std::move(target_qubits_in_fused_gate), std::move(control_qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_target_qubits = target_qubits.size();
     auto const num_control_qubits = control_qubits.size();
     auto const num_operated_qubits = num_target_qubits + num_control_qubits;
@@ -1535,6 +2205,26 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
   void simple_mpi_state::do_adj_multi_controlled_pauli_zn(
     std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto target_qubits_in_fused_gate = std::vector<qubit_type>{};
+      target_qubits_in_fused_gate.reserve(target_qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(target_qubits), end(target_qubits), std::back_inserter(target_qubits_in_fused_gate),
+        [this](::bra::qubit_type const target_qubit) { return this->to_qubit_in_fused_gate_.at(target_qubit); });
+
+      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
+      control_qubits_in_fused_gate.reserve(control_qubits.size());
+      std::transform(
+        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
+        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_pauli_zn<fused_gate_iterator> >(std::move(target_qubits_in_fused_gate), std::move(control_qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_target_qubits = target_qubits.size();
     auto const num_control_qubits = control_qubits.size();
     auto const num_operated_qubits = num_target_qubits + num_control_qubits;
@@ -1580,6 +2270,20 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     qubit_type const target_qubit1, qubit_type const target_qubit2,
     std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
+      control_qubits_in_fused_gate.reserve(control_qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
+        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_swap<fused_gate_iterator> >(to_qubit_in_fused_gate_.at(target_qubit1), to_qubit_in_fused_gate_.at(target_qubit2), std::move(control_qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 0u);
 
@@ -1608,6 +2312,20 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_DEC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     qubit_type const target_qubit1, qubit_type const target_qubit2,
     std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
+      control_qubits_in_fused_gate.reserve(control_qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
+        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_swap<fused_gate_iterator> >(to_qubit_in_fused_gate_.at(target_qubit1), to_qubit_in_fused_gate_.at(target_qubit2), std::move(control_qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 0u);
 
@@ -1636,24 +2354,48 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_DEC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     complex_type const& phase_coefficient,
     qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
-    ket::mpi::gate::phase_shift_coeff(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase_coefficient, target_qubit, control_qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_phase_shift<fused_gate_iterator> >(
+          phase_coefficient, to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
+    else
+      ket::mpi::gate::phase_shift_coeff(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase_coefficient, target_qubit, control_qubit);
   }
 
   void simple_mpi_state::do_adj_controlled_phase_shift(
     complex_type const& phase_coefficient,
     qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
-    ket::mpi::gate::adj_phase_shift_coeff(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase_coefficient, target_qubit, control_qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_adj_controlled_phase_shift<fused_gate_iterator> >(
+          phase_coefficient, to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
+    else
+      ket::mpi::gate::adj_phase_shift_coeff(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase_coefficient, target_qubit, control_qubit);
   }
 
   void simple_mpi_state::do_multi_controlled_phase_shift(
     complex_type const& phase_coefficient,
     qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
+      control_qubits_in_fused_gate.reserve(control_qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
+        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_phase_shift<fused_gate_iterator> >(phase_coefficient, to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
@@ -1682,6 +2424,20 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     complex_type const& phase_coefficient,
     qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
+      control_qubits_in_fused_gate.reserve(control_qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
+        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_multi_controlled_phase_shift<fused_gate_iterator> >(phase_coefficient, to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
@@ -1709,22 +2465,46 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
   void simple_mpi_state::do_controlled_u1(
     real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
-    ket::mpi::gate::phase_shift(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase, target_qubit, control_qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_u1<fused_gate_iterator> >(
+          phase, to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
+    else
+      ket::mpi::gate::phase_shift(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, target_qubit, control_qubit);
   }
 
   void simple_mpi_state::do_adj_controlled_u1(
     real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
-    ket::mpi::gate::adj_phase_shift(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase, target_qubit, control_qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_adj_controlled_u1<fused_gate_iterator> >(
+          phase, to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
+    else
+      ket::mpi::gate::adj_phase_shift(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, target_qubit, control_qubit);
   }
 
   void simple_mpi_state::do_multi_controlled_u1(
     real_type const phase, qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
+      control_qubits_in_fused_gate.reserve(control_qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
+        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_u1<fused_gate_iterator> >(phase, to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
@@ -1752,6 +2532,20 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
   void simple_mpi_state::do_adj_multi_controlled_u1(
     real_type const phase, qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
+      control_qubits_in_fused_gate.reserve(control_qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
+        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_multi_controlled_u1<fused_gate_iterator> >(phase, to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
@@ -1779,22 +2573,46 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
   void simple_mpi_state::do_controlled_u2(
     real_type const phase1, real_type const phase2, qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
-    ket::mpi::gate::phase_shift2(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase1, phase2, target_qubit, control_qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_u2<fused_gate_iterator> >(
+          phase1, phase2, to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
+    else
+      ket::mpi::gate::phase_shift2(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase1, phase2, target_qubit, control_qubit);
   }
 
   void simple_mpi_state::do_adj_controlled_u2(
     real_type const phase1, real_type const phase2, qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
-    ket::mpi::gate::adj_phase_shift2(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase1, phase2, target_qubit, control_qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_adj_controlled_u2<fused_gate_iterator> >(
+          phase1, phase2, to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
+    else
+      ket::mpi::gate::adj_phase_shift2(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase1, phase2, target_qubit, control_qubit);
   }
 
   void simple_mpi_state::do_multi_controlled_u2(
     real_type const phase1, real_type const phase2, qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
+      control_qubits_in_fused_gate.reserve(control_qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
+        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_u2<fused_gate_iterator> >(phase1, phase2, to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
@@ -1822,6 +2640,20 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
   void simple_mpi_state::do_adj_multi_controlled_u2(
     real_type const phase1, real_type const phase2, qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
+      control_qubits_in_fused_gate.reserve(control_qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
+        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_multi_controlled_u2<fused_gate_iterator> >(phase1, phase2, to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
@@ -1850,24 +2682,48 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     real_type const phase1, real_type const phase2, real_type const phase3,
     qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
-    ket::mpi::gate::phase_shift3(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase1, phase2, phase3, target_qubit, control_qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_u3<fused_gate_iterator> >(
+          phase1, phase2, phase3, to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
+    else
+      ket::mpi::gate::phase_shift3(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase1, phase2, phase3, target_qubit, control_qubit);
   }
 
   void simple_mpi_state::do_adj_controlled_u3(
     real_type const phase1, real_type const phase2, real_type const phase3,
     qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
-    ket::mpi::gate::adj_phase_shift3(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase1, phase2, phase3, target_qubit, control_qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_adj_controlled_u3<fused_gate_iterator> >(
+          phase1, phase2, phase3, to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
+    else
+      ket::mpi::gate::adj_phase_shift3(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase1, phase2, phase3, target_qubit, control_qubit);
   }
 
   void simple_mpi_state::do_multi_controlled_u3(
     real_type const phase1, real_type const phase2, real_type const phase3,
     qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
+      control_qubits_in_fused_gate.reserve(control_qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
+        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_u3<fused_gate_iterator> >(phase1, phase2, phase3, to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
@@ -1896,6 +2752,20 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     real_type const phase1, real_type const phase2, real_type const phase3,
     qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
+      control_qubits_in_fused_gate.reserve(control_qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
+        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_multi_controlled_u3<fused_gate_iterator> >(phase1, phase2, phase3, to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
@@ -1923,22 +2793,46 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
   void simple_mpi_state::do_controlled_x_rotation_half_pi(
     qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
-    ket::mpi::gate::x_rotation_half_pi(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_x_rotation_half_pi<fused_gate_iterator> >(
+          to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
+    else
+      ket::mpi::gate::x_rotation_half_pi(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
   }
 
   void simple_mpi_state::do_adj_controlled_x_rotation_half_pi(
     qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
-    ket::mpi::gate::adj_x_rotation_half_pi(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_adj_controlled_x_rotation_half_pi<fused_gate_iterator> >(
+          to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
+    else
+      ket::mpi::gate::adj_x_rotation_half_pi(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
   }
 
   void simple_mpi_state::do_multi_controlled_x_rotation_half_pi(
     qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
+      control_qubits_in_fused_gate.reserve(control_qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
+        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_x_rotation_half_pi<fused_gate_iterator> >(to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
@@ -1966,6 +2860,20 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
   void simple_mpi_state::do_adj_multi_controlled_x_rotation_half_pi(
     qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
+      control_qubits_in_fused_gate.reserve(control_qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
+        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_multi_controlled_x_rotation_half_pi<fused_gate_iterator> >(to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
@@ -1993,22 +2901,46 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
   void simple_mpi_state::do_controlled_y_rotation_half_pi(
     qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
-    ket::mpi::gate::y_rotation_half_pi(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_y_rotation_half_pi<fused_gate_iterator> >(
+          to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
+    else
+      ket::mpi::gate::y_rotation_half_pi(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
   }
 
   void simple_mpi_state::do_adj_controlled_y_rotation_half_pi(
     qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
-    ket::mpi::gate::adj_y_rotation_half_pi(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_adj_controlled_y_rotation_half_pi<fused_gate_iterator> >(
+          to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
+    else
+      ket::mpi::gate::adj_y_rotation_half_pi(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
   }
 
   void simple_mpi_state::do_multi_controlled_y_rotation_half_pi(
     qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
+      control_qubits_in_fused_gate.reserve(control_qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
+        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_y_rotation_half_pi<fused_gate_iterator> >(to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
@@ -2036,6 +2968,20 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
   void simple_mpi_state::do_adj_multi_controlled_y_rotation_half_pi(
     qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
+      control_qubits_in_fused_gate.reserve(control_qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
+        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_multi_controlled_y_rotation_half_pi<fused_gate_iterator> >(to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
@@ -2064,6 +3010,20 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     complex_type const& phase_coefficient,
     qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
+      control_qubits_in_fused_gate.reserve(control_qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
+        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_v<fused_gate_iterator> >(phase_coefficient, to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
@@ -2092,6 +3052,20 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     complex_type const& phase_coefficient,
     qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
+      control_qubits_in_fused_gate.reserve(control_qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
+        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_multi_controlled_v<fused_gate_iterator> >(phase_coefficient, to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
@@ -2119,22 +3093,52 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
   void simple_mpi_state::do_controlled_exponential_pauli_x(
     real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
-    ket::mpi::gate::exponential_pauli_x(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase, target_qubit, control_qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_exponential_pauli_x<fused_gate_iterator> >(
+          phase, to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
+    else
+      ket::mpi::gate::exponential_pauli_x(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, target_qubit, control_qubit);
   }
 
   void simple_mpi_state::do_adj_controlled_exponential_pauli_x(
     real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
-    ket::mpi::gate::adj_exponential_pauli_x(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase, target_qubit, control_qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_adj_controlled_exponential_pauli_x<fused_gate_iterator> >(
+          phase, to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
+    else
+      ket::mpi::gate::adj_exponential_pauli_x(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, target_qubit, control_qubit);
   }
 
   void simple_mpi_state::do_multi_controlled_exponential_pauli_xn(
     real_type const phase, std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto target_qubits_in_fused_gate = std::vector<qubit_type>{};
+      target_qubits_in_fused_gate.reserve(target_qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(target_qubits), end(target_qubits), std::back_inserter(target_qubits_in_fused_gate),
+        [this](::bra::qubit_type const target_qubit) { return this->to_qubit_in_fused_gate_.at(target_qubit); });
+
+      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
+      control_qubits_in_fused_gate.reserve(control_qubits.size());
+      std::transform(
+        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
+        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_exponential_pauli_xn<fused_gate_iterator> >(phase, std::move(target_qubits_in_fused_gate), std::move(control_qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_target_qubits = target_qubits.size();
     auto const num_control_qubits = control_qubits.size();
     auto const num_operated_qubits = num_target_qubits + num_control_qubits;
@@ -2179,6 +3183,26 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
   void simple_mpi_state::do_adj_multi_controlled_exponential_pauli_xn(
     real_type const phase, std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto target_qubits_in_fused_gate = std::vector<qubit_type>{};
+      target_qubits_in_fused_gate.reserve(target_qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(target_qubits), end(target_qubits), std::back_inserter(target_qubits_in_fused_gate),
+        [this](::bra::qubit_type const target_qubit) { return this->to_qubit_in_fused_gate_.at(target_qubit); });
+
+      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
+      control_qubits_in_fused_gate.reserve(control_qubits.size());
+      std::transform(
+        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
+        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_multi_controlled_exponential_pauli_xn<fused_gate_iterator> >(phase, std::move(target_qubits_in_fused_gate), std::move(control_qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_target_qubits = target_qubits.size();
     auto const num_control_qubits = control_qubits.size();
     auto const num_operated_qubits = num_target_qubits + num_control_qubits;
@@ -2223,22 +3247,52 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
   void simple_mpi_state::do_controlled_exponential_pauli_y(
     real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
-    ket::mpi::gate::exponential_pauli_y(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase, target_qubit, control_qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_exponential_pauli_y<fused_gate_iterator> >(
+          phase, to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
+    else
+      ket::mpi::gate::exponential_pauli_y(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, target_qubit, control_qubit);
   }
 
   void simple_mpi_state::do_adj_controlled_exponential_pauli_y(
     real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
-    ket::mpi::gate::adj_exponential_pauli_y(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase, target_qubit, control_qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_adj_controlled_exponential_pauli_y<fused_gate_iterator> >(
+          phase, to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
+    else
+      ket::mpi::gate::adj_exponential_pauli_y(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, target_qubit, control_qubit);
   }
 
   void simple_mpi_state::do_multi_controlled_exponential_pauli_yn(
     real_type const phase, std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto target_qubits_in_fused_gate = std::vector<qubit_type>{};
+      target_qubits_in_fused_gate.reserve(target_qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(target_qubits), end(target_qubits), std::back_inserter(target_qubits_in_fused_gate),
+        [this](::bra::qubit_type const target_qubit) { return this->to_qubit_in_fused_gate_.at(target_qubit); });
+
+      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
+      control_qubits_in_fused_gate.reserve(control_qubits.size());
+      std::transform(
+        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
+        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_exponential_pauli_yn<fused_gate_iterator> >(phase, std::move(target_qubits_in_fused_gate), std::move(control_qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_target_qubits = target_qubits.size();
     auto const num_control_qubits = control_qubits.size();
     auto const num_operated_qubits = num_target_qubits + num_control_qubits;
@@ -2283,6 +3337,26 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
   void simple_mpi_state::do_adj_multi_controlled_exponential_pauli_yn(
     real_type const phase, std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto target_qubits_in_fused_gate = std::vector<qubit_type>{};
+      target_qubits_in_fused_gate.reserve(target_qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(target_qubits), end(target_qubits), std::back_inserter(target_qubits_in_fused_gate),
+        [this](::bra::qubit_type const target_qubit) { return this->to_qubit_in_fused_gate_.at(target_qubit); });
+
+      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
+      control_qubits_in_fused_gate.reserve(control_qubits.size());
+      std::transform(
+        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
+        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_multi_controlled_exponential_pauli_yn<fused_gate_iterator> >(phase, std::move(target_qubits_in_fused_gate), std::move(control_qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_target_qubits = target_qubits.size();
     auto const num_control_qubits = control_qubits.size();
     auto const num_operated_qubits = num_target_qubits + num_control_qubits;
@@ -2327,22 +3401,52 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
   void simple_mpi_state::do_controlled_exponential_pauli_z(
     real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
-    ket::mpi::gate::exponential_pauli_z(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase, target_qubit, control_qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_exponential_pauli_z<fused_gate_iterator> >(
+          phase, to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
+    else
+      ket::mpi::gate::exponential_pauli_z(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, target_qubit, control_qubit);
   }
 
   void simple_mpi_state::do_adj_controlled_exponential_pauli_z(
     real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
-    ket::mpi::gate::adj_exponential_pauli_z(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, phase, target_qubit, control_qubit);
+    if (is_in_fusion_)
+      fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_adj_controlled_exponential_pauli_z<fused_gate_iterator> >(
+          phase, to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
+    else
+      ket::mpi::gate::adj_exponential_pauli_z(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, communicator_, environment_, phase, target_qubit, control_qubit);
   }
 
   void simple_mpi_state::do_multi_controlled_exponential_pauli_zn(
     real_type const phase, std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto target_qubits_in_fused_gate = std::vector<qubit_type>{};
+      target_qubits_in_fused_gate.reserve(target_qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(target_qubits), end(target_qubits), std::back_inserter(target_qubits_in_fused_gate),
+        [this](::bra::qubit_type const target_qubit) { return this->to_qubit_in_fused_gate_.at(target_qubit); });
+
+      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
+      control_qubits_in_fused_gate.reserve(control_qubits.size());
+      std::transform(
+        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
+        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_exponential_pauli_zn<fused_gate_iterator> >(phase, std::move(target_qubits_in_fused_gate), std::move(control_qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_target_qubits = target_qubits.size();
     auto const num_control_qubits = control_qubits.size();
     auto const num_operated_qubits = num_target_qubits + num_control_qubits;
@@ -2387,6 +3491,26 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
   void simple_mpi_state::do_adj_multi_controlled_exponential_pauli_zn(
     real_type const phase, std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto target_qubits_in_fused_gate = std::vector<qubit_type>{};
+      target_qubits_in_fused_gate.reserve(target_qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(target_qubits), end(target_qubits), std::back_inserter(target_qubits_in_fused_gate),
+        [this](::bra::qubit_type const target_qubit) { return this->to_qubit_in_fused_gate_.at(target_qubit); });
+
+      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
+      control_qubits_in_fused_gate.reserve(control_qubits.size());
+      std::transform(
+        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
+        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_multi_controlled_exponential_pauli_zn<fused_gate_iterator> >(phase, std::move(target_qubits_in_fused_gate), std::move(control_qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_target_qubits = target_qubits.size();
     auto const num_control_qubits = control_qubits.size();
     auto const num_operated_qubits = num_target_qubits + num_control_qubits;
@@ -2432,6 +3556,20 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     real_type const phase, qubit_type const target_qubit1, qubit_type const target_qubit2,
     std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
+      control_qubits_in_fused_gate.reserve(control_qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
+        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_exponential_swap<fused_gate_iterator> >(phase, to_qubit_in_fused_gate_.at(target_qubit1), to_qubit_in_fused_gate_.at(target_qubit2), std::move(control_qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 0u);
 
@@ -2460,6 +3598,20 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_DEC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     real_type const phase, qubit_type const target_qubit1, qubit_type const target_qubit2,
     std::vector<control_qubit_type> const& control_qubits)
   {
+    if (is_in_fusion_)
+    {
+      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
+      control_qubits_in_fused_gate.reserve(control_qubits.size());
+      using std::begin;
+      using std::end;
+      std::transform(
+        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
+        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
+
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_multi_controlled_exponential_swap<fused_gate_iterator> >(phase, to_qubit_in_fused_gate_.at(target_qubit1), to_qubit_in_fused_gate_.at(target_qubit2), std::move(control_qubits_in_fused_gate)));
+      return;
+    }
+
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 0u);
 

@@ -21,104 +21,6 @@
 
 #include <bra/state.hpp>
 #include <bra/utility/closest_floating_point_of.hpp>
-#include <bra/fused_gate/fused_hadamard.hpp>
-#include <bra/fused_gate/fused_not_.hpp>
-#include <bra/fused_gate/fused_pauli_x.hpp>
-#include <bra/fused_gate/fused_pauli_xx.hpp>
-#include <bra/fused_gate/fused_pauli_xn.hpp>
-#include <bra/fused_gate/fused_pauli_y.hpp>
-#include <bra/fused_gate/fused_pauli_yy.hpp>
-#include <bra/fused_gate/fused_pauli_yn.hpp>
-#include <bra/fused_gate/fused_pauli_z.hpp>
-#include <bra/fused_gate/fused_pauli_zz.hpp>
-#include <bra/fused_gate/fused_pauli_zn.hpp>
-#include <bra/fused_gate/fused_swap.hpp>
-#include <bra/fused_gate/fused_u1.hpp>
-#include <bra/fused_gate/fused_adj_u1.hpp>
-#include <bra/fused_gate/fused_u2.hpp>
-#include <bra/fused_gate/fused_adj_u2.hpp>
-#include <bra/fused_gate/fused_u3.hpp>
-#include <bra/fused_gate/fused_adj_u3.hpp>
-#include <bra/fused_gate/fused_phase_shift.hpp>
-#include <bra/fused_gate/fused_adj_phase_shift.hpp>
-#include <bra/fused_gate/fused_x_rotation_half_pi.hpp>
-#include <bra/fused_gate/fused_adj_x_rotation_half_pi.hpp>
-#include <bra/fused_gate/fused_y_rotation_half_pi.hpp>
-#include <bra/fused_gate/fused_adj_y_rotation_half_pi.hpp>
-#include <bra/fused_gate/fused_controlled_v.hpp>
-#include <bra/fused_gate/fused_adj_controlled_v.hpp>
-#include <bra/fused_gate/fused_exponential_pauli_x.hpp>
-#include <bra/fused_gate/fused_adj_exponential_pauli_x.hpp>
-#include <bra/fused_gate/fused_exponential_pauli_xx.hpp>
-#include <bra/fused_gate/fused_adj_exponential_pauli_xx.hpp>
-#include <bra/fused_gate/fused_exponential_pauli_xn.hpp>
-#include <bra/fused_gate/fused_adj_exponential_pauli_xn.hpp>
-#include <bra/fused_gate/fused_exponential_pauli_y.hpp>
-#include <bra/fused_gate/fused_adj_exponential_pauli_y.hpp>
-#include <bra/fused_gate/fused_exponential_pauli_yy.hpp>
-#include <bra/fused_gate/fused_adj_exponential_pauli_yy.hpp>
-#include <bra/fused_gate/fused_exponential_pauli_yn.hpp>
-#include <bra/fused_gate/fused_adj_exponential_pauli_yn.hpp>
-#include <bra/fused_gate/fused_exponential_pauli_z.hpp>
-#include <bra/fused_gate/fused_adj_exponential_pauli_z.hpp>
-#include <bra/fused_gate/fused_exponential_pauli_zz.hpp>
-#include <bra/fused_gate/fused_adj_exponential_pauli_zz.hpp>
-#include <bra/fused_gate/fused_exponential_pauli_zn.hpp>
-#include <bra/fused_gate/fused_adj_exponential_pauli_zn.hpp>
-#include <bra/fused_gate/fused_exponential_swap.hpp>
-#include <bra/fused_gate/fused_adj_exponential_swap.hpp>
-#include <bra/fused_gate/fused_toffoli.hpp>
-#include <bra/fused_gate/fused_controlled_hadamard.hpp>
-#include <bra/fused_gate/fused_multi_controlled_hadamard.hpp>
-#include <bra/fused_gate/fused_controlled_not.hpp>
-#include <bra/fused_gate/fused_multi_controlled_not.hpp>
-#include <bra/fused_gate/fused_controlled_pauli_x.hpp>
-#include <bra/fused_gate/fused_multi_controlled_pauli_xn.hpp>
-#include <bra/fused_gate/fused_controlled_pauli_y.hpp>
-#include <bra/fused_gate/fused_multi_controlled_pauli_yn.hpp>
-#include <bra/fused_gate/fused_controlled_pauli_z.hpp>
-#include <bra/fused_gate/fused_multi_controlled_pauli_zn.hpp>
-#include <bra/fused_gate/fused_multi_controlled_swap.hpp>
-#include <bra/fused_gate/fused_controlled_phase_shift.hpp>
-#include <bra/fused_gate/fused_adj_controlled_phase_shift.hpp>
-#include <bra/fused_gate/fused_multi_controlled_phase_shift.hpp>
-#include <bra/fused_gate/fused_adj_multi_controlled_phase_shift.hpp>
-#include <bra/fused_gate/fused_controlled_u1.hpp>
-#include <bra/fused_gate/fused_adj_controlled_u1.hpp>
-#include <bra/fused_gate/fused_multi_controlled_u1.hpp>
-#include <bra/fused_gate/fused_adj_multi_controlled_u1.hpp>
-#include <bra/fused_gate/fused_controlled_u2.hpp>
-#include <bra/fused_gate/fused_adj_controlled_u2.hpp>
-#include <bra/fused_gate/fused_multi_controlled_u2.hpp>
-#include <bra/fused_gate/fused_adj_multi_controlled_u2.hpp>
-#include <bra/fused_gate/fused_controlled_u3.hpp>
-#include <bra/fused_gate/fused_adj_controlled_u3.hpp>
-#include <bra/fused_gate/fused_multi_controlled_u3.hpp>
-#include <bra/fused_gate/fused_adj_multi_controlled_u3.hpp>
-#include <bra/fused_gate/fused_controlled_x_rotation_half_pi.hpp>
-#include <bra/fused_gate/fused_adj_controlled_x_rotation_half_pi.hpp>
-#include <bra/fused_gate/fused_multi_controlled_x_rotation_half_pi.hpp>
-#include <bra/fused_gate/fused_adj_multi_controlled_x_rotation_half_pi.hpp>
-#include <bra/fused_gate/fused_controlled_y_rotation_half_pi.hpp>
-#include <bra/fused_gate/fused_adj_controlled_y_rotation_half_pi.hpp>
-#include <bra/fused_gate/fused_multi_controlled_y_rotation_half_pi.hpp>
-#include <bra/fused_gate/fused_adj_multi_controlled_y_rotation_half_pi.hpp>
-#include <bra/fused_gate/fused_multi_controlled_v.hpp>
-#include <bra/fused_gate/fused_adj_multi_controlled_v.hpp>
-#include <bra/fused_gate/fused_controlled_exponential_pauli_x.hpp>
-#include <bra/fused_gate/fused_adj_controlled_exponential_pauli_x.hpp>
-#include <bra/fused_gate/fused_multi_controlled_exponential_pauli_xn.hpp>
-#include <bra/fused_gate/fused_adj_multi_controlled_exponential_pauli_xn.hpp>
-#include <bra/fused_gate/fused_controlled_exponential_pauli_y.hpp>
-#include <bra/fused_gate/fused_adj_controlled_exponential_pauli_y.hpp>
-#include <bra/fused_gate/fused_multi_controlled_exponential_pauli_yn.hpp>
-#include <bra/fused_gate/fused_adj_multi_controlled_exponential_pauli_yn.hpp>
-#include <bra/fused_gate/fused_controlled_exponential_pauli_z.hpp>
-#include <bra/fused_gate/fused_adj_controlled_exponential_pauli_z.hpp>
-#include <bra/fused_gate/fused_multi_controlled_exponential_pauli_zn.hpp>
-#include <bra/fused_gate/fused_adj_multi_controlled_exponential_pauli_zn.hpp>
-#include <bra/fused_gate/fused_multi_controlled_exponential_swap.hpp>
-#include <bra/fused_gate/fused_adj_multi_controlled_exponential_swap.hpp>
 
 #ifndef BRA_NO_MPI
 # define BRA_clock yampi::wall_clock
@@ -158,7 +60,6 @@ namespace bra
       is_in_fusion_{false},
       fused_qubits_{},
       to_qubit_in_fused_gate_{},
-      fused_gates_{},
       random_number_generator_{seed},
       permutation_{static_cast<permutation_type::size_type>(total_num_qubits)},
       buffer_{},
@@ -186,7 +87,6 @@ namespace bra
       is_in_fusion_{false},
       fused_qubits_{},
       to_qubit_in_fused_gate_{},
-      fused_gates_{},
       random_number_generator_{seed},
       permutation_{static_cast<permutation_type::size_type>(total_num_qubits)},
       buffer_(num_elements_in_buffer),
@@ -213,7 +113,6 @@ namespace bra
       is_in_fusion_{false},
       fused_qubits_{},
       to_qubit_in_fused_gate_{},
-      fused_gates_{},
       random_number_generator_{seed},
       permutation_{
         std::begin(initial_permutation), std::end(initial_permutation)},
@@ -242,7 +141,6 @@ namespace bra
       is_in_fusion_{false},
       fused_qubits_{},
       to_qubit_in_fused_gate_{},
-      fused_gates_{},
       random_number_generator_{seed},
       permutation_{
         std::begin(initial_permutation), std::end(initial_permutation)},
@@ -266,7 +164,6 @@ namespace bra
       is_in_fusion_{false},
       fused_qubits_{},
       to_qubit_in_fused_gate_{},
-      fused_gates_{},
       random_number_generator_{seed},
       finish_times_and_processes_{}
   {
@@ -278,801 +175,218 @@ namespace bra
 #endif // BRA_NO_MPI
 
   state& state::i_gate(qubit_type const qubit)
-  {
-    if (not is_in_fusion_)
-      do_i_gate(qubit);
-
-    return *this;
-  }
+  { do_i_gate(qubit); return *this; }
 
   state& state::adj_i_gate(qubit_type const qubit)
-  {
-    if (not is_in_fusion_)
-      do_adj_i_gate(qubit);
-
-    return *this;
-  }
+  { do_adj_i_gate(qubit); return *this; }
 
   state& state::ii_gate(qubit_type const qubit1, qubit_type const qubit2)
-  {
-    if (not is_in_fusion_)
-      do_ii_gate(qubit1, qubit2);
-
-    return *this;
-  }
+  { do_ii_gate(qubit1, qubit2); return *this; }
 
   state& state::adj_ii_gate(qubit_type const qubit1, qubit_type const qubit2)
-  {
-    if (not is_in_fusion_)
-      do_adj_ii_gate(qubit1, qubit2);
-
-    return *this;
-  }
+  { do_adj_ii_gate(qubit1, qubit2); return *this; }
 
   state& state::in_gate(std::vector<qubit_type> const& qubits)
-  {
-    if (not is_in_fusion_)
-      do_in_gate(qubits);
-
-    return *this;
-  }
+  { do_in_gate(qubits); return *this; }
 
   state& state::adj_in_gate(std::vector<qubit_type> const& qubits)
-  {
-    if (not is_in_fusion_)
-      do_adj_in_gate(qubits);
-
-    return *this;
-  }
+  { do_adj_in_gate(qubits); return *this; }
 
   state& state::hadamard(qubit_type const qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_hadamard >(to_qubit_in_fused_gate_.at(qubit)));
-    else
-      do_hadamard(qubit);
-
-    return *this;
-  }
+  { do_hadamard(qubit); return *this; }
 
   state& state::adj_hadamard(qubit_type const qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_hadamard >(to_qubit_in_fused_gate_.at(qubit)));
-    else
-      do_adj_hadamard(qubit);
-
-    return *this;
-  }
-
+  { do_adj_hadamard(qubit); return *this; }
 
   state& state::not_(qubit_type const qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_not_ >(to_qubit_in_fused_gate_.at(qubit)));
-    else
-      do_not_(qubit);
-
-    return *this;
-  }
+  { do_not_(qubit); return *this; }
 
   state& state::adj_not_(qubit_type const qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_not_ >(to_qubit_in_fused_gate_.at(qubit)));
-    else
-      do_adj_not_(qubit);
-
-    return *this;
-  }
+  { do_adj_not_(qubit); return *this; }
 
   state& state::pauli_x(qubit_type const qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_x >(to_qubit_in_fused_gate_.at(qubit)));
-    else
-      do_pauli_x(qubit);
-
-    return *this;
-  }
+  { do_pauli_x(qubit); return *this; }
 
   state& state::adj_pauli_x(qubit_type const qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_x >(to_qubit_in_fused_gate_.at(qubit)));
-    else
-      do_adj_pauli_x(qubit);
-
-    return *this;
-  }
+  { do_adj_pauli_x(qubit); return *this; }
 
   state& state::pauli_xx(qubit_type const qubit1, qubit_type const qubit2)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_xx >(to_qubit_in_fused_gate_.at(qubit1), to_qubit_in_fused_gate_.at(qubit2)));
-    else
-      do_pauli_xx(qubit1, qubit2);
-
-    return *this;
-  }
+  { do_pauli_xx(qubit1, qubit2); return *this; }
 
   state& state::adj_pauli_xx(qubit_type const qubit1, qubit_type const qubit2)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_xx >(to_qubit_in_fused_gate_.at(qubit1), to_qubit_in_fused_gate_.at(qubit2)));
-    else
-      do_adj_pauli_xx(qubit1, qubit2);
-
-    return *this;
-  }
+  { do_adj_pauli_xx(qubit1, qubit2); return *this; }
 
   state& state::pauli_xn(std::vector<qubit_type> const& qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto qubits_in_fused_gate = std::vector<qubit_type>{};
-      qubits_in_fused_gate.reserve(qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(qubits), end(qubits), std::back_inserter(qubits_in_fused_gate),
-        [this](::bra::qubit_type const qubit) { return this->to_qubit_in_fused_gate_.at(qubit); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_xn >(std::move(qubits_in_fused_gate)));
-    }
-    else
-      do_pauli_xn(qubits);
-
-    return *this;
-  }
+  { do_pauli_xn(qubits); return *this; }
 
   state& state::adj_pauli_xn(std::vector<qubit_type> const& qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto qubits_in_fused_gate = std::vector<qubit_type>{};
-      qubits_in_fused_gate.reserve(qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(qubits), end(qubits), std::back_inserter(qubits_in_fused_gate),
-        [this](::bra::qubit_type const qubit) { return this->to_qubit_in_fused_gate_.at(qubit); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_xn >(std::move(qubits_in_fused_gate)));
-    }
-    else
-      do_adj_pauli_xn(qubits);
-
-    return *this;
-  }
+  { do_adj_pauli_xn(qubits); return *this; }
 
   state& state::pauli_y(qubit_type const qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_y >(to_qubit_in_fused_gate_.at(qubit)));
-    else
-      do_pauli_y(qubit);
-
-    return *this;
-  }
+  { do_pauli_y(qubit); return *this; }
 
   state& state::adj_pauli_y(qubit_type const qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_y >(to_qubit_in_fused_gate_.at(qubit)));
-    else
-      do_adj_pauli_y(qubit);
-
-    return *this;
-  }
+  { do_adj_pauli_y(qubit); return *this; }
 
   state& state::pauli_yy(qubit_type const qubit1, qubit_type const qubit2)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_yy >(to_qubit_in_fused_gate_.at(qubit1), to_qubit_in_fused_gate_.at(qubit2)));
-    else
-      do_pauli_yy(qubit1, qubit2);
-
-    return *this;
-  }
+  { do_pauli_yy(qubit1, qubit2); return *this; }
 
   state& state::adj_pauli_yy(qubit_type const qubit1, qubit_type const qubit2)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_yy >(to_qubit_in_fused_gate_.at(qubit1), to_qubit_in_fused_gate_.at(qubit2)));
-    else
-      do_adj_pauli_yy(qubit1, qubit2);
-
-    return *this;
-  }
+  { do_adj_pauli_yy(qubit1, qubit2); return *this; }
 
   state& state::pauli_yn(std::vector<qubit_type> const& qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto qubits_in_fused_gate = std::vector<qubit_type>{};
-      qubits_in_fused_gate.reserve(qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(qubits), end(qubits), std::back_inserter(qubits_in_fused_gate),
-        [this](::bra::qubit_type const qubit) { return this->to_qubit_in_fused_gate_.at(qubit); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_yn >(std::move(qubits_in_fused_gate)));
-    }
-    else
-      do_pauli_yn(qubits);
-
-    return *this;
-  }
+  { do_pauli_yn(qubits); return *this; }
 
   state& state::adj_pauli_yn(std::vector<qubit_type> const& qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto qubits_in_fused_gate = std::vector<qubit_type>{};
-      qubits_in_fused_gate.reserve(qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(qubits), end(qubits), std::back_inserter(qubits_in_fused_gate),
-        [this](::bra::qubit_type const qubit) { return this->to_qubit_in_fused_gate_.at(qubit); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_yn >(std::move(qubits_in_fused_gate)));
-    }
-    else
-      do_adj_pauli_yn(qubits);
-
-    return *this;
-  }
+  { do_adj_pauli_yn(qubits); return *this; }
 
   state& state::pauli_z(qubit_type const qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_z >(to_qubit_in_fused_gate_.at(qubit)));
-    else
-      do_pauli_z(qubit);
-
-    return *this;
-  }
+  { do_pauli_z(qubit); return *this; }
 
   state& state::adj_pauli_z(qubit_type const qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_z >(to_qubit_in_fused_gate_.at(qubit)));
-    else
-      do_adj_pauli_z(qubit);
-
-    return *this;
-  }
+  { do_adj_pauli_z(qubit); return *this; }
 
   state& state::pauli_zz(qubit_type const qubit1, qubit_type const qubit2)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_zz >(to_qubit_in_fused_gate_.at(qubit1), to_qubit_in_fused_gate_.at(qubit2)));
-    else
-      do_pauli_zz(qubit1, qubit2);
-
-    return *this;
-  }
+  { do_pauli_zz(qubit1, qubit2); return *this; }
 
   state& state::adj_pauli_zz(qubit_type const qubit1, qubit_type const qubit2)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_zz >(to_qubit_in_fused_gate_.at(qubit1), to_qubit_in_fused_gate_.at(qubit2)));
-    else
-      do_adj_pauli_zz(qubit1, qubit2);
-
-    return *this;
-  }
+  { do_adj_pauli_zz(qubit1, qubit2); return *this; }
 
   state& state::pauli_zn(std::vector<qubit_type> const& qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto qubits_in_fused_gate = std::vector<qubit_type>{};
-      qubits_in_fused_gate.reserve(qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(qubits), end(qubits), std::back_inserter(qubits_in_fused_gate),
-        [this](::bra::qubit_type const qubit) { return this->to_qubit_in_fused_gate_.at(qubit); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_zn >(std::move(qubits_in_fused_gate)));
-    }
-    else
-      do_pauli_zn(qubits);
-
-    return *this;
-  }
+  { do_pauli_zn(qubits); return *this; }
 
   state& state::adj_pauli_zn(std::vector<qubit_type> const& qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto qubits_in_fused_gate = std::vector<qubit_type>{};
-      qubits_in_fused_gate.reserve(qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(qubits), end(qubits), std::back_inserter(qubits_in_fused_gate),
-        [this](::bra::qubit_type const qubit) { return this->to_qubit_in_fused_gate_.at(qubit); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_pauli_zn >(std::move(qubits_in_fused_gate)));
-    }
-    else
-      do_adj_pauli_zn(qubits);
-
-    return *this;
-  }
+  { do_adj_pauli_zn(qubits); return *this; }
 
   state& state::swap(qubit_type const qubit1, qubit_type const qubit2)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_swap >(to_qubit_in_fused_gate_.at(qubit1), to_qubit_in_fused_gate_.at(qubit2)));
-    else
-      do_swap(qubit1, qubit2);
-
-    return *this;
-  }
+  { do_swap(qubit1, qubit2); return *this; }
 
   state& state::adj_swap(qubit_type const qubit1, qubit_type const qubit2)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_swap >(to_qubit_in_fused_gate_.at(qubit1), to_qubit_in_fused_gate_.at(qubit2)));
-    else
-      do_adj_swap(qubit1, qubit2);
-
-    return *this;
-  }
+  { do_adj_swap(qubit1, qubit2); return *this; }
 
   state& state::u1(real_type const phase, qubit_type const qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_u1 >(phase, to_qubit_in_fused_gate_.at(qubit)));
-    else
-      do_u1(phase, qubit);
-
-    return *this;
-  }
+  { do_u1(phase, qubit); return *this; }
 
   state& state::adj_u1(real_type const phase, qubit_type const qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_u1 >(phase, to_qubit_in_fused_gate_.at(qubit)));
-    else
-      do_adj_u1(phase, qubit);
-
-    return *this;
-  }
+  { do_adj_u1(phase, qubit); return *this; }
 
   state& state::u2(
     real_type const phase1, real_type const phase2, qubit_type const qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_u2 >(phase1, phase2, to_qubit_in_fused_gate_.at(qubit)));
-    else
-      do_u2(phase1, phase2, qubit);
-
-    return *this;
-  }
+  { do_u2(phase1, phase2, qubit); return *this; }
 
   state& state::adj_u2(
     real_type const phase1, real_type const phase2, qubit_type const qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_u2 >(phase1, phase2, to_qubit_in_fused_gate_.at(qubit)));
-    else
-      do_adj_u2(phase1, phase2, qubit);
-
-    return *this;
-  }
+  { do_adj_u2(phase1, phase2, qubit); return *this; }
 
   state& state::u3(
     real_type const phase1, real_type const phase2, real_type const phase3,
     qubit_type const qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_u3 >(phase1, phase2, phase3, to_qubit_in_fused_gate_.at(qubit)));
-    else
-      do_u3(phase1, phase2, phase3, qubit);
-
-    return *this;
-  }
+  { do_u3(phase1, phase2, phase3, qubit); return *this; }
 
   state& state::adj_u3(
     real_type const phase1, real_type const phase2, real_type const phase3,
     qubit_type const qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_u3 >(phase1, phase2, phase3, to_qubit_in_fused_gate_.at(qubit)));
-    else
-      do_adj_u3(phase1, phase2, phase3, qubit);
-
-    return *this;
-  }
+  { do_adj_u3(phase1, phase2, phase3, qubit); return *this; }
 
   state& state::phase_shift(
     complex_type const& phase_coefficient, qubit_type const qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_phase_shift >(phase_coefficient, to_qubit_in_fused_gate_.at(qubit)));
-    else
-      do_phase_shift(phase_coefficient, qubit);
-
-    return *this;
-  }
+  { do_phase_shift(phase_coefficient, qubit); return *this; }
 
   state& state::adj_phase_shift(
     complex_type const& phase_coefficient, qubit_type const qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_phase_shift >(phase_coefficient, to_qubit_in_fused_gate_.at(qubit)));
-    else
-      do_adj_phase_shift(phase_coefficient, qubit);
-
-    return *this;
-  }
+  { do_adj_phase_shift(phase_coefficient, qubit); return *this; }
 
   state& state::x_rotation_half_pi(qubit_type const qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_x_rotation_half_pi >(to_qubit_in_fused_gate_.at(qubit)));
-    else
-      do_x_rotation_half_pi(qubit);
-
-    return *this;
-  }
+  { do_x_rotation_half_pi(qubit); return *this; }
 
   state& state::adj_x_rotation_half_pi(qubit_type const qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_x_rotation_half_pi >(to_qubit_in_fused_gate_.at(qubit)));
-    else
-      do_adj_x_rotation_half_pi(qubit);
-
-    return *this;
-  }
+  { do_adj_x_rotation_half_pi(qubit); return *this; }
 
   state& state::y_rotation_half_pi(qubit_type const qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_y_rotation_half_pi >(to_qubit_in_fused_gate_.at(qubit)));
-    else
-      do_y_rotation_half_pi(qubit);
-
-    return *this;
-  }
+  { do_y_rotation_half_pi(qubit); return *this; }
 
   state& state::adj_y_rotation_half_pi(qubit_type const qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_y_rotation_half_pi >(to_qubit_in_fused_gate_.at(qubit)));
-    else
-      do_adj_y_rotation_half_pi(qubit);
-
-    return *this;
-  }
+  { do_adj_y_rotation_half_pi(qubit); return *this; }
 
   state& state::controlled_v(
     complex_type const& phase_coefficient,
     qubit_type const target_qubit, control_qubit_type const control_qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(
-        std::make_unique< ::bra::fused_gate::fused_controlled_v >(
-          phase_coefficient, to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
-    else
-      do_controlled_v(phase_coefficient, target_qubit, control_qubit);
-
-    return *this;
-  }
+  { do_controlled_v(phase_coefficient, target_qubit, control_qubit); return *this; }
 
   state& state::adj_controlled_v(
     complex_type const& phase_coefficient,
     qubit_type const target_qubit, control_qubit_type const control_qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(
-        std::make_unique< ::bra::fused_gate::fused_adj_controlled_v >(
-          phase_coefficient, to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
-    else
-      do_adj_controlled_v(phase_coefficient, target_qubit, control_qubit);
-
-    return *this;
-  }
+  { do_adj_controlled_v(phase_coefficient, target_qubit, control_qubit); return *this; }
 
   state& state::exponential_pauli_x(real_type const phase, qubit_type const qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_exponential_pauli_x >(phase, to_qubit_in_fused_gate_.at(qubit)));
-    else
-      do_exponential_pauli_x(phase, qubit);
-
-    return *this;
-  }
+  { do_exponential_pauli_x(phase, qubit); return *this; }
 
   state& state::adj_exponential_pauli_x(real_type const phase, qubit_type const qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_exponential_pauli_x >(phase, to_qubit_in_fused_gate_.at(qubit)));
-    else
-      do_adj_exponential_pauli_x(phase, qubit);
-
-    return *this;
-  }
+  { do_adj_exponential_pauli_x(phase, qubit); return *this; }
 
   state& state::exponential_pauli_xx(real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_exponential_pauli_xx >(phase, to_qubit_in_fused_gate_.at(qubit1), to_qubit_in_fused_gate_.at(qubit2)));
-    else
-      do_exponential_pauli_xx(phase, qubit1, qubit2);
-
-    return *this;
-  }
+  { do_exponential_pauli_xx(phase, qubit1, qubit2); return *this; }
 
   state& state::adj_exponential_pauli_xx(real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_exponential_pauli_xx >(phase, to_qubit_in_fused_gate_.at(qubit1), to_qubit_in_fused_gate_.at(qubit2)));
-    else
-      do_adj_exponential_pauli_xx(phase, qubit1, qubit2);
-
-    return *this;
-  }
+  { do_adj_exponential_pauli_xx(phase, qubit1, qubit2); return *this; }
 
   state& state::exponential_pauli_xn(real_type const phase, std::vector<qubit_type> const& qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto qubits_in_fused_gate = std::vector<qubit_type>{};
-      qubits_in_fused_gate.reserve(qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(qubits), end(qubits), std::back_inserter(qubits_in_fused_gate),
-        [this](::bra::qubit_type const qubit) { return this->to_qubit_in_fused_gate_.at(qubit); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_exponential_pauli_xn >(phase, std::move(qubits_in_fused_gate)));
-    }
-    else
-      do_exponential_pauli_xn(phase, qubits);
-
-    return *this;
-  }
+  { do_exponential_pauli_xn(phase, qubits); return *this; }
 
   state& state::adj_exponential_pauli_xn(real_type const phase, std::vector<qubit_type> const& qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto qubits_in_fused_gate = std::vector<qubit_type>{};
-      qubits_in_fused_gate.reserve(qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(qubits), end(qubits), std::back_inserter(qubits_in_fused_gate),
-        [this](::bra::qubit_type const qubit) { return this->to_qubit_in_fused_gate_.at(qubit); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_exponential_pauli_xn >(phase, std::move(qubits_in_fused_gate)));
-    }
-    else
-      do_adj_exponential_pauli_xn(phase, qubits);
-
-    return *this;
-  }
+  { do_adj_exponential_pauli_xn(phase, qubits); return *this; }
 
   state& state::exponential_pauli_y(real_type const phase, qubit_type const qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_exponential_pauli_y >(phase, to_qubit_in_fused_gate_.at(qubit)));
-    else
-      do_exponential_pauli_y(phase, qubit);
-
-    return *this;
-  }
+  { do_exponential_pauli_y(phase, qubit); return *this; }
 
   state& state::adj_exponential_pauli_y(real_type const phase, qubit_type const qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_exponential_pauli_y >(phase, to_qubit_in_fused_gate_.at(qubit)));
-    else
-      do_adj_exponential_pauli_y(phase, qubit);
-
-    return *this;
-  }
+  { do_adj_exponential_pauli_y(phase, qubit); return *this; }
 
   state& state::exponential_pauli_yy(real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_exponential_pauli_yy >(phase, to_qubit_in_fused_gate_.at(qubit1), to_qubit_in_fused_gate_.at(qubit2)));
-    else
-      do_exponential_pauli_yy(phase, qubit1, qubit2);
-
-    return *this;
-  }
+  { do_exponential_pauli_yy(phase, qubit1, qubit2); return *this; }
 
   state& state::adj_exponential_pauli_yy(real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_exponential_pauli_yy >(phase, to_qubit_in_fused_gate_.at(qubit1), to_qubit_in_fused_gate_.at(qubit2)));
-    else
-      do_adj_exponential_pauli_yy(phase, qubit1, qubit2);
-
-    return *this;
-  }
+  { do_adj_exponential_pauli_yy(phase, qubit1, qubit2); return *this; }
 
   state& state::exponential_pauli_yn(real_type const phase, std::vector<qubit_type> const& qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto qubits_in_fused_gate = std::vector<qubit_type>{};
-      qubits_in_fused_gate.reserve(qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(qubits), end(qubits), std::back_inserter(qubits_in_fused_gate),
-        [this](::bra::qubit_type const qubit) { return this->to_qubit_in_fused_gate_.at(qubit); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_exponential_pauli_yn >(phase, std::move(qubits_in_fused_gate)));
-    }
-    else
-      do_exponential_pauli_yn(phase, qubits);
-
-    return *this;
-  }
+  { do_exponential_pauli_yn(phase, qubits); return *this; }
 
   state& state::adj_exponential_pauli_yn(real_type const phase, std::vector<qubit_type> const& qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto qubits_in_fused_gate = std::vector<qubit_type>{};
-      qubits_in_fused_gate.reserve(qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(qubits), end(qubits), std::back_inserter(qubits_in_fused_gate),
-        [this](::bra::qubit_type const qubit) { return this->to_qubit_in_fused_gate_.at(qubit); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_exponential_pauli_yn >(phase, std::move(qubits_in_fused_gate)));
-    }
-    else
-      do_adj_exponential_pauli_yn(phase, qubits);
-
-    return *this;
-  }
+  { do_adj_exponential_pauli_yn(phase, qubits); return *this; }
 
   state& state::exponential_pauli_z(real_type const phase, qubit_type const qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_exponential_pauli_z >(phase, to_qubit_in_fused_gate_.at(qubit)));
-    else
-      do_exponential_pauli_z(phase, qubit);
-
-    return *this;
-  }
+  { do_exponential_pauli_z(phase, qubit); return *this; }
 
   state& state::adj_exponential_pauli_z(real_type const phase, qubit_type const qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_exponential_pauli_z >(phase, to_qubit_in_fused_gate_.at(qubit)));
-    else
-      do_adj_exponential_pauli_z(phase, qubit);
-
-    return *this;
-  }
+  { do_adj_exponential_pauli_z(phase, qubit); return *this; }
 
   state& state::exponential_pauli_zz(real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_exponential_pauli_zz >(phase, to_qubit_in_fused_gate_.at(qubit1), to_qubit_in_fused_gate_.at(qubit2)));
-    else
-      do_exponential_pauli_zz(phase, qubit1, qubit2);
-
-    return *this;
-  }
+  { do_exponential_pauli_zz(phase, qubit1, qubit2); return *this; }
 
   state& state::adj_exponential_pauli_zz(real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_exponential_pauli_zz >(phase, to_qubit_in_fused_gate_.at(qubit1), to_qubit_in_fused_gate_.at(qubit2)));
-    else
-      do_adj_exponential_pauli_zz(phase, qubit1, qubit2);
-
-    return *this;
-  }
+  { do_adj_exponential_pauli_zz(phase, qubit1, qubit2); return *this; }
 
   state& state::exponential_pauli_zn(real_type const phase, std::vector<qubit_type> const& qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto qubits_in_fused_gate = std::vector<qubit_type>{};
-      qubits_in_fused_gate.reserve(qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(qubits), end(qubits), std::back_inserter(qubits_in_fused_gate),
-        [this](::bra::qubit_type const qubit) { return this->to_qubit_in_fused_gate_.at(qubit); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_exponential_pauli_zn >(phase, std::move(qubits_in_fused_gate)));
-    }
-    else
-      do_exponential_pauli_zn(phase, qubits);
-
-    return *this;
-  }
+  { do_exponential_pauli_zn(phase, qubits); return *this; }
 
   state& state::adj_exponential_pauli_zn(real_type const phase, std::vector<qubit_type> const& qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto qubits_in_fused_gate = std::vector<qubit_type>{};
-      qubits_in_fused_gate.reserve(qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(qubits), end(qubits), std::back_inserter(qubits_in_fused_gate),
-        [this](::bra::qubit_type const qubit) { return this->to_qubit_in_fused_gate_.at(qubit); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_exponential_pauli_zn >(phase, std::move(qubits_in_fused_gate)));
-    }
-    else
-      do_adj_exponential_pauli_zn(phase, qubits);
-
-    return *this;
-  }
+  { do_adj_exponential_pauli_zn(phase, qubits); return *this; }
 
   state& state::exponential_swap(real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_exponential_swap >(phase, to_qubit_in_fused_gate_.at(qubit1), to_qubit_in_fused_gate_.at(qubit2)));
-    else
-      do_exponential_swap(phase, qubit1, qubit2);
-
-    return *this;
-  }
+  { do_exponential_swap(phase, qubit1, qubit2); return *this; }
 
   state& state::adj_exponential_swap(real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_exponential_swap >(phase, to_qubit_in_fused_gate_.at(qubit1), to_qubit_in_fused_gate_.at(qubit2)));
-    else
-      do_adj_exponential_swap(phase, qubit1, qubit2);
-
-    return *this;
-  }
+  { do_adj_exponential_swap(phase, qubit1, qubit2); return *this; }
 
   state& state::toffoli(
     qubit_type const target_qubit,
     control_qubit_type const control_qubit1, control_qubit_type const control_qubit2)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(
-        std::make_unique< ::bra::fused_gate::fused_toffoli >(
-          to_qubit_in_fused_gate_.at(target_qubit),
-          ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit1.qubit())),
-          ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit2.qubit()))));
-    else
-      do_toffoli(target_qubit, control_qubit1, control_qubit2);
-
-    return *this;
-  }
+  { do_toffoli(target_qubit, control_qubit1, control_qubit2); return *this; }
 
   state& state::adj_toffoli(
     qubit_type const target_qubit,
     control_qubit_type const control_qubit1, control_qubit_type const control_qubit2)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(
-        std::make_unique< ::bra::fused_gate::fused_toffoli >(
-          to_qubit_in_fused_gate_.at(target_qubit),
-          ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit1.qubit())),
-          ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit2.qubit()))));
-    else
-      do_adj_toffoli(target_qubit, control_qubit1, control_qubit2);
-
-    return *this;
-  }
+  { do_adj_toffoli(target_qubit, control_qubit1, control_qubit2); return *this; }
 
 #ifndef BRA_NO_MPI
   state& state::projective_measurement(qubit_type const qubit, yampi::rank const root)
@@ -1246,7 +560,6 @@ namespace bra
 
     do_end_fusion();
 
-    fused_gates_.clear();
     to_qubit_in_fused_gate_.clear();
     fused_qubits_.clear();
     is_in_fusion_ = false;
@@ -1255,22 +568,10 @@ namespace bra
   }
 
   state& state::clear(qubit_type const qubit)
-  {
-    if (is_in_fusion_)
-      throw ::bra::unsupported_fused_gate_error{"CLEAR"};
-
-    do_clear(qubit);
-    return *this;
-  }
+  { do_clear(qubit); return *this; }
 
   state& state::set(qubit_type const qubit)
-  {
-    if (is_in_fusion_)
-      throw ::bra::unsupported_fused_gate_error{"CLEAR"};
-
-    do_set(qubit);
-    return *this;
-  }
+  { do_set(qubit); return *this; }
 
   state& state::depolarizing_channel(real_type const px, real_type const py, real_type const pz, int const seed)
   {
@@ -1310,1124 +611,202 @@ namespace bra
   }
 
   state& state::controlled_i_gate(qubit_type const target_qubit, control_qubit_type const control_qubit)
-  {
-    if (not is_in_fusion_)
-      do_controlled_i_gate(target_qubit, control_qubit);
-
-    return *this;
-  }
+  { do_controlled_i_gate(target_qubit, control_qubit); return *this; }
 
   state& state::adj_controlled_i_gate(qubit_type const target_qubit, control_qubit_type const control_qubit)
-  {
-    if (not is_in_fusion_)
-      do_controlled_i_gate(target_qubit, control_qubit);
-
-    return *this;
-  }
+  { do_controlled_i_gate(target_qubit, control_qubit); return *this; }
 
   state& state::multi_controlled_in_gate(std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (not is_in_fusion_)
-      do_multi_controlled_in_gate(target_qubits, control_qubits);
-
-    return *this;
-  }
+  { do_multi_controlled_in_gate(target_qubits, control_qubits); return *this; }
 
   state& state::adj_multi_controlled_in_gate(std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (not is_in_fusion_)
-      do_multi_controlled_in_gate(target_qubits, control_qubits);
-
-    return *this;
-  }
+  { do_multi_controlled_in_gate(target_qubits, control_qubits); return *this; }
 
   state& state::controlled_hadamard(qubit_type const target_qubit, control_qubit_type const control_qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(
-        std::make_unique< ::bra::fused_gate::fused_controlled_hadamard >(
-          to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
-    else
-      do_controlled_hadamard(target_qubit, control_qubit);
-
-    return *this;
-  }
+  { do_controlled_hadamard(target_qubit, control_qubit); return *this; }
 
   state& state::adj_controlled_hadamard(qubit_type const target_qubit, control_qubit_type const control_qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(
-        std::make_unique< ::bra::fused_gate::fused_controlled_hadamard >(
-          to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
-    else
-      do_adj_controlled_hadamard(target_qubit, control_qubit);
-
-    return *this;
-  }
+  { do_adj_controlled_hadamard(target_qubit, control_qubit); return *this; }
 
   state& state::multi_controlled_hadamard(qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
-      control_qubits_in_fused_gate.reserve(control_qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
-        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_hadamard >(to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
-    }
-    else
-      do_multi_controlled_hadamard(target_qubit, control_qubits);
-
-    return *this;
-  }
+  { do_multi_controlled_hadamard(target_qubit, control_qubits); return *this; }
 
   state& state::adj_multi_controlled_hadamard(qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
-      control_qubits_in_fused_gate.reserve(control_qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
-        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_hadamard >(to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
-    }
-    else
-      do_adj_multi_controlled_hadamard(target_qubit, control_qubits);
-
-    return *this;
-  }
+  { do_adj_multi_controlled_hadamard(target_qubit, control_qubits); return *this; }
 
   state& state::controlled_not(qubit_type const target_qubit, control_qubit_type const control_qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(
-        std::make_unique< ::bra::fused_gate::fused_controlled_not >(
-          to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
-    else
-      do_controlled_not(target_qubit, control_qubit);
-
-    return *this;
-  }
+  { do_controlled_not(target_qubit, control_qubit); return *this; }
 
   state& state::adj_controlled_not(qubit_type const target_qubit, control_qubit_type const control_qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(
-        std::make_unique< ::bra::fused_gate::fused_controlled_not >(
-          to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
-    else
-      do_adj_controlled_not(target_qubit, control_qubit);
-
-    return *this;
-  }
+  { do_adj_controlled_not(target_qubit, control_qubit); return *this; }
 
   state& state::multi_controlled_not(qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
-      control_qubits_in_fused_gate.reserve(control_qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
-        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_not >(to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
-    }
-    else
-      do_multi_controlled_not(target_qubit, control_qubits);
-
-    return *this;
-  }
+  { do_multi_controlled_not(target_qubit, control_qubits); return *this; }
 
   state& state::adj_multi_controlled_not(qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
-      control_qubits_in_fused_gate.reserve(control_qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
-        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_not >(to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
-    }
-    else
-      do_adj_multi_controlled_not(target_qubit, control_qubits);
-
-    return *this;
-  }
+  { do_adj_multi_controlled_not(target_qubit, control_qubits); return *this; }
 
   state& state::controlled_pauli_x(qubit_type const target_qubit, control_qubit_type const control_qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(
-        std::make_unique< ::bra::fused_gate::fused_controlled_pauli_x >(
-          to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
-    else
-      do_controlled_pauli_x(target_qubit, control_qubit);
-
-    return *this;
-  }
+  { do_controlled_pauli_x(target_qubit, control_qubit); return *this; }
 
   state& state::adj_controlled_pauli_x(qubit_type const target_qubit, control_qubit_type const control_qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(
-        std::make_unique< ::bra::fused_gate::fused_controlled_pauli_x >(
-          to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
-    else
-      do_adj_controlled_pauli_x(target_qubit, control_qubit);
-
-    return *this;
-  }
+  { do_adj_controlled_pauli_x(target_qubit, control_qubit); return *this; }
 
   state& state::multi_controlled_pauli_xn(std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto target_qubits_in_fused_gate = std::vector<qubit_type>{};
-      target_qubits_in_fused_gate.reserve(target_qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(target_qubits), end(target_qubits), std::back_inserter(target_qubits_in_fused_gate),
-        [this](::bra::qubit_type const target_qubit) { return this->to_qubit_in_fused_gate_.at(target_qubit); });
-
-      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
-      control_qubits_in_fused_gate.reserve(control_qubits.size());
-      std::transform(
-        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
-        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_pauli_xn >(std::move(target_qubits_in_fused_gate), std::move(control_qubits_in_fused_gate)));
-    }
-    else
-      do_multi_controlled_pauli_xn(target_qubits, control_qubits);
-
-    return *this;
-  }
+  { do_multi_controlled_pauli_xn(target_qubits, control_qubits); return *this; }
 
   state& state::adj_multi_controlled_pauli_xn(std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto target_qubits_in_fused_gate = std::vector<qubit_type>{};
-      target_qubits_in_fused_gate.reserve(target_qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(target_qubits), end(target_qubits), std::back_inserter(target_qubits_in_fused_gate),
-        [this](::bra::qubit_type const target_qubit) { return this->to_qubit_in_fused_gate_.at(target_qubit); });
-
-      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
-      control_qubits_in_fused_gate.reserve(control_qubits.size());
-      std::transform(
-        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
-        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_pauli_xn >(std::move(target_qubits_in_fused_gate), std::move(control_qubits_in_fused_gate)));
-    }
-    else
-      do_adj_multi_controlled_pauli_xn(target_qubits, control_qubits);
-
-    return *this;
-  }
+  { do_adj_multi_controlled_pauli_xn(target_qubits, control_qubits); return *this; }
 
   state& state::controlled_pauli_y(qubit_type const target_qubit, control_qubit_type const control_qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(
-        std::make_unique< ::bra::fused_gate::fused_controlled_pauli_y >(
-          to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
-    else
-      do_controlled_pauli_y(target_qubit, control_qubit);
-
-    return *this;
-  }
+  { do_controlled_pauli_y(target_qubit, control_qubit); return *this; }
 
   state& state::adj_controlled_pauli_y(qubit_type const target_qubit, control_qubit_type const control_qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(
-        std::make_unique< ::bra::fused_gate::fused_controlled_pauli_y >(
-          to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
-    else
-      do_adj_controlled_pauli_y(target_qubit, control_qubit);
-
-    return *this;
-  }
+  { do_adj_controlled_pauli_y(target_qubit, control_qubit); return *this; }
 
   state& state::multi_controlled_pauli_yn(std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto target_qubits_in_fused_gate = std::vector<qubit_type>{};
-      target_qubits_in_fused_gate.reserve(target_qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(target_qubits), end(target_qubits), std::back_inserter(target_qubits_in_fused_gate),
-        [this](::bra::qubit_type const target_qubit) { return this->to_qubit_in_fused_gate_.at(target_qubit); });
-
-      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
-      control_qubits_in_fused_gate.reserve(control_qubits.size());
-      std::transform(
-        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
-        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_pauli_yn >(std::move(target_qubits_in_fused_gate), std::move(control_qubits_in_fused_gate)));
-    }
-    else
-      do_multi_controlled_pauli_yn(target_qubits, control_qubits);
-
-    return *this;
-  }
+  { do_multi_controlled_pauli_yn(target_qubits, control_qubits); return *this; }
 
   state& state::adj_multi_controlled_pauli_yn(std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto target_qubits_in_fused_gate = std::vector<qubit_type>{};
-      target_qubits_in_fused_gate.reserve(target_qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(target_qubits), end(target_qubits), std::back_inserter(target_qubits_in_fused_gate),
-        [this](::bra::qubit_type const target_qubit) { return this->to_qubit_in_fused_gate_.at(target_qubit); });
-
-      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
-      control_qubits_in_fused_gate.reserve(control_qubits.size());
-      std::transform(
-        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
-        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_pauli_yn >(std::move(target_qubits_in_fused_gate), std::move(control_qubits_in_fused_gate)));
-    }
-    else
-      do_adj_multi_controlled_pauli_yn(target_qubits, control_qubits);
-
-    return *this;
-  }
+  { do_adj_multi_controlled_pauli_yn(target_qubits, control_qubits); return *this; }
 
   state& state::controlled_pauli_z(qubit_type const target_qubit, control_qubit_type const control_qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(
-        std::make_unique< ::bra::fused_gate::fused_controlled_pauli_z >(
-          to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
-    else
-      do_controlled_pauli_z(target_qubit, control_qubit);
-
-    return *this;
-  }
+  { do_controlled_pauli_z(target_qubit, control_qubit); return *this; }
 
   state& state::adj_controlled_pauli_z(qubit_type const target_qubit, control_qubit_type const control_qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(
-        std::make_unique< ::bra::fused_gate::fused_controlled_pauli_z >(
-          to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
-    else
-      do_adj_controlled_pauli_z(target_qubit, control_qubit);
-
-    return *this;
-  }
+  { do_adj_controlled_pauli_z(target_qubit, control_qubit); return *this; }
 
   state& state::multi_controlled_pauli_zn(std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto target_qubits_in_fused_gate = std::vector<qubit_type>{};
-      target_qubits_in_fused_gate.reserve(target_qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(target_qubits), end(target_qubits), std::back_inserter(target_qubits_in_fused_gate),
-        [this](::bra::qubit_type const target_qubit) { return this->to_qubit_in_fused_gate_.at(target_qubit); });
-
-      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
-      control_qubits_in_fused_gate.reserve(control_qubits.size());
-      std::transform(
-        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
-        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_pauli_zn >(std::move(target_qubits_in_fused_gate), std::move(control_qubits_in_fused_gate)));
-    }
-    else
-      do_multi_controlled_pauli_zn(target_qubits, control_qubits);
-
-    return *this;
-  }
+  { do_multi_controlled_pauli_zn(target_qubits, control_qubits); return *this; }
 
   state& state::adj_multi_controlled_pauli_zn(std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto target_qubits_in_fused_gate = std::vector<qubit_type>{};
-      target_qubits_in_fused_gate.reserve(target_qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(target_qubits), end(target_qubits), std::back_inserter(target_qubits_in_fused_gate),
-        [this](::bra::qubit_type const target_qubit) { return this->to_qubit_in_fused_gate_.at(target_qubit); });
-
-      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
-      control_qubits_in_fused_gate.reserve(control_qubits.size());
-      std::transform(
-        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
-        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_pauli_zn >(std::move(target_qubits_in_fused_gate), std::move(control_qubits_in_fused_gate)));
-    }
-    else
-      do_adj_multi_controlled_pauli_zn(target_qubits, control_qubits);
-
-    return *this;
-  }
+  { do_adj_multi_controlled_pauli_zn(target_qubits, control_qubits); return *this; }
 
   state& state::multi_controlled_swap(qubit_type const target_qubit1, qubit_type const target_qubit2, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
-      control_qubits_in_fused_gate.reserve(control_qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
-        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_swap >(to_qubit_in_fused_gate_.at(target_qubit1), to_qubit_in_fused_gate_.at(target_qubit2), std::move(control_qubits_in_fused_gate)));
-    }
-    else
-      do_multi_controlled_swap(target_qubit1, target_qubit2, control_qubits);
-
-    return *this;
-  }
+  { do_multi_controlled_swap(target_qubit1, target_qubit2, control_qubits); return *this; }
 
   state& state::adj_multi_controlled_swap(qubit_type const target_qubit1, qubit_type const target_qubit2, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
-      control_qubits_in_fused_gate.reserve(control_qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
-        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_swap >(to_qubit_in_fused_gate_.at(target_qubit1), to_qubit_in_fused_gate_.at(target_qubit2), std::move(control_qubits_in_fused_gate)));
-    }
-    else
-      do_adj_multi_controlled_swap(target_qubit1, target_qubit2, control_qubits);
-
-    return *this;
-  }
+  { do_adj_multi_controlled_swap(target_qubit1, target_qubit2, control_qubits); return *this; }
 
   state& state::controlled_phase_shift(complex_type const& phase_coefficient, qubit_type const target_qubit, control_qubit_type const control_qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(
-        std::make_unique< ::bra::fused_gate::fused_controlled_phase_shift >(
-          phase_coefficient, to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
-    else
-      do_controlled_phase_shift(phase_coefficient, target_qubit, control_qubit);
-
-    return *this;
-  }
+  { do_controlled_phase_shift(phase_coefficient, target_qubit, control_qubit); return *this; }
 
   state& state::adj_controlled_phase_shift(complex_type const& phase_coefficient, qubit_type const target_qubit, control_qubit_type const control_qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(
-        std::make_unique< ::bra::fused_gate::fused_adj_controlled_phase_shift >(
-          phase_coefficient, to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
-    else
-      do_adj_controlled_phase_shift(phase_coefficient, target_qubit, control_qubit);
-
-    return *this;
-  }
+  { do_adj_controlled_phase_shift(phase_coefficient, target_qubit, control_qubit); return *this; }
 
   state& state::multi_controlled_phase_shift(complex_type const& phase_coefficient, qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
-      control_qubits_in_fused_gate.reserve(control_qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
-        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_phase_shift >(phase_coefficient, to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
-    }
-    else
-      do_multi_controlled_phase_shift(phase_coefficient, target_qubit, control_qubits);
-
-    return *this;
-  }
+  { do_multi_controlled_phase_shift(phase_coefficient, target_qubit, control_qubits); return *this; }
 
   state& state::adj_multi_controlled_phase_shift(complex_type const& phase_coefficient, qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
-      control_qubits_in_fused_gate.reserve(control_qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
-        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_multi_controlled_phase_shift >(phase_coefficient, to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
-    }
-    else
-      do_adj_multi_controlled_phase_shift(phase_coefficient, target_qubit, control_qubits);
-
-    return *this;
-  }
+  { do_adj_multi_controlled_phase_shift(phase_coefficient, target_qubit, control_qubits); return *this; }
 
   state& state::controlled_u1(real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(
-        std::make_unique< ::bra::fused_gate::fused_controlled_u1 >(
-          phase, to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
-    else
-      do_controlled_u1(phase, target_qubit, control_qubit);
-
-    return *this;
-  }
+  { do_controlled_u1(phase, target_qubit, control_qubit); return *this; }
 
   state& state::adj_controlled_u1(real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(
-        std::make_unique< ::bra::fused_gate::fused_adj_controlled_u1 >(
-          phase, to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
-    else
-      do_adj_controlled_u1(phase, target_qubit, control_qubit);
-
-    return *this;
-  }
+  { do_adj_controlled_u1(phase, target_qubit, control_qubit); return *this; }
 
   state& state::multi_controlled_u1(real_type const phase, qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
-      control_qubits_in_fused_gate.reserve(control_qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
-        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_u1 >(phase, to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
-    }
-    else
-      do_multi_controlled_u1(phase, target_qubit, control_qubits);
-
-    return *this;
-  }
+  { do_multi_controlled_u1(phase, target_qubit, control_qubits); return *this; }
 
   state& state::adj_multi_controlled_u1(real_type const phase, qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
-      control_qubits_in_fused_gate.reserve(control_qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
-        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_multi_controlled_u1 >(phase, to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
-    }
-    else
-      do_adj_multi_controlled_u1(phase, target_qubit, control_qubits);
-
-    return *this;
-  }
+  { do_adj_multi_controlled_u1(phase, target_qubit, control_qubits); return *this; }
 
   state& state::controlled_u2(real_type const phase1, real_type const phase2, qubit_type const target_qubit, control_qubit_type const control_qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(
-        std::make_unique< ::bra::fused_gate::fused_controlled_u2 >(
-          phase1, phase2, to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
-    else
-      do_controlled_u2(phase1, phase2, target_qubit, control_qubit);
-
-    return *this;
-  }
+  { do_controlled_u2(phase1, phase2, target_qubit, control_qubit); return *this; }
 
   state& state::adj_controlled_u2(real_type const phase1, real_type const phase2, qubit_type const target_qubit, control_qubit_type const control_qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(
-        std::make_unique< ::bra::fused_gate::fused_adj_controlled_u2 >(
-          phase1, phase2, to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
-    else
-      do_adj_controlled_u2(phase1, phase2, target_qubit, control_qubit);
-
-    return *this;
-  }
+  { do_adj_controlled_u2(phase1, phase2, target_qubit, control_qubit); return *this; }
 
   state& state::multi_controlled_u2(real_type const phase1, real_type const phase2, qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
-      control_qubits_in_fused_gate.reserve(control_qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
-        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_u2 >(phase1, phase2, to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
-    }
-    else
-      do_multi_controlled_u2(phase1, phase2, target_qubit, control_qubits);
-
-    return *this;
-  }
+  { do_multi_controlled_u2(phase1, phase2, target_qubit, control_qubits); return *this; }
 
   state& state::adj_multi_controlled_u2(real_type const phase1, real_type const phase2, qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
-      control_qubits_in_fused_gate.reserve(control_qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
-        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_multi_controlled_u2 >(phase1, phase2, to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
-    }
-    else
-      do_adj_multi_controlled_u2(phase1, phase2, target_qubit, control_qubits);
-
-    return *this;
-  }
+  { do_adj_multi_controlled_u2(phase1, phase2, target_qubit, control_qubits); return *this; }
 
   state& state::controlled_u3(real_type const phase1, real_type const phase2, real_type const phase3, qubit_type const target_qubit, control_qubit_type const control_qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(
-        std::make_unique< ::bra::fused_gate::fused_controlled_u3 >(
-          phase1, phase2, phase3, to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
-    else
-      do_controlled_u3(phase1, phase2, phase3, target_qubit, control_qubit);
-
-    return *this;
-  }
+  { do_controlled_u3(phase1, phase2, phase3, target_qubit, control_qubit); return *this; }
 
   state& state::adj_controlled_u3(real_type const phase1, real_type const phase2, real_type const phase3, qubit_type const target_qubit, control_qubit_type const control_qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(
-        std::make_unique< ::bra::fused_gate::fused_adj_controlled_u3 >(
-          phase1, phase2, phase3, to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
-    else
-      do_adj_controlled_u3(phase1, phase2, phase3, target_qubit, control_qubit);
-
-    return *this;
-  }
+  { do_adj_controlled_u3(phase1, phase2, phase3, target_qubit, control_qubit); return *this; }
 
   state& state::multi_controlled_u3(real_type const phase1, real_type const phase2, real_type const phase3, qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
-      control_qubits_in_fused_gate.reserve(control_qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
-        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_u3 >(phase1, phase2, phase3, to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
-    }
-    else
-      do_multi_controlled_u3(phase1, phase2, phase3, target_qubit, control_qubits);
-
-    return *this;
-  }
+  { do_multi_controlled_u3(phase1, phase2, phase3, target_qubit, control_qubits); return *this; }
 
   state& state::adj_multi_controlled_u3(real_type const phase1, real_type const phase2, real_type const phase3, qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
-      control_qubits_in_fused_gate.reserve(control_qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
-        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_multi_controlled_u3 >(phase1, phase2, phase3, to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
-    }
-    else
-      do_adj_multi_controlled_u3(phase1, phase2, phase3, target_qubit, control_qubits);
-
-    return *this;
-  }
+  { do_adj_multi_controlled_u3(phase1, phase2, phase3, target_qubit, control_qubits); return *this; }
 
   state& state::controlled_x_rotation_half_pi(qubit_type const target_qubit, control_qubit_type const control_qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(
-        std::make_unique< ::bra::fused_gate::fused_controlled_x_rotation_half_pi >(
-          to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
-    else
-      do_controlled_x_rotation_half_pi(target_qubit, control_qubit);
-
-    return *this;
-  }
+  { do_controlled_x_rotation_half_pi(target_qubit, control_qubit); return *this; }
 
   state& state::adj_controlled_x_rotation_half_pi(qubit_type const target_qubit, control_qubit_type const control_qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(
-        std::make_unique< ::bra::fused_gate::fused_adj_controlled_x_rotation_half_pi >(
-          to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
-    else
-      do_adj_controlled_x_rotation_half_pi(target_qubit, control_qubit);
-
-    return *this;
-  }
+  { do_adj_controlled_x_rotation_half_pi(target_qubit, control_qubit); return *this; }
 
   state& state::multi_controlled_x_rotation_half_pi(qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
-      control_qubits_in_fused_gate.reserve(control_qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
-        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_x_rotation_half_pi >(to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
-    }
-    else
-      do_multi_controlled_x_rotation_half_pi(target_qubit, control_qubits);
-
-    return *this;
-  }
+  { do_multi_controlled_x_rotation_half_pi(target_qubit, control_qubits); return *this; }
 
   state& state::adj_multi_controlled_x_rotation_half_pi(qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
-      control_qubits_in_fused_gate.reserve(control_qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
-        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_multi_controlled_x_rotation_half_pi >(to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
-    }
-    else
-      do_adj_multi_controlled_x_rotation_half_pi(target_qubit, control_qubits);
-
-    return *this;
-  }
+  { do_adj_multi_controlled_x_rotation_half_pi(target_qubit, control_qubits); return *this; }
 
   state& state::controlled_y_rotation_half_pi(qubit_type const target_qubit, control_qubit_type const control_qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(
-        std::make_unique< ::bra::fused_gate::fused_controlled_y_rotation_half_pi >(
-          to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
-    else
-      do_controlled_y_rotation_half_pi(target_qubit, control_qubit);
-
-    return *this;
-  }
+  { do_controlled_y_rotation_half_pi(target_qubit, control_qubit); return *this; }
 
   state& state::adj_controlled_y_rotation_half_pi(qubit_type const target_qubit, control_qubit_type const control_qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(
-        std::make_unique< ::bra::fused_gate::fused_adj_controlled_y_rotation_half_pi >(
-          to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
-    else
-      do_adj_controlled_y_rotation_half_pi(target_qubit, control_qubit);
-
-    return *this;
-  }
+  { do_adj_controlled_y_rotation_half_pi(target_qubit, control_qubit); return *this; }
 
   state& state::multi_controlled_y_rotation_half_pi(qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
-      control_qubits_in_fused_gate.reserve(control_qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
-        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_y_rotation_half_pi >(to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
-    }
-    else
-      do_multi_controlled_y_rotation_half_pi(target_qubit, control_qubits);
-
-    return *this;
-  }
+  { do_multi_controlled_y_rotation_half_pi(target_qubit, control_qubits); return *this; }
 
   state& state::adj_multi_controlled_y_rotation_half_pi(qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
-      control_qubits_in_fused_gate.reserve(control_qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
-        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_multi_controlled_y_rotation_half_pi >(to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
-    }
-    else
-      do_adj_multi_controlled_y_rotation_half_pi(target_qubit, control_qubits);
-
-    return *this;
-  }
+  { do_adj_multi_controlled_y_rotation_half_pi(target_qubit, control_qubits); return *this; }
 
   state& state::multi_controlled_v(complex_type const& phase_coefficient, qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
-      control_qubits_in_fused_gate.reserve(control_qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
-        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_v >(phase_coefficient, to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
-    }
-    else
-      do_multi_controlled_v(phase_coefficient, target_qubit, control_qubits);
-
-    return *this;
-  }
+  { do_multi_controlled_v(phase_coefficient, target_qubit, control_qubits); return *this; }
 
   state& state::adj_multi_controlled_v(complex_type const& phase_coefficient, qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
-      control_qubits_in_fused_gate.reserve(control_qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
-        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_multi_controlled_v >(phase_coefficient, to_qubit_in_fused_gate_.at(target_qubit), std::move(control_qubits_in_fused_gate)));
-    }
-    else
-      do_adj_multi_controlled_v(phase_coefficient, target_qubit, control_qubits);
-
-    return *this;
-  }
+  { do_adj_multi_controlled_v(phase_coefficient, target_qubit, control_qubits); return *this; }
 
   state& state::controlled_exponential_pauli_x(real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(
-        std::make_unique< ::bra::fused_gate::fused_controlled_exponential_pauli_x >(
-          phase, to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
-    else
-      do_controlled_exponential_pauli_x(phase, target_qubit, control_qubit);
-
-    return *this;
-  }
+  { do_controlled_exponential_pauli_x(phase, target_qubit, control_qubit); return *this; }
 
   state& state::adj_controlled_exponential_pauli_x(real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(
-        std::make_unique< ::bra::fused_gate::fused_adj_controlled_exponential_pauli_x >(
-          phase, to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
-    else
-      do_adj_controlled_exponential_pauli_x(phase, target_qubit, control_qubit);
-
-    return *this;
-  }
+  { do_adj_controlled_exponential_pauli_x(phase, target_qubit, control_qubit); return *this; }
 
   state& state::multi_controlled_exponential_pauli_xn(real_type const phase, std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto target_qubits_in_fused_gate = std::vector<qubit_type>{};
-      target_qubits_in_fused_gate.reserve(target_qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(target_qubits), end(target_qubits), std::back_inserter(target_qubits_in_fused_gate),
-        [this](::bra::qubit_type const target_qubit) { return this->to_qubit_in_fused_gate_.at(target_qubit); });
-
-      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
-      control_qubits_in_fused_gate.reserve(control_qubits.size());
-      std::transform(
-        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
-        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_exponential_pauli_xn >(phase, std::move(target_qubits_in_fused_gate), std::move(control_qubits_in_fused_gate)));
-    }
-    else
-      do_multi_controlled_exponential_pauli_xn(phase, target_qubits, control_qubits);
-
-    return *this;
-  }
+  { do_multi_controlled_exponential_pauli_xn(phase, target_qubits, control_qubits); return *this; }
 
   state& state::adj_multi_controlled_exponential_pauli_xn(real_type const phase, std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto target_qubits_in_fused_gate = std::vector<qubit_type>{};
-      target_qubits_in_fused_gate.reserve(target_qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(target_qubits), end(target_qubits), std::back_inserter(target_qubits_in_fused_gate),
-        [this](::bra::qubit_type const target_qubit) { return this->to_qubit_in_fused_gate_.at(target_qubit); });
-
-      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
-      control_qubits_in_fused_gate.reserve(control_qubits.size());
-      std::transform(
-        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
-        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_multi_controlled_exponential_pauli_xn >(phase, std::move(target_qubits_in_fused_gate), std::move(control_qubits_in_fused_gate)));
-    }
-    else
-      do_adj_multi_controlled_exponential_pauli_xn(phase, target_qubits, control_qubits);
-
-    return *this;
-  }
+  { do_adj_multi_controlled_exponential_pauli_xn(phase, target_qubits, control_qubits); return *this; }
 
   state& state::controlled_exponential_pauli_y(real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(
-        std::make_unique< ::bra::fused_gate::fused_controlled_exponential_pauli_y >(
-          phase, to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
-    else
-      do_controlled_exponential_pauli_y(phase, target_qubit, control_qubit);
-
-    return *this;
-  }
+  { do_controlled_exponential_pauli_y(phase, target_qubit, control_qubit); return *this; }
 
   state& state::adj_controlled_exponential_pauli_y(real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(
-        std::make_unique< ::bra::fused_gate::fused_adj_controlled_exponential_pauli_y >(
-          phase, to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
-    else
-      do_adj_controlled_exponential_pauli_y(phase, target_qubit, control_qubit);
-
-    return *this;
-  }
+  { do_adj_controlled_exponential_pauli_y(phase, target_qubit, control_qubit); return *this; }
 
   state& state::multi_controlled_exponential_pauli_yn(real_type const phase, std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto target_qubits_in_fused_gate = std::vector<qubit_type>{};
-      target_qubits_in_fused_gate.reserve(target_qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(target_qubits), end(target_qubits), std::back_inserter(target_qubits_in_fused_gate),
-        [this](::bra::qubit_type const target_qubit) { return this->to_qubit_in_fused_gate_.at(target_qubit); });
-
-      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
-      control_qubits_in_fused_gate.reserve(control_qubits.size());
-      std::transform(
-        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
-        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_exponential_pauli_yn >(phase, std::move(target_qubits_in_fused_gate), std::move(control_qubits_in_fused_gate)));
-    }
-    else
-      do_multi_controlled_exponential_pauli_yn(phase, target_qubits, control_qubits);
-
-    return *this;
-  }
+  { do_multi_controlled_exponential_pauli_yn(phase, target_qubits, control_qubits); return *this; }
 
   state& state::adj_multi_controlled_exponential_pauli_yn(real_type const phase, std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto target_qubits_in_fused_gate = std::vector<qubit_type>{};
-      target_qubits_in_fused_gate.reserve(target_qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(target_qubits), end(target_qubits), std::back_inserter(target_qubits_in_fused_gate),
-        [this](::bra::qubit_type const target_qubit) { return this->to_qubit_in_fused_gate_.at(target_qubit); });
-
-      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
-      control_qubits_in_fused_gate.reserve(control_qubits.size());
-      std::transform(
-        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
-        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_multi_controlled_exponential_pauli_yn >(phase, std::move(target_qubits_in_fused_gate), std::move(control_qubits_in_fused_gate)));
-    }
-    else
-      do_adj_multi_controlled_exponential_pauli_yn(phase, target_qubits, control_qubits);
-
-    return *this;
-  }
+  { do_adj_multi_controlled_exponential_pauli_yn(phase, target_qubits, control_qubits); return *this; }
 
   state& state::controlled_exponential_pauli_z(real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(
-        std::make_unique< ::bra::fused_gate::fused_controlled_exponential_pauli_z >(
-          phase, to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
-    else
-      do_controlled_exponential_pauli_z(phase, target_qubit, control_qubit);
-
-    return *this;
-  }
+  { do_controlled_exponential_pauli_z(phase, target_qubit, control_qubit); return *this; }
 
   state& state::adj_controlled_exponential_pauli_z(real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit)
-  {
-    if (is_in_fusion_)
-      fused_gates_.push_back(
-        std::make_unique< ::bra::fused_gate::fused_adj_controlled_exponential_pauli_z >(
-          phase, to_qubit_in_fused_gate_.at(target_qubit), ::ket::make_control(to_qubit_in_fused_gate_.at(control_qubit.qubit()))));
-    else
-      do_adj_controlled_exponential_pauli_z(phase, target_qubit, control_qubit);
-
-    return *this;
-  }
+  { do_adj_controlled_exponential_pauli_z(phase, target_qubit, control_qubit); return *this; }
 
   state& state::multi_controlled_exponential_pauli_zn(real_type const phase, std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto target_qubits_in_fused_gate = std::vector<qubit_type>{};
-      target_qubits_in_fused_gate.reserve(target_qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(target_qubits), end(target_qubits), std::back_inserter(target_qubits_in_fused_gate),
-        [this](::bra::qubit_type const target_qubit) { return this->to_qubit_in_fused_gate_.at(target_qubit); });
-
-      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
-      control_qubits_in_fused_gate.reserve(control_qubits.size());
-      std::transform(
-        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
-        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_exponential_pauli_zn >(phase, std::move(target_qubits_in_fused_gate), std::move(control_qubits_in_fused_gate)));
-    }
-    else
-      do_multi_controlled_exponential_pauli_zn(phase, target_qubits, control_qubits);
-
-    return *this;
-  }
+  { do_multi_controlled_exponential_pauli_zn(phase, target_qubits, control_qubits); return *this; }
 
   state& state::adj_multi_controlled_exponential_pauli_zn(real_type const phase, std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto target_qubits_in_fused_gate = std::vector<qubit_type>{};
-      target_qubits_in_fused_gate.reserve(target_qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(target_qubits), end(target_qubits), std::back_inserter(target_qubits_in_fused_gate),
-        [this](::bra::qubit_type const target_qubit) { return this->to_qubit_in_fused_gate_.at(target_qubit); });
-
-      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
-      control_qubits_in_fused_gate.reserve(control_qubits.size());
-      std::transform(
-        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
-        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_multi_controlled_exponential_pauli_zn >(phase, std::move(target_qubits_in_fused_gate), std::move(control_qubits_in_fused_gate)));
-    }
-    else
-      do_adj_multi_controlled_exponential_pauli_zn(phase, target_qubits, control_qubits);
-
-    return *this;
-  }
+  { do_adj_multi_controlled_exponential_pauli_zn(phase, target_qubits, control_qubits); return *this; }
 
   state& state::multi_controlled_exponential_swap(real_type const phase, qubit_type const target_qubit1, qubit_type const target_qubit2, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
-      control_qubits_in_fused_gate.reserve(control_qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
-        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_exponential_swap >(phase, to_qubit_in_fused_gate_.at(target_qubit1), to_qubit_in_fused_gate_.at(target_qubit2), std::move(control_qubits_in_fused_gate)));
-    }
-    else
-      do_multi_controlled_exponential_swap(phase, target_qubit1, target_qubit2, control_qubits);
-
-    return *this;
-  }
+  { do_multi_controlled_exponential_swap(phase, target_qubit1, target_qubit2, control_qubits); return *this; }
 
   state& state::adj_multi_controlled_exponential_swap(real_type const phase, qubit_type const target_qubit1, qubit_type const target_qubit2, std::vector<control_qubit_type> const& control_qubits)
-  {
-    if (is_in_fusion_)
-    {
-      auto control_qubits_in_fused_gate = std::vector<control_qubit_type>{};
-      control_qubits_in_fused_gate.reserve(control_qubits.size());
-      using std::begin;
-      using std::end;
-      std::transform(
-        begin(control_qubits), end(control_qubits), std::back_inserter(control_qubits_in_fused_gate),
-        [this](::bra::control_qubit_type const control_qubit) { return ::ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
-
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_multi_controlled_exponential_swap >(phase, to_qubit_in_fused_gate_.at(target_qubit1), to_qubit_in_fused_gate_.at(target_qubit2), std::move(control_qubits_in_fused_gate)));
-    }
-    else
-      do_adj_multi_controlled_exponential_swap(phase, target_qubit1, target_qubit2, control_qubits);
-
-    return *this;
-  }
+  { do_adj_multi_controlled_exponential_swap(phase, target_qubit1, target_qubit2, control_qubits); return *this; }
 } // namespace bra
 
 

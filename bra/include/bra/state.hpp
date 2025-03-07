@@ -10,7 +10,7 @@
 # ifdef BRA_NO_MPI
 #   include <chrono>
 # endif // BRA_NO_MPI
-#   include <memory>
+# include <memory>
 # include <random>
 # include <stdexcept>
 
@@ -30,7 +30,6 @@
 # endif // BRA_NO_MPI
 
 # include <bra/types.hpp>
-# include <bra/fused_gate/fused_gate.hpp>
 
 # ifndef BRA_NO_MPI
 #   define BRA_clock yampi::wall_clock
@@ -112,12 +111,11 @@ namespace bra
     bool is_in_fusion_; // related to begin_fusion/end_fusion
     std::vector< ::bra::qubit_type > fused_qubits_; // related to begin_fusion/end_fusion
     std::unordered_map< ::bra::qubit_type,  ::bra::qubit_type > to_qubit_in_fused_gate_; // related to begin_fusion/end_fusion
-    std::vector<std::unique_ptr< ::bra::fused_gate::fused_gate >> fused_gates_; // related to begin_fusion/end_fusion
     random_number_generator_type random_number_generator_;
 # ifndef BRA_NO_MPI
 
     permutation_type permutation_;
-    std::vector<complex_type> buffer_;
+    ::bra::data_type buffer_;
     yampi::communicator const& communicator_;
     yampi::environment const& environment_;
 # endif // BRA_NO_MPI
