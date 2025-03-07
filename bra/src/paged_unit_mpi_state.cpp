@@ -1822,6 +1822,11 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_FUSED_QUBITS), CASE_N, nil)
 # undef QUBITS
 # undef PERMUTATED_QUBITS
     }
+
+    fused_gates_.clear();
+# ifndef KET_USE_ON_CACHE_STATE_VECTOR
+    paged_fused_gates_.clear();
+# endif // KET_USE_ON_CACHE_STATE_VECTOR
   }
 
   void paged_unit_mpi_state::do_clear(qubit_type const qubit)
