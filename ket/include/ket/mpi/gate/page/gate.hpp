@@ -25,7 +25,7 @@
 # include <ket/mpi/gate/page/unsupported_page_gate_operation.hpp>
 
 
-# ifdef KET_USE_ON_CACHE_STATE_VECTOR
+# if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) and defined(KET_USE_ON_CACHE_STATE_VECTOR)
 namespace ket
 {
   namespace mpi
@@ -58,7 +58,7 @@ namespace ket
 
         // Case 2) Some operated qubits are page qubits
         // Note that num. page qubits are smaller than or equal to num. off-cache qubits
-# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+#   ifndef KET_USE_BIT_MASKS_EXPLICITLY
         namespace impl
         {
           template <
@@ -75,37 +75,37 @@ namespace ket
           -> ::ket::mpi::state<Complex, true, Allocator>&
           {
             static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
-#   if __cpp_constexpr >= 201603L
+#     if __cpp_constexpr >= 201603L
             static_assert(
               ::ket::utility::variadic::proj::all_of(
                 [](auto integer) { return std::is_same<decltype(integer), StateInteger>::value; },
                 [](auto qubit) { return ::ket::meta::state_integer_t<decltype(qubit)>{}; },
                 Qubit{}, Qubits{}...),
               "state_integer_type's of Qubit and Qubits should be the same as StateInteger");
-#   else // __cpp_constexpr >= 201603L
+#     else // __cpp_constexpr >= 201603L
             static_assert(
               ::ket::utility::variadic::proj::all_of(
                 ::ket::gate::gate_detail::is_same_to<StateInteger>{}, ::ket::gate::gate_detail::state_integer_of{},
                 Qubit{}, Qubits{}...),
               "state_integer_type's of Qubit and Qubits should be the same as StateInteger");
-#   endif // __cpp_constexpr >= 201603L
+#     endif // __cpp_constexpr >= 201603L
 
             using bit_integer_type = ::ket::meta::bit_integer_t<Qubit>;
             static_assert(std::is_unsigned<bit_integer_type>::value, "bit_integer_type of Qubit should be unsigned");
-#   if __cpp_constexpr >= 201603L
+#     if __cpp_constexpr >= 201603L
             static_assert(
               ::ket::utility::variadic::proj::all_of(
                 [](auto integer) { return std::is_same<decltype(integer), bit_integer_type>::value; },
                 [](auto qubit) { return ::ket::meta::bit_integer_t<decltype(qubit)>{}; },
                 Qubits{}...),
               "bit_integer_type's of Qubit and Qubits should be the same");
-#   else // __cpp_constexpr >= 201603L
+#     else // __cpp_constexpr >= 201603L
             static_assert(
               ::ket::utility::variadic::proj::all_of(
                 ::ket::gate::gate_detail::is_same_to<bit_integer_type>{}, ::ket::gate::gate_detail::bit_integer_of{},
                 Qubits{}...),
               "bit_integer_type's of Qubit and Qubits should be the same");
-#   endif // __cpp_constexpr >= 201603L
+#     endif // __cpp_constexpr >= 201603L
 
             // Case 1) should be resolved before calling this function
             assert(::ket::mpi::page::any_on_page(local_state, permutated_qubit, permutated_qubits...));
@@ -114,9 +114,9 @@ namespace ket
             auto const on_cache_state_size = static_cast<StateInteger>(on_cache_state_last - on_cache_state_first);
             auto const num_on_cache_qubits = ::ket::utility::integer_log2<bit_integer_type>(on_cache_state_size);
             assert(::ket::utility::integer_exp2<StateInteger>(num_on_cache_qubits) == on_cache_state_size);
-#   ifndef NDEBUG
+#     ifndef NDEBUG
             auto const num_nonpage_qubits = static_cast<bit_integer_type>(local_state.num_local_qubits() - local_state.num_page_qubits());
-#   endif // NDEBUG
+#     endif // NDEBUG
             assert(num_nonpage_qubits >= num_on_cache_qubits);
             assert(static_cast<bit_integer_type>(local_state.num_local_qubits()) > num_on_cache_qubits); // because num_page_qubits >= 1
             auto const num_off_cache_qubits = static_cast<bit_integer_type>(local_state.num_local_qubits()) - num_on_cache_qubits;
@@ -180,7 +180,11 @@ namespace ket
               {
                 for (auto chunk_index = StateInteger{0u}; chunk_index < num_chunks_in_on_cache_state; ++chunk_index)
                 {
-                  auto const tag_index = ::ket::gate::utility::index_with_qubits(tag_index_wo_qubits, chunk_index, unsorted_tag_qubits, sorted_tag_qubits_with_sentinel);
+                  auto const tag_index
+                    = ::ket::gate::utility::index_with_qubits(
+                        tag_index_wo_qubits, chunk_index,
+                        begin(unsorted_tag_qubits), end(unsorted_tag_qubits),
+                        begin(sorted_tag_qubits_with_sentinel), end(sorted_tag_qubits_with_sentinel));
                   auto const nonpage_tag_index = tag_index bitand ((StateInteger{1u} << num_nonpage_tag_qubits) - StateInteger{1u});
                   auto const page_index = tag_index >> num_nonpage_tag_qubits;
                   auto const page_first = begin(local_state.page_range(std::make_pair(data_block_index, page_index)));
@@ -196,7 +200,11 @@ namespace ket
 
                 for (auto chunk_index = StateInteger{0u}; chunk_index < num_chunks_in_on_cache_state; ++chunk_index)
                 {
-                  auto const tag_index = ::ket::gate::utility::index_with_qubits(tag_index_wo_qubits, chunk_index, unsorted_tag_qubits, sorted_tag_qubits_with_sentinel);
+                  auto const tag_index
+                    = ::ket::gate::utility::index_with_qubits(
+                        tag_index_wo_qubits, chunk_index,
+                        begin(unsorted_tag_qubits), end(unsorted_tag_qubits),
+                        begin(sorted_tag_qubits_with_sentinel), end(sorted_tag_qubits_with_sentinel));
                   auto const nonpage_tag_index = tag_index bitand ((StateInteger{1u} << num_nonpage_tag_qubits) - StateInteger{1u});
                   auto const page_index = tag_index >> num_nonpage_tag_qubits;
                   auto const page_first = begin(local_state.page_range(std::make_pair(data_block_index, page_index)));
@@ -318,7 +326,7 @@ namespace ket
             local_state, on_cache_state_first, on_cache_state_last, data_block_index,
             std::forward<Function>(function), permutated_qubit, permutated_qubits...);
         }
-# else // KET_USE_BIT_MASKS_EXPLICITLY
+#   else // KET_USE_BIT_MASKS_EXPLICITLY
         template <
           typename ParallelPolicy,
           typename Complex, typename Allocator, typename ContiguousIterator, typename StateInteger,
@@ -332,37 +340,37 @@ namespace ket
         -> ::ket::mpi::state<Complex, true, Allocator>&
         {
           static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
-#   if __cpp_constexpr >= 201603L
+#     if __cpp_constexpr >= 201603L
           static_assert(
             ::ket::utility::variadic::proj::all_of(
               [](auto integer) { return std::is_same<decltype(integer), StateInteger>::value; },
               [](auto qubit) { return ::ket::meta::state_integer_t<decltype(qubit)>{}; },
               Qubit{}, Qubits{}...),
             "state_integer_type's of Qubit and Qubits should be the same as StateInteger");
-#   else // __cpp_constexpr >= 201603L
+#     else // __cpp_constexpr >= 201603L
           static_assert(
             ::ket::utility::variadic::proj::all_of(
               ::ket::gate::gate_detail::is_same_to<StateInteger>{}, ::ket::gate::gate_detail::state_integer_of{},
               Qubit{}, Qubits{}...),
             "state_integer_type's of Qubit and Qubits should be the same as StateInteger");
-#   endif // __cpp_constexpr >= 201603L
+#     endif // __cpp_constexpr >= 201603L
 
           using bit_integer_type = ::ket::meta::bit_integer_t<Qubit>;
           static_assert(std::is_unsigned<bit_integer_type>::value, "bit_integer_type of Qubit should be unsigned");
-#   if __cpp_constexpr >= 201603L
+#     if __cpp_constexpr >= 201603L
           static_assert(
             ::ket::utility::variadic::proj::all_of(
               [](auto integer) { return std::is_same<decltype(integer), bit_integer_type>::value; },
               [](auto qubit) { return ::ket::meta::bit_integer_t<decltype(qubit)>{}; },
               Qubits{}...),
             "bit_integer_type's of Qubit and Qubits should be the same");
-#   else // __cpp_constexpr >= 201603L
+#     else // __cpp_constexpr >= 201603L
           static_assert(
             ::ket::utility::variadic::proj::all_of(
               ::ket::gate::gate_detail::is_same_to<bit_integer_type>{}, ::ket::gate::gate_detail::bit_integer_of{},
               Qubits{}...),
             "bit_integer_type's of Qubit and Qubits should be the same");
-#   endif // __cpp_constexpr >= 201603L
+#     endif // __cpp_constexpr >= 201603L
 
           // Case 1) should be resolved before calling this function
           assert(::ket::mpi::page::any_on_page(local_state, permutated_qubit, permutated_qubits...));
@@ -371,9 +379,9 @@ namespace ket
           auto const on_cache_state_size = static_cast<StateInteger>(on_cache_state_last - on_cache_state_first);
           auto const num_on_cache_qubits = ::ket::utility::integer_log2<bit_integer_type>(on_cache_state_size);
           assert(::ket::utility::integer_exp2<StateInteger>(num_on_cache_qubits) == on_cache_state_size);
-#   ifndef NDEBUG
+#     ifndef NDEBUG
           auto const num_nonpage_qubits = static_cast<bit_integer_type>(local_state.num_local_qubits() - local_state.num_page_qubits());
-#   endif // NDEBUG
+#     endif // NDEBUG
           assert(num_nonpage_qubits >= num_on_cache_qubits);
           assert(static_cast<bit_integer_type>(local_state.num_local_qubits()) > num_on_cache_qubits); // because num_page_qubits >= 1
           auto const num_off_cache_qubits = static_cast<bit_integer_type>(local_state.num_local_qubits()) - num_on_cache_qubits;
@@ -443,7 +451,10 @@ namespace ket
             {
               for (auto chunk_index = StateInteger{0u}; chunk_index < num_chunks_in_on_cache_state; ++chunk_index)
               {
-                auto const tag_index = ::ket::gate::utility::index_with_qubits(tag_index_wo_qubits, chunk_index, tag_qubit_masks, tag_index_masks);
+                auto const tag_index
+                  = ::ket::gate::utility::index_with_qubits(
+                      tag_index_wo_qubits, chunk_index,
+                      begin(tag_qubit_masks), end(tag_qubit_masks), begin(tag_index_masks), end(tag_index_masks));
                 auto const nonpage_tag_index = tag_index bitand ((StateInteger{1u} << num_nonpage_tag_qubits) - StateInteger{1u});
                 auto const page_index = tag_index >> num_nonpage_tag_qubits;
                 auto const page_first = begin(local_state.page_range(std::make_pair(data_block_index, page_index)));
@@ -456,7 +467,10 @@ namespace ket
 
               for (auto chunk_index = StateInteger{0u}; chunk_index < num_chunks_in_on_cache_state; ++chunk_index)
               {
-                auto const tag_index = ::ket::gate::utility::index_with_qubits(tag_index_wo_qubits, chunk_index, tag_qubit_masks, tag_index_masks);
+                auto const tag_index
+                  = ::ket::gate::utility::index_with_qubits(
+                      tag_index_wo_qubits, chunk_index,
+                      begin(tag_qubit_masks), end(tag_qubit_masks), begin(tag_index_masks), end(tag_index_masks));
                 auto const nonpage_tag_index = tag_index bitand ((StateInteger{1u} << num_nonpage_tag_qubits) - StateInteger{1u});
                 auto const page_index = tag_index >> num_nonpage_tag_qubits;
                 auto const page_first = begin(local_state.page_range(std::make_pair(data_block_index, page_index)));
@@ -529,7 +543,10 @@ namespace ket
           {
             for (auto chunk_index = StateInteger{0u}; chunk_index < num_chunks_in_on_cache_state; ++chunk_index)
             {
-              auto const tag_index = ::ket::gate::utility::index_with_qubits(tag_index_wo_qubits, chunk_index, begin(tag_qubit_masks), end(tag_qubit_masks), begin(tag_index_masks), end(tag_index_masks));
+              auto const tag_index
+                = ::ket::gate::utility::index_with_qubits(
+                    tag_index_wo_qubits, chunk_index,
+                    begin(tag_qubit_masks), end(tag_qubit_masks), begin(tag_index_masks), end(tag_index_masks));
               auto const nonpage_tag_index = tag_index bitand ((StateInteger{1u} << num_nonpage_tag_qubits) - StateInteger{1u});
               auto const page_index = tag_index >> num_nonpage_tag_qubits;
               auto const page_first = begin(local_state.page_range(std::make_pair(data_block_index, page_index)));
@@ -542,7 +559,10 @@ namespace ket
 
             for (auto chunk_index = StateInteger{0u}; chunk_index < num_chunks_in_on_cache_state; ++chunk_index)
             {
-              auto const tag_index = ::ket::gate::utility::index_with_qubits(tag_index_wo_qubits, chunk_index, begin(tag_qubit_masks), end(tag_qubit_masks), begin(tag_index_masks), end(tag_index_masks));
+              auto const tag_index
+                = ::ket::gate::utility::index_with_qubits(
+                    tag_index_wo_qubits, chunk_index,
+                    begin(tag_qubit_masks), end(tag_qubit_masks), begin(tag_index_masks), end(tag_index_masks));
               auto const nonpage_tag_index = tag_index bitand ((StateInteger{1u} << num_nonpage_tag_qubits) - StateInteger{1u});
               auto const page_index = tag_index >> num_nonpage_tag_qubits;
               auto const page_first = begin(local_state.page_range(std::make_pair(data_block_index, page_index)));
@@ -554,12 +574,12 @@ namespace ket
 
           return local_state;
         }
-# endif // KET_USE_BIT_MASKS_EXPLICITLY
+#   endif // KET_USE_BIT_MASKS_EXPLICITLY
       } // namespace page
     } // namespace gate
   } // namespace mpi
 } // namespace ket
-# endif // KET_USE_ON_CACHE_STATE_VECTOR
+# endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) and defined(KET_USE_ON_CACHE_STATE_VECTOR)
 
 
 #endif // KET_MPI_GATE_PAGE_GATE_HPP

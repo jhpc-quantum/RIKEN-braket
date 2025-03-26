@@ -6,6 +6,9 @@
 #   include <memory>
 
 #   include <ket/gate/projective_measurement.hpp>
+#   if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
+#     include <ket/gate/utility/cache_aware_iterator.hpp>
+#   endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
 #   include <ket/utility/parallel/loop_n.hpp>
 #   include <ket/mpi/utility/simple_mpi.hpp>
 
@@ -13,6 +16,7 @@
 #   include <yampi/communicator.hpp>
 #   include <yampi/environment.hpp>
 
+#   include <bra/types.hpp>
 #   include <bra/state.hpp>
 #   include <bra/fused_gate/fused_gate.hpp>
 
@@ -30,6 +34,14 @@ namespace bra
 
     using fused_gate_iterator = data_type::iterator;
     std::vector<std::unique_ptr< ::bra::fused_gate::fused_gate<fused_gate_iterator> >> fused_gates_; // related to begin_fusion/end_fusion
+#   if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
+#     ifndef KET_USE_BIT_MASKS_EXPLICITLY
+    using cache_aware_fused_gate_iterator = ket::gate::utility::cache_aware_iterator<fused_gate_iterator, ::bra::qubit_type>;
+#     else // KET_USE_BIT_MASKS_EXPLICITLY
+    using cache_aware_fused_gate_iterator = ket::gate::utility::cache_aware_iterator<fused_gate_iterator, ::bra::state_integer_type>;
+#     endif // KET_USE_BIT_MASKS_EXPLICITLY
+    std::vector<std::unique_ptr< ::bra::fused_gate::fused_gate<cache_aware_fused_gate_iterator> >> cache_aware_fused_gates_; // related to begin_fusion/end_fusion
+#   endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
 
    public:
     simple_mpi_state(

@@ -67,19 +67,29 @@ namespace ket
           {
             // 0b11...10u
             constexpr auto index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{1u};
+            using std::begin;
+            using std::end;
             auto const iter0
               = first
                 + ::ket::gate::utility::index_with_qubits(
                     fused_index_wo_qubits,
-                    ::ket::gate::utility::index_with_qubits(operated_index_wo_qubits, index0, unsorted_operated_qubits, sorted_operated_qubits_with_sentinel),
-                    unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);
+                    ::ket::gate::utility::index_with_qubits(
+                      operated_index_wo_qubits, index0,
+                      begin(unsorted_operated_qubits), end(unsorted_operated_qubits),
+                      begin(sorted_operated_qubits_with_sentinel), end(sorted_operated_qubits_with_sentinel)),
+                    begin(unsorted_fused_qubits), end(unsorted_fused_qubits),
+                    begin(sorted_fused_qubits_with_sentinel), end(sorted_fused_qubits_with_sentinel));
             // 0b11...11u
             auto const iter1
               = first
                 + ::ket::gate::utility::index_with_qubits(
                     fused_index_wo_qubits,
-                    ::ket::gate::utility::index_with_qubits(operated_index_wo_qubits, index0 bitor std::size_t{1u}, unsorted_operated_qubits, sorted_operated_qubits_with_sentinel),
-                    unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);
+                    ::ket::gate::utility::index_with_qubits(
+                      operated_index_wo_qubits, index0 bitor std::size_t{1u},
+                      begin(unsorted_operated_qubits), end(unsorted_operated_qubits),
+                      begin(sorted_operated_qubits_with_sentinel), end(sorted_operated_qubits_with_sentinel)),
+                    begin(unsorted_fused_qubits), end(unsorted_fused_qubits),
+                    begin(sorted_fused_qubits_with_sentinel), end(sorted_fused_qubits_with_sentinel));
 
             std::iter_swap(iter0, iter1);
           },
@@ -138,19 +148,25 @@ namespace ket
           {
             // 0b11...10u
             constexpr auto index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{1u};
+            using std::begin;
+            using std::end;
             auto const iter0
               = first
                 + ::ket::gate::utility::index_with_qubits(
                     fused_index_wo_qubits,
-                    ::ket::gate::utility::index_with_qubits(operated_index_wo_qubits, index0, operated_qubit_masks, operated_index_masks),
-                    fused_qubit_masks, fused_index_masks);
+                    ::ket::gate::utility::index_with_qubits(
+                      operated_index_wo_qubits, index0,
+                      begin(operated_qubit_masks), end(operated_qubit_masks), begin(operated_index_masks), end(operated_index_masks)),
+                    begin(fused_qubit_masks), end(fused_qubit_masks), begin(fused_index_masks), end(fused_index_masks));
             // 0b11...11u
             auto const iter1
               = first
                 + ::ket::gate::utility::index_with_qubits(
                     fused_index_wo_qubits,
-                    ::ket::gate::utility::index_with_qubits(operated_index_wo_qubits, index0 bitor std::size_t{1u}, operated_qubit_masks, operated_index_masks),
-                    fused_qubit_masks, fused_index_masks);
+                    ::ket::gate::utility::index_with_qubits(
+                      operated_index_wo_qubits, index0 bitor std::size_t{1u},
+                      begin(operated_qubit_masks), end(operated_qubit_masks), begin(operated_index_masks), end(operated_index_masks)),
+                    begin(fused_qubit_masks), end(fused_qubit_masks), begin(fused_index_masks), end(fused_index_masks));
 
             std::iter_swap(iter0, iter1);
           },

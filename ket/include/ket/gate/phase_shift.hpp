@@ -139,7 +139,7 @@ namespace ket
       constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 2u);
       constexpr auto num_operated_qubits = num_control_qubits + BitInteger{1u};
 
-      ::ket::gate::gate(
+      ::ket::gate::nocache::gate(
         parallel_policy, first, last,
         [&phase_coefficient](
           auto const first, StateInteger const index_wo_qubits,
@@ -150,14 +150,22 @@ namespace ket
           // 0b11...11u
           constexpr auto index = ((std::size_t{1u} << num_operated_qubits) - std::size_t{1u});
 
-          *(first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index, unsorted_qubits, sorted_qubits_with_sentinel)) *= phase_coefficient;
+          using std::begin;
+          using std::end;
+          auto const iter
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index,
+                  begin(unsorted_qubits), end(unsorted_qubits),
+                  begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));
+          *iter *= phase_coefficient;
         },
         target_qubit, control_qubit1, control_qubit2, control_qubits...);
 # else // KET_USE_BIT_MASKS_EXPLICITLY
       constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 2u);
       constexpr auto num_operated_qubits = num_control_qubits + BitInteger{1u};
 
-      ::ket::gate::gate(
+      ::ket::gate::nocache::gate(
         parallel_policy, first, last,
         [&phase_coefficient](
           auto const first, StateInteger const index_wo_qubits,
@@ -168,7 +176,14 @@ namespace ket
           // 0b11...11u
           constexpr auto index = ((std::size_t{1u} << num_operated_qubits) - std::size_t{1u});
 
-          *(first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index, qubit_masks, index_masks)) *= phase_coefficient;
+          using std::begin;
+          using std::end;
+          auto const iter
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index,
+                  begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+          *iter *= phase_coefficient;
         },
         target_qubit, control_qubit1, control_qubit2, control_qubits...);
 # endif // KET_USE_BIT_MASKS_EXPLICITLY
@@ -483,7 +498,7 @@ namespace ket
       constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 2u);
       constexpr auto num_operated_qubits = num_control_qubits + BitInteger{1u};
 
-      ::ket::gate::gate(
+      ::ket::gate::nocache::gate(
         parallel_policy, first, last,
         [&modified_phase_coefficient1, &phase_coefficient2](
           auto const first, StateInteger const index_wo_qubits,
@@ -496,15 +511,27 @@ namespace ket
           // 0b11...11u
           constexpr auto index1 = index0 bitor std::size_t{1u};
 
-          auto const control_on_iter = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index0, unsorted_qubits, sorted_qubits_with_sentinel);
-          auto const target_control_on_iter = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index1, unsorted_qubits, sorted_qubits_with_sentinel);
-          auto const control_on_iter_value = *control_on_iter;
+          using std::begin;
+          using std::end;
+          auto const iter0
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index0,
+                  begin(unsorted_qubits), end(unsorted_qubits),
+                  begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));
+          auto const iter1
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index1,
+                  begin(unsorted_qubits), end(unsorted_qubits),
+                  begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));
+          auto const value0 = *iter0;
 
-          *control_on_iter -= phase_coefficient2 * *target_control_on_iter;
-          *control_on_iter *= one_div_root_two<Real>();
-          *target_control_on_iter *= phase_coefficient2;
-          *target_control_on_iter += control_on_iter_value;
-          *target_control_on_iter *= modified_phase_coefficient1;
+          *iter0 -= phase_coefficient2 * *iter1;
+          *iter0 *= one_div_root_two<Real>();
+          *iter1 *= phase_coefficient2;
+          *iter1 += value0;
+          *iter1 *= modified_phase_coefficient1;
         },
         target_qubit, control_qubit1, control_qubit2, control_qubits...);
 # else // KET_USE_BIT_MASKS_EXPLICITLY
@@ -517,7 +544,7 @@ namespace ket
       constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 2u);
       constexpr auto num_operated_qubits = num_control_qubits + BitInteger{1u};
 
-      ::ket::gate::gate(
+      ::ket::gate::nocache::gate(
         parallel_policy, first, last,
         [&modified_phase_coefficient1, &phase_coefficient2](
           auto const first, StateInteger const index_wo_qubits,
@@ -530,15 +557,25 @@ namespace ket
           // 0b11...11u
           constexpr auto index1 = index0 bitor std::size_t{1u};
 
-          auto const control_on_iter = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index0, qubit_masks, index_masks);
-          auto const target_control_on_iter = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index1, qubit_masks, index_masks);
-          auto const control_on_iter_value = *control_on_iter;
+          using std::begin;
+          using std::end;
+          auto const iter0
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index0,
+                  begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+          auto const iter1
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index1,
+                  begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+          auto const value0 = *iter0;
 
-          *control_on_iter -= phase_coefficient2 * *target_control_on_iter;
-          *control_on_iter *= one_div_root_two<Real>();
-          *target_control_on_iter *= phase_coefficient2;
-          *target_control_on_iter += control_on_iter_value;
-          *target_control_on_iter *= modified_phase_coefficient1;
+          *iter0 -= phase_coefficient2 * *iter1;
+          *iter0 *= one_div_root_two<Real>();
+          *iter1 *= phase_coefficient2;
+          *iter1 += value0;
+          *iter1 *= modified_phase_coefficient1;
         },
         target_qubit, control_qubit1, control_qubit2, control_qubits...);
 # endif // KET_USE_BIT_MASKS_EXPLICITLY
@@ -742,7 +779,7 @@ namespace ket
       constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 2u);
       constexpr auto num_operated_qubits = num_control_qubits + BitInteger{1u};
 
-      ::ket::gate::gate(
+      ::ket::gate::nocache::gate(
         parallel_policy, first, last,
         [&phase_coefficient1, &modified_phase_coefficient2](
           auto const first, StateInteger const index_wo_qubits,
@@ -755,15 +792,27 @@ namespace ket
           // 0b11...11u
           constexpr auto index1 = index0 bitor std::size_t{1u};
 
-          auto const control_on_iter = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index0, unsorted_qubits, sorted_qubits_with_sentinel);
-          auto const target_control_on_iter = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index1, unsorted_qubits, sorted_qubits_with_sentinel);
-          auto const control_on_iter_value = *control_on_iter;
+          using std::begin;
+          using std::end;
+          auto const iter0
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index0,
+                  begin(unsorted_qubits), end(unsorted_qubits),
+                  begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));
+          auto const iter1
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index1,
+                  begin(unsorted_qubits), end(unsorted_qubits),
+                  begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));
+          auto const value0 = *iter0;
 
-          *control_on_iter += phase_coefficient1 * *target_control_on_iter;
-          *control_on_iter *= one_div_root_two<Real>();
-          *target_control_on_iter *= phase_coefficient1;
-          *target_control_on_iter -= control_on_iter_value;
-          *target_control_on_iter *= modified_phase_coefficient2;
+          *iter0 += phase_coefficient1 * *iter1;
+          *iter0 *= one_div_root_two<Real>();
+          *iter1 *= phase_coefficient1;
+          *iter1 -= value0;
+          *iter1 *= modified_phase_coefficient2;
         },
         target_qubit, control_qubit1, control_qubit2, control_qubits...);
 # else // KET_USE_BIT_MASKS_EXPLICITLY
@@ -776,7 +825,7 @@ namespace ket
       constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 2u);
       constexpr auto num_operated_qubits = num_control_qubits + BitInteger{1u};
 
-      ::ket::gate::gate(
+      ::ket::gate::nocache::gate(
         parallel_policy, first, last,
         [&phase_coefficient1, &modified_phase_coefficient2](
           auto const first, StateInteger const index_wo_qubits,
@@ -789,15 +838,25 @@ namespace ket
           // 0b11...11u
           constexpr auto index1 = index0 bitor std::size_t{1u};
 
-          auto const control_on_iter = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index0, qubit_masks, index_masks);
-          auto const target_control_on_iter = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index1, qubit_masks, index_masks);
-          auto const control_on_iter_value = *control_on_iter;
+          using std::begin;
+          using std::end;
+          auto const iter0
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index0,
+                  begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+          auto const iter1
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index1,
+                  begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+          auto const value0 = *iter0;
 
-          *control_on_iter += phase_coefficient1 * *target_control_on_iter;
-          *control_on_iter *= one_div_root_two<Real>();
-          *target_control_on_iter *= phase_coefficient1;
-          *target_control_on_iter -= control_on_iter_value;
-          *target_control_on_iter *= modified_phase_coefficient2;
+          *iter0 += phase_coefficient1 * *iter1;
+          *iter0 *= one_div_root_two<Real>();
+          *iter1 *= phase_coefficient1;
+          *iter1 -= value0;
+          *iter1 *= modified_phase_coefficient2;
         },
         target_qubit, control_qubit1, control_qubit2, control_qubits...);
 # endif // KET_USE_BIT_MASKS_EXPLICITLY
@@ -1017,7 +1076,7 @@ namespace ket
       constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 2u);
       constexpr auto num_operated_qubits = num_control_qubits + BitInteger{1u};
 
-      ::ket::gate::gate(
+      ::ket::gate::nocache::gate(
         parallel_policy, first, last,
         [sine, cosine, &phase_coefficient2, &sine_phase_coefficient3, &cosine_phase_coefficient3](
           auto const first, StateInteger const index_wo_qubits,
@@ -1030,15 +1089,27 @@ namespace ket
           // 0b11...11u
           constexpr auto index1 = index0 bitor std::size_t{1u};
 
-          auto const control_on_iter = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index0, unsorted_qubits, sorted_qubits_with_sentinel);
-          auto const target_control_on_iter = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index1, unsorted_qubits, sorted_qubits_with_sentinel);
-          auto const control_on_iter_value = *control_on_iter;
+          using std::begin;
+          using std::end;
+          auto const iter0
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index0,
+                  begin(unsorted_qubits), end(unsorted_qubits),
+                  begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));
+          auto const iter1
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index1,
+                  begin(unsorted_qubits), end(unsorted_qubits),
+                  begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));
+          auto const value0 = *iter0;
 
-          *control_on_iter *= cosine;
-          *control_on_iter -= sine_phase_coefficient3 * *target_control_on_iter;
-          *target_control_on_iter *= cosine_phase_coefficient3;
-          *target_control_on_iter += sine * control_on_iter_value;
-          *target_control_on_iter *= phase_coefficient2;
+          *iter0 *= cosine;
+          *iter0 -= sine_phase_coefficient3 * *iter1;
+          *iter1 *= cosine_phase_coefficient3;
+          *iter1 += sine * value0;
+          *iter1 *= phase_coefficient2;
         },
         target_qubit, control_qubit1, control_qubit2, control_qubits...);
 # else // KET_USE_BIT_MASKS_EXPLICITLY
@@ -1057,7 +1128,7 @@ namespace ket
       constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 2u);
       constexpr auto num_operated_qubits = num_control_qubits + BitInteger{1u};
 
-      ::ket::gate::gate(
+      ::ket::gate::nocache::gate(
         parallel_policy, first, last,
         [sine, cosine, &phase_coefficient2, &sine_phase_coefficient3, &cosine_phase_coefficient3](
           auto const first, StateInteger const index_wo_qubits,
@@ -1070,15 +1141,25 @@ namespace ket
           // 0b11...11u
           constexpr auto index1 = index0 bitor std::size_t{1u};
 
-          auto const control_on_iter = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index0, qubit_masks, index_masks);
-          auto const target_control_on_iter = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index1, qubit_masks, index_masks);
-          auto const control_on_iter_value = *control_on_iter;
+          using std::begin;
+          using std::end;
+          auto const iter0
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index0,
+                  begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+          auto const iter1
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index1,
+                  begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+          auto const value0 = *iter0;
 
-          *control_on_iter *= cosine;
-          *control_on_iter -= sine_phase_coefficient3 * *target_control_on_iter;
-          *target_control_on_iter *= cosine_phase_coefficient3;
-          *target_control_on_iter += sine * control_on_iter_value;
-          *target_control_on_iter *= phase_coefficient2;
+          *iter0 *= cosine;
+          *iter0 -= sine_phase_coefficient3 * *iter1;
+          *iter1 *= cosine_phase_coefficient3;
+          *iter1 += sine * value0;
+          *iter1 *= phase_coefficient2;
         },
         target_qubit, control_qubit1, control_qubit2, control_qubits...);
 # endif // KET_USE_BIT_MASKS_EXPLICITLY
@@ -1299,7 +1380,7 @@ namespace ket
       constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 2u);
       constexpr auto num_operated_qubits = num_control_qubits + BitInteger{1u};
 
-      ::ket::gate::gate(
+      ::ket::gate::nocache::gate(
         parallel_policy, first, last,
         [sine, cosine, &sine_phase_coefficient2, &cosine_phase_coefficient2, &phase_coefficient3](
           auto const first, StateInteger const index_wo_qubits,
@@ -1312,15 +1393,27 @@ namespace ket
           // 0b11...11u
           constexpr auto index1 = index0 bitor std::size_t{1u};
 
-          auto const control_on_iter = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index0, unsorted_qubits, sorted_qubits_with_sentinel);
-          auto const target_control_on_iter = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index1, unsorted_qubits, sorted_qubits_with_sentinel);
-          auto const control_on_iter_value = *control_on_iter;
+          using std::begin;
+          using std::end;
+          auto const iter0
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index0,
+                  begin(unsorted_qubits), end(unsorted_qubits),
+                  begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));
+          auto const iter1
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index1,
+                  begin(unsorted_qubits), end(unsorted_qubits),
+                  begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));
+          auto const value0 = *iter0;
 
-          *control_on_iter *= cosine;
-          *control_on_iter += sine_phase_coefficient2 * *target_control_on_iter;
-          *target_control_on_iter *= cosine_phase_coefficient2;
-          *target_control_on_iter -= sine * control_on_iter_value;
-          *target_control_on_iter *= phase_coefficient3;
+          *iter0 *= cosine;
+          *iter0 += sine_phase_coefficient2 * *iter1;
+          *iter1 *= cosine_phase_coefficient2;
+          *iter1 -= sine * value0;
+          *iter1 *= phase_coefficient3;
         },
         target_qubit, control_qubit1, control_qubit2, control_qubits...);
 # else // KET_USE_BIT_MASKS_EXPLICITLY
@@ -1339,7 +1432,7 @@ namespace ket
       constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 2u);
       constexpr auto num_operated_qubits = num_control_qubits + BitInteger{1u};
 
-      ::ket::gate::gate(
+      ::ket::gate::nocache::gate(
         parallel_policy, first, last,
         [sine, cosine, &sine_phase_coefficient2, &cosine_phase_coefficient2, &phase_coefficient3](
           auto const first, StateInteger const index_wo_qubits,
@@ -1352,15 +1445,25 @@ namespace ket
           // 0b11...11u
           constexpr auto index1 = index0 bitor std::size_t{1u};
 
-          auto const control_on_iter = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index0, qubit_masks, index_masks);
-          auto const target_control_on_iter = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index1, qubit_masks, index_masks);
-          auto const control_on_iter_value = *control_on_iter;
+          using std::begin;
+          using std::end;
+          auto const iter0
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index0,
+                  begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+          auto const iter1
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index1,
+                  begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+          auto const value0 = *iter0;
 
-          *control_on_iter *= cosine;
-          *control_on_iter += sine_phase_coefficient2 * *target_control_on_iter;
-          *target_control_on_iter *= cosine_phase_coefficient2;
-          *target_control_on_iter -= sine * control_on_iter_value;
-          *target_control_on_iter *= phase_coefficient3;
+          *iter0 *= cosine;
+          *iter0 += sine_phase_coefficient2 * *iter1;
+          *iter1 *= cosine_phase_coefficient2;
+          *iter1 -= sine * value0;
+          *iter1 *= phase_coefficient3;
         },
         target_qubit, control_qubit1, control_qubit2, control_qubits...);
 # endif // KET_USE_BIT_MASKS_EXPLICITLY

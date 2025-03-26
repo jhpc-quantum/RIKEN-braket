@@ -200,7 +200,7 @@ namespace ket
       constexpr auto num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
       constexpr auto half_num_target_indices = num_target_indices / std::size_t{2u};
 
-      ::ket::gate::gate(
+      ::ket::gate::nocache::gate(
         parallel_policy, first, last,
         [](
           auto const first, StateInteger const index_wo_qubits,
@@ -240,8 +240,20 @@ namespace ket
                   : residual == BitInteger{2u}
                     ? complex_type{-1}
                     : ::ket::utility::minus_imaginary_unit<complex_type>();
-            auto iter1 = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, base_index + i, unsorted_qubits, sorted_qubits_with_sentinel);
-            auto iter2 = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, base_index + j, unsorted_qubits, sorted_qubits_with_sentinel);
+            using std::begin;
+            using std::end;
+            auto iter1
+              = first
+                + ::ket::gate::utility::index_with_qubits(
+                    index_wo_qubits, base_index + i,
+                    begin(unsorted_qubits), end(unsorted_qubits),
+                    begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));
+            auto iter2
+              = first
+                + ::ket::gate::utility::index_with_qubits(
+                    index_wo_qubits, base_index + j,
+                    begin(unsorted_qubits), end(unsorted_qubits),
+                    begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));
             std::iter_swap(iter1, iter2);
             *iter1 *= (num_target_qubits - num_ones_in_i) % BitInteger{2u} == BitInteger{0u} ? coefficient : -coefficient;
             *iter2 *= (num_target_qubits - num_ones_in_j) % BitInteger{2u} == BitInteger{0u} ? coefficient : -coefficient;
@@ -255,7 +267,7 @@ namespace ket
       constexpr auto num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
       constexpr auto half_num_target_indices = num_target_indices / std::size_t{2u};
 
-      ::ket::gate::gate(
+      ::ket::gate::nocache::gate(
         parallel_policy, first, last,
         [](
           auto const first, StateInteger const index_wo_qubits,
@@ -296,8 +308,18 @@ namespace ket
                     ? complex_type{-1}
                     : ::ket::utility::minus_imaginary_unit<complex_type>();
 
-            auto iter1 = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, base_index + i, qubit_masks, index_masks);
-            auto iter2 = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, base_index + j, qubit_masks, index_masks);
+            using std::begin;
+            using std::end;
+            auto iter1
+              = first
+                + ::ket::gate::utility::index_with_qubits(
+                    index_wo_qubits, base_index + i,
+                    begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+            auto iter2
+              = first
+                + ::ket::gate::utility::index_with_qubits(
+                    index_wo_qubits, base_index + j,
+                    begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
             std::iter_swap(iter1, iter2);
             *iter1 *= (num_target_qubits - num_ones_in_i) % BitInteger{2u} == BitInteger{0u} ? coefficient : -coefficient;
             *iter2 *= (num_target_qubits - num_ones_in_j) % BitInteger{2u} == BitInteger{0u} ? coefficient : -coefficient;

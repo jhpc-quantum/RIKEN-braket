@@ -5,6 +5,9 @@
 #include <boost/preprocessor/repetition/repeat_from_to.hpp>
 
 #include <ket/gate/fused/phase_shift.hpp>
+#if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
+# include <ket/gate/utility/cache_aware_iterator.hpp>
+#endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
 
 #include <bra/types.hpp>
 #include <bra/fused_gate/fused_gate.hpp>
@@ -48,8 +51,14 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_FUSED_QUBITS), DO_CALL, nil)
 #undef DO_CALL
 
   template class fused_u1< ::bra::data_type::iterator >;
-#if !defined(BRA_NO_MPI) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
+#if !defined(BRA_NO_MPI) && (!defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)))
   template class fused_u1< ::bra::paged_data_type::iterator >;
-#endif // !defined(BRA_NO_MPI) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
+#endif // !defined(BRA_NO_MPI) && (!defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)))
+#if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
+  template class fused_u1<ket::gate::utility::cache_aware_iterator< ::bra::data_type::iterator >>;
+# ifndef BRA_NO_MPI
+  template class fused_u1<ket::gate::utility::cache_aware_iterator< ::bra::paged_data_type::iterator >>;
+# endif // BRA_NO_MPI
+#endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
   } // namespace fused_gate
 } // namespace bra

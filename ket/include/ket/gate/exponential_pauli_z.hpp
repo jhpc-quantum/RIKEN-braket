@@ -216,7 +216,7 @@ namespace ket
       using std::conj;
       auto const conj_phase_coefficient = conj(phase_coefficient);
 
-      ::ket::gate::gate(
+      ::ket::gate::nocache::gate(
         parallel_policy, first, last,
         [&phase_coefficient, &conj_phase_coefficient](
           auto const first, StateInteger const index_wo_qubits,
@@ -239,10 +239,15 @@ namespace ket
               i_tmp >>= BitInteger{1u};
             }
 
-            *(first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, base_index + i, unsorted_qubits, sorted_qubits_with_sentinel))
-              *= num_ones_in_i % BitInteger{2u} == BitInteger{0u}
-                 ? phase_coefficient
-                 : conj_phase_coefficient;
+            using std::begin;
+            using std::end;
+            auto const iter
+              = first
+                + ::ket::gate::utility::index_with_qubits(
+                    index_wo_qubits, base_index + i,
+                    begin(unsorted_qubits), end(unsorted_qubits),
+                    begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));
+            *iter *= num_ones_in_i % BitInteger{2u} == BitInteger{0u} ? phase_coefficient : conj_phase_coefficient;
           }
         },
         qubit1, qubit2, qubit3, qubits...);
@@ -255,7 +260,7 @@ namespace ket
       using std::conj;
       auto const conj_phase_coefficient = conj(phase_coefficient);
 
-      ::ket::gate::gate(
+      ::ket::gate::nocache::gate(
         parallel_policy, first, last,
         [&phase_coefficient, &conj_phase_coefficient](
           auto const first, StateInteger const index_wo_qubits,
@@ -278,10 +283,14 @@ namespace ket
               i_tmp >>= BitInteger{1u};
             }
 
-            *(first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, base_index + i, qubit_masks, index_masks))
-              *= num_ones_in_i % BitInteger{2u} == BitInteger{0u}
-                 ? phase_coefficient
-                 : conj_phase_coefficient;
+            using std::begin;
+            using std::end;
+            auto const iter
+              = first
+                + ::ket::gate::utility::index_with_qubits(
+                    index_wo_qubits, base_index + i,
+                    begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+            *iter *= num_ones_in_i % BitInteger{2u} == BitInteger{0u} ? phase_coefficient : conj_phase_coefficient;
           }
         },
         qubit1, qubit2, qubit3, qubits...);
