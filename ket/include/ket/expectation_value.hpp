@@ -13,9 +13,6 @@
 # include <ket/meta/state_integer_of.hpp>
 # include <ket/meta/bit_integer_of.hpp>
 # include <ket/utility/loop_n.hpp>
-# if !defined(NDEBUG) || defined(KET_USE_ON_CACHE_STATE_VECTOR)
-#   include <ket/utility/all_in_state_vector.hpp>
-# endif
 # include <ket/utility/variadic/all_of.hpp>
 # include <ket/utility/meta/real_of.hpp>
 # include <ket/utility/meta/ranges.hpp>
