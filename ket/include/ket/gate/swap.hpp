@@ -93,7 +93,7 @@ namespace ket
       constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 1u);
       constexpr auto num_operated_qubits = num_control_qubits + BitInteger{2u};
 
-      ::ket::gate::gate(
+      ::ket::gate::nocache::gate(
         parallel_policy, first, last,
         [](
           auto const first, StateInteger const index_wo_qubits,
@@ -108,16 +108,26 @@ namespace ket
           // 0b11...110u
           constexpr auto index10 = base_index bitor (std::size_t{1u} << BitInteger{1u});
 
+          using std::begin;
+          using std::end;
           std::iter_swap(
-            first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index01, unsorted_qubits, sorted_qubits_with_sentinel),
-            first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index10, unsorted_qubits, sorted_qubits_with_sentinel));
+            first
+            + ::ket::gate::utility::index_with_qubits(
+                index_wo_qubits, index01,
+                begin(unsorted_qubits), end(unsorted_qubits),
+                begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel)),
+            first
+            + ::ket::gate::utility::index_with_qubits(
+                index_wo_qubits, index10,
+                begin(unsorted_qubits), end(unsorted_qubits),
+                begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel)));
         },
         target_qubit1, target_qubit2, control_qubit, control_qubits...);
 # else // KET_USE_BIT_MASKS_EXPLICITLY
       constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 1u);
       constexpr auto num_operated_qubits = num_control_qubits + BitInteger{2u};
 
-      ::ket::gate::gate(
+      ::ket::gate::nocache::gate(
         parallel_policy, first, last,
         [](
           auto const first, StateInteger const index_wo_qubits,
@@ -132,9 +142,17 @@ namespace ket
           // 0b11...110u
           constexpr auto index10 = base_index bitor (std::size_t{1u} << BitInteger{1u});
 
+          using std::begin;
+          using std::end;
           std::iter_swap(
-            first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index01, qubit_masks, index_masks),
-            first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index10, qubit_masks, index_masks));
+            first
+            + ::ket::gate::utility::index_with_qubits(
+                index_wo_qubits, index01,
+                begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks)),
+            first
+            + ::ket::gate::utility::index_with_qubits(
+                index_wo_qubits, index10,
+                begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks)));
         },
         target_qubit1, target_qubit2, control_qubit, control_qubits...);
 # endif // KET_USE_BIT_MASKS_EXPLICITLY

@@ -180,7 +180,7 @@ namespace ket
       constexpr auto num_target_qubits = num_operated_qubits - num_control_qubits;
       constexpr auto num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
 
-      ::ket::gate::gate(
+      ::ket::gate::nocache::gate(
         parallel_policy, first, last,
         [](
           auto const first, StateInteger const index_wo_qubits,
@@ -206,7 +206,17 @@ namespace ket
             using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
             using real_type = ::ket::utility::meta::real_t<complex_type>;
             if (num_ones_in_i % BitInteger{2u} == BitInteger{1u})
-              *(first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, base_index + i, unsorted_qubits, sorted_qubits_with_sentinel)) *= real_type{-1.0};
+            {
+              using std::begin;
+              using std::end;
+              auto const iter
+                = first
+                  + ::ket::gate::utility::index_with_qubits(
+                      index_wo_qubits, base_index + i,
+                      begin(unsorted_qubits), end(unsorted_qubits),
+                      begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));
+              *iter *= real_type{-1.0};
+            }
           }
         },
         qubit1, qubit2, qubit3, qubits...);
@@ -216,7 +226,7 @@ namespace ket
       constexpr auto num_target_qubits = num_operated_qubits - num_control_qubits;
       constexpr auto num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
 
-      ::ket::gate::gate(
+      ::ket::gate::nocache::gate(
         parallel_policy, first, last,
         [](
           auto const first, StateInteger const index_wo_qubits,
@@ -242,7 +252,16 @@ namespace ket
             using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
             using real_type = ::ket::utility::meta::real_t<complex_type>;
             if (num_ones_in_i % BitInteger{2u} == BitInteger{1u})
-              *(first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, base_index + i, qubit_masks, index_masks)) *= real_type{-1.0};
+            {
+              using std::begin;
+              using std::end;
+              auto const iter
+                = first
+                  + ::ket::gate::utility::index_with_qubits(
+                      index_wo_qubits, base_index + i,
+                      begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+              *iter *= real_type{-1.0};
+            }
           }
         },
         qubit1, qubit2, qubit3, qubits...);

@@ -55,8 +55,20 @@ namespace ket
           auto const zero_index = ((index_wo_qubit bitand upper_bits_mask) << 1u) bitor (index_wo_qubit bitand lower_bits_mask);
           // xxxxx1xxxxxx
           auto const one_index = zero_index bitor qubit_mask;
-          auto const zero_iter = first + ::ket::gate::utility::index_with_qubits(fused_index_wo_qubits, zero_index, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);
-          auto const one_iter = first + ::ket::gate::utility::index_with_qubits(fused_index_wo_qubits, one_index, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);
+          using std::begin;
+          using std::end;
+          auto const zero_iter
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  fused_index_wo_qubits, zero_index,
+                  begin(unsorted_fused_qubits), end(unsorted_fused_qubits),
+                  begin(sorted_fused_qubits_with_sentinel), end(sorted_fused_qubits_with_sentinel));
+          auto const one_iter
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  fused_index_wo_qubits, one_index,
+                  begin(unsorted_fused_qubits), end(unsorted_fused_qubits),
+                  begin(sorted_fused_qubits_with_sentinel), end(sorted_fused_qubits_with_sentinel));
           auto const zero_iter_value = *zero_iter;
 
           using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
@@ -110,8 +122,20 @@ namespace ket
           auto const control_on_index = base_index bitor control_qubit_mask;
           // xxx1_txxx1_cxxx
           auto const target_control_on_index = control_on_index bitor target_qubit_mask;
-          auto const control_on_iter = first + ::ket::gate::utility::index_with_qubits(fused_index_wo_qubits, control_on_index, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);
-          auto const target_control_on_iter = first + ::ket::gate::utility::index_with_qubits(fused_index_wo_qubits, target_control_on_index, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);
+          using std::begin;
+          using std::end;
+          auto const control_on_iter
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  fused_index_wo_qubits, control_on_index,
+                  begin(unsorted_fused_qubits), end(unsorted_fused_qubits),
+                  begin(sorted_fused_qubits_with_sentinel), end(sorted_fused_qubits_with_sentinel));
+          auto const target_control_on_iter
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  fused_index_wo_qubits, target_control_on_index,
+                  begin(unsorted_fused_qubits), end(unsorted_fused_qubits),
+                  begin(sorted_fused_qubits_with_sentinel), end(sorted_fused_qubits_with_sentinel));
           auto const control_on_iter_value = *control_on_iter;
 
           using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
@@ -150,18 +174,28 @@ namespace ket
             // 0b11...11u
             constexpr auto index1 = index0 bitor std::size_t{1u};
 
+            using std::begin;
+            using std::end;
             auto const iter0
               = first
                 + ::ket::gate::utility::index_with_qubits(
                     fused_index_wo_qubits,
-                    ::ket::gate::utility::index_with_qubits(operated_index_wo_qubits, index0, unsorted_operated_qubits, sorted_operated_qubits_with_sentinel),
-                    unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);
+                    ::ket::gate::utility::index_with_qubits(
+                      operated_index_wo_qubits, index0,
+                      begin(unsorted_operated_qubits), end(unsorted_operated_qubits),
+                      begin(sorted_operated_qubits_with_sentinel), end(sorted_operated_qubits_with_sentinel)),
+                    begin(unsorted_fused_qubits), end(unsorted_fused_qubits),
+                    begin(sorted_fused_qubits_with_sentinel), end(sorted_fused_qubits_with_sentinel));
             auto const iter1
               = first
                 + ::ket::gate::utility::index_with_qubits(
                     fused_index_wo_qubits,
-                    ::ket::gate::utility::index_with_qubits(operated_index_wo_qubits, index1, unsorted_operated_qubits, sorted_operated_qubits_with_sentinel),
-                    unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);
+                    ::ket::gate::utility::index_with_qubits(
+                      operated_index_wo_qubits, index1,
+                      begin(unsorted_operated_qubits), end(unsorted_operated_qubits),
+                      begin(sorted_operated_qubits_with_sentinel), end(sorted_operated_qubits_with_sentinel)),
+                    begin(unsorted_fused_qubits), end(unsorted_fused_qubits),
+                    begin(sorted_fused_qubits_with_sentinel), end(sorted_fused_qubits_with_sentinel));
             auto const value0 = *iter0;
 
             using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
@@ -202,8 +236,20 @@ namespace ket
           auto const zero_index = ((index_wo_qubit bitand upper_bits_mask) << 1u) bitor (index_wo_qubit bitand lower_bits_mask);
           // xxxxx1xxxxxx
           auto const one_index = zero_index bitor qubit_mask;
-          auto const zero_iter = first + ::ket::gate::utility::index_with_qubits(fused_index_wo_qubits, zero_index, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);
-          auto const one_iter = first + ::ket::gate::utility::index_with_qubits(fused_index_wo_qubits, one_index, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);
+          using std::begin;
+          using std::end;
+          auto const zero_iter
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  fused_index_wo_qubits, zero_index,
+                  begin(unsorted_fused_qubits), end(unsorted_fused_qubits),
+                  begin(sorted_fused_qubits_with_sentinel), end(sorted_fused_qubits_with_sentinel));
+          auto const one_iter
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  fused_index_wo_qubits, one_index,
+                  begin(unsorted_fused_qubits), end(unsorted_fused_qubits),
+                  begin(sorted_fused_qubits_with_sentinel), end(sorted_fused_qubits_with_sentinel));
           auto const zero_iter_value = *zero_iter;
 
           using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
@@ -257,8 +303,20 @@ namespace ket
           auto const control_on_index = base_index bitor control_qubit_mask;
           // xxx1_txxx1_cxxx
           auto const target_control_on_index = control_on_index bitor target_qubit_mask;
-          auto const control_on_iter = first + ::ket::gate::utility::index_with_qubits(fused_index_wo_qubits, control_on_index, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);
-          auto const target_control_on_iter = first + ::ket::gate::utility::index_with_qubits(fused_index_wo_qubits, target_control_on_index, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);
+          using std::begin;
+          using std::end;
+          auto const control_on_iter
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  fused_index_wo_qubits, control_on_index,
+                  begin(unsorted_fused_qubits), end(unsorted_fused_qubits),
+                  begin(sorted_fused_qubits_with_sentinel), end(sorted_fused_qubits_with_sentinel));
+          auto const target_control_on_iter
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  fused_index_wo_qubits, target_control_on_index,
+                  begin(unsorted_fused_qubits), end(unsorted_fused_qubits),
+                  begin(sorted_fused_qubits_with_sentinel), end(sorted_fused_qubits_with_sentinel));
           auto const control_on_iter_value = *control_on_iter;
 
           using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
@@ -297,18 +355,28 @@ namespace ket
             // 0b11...11u
             constexpr auto index1 = index0 bitor std::size_t{1u};
 
+            using std::begin;
+            using std::end;
             auto const iter0
               = first
                 + ::ket::gate::utility::index_with_qubits(
                     fused_index_wo_qubits,
-                    ::ket::gate::utility::index_with_qubits(operated_index_wo_qubits, index0, unsorted_operated_qubits, sorted_operated_qubits_with_sentinel),
-                    unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);
+                    ::ket::gate::utility::index_with_qubits(
+                      operated_index_wo_qubits, index0,
+                      begin(unsorted_operated_qubits), end(unsorted_operated_qubits),
+                      begin(sorted_operated_qubits_with_sentinel), end(sorted_operated_qubits_with_sentinel)),
+                    begin(unsorted_fused_qubits), end(unsorted_fused_qubits),
+                    begin(sorted_fused_qubits_with_sentinel), end(sorted_fused_qubits_with_sentinel));
             auto const iter1
               = first
                 + ::ket::gate::utility::index_with_qubits(
                     fused_index_wo_qubits,
-                    ::ket::gate::utility::index_with_qubits(operated_index_wo_qubits, index1, unsorted_operated_qubits, sorted_operated_qubits_with_sentinel),
-                    unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);
+                    ::ket::gate::utility::index_with_qubits(
+                      operated_index_wo_qubits, index1,
+                      begin(unsorted_operated_qubits), end(unsorted_operated_qubits),
+                      begin(sorted_operated_qubits_with_sentinel), end(sorted_operated_qubits_with_sentinel)),
+                    begin(unsorted_fused_qubits), end(unsorted_fused_qubits),
+                    begin(sorted_fused_qubits_with_sentinel), end(sorted_fused_qubits_with_sentinel));
             auto const value0 = *iter0;
 
             using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
@@ -348,8 +416,18 @@ namespace ket
           auto const zero_index = ((index_wo_qubit bitand upper_bits_mask) << 1u) bitor (index_wo_qubit bitand lower_bits_mask);
           // xxxxx1xxxxxx
           auto const one_index = zero_index bitor qubit_mask;
-          auto const zero_iter = first + ::ket::gate::utility::index_with_qubits(fused_index_wo_qubits, zero_index, fused_qubit_masks, fused_index_masks);
-          auto const one_iter = first + ::ket::gate::utility::index_with_qubits(fused_index_wo_qubits, one_index, fused_qubit_masks, fused_index_masks);
+          using std::begin;
+          using std::end;
+          auto const zero_iter
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  fused_index_wo_qubits, zero_index,
+                  begin(fused_qubit_masks), end(fused_qubit_masks), begin(fused_index_masks), end(fused_index_masks));
+          auto const one_iter
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  fused_index_wo_qubits, one_index,
+                  begin(fused_qubit_masks), end(fused_qubit_masks), begin(fused_index_masks), end(fused_index_masks));
           auto const zero_iter_value = *zero_iter;
 
           using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
@@ -402,8 +480,18 @@ namespace ket
           auto const control_on_index = base_index bitor control_qubit_mask;
           // xxx1_txxx1_cxxx
           auto const target_control_on_index = control_on_index bitor target_qubit_mask;
-          auto const control_on_iter = first + ::ket::gate::utility::index_with_qubits(fused_index_wo_qubits, control_on_index, fused_qubit_masks, fused_index_masks);
-          auto const target_control_on_iter = first + ::ket::gate::utility::index_with_qubits(fused_index_wo_qubits, target_control_on_index, fused_qubit_masks, fused_index_masks);
+          using std::begin;
+          using std::end;
+          auto const control_on_iter
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  fused_index_wo_qubits, control_on_index,
+                  begin(fused_qubit_masks), end(fused_qubit_masks), begin(fused_index_masks), end(fused_index_masks));
+          auto const target_control_on_iter
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  fused_index_wo_qubits, target_control_on_index,
+                  begin(fused_qubit_masks), end(fused_qubit_masks), begin(fused_index_masks), end(fused_index_masks));
           auto const control_on_iter_value = *control_on_iter;
 
           using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
@@ -440,18 +528,24 @@ namespace ket
             // 0b11...11u
             constexpr auto index1 = index0 bitor std::size_t{1u};
 
+            using std::begin;
+            using std::end;
             auto const iter0
               = first
                 + ::ket::gate::utility::index_with_qubits(
                     fused_index_wo_qubits,
-                    ::ket::gate::utility::index_with_qubits(operated_index_wo_qubits, index0, operated_qubit_masks, operated_index_masks),
-                    fused_qubit_masks, fused_index_masks);
+                    ::ket::gate::utility::index_with_qubits(
+                      operated_index_wo_qubits, index0,
+                      begin(operated_qubit_masks), end(operated_qubit_masks), begin(operated_index_masks), end(operated_index_masks)),
+                    begin(fused_qubit_masks), end(fused_qubit_masks), begin(fused_index_masks), end(fused_index_masks));
             auto const iter1
               = first
                 + ::ket::gate::utility::index_with_qubits(
                     fused_index_wo_qubits,
-                    ::ket::gate::utility::index_with_qubits(operated_index_wo_qubits, index1, operated_qubit_masks, operated_index_masks),
-                    fused_qubit_masks, fused_index_masks);
+                    ::ket::gate::utility::index_with_qubits(
+                      operated_index_wo_qubits, index1,
+                      begin(operated_qubit_masks), end(operated_qubit_masks), begin(operated_index_masks), end(operated_index_masks)),
+                    begin(fused_qubit_masks), end(fused_qubit_masks), begin(fused_index_masks), end(fused_index_masks));
             auto const value0 = *iter0;
 
             using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
@@ -491,8 +585,18 @@ namespace ket
           auto const zero_index = ((index_wo_qubit bitand upper_bits_mask) << 1u) bitor (index_wo_qubit bitand lower_bits_mask);
           // xxxxx1xxxxxx
           auto const one_index = zero_index bitor qubit_mask;
-          auto const zero_iter = first + ::ket::gate::utility::index_with_qubits(fused_index_wo_qubits, zero_index, fused_qubit_masks, fused_index_masks);
-          auto const one_iter = first + ::ket::gate::utility::index_with_qubits(fused_index_wo_qubits, one_index, fused_qubit_masks, fused_index_masks);
+          using std::begin;
+          using std::end;
+          auto const zero_iter
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  fused_index_wo_qubits, zero_index,
+                  begin(fused_qubit_masks), end(fused_qubit_masks), begin(fused_index_masks), end(fused_index_masks));
+          auto const one_iter
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  fused_index_wo_qubits, one_index,
+                  begin(fused_qubit_masks), end(fused_qubit_masks), begin(fused_index_masks), end(fused_index_masks));
           auto const zero_iter_value = *zero_iter;
 
           using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
@@ -545,8 +649,18 @@ namespace ket
           auto const control_on_index = base_index bitor control_qubit_mask;
           // xxx1_txxx1_cxxx
           auto const target_control_on_index = control_on_index bitor target_qubit_mask;
-          auto const control_on_iter = first + ::ket::gate::utility::index_with_qubits(fused_index_wo_qubits, control_on_index, fused_qubit_masks, fused_index_masks);
-          auto const target_control_on_iter = first + ::ket::gate::utility::index_with_qubits(fused_index_wo_qubits, target_control_on_index, fused_qubit_masks, fused_index_masks);
+          using std::begin;
+          using std::end;
+          auto const control_on_iter
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  fused_index_wo_qubits, control_on_index,
+                  begin(fused_qubit_masks), end(fused_qubit_masks), begin(fused_index_masks), end(fused_index_masks));
+          auto const target_control_on_iter
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  fused_index_wo_qubits, target_control_on_index,
+                  begin(fused_qubit_masks), end(fused_qubit_masks), begin(fused_index_masks), end(fused_index_masks));
           auto const control_on_iter_value = *control_on_iter;
 
           using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
@@ -583,18 +697,24 @@ namespace ket
             // 0b11...11u
             constexpr auto index1 = index0 bitor std::size_t{1u};
 
+            using std::begin;
+            using std::end;
             auto const iter0
               = first
                 + ::ket::gate::utility::index_with_qubits(
                     fused_index_wo_qubits,
-                    ::ket::gate::utility::index_with_qubits(operated_index_wo_qubits, index0, operated_qubit_masks, operated_index_masks),
-                    fused_qubit_masks, fused_index_masks);
+                    ::ket::gate::utility::index_with_qubits(
+                      operated_index_wo_qubits, index0,
+                      begin(operated_qubit_masks), end(operated_qubit_masks), begin(operated_index_masks), end(operated_index_masks)),
+                    begin(fused_qubit_masks), end(fused_qubit_masks), begin(fused_index_masks), end(fused_index_masks));
             auto const iter1
               = first
                 + ::ket::gate::utility::index_with_qubits(
                     fused_index_wo_qubits,
-                    ::ket::gate::utility::index_with_qubits(operated_index_wo_qubits, index1, operated_qubit_masks, operated_index_masks),
-                    fused_qubit_masks, fused_index_masks);
+                    ::ket::gate::utility::index_with_qubits(
+                      operated_index_wo_qubits, index1,
+                      begin(operated_qubit_masks), end(operated_qubit_masks), begin(operated_index_masks), end(operated_index_masks)),
+                    begin(fused_qubit_masks), end(fused_qubit_masks), begin(fused_index_masks), end(fused_index_masks));
             auto const value0 = *iter0;
 
             using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;

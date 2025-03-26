@@ -46,7 +46,7 @@ namespace ket
       }
 
       template <typename StateInteger, typename UnsignedInteger, typename BitInteger, std::size_t num_operated_qubits>
-      inline constexpr auto index_with_qubits(
+      [[deprecated]] inline constexpr auto index_with_qubits(
         StateInteger const index_wo_qubits, UnsignedInteger const qubits_value,
         std::array< ::ket::qubit<StateInteger, BitInteger>, num_operated_qubits > const& unsorted_qubits,
         std::array< ::ket::qubit<StateInteger, BitInteger>, num_operated_qubits + 1u > const& sorted_qubits_with_sentinel)
@@ -94,7 +94,7 @@ namespace ket
       }
 
       template <typename StateInteger, typename UnsignedInteger, std::size_t num_operated_qubits>
-      inline constexpr auto index_with_qubits(
+      [[deprecated]] inline constexpr auto index_with_qubits(
         StateInteger const index_wo_qubits, UnsignedInteger const qubits_value,
         std::array<StateInteger, num_operated_qubits> const& qubit_masks,
         std::array<StateInteger, num_operated_qubits + 1u> const& index_masks)

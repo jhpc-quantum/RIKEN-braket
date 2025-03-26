@@ -146,7 +146,7 @@ namespace ket
       constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 2u);
       constexpr auto num_operated_qubits = num_control_qubits + BitInteger{1u};
 
-      ::ket::gate::gate(
+      ::ket::gate::nocache::gate(
         parallel_policy, first, last,
         [](
           auto const first, StateInteger const index_wo_qubits,
@@ -159,8 +159,20 @@ namespace ket
           // 0b11...11u
           constexpr auto index1 = index0 bitor std::size_t{1u};
 
-          auto const iter0 = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index0, unsorted_qubits, sorted_qubits_with_sentinel);
-          auto const iter1 = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index1, unsorted_qubits, sorted_qubits_with_sentinel);
+          using std::begin;
+          using std::end;
+          auto const iter0
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index0,
+                  begin(unsorted_qubits), end(unsorted_qubits),
+                  begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));
+          auto const iter1
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index1,
+                  begin(unsorted_qubits), end(unsorted_qubits),
+                  begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));
           auto const value0 = *iter0;
 
           using complex_type = std::remove_const_t<decltype(value0)>;
@@ -176,7 +188,7 @@ namespace ket
       constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 2u);
       constexpr auto num_operated_qubits = num_control_qubits + BitInteger{1u};
 
-      ::ket::gate::gate(
+      ::ket::gate::nocache::gate(
         parallel_policy, first, last,
         [](
           auto const first, StateInteger const index_wo_qubits,
@@ -189,8 +201,18 @@ namespace ket
           // 0b11...11u
           constexpr auto index1 = index0 bitor std::size_t{1u};
 
-          auto const iter0 = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index0, qubit_masks, index_masks);
-          auto const iter1 = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index1, qubit_masks, index_masks);
+          using std::begin;
+          using std::end;
+          auto const iter0
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index0,
+                  begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+          auto const iter1
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index1,
+                  begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
           auto const value0 = *iter0;
 
           using complex_type = std::remove_const_t<decltype(value0)>;
@@ -353,7 +375,7 @@ namespace ket
       constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 2u);
       constexpr auto num_operated_qubits = num_control_qubits + BitInteger{1u};
 
-      ::ket::gate::gate(
+      ::ket::gate::nocache::gate(
         parallel_policy, first, last,
         [](
           auto const first, StateInteger const index_wo_qubits,
@@ -366,8 +388,20 @@ namespace ket
           // 0b11...11u
           constexpr auto index1 = index0 bitor std::size_t{1u};
 
-          auto const iter0 = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index0, unsorted_qubits, sorted_qubits_with_sentinel);
-          auto const iter1 = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index1, unsorted_qubits, sorted_qubits_with_sentinel);
+          using std::begin;
+          using std::end;
+          auto const iter0
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index0,
+                  begin(unsorted_qubits), end(unsorted_qubits),
+                  begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));
+          auto const iter1
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index1,
+                  begin(unsorted_qubits), end(unsorted_qubits),
+                  begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));
           auto const value0 = *iter0;
 
           using complex_type = std::remove_const_t<decltype(value0)>;
@@ -383,7 +417,7 @@ namespace ket
       constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 2u);
       constexpr auto num_operated_qubits = num_control_qubits + BitInteger{1u};
 
-      ::ket::gate::gate(
+      ::ket::gate::nocache::gate(
         parallel_policy, first, last,
         [](
           auto const first, StateInteger const index_wo_qubits,
@@ -396,8 +430,18 @@ namespace ket
           // 0b11...11u
           constexpr auto index1 = index0 bitor std::size_t{1u};
 
-          auto const iter0 = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index0, qubit_masks, index_masks);
-          auto const iter1 = first + ::ket::gate::utility::index_with_qubits(index_wo_qubits, index1, qubit_masks, index_masks);
+          using std::begin;
+          using std::end;
+          auto const iter0
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index0,
+                  begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+          auto const iter1
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index1,
+                  begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
           auto const value0 = *iter0;
 
           using complex_type = std::remove_const_t<decltype(value0)>;
