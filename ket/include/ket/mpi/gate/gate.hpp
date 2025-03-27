@@ -8,13 +8,19 @@
 # include <vector>
 # include <iterator>
 # include <utility>
+# include <type_traits>
 
 # include <yampi/datatype_base.hpp>
 # include <yampi/communicator.hpp>
 # include <yampi/environment.hpp>
 
 # include <ket/qubit.hpp>
+# ifdef KET_PRINT_LOG
+#   include <ket/qubit_io.hpp>
+#   include <ket/control_io.hpp>
+# endif // KET_PRINT_LOG
 # include <ket/gate/gate.hpp>
+# include <ket/gate/meta/num_control_qubits.hpp>
 # include <ket/utility/integer_exp2.hpp>
 # include <ket/utility/all_in_state_vector.hpp>
 # include <ket/utility/none_in_state_vector.hpp>
@@ -31,6 +37,8 @@
 # include <ket/mpi/utility/simple_mpi.hpp>
 # include <ket/mpi/utility/buffer_range.hpp>
 # include <ket/mpi/utility/for_each_local_range.hpp>
+# include <ket/mpi/utility/logger.hpp>
+# include <ket/mpi/gate/detail/append_qubits_string.hpp>
 
 
 namespace ket
@@ -751,6 +759,11 @@ namespace ket
         Function&& function, Qubit&& qubit, Qubits&&... qubits)
       -> RandomAccessRange&
       {
+        constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, std::remove_reference_t<Qubits>...>::value;
+        ::ket::mpi::utility::log_with_time_guard<char> print{
+          ::ket::mpi::gate::detail::append_qubits_string(std::string(num_control_qubits, 'C').append("Gate"), qubit, qubits...),
+          environment};
+
         ::ket::mpi::utility::maybe_interchange_qubits(
           mpi_policy, parallel_policy,
           local_state, permutation, buffer, communicator, environment, qubit, qubits...);
@@ -775,6 +788,11 @@ namespace ket
         Function&& function, Qubit&& qubit, Qubits&&... qubits)
       -> RandomAccessRange&
       {
+        constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, std::remove_reference_t<Qubits>...>::value;
+        ::ket::mpi::utility::log_with_time_guard<char> print{
+          ::ket::mpi::gate::detail::append_qubits_string(std::string(num_control_qubits, 'C').append("Gate"), qubit, qubits...),
+          environment};
+
         ::ket::mpi::utility::maybe_interchange_qubits(
           mpi_policy, parallel_policy,
           local_state, permutation, buffer, datatype, communicator, environment, qubit, qubits...);

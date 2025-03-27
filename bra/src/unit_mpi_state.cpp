@@ -12,6 +12,10 @@
 # include <yampi/communicator.hpp>
 # include <yampi/environment.hpp>
 
+# ifdef KET_PRINT_LOG
+#   include <ket/qubit_io.hpp>
+#   include <ket/control_io.hpp>
+# endif // KET_PRINT_LOG
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
 #   include <ket/gate/utility/cache_aware_iterator.hpp>
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
@@ -40,6 +44,8 @@
 # include <ket/mpi/generate_events.hpp>
 # include <ket/mpi/shor_box.hpp>
 # include <ket/mpi/utility/unit_mpi.hpp>
+# include <ket/mpi/utility/logger.hpp>
+# include <ket/mpi/gate/detail/append_qubits_string.hpp>
 
 # include <bra/unit_mpi_state.hpp>
 # include <bra/state.hpp>
@@ -1692,6 +1698,10 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
 #   endif // KET_DEFAULT_NUM_ON_CACHE_QUBITS
     constexpr auto num_on_cache_qubits = bit_integer_type{KET_DEFAULT_NUM_ON_CACHE_QUBITS};
     constexpr auto cache_size = ::ket::utility::integer_exp2<state_integer_type>(num_on_cache_qubits);
+    assert(fused_gates_.size() == cache_aware_fused_gates_.size());
+
+    ::ket::mpi::utility::logger logger{environment_};
+
 # endif // !(!defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && defined(KET_USE_ON_CACHE_STATE_VECTOR)))
 
     switch (fused_qubits_.size())
@@ -1739,6 +1749,8 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
 #   ifndef KET_USE_BIT_MASKS_EXPLICITLY
 #     define CASE_N(z, num_fused_qubits, _) \
      case num_fused_qubits:\
+      logger.print("[start] " + ::ket::mpi::gate::detail::append_qubits_string(std::string{"Gate"}, BOOST_PP_REPEAT_ ## z(num_fused_qubits, QUBITS, fused_qubits_)), environment_);\
+\
       ket::mpi::utility::maybe_interchange_qubits(\
         mpi_policy_, parallel_policy_,\
         data_, permutation_, buffer_, communicator_, environment_,\
@@ -1795,11 +1807,15 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
             for (auto const& gate_ptr: this->cache_aware_fused_gates_)\
               gate_ptr->call(first, index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);\
           }, BOOST_PP_REPEAT_ ## z(num_fused_qubits, PERMUTATED_QUBITS, fused_qubits_));\
+\
+      logger.print_with_time("[end] " + ::ket::mpi::gate::detail::append_qubits_string(std::string{"Gate"}, BOOST_PP_REPEAT_ ## z(num_fused_qubits, QUBITS, fused_qubits_)), environment_);\
       break;\
 
 #   else // KET_USE_BIT_MASKS_EXPLICITLY
 #     define CASE_N(z, num_fused_qubits, _) \
      case num_fused_qubits:\
+      logger.print("[start] " + ::ket::mpi::gate::detail::append_qubits_string(std::string{"Gate"}, BOOST_PP_REPEAT_ ## z(num_fused_qubits, QUBITS, fused_qubits_)), environment_);\
+\
       ket::mpi::utility::maybe_interchange_qubits(\
         mpi_policy_, parallel_policy_,\
         data_, permutation_, buffer_, communicator_, environment_,\
@@ -1857,6 +1873,8 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
             for (auto const& gate_ptr: this->cache_aware_fused_gates_)\
               gate_ptr->call(first, index_wo_qubits, qubit_masks, index_masks);\
           }, BOOST_PP_REPEAT_ ## z(num_fused_qubits, PERMUTATED_QUBITS, fused_qubits_));\
+\
+      logger.print_with_time("[end] " + ::ket::mpi::gate::detail::append_qubits_string(std::string{"Gate"}, BOOST_PP_REPEAT_ ## z(num_fused_qubits, QUBITS, fused_qubits_)), environment_);\
       break;\
 
 #   endif // KET_USE_BIT_MASKS_EXPLICITLY
