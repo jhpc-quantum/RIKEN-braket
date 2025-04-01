@@ -17,18 +17,14 @@ namespace bra
     {
      public:
       using qubit_type = ::bra::state::qubit_type;
-      using complex_type = ::bra::state::complex_type;
 
      private:
-      complex_type const& phase_coefficient_;
       qubit_type qubit_;
 
       static std::string const name_;
 
      public:
-      s_gate(
-        complex_type const& phase_coefficient,
-        qubit_type const qubit);
+      explicit s_gate(qubit_type const qubit);
 
       ~s_gate() = default;
       s_gate(s_gate const&) = delete;

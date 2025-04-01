@@ -56,6 +56,16 @@
 #include <bra/gate/pauli_zz.hpp>
 #include <bra/gate/pauli_zn.hpp>
 #include <bra/gate/swap.hpp>
+#include <bra/gate/sqrt_pauli_x.hpp>
+#include <bra/gate/adj_sqrt_pauli_x.hpp>
+#include <bra/gate/sqrt_pauli_y.hpp>
+#include <bra/gate/adj_sqrt_pauli_y.hpp>
+#include <bra/gate/sqrt_pauli_z.hpp>
+#include <bra/gate/adj_sqrt_pauli_z.hpp>
+#include <bra/gate/sqrt_pauli_zz.hpp>
+#include <bra/gate/adj_sqrt_pauli_zz.hpp>
+#include <bra/gate/sqrt_pauli_zn.hpp>
+#include <bra/gate/adj_sqrt_pauli_zn.hpp>
 #include <bra/gate/s_gate.hpp>
 #include <bra/gate/adj_s_gate.hpp>
 #include <bra/gate/t_gate.hpp>
@@ -107,6 +117,18 @@
 #include <bra/gate/controlled_pauli_z.hpp>
 #include <bra/gate/multi_controlled_pauli_zn.hpp>
 #include <bra/gate/multi_controlled_swap.hpp>
+#include <bra/gate/controlled_sqrt_pauli_x.hpp>
+#include <bra/gate/adj_controlled_sqrt_pauli_x.hpp>
+#include <bra/gate/multi_controlled_sqrt_pauli_x.hpp>
+#include <bra/gate/adj_multi_controlled_sqrt_pauli_x.hpp>
+#include <bra/gate/controlled_sqrt_pauli_y.hpp>
+#include <bra/gate/adj_controlled_sqrt_pauli_y.hpp>
+#include <bra/gate/multi_controlled_sqrt_pauli_y.hpp>
+#include <bra/gate/adj_multi_controlled_sqrt_pauli_y.hpp>
+#include <bra/gate/controlled_sqrt_pauli_z.hpp>
+#include <bra/gate/adj_controlled_sqrt_pauli_z.hpp>
+#include <bra/gate/multi_controlled_sqrt_pauli_zn.hpp>
+#include <bra/gate/adj_multi_controlled_sqrt_pauli_zn.hpp>
 #include <bra/gate/controlled_s_gate.hpp>
 #include <bra/gate/multi_controlled_s_gate.hpp>
 #include <bra/gate/adj_controlled_s_gate.hpp>
@@ -617,6 +639,33 @@ namespace bra
 
         add_depolarizing(columns, mnemonic);
       }
+      else if (mnemonic == "SX")
+        add_sx(columns);
+      else if (mnemonic == "SX+")
+        add_adj_sx(columns);
+      else if (mnemonic == "SY")
+        add_sy(columns);
+      else if (mnemonic == "SY+")
+        add_adj_sy(columns);
+      else if (mnemonic == "SZ")
+        add_sz(columns);
+      else if (mnemonic == "SZ+")
+        add_adj_sz(columns);
+      else if (mnemonic == "SZZ")
+        add_szz(columns);
+      else if (mnemonic == "SZZ+")
+        add_adj_szz(columns);
+      else if (mnemonic.size() >= 4u and mnemonic.front() == 'S'
+               and std::all_of(std::next(begin(mnemonic)), end(mnemonic), [](char const character) { return character == 'Z'; }))
+        add_szs(columns, mnemonic);
+      else if (mnemonic.size() >= 5u and mnemonic.front() == 'S'
+               and std::all_of(std::next(begin(mnemonic)), std::prev(end(mnemonic)), [](char const character) { return character == 'Z'; })
+               and mnemonic.back() == '+')
+        add_adj_szs(columns, mnemonic);
+      else if (mnemonic.size() >= 4u and mnemonic[0] == 'S' and mnemonic[1] == 'Z' and mnemonic.back() == '+')
+        add_adj_szn(columns, mnemonic);
+      else if (mnemonic.size() >= 3u and mnemonic[0] == 'S' and mnemonic[1] == 'Z')
+        add_szn(columns, mnemonic);
       else if (mnemonic.size() >= 2u and mnemonic.front() == 'C') // controlled gates
         interpret_controlled_gates(columns, mnemonic);
       else
@@ -1608,11 +1657,129 @@ namespace bra
     data_.push_back(std::make_unique< ::bra::gate::swap >(target1, target2));
   }
 
+  void gates::add_sx(gates::columns_type const& columns)
+  { data_.push_back(std::make_unique< ::bra::gate::sqrt_pauli_x >(read_target(columns))); }
+
+  void gates::add_adj_sx(gates::columns_type const& columns)
+  { data_.push_back(std::make_unique< ::bra::gate::adj_sqrt_pauli_x >(read_target(columns))); }
+
+  void gates::add_sy(gates::columns_type const& columns)
+  { data_.push_back(std::make_unique< ::bra::gate::sqrt_pauli_y >(read_target(columns))); }
+
+  void gates::add_adj_sy(gates::columns_type const& columns)
+  { data_.push_back(std::make_unique< ::bra::gate::adj_sqrt_pauli_y >(read_target(columns))); }
+
+  void gates::add_sz(gates::columns_type const& columns)
+  { data_.push_back(std::make_unique< ::bra::gate::sqrt_pauli_z >(read_target(columns))); }
+
+  void gates::add_adj_sz(gates::columns_type const& columns)
+  { data_.push_back(std::make_unique< ::bra::gate::adj_sqrt_pauli_z >(read_target(columns))); }
+
+  void gates::add_szz(gates::columns_type const& columns)
+  {
+    auto target1 = ::bra::qubit_type{};
+    auto target2 = ::bra::qubit_type{};
+    std::tie(target1, target2) = read_2targets(columns);
+
+    data_.push_back(std::make_unique< ::bra::gate::sqrt_pauli_zz >(target1, target2));
+  }
+
+  void gates::add_adj_szz(gates::columns_type const& columns)
+  {
+    auto target1 = ::bra::qubit_type{};
+    auto target2 = ::bra::qubit_type{};
+    std::tie(target1, target2) = read_2targets(columns);
+
+    data_.push_back(std::make_unique< ::bra::gate::adj_sqrt_pauli_zz >(target1, target2));
+  }
+
+  void gates::add_szs(gates::columns_type const& columns, std::string const& mnemonic)
+  {
+    auto targets = std::vector< ::bra::qubit_type >(mnemonic.size());
+    read_multi_targets(columns, targets);
+
+    data_.push_back(std::make_unique< ::bra::gate::sqrt_pauli_zn >(std::move(targets)));
+  }
+
+  void gates::add_adj_szs(gates::columns_type const& columns, std::string const& mnemonic)
+  {
+    auto targets = std::vector< ::bra::qubit_type >(mnemonic.size());
+    read_multi_targets(columns, targets);
+
+    data_.push_back(std::make_unique< ::bra::gate::adj_sqrt_pauli_zn >(std::move(targets)));
+  }
+
+  void gates::add_szn(gates::columns_type const& columns, std::string const& mnemonic)
+  {
+    using std::begin;
+    using std::end;
+    auto const possible_digits_first = std::next(begin(mnemonic));
+    auto const possible_digits_last = end(mnemonic);
+    if (not std::all_of(
+              possible_digits_first, possible_digits_last,
+              [](unsigned char const character) { return std::isdigit(character); }))
+      throw unsupported_mnemonic_error{mnemonic};
+
+    auto const num_qubits = ::bra::utility::to_integer<int>(possible_digits_first, possible_digits_last);
+    if (num_qubits == 1)
+      data_.push_back(std::make_unique< ::bra::gate::sqrt_pauli_z >(read_target(columns)));
+    else if (num_qubits == 2)
+    {
+      auto target1 = ::bra::qubit_type{};
+      auto target2 = ::bra::qubit_type{};
+      std::tie(target1, target2) = read_2targets(columns);
+
+      data_.push_back(std::make_unique< ::bra::gate::sqrt_pauli_zz >(target1, target2));
+    }
+    else if (num_qubits >= 3)
+    {
+      auto targets = std::vector< ::bra::qubit_type >(num_qubits);
+      read_multi_targets(columns, targets);
+
+      data_.push_back(std::make_unique< ::bra::gate::sqrt_pauli_zn >(std::move(targets)));
+    }
+    else
+      throw unsupported_mnemonic_error{mnemonic};
+  }
+
+  void gates::add_adj_szn(gates::columns_type const& columns, std::string const& mnemonic)
+  {
+    using std::begin;
+    using std::end;
+    auto const possible_digits_first = std::next(begin(mnemonic));
+    auto const possible_digits_last = std::prev(end(mnemonic));
+    if (not std::all_of(
+              possible_digits_first, possible_digits_last,
+              [](unsigned char const character) { return std::isdigit(character); }))
+      throw unsupported_mnemonic_error{mnemonic};
+
+    auto const num_qubits = ::bra::utility::to_integer<int>(possible_digits_first, possible_digits_last);
+    if (num_qubits == 1)
+      data_.push_back(std::make_unique< ::bra::gate::adj_sqrt_pauli_z >(read_target(columns)));
+    else if (num_qubits == 2)
+    {
+      auto target1 = ::bra::qubit_type{};
+      auto target2 = ::bra::qubit_type{};
+      std::tie(target1, target2) = read_2targets(columns);
+
+      data_.push_back(std::make_unique< ::bra::gate::adj_sqrt_pauli_zz >(target1, target2));
+    }
+    else if (num_qubits >= 3)
+    {
+      auto targets = std::vector< ::bra::qubit_type >(num_qubits);
+      read_multi_targets(columns, targets);
+
+      data_.push_back(std::make_unique< ::bra::gate::adj_sqrt_pauli_zn >(std::move(targets)));
+    }
+    else
+      throw unsupported_mnemonic_error{mnemonic};
+  }
+
   void gates::add_s(gates::columns_type const& columns)
-  { data_.push_back(std::make_unique< ::bra::gate::s_gate >(phase_coefficients_[2u], read_target(columns))); }
+  { data_.push_back(std::make_unique< ::bra::gate::s_gate >(read_target(columns))); }
 
   void gates::add_adj_s(gates::columns_type const& columns)
-  { data_.push_back(std::make_unique< ::bra::gate::adj_s_gate >(phase_coefficients_[2u], read_target(columns))); }
+  { data_.push_back(std::make_unique< ::bra::gate::adj_s_gate >(read_target(columns))); }
 
   void gates::add_t(gates::columns_type const& columns)
   { data_.push_back(std::make_unique< ::bra::gate::t_gate >(phase_coefficients_[3u], read_target(columns))); }
@@ -2104,6 +2271,31 @@ namespace bra
       add_cezn(columns, num_control_qubits, noncontrol_mnemonic, mnemonic);
     else if (noncontrol_mnemonic == "ESWAP")
       add_ceswap(columns, num_control_qubits);
+    else if (noncontrol_mnemonic == "SX")
+      add_csx(columns, num_control_qubits);
+    else if (noncontrol_mnemonic == "SX+")
+      add_adj_csx(columns, num_control_qubits);
+    else if (noncontrol_mnemonic == "SY")
+      add_csy(columns, num_control_qubits);
+    else if (noncontrol_mnemonic == "SY+")
+      add_adj_csy(columns, num_control_qubits);
+    else if (noncontrol_mnemonic == "SZ")
+      add_csz(columns, num_control_qubits);
+    else if (noncontrol_mnemonic == "SZ+")
+      add_adj_csz(columns, num_control_qubits);
+    else if (noncontrol_mnemonic.size() >= 3u
+             and noncontrol_mnemonic.front() == 'S'
+             and std::all_of(std::next(begin(noncontrol_mnemonic)), end(noncontrol_mnemonic), [](char const character) { return character == 'Z'; }))
+      add_cszs(columns, num_control_qubits, noncontrol_mnemonic);
+    else if (noncontrol_mnemonic.size() >= 4u
+             and noncontrol_mnemonic.front() == 'S'
+             and std::all_of(std::next(begin(noncontrol_mnemonic)), std::prev(end(noncontrol_mnemonic)), [](char const character) { return character == 'Z'; })
+             and noncontrol_mnemonic.back() == '+')
+      add_adj_cszs(columns, num_control_qubits, noncontrol_mnemonic);
+    else if (noncontrol_mnemonic.size() >= 4u and noncontrol_mnemonic[0u] == 'S' and noncontrol_mnemonic[1u] == 'Z' and noncontrol_mnemonic.back() == '+')
+      add_adj_cszn(columns, num_control_qubits, noncontrol_mnemonic, mnemonic);
+    else if (noncontrol_mnemonic.size() >= 3u and noncontrol_mnemonic[0u] == 'S' and noncontrol_mnemonic[1u] == 'Z')
+      add_cszn(columns, num_control_qubits, noncontrol_mnemonic, mnemonic);
     else
       throw unsupported_mnemonic_error{mnemonic};
   }
@@ -2989,6 +3181,214 @@ namespace bra
     std::tie(target1, target2, phase) = read_multi_controls_2targets_phase(columns, controls);
 
     data_.push_back(std::make_unique< ::bra::gate::multi_controlled_exponential_swap >(phase, target1, target2, std::move(controls)));
+  }
+
+  void gates::add_csx(gates::columns_type const& columns, int const num_control_qubits)
+  {
+    if (num_control_qubits == 1)
+    {
+      auto control = ::bra::control_qubit_type{};
+      auto target = ::bra::qubit_type{};
+      std::tie(control, target) = read_control_target(columns);
+
+      data_.push_back(std::make_unique< ::bra::gate::controlled_sqrt_pauli_x >(target, control));
+    }
+    else // num_control_qubits >= 2
+    {
+      auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
+      auto const target = read_multi_controls_target(columns, controls);
+
+      data_.push_back(std::make_unique< ::bra::gate::multi_controlled_sqrt_pauli_x >(target, std::move(controls)));
+    }
+  }
+
+  void gates::add_adj_csx(gates::columns_type const& columns, int const num_control_qubits)
+  {
+    if (num_control_qubits == 1)
+    {
+      auto control = ::bra::control_qubit_type{};
+      auto target = ::bra::qubit_type{};
+      std::tie(control, target) = read_control_target(columns);
+
+      data_.push_back(std::make_unique< ::bra::gate::adj_controlled_sqrt_pauli_x >(target, control));
+    }
+    else // num_control_qubits >= 2
+    {
+      auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
+      auto const target = read_multi_controls_target(columns, controls);
+
+      data_.push_back(std::make_unique< ::bra::gate::adj_multi_controlled_sqrt_pauli_x >(target, std::move(controls)));
+    }
+  }
+
+  void gates::add_csy(gates::columns_type const& columns, int const num_control_qubits)
+  {
+    if (num_control_qubits == 1)
+    {
+      auto control = ::bra::control_qubit_type{};
+      auto target = ::bra::qubit_type{};
+      std::tie(control, target) = read_control_target(columns);
+
+      data_.push_back(std::make_unique< ::bra::gate::controlled_sqrt_pauli_y >(target, control));
+    }
+    else // num_control_qubits >= 2
+    {
+      auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
+      auto const target = read_multi_controls_target(columns, controls);
+
+      data_.push_back(std::make_unique< ::bra::gate::multi_controlled_sqrt_pauli_y >(target, std::move(controls)));
+    }
+  }
+
+  void gates::add_adj_csy(gates::columns_type const& columns, int const num_control_qubits)
+  {
+    if (num_control_qubits == 1)
+    {
+      auto control = ::bra::control_qubit_type{};
+      auto target = ::bra::qubit_type{};
+      std::tie(control, target) = read_control_target(columns);
+
+      data_.push_back(std::make_unique< ::bra::gate::adj_controlled_sqrt_pauli_y >(target, control));
+    }
+    else // num_control_qubits >= 2
+    {
+      auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
+      auto const target = read_multi_controls_target(columns, controls);
+
+      data_.push_back(std::make_unique< ::bra::gate::adj_multi_controlled_sqrt_pauli_y >(target, std::move(controls)));
+    }
+  }
+
+  void gates::add_csz(gates::columns_type const& columns, int const num_control_qubits)
+  {
+    if (num_control_qubits == 1)
+    {
+      auto control = ::bra::control_qubit_type{};
+      auto target = ::bra::qubit_type{};
+      std::tie(control, target) = read_control_target(columns);
+
+      data_.push_back(std::make_unique< ::bra::gate::controlled_sqrt_pauli_z >(target, control));
+    }
+    else // num_control_qubits >= 2
+    {
+      auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
+      auto targets = std::vector< ::bra::qubit_type >(1u);
+      read_multi_controls_multi_targets(columns, controls, targets);
+
+      data_.push_back(std::make_unique< ::bra::gate::multi_controlled_sqrt_pauli_zn >(std::move(targets), std::move(controls)));
+    }
+  }
+
+  void gates::add_adj_csz(gates::columns_type const& columns, int const num_control_qubits)
+  {
+    if (num_control_qubits == 1)
+    {
+      auto control = ::bra::control_qubit_type{};
+      auto target = ::bra::qubit_type{};
+      std::tie(control, target) = read_control_target(columns);
+
+      data_.push_back(std::make_unique< ::bra::gate::adj_controlled_sqrt_pauli_z >(target, control));
+    }
+    else // num_control_qubits >= 2
+    {
+      auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
+      auto targets = std::vector< ::bra::qubit_type >(1u);
+      read_multi_controls_multi_targets(columns, controls, targets);
+
+      data_.push_back(std::make_unique< ::bra::gate::adj_multi_controlled_sqrt_pauli_zn >(std::move(targets), std::move(controls)));
+    }
+  }
+
+  void gates::add_cszs(
+    gates::columns_type const& columns, int const num_control_qubits,
+    std::string const& noncontrol_mnemonic)
+  {
+    auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
+    auto targets = std::vector< ::bra::qubit_type >(noncontrol_mnemonic.size() - 1u);
+    read_multi_controls_multi_targets(columns, controls, targets);
+
+    data_.push_back(std::make_unique< ::bra::gate::multi_controlled_sqrt_pauli_zn >(std::move(targets), std::move(controls)));
+  }
+
+  void gates::add_adj_cszs(
+    gates::columns_type const& columns, int const num_control_qubits,
+    std::string const& noncontrol_mnemonic)
+  {
+    auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
+    auto targets = std::vector< ::bra::qubit_type >(noncontrol_mnemonic.size() - 1u);
+    read_multi_controls_multi_targets(columns, controls, targets);
+
+    data_.push_back(std::make_unique< ::bra::gate::adj_multi_controlled_sqrt_pauli_zn >(std::move(targets), std::move(controls)));
+  }
+
+  void gates::add_cszn(
+    gates::columns_type const& columns, int const num_control_qubits,
+    std::string const& noncontrol_mnemonic, std::string const& mnemonic)
+  {
+    using std::begin;
+    using std::end;
+    auto const possible_digits_first = std::next(begin(noncontrol_mnemonic));
+    auto const possible_digits_last = end(noncontrol_mnemonic);
+    if (not std::all_of(
+              possible_digits_first, possible_digits_last,
+              [](unsigned char const character) { return std::isdigit(character); }))
+      throw unsupported_mnemonic_error{mnemonic};
+
+    auto const num_target_qubits = ::bra::utility::to_integer<int>(possible_digits_first, possible_digits_last);
+    if (num_target_qubits <= 0)
+      throw unsupported_mnemonic_error{mnemonic};
+
+    if (num_control_qubits + num_target_qubits == 2)
+    {
+      auto control = ::bra::control_qubit_type{};
+      auto target = ::bra::qubit_type{};
+      std::tie(control, target) = read_control_target(columns);
+
+      data_.push_back(std::make_unique< ::bra::gate::controlled_sqrt_pauli_z >(target, control));
+    }
+    else // num_control_qubits + num_target_qubits >= 2
+    {
+      auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
+      auto targets = std::vector< ::bra::qubit_type >(num_target_qubits);
+      read_multi_controls_multi_targets(columns, controls, targets);
+
+      data_.push_back(std::make_unique< ::bra::gate::multi_controlled_sqrt_pauli_zn >(std::move(targets), std::move(controls)));
+    }
+  }
+
+  void gates::add_adj_cszn(
+    gates::columns_type const& columns, int const num_control_qubits,
+    std::string const& noncontrol_mnemonic, std::string const& mnemonic)
+  {
+    using std::begin;
+    using std::end;
+    auto const possible_digits_first = std::next(begin(noncontrol_mnemonic));
+    auto const possible_digits_last = std::prev(end(noncontrol_mnemonic));
+    if (not std::all_of(
+              possible_digits_first, possible_digits_last,
+              [](unsigned char const character) { return std::isdigit(character); }))
+      throw unsupported_mnemonic_error{mnemonic};
+
+    auto const num_target_qubits = ::bra::utility::to_integer<int>(possible_digits_first, possible_digits_last);
+    if (num_target_qubits <= 0)
+      throw unsupported_mnemonic_error{mnemonic};
+
+    if (num_control_qubits + num_target_qubits == 2)
+    {
+      auto control = ::bra::control_qubit_type{};
+      auto target = ::bra::qubit_type{};
+      std::tie(control, target) = read_control_target(columns);
+
+      data_.push_back(std::make_unique< ::bra::gate::adj_controlled_sqrt_pauli_z >(target, control));
+    }
+    else // num_control_qubits + num_target_qubits >= 2
+    {
+      auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
+      auto targets = std::vector< ::bra::qubit_type >(num_target_qubits);
+      read_multi_controls_multi_targets(columns, controls, targets);
+
+      data_.push_back(std::make_unique< ::bra::gate::adj_multi_controlled_sqrt_pauli_zn >(std::move(targets), std::move(controls)));
+    }
   }
 } // namespace bra
 

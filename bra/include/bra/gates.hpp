@@ -292,6 +292,18 @@ namespace bra
     void add_zs(columns_type const& columns, std::string const& mnemonic);
     void add_zn(columns_type const& columns, std::string const& mnemonic);
     void add_swap(columns_type const& columns);
+    void add_sx(columns_type const& columns);
+    void add_adj_sx(columns_type const& columns);
+    void add_sy(columns_type const& columns);
+    void add_adj_sy(columns_type const& columns);
+    void add_sz(columns_type const& columns);
+    void add_adj_sz(columns_type const& columns);
+    void add_szz(columns_type const& columns);
+    void add_adj_szz(columns_type const& columns);
+    void add_szs(columns_type const& columns, std::string const& mnemonic);
+    void add_adj_szs(columns_type const& columns, std::string const& mnemonic);
+    void add_szn(columns_type const& columns, std::string const& mnemonic);
+    void add_adj_szn(columns_type const& columns, std::string const& mnemonic);
     void add_s(columns_type const& columns);
     void add_adj_s(columns_type const& columns);
     void add_t(columns_type const& columns);
@@ -382,6 +394,20 @@ namespace bra
       columns_type const& columns, int const num_control_qubits,
       std::string const& noncontrol_mnemonic, std::string const& mnemonic);
     void add_ceswap(columns_type const& columns, int const num_control_qubits);
+    void add_csx(columns_type const& columns, int const num_control_qubits);
+    void add_adj_csx(columns_type const& columns, int const num_control_qubits);
+    void add_csy(columns_type const& columns, int const num_control_qubits);
+    void add_adj_csy(columns_type const& columns, int const num_control_qubits);
+    void add_csz(columns_type const& columns, int const num_control_qubits);
+    void add_adj_csz(columns_type const& columns, int const num_control_qubits);
+    void add_cszs(columns_type const& columns, int const num_control_qubits, std::string const& noncontrol_mnemonic);
+    void add_adj_cszs(columns_type const& columns, int const num_control_qubits, std::string const& noncontrol_mnemonic);
+    void add_cszn(
+      columns_type const& columns, int const num_control_qubits,
+      std::string const& noncontrol_mnemonic, std::string const& mnemonic);
+    void add_adj_cszn(
+      columns_type const& columns, int const num_control_qubits,
+      std::string const& noncontrol_mnemonic, std::string const& mnemonic);
   }; // class gates
 
   inline bool operator!=(::bra::gates const& lhs, ::bra::gates const& rhs)

@@ -219,6 +219,16 @@ namespace bra
     state& adj_pauli_zn(std::vector<qubit_type> const& qubits);
     state& swap(qubit_type const qubit1, qubit_type const qubit2);
     state& adj_swap(qubit_type const qubit1, qubit_type const qubit2);
+    state& sqrt_pauli_x(qubit_type const qubit);
+    state& adj_sqrt_pauli_x(qubit_type const qubit);
+    state& sqrt_pauli_y(qubit_type const qubit);
+    state& adj_sqrt_pauli_y(qubit_type const qubit);
+    state& sqrt_pauli_z(qubit_type const qubit);
+    state& adj_sqrt_pauli_z(qubit_type const qubit);
+    state& sqrt_pauli_zz(qubit_type const qubit1, qubit_type const qubit2);
+    state& adj_sqrt_pauli_zz(qubit_type const qubit1, qubit_type const qubit2);
+    state& sqrt_pauli_zn(std::vector<qubit_type> const& qubits);
+    state& adj_sqrt_pauli_zn(std::vector<qubit_type> const& qubits);
     state& u1(real_type const phase, qubit_type const qubit);
     state& adj_u1(real_type const phase, qubit_type const qubit);
     state& u2(
@@ -319,6 +329,18 @@ namespace bra
     state& adj_multi_controlled_pauli_zn(std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits);
     state& multi_controlled_swap(qubit_type const target_qubit1, qubit_type const target_qubit2, std::vector<control_qubit_type> const& control_qubits);
     state& adj_multi_controlled_swap(qubit_type const target_qubit1, qubit_type const target_qubit2, std::vector<control_qubit_type> const& control_qubits);
+    state& controlled_sqrt_pauli_x(qubit_type const target_qubit, control_qubit_type const control_qubit);
+    state& adj_controlled_sqrt_pauli_x(qubit_type const target_qubit, control_qubit_type const control_qubit);
+    state& multi_controlled_sqrt_pauli_x(qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits);
+    state& adj_multi_controlled_sqrt_pauli_x(qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits);
+    state& controlled_sqrt_pauli_y(qubit_type const target_qubit, control_qubit_type const control_qubit);
+    state& adj_controlled_sqrt_pauli_y(qubit_type const target_qubit, control_qubit_type const control_qubit);
+    state& multi_controlled_sqrt_pauli_y(qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits);
+    state& adj_multi_controlled_sqrt_pauli_y(qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits);
+    state& controlled_sqrt_pauli_z(qubit_type const target_qubit, control_qubit_type const control_qubit);
+    state& adj_controlled_sqrt_pauli_z(qubit_type const target_qubit, control_qubit_type const control_qubit);
+    state& multi_controlled_sqrt_pauli_zn(std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits);
+    state& adj_multi_controlled_sqrt_pauli_zn(std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits);
     state& controlled_phase_shift(complex_type const& phase_coefficient, qubit_type const target_qubit, control_qubit_type const control_qubit);
     state& adj_controlled_phase_shift(complex_type const& phase_coefficient, qubit_type const target_qubit, control_qubit_type const control_qubit);
     state& multi_controlled_phase_shift(complex_type const& phase_coefficient, qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits);
@@ -396,6 +418,16 @@ namespace bra
     virtual void do_adj_pauli_zn(std::vector<qubit_type> const& qubits) = 0;
     virtual void do_swap(qubit_type const qubit1, qubit_type const qubit2) = 0;
     virtual void do_adj_swap(qubit_type const qubit1, qubit_type const qubit2) = 0;
+    virtual void do_sqrt_pauli_x(qubit_type const qubit) = 0;
+    virtual void do_adj_sqrt_pauli_x(qubit_type const qubit) = 0;
+    virtual void do_sqrt_pauli_y(qubit_type const qubit) = 0;
+    virtual void do_adj_sqrt_pauli_y(qubit_type const qubit) = 0;
+    virtual void do_sqrt_pauli_z(qubit_type const qubit) = 0;
+    virtual void do_adj_sqrt_pauli_z(qubit_type const qubit) = 0;
+    virtual void do_sqrt_pauli_zz(qubit_type const qubit1, qubit_type const qubit2) = 0;
+    virtual void do_adj_sqrt_pauli_zz(qubit_type const qubit1, qubit_type const qubit2) = 0;
+    virtual void do_sqrt_pauli_zn(std::vector<qubit_type> const& qubits) = 0;
+    virtual void do_adj_sqrt_pauli_zn(std::vector<qubit_type> const& qubits) = 0;
     virtual void do_u1(real_type const phase, qubit_type const qubit) = 0;
     virtual void do_adj_u1(real_type const phase, qubit_type const qubit) = 0;
     virtual void do_u2(
@@ -549,6 +581,32 @@ namespace bra
       std::vector<control_qubit_type> const& control_qubits) = 0;
     virtual void do_adj_multi_controlled_swap(
       qubit_type const target_qubit1, qubit_type const target_qubit2,
+      std::vector<control_qubit_type> const& control_qubits) = 0;
+    virtual void do_controlled_sqrt_pauli_x(
+      qubit_type const target_qubit, control_qubit_type const control_qubit) = 0;
+    virtual void do_adj_controlled_sqrt_pauli_x(
+      qubit_type const target_qubit, control_qubit_type const control_qubit) = 0;
+    virtual void do_multi_controlled_sqrt_pauli_x(
+      qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits) = 0;
+    virtual void do_adj_multi_controlled_sqrt_pauli_x(
+      qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits) = 0;
+    virtual void do_controlled_sqrt_pauli_y(
+      qubit_type const target_qubit, control_qubit_type const control_qubit) = 0;
+    virtual void do_adj_controlled_sqrt_pauli_y(
+      qubit_type const target_qubit, control_qubit_type const control_qubit) = 0;
+    virtual void do_multi_controlled_sqrt_pauli_y(
+      qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits) = 0;
+    virtual void do_adj_multi_controlled_sqrt_pauli_y(
+      qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits) = 0;
+    virtual void do_controlled_sqrt_pauli_z(
+      qubit_type const target_qubit, control_qubit_type const control_qubit) = 0;
+    virtual void do_adj_controlled_sqrt_pauli_z(
+      qubit_type const target_qubit, control_qubit_type const control_qubit) = 0;
+    virtual void do_multi_controlled_sqrt_pauli_zn(
+      std::vector<qubit_type> const& target_qubits,
+      std::vector<control_qubit_type> const& control_qubits) = 0;
+    virtual void do_adj_multi_controlled_sqrt_pauli_zn(
+      std::vector<qubit_type> const& target_qubits,
       std::vector<control_qubit_type> const& control_qubits) = 0;
     virtual void do_controlled_phase_shift(
       complex_type const& phase_coefficient,
