@@ -16,13 +16,12 @@ namespace bra
   {
     std::string const adj_s_gate::name_ = "S+";
 
-    adj_s_gate::adj_s_gate(complex_type const& phase_coefficient, qubit_type const qubit)
-      : ::bra::gate::gate{},
-        phase_coefficient_{phase_coefficient}, qubit_{qubit}
+    adj_s_gate::adj_s_gate(qubit_type const qubit)
+      : ::bra::gate::gate{}, qubit_{qubit}
     { }
 
     ::bra::state& adj_s_gate::do_apply(::bra::state& state) const
-    { return state.adj_phase_shift(phase_coefficient_, qubit_); }
+    { return state.adj_sqrt_pauli_z(qubit_); }
 
     std::string const& adj_s_gate::do_name() const { return name_; }
     std::string adj_s_gate::do_representation(
