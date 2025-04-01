@@ -1,5 +1,5 @@
-#ifndef KET_MPI_GATE_PAGE_PAULI_Z_STANDARD_HPP
-# define KET_MPI_GATE_PAGE_PAULI_Z_STANDARD_HPP
+#ifndef KET_MPI_GATE_PAGE_PAULI_Z_DIAGONAL_HPP
+# define KET_MPI_GATE_PAGE_PAULI_Z_DIAGONAL_HPP
 
 # include <cassert>
 # include <algorithm>
@@ -159,4 +159,4 @@ namespace ket
 } // namespace ket
 
 
-#endif // KET_MPI_GATE_PAGE_PAULI_Z_STANDARD_HPP
+#endif // KET_MPI_GATE_PAGE_PAULI_Z_DIAGONAL_HPP
