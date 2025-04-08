@@ -67,6 +67,7 @@
 # include <bra/fused_gate/fused_controlled_pauli_y.hpp>
 # include <bra/fused_gate/fused_multi_controlled_pauli_yn.hpp>
 # include <bra/fused_gate/fused_controlled_pauli_z.hpp>
+# include <bra/fused_gate/fused_multi_controlled_pauli_z.hpp>
 # include <bra/fused_gate/fused_multi_controlled_pauli_zn.hpp>
 # include <bra/fused_gate/fused_multi_controlled_swap.hpp>
 # include <bra/fused_gate/fused_controlled_sqrt_pauli_x.hpp>
@@ -79,6 +80,8 @@
 # include <bra/fused_gate/fused_adj_multi_controlled_sqrt_pauli_y.hpp>
 # include <bra/fused_gate/fused_controlled_sqrt_pauli_z.hpp>
 # include <bra/fused_gate/fused_adj_controlled_sqrt_pauli_z.hpp>
+# include <bra/fused_gate/fused_multi_controlled_sqrt_pauli_z.hpp>
+# include <bra/fused_gate/fused_adj_multi_controlled_sqrt_pauli_z.hpp>
 # include <bra/fused_gate/fused_multi_controlled_sqrt_pauli_zn.hpp>
 # include <bra/fused_gate/fused_adj_multi_controlled_sqrt_pauli_zn.hpp>
 # include <bra/fused_gate/fused_controlled_phase_shift.hpp>
@@ -117,6 +120,8 @@
 # include <bra/fused_gate/fused_adj_multi_controlled_exponential_pauli_yn.hpp>
 # include <bra/fused_gate/fused_controlled_exponential_pauli_z.hpp>
 # include <bra/fused_gate/fused_adj_controlled_exponential_pauli_z.hpp>
+# include <bra/fused_gate/fused_multi_controlled_exponential_pauli_z.hpp>
+# include <bra/fused_gate/fused_adj_multi_controlled_exponential_pauli_z.hpp>
 # include <bra/fused_gate/fused_multi_controlled_exponential_pauli_zn.hpp>
 # include <bra/fused_gate/fused_adj_multi_controlled_exponential_pauli_zn.hpp>
 # include <bra/fused_gate/fused_multi_controlled_exponential_swap.hpp>

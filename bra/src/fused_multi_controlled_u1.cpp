@@ -22,13 +22,13 @@ namespace bra
   namespace fused_gate
   {
     template <typename Iterator>
-    fused_multi_controlled_u1<Iterator>::fused_multi_controlled_u1(::bra::real_type const phase, ::bra::qubit_type const target_qubit, std::vector< ::bra::control_qubit_type > const& control_qubits)
-      : ::bra::fused_gate::fused_gate<Iterator>{}, phase_{phase}, target_qubit_{target_qubit}, control_qubits_{control_qubits}
+    fused_multi_controlled_u1<Iterator>::fused_multi_controlled_u1(::bra::real_type const phase, std::vector< ::bra::control_qubit_type > const& control_qubits)
+      : ::bra::fused_gate::fused_gate<Iterator>{}, phase_{phase}, control_qubits_{control_qubits}
     { }
 
     template <typename Iterator>
-    fused_multi_controlled_u1<Iterator>::fused_multi_controlled_u1(::bra::real_type const phase, ::bra::qubit_type const target_qubit, std::vector< ::bra::control_qubit_type >&& control_qubits)
-      : ::bra::fused_gate::fused_gate<Iterator>{}, phase_{phase}, target_qubit_{target_qubit}, control_qubits_{std::move(control_qubits)}
+    fused_multi_controlled_u1<Iterator>::fused_multi_controlled_u1(::bra::real_type const phase, std::vector< ::bra::control_qubit_type >&& control_qubits)
+      : ::bra::fused_gate::fused_gate<Iterator>{}, phase_{phase}, control_qubits_{std::move(control_qubits)}
     { }
 
 #ifndef KET_USE_BIT_MASKS_EXPLICITLY
@@ -79,7 +79,7 @@ namespace bra
     {\
       ::ket::gate::fused::phase_shift(\
         first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,\
-        phase_, target_qubit_, BOOST_PP_REPEAT_ ## z(BOOST_PP_DEC(num_fused_qubits), CONTROL_QUBITS, nil));\
+        phase_, BOOST_PP_REPEAT_ ## z(num_fused_qubits, CONTROL_QUBITS, nil));\
     }
 #else // KET_USE_BIT_MASKS_EXPLICITLY
 # define DO_CALL(z, num_fused_qubits, _) \
@@ -91,7 +91,7 @@ namespace bra
     {\
       ::ket::gate::fused::phase_shift(\
         first, fused_index_wo_qubits, qubit_masks, index_masks,\
-        phase_, target_qubit_, BOOST_PP_REPEAT_ ## z(BOOST_PP_DEC(num_fused_qubits), CONTROL_QUBITS, nil));\
+        phase_, BOOST_PP_REPEAT_ ## z(num_fused_qubits, CONTROL_QUBITS, nil));\
     }
 #endif // KET_USE_BIT_MASKS_EXPLICITLY
 BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_FUSED_QUBITS), DO_CALL, nil)

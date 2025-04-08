@@ -27,6 +27,284 @@ namespace ket
     namespace fused
     {
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
+      // Case 1: the first argument of qubits is ket::control<ket::qubit<S, B>>
+      // sZ_i
+      // sZ_1 (a_0 |0> + a_1 |1>) = a_0 |0> + i a_1 |1>
+      template <typename RandomAccessIterator, typename StateInteger, typename BitInteger, std::size_t num_fused_qubits>
+      inline auto sqrt_pauli_z(
+        RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+        std::array< ::ket::qubit<StateInteger, BitInteger>, num_fused_qubits > const& unsorted_fused_qubits,
+        std::array< ::ket::qubit<StateInteger, BitInteger>, num_fused_qubits + 1u> const& sorted_fused_qubits_with_sentinel,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit)
+      -> void
+      {
+        static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+        static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
+        assert(control_qubit < ::ket::make_qubit<StateInteger>(static_cast<BitInteger>(num_fused_qubits)));
+
+        constexpr auto num_operated_qubits = BitInteger{1u};
+
+        auto const qubit_mask = ::ket::utility::integer_exp2<StateInteger>(control_qubit);
+        auto const lower_bits_mask = qubit_mask - StateInteger{1u};
+        auto const upper_bits_mask = compl lower_bits_mask;
+
+        constexpr auto count = ::ket::utility::integer_exp2<StateInteger>(num_fused_qubits) >> num_operated_qubits;
+        for (auto index_wo_qubit = std::size_t{0u}; index_wo_qubit < count; ++index_wo_qubit)
+        {
+          // xxxxx0xxxxxx
+          auto const zero_index = ((index_wo_qubit bitand upper_bits_mask) << 1u) bitor (index_wo_qubit bitand lower_bits_mask);
+          // xxxxx1xxxxxx
+          auto const one_index = zero_index bitor qubit_mask;
+
+          using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+          using std::begin;
+          using std::end;
+          auto const one_iter
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  fused_index_wo_qubits, one_index,
+                  begin(unsorted_fused_qubits), end(unsorted_fused_qubits),
+                  begin(sorted_fused_qubits_with_sentinel), end(sorted_fused_qubits_with_sentinel));
+          *one_iter *= ::ket::utility::imaginary_unit<complex_type>();
+        }
+      }
+
+      // CsZ_{cc'} or C1sZ_{cc'}
+      // CsZ_{1,2} (a_{00} |00> + a_{01} |01> + a_{10} |10> + a_{11} |11>)
+      //   = a_{00} |00> + a_{01} |01> + a_{10} |10> + i a_{11} |11>
+      template <typename RandomAccessIterator, typename StateInteger, typename BitInteger, std::size_t num_fused_qubits>
+      inline auto sqrt_pauli_z(
+        RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+        std::array< ::ket::qubit<StateInteger, BitInteger>, num_fused_qubits > const& unsorted_fused_qubits,
+        std::array< ::ket::qubit<StateInteger, BitInteger>, num_fused_qubits + 1u> const& sorted_fused_qubits_with_sentinel,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
+      -> void
+      {
+        static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+        static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
+        assert(control_qubit1 < ::ket::make_qubit<StateInteger>(static_cast<BitInteger>(num_fused_qubits)));
+        assert(control_qubit2 < ::ket::make_qubit<StateInteger>(static_cast<BitInteger>(num_fused_qubits)));
+        assert(control_qubit1 != control_qubit2);
+
+        constexpr auto num_operated_qubits = BitInteger{2u};
+
+        auto const minmax_qubits = std::minmax(control_qubit1, control_qubit2);
+        auto const control_qubit1_mask = ::ket::utility::integer_exp2<StateInteger>(control_qubit1);
+        auto const control_qubit2_mask = ::ket::utility::integer_exp2<StateInteger>(control_qubit2);
+        auto const lower_bits_mask = ::ket::utility::integer_exp2<StateInteger>(minmax_qubits.first) - StateInteger{1u};
+        auto const middle_bits_mask
+          = (::ket::utility::integer_exp2<StateInteger>(minmax_qubits.second - BitInteger{1u}) - StateInteger{1u})
+            xor lower_bits_mask;
+        auto const upper_bits_mask = compl (lower_bits_mask bitor middle_bits_mask);
+
+        constexpr auto count = ::ket::utility::integer_exp2<StateInteger>(num_fused_qubits) >> num_operated_qubits;
+        for (auto index_wo_qubits = std::size_t{0u}; index_wo_qubits < count; ++index_wo_qubits)
+        {
+          // xxx0_c1xxx0_c2xxx
+          auto const index00
+            = ((index_wo_qubits bitand upper_bits_mask) << 2u)
+              bitor ((index_wo_qubits bitand middle_bits_mask) << 1u)
+              bitor (index_wo_qubits bitand lower_bits_mask);
+          // xxx1_c1xxx1_c2xxx
+          auto const index11 = index00 bitor control_qubit1_mask bitor control_qubit2_mask;
+          using std::begin;
+          using std::end;
+          auto const iter11
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  fused_index_wo_qubits, index11,
+                  begin(unsorted_fused_qubits), end(unsorted_fused_qubits),
+                  begin(sorted_fused_qubits_with_sentinel), end(sorted_fused_qubits_with_sentinel));
+
+          using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+          *iter11 *= ::ket::utility::imaginary_unit<complex_type>();
+        }
+      }
+
+      // C...CsZ_{c0,c...c'} or CnsZ_{c0,c...c'}
+      template <typename RandomAccessIterator, typename StateInteger, typename BitInteger, std::size_t num_fused_qubits, typename... Qubits>
+      inline auto sqrt_pauli_z(
+        RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+        std::array< ::ket::qubit<StateInteger, BitInteger>, num_fused_qubits > const& unsorted_fused_qubits,
+        std::array< ::ket::qubit<StateInteger, BitInteger>, num_fused_qubits + 1u> const& sorted_fused_qubits_with_sentinel,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit3,
+        ::ket::control<Qubits> const... control_qubits)
+      -> void
+      {
+        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+        constexpr auto num_control_qubits = BitInteger{sizeof...(Qubits) + 3u};
+        constexpr auto num_operated_qubits = num_control_qubits;
+
+        ::ket::gate::fused::gate<num_fused_qubits>(
+          first,
+          [fused_index_wo_qubits, &unsorted_fused_qubits, &sorted_fused_qubits_with_sentinel](
+            auto const first, StateInteger const operated_index_wo_qubits,
+            std::array<qubit_type, num_operated_qubits> const& unsorted_operated_qubits,
+            std::array<qubit_type, num_operated_qubits + 1u> const& sorted_operated_qubits_with_sentinel)
+          {
+            // 0b11...11u
+            constexpr auto index = ((std::size_t{1u} << num_operated_qubits) - std::size_t{1u});
+
+            using std::begin;
+            using std::end;
+            auto const iter
+              = first
+                + ::ket::gate::utility::index_with_qubits(
+                    fused_index_wo_qubits,
+                    ::ket::gate::utility::index_with_qubits(
+                      operated_index_wo_qubits, index,
+                      begin(unsorted_operated_qubits), end(unsorted_operated_qubits),
+                      begin(sorted_operated_qubits_with_sentinel), end(sorted_operated_qubits_with_sentinel)),
+                    begin(unsorted_fused_qubits), end(unsorted_fused_qubits),
+                    begin(sorted_fused_qubits_with_sentinel), end(sorted_fused_qubits_with_sentinel));
+            using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+            *iter *= ::ket::utility::imaginary_unit<complex_type>();
+          },
+          control_qubit1, control_qubit2, control_qubit3, control_qubits...);
+      }
+
+      // sZ+_i
+      // sZ+_1 (a_0 |0> + a_1 |1>) = a_0 |0> - i a_1 |1>
+      template <typename RandomAccessIterator, typename StateInteger, typename BitInteger, std::size_t num_fused_qubits>
+      inline auto adj_sqrt_pauli_z(
+        RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+        std::array< ::ket::qubit<StateInteger, BitInteger>, num_fused_qubits > const& unsorted_fused_qubits,
+        std::array< ::ket::qubit<StateInteger, BitInteger>, num_fused_qubits + 1u> const& sorted_fused_qubits_with_sentinel,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit)
+      -> void
+      {
+        static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+        static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
+        assert(control_qubit < ::ket::make_qubit<StateInteger>(static_cast<BitInteger>(num_fused_qubits)));
+
+        constexpr auto num_operated_qubits = BitInteger{1u};
+
+        auto const qubit_mask = ::ket::utility::integer_exp2<StateInteger>(control_qubit);
+        auto const lower_bits_mask = qubit_mask - StateInteger{1u};
+        auto const upper_bits_mask = compl lower_bits_mask;
+
+        constexpr auto count = ::ket::utility::integer_exp2<StateInteger>(num_fused_qubits) >> num_operated_qubits;
+        for (auto index_wo_qubit = std::size_t{0u}; index_wo_qubit < count; ++index_wo_qubit)
+        {
+          // xxxxx0xxxxxx
+          auto const zero_index = ((index_wo_qubit bitand upper_bits_mask) << 1u) bitor (index_wo_qubit bitand lower_bits_mask);
+          // xxxxx1xxxxxx
+          auto const one_index = zero_index bitor qubit_mask;
+
+          using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+          using std::begin;
+          using std::end;
+          auto const one_iter
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  fused_index_wo_qubits, one_index,
+                  begin(unsorted_fused_qubits), end(unsorted_fused_qubits),
+                  begin(sorted_fused_qubits_with_sentinel), end(sorted_fused_qubits_with_sentinel));
+          *one_iter *= ::ket::utility::minus_imaginary_unit<complex_type>();
+        }
+      }
+
+      // CsZ+_{tc} or C1sZ+_{tc}
+      // CsZ+_{1,2} (a_{00} |00> + a_{01} |01> + a_{10} |10> + a_{11} |11>)
+      //   = a_{00} |00> + a_{01} |01> + a_{10} |10> - i a_{11} |11>
+      template <typename RandomAccessIterator, typename StateInteger, typename BitInteger, std::size_t num_fused_qubits>
+      inline auto adj_sqrt_pauli_z(
+        RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+        std::array< ::ket::qubit<StateInteger, BitInteger>, num_fused_qubits > const& unsorted_fused_qubits,
+        std::array< ::ket::qubit<StateInteger, BitInteger>, num_fused_qubits + 1u> const& sorted_fused_qubits_with_sentinel,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
+      -> void
+      {
+        static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+        static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
+        assert(control_qubit1 < ::ket::make_qubit<StateInteger>(static_cast<BitInteger>(num_fused_qubits)));
+        assert(control_qubit2 < ::ket::make_qubit<StateInteger>(static_cast<BitInteger>(num_fused_qubits)));
+        assert(control_qubit1 != control_qubit2);
+
+        constexpr auto num_operated_qubits = BitInteger{2u};
+
+        auto const minmax_qubits = std::minmax(control_qubit1, control_qubit2);
+        auto const control_qubit1_mask = ::ket::utility::integer_exp2<StateInteger>(control_qubit1);
+        auto const control_qubit2_mask = ::ket::utility::integer_exp2<StateInteger>(control_qubit2);
+        auto const lower_bits_mask = ::ket::utility::integer_exp2<StateInteger>(minmax_qubits.first) - StateInteger{1u};
+        auto const middle_bits_mask
+          = (::ket::utility::integer_exp2<StateInteger>(minmax_qubits.second - BitInteger{1u}) - StateInteger{1u})
+            xor lower_bits_mask;
+        auto const upper_bits_mask = compl (lower_bits_mask bitor middle_bits_mask);
+
+        constexpr auto count = ::ket::utility::integer_exp2<StateInteger>(num_fused_qubits) >> num_operated_qubits;
+        for (auto index_wo_qubits = std::size_t{0u}; index_wo_qubits < count; ++index_wo_qubits)
+        {
+          // xxx0_c1xxx0_c2xxx
+          auto const index00
+            = ((index_wo_qubits bitand upper_bits_mask) << 2u)
+              bitor ((index_wo_qubits bitand middle_bits_mask) << 1u)
+              bitor (index_wo_qubits bitand lower_bits_mask);
+          // xxx1_c1xxx1_c2xxx
+          auto const index11 = index00 bitor control_qubit1_mask bitor control_qubit2_mask;
+          using std::begin;
+          using std::end;
+          auto const iter11
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  fused_index_wo_qubits, index11,
+                  begin(unsorted_fused_qubits), end(unsorted_fused_qubits),
+                  begin(sorted_fused_qubits_with_sentinel), end(sorted_fused_qubits_with_sentinel));
+
+          using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+          *iter11 *= ::ket::utility::minus_imaginary_unit<complex_type>();
+        }
+      }
+
+      // C...CsZ_{c0,c...c'} or CnsZ_{c0,c...c'}
+      template <typename RandomAccessIterator, typename StateInteger, typename BitInteger, std::size_t num_fused_qubits, typename... Qubits>
+      inline auto adj_sqrt_pauli_z(
+        RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+        std::array< ::ket::qubit<StateInteger, BitInteger>, num_fused_qubits > const& unsorted_fused_qubits,
+        std::array< ::ket::qubit<StateInteger, BitInteger>, num_fused_qubits + 1u> const& sorted_fused_qubits_with_sentinel,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit3,
+        ::ket::control<Qubits> const... control_qubits)
+      -> void
+      {
+        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+        constexpr auto num_control_qubits = BitInteger{sizeof...(Qubits) + 3u};
+        constexpr auto num_operated_qubits = num_operated_qubits;
+
+        ::ket::gate::fused::gate<num_fused_qubits>(
+          first,
+          [fused_index_wo_qubits, &unsorted_fused_qubits, &sorted_fused_qubits_with_sentinel](
+            auto const first, StateInteger const operated_index_wo_qubits,
+            std::array<qubit_type, num_operated_qubits> const& unsorted_operated_qubits,
+            std::array<qubit_type, num_operated_qubits + 1u> const& sorted_operated_qubits_with_sentinel)
+          {
+            // 0b11...11u
+            constexpr auto index = ((std::size_t{1u} << num_operated_qubits) - std::size_t{1u});
+
+            using std::begin;
+            using std::end;
+            auto const iter
+              = first
+                + ::ket::gate::utility::index_with_qubits(
+                    fused_index_wo_qubits,
+                    ::ket::gate::utility::index_with_qubits(
+                      operated_index_wo_qubits, index,
+                      begin(unsorted_operated_qubits), end(unsorted_operated_qubits),
+                      begin(sorted_operated_qubits_with_sentinel), end(sorted_operated_qubits_with_sentinel)),
+                    begin(unsorted_fused_qubits), end(unsorted_fused_qubits),
+                    begin(sorted_fused_qubits_with_sentinel), end(sorted_fused_qubits_with_sentinel));
+            using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+            *iter *= ::ket::utility::minus_imaginary_unit<complex_type>();
+          },
+          control_qubit1, control_qubit2, control_qubit3, control_qubits...);
+      }
+
+      // Case 2: the first argument of qubits is ket::qubit<S, B>
       // sZ_i
       // sZ_1 (a_0 |0> + a_1 |1>) = a_0 |0> + i a_1 |1>
       template <typename RandomAccessIterator, typename StateInteger, typename BitInteger, std::size_t num_fused_qubits>
@@ -491,6 +769,268 @@ namespace ket
           qubit1, qubit2, qubit3, qubits...);
       }
 # else // KET_USE_BIT_MASKS_EXPLICITLY
+      // Case 1: the first argument of qubits is ket::control<ket::qubit<S, B>>
+      // sZ_i
+      // sZ_1 (a_0 |0> + a_1 |1>) = a_0 |0> + i a_1 |1>
+      template <typename RandomAccessIterator, typename StateInteger, std::size_t num_fused_qubits, typename BitInteger>
+      inline auto sqrt_pauli_z(
+        RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+        std::array<StateInteger, num_fused_qubits> const& fused_qubit_masks, std::array<StateInteger, num_fused_qubits + 1u> const& fused_index_masks,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit)
+      -> void
+      {
+        static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+        static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
+        assert(control_qubit < ::ket::make_qubit<StateInteger>(static_cast<BitInteger>(num_fused_qubits)));
+
+        constexpr auto num_operated_qubits = BitInteger{1u};
+
+        auto const qubit_mask = ::ket::utility::integer_exp2<StateInteger>(control_qubit);
+        auto const lower_bits_mask = qubit_mask - StateInteger{1u};
+        auto const upper_bits_mask = compl lower_bits_mask;
+
+        constexpr auto count = ::ket::utility::integer_exp2<StateInteger>(num_fused_qubits) >> num_operated_qubits;
+        for (auto index_wo_qubit = std::size_t{0u}; index_wo_qubit < count; ++index_wo_qubit)
+        {
+          // xxxxx0xxxxxx
+          auto const zero_index = ((index_wo_qubit bitand upper_bits_mask) << 1u) bitor (index_wo_qubit bitand lower_bits_mask);
+          // xxxxx1xxxxxx
+          auto const one_index = zero_index bitor qubit_mask;
+
+          using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+          using std::begin;
+          using std::end;
+          auto const one_iter
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  fused_index_wo_qubits, one_index,
+                  begin(fused_qubit_masks), end(fused_qubit_masks), begin(fused_index_masks), end(fused_index_masks));
+          *one_iter *= ::ket::utility::imaginary_unit<complex_type>();
+        }
+      }
+
+      // CsZ_{cc'} or C1sZ_{cc'}
+      // CsZ_{1,2} (a_{00} |00> + a_{01} |01> + a_{10} |10> + a_{11} |11>)
+      //   = a_{00} |00> + a_{01} |01> + a_{10} |10> + i a_{11} |11>
+      template <typename RandomAccessIterator, typename StateInteger, std::size_t num_fused_qubits, typename BitInteger>
+      inline auto sqrt_pauli_z(
+        RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+        std::array<StateInteger, num_fused_qubits> const& fused_qubit_masks, std::array<StateInteger, num_fused_qubits + 1u> const& fused_index_masks,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
+      -> void
+      {
+        static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+        static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
+        assert(control_qubit1 < ::ket::make_qubit<StateInteger>(static_cast<BitInteger>(num_fused_qubits)));
+        assert(control_qubit2 < ::ket::make_qubit<StateInteger>(static_cast<BitInteger>(num_fused_qubits)));
+        assert(control_qubit1 != control_qubit2);
+
+        constexpr auto num_operated_qubits = BitInteger{2u};
+
+        auto const minmax_qubits = std::minmax(control_qubit1, control_qubit2);
+        auto const control_qubit1_mask = ::ket::utility::integer_exp2<StateInteger>(control_qubit1);
+        auto const control_qubit2_mask = ::ket::utility::integer_exp2<StateInteger>(control_qubit2);
+        auto const lower_bits_mask = ::ket::utility::integer_exp2<StateInteger>(minmax_qubits.first) - StateInteger{1u};
+        auto const middle_bits_mask
+          = (::ket::utility::integer_exp2<StateInteger>(minmax_qubits.second - BitInteger{1u}) - StateInteger{1u})
+            xor lower_bits_mask;
+        auto const upper_bits_mask = compl (lower_bits_mask bitor middle_bits_mask);
+
+        constexpr auto count = ::ket::utility::integer_exp2<StateInteger>(num_fused_qubits) >> num_operated_qubits;
+        for (auto index_wo_qubits = std::size_t{0u}; index_wo_qubits < count; ++index_wo_qubits)
+        {
+          // xxx0_c1xxx0_c2xxx
+          auto const index00
+            = ((index_wo_qubits bitand upper_bits_mask) << 2u)
+              bitor ((index_wo_qubits bitand middle_bits_mask) << 1u)
+              bitor (index_wo_qubits bitand lower_bits_mask);
+          // xxx1_c1xxx1_c2xxx
+          auto const index11 = index00 bitor control_qubit1_mask bitor control_qubit2_mask;
+          using std::begin;
+          using std::end;
+          auto const iter11
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  fused_index_wo_qubits, index11,
+                  begin(fused_qubit_masks), end(fused_qubit_masks), begin(fused_index_masks), end(fused_index_masks));
+
+          using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+          *iter11 *= ::ket::utility::imaginary_unit<complex_type>();
+        }
+      }
+
+      // C...CsZ_{c0,c...c'} or CnsZ_{c0,c...c'}
+      template <typename RandomAccessIterator, typename StateInteger, std::size_t num_fused_qubits, typename BitInteger, typename... Qubits>
+      inline auto sqrt_pauli_z(
+        RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+        std::array<StateInteger, num_fused_qubits> const& fused_qubit_masks, std::array<StateInteger, num_fused_qubits + 1u> const& fused_index_masks,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit3,
+        ::ket::control<Qubits> const... control_qubits)
+      -> void
+      {
+        constexpr auto num_control_qubits = BitInteger{sizeof...(Qubits) + 3u};
+        constexpr auto num_operated_qubits = num_control_qubits;
+
+        ::ket::gate::fused::gate<num_fused_qubits>(
+          first,
+          [fused_index_wo_qubits, &fused_qubit_masks, &fused_index_masks](
+            auto const first, StateInteger const operated_index_wo_qubits,
+            std::array<StateInteger, num_operated_qubits> const& operated_qubit_masks,
+            std::array<StateInteger, num_operated_qubits + 1u> const& operated_index_masks)
+          {
+            // 0b11...11u
+            constexpr auto index = ((std::size_t{1u} << num_operated_qubits) - std::size_t{1u});
+
+            using std::begin;
+            using std::end;
+            auto const iter
+              = first
+                + ::ket::gate::utility::index_with_qubits(
+                    fused_index_wo_qubits,
+                    ::ket::gate::utility::index_with_qubits(
+                      operated_index_wo_qubits, index,
+                      begin(operated_qubit_masks), end(operated_qubit_masks), begin(operated_index_masks), end(operated_index_masks)),
+                    begin(fused_qubit_masks), end(fused_qubit_masks), begin(fused_index_masks), end(fused_index_masks));
+            using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+            *iter *= ::ket::utility::imaginary_unit<complex_type>();
+          },
+          control_qubit1, control_qubit2, control_qubit3, control_qubits...);
+      }
+
+      // sZ+_i
+      // sZ+_1 (a_0 |0> + a_1 |1>) = a_0 |0> - i a_1 |1>
+      template <typename RandomAccessIterator, typename StateInteger, std::size_t num_fused_qubits, typename BitInteger>
+      inline auto adj_sqrt_pauli_z(
+        RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+        std::array<StateInteger, num_fused_qubits> const& fused_qubit_masks, std::array<StateInteger, num_fused_qubits + 1u> const& fused_index_masks,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit)
+      -> void
+      {
+        static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+        static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
+        assert(control_qubit < ::ket::make_qubit<StateInteger>(static_cast<BitInteger>(num_fused_qubits)));
+
+        constexpr auto num_operated_qubits = BitInteger{1u};
+
+        auto const qubit_mask = ::ket::utility::integer_exp2<StateInteger>(control_qubit);
+        auto const lower_bits_mask = qubit_mask - StateInteger{1u};
+        auto const upper_bits_mask = compl lower_bits_mask;
+
+        constexpr auto count = ::ket::utility::integer_exp2<StateInteger>(num_fused_qubits) >> num_operated_qubits;
+        for (auto index_wo_qubit = std::size_t{0u}; index_wo_qubit < count; ++index_wo_qubit)
+        {
+          // xxxxx0xxxxxx
+          auto const zero_index = ((index_wo_qubit bitand upper_bits_mask) << 1u) bitor (index_wo_qubit bitand lower_bits_mask);
+          // xxxxx1xxxxxx
+          auto const one_index = zero_index bitor qubit_mask;
+
+          using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+          using std::begin;
+          using std::end;
+          auto const one_iter
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  fused_index_wo_qubits, one_index,
+                  begin(fused_qubit_masks), end(fused_qubit_masks), begin(fused_index_masks), end(fused_index_masks));
+          *one_iter *= ::ket::utility::minus_imaginary_unit<complex_type>();
+        }
+      }
+
+      // CsZ+_{cc'} or C1sZ+_{cc'}
+      // CsZ+_{1,2} (a_{00} |00> + a_{01} |01> + a_{10} |10> + a_{11} |11>)
+      //   = a_{00} |00> + a_{01} |01> + a_{10} |10> - i a_{11} |11>
+      template <typename RandomAccessIterator, typename StateInteger, std::size_t num_fused_qubits, typename BitInteger>
+      inline auto adj_sqrt_pauli_z(
+        RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+        std::array<StateInteger, num_fused_qubits> const& fused_qubit_masks, std::array<StateInteger, num_fused_qubits + 1u> const& fused_index_masks,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
+      -> void
+      {
+        static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+        static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
+        assert(control_qubit1 < ::ket::make_qubit<StateInteger>(static_cast<BitInteger>(num_fused_qubits)));
+        assert(control_qubit2 < ::ket::make_qubit<StateInteger>(static_cast<BitInteger>(num_fused_qubits)));
+        assert(control_qubit1 != control_qubit2);
+
+        constexpr auto num_operated_qubits = BitInteger{2u};
+
+        auto const minmax_qubits = std::minmax(control_qubit1, control_qubit2);
+        auto const control_qubit1_mask = ::ket::utility::integer_exp2<StateInteger>(control_qubit1);
+        auto const control_qubit2_mask = ::ket::utility::integer_exp2<StateInteger>(control_qubit2);
+        auto const lower_bits_mask = ::ket::utility::integer_exp2<StateInteger>(minmax_qubits.first) - StateInteger{1u};
+        auto const middle_bits_mask
+          = (::ket::utility::integer_exp2<StateInteger>(minmax_qubits.second - BitInteger{1u}) - StateInteger{1u})
+            xor lower_bits_mask;
+        auto const upper_bits_mask = compl (lower_bits_mask bitor middle_bits_mask);
+
+        constexpr auto count = ::ket::utility::integer_exp2<StateInteger>(num_fused_qubits) >> num_operated_qubits;
+        for (auto index_wo_qubits = std::size_t{0u}; index_wo_qubits < count; ++index_wo_qubits)
+        {
+          // xxx0_c1xxx0_c2xxx
+          auto const index00
+            = ((index_wo_qubits bitand upper_bits_mask) << 2u)
+              bitor ((index_wo_qubits bitand middle_bits_mask) << 1u)
+              bitor (index_wo_qubits bitand lower_bits_mask);
+          // xxx1_c1xxx1_c2xxx
+          auto const index11 = index00 bitor control_qubit1_mask bitor control_qubit2_mask;
+          using std::begin;
+          using std::end;
+          auto const iter11
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  fused_index_wo_qubits, index11,
+                  begin(fused_qubit_masks), end(fused_qubit_masks), begin(fused_index_masks), end(fused_index_masks));
+
+          using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+          *iter11 *= ::ket::utility::minus_imaginary_unit<complex_type>();
+        }
+      }
+
+      // C...CsZ+_{c0,c...c'} or CnsZ+_{c0,c...c'}
+      template <typename RandomAccessIterator, typename StateInteger, std::size_t num_fused_qubits, typename BitInteger, typename... Qubits>
+      inline auto adj_sqrt_pauli_z(
+        RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+        std::array<StateInteger, num_fused_qubits> const& fused_qubit_masks, std::array<StateInteger, num_fused_qubits + 1u> const& fused_index_masks,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit3,
+        ::ket::control<Qubits> const... control_qubits)
+      -> void
+      {
+        constexpr auto num_control_qubits = BitInteger{sizeof...(Qubits) + 3u};
+        constexpr auto num_operated_qubits = num_control_qubits;
+
+        ::ket::gate::fused::gate<num_fused_qubits>(
+          first,
+          [fused_index_wo_qubits, &fused_qubit_masks, &fused_index_masks](
+            auto const first, StateInteger const operated_index_wo_qubits,
+            std::array<StateInteger, num_operated_qubits> const& operated_qubit_masks,
+            std::array<StateInteger, num_operated_qubits + 1u> const& operated_index_masks)
+          {
+            // 0b11...11u
+            constexpr auto index = ((std::size_t{1u} << num_operated_qubits) - std::size_t{1u});
+
+            using std::begin;
+            using std::end;
+            auto const iter
+              = first
+                + ::ket::gate::utility::index_with_qubits(
+                    fused_index_wo_qubits,
+                    ::ket::gate::utility::index_with_qubits(
+                      operated_index_wo_qubits, index,
+                      begin(operated_qubit_masks), end(operated_qubit_masks), begin(operated_index_masks), end(operated_index_masks)),
+                    begin(fused_qubit_masks), end(fused_qubit_masks), begin(fused_index_masks), end(fused_index_masks));
+            using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+            *iter *= ::ket::utility::minus_imaginary_unit<complex_type>();
+          },
+          control_qubit1, control_qubit2, control_qubit3, control_qubits...);
+      }
+
+      // Case 2: the first argument of qubits is ket::qubit<S, B>
       // sZ_i
       // sZ_1 (a_0 |0> + a_1 |1>) = a_0 |0> + i a_1 |1>
       template <typename RandomAccessIterator, typename StateInteger, std::size_t num_fused_qubits, typename BitInteger>

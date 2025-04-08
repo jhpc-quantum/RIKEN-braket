@@ -21,10 +21,10 @@ namespace bra
     {
      private:
       ::bra::real_type phase_;
-      ::bra::qubit_type qubit_;
+      ::bra::control_qubit_type control_qubit_;
 
      public:
-      explicit fused_adj_u1(::bra::real_type const phase, ::bra::qubit_type const qubit);
+      explicit fused_adj_u1(::bra::real_type const phase, ::bra::control_qubit_type const control_qubit);
 
       ~fused_adj_u1() = default;
       fused_adj_u1(fused_adj_u1 const&) = delete;

@@ -19,8 +19,8 @@ namespace bra
   namespace fused_gate
   {
     template <typename Iterator>
-    fused_adj_controlled_u1<Iterator>::fused_adj_controlled_u1(::bra::real_type const phase, ::bra::qubit_type const target_qubit, ::bra::control_qubit_type const control_qubit)
-      : ::bra::fused_gate::fused_gate<Iterator>{}, phase_{phase}, target_qubit_{target_qubit}, control_qubit_{control_qubit}
+    fused_adj_controlled_u1<Iterator>::fused_adj_controlled_u1(::bra::real_type const phase, ::bra::control_qubit_type const control_qubit1, ::bra::control_qubit_type const control_qubit2)
+      : ::bra::fused_gate::fused_gate<Iterator>{}, phase_{phase}, control_qubit1_{control_qubit1}, control_qubit2_{control_qubit2}
     { }
 
 #ifndef KET_USE_BIT_MASKS_EXPLICITLY
@@ -53,7 +53,7 @@ namespace bra
       Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,\
       std::array< ::bra::qubit_type, num_fused_qubits > const& unsorted_fused_qubits,\
       std::array< ::bra::qubit_type, num_fused_qubits + 1u > const& sorted_fused_qubits_with_sentinel) const -> void\
-    { ::ket::gate::fused::adj_phase_shift(first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel, phase_, target_qubit_, control_qubit_); }
+    { ::ket::gate::fused::adj_phase_shift(first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel, phase_, control_qubit1_, control_qubit2_); }
 #else // KET_USE_BIT_MASKS_EXPLICITLY
 # define DO_CALL(z, num_fused_qubits, _) \
     template <typename Iterator>\
@@ -61,7 +61,7 @@ namespace bra
       Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,\
       std::array< ::bra::state_integer_type, num_fused_qubits > const& qubit_masks,\
       std::array< ::bra::state_integer_type, num_fused_qubits + 1u > const& index_masks) const -> void\
-    { ::ket::gate::fused::adj_phase_shift(first, fused_index_wo_qubits, qubit_masks, index_masks, phase_, target_qubit_, control_qubit_); }
+    { ::ket::gate::fused::adj_phase_shift(first, fused_index_wo_qubits, qubit_masks, index_masks, phase_, control_qubit1_, control_qubit2_); }
 #endif // KET_USE_BIT_MASKS_EXPLICITLY
 BOOST_PP_REPEAT_FROM_TO(2, BOOST_PP_INC(BRA_MAX_NUM_FUSED_QUBITS), DO_CALL, nil)
 #undef DO_CALL

@@ -21,12 +21,11 @@ namespace bra
     {
      private:
       ::bra::complex_type phase_coefficient_;
-      ::bra::qubit_type target_qubit_;
       std::vector< ::bra::control_qubit_type > control_qubits_;
 
      public:
-      explicit fused_multi_controlled_phase_shift(::bra::complex_type const& phase_coefficient, ::bra::qubit_type const target_qubit, std::vector< ::bra::control_qubit_type > const& control_qubits);
-      explicit fused_multi_controlled_phase_shift(::bra::complex_type const& phase_coefficient, ::bra::qubit_type const target_qubit, std::vector< ::bra::control_qubit_type >&& control_qubits);
+      explicit fused_multi_controlled_phase_shift(::bra::complex_type const& phase_coefficient, std::vector< ::bra::control_qubit_type > const& control_qubits);
+      explicit fused_multi_controlled_phase_shift(::bra::complex_type const& phase_coefficient, std::vector< ::bra::control_qubit_type >&& control_qubits);
 
       ~fused_multi_controlled_phase_shift() = default;
       fused_multi_controlled_phase_shift(fused_multi_controlled_phase_shift const&) = delete;

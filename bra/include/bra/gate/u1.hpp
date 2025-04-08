@@ -16,17 +16,17 @@ namespace bra
       : public ::bra::gate::gate
     {
      public:
-      using qubit_type = ::bra::state::qubit_type;
+      using control_qubit_type = ::bra::state::control_qubit_type;
       using real_type = ::bra::state::real_type;
 
      private:
       real_type phase_;
-      qubit_type qubit_;
+      control_qubit_type control_qubit_;
 
       static std::string const name_;
 
      public:
-      u1(real_type const phase, qubit_type const qubit);
+      u1(real_type const phase, control_qubit_type const control_qubit);
 
       ~u1() = default;
       u1(u1 const&) = delete;

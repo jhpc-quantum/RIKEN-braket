@@ -1621,6 +1621,37 @@ namespace ket
         {
           template <
             typename ParallelPolicy, typename LocalState, typename Allocator,
+            typename Function, typename... ControlQubits>
+          static auto call(
+            ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
+            ParallelPolicy const parallel_policy, LocalState&& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const& permutation,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Function&& function, ControlQubits const... control_qubits)
+          -> void
+          {
+            using permutated_control_qubit_type = ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >;
+            std::array<permutated_control_qubit_type, 0u> unit_permutated_control_qubits{};
+            std::array<permutated_control_qubit_type, 0u> local_permutated_control_qubits{};
+
+            auto const present_rank = communicator.rank(environment);
+            auto const present_rank_in_unit = ::ket::mpi::utility::policy::rank_in_unit(mpi_policy, present_rank);
+            using permutated_qubit_type = ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >;
+            auto const least_unit_permutated_qubit
+              = permutated_qubit_type{::ket::mpi::utility::policy::num_local_qubits(mpi_policy, local_state, present_rank_in_unit)};
+            auto const least_global_permutated_qubit = least_unit_permutated_qubit + mpi_policy.num_unit_qubits();
+
+            call_impl(
+              mpi_policy, parallel_policy, std::forward<LocalState>(local_state), permutation,
+              present_rank, present_rank_in_unit,
+              least_unit_permutated_qubit, least_global_permutated_qubit,
+              std::forward<Function>(function),
+              unit_permutated_control_qubits, local_permutated_control_qubits,
+              control_qubits...);
+          }
+
+          template <
+            typename ParallelPolicy, typename LocalState, typename Allocator,
             typename Function0, typename Function1, typename... ControlQubits>
           static auto call(
             ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
@@ -1691,6 +1722,129 @@ namespace ket
           }
 
          private:
+          template <
+            typename ParallelPolicy, typename LocalState, typename Allocator,
+            typename Function, std::size_t num_unit_control_qubits, std::size_t num_local_control_qubits,
+            typename... ControlQubits>
+          static auto call_impl(
+            ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
+            ParallelPolicy const parallel_policy, LocalState&& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const& permutation,
+            yampi::rank const present_rank, yampi::rank const present_rank_in_unit,
+            ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const least_unit_permutated_qubit,
+            ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const least_global_permutated_qubit,
+            Function&& function,
+            std::array< ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >, num_unit_control_qubits > const& unit_permutated_control_qubits,
+            std::array< ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >, num_local_control_qubits > const& local_permutated_control_qubits,
+            ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit,
+            ControlQubits const... control_qubits)
+          -> void
+          {
+            auto const permutated_control_qubit = permutation[control_qubit];
+
+            if (permutated_control_qubit < least_unit_permutated_qubit)
+            {
+              using permutated_control_qubit_type = ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >;
+              std::array<permutated_control_qubit_type, num_local_control_qubits + 1u> new_local_permutated_control_qubits{};
+              using std::begin;
+              using std::end;
+              std::copy(
+                begin(local_permutated_control_qubits), end(local_permutated_control_qubits),
+                begin(new_local_permutated_control_qubits));
+              new_local_permutated_control_qubits.back() = permutated_control_qubit;
+
+              call_impl(
+                mpi_policy, parallel_policy, std::forward<LocalState>(local_state), permutation,
+                present_rank, present_rank_in_unit,
+                least_unit_permutated_qubit, least_global_permutated_qubit,
+                std::forward<Function>(function),
+                unit_permutated_control_qubits, new_local_permutated_control_qubits,
+                control_qubits...);
+            }
+            else if (permutated_control_qubit < least_global_permutated_qubit)
+            {
+              using permutated_control_qubit_type = ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >;
+              std::array<permutated_control_qubit_type, num_unit_control_qubits + 1u> new_unit_permutated_control_qubits{};
+              using std::begin;
+              using std::end;
+              std::copy(
+                begin(unit_permutated_control_qubits), end(unit_permutated_control_qubits),
+                begin(new_unit_permutated_control_qubits));
+              new_unit_permutated_control_qubits.back() = permutated_control_qubit;
+
+              call_impl(
+                mpi_policy, parallel_policy, std::forward<LocalState>(local_state), permutation,
+                present_rank, present_rank_in_unit,
+                least_unit_permutated_qubit, least_global_permutated_qubit,
+                std::forward<Function>(function),
+                new_unit_permutated_control_qubits, local_permutated_control_qubits,
+                control_qubits...);
+            }
+            else
+            {
+              constexpr auto zero_state_integer = StateInteger{0u};
+              constexpr auto one_state_integer = StateInteger{1u};
+
+              auto const mask = one_state_integer << (permutated_control_qubit - least_global_permutated_qubit);
+
+              if ((::ket::mpi::utility::policy::global_qubit_value(mpi_policy, present_rank) bitand mask) != zero_state_integer)
+                call_impl(
+                  mpi_policy, parallel_policy, std::forward<LocalState>(local_state), permutation,
+                  present_rank, present_rank_in_unit,
+                  least_unit_permutated_qubit, least_global_permutated_qubit,
+                  std::forward<Function>(function),
+                  unit_permutated_control_qubits, local_permutated_control_qubits,
+                  control_qubits...);
+            }
+          }
+
+          template <
+            typename ParallelPolicy, typename LocalState, typename Allocator,
+            typename Function, std::size_t num_unit_control_qubits, std::size_t num_local_control_qubits>
+          static auto call_impl(
+            ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
+            ParallelPolicy const parallel_policy, LocalState&& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const& permutation,
+            yampi::rank const present_rank, yampi::rank const present_rank_in_unit,
+            ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const least_unit_permutated_qubit,
+            ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const least_global_permutated_qubit,
+            Function&& function,
+            std::array< ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >, num_unit_control_qubits > const& unit_permutated_control_qubits,
+            std::array< ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >, num_local_control_qubits > const& local_permutated_control_qubits)
+          -> void
+          {
+            constexpr auto zero_state_integer = StateInteger{0u};
+            constexpr auto one_state_integer = StateInteger{1u};
+
+            auto const num_data_blocks = ::ket::mpi::utility::policy::num_data_blocks(mpi_policy, present_rank_in_unit);
+            auto const data_block_size = ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, present_rank_in_unit);
+
+            auto const last_local_qubit_value = one_state_integer << least_unit_permutated_qubit;
+
+            for (auto data_block_index = StateInteger{0u}; data_block_index < num_data_blocks; ++data_block_index)
+            {
+              auto const unit_qubit_value
+                = ::ket::mpi::utility::policy::unit_qubit_value(mpi_policy, data_block_index, present_rank_in_unit);
+
+              using permutated_control_qubit_type = ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > >;
+              using std::begin;
+              using std::end;
+              if (std::any_of(
+                    begin(unit_permutated_control_qubits), end(unit_permutated_control_qubits),
+                    [unit_qubit_value, least_unit_permutated_qubit](permutated_control_qubit_type const& permutated_control_qubit)
+                    {
+                      return
+                        (unit_qubit_value bitand (one_state_integer << (permutated_control_qubit - least_unit_permutated_qubit)))
+                          == zero_state_integer;
+                    }))
+                continue;
+
+              ::ket::mpi::utility::detail::for_each_in_diagonal_loop(
+                parallel_policy, std::forward<LocalState>(local_state), data_block_index, data_block_size, last_local_qubit_value, local_permutated_control_qubits,
+                std::forward<Function>(function));
+            }
+          }
+
           template <
             typename ParallelPolicy, typename LocalState, typename Allocator,
             typename Function0, typename Function1,

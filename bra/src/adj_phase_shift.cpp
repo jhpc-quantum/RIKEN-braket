@@ -4,6 +4,7 @@
 #include <sstream>
 
 #include <ket/qubit_io.hpp>
+#include <ket/control_io.hpp>
 
 #include <bra/gate/gate.hpp>
 #include <bra/gate/adj_phase_shift.hpp>
@@ -17,13 +18,13 @@ namespace bra
     std::string const adj_phase_shift::name_ = "R+";
 
     adj_phase_shift::adj_phase_shift(
-      int const phase_exponent, complex_type const& phase_coefficient, qubit_type const qubit)
+      int const phase_exponent, complex_type const& phase_coefficient, control_qubit_type const control_qubit)
       : ::bra::gate::gate{},
-        phase_exponent_{phase_exponent}, phase_coefficient_{phase_coefficient}, qubit_{qubit}
+        phase_exponent_{phase_exponent}, phase_coefficient_{phase_coefficient}, control_qubit_{control_qubit}
     { }
 
     ::bra::state& adj_phase_shift::do_apply(::bra::state& state) const
-    { return state.adj_phase_shift(phase_coefficient_, qubit_); }
+    { return state.adj_phase_shift(phase_coefficient_, control_qubit_); }
 
     std::string const& adj_phase_shift::do_name() const { return name_; }
     std::string adj_phase_shift::do_representation(
@@ -31,7 +32,7 @@ namespace bra
     {
       repr_stream
         << std::right
-        << std::setw(parameter_width) << qubit_
+        << std::setw(parameter_width) << control_qubit_
         << std::setw(parameter_width) << phase_exponent_;
       return repr_stream.str();
     }

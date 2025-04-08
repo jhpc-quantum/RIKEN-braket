@@ -4,6 +4,7 @@
 #include <sstream>
 
 #include <ket/qubit_io.hpp>
+#include <ket/control_io.hpp>
 
 #include <bra/gate/gate.hpp>
 #include <bra/gate/pauli_z.hpp>
@@ -16,12 +17,12 @@ namespace bra
   {
     std::string const pauli_z::name_ = "Z";
 
-    pauli_z::pauli_z(qubit_type const qubit)
-      : ::bra::gate::gate{}, qubit_{qubit}
+    pauli_z::pauli_z(control_qubit_type const control_qubit)
+      : ::bra::gate::gate{}, control_qubit_{control_qubit}
     { }
 
     ::bra::state& pauli_z::do_apply(::bra::state& state) const
-    { return state.pauli_z(qubit_); }
+    { return state.pauli_z(control_qubit_); }
 
     std::string const& pauli_z::do_name() const { return name_; }
     std::string pauli_z::do_representation(
@@ -29,7 +30,7 @@ namespace bra
     {
       repr_stream
         << std::right
-        << std::setw(parameter_width) << qubit_;
+        << std::setw(parameter_width) << control_qubit_;
       return repr_stream.str();
     }
   } // namespace gate

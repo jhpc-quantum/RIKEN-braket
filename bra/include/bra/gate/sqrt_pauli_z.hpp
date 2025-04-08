@@ -16,15 +16,15 @@ namespace bra
       : public ::bra::gate::gate
     {
      public:
-      using qubit_type = ::bra::state::qubit_type;
+      using control_qubit_type = ::bra::state::control_qubit_type;
 
      private:
-      qubit_type qubit_;
+      control_qubit_type control_qubit_;
 
       static std::string const name_;
 
      public:
-      explicit sqrt_pauli_z(qubit_type const qubit);
+      explicit sqrt_pauli_z(control_qubit_type const control_qubit);
 
       ~sqrt_pauli_z() = default;
       sqrt_pauli_z(sqrt_pauli_z const&) = delete;

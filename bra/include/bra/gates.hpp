@@ -240,26 +240,35 @@ namespace bra
 # endif
 
     ::bra::qubit_type read_target(columns_type const& columns) const;
+    ::bra::control_qubit_type read_control(columns_type const& columns) const;
     std::tuple< ::bra::qubit_type, ::bra::qubit_type > read_2targets(columns_type const& columns) const;
+    std::tuple< ::bra::control_qubit_type, ::bra::control_qubit_type > read_2controls(columns_type const& columns) const;
     void read_multi_targets(columns_type const& columns, std::vector< ::bra::qubit_type >& targets) const;
+    void read_multi_controls(columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const;
     std::tuple< ::bra::qubit_type, ::bra::real_type > read_target_phase(columns_type const& columns) const;
+    std::tuple< ::bra::control_qubit_type, ::bra::real_type > read_control_phase(columns_type const& columns) const;
     std::tuple< ::bra::qubit_type, ::bra::real_type, ::bra::real_type > read_target_2phases(columns_type const& columns) const;
     std::tuple< ::bra::qubit_type, ::bra::real_type, ::bra::real_type, ::bra::real_type > read_target_3phases(columns_type const& columns) const;
     std::tuple< ::bra::qubit_type, int > read_target_phaseexp(columns_type const& columns) const;
+    std::tuple< ::bra::control_qubit_type, int > read_control_phaseexp(columns_type const& columns) const;
     std::tuple< ::bra::qubit_type, ::bra::qubit_type, ::bra::real_type > read_2targets_phase(columns_type const& columns) const;
     ::bra::real_type read_multi_targets_phase(columns_type const& columns, std::vector< ::bra::qubit_type >& targets) const;
     std::tuple< ::bra::control_qubit_type, ::bra::qubit_type > read_control_target(columns_type const& columns) const;
     std::tuple< ::bra::control_qubit_type, ::bra::qubit_type, int > read_control_target_phaseexp(columns_type const& columns) const;
+    std::tuple< ::bra::control_qubit_type, ::bra::control_qubit_type, int > read_2controls_phaseexp(columns_type const& columns) const;
     std::tuple< ::bra::control_qubit_type, ::bra::control_qubit_type, ::bra::qubit_type > read_2controls_target(columns_type const& columns) const;
-    ::bra::qubit_type read_multi_controls_target(columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const;
+    ::bra::real_type read_multi_controls_phase(columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const;
     std::tuple< ::bra::qubit_type, ::bra::qubit_type > read_multi_controls_2targets(columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const;
+    ::bra::qubit_type read_multi_controls_target(columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const;
     void read_multi_controls_multi_targets(columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls, std::vector< ::bra::qubit_type >& targets) const;
     std::tuple< ::bra::control_qubit_type, ::bra::qubit_type, ::bra::real_type > read_control_target_phase(columns_type const& columns) const;
+    std::tuple< ::bra::control_qubit_type, ::bra::control_qubit_type, ::bra::real_type > read_2controls_phase(columns_type const& columns) const;
     std::tuple< ::bra::qubit_type, ::bra::real_type > read_multi_controls_target_phase(columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const;
     std::tuple< ::bra::control_qubit_type, ::bra::qubit_type, ::bra::real_type, ::bra::real_type > read_control_target_2phases(columns_type const& columns) const;
     std::tuple< ::bra::qubit_type, ::bra::real_type, ::bra::real_type > read_multi_controls_target_2phases(columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const;
     std::tuple< ::bra::control_qubit_type, ::bra::qubit_type, ::bra::real_type, ::bra::real_type, ::bra::real_type > read_control_target_3phases(columns_type const& columns) const;
     std::tuple< ::bra::qubit_type, ::bra::real_type, ::bra::real_type, ::bra::real_type > read_multi_controls_target_3phases(columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const;
+    int read_multi_controls_phaseexp(columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const;
     std::tuple< ::bra::qubit_type, int > read_multi_controls_target_phaseexp(columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const;
     ::bra::real_type read_multi_controls_multi_targets_phase(columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls, std::vector< ::bra::qubit_type >& targets) const;
     std::tuple< ::bra::qubit_type, ::bra::qubit_type, ::bra::real_type > read_multi_controls_2targets_phase(columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const;
@@ -274,6 +283,7 @@ namespace bra
     void add_begin_fusion(columns_type const& columns);
 
     void add_i(columns_type const& columns);
+    void add_ic(columns_type const& columns);
     void add_ii(columns_type const& columns);
     void add_is(columns_type const& columns, std::string const& mnemonic);
     void add_in(columns_type const& columns, std::string const& mnemonic);
@@ -309,8 +319,11 @@ namespace bra
     void add_t(columns_type const& columns);
     void add_adj_t(columns_type const& columns);
     void add_u1(columns_type const& columns);
+    void add_adj_u1(columns_type const& columns);
     void add_u2(columns_type const& columns);
+    void add_adj_u2(columns_type const& columns);
     void add_u3(columns_type const& columns);
+    void add_adj_u3(columns_type const& columns);
     void add_r(columns_type const& columns);
     void add_adj_r(columns_type const& columns);
     void add_rotx(columns_type const& columns);
@@ -318,20 +331,35 @@ namespace bra
     void add_roty(columns_type const& columns);
     void add_adj_roty(columns_type const& columns);
     void add_u(columns_type const& columns);
+    void add_adj_u(columns_type const& columns);
     void add_v(columns_type const& columns);
+    void add_adj_v(columns_type const& columns);
     void add_ex(columns_type const& columns);
+    void add_adj_ex(columns_type const& columns);
     void add_exx(columns_type const& columns);
+    void add_adj_exx(columns_type const& columns);
     void add_exs(columns_type const& columns, std::string const& mnemonic);
+    void add_adj_exs(columns_type const& columns, std::string const& mnemonic);
     void add_exn(columns_type const& columns, std::string const& mnemonic);
+    void add_adj_exn(columns_type const& columns, std::string const& mnemonic);
     void add_ey(columns_type const& columns);
+    void add_adj_ey(columns_type const& columns);
     void add_eyy(columns_type const& columns);
+    void add_adj_eyy(columns_type const& columns);
     void add_eys(columns_type const& columns, std::string const& mnemonic);
+    void add_adj_eys(columns_type const& columns, std::string const& mnemonic);
     void add_eyn(columns_type const& columns, std::string const& mnemonic);
+    void add_adj_eyn(columns_type const& columns, std::string const& mnemonic);
     void add_ez(columns_type const& columns);
+    void add_adj_ez(columns_type const& columns);
     void add_ezz(columns_type const& columns);
+    void add_adj_ezz(columns_type const& columns);
     void add_ezs(columns_type const& columns, std::string const& mnemonic);
+    void add_adj_ezs(columns_type const& columns, std::string const& mnemonic);
     void add_ezn(columns_type const& columns, std::string const& mnemonic);
+    void add_adj_ezn(columns_type const& columns, std::string const& mnemonic);
     void add_eswap(columns_type const& columns);
+    void add_adj_eswap(columns_type const& columns);
     void add_toffoli(columns_type const& columns);
     void add_m(columns_type const& columns);
     void add_shor_box(columns_type const& columns);
@@ -341,6 +369,7 @@ namespace bra
 
     void interpret_controlled_gates(columns_type const& columns, std::string const& mnemonic);
     void add_ci(columns_type const& columns, int const num_control_qubits);
+    void add_cic(columns_type const& columns, int const num_control_qubits);
     void add_cis(columns_type const& columns, int const num_control_qubits, std::string const& noncontrol_mnemonic);
     void add_cin(
       columns_type const& columns, int const num_control_qubits,
@@ -368,32 +397,51 @@ namespace bra
     void add_ct(columns_type const& columns, int const num_control_qubits);
     void add_adj_ct(columns_type const& columns, int const num_control_qubits);
     void add_cu1(columns_type const& columns, int const num_control_qubits);
+    void add_adj_cu1(columns_type const& columns, int const num_control_qubits);
     void add_cu2(columns_type const& columns, int const num_control_qubits);
+    void add_adj_cu2(columns_type const& columns, int const num_control_qubits);
     void add_cu3(columns_type const& columns, int const num_control_qubits);
+    void add_adj_cu3(columns_type const& columns, int const num_control_qubits);
     void add_cr(columns_type const& columns, int const num_control_qubits);
     void add_adj_cr(columns_type const& columns, int const num_control_qubits);
     void add_crotx(columns_type const& columns, int const num_control_qubits);
     void add_adj_crotx(columns_type const& columns, int const num_control_qubits);
     void add_croty(columns_type const& columns, int const num_control_qubits);
     void add_adj_croty(columns_type const& columns, int const num_control_qubits);
-    void add_cu(columns_type const& columns, int const num_control_qubits);
     void add_cv(columns_type const& columns, int const num_control_qubits);
+    void add_adj_cv(columns_type const& columns, int const num_control_qubits);
     void add_cex(columns_type const& columns, int const num_control_qubits);
+    void add_adj_cex(columns_type const& columns, int const num_control_qubits);
     void add_cexs(columns_type const& columns, int const num_control_qubits, std::string const& noncontrol_mnemonic);
+    void add_adj_cexs(columns_type const& columns, int const num_control_qubits, std::string const& noncontrol_mnemonic);
     void add_cexn(
       columns_type const& columns, int const num_control_qubits,
       std::string const& noncontrol_mnemonic, std::string const& mnemonic);
+    void add_adj_cexn(
+      columns_type const& columns, int const num_control_qubits,
+      std::string const& noncontrol_mnemonic, std::string const& mnemonic);
     void add_cey(columns_type const& columns, int const num_control_qubits);
+    void add_adj_cey(columns_type const& columns, int const num_control_qubits);
     void add_ceys(columns_type const& columns, int const num_control_qubits, std::string const& noncontrol_mnemonic);
+    void add_adj_ceys(columns_type const& columns, int const num_control_qubits, std::string const& noncontrol_mnemonic);
     void add_ceyn(
       columns_type const& columns, int const num_control_qubits,
       std::string const& noncontrol_mnemonic, std::string const& mnemonic);
+    void add_adj_ceyn(
+      columns_type const& columns, int const num_control_qubits,
+      std::string const& noncontrol_mnemonic, std::string const& mnemonic);
     void add_cez(columns_type const& columns, int const num_control_qubits);
+    void add_adj_cez(columns_type const& columns, int const num_control_qubits);
     void add_cezs(columns_type const& columns, int const num_control_qubits, std::string const& noncontrol_mnemonic);
+    void add_adj_cezs(columns_type const& columns, int const num_control_qubits, std::string const& noncontrol_mnemonic);
     void add_cezn(
       columns_type const& columns, int const num_control_qubits,
       std::string const& noncontrol_mnemonic, std::string const& mnemonic);
+    void add_adj_cezn(
+      columns_type const& columns, int const num_control_qubits,
+      std::string const& noncontrol_mnemonic, std::string const& mnemonic);
     void add_ceswap(columns_type const& columns, int const num_control_qubits);
+    void add_adj_ceswap(columns_type const& columns, int const num_control_qubits);
     void add_csx(columns_type const& columns, int const num_control_qubits);
     void add_adj_csx(columns_type const& columns, int const num_control_qubits);
     void add_csy(columns_type const& columns, int const num_control_qubits);

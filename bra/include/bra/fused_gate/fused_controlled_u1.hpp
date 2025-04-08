@@ -21,11 +21,11 @@ namespace bra
     {
      private:
       ::bra::real_type phase_;
-      ::bra::qubit_type target_qubit_;
-      ::bra::control_qubit_type control_qubit_;
+      ::bra::control_qubit_type control_qubit1_;
+      ::bra::control_qubit_type control_qubit2_;
 
      public:
-      explicit fused_controlled_u1(::bra::real_type const phase, ::bra::qubit_type const target_qubit, ::bra::control_qubit_type const control_qubit);
+      explicit fused_controlled_u1(::bra::real_type const phase, ::bra::control_qubit_type const control_qubit1, ::bra::control_qubit_type const control_qubit2);
 
       ~fused_controlled_u1() = default;
       fused_controlled_u1(fused_controlled_u1 const&) = delete;

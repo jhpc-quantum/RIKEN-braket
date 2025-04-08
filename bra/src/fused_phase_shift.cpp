@@ -19,8 +19,8 @@ namespace bra
   namespace fused_gate
   {
     template <typename Iterator>
-    fused_phase_shift<Iterator>::fused_phase_shift(::bra::complex_type const& phase_coefficient, ::bra::qubit_type const qubit)
-      : ::bra::fused_gate::fused_gate<Iterator>{}, phase_coefficient_{phase_coefficient}, qubit_{qubit}
+    fused_phase_shift<Iterator>::fused_phase_shift(::bra::complex_type const& phase_coefficient, ::bra::control_qubit_type const control_qubit)
+      : ::bra::fused_gate::fused_gate<Iterator>{}, phase_coefficient_{phase_coefficient}, control_qubit_{control_qubit}
     { }
 
 #ifndef BRA_MAX_NUM_FUSED_QUBITS
@@ -37,7 +37,7 @@ namespace bra
       Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,\
       std::array< ::bra::qubit_type, num_fused_qubits > const& unsorted_fused_qubits,\
       std::array< ::bra::qubit_type, num_fused_qubits + 1u > const& sorted_fused_qubits_with_sentinel) const -> void\
-    { ::ket::gate::fused::phase_shift_coeff(first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel, phase_coefficient_, qubit_); }
+    { ::ket::gate::fused::phase_shift_coeff(first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel, phase_coefficient_, control_qubit_); }
 #else // KET_USE_BIT_MASKS_EXPLICITLY
 # define DO_CALL(z, num_fused_qubits, _) \
     template <typename Iterator>\
@@ -45,7 +45,7 @@ namespace bra
       Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,\
       std::array< ::bra::state_integer_type, num_fused_qubits > const& qubit_masks,\
       std::array< ::bra::state_integer_type, num_fused_qubits + 1u > const& index_masks) const -> void\
-    { ::ket::gate::fused::phase_shift_coeff(first, fused_index_wo_qubits, qubit_masks, index_masks, phase_coefficient_, qubit_); }
+    { ::ket::gate::fused::phase_shift_coeff(first, fused_index_wo_qubits, qubit_masks, index_masks, phase_coefficient_, control_qubit_); }
 #endif // KET_USE_BIT_MASKS_EXPLICITLY
 BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_FUSED_QUBITS), DO_CALL, nil)
 #undef DO_CALL

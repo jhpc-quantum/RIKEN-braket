@@ -20,11 +20,11 @@ namespace bra
       : public ::bra::fused_gate::fused_gate<Iterator>
     {
      private:
-      ::bra::qubit_type target_qubit_;
-      ::bra::control_qubit_type control_qubit_;
+      ::bra::control_qubit_type control_qubit1_;
+      ::bra::control_qubit_type control_qubit2_;
 
      public:
-      explicit fused_adj_controlled_sqrt_pauli_z(::bra::qubit_type const target_qubit, ::bra::control_qubit_type const control_qubit);
+      explicit fused_adj_controlled_sqrt_pauli_z(::bra::control_qubit_type const control_qubit1, ::bra::control_qubit_type const control_qubit2);
 
       ~fused_adj_controlled_sqrt_pauli_z() = default;
       fused_adj_controlled_sqrt_pauli_z(fused_adj_controlled_sqrt_pauli_z const&) = delete;

@@ -4,6 +4,7 @@
 #include <sstream>
 
 #include <ket/qubit_io.hpp>
+#include <ket/control_io.hpp>
 
 #include <bra/gate/gate.hpp>
 #include <bra/gate/adj_t_gate.hpp>
@@ -16,13 +17,13 @@ namespace bra
   {
     std::string const adj_t_gate::name_ = "T+";
 
-    adj_t_gate::adj_t_gate(complex_type const& phase_coefficient, qubit_type const qubit)
+    adj_t_gate::adj_t_gate(complex_type const& phase_coefficient, control_qubit_type const control_qubit)
       : ::bra::gate::gate{},
-        phase_coefficient_{phase_coefficient}, qubit_{qubit}
+        phase_coefficient_{phase_coefficient}, control_qubit_{control_qubit}
     { }
 
     ::bra::state& adj_t_gate::do_apply(::bra::state& state) const
-    { return state.adj_phase_shift(phase_coefficient_, qubit_); }
+    { return state.adj_phase_shift(phase_coefficient_, control_qubit_); }
 
     std::string const& adj_t_gate::do_name() const { return name_; }
     std::string adj_t_gate::do_representation(
@@ -30,7 +31,7 @@ namespace bra
     {
       repr_stream
         << std::right
-        << std::setw(parameter_width) << qubit_;
+        << std::setw(parameter_width) << control_qubit_;
       return repr_stream.str();
     }
   } // namespace gate
