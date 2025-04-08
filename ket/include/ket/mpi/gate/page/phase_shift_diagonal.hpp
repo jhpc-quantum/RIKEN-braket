@@ -20,6 +20,7 @@
 # include <ket/mpi/page/is_on_page.hpp>
 # include <ket/mpi/gate/page/detail/one_page_qubit_gate.hpp>
 # include <ket/mpi/gate/page/detail/two_page_qubits_gate.hpp>
+# include <ket/mpi/gate/page/detail/cphase_shift_coeff_p_diagonal.hpp>
 # include <ket/mpi/gate/page/detail/cphase_shift_coeff_tp_diagonal.hpp>
 # include <ket/mpi/gate/page/detail/cphase_shift_coeff_cp_diagonal.hpp>
 
@@ -32,6 +33,65 @@ namespace ket
     {
       namespace page
       {
+        // Case 1: the first argument of qubits is ket::control<ket::qubit<S, B>>
+        template <
+          typename ParallelPolicy,
+          typename RandomAccessRange, typename Complex, typename StateInteger, typename BitInteger>
+        inline auto phase_shift_coeff(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          Complex const& phase_coefficient,
+          ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
+            parallel_policy, local_state, permutated_control_qubit,
+            [phase_coefficient](auto const, auto const one_first, StateInteger const index, int const)
+            { *(one_first + index) *= phase_coefficient; });
+        }
+
+        // cphase_shift_coeff_2p: both of control qubits of CPhase(coeff) are on page
+        // CU1_{cc'}(s) or C1U1_{cc'}(s)
+        // CU1_{1,2}(s) (a_{00} |00> + a_{01} |01> + a_{10} |10> + a{11} |11>)
+        //   = a_{00} |00> + a_{01} |01> + a_{10} |10> + e^{is} a_{11} |11>
+        template <
+          typename ParallelPolicy,
+          typename RandomAccessRange, typename Complex, typename StateInteger, typename BitInteger>
+        inline auto cphase_shift_coeff_2p(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state, Complex const& phase_coefficient,
+          ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit1,
+          ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit2)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::page::detail::two_page_qubits_gate<0u>(
+            parallel_policy, local_state, permutated_control_qubit1, permutated_control_qubit2,
+            [&phase_coefficient](auto const, auto const, auto const, auto const first_11, StateInteger const index, int const)
+            { *(first_11 + index) *= phase_coefficient; });
+        }
+
+        // cphase_shift_coeff_p: only one control qubit is on page
+        // CU1_{cc'}(s) or C1U1_{cc'}(s)
+        // CU1_{1,2}(s) (a_{00} |00> + a_{01} |01> + a_{10} |10> + a{11} |11>)
+        //   = a_{00} |00> + a_{01} |01> + a_{10} |10> + e^{is} a_{11} |11>
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename Complex, typename StateInteger, typename BitInteger>
+        inline auto cphase_shift_coeff_p(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          Complex const& phase_coefficient,
+          ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const page_permutated_control_qubit,
+          ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const nonpage_permutated_control_qubit,
+          yampi::rank const rank)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::page::detail::cphase_shift_coeff_p(
+            mpi_policy, parallel_policy, local_state,
+            phase_coefficient, page_permutated_control_qubit, nonpage_permutated_control_qubit, rank);
+        }
+
+        // Case 2: the first argument of qubits is ket::qubit<S, B>
         template <
           typename ParallelPolicy,
           typename RandomAccessRange, typename Complex, typename StateInteger, typename BitInteger>
