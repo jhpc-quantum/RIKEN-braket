@@ -16,15 +16,15 @@ namespace bra
       : public ::bra::gate::gate
     {
      public:
-      using qubit_type = ::bra::state::qubit_type;
+      using control_qubit_type = ::bra::state::control_qubit_type;
 
      private:
-      qubit_type qubit_;
+      control_qubit_type control_qubit_;
 
       static std::string const name_;
 
      public:
-      explicit adj_s_gate(qubit_type const qubit);
+      explicit adj_s_gate(control_qubit_type const control_qubit);
 
       ~adj_s_gate() = default;
       adj_s_gate(adj_s_gate const&) = delete;

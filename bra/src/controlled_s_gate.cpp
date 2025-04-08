@@ -18,16 +18,14 @@ namespace bra
     std::string const controlled_s_gate::name_ = "CS";
 
     controlled_s_gate::controlled_s_gate(
-      complex_type const& phase_coefficient,
-      qubit_type const target_qubit, control_qubit_type const control_qubit)
+      control_qubit_type const control_qubit1, control_qubit_type const control_qubit2)
       : ::bra::gate::gate{},
-        phase_coefficient_{phase_coefficient},
-        target_qubit_{target_qubit},
-        control_qubit_{control_qubit}
+        control_qubit1_{control_qubit1},
+        control_qubit2_{control_qubit2}
     { }
 
     ::bra::state& controlled_s_gate::do_apply(::bra::state& state) const
-    { return state.controlled_phase_shift(phase_coefficient_, target_qubit_, control_qubit_); }
+    { return state.controlled_sqrt_pauli_z(control_qubit1_, control_qubit2_); }
 
     std::string const& controlled_s_gate::do_name() const { return name_; }
     std::string controlled_s_gate::do_representation(
@@ -35,8 +33,8 @@ namespace bra
     {
       repr_stream
         << std::right
-        << std::setw(parameter_width) << control_qubit_
-        << std::setw(parameter_width) << target_qubit_;
+        << std::setw(parameter_width) << control_qubit1_
+        << std::setw(parameter_width) << control_qubit2_;
       return repr_stream.str();
     }
   } // namespace gate

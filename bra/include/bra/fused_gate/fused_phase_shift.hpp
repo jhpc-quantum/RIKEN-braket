@@ -21,10 +21,10 @@ namespace bra
     {
      private:
       ::bra::complex_type phase_coefficient_;
-      ::bra::qubit_type qubit_;
+      ::bra::control_qubit_type control_qubit_;
 
      public:
-      explicit fused_phase_shift(::bra::complex_type const& phase_coefficient, ::bra::qubit_type const qubit);
+      explicit fused_phase_shift(::bra::complex_type const& phase_coefficient, ::bra::control_qubit_type const control_qubit);
 
       ~fused_phase_shift() = default;
       fused_phase_shift(fused_phase_shift const&) = delete;

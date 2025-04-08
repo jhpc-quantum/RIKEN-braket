@@ -18,13 +18,13 @@ namespace bra
     std::string const controlled_sqrt_pauli_z::name_ = "CsZ";
 
     controlled_sqrt_pauli_z::controlled_sqrt_pauli_z(
-      qubit_type const target_qubit,
-      control_qubit_type const control_qubit)
-      : ::bra::gate::gate{}, target_qubit_{target_qubit}, control_qubit_{control_qubit}
+      control_qubit_type const control_qubit1,
+      control_qubit_type const control_qubit2)
+      : ::bra::gate::gate{}, control_qubit1_{control_qubit1}, control_qubit2_{control_qubit2}
     { }
 
     ::bra::state& controlled_sqrt_pauli_z::do_apply(::bra::state& state) const
-    { return state.controlled_sqrt_pauli_z(target_qubit_, control_qubit_); }
+    { return state.controlled_sqrt_pauli_z(control_qubit1_, control_qubit2_); }
 
     std::string const& controlled_sqrt_pauli_z::do_name() const { return name_; }
     std::string controlled_sqrt_pauli_z::do_representation(
@@ -32,8 +32,8 @@ namespace bra
     {
       repr_stream
         << std::right
-        << std::setw(parameter_width) << control_qubit_
-        << std::setw(parameter_width) << target_qubit_;
+        << std::setw(parameter_width) << control_qubit1_
+        << std::setw(parameter_width) << control_qubit2_;
       return repr_stream.str();
     }
   } // namespace gate

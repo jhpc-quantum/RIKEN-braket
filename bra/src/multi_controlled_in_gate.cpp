@@ -21,14 +21,14 @@ namespace bra
       std::vector<qubit_type> const& target_qubits,
       std::vector<control_qubit_type> const& control_qubits)
       : ::bra::gate::gate{}, target_qubits_{target_qubits}, control_qubits_{control_qubits},
-        name_{std::string(control_qubits_.size(), 'C').append(target_qubits_.size(), 'X')}
+        name_{std::string(control_qubits_.size(), 'C').append(target_qubits_.size(), 'I')}
     { }
 
     multi_controlled_in_gate::multi_controlled_in_gate(
       std::vector<qubit_type>&& target_qubits,
       std::vector<control_qubit_type>&& control_qubits)
       : ::bra::gate::gate{}, target_qubits_{std::move(target_qubits)}, control_qubits_{std::move(control_qubits)},
-        name_{std::string(control_qubits_.size(), 'C').append(target_qubits_.size(), 'X')}
+        name_{std::string(control_qubits_.size(), 'C').append(target_qubits_.size(), 'I')}
     { }
 
     ::bra::state& multi_controlled_in_gate::do_apply(::bra::state& state) const

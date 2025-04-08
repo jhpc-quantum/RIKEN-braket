@@ -17,13 +17,11 @@ namespace bra
       : public ::bra::gate::gate
     {
      public:
-      using qubit_type = ::bra::state::qubit_type;
       using control_qubit_type = ::bra::state::control_qubit_type;
       using complex_type = ::bra::state::complex_type;
 
      private:
       complex_type phase_coefficient_;
-      qubit_type target_qubit_;
       std::vector<control_qubit_type> control_qubits_;
 
       std::string name_;
@@ -31,12 +29,10 @@ namespace bra
      public:
       adj_multi_controlled_t_gate(
         complex_type const& phase_coefficient,
-        qubit_type const target_qubit,
         std::vector<control_qubit_type> const& control_qubit);
 
       adj_multi_controlled_t_gate(
         complex_type const& phase_coefficient,
-        qubit_type const target_qubit,
         std::vector<control_qubit_type>&& control_qubit);
 
       ~adj_multi_controlled_t_gate() = default;

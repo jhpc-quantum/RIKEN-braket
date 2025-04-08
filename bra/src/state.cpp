@@ -177,92 +177,50 @@ namespace bra
   state& state::i_gate(qubit_type const qubit)
   { do_i_gate(qubit); return *this; }
 
-  state& state::adj_i_gate(qubit_type const qubit)
-  { do_adj_i_gate(qubit); return *this; }
+  state& state::ic_gate(control_qubit_type const control_qubit)
+  { do_ic_gate(control_qubit); return *this; }
 
   state& state::ii_gate(qubit_type const qubit1, qubit_type const qubit2)
   { do_ii_gate(qubit1, qubit2); return *this; }
 
-  state& state::adj_ii_gate(qubit_type const qubit1, qubit_type const qubit2)
-  { do_adj_ii_gate(qubit1, qubit2); return *this; }
-
   state& state::in_gate(std::vector<qubit_type> const& qubits)
   { do_in_gate(qubits); return *this; }
-
-  state& state::adj_in_gate(std::vector<qubit_type> const& qubits)
-  { do_adj_in_gate(qubits); return *this; }
 
   state& state::hadamard(qubit_type const qubit)
   { do_hadamard(qubit); return *this; }
 
-  state& state::adj_hadamard(qubit_type const qubit)
-  { do_adj_hadamard(qubit); return *this; }
-
   state& state::not_(qubit_type const qubit)
   { do_not_(qubit); return *this; }
-
-  state& state::adj_not_(qubit_type const qubit)
-  { do_adj_not_(qubit); return *this; }
 
   state& state::pauli_x(qubit_type const qubit)
   { do_pauli_x(qubit); return *this; }
 
-  state& state::adj_pauli_x(qubit_type const qubit)
-  { do_adj_pauli_x(qubit); return *this; }
-
   state& state::pauli_xx(qubit_type const qubit1, qubit_type const qubit2)
   { do_pauli_xx(qubit1, qubit2); return *this; }
-
-  state& state::adj_pauli_xx(qubit_type const qubit1, qubit_type const qubit2)
-  { do_adj_pauli_xx(qubit1, qubit2); return *this; }
 
   state& state::pauli_xn(std::vector<qubit_type> const& qubits)
   { do_pauli_xn(qubits); return *this; }
 
-  state& state::adj_pauli_xn(std::vector<qubit_type> const& qubits)
-  { do_adj_pauli_xn(qubits); return *this; }
-
   state& state::pauli_y(qubit_type const qubit)
   { do_pauli_y(qubit); return *this; }
-
-  state& state::adj_pauli_y(qubit_type const qubit)
-  { do_adj_pauli_y(qubit); return *this; }
 
   state& state::pauli_yy(qubit_type const qubit1, qubit_type const qubit2)
   { do_pauli_yy(qubit1, qubit2); return *this; }
 
-  state& state::adj_pauli_yy(qubit_type const qubit1, qubit_type const qubit2)
-  { do_adj_pauli_yy(qubit1, qubit2); return *this; }
-
   state& state::pauli_yn(std::vector<qubit_type> const& qubits)
   { do_pauli_yn(qubits); return *this; }
 
-  state& state::adj_pauli_yn(std::vector<qubit_type> const& qubits)
-  { do_adj_pauli_yn(qubits); return *this; }
-
-  state& state::pauli_z(qubit_type const qubit)
-  { do_pauli_z(qubit); return *this; }
-
-  state& state::adj_pauli_z(qubit_type const qubit)
-  { do_adj_pauli_z(qubit); return *this; }
+  state& state::pauli_z(control_qubit_type const control_qubit)
+  { do_pauli_z(control_qubit); return *this; }
 
   state& state::pauli_zz(qubit_type const qubit1, qubit_type const qubit2)
   { do_pauli_zz(qubit1, qubit2); return *this; }
 
-  state& state::adj_pauli_zz(qubit_type const qubit1, qubit_type const qubit2)
-  { do_adj_pauli_zz(qubit1, qubit2); return *this; }
-
   state& state::pauli_zn(std::vector<qubit_type> const& qubits)
   { do_pauli_zn(qubits); return *this; }
 
-  state& state::adj_pauli_zn(std::vector<qubit_type> const& qubits)
-  { do_adj_pauli_zn(qubits); return *this; }
-
   state& state::swap(qubit_type const qubit1, qubit_type const qubit2)
   { do_swap(qubit1, qubit2); return *this; }
-
-  state& state::adj_swap(qubit_type const qubit1, qubit_type const qubit2)
-  { do_adj_swap(qubit1, qubit2); return *this; }
 
   state& state::sqrt_pauli_x(qubit_type const qubit)
   { do_sqrt_pauli_x(qubit); return *this; }
@@ -276,11 +234,11 @@ namespace bra
   state& state::adj_sqrt_pauli_y(qubit_type const qubit)
   { do_adj_sqrt_pauli_y(qubit); return *this; }
 
-  state& state::sqrt_pauli_z(qubit_type const qubit)
-  { do_sqrt_pauli_z(qubit); return *this; }
+  state& state::sqrt_pauli_z(control_qubit_type const control_qubit)
+  { do_sqrt_pauli_z(control_qubit); return *this; }
 
-  state& state::adj_sqrt_pauli_z(qubit_type const qubit)
-  { do_adj_sqrt_pauli_z(qubit); return *this; }
+  state& state::adj_sqrt_pauli_z(control_qubit_type const control_qubit)
+  { do_adj_sqrt_pauli_z(control_qubit); return *this; }
 
   state& state::sqrt_pauli_zz(qubit_type const qubit1, qubit_type const qubit2)
   { do_sqrt_pauli_zz(qubit1, qubit2); return *this; }
@@ -294,11 +252,11 @@ namespace bra
   state& state::adj_sqrt_pauli_zn(std::vector<qubit_type> const& qubits)
   { do_adj_sqrt_pauli_zn(qubits); return *this; }
 
-  state& state::u1(real_type const phase, qubit_type const qubit)
-  { do_u1(phase, qubit); return *this; }
+  state& state::u1(real_type const phase, control_qubit_type const control_qubit)
+  { do_u1(phase, control_qubit); return *this; }
 
-  state& state::adj_u1(real_type const phase, qubit_type const qubit)
-  { do_adj_u1(phase, qubit); return *this; }
+  state& state::adj_u1(real_type const phase, control_qubit_type const control_qubit)
+  { do_adj_u1(phase, control_qubit); return *this; }
 
   state& state::u2(
     real_type const phase1, real_type const phase2, qubit_type const qubit)
@@ -319,12 +277,12 @@ namespace bra
   { do_adj_u3(phase1, phase2, phase3, qubit); return *this; }
 
   state& state::phase_shift(
-    complex_type const& phase_coefficient, qubit_type const qubit)
-  { do_phase_shift(phase_coefficient, qubit); return *this; }
+    complex_type const& phase_coefficient, control_qubit_type const control_qubit)
+  { do_phase_shift(phase_coefficient, control_qubit); return *this; }
 
   state& state::adj_phase_shift(
-    complex_type const& phase_coefficient, qubit_type const qubit)
-  { do_adj_phase_shift(phase_coefficient, qubit); return *this; }
+    complex_type const& phase_coefficient, control_qubit_type const control_qubit)
+  { do_adj_phase_shift(phase_coefficient, control_qubit); return *this; }
 
   state& state::x_rotation_half_pi(qubit_type const qubit)
   { do_x_rotation_half_pi(qubit); return *this; }
@@ -412,11 +370,6 @@ namespace bra
     qubit_type const target_qubit,
     control_qubit_type const control_qubit1, control_qubit_type const control_qubit2)
   { do_toffoli(target_qubit, control_qubit1, control_qubit2); return *this; }
-
-  state& state::adj_toffoli(
-    qubit_type const target_qubit,
-    control_qubit_type const control_qubit1, control_qubit_type const control_qubit2)
-  { do_adj_toffoli(target_qubit, control_qubit1, control_qubit2); return *this; }
 
 #ifndef BRA_NO_MPI
   state& state::projective_measurement(qubit_type const qubit, yampi::rank const root)
@@ -620,7 +573,7 @@ namespace bra
         else if (probability < px + py)
           pauli_y(qubit);
         else if (probability < px + py + pz)
-          pauli_z(qubit);
+          pauli_z(ket::make_control(qubit));
       }
     else
     {
@@ -633,7 +586,7 @@ namespace bra
         else if (probability < px + py)
           pauli_y(qubit);
         else if (probability < px + py + pz)
-          pauli_z(qubit);
+          pauli_z(ket::make_control(qubit));
       }
     }
 
@@ -643,80 +596,50 @@ namespace bra
   state& state::controlled_i_gate(qubit_type const target_qubit, control_qubit_type const control_qubit)
   { do_controlled_i_gate(target_qubit, control_qubit); return *this; }
 
-  state& state::adj_controlled_i_gate(qubit_type const target_qubit, control_qubit_type const control_qubit)
-  { do_controlled_i_gate(target_qubit, control_qubit); return *this; }
+  state& state::controlled_ic_gate(control_qubit_type const control_qubit1, control_qubit_type const control_qubit2)
+  { do_controlled_ic_gate(control_qubit1, control_qubit2); return *this; }
 
   state& state::multi_controlled_in_gate(std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
   { do_multi_controlled_in_gate(target_qubits, control_qubits); return *this; }
 
-  state& state::adj_multi_controlled_in_gate(std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
-  { do_multi_controlled_in_gate(target_qubits, control_qubits); return *this; }
+  state& state::multi_controlled_ic_gate(std::vector<control_qubit_type> const& control_qubits)
+  { do_multi_controlled_ic_gate(control_qubits); return *this; }
 
   state& state::controlled_hadamard(qubit_type const target_qubit, control_qubit_type const control_qubit)
   { do_controlled_hadamard(target_qubit, control_qubit); return *this; }
 
-  state& state::adj_controlled_hadamard(qubit_type const target_qubit, control_qubit_type const control_qubit)
-  { do_adj_controlled_hadamard(target_qubit, control_qubit); return *this; }
-
   state& state::multi_controlled_hadamard(qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
   { do_multi_controlled_hadamard(target_qubit, control_qubits); return *this; }
-
-  state& state::adj_multi_controlled_hadamard(qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
-  { do_adj_multi_controlled_hadamard(target_qubit, control_qubits); return *this; }
 
   state& state::controlled_not(qubit_type const target_qubit, control_qubit_type const control_qubit)
   { do_controlled_not(target_qubit, control_qubit); return *this; }
 
-  state& state::adj_controlled_not(qubit_type const target_qubit, control_qubit_type const control_qubit)
-  { do_adj_controlled_not(target_qubit, control_qubit); return *this; }
-
   state& state::multi_controlled_not(qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
   { do_multi_controlled_not(target_qubit, control_qubits); return *this; }
-
-  state& state::adj_multi_controlled_not(qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
-  { do_adj_multi_controlled_not(target_qubit, control_qubits); return *this; }
 
   state& state::controlled_pauli_x(qubit_type const target_qubit, control_qubit_type const control_qubit)
   { do_controlled_pauli_x(target_qubit, control_qubit); return *this; }
 
-  state& state::adj_controlled_pauli_x(qubit_type const target_qubit, control_qubit_type const control_qubit)
-  { do_adj_controlled_pauli_x(target_qubit, control_qubit); return *this; }
-
   state& state::multi_controlled_pauli_xn(std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
   { do_multi_controlled_pauli_xn(target_qubits, control_qubits); return *this; }
-
-  state& state::adj_multi_controlled_pauli_xn(std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
-  { do_adj_multi_controlled_pauli_xn(target_qubits, control_qubits); return *this; }
 
   state& state::controlled_pauli_y(qubit_type const target_qubit, control_qubit_type const control_qubit)
   { do_controlled_pauli_y(target_qubit, control_qubit); return *this; }
 
-  state& state::adj_controlled_pauli_y(qubit_type const target_qubit, control_qubit_type const control_qubit)
-  { do_adj_controlled_pauli_y(target_qubit, control_qubit); return *this; }
-
   state& state::multi_controlled_pauli_yn(std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
   { do_multi_controlled_pauli_yn(target_qubits, control_qubits); return *this; }
 
-  state& state::adj_multi_controlled_pauli_yn(std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
-  { do_adj_multi_controlled_pauli_yn(target_qubits, control_qubits); return *this; }
+  state& state::controlled_pauli_z(control_qubit_type const control_qubit1, control_qubit_type const control_qubit2)
+  { do_controlled_pauli_z(control_qubit1, control_qubit2); return *this; }
 
-  state& state::controlled_pauli_z(qubit_type const target_qubit, control_qubit_type const control_qubit)
-  { do_controlled_pauli_z(target_qubit, control_qubit); return *this; }
-
-  state& state::adj_controlled_pauli_z(qubit_type const target_qubit, control_qubit_type const control_qubit)
-  { do_adj_controlled_pauli_z(target_qubit, control_qubit); return *this; }
+  state& state::multi_controlled_pauli_z(std::vector<control_qubit_type> const& control_qubits)
+  { do_multi_controlled_pauli_z(control_qubits); return *this; }
 
   state& state::multi_controlled_pauli_zn(std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
   { do_multi_controlled_pauli_zn(target_qubits, control_qubits); return *this; }
 
-  state& state::adj_multi_controlled_pauli_zn(std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
-  { do_adj_multi_controlled_pauli_zn(target_qubits, control_qubits); return *this; }
-
   state& state::multi_controlled_swap(qubit_type const target_qubit1, qubit_type const target_qubit2, std::vector<control_qubit_type> const& control_qubits)
   { do_multi_controlled_swap(target_qubit1, target_qubit2, control_qubits); return *this; }
-
-  state& state::adj_multi_controlled_swap(qubit_type const target_qubit1, qubit_type const target_qubit2, std::vector<control_qubit_type> const& control_qubits)
-  { do_adj_multi_controlled_swap(target_qubit1, target_qubit2, control_qubits); return *this; }
 
   state& state::controlled_sqrt_pauli_x(qubit_type const target_qubit, control_qubit_type const control_qubit)
   { do_controlled_sqrt_pauli_x(target_qubit, control_qubit); return *this; }
@@ -742,11 +665,17 @@ namespace bra
   state& state::adj_multi_controlled_sqrt_pauli_y(qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
   { do_adj_multi_controlled_sqrt_pauli_y(target_qubit, control_qubits); return *this; }
 
-  state& state::controlled_sqrt_pauli_z(qubit_type const target_qubit, control_qubit_type const control_qubit)
-  { do_controlled_sqrt_pauli_z(target_qubit, control_qubit); return *this; }
+  state& state::controlled_sqrt_pauli_z(control_qubit_type const control_qubit1, control_qubit_type const control_qubit2)
+  { do_controlled_sqrt_pauli_z(control_qubit1, control_qubit2); return *this; }
 
-  state& state::adj_controlled_sqrt_pauli_z(qubit_type const target_qubit, control_qubit_type const control_qubit)
-  { do_adj_controlled_sqrt_pauli_z(target_qubit, control_qubit); return *this; }
+  state& state::adj_controlled_sqrt_pauli_z(control_qubit_type const control_qubit1, control_qubit_type const control_qubit2)
+  { do_adj_controlled_sqrt_pauli_z(control_qubit1, control_qubit2); return *this; }
+
+  state& state::multi_controlled_sqrt_pauli_z(std::vector<control_qubit_type> const& control_qubits)
+  { do_multi_controlled_sqrt_pauli_z(control_qubits); return *this; }
+
+  state& state::adj_multi_controlled_sqrt_pauli_z(std::vector<control_qubit_type> const& control_qubits)
+  { do_adj_multi_controlled_sqrt_pauli_z(control_qubits); return *this; }
 
   state& state::multi_controlled_sqrt_pauli_zn(std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
   { do_multi_controlled_sqrt_pauli_zn(target_qubits, control_qubits); return *this; }
@@ -754,29 +683,29 @@ namespace bra
   state& state::adj_multi_controlled_sqrt_pauli_zn(std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
   { do_adj_multi_controlled_sqrt_pauli_zn(target_qubits, control_qubits); return *this; }
 
-  state& state::controlled_phase_shift(complex_type const& phase_coefficient, qubit_type const target_qubit, control_qubit_type const control_qubit)
-  { do_controlled_phase_shift(phase_coefficient, target_qubit, control_qubit); return *this; }
+  state& state::controlled_phase_shift(complex_type const& phase_coefficient, control_qubit_type const control_qubit1, control_qubit_type const control_qubit2)
+  { do_controlled_phase_shift(phase_coefficient, control_qubit1, control_qubit2); return *this; }
 
-  state& state::adj_controlled_phase_shift(complex_type const& phase_coefficient, qubit_type const target_qubit, control_qubit_type const control_qubit)
-  { do_adj_controlled_phase_shift(phase_coefficient, target_qubit, control_qubit); return *this; }
+  state& state::adj_controlled_phase_shift(complex_type const& phase_coefficient, control_qubit_type const control_qubit1, control_qubit_type const control_qubit2)
+  { do_adj_controlled_phase_shift(phase_coefficient, control_qubit1, control_qubit2); return *this; }
 
-  state& state::multi_controlled_phase_shift(complex_type const& phase_coefficient, qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
-  { do_multi_controlled_phase_shift(phase_coefficient, target_qubit, control_qubits); return *this; }
+  state& state::multi_controlled_phase_shift(complex_type const& phase_coefficient, std::vector<control_qubit_type> const& control_qubits)
+  { do_multi_controlled_phase_shift(phase_coefficient, control_qubits); return *this; }
 
-  state& state::adj_multi_controlled_phase_shift(complex_type const& phase_coefficient, qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
-  { do_adj_multi_controlled_phase_shift(phase_coefficient, target_qubit, control_qubits); return *this; }
+  state& state::adj_multi_controlled_phase_shift(complex_type const& phase_coefficient, std::vector<control_qubit_type> const& control_qubits)
+  { do_adj_multi_controlled_phase_shift(phase_coefficient, control_qubits); return *this; }
 
-  state& state::controlled_u1(real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit)
-  { do_controlled_u1(phase, target_qubit, control_qubit); return *this; }
+  state& state::controlled_u1(real_type const phase, control_qubit_type const control_qubit1, control_qubit_type const control_qubit2)
+  { do_controlled_u1(phase, control_qubit1, control_qubit2); return *this; }
 
-  state& state::adj_controlled_u1(real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit)
-  { do_adj_controlled_u1(phase, target_qubit, control_qubit); return *this; }
+  state& state::adj_controlled_u1(real_type const phase, control_qubit_type const control_qubit1, control_qubit_type const control_qubit2)
+  { do_adj_controlled_u1(phase, control_qubit1, control_qubit2); return *this; }
 
-  state& state::multi_controlled_u1(real_type const phase, qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
-  { do_multi_controlled_u1(phase, target_qubit, control_qubits); return *this; }
+  state& state::multi_controlled_u1(real_type const phase, std::vector<control_qubit_type> const& control_qubits)
+  { do_multi_controlled_u1(phase, control_qubits); return *this; }
 
-  state& state::adj_multi_controlled_u1(real_type const phase, qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
-  { do_adj_multi_controlled_u1(phase, target_qubit, control_qubits); return *this; }
+  state& state::adj_multi_controlled_u1(real_type const phase, std::vector<control_qubit_type> const& control_qubits)
+  { do_adj_multi_controlled_u1(phase, control_qubits); return *this; }
 
   state& state::controlled_u2(real_type const phase1, real_type const phase2, qubit_type const target_qubit, control_qubit_type const control_qubit)
   { do_controlled_u2(phase1, phase2, target_qubit, control_qubit); return *this; }
@@ -861,6 +790,12 @@ namespace bra
 
   state& state::adj_controlled_exponential_pauli_z(real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit)
   { do_adj_controlled_exponential_pauli_z(phase, target_qubit, control_qubit); return *this; }
+
+  state& state::multi_controlled_exponential_pauli_z(real_type const phase, qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
+  { do_multi_controlled_exponential_pauli_z(phase, target_qubit, control_qubits); return *this; }
+
+  state& state::adj_multi_controlled_exponential_pauli_z(real_type const phase, qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
+  { do_adj_multi_controlled_exponential_pauli_z(phase, target_qubit, control_qubits); return *this; }
 
   state& state::multi_controlled_exponential_pauli_zn(real_type const phase, std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
   { do_multi_controlled_exponential_pauli_zn(phase, target_qubits, control_qubits); return *this; }

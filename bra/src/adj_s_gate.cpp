@@ -4,6 +4,7 @@
 #include <sstream>
 
 #include <ket/qubit_io.hpp>
+#include <ket/control_io.hpp>
 
 #include <bra/gate/gate.hpp>
 #include <bra/gate/adj_s_gate.hpp>
@@ -16,12 +17,12 @@ namespace bra
   {
     std::string const adj_s_gate::name_ = "S+";
 
-    adj_s_gate::adj_s_gate(qubit_type const qubit)
-      : ::bra::gate::gate{}, qubit_{qubit}
+    adj_s_gate::adj_s_gate(control_qubit_type const control_qubit)
+      : ::bra::gate::gate{}, control_qubit_{control_qubit}
     { }
 
     ::bra::state& adj_s_gate::do_apply(::bra::state& state) const
-    { return state.adj_sqrt_pauli_z(qubit_); }
+    { return state.adj_sqrt_pauli_z(control_qubit_); }
 
     std::string const& adj_s_gate::do_name() const { return name_; }
     std::string adj_s_gate::do_representation(
@@ -29,7 +30,7 @@ namespace bra
     {
       repr_stream
         << std::right
-        << std::setw(parameter_width) << qubit_;
+        << std::setw(parameter_width) << control_qubit_;
       return repr_stream.str();
     }
   } // namespace gate
