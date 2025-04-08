@@ -97,7 +97,7 @@ namespace ket
     struct { Observable call; } wrapped_observable{std::forward<Observable>(observable)};
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
     using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-    ::ket::gate::gate(
+    ::ket::gate::nocache::gate(
       parallel_policy, first, last,
       [wrapped_observable = std::move(wrapped_observable), &partial_sums](
         auto const first, StateInteger const index_wo_qubits,
@@ -107,7 +107,7 @@ namespace ket
       { partial_sums[thread_index] += wrapped_observable.call(first, index_wo_qubits, unsorted_qubits, sorted_qubits_with_sentinel); },
       qubit, qubits...);
 # else // KET_USE_BIT_MASKS_EXPLICITLY
-    ::ket::gate::gate(
+    ::ket::gate::nocache::gate(
       parallel_policy, first, last,
       [wrapped_observable = std::move(wrapped_observable), &partial_sums](
         auto const first, StateInteger const index_wo_qubits,
