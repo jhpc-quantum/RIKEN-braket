@@ -1772,26 +1772,25 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
 #   endif // KET_DEFAULT_NUM_ON_CACHE_QUBITS
     constexpr auto num_on_cache_qubits = bit_integer_type{KET_DEFAULT_NUM_ON_CACHE_QUBITS};
     constexpr auto cache_size = ::ket::utility::integer_exp2<state_integer_type>(num_on_cache_qubits);
+# endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
+# if !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
     assert(fused_gates_.size() == paged_fused_gates_.size());
+# endif // !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
+# if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     assert(fused_gates_.size() == cache_aware_fused_gates_.size());
     assert(fused_gates_.size() == cache_aware_paged_fused_gates_.size());
+# endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
+    ::ket::mpi::utility::logger logger{environment_};
 
-    ket::mpi::utility::logger logger{environment_};
-
-# elif !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION)
-    assert(fused_gates_.size() == paged_fused_gates_.size());
-
-    ket::mpi::utility::logger logger{environment_};
-
-# endif
     switch (fused_qubits_.size())
     {
 # define QUBITS_OF_PERMUTATED_QUBITS(z, n, qubits) BOOST_PP_COMMA_IF(n) permutation_[qubits[n]].qubit()
 # define PERMUTATED_QUBITS(z, n, qubits) BOOST_PP_COMMA_IF(n) permutation_[qubits[n]]
 # define QUBITS(z, n, qubits) BOOST_PP_COMMA_IF(n) qubits[n]
-# if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
-#   ifndef KET_USE_BIT_MASKS_EXPLICITLY
-#     define CASE_N(z, num_fused_qubits, _) \
+# ifdef KET_ENABLE_CACHE_AWARE_GATE_FUNCTION
+#   ifndef KET_USE_ON_CACHE_STATE_VECTOR
+#     ifndef KET_USE_BIT_MASKS_EXPLICITLY
+#       define CASE_N(z, num_fused_qubits, _) \
      case num_fused_qubits:\
       logger.print("[start] " + ::ket::mpi::gate::detail::append_qubits_string(std::string{"Gate"}, BOOST_PP_REPEAT_ ## z(num_fused_qubits, QUBITS, fused_qubits_)), environment_);\
 \
@@ -1852,32 +1851,19 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
             }, BOOST_PP_REPEAT_ ## z(num_fused_qubits, PERMUTATED_QUBITS, fused_qubits_));\
       else\
         if (ket::utility::all_in_state_vector(num_on_cache_qubits, BOOST_PP_REPEAT_ ## z(num_fused_qubits, QUBITS_OF_PERMUTATED_QUBITS, fused_qubits_)))\
-          if (ket::mpi::page::page_size(mpi_policy_, data_, communicator_, environment_) <= cache_size)\
-            ket::mpi::gate::local::nopage::all_on_cache::small::gate(\
-              mpi_policy_, parallel_policy_, data_, communicator_, environment_,\
-              [this](\
-                auto const first, ::bra::state_integer_type const index_wo_qubits,\
-                std::array< ::bra::qubit_type, num_fused_qubits > const& unsorted_fused_qubits,\
-                std::array< ::bra::qubit_type, num_fused_qubits + 1u > const& sorted_fused_qubits_with_sentinel,\
-                int const)\
-              {\
-                for (auto const& gate_ptr: this->paged_fused_gates_)\
-                  gate_ptr->call(first, index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);\
-              }, BOOST_PP_REPEAT_ ## z(num_fused_qubits, PERMUTATED_QUBITS, fused_qubits_));\
-          else\
-            ket::mpi::gate::local::nopage::all_on_cache::gate(\
-              mpi_policy_, parallel_policy_, data_, communicator_, environment_,\
-              [this](\
-                auto const first, ::bra::state_integer_type const index_wo_qubits,\
-                std::array< ::bra::qubit_type, num_fused_qubits > const& unsorted_fused_qubits,\
-                std::array< ::bra::qubit_type, num_fused_qubits + 1u > const& sorted_fused_qubits_with_sentinel,\
-                int const)\
-              {\
-                for (auto const& gate_ptr: this->paged_fused_gates_)\
-                  gate_ptr->call(first, index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);\
-              }, BOOST_PP_REPEAT_ ## z(num_fused_qubits, PERMUTATED_QUBITS, fused_qubits_));\
+          ket::mpi::gate::local::page::all_on_cache::gate(\
+            mpi_policy_, parallel_policy_, data_, communicator_, environment_,\
+            [this](\
+              auto const first, ::bra::state_integer_type const index_wo_qubits,\
+              std::array< ::bra::qubit_type, num_fused_qubits > const& unsorted_fused_qubits,\
+              std::array< ::bra::qubit_type, num_fused_qubits + 1u > const& sorted_fused_qubits_with_sentinel,\
+              int const)\
+            {\
+              for (auto const& gate_ptr: this->paged_fused_gates_)\
+                gate_ptr->call(first, index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);\
+            }, BOOST_PP_REPEAT_ ## z(num_fused_qubits, PERMUTATED_QUBITS, fused_qubits_));\
         else if (ket::utility::none_in_state_vector(num_on_cache_qubits, BOOST_PP_REPEAT_ ## z(num_fused_qubits, QUBITS_OF_PERMUTATED_QUBITS, fused_qubits_)))\
-          ket::mpi::gate::local::nopage::none_on_cache::gate(\
+          ket::mpi::gate::local::page::none_on_cache::gate(\
             mpi_policy_, parallel_policy_, data_, communicator_, environment_,\
             [this](\
               auto const first, ::bra::state_integer_type const index_wo_qubits,\
@@ -1889,7 +1875,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
                 gate_ptr->call(first, index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);\
             }, BOOST_PP_REPEAT_ ## z(num_fused_qubits, PERMUTATED_QUBITS, fused_qubits_));\
         else\
-          ket::mpi::gate::local::nopage::some_on_cache::gate(\
+          ket::mpi::gate::local::page::some_on_cache::gate(\
             mpi_policy_, parallel_policy_, data_, communicator_, environment_,\
             [this](\
               auto const first, ::bra::state_integer_type const index_wo_qubits,\
@@ -1904,8 +1890,8 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
       logger.print_with_time("[end] " + ::ket::mpi::gate::detail::append_qubits_string(std::string{"Gate"}, BOOST_PP_REPEAT_ ## z(num_fused_qubits, QUBITS, fused_qubits_)), environment_);\
       break;\
 
-#   else // KET_USE_BIT_MASKS_EXPLICITLY
-#     define CASE_N(z, num_fused_qubits, _) \
+#     else // KET_USE_BIT_MASKS_EXPLICITLY
+#       define CASE_N(z, num_fused_qubits, _) \
      case num_fused_qubits:\
       logger.print("[start] " + ::ket::mpi::gate::detail::append_qubits_string(std::string{"Gate"}, BOOST_PP_REPEAT_ ## z(num_fused_qubits, QUBITS, fused_qubits_)), environment_);\
 \
@@ -1966,32 +1952,19 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
             }, BOOST_PP_REPEAT_ ## z(num_fused_qubits, PERMUTATED_QUBITS, fused_qubits_));\
       else\
         if (ket::utility::all_in_state_vector(num_on_cache_qubits, BOOST_PP_REPEAT_ ## z(num_fused_qubits, QUBITS_OF_PERMUTATED_QUBITS, fused_qubits_)))\
-          if (ket::mpi::page::page_size(mpi_policy_, data_, communicator_, environment_) <= cache_size)\
-            ket::mpi::gate::local::nopage::all_on_cache::small::gate(\
-              mpi_policy_, parallel_policy_, data_, communicator_, environment_,\
-              [this](\
-                auto const first, ::bra::state_integer_type const index_wo_qubits,\
-                std::array< ::bra::state_integer_type, num_fused_qubits > const& qubit_masks,\
-                std::array< ::bra::state_integer_type, num_fused_qubits + 1u > const& index_masks,\
-                int const)\
-              {\
-                for (auto const& gate_ptr: this->paged_fused_gates_)\
-                  gate_ptr->call(first, index_wo_qubits, qubit_masks, index_masks);\
-              }, BOOST_PP_REPEAT_ ## z(num_fused_qubits, PERMUTATED_QUBITS, fused_qubits_));\
-          else\
-            ket::mpi::gate::local::nopage::all_on_cache::gate(\
-              mpi_policy_, parallel_policy_, data_, communicator_, environment_,\
-              [this](\
-                auto const first, ::bra::state_integer_type const index_wo_qubits,\
-                std::array< ::bra::state_integer_type, num_fused_qubits > const& qubit_masks,\
-                std::array< ::bra::state_integer_type, num_fused_qubits + 1u > const& index_masks,\
-                int const)\
-              {\
-                for (auto const& gate_ptr: this->paged_fused_gates_)\
-                  gate_ptr->call(first, index_wo_qubits, qubit_masks, index_masks);\
-              }, BOOST_PP_REPEAT_ ## z(num_fused_qubits, PERMUTATED_QUBITS, fused_qubits_));\
+          ket::mpi::gate::local::page::all_on_cache::gate(\
+            mpi_policy_, parallel_policy_, data_, communicator_, environment_,\
+            [this](\
+              auto const first, ::bra::state_integer_type const index_wo_qubits,\
+              std::array< ::bra::state_integer_type, num_fused_qubits > const& qubit_masks,\
+              std::array< ::bra::state_integer_type, num_fused_qubits + 1u > const& index_masks,\
+              int const)\
+            {\
+              for (auto const& gate_ptr: this->paged_fused_gates_)\
+                gate_ptr->call(first, index_wo_qubits, qubit_masks, index_masks);\
+            }, BOOST_PP_REPEAT_ ## z(num_fused_qubits, PERMUTATED_QUBITS, fused_qubits_));\
         else if (ket::utility::none_in_state_vector(num_on_cache_qubits, BOOST_PP_REPEAT_ ## z(num_fused_qubits, QUBITS_OF_PERMUTATED_QUBITS, fused_qubits_)))\
-          ket::mpi::gate::local::nopage::none_on_cache::gate(\
+          ket::mpi::gate::local::page::none_on_cache::gate(\
             mpi_policy_, parallel_policy_, data_, communicator_, environment_,\
             [this](\
               auto const first, ::bra::state_integer_type const index_wo_qubits,\
@@ -2003,7 +1976,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
                 gate_ptr->call(first, index_wo_qubits, qubit_masks, index_masks);\
             }, BOOST_PP_REPEAT_ ## z(num_fused_qubits, PERMUTATED_QUBITS, fused_qubits_));\
         else\
-          ket::mpi::gate::local::nopage::some_on_cache::gate(\
+          ket::mpi::gate::local::page::some_on_cache::gate(\
             mpi_policy_, parallel_policy_, data_, communicator_, environment_,\
             [this](\
               auto const first, ::bra::state_integer_type const index_wo_qubits,\
@@ -2018,8 +1991,87 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
       logger.print_with_time("[end] " + ::ket::mpi::gate::detail::append_qubits_string(std::string{"Gate"}, BOOST_PP_REPEAT_ ## z(num_fused_qubits, QUBITS, fused_qubits_)), environment_);\
       break;\
 
-#   endif // KET_USE_BIT_MASKS_EXPLICITLY
-# elif !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION)
+#     endif // KET_USE_BIT_MASKS_EXPLICITLY
+#   else // KET_USE_ON_CACHE_STATE_VECTOR
+#     ifndef KET_USE_BIT_MASKS_EXPLICITLY
+#       define CASE_N(z, num_fused_qubits, _) \
+     case num_fused_qubits:\
+      logger.print("[start] " + ::ket::mpi::gate::detail::append_qubits_string(std::string{"Gate"}, BOOST_PP_REPEAT_ ## z(num_fused_qubits, QUBITS, fused_qubits_)), environment_);\
+\
+      ket::mpi::utility::maybe_interchange_qubits(\
+        mpi_policy_, parallel_policy_,\
+        data_, permutation_, buffer_, communicator_, environment_,\
+        BOOST_PP_REPEAT_ ## z(num_fused_qubits, QUBITS, fused_qubits_));\
+\
+      if (ket::mpi::page::none_on_page(data_, BOOST_PP_REPEAT_ ## z(num_fused_qubits, PERMUTATED_QUBITS, fused_qubits_)))\
+        ket::mpi::gate::local::nopage::gate(\
+          mpi_policy_, parallel_policy_, data_, buffer_, communicator_, environment_,\
+          [this](\
+            auto const first, ::bra::state_integer_type const index_wo_qubits,\
+            std::array< ::bra::qubit_type, num_fused_qubits > const& unsorted_fused_qubits,\
+            std::array< ::bra::qubit_type, num_fused_qubits + 1u > const& sorted_fused_qubits_with_sentinel,\
+            int const)\
+          {\
+            for (auto const& gate_ptr: this->fused_gates_)\
+              gate_ptr->call(first, index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);\
+          }, BOOST_PP_REPEAT_ ## z(num_fused_qubits, PERMUTATED_QUBITS, fused_qubits_));\
+      else\
+        ket::mpi::gate::local::page::gate(\
+          mpi_policy_, parallel_policy_, data_, buffer_, communicator_, environment_,\
+          [this](\
+            auto const first, ::bra::state_integer_type const index_wo_qubits,\
+            std::array< ::bra::qubit_type, num_fused_qubits > const& unsorted_fused_qubits,\
+            std::array< ::bra::qubit_type, num_fused_qubits + 1u > const& sorted_fused_qubits_with_sentinel,\
+            int const)\
+          {\
+            for (auto const& gate_ptr: this->fused_gates_)\
+              gate_ptr->call(first, index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);\
+          }, BOOST_PP_REPEAT_ ## z(num_fused_qubits, PERMUTATED_QUBITS, fused_qubits_));\
+\
+      logger.print_with_time("[end] " + ::ket::mpi::gate::detail::append_qubits_string(std::string{"Gate"}, BOOST_PP_REPEAT_ ## z(num_fused_qubits, QUBITS, fused_qubits_)), environment_);\
+      break;\
+
+#     else // KET_USE_BIT_MASKS_EXPLICITLY
+#       define CASE_N(z, num_fused_qubits, _) \
+     case num_fused_qubits:\
+      logger.print("[start] " + ::ket::mpi::gate::detail::append_qubits_string(std::string{"Gate"}, BOOST_PP_REPEAT_ ## z(num_fused_qubits, QUBITS, fused_qubits_)), environment_);\
+\
+      ket::mpi::utility::maybe_interchange_qubits(\
+        mpi_policy_, parallel_policy_,\
+        data_, permutation_, buffer_, communicator_, environment_,\
+        BOOST_PP_REPEAT_ ## z(num_fused_qubits, QUBITS, fused_qubits_));\
+\
+      if (ket::mpi::page::none_on_page(data_, BOOST_PP_REPEAT_ ## z(num_fused_qubits, PERMUTATED_QUBITS, fused_qubits_)))\
+        ket::mpi::gate::local::nopage::gate(\
+          mpi_policy_, parallel_policy_, data_, buffer_, communicator_, environment_,\
+          [this](\
+            auto const first, ::bra::state_integer_type const index_wo_qubits,\
+            std::array< ::bra::state_integer_type, num_fused_qubits > const& qubit_masks,\
+            std::array< ::bra::state_integer_type, num_fused_qubits + 1u > const& index_masks,\
+            int const)\
+          {\
+            for (auto const& gate_ptr: this->fused_gates_)\
+              gate_ptr->call(first, index_wo_qubits, qubit_masks, index_masks);\
+          }, BOOST_PP_REPEAT_ ## z(num_fused_qubits, PERMUTATED_QUBITS, fused_qubits_));\
+      else\
+        ket::mpi::gate::local::page::gate(\
+          mpi_policy_, parallel_policy_, data_, buffer_, communicator_, environment_,\
+          [this](\
+            auto const first, ::bra::state_integer_type const index_wo_qubits,\
+            std::array< ::bra::state_integer_type, num_fused_qubits > const& qubit_masks,\
+            std::array< ::bra::state_integer_type, num_fused_qubits + 1u > const& index_masks,\
+            int const)\
+          {\
+            for (auto const& gate_ptr: this->fused_gates_)\
+              gate_ptr->call(first, index_wo_qubits, qubit_masks, index_masks);\
+          }, BOOST_PP_REPEAT_ ## z(num_fused_qubits, PERMUTATED_QUBITS, fused_qubits_));\
+\
+      logger.print_with_time("[end] " + ::ket::mpi::gate::detail::append_qubits_string(std::string{"Gate"}, BOOST_PP_REPEAT_ ## z(num_fused_qubits, QUBITS, fused_qubits_)), environment_);\
+      break;\
+
+#     endif // KET_USE_BIT_MASKS_EXPLICITLY
+#   endif // KET_USE_ON_CACHE_STATE_VECTOR
+# else //KET_ENABLE_CACHE_AWARE_GATE_FUNCTION
 #   ifndef KET_USE_BIT_MASKS_EXPLICITLY
 #     define CASE_N(z, num_fused_qubits, _) \
      case num_fused_qubits:\
@@ -2097,43 +2149,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
       break;\
 
 #   endif // KET_USE_BIT_MASKS_EXPLICITLY
-# else
-#   ifndef KET_USE_BIT_MASKS_EXPLICITLY
-#     define CASE_N(z, num_fused_qubits, _) \
-     case num_fused_qubits:\
-      ket::mpi::gate::gate(\
-        mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_,\
-        [this](\
-          auto const first, ::bra::state_integer_type const index_wo_qubits,\
-          std::array< ::bra::qubit_type, num_fused_qubits > const& unsorted_fused_qubits,\
-          std::array< ::bra::qubit_type, num_fused_qubits + 1u > const& sorted_fused_qubits_with_sentinel,\
-          int const)\
-        {\
-          for (auto const& gate_ptr: this->fused_gates_)\
-            gate_ptr->call(first, index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);\
-        }, BOOST_PP_REPEAT_ ## z(num_fused_qubits, QUBITS, fused_qubits_));\
-      break;\
-
-#   else // KET_USE_BIT_MASKS_EXPLICITLY
-#     define CASE_N(z, num_fused_qubits, _) \
-     case num_fused_qubits:\
-      ket::mpi::gate::gate(\
-        mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_,\
-        [this](\
-          auto const first, ::bra::state_integer_type const index_wo_qubits,\
-          std::array< ::bra::state_integer_type, num_fused_qubits > const& qubit_masks,\
-          std::array< ::bra::state_integer_type, num_fused_qubits + 1u > const& index_masks,\
-          int const)\
-        {\
-          for (auto const& gate_ptr: this->fused_gates_)\
-            gate_ptr->call(first, index_wo_qubits, qubit_masks, index_masks);\
-        }, BOOST_PP_REPEAT_ ## z(num_fused_qubits, QUBITS, fused_qubits_));\
-      break;\
-
-#   endif // KET_USE_BIT_MASKS_EXPLICITLY
-# endif
+# endif //KET_ENABLE_CACHE_AWARE_GATE_FUNCTION
 BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_FUSED_QUBITS), CASE_N, nil)
 # undef CASE_N
 # undef QUBITS

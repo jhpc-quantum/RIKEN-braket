@@ -203,7 +203,8 @@ namespace bra
       std::vector<qubit_type> const& target_qubits,
       std::vector<control_qubit_type> const& control_qubits) override;
     void do_controlled_pauli_z(
-      qubit_type const target_qubit, control_qubit_type const control_qubit) override;
+      control_qubit_type const control_qubit1, control_qubit_type const control_qubit2) override;
+    void do_multi_controlled_pauli_z(std::vector<control_qubit_type> const& control_qubits) override;
     void do_multi_controlled_pauli_zn(
       std::vector<qubit_type> const& target_qubits,
       std::vector<control_qubit_type> const& control_qubits) override;
