@@ -174,9 +174,6 @@ namespace bra
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
-
     switch (num_operated_qubits)
     {
 # define QUBITS(z, n, _) BOOST_PP_COMMA_IF(n) qubits[n]
@@ -241,9 +238,6 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
-
     switch (num_operated_qubits)
     {
 # define QUBITS(z, n, _) BOOST_PP_COMMA_IF(n) qubits[n]
@@ -270,7 +264,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::pauli_z(parallel_policy_, data_, qubit);
+      ket::gate::ranges::pauli_z(parallel_policy_, data_, control_qubit);
   }
 
   void nompi_state::do_pauli_zz(qubit_type const qubit1, qubit_type const qubit2)
@@ -307,9 +301,6 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
 
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
-
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
 
     switch (num_operated_qubits)
     {
@@ -466,9 +457,6 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
-
     switch (num_operated_qubits)
     {
 # define QUBITS(z, n, _) BOOST_PP_COMMA_IF(n) qubits[n]
@@ -506,9 +494,6 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
 
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
-
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
 
     switch (num_operated_qubits)
     {
@@ -805,9 +790,6 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
-
     switch (num_operated_qubits)
     {
 # define QUBITS(z, n, _) BOOST_PP_COMMA_IF(n) qubits[n]
@@ -846,9 +828,6 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
 
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
-
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
 
     switch (num_operated_qubits)
     {
@@ -943,9 +922,6 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
-
     switch (num_operated_qubits)
     {
 # define QUBITS(z, n, _) BOOST_PP_COMMA_IF(n) qubits[n]
@@ -984,9 +960,6 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
 
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
-
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
 
     switch (num_operated_qubits)
     {
@@ -1081,9 +1054,6 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
-
     switch (num_operated_qubits)
     {
 # define QUBITS(z, n, _) BOOST_PP_COMMA_IF(n) qubits[n]
@@ -1122,9 +1092,6 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
 
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
-
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
 
     switch (num_operated_qubits)
     {
@@ -1589,9 +1556,6 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_FUSED_QUBITS), CASE_N, nil)
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
-    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
-
     switch (num_control_qubits)
     {
 # define CONTROL_QUBITS(z, n, _) BOOST_PP_COMMA_IF(n) control_qubits[n]
@@ -1648,9 +1612,6 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
 
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
-
-    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
 
     switch (num_control_qubits)
     {
@@ -1718,9 +1679,6 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     assert(num_target_qubits > 0u);
     assert(num_control_qubits > 0u);
     assert(num_operated_qubits > 2u);
-
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
 
     switch (num_target_qubits)
     {
@@ -1802,9 +1760,6 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     assert(num_control_qubits > 0u);
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
-
     switch (num_target_qubits)
     {
 # define TARGET_QUBITS(z, n, _) BOOST_PP_COMMA_IF(n) target_qubits[n]
@@ -1872,15 +1827,12 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_operated_qubits = control_qubits.size();
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
-
     switch (num_operated_qubits)
     {
 # define CONTROL_QUBITS(z, n, _) BOOST_PP_COMMA_IF(n) control_qubits[n]
 # define CASE_N(z, num_operated_qubits, num_target_qubits) \
        case num_operated_qubits:\
-        ket::gate::ranges::pauli_z(parallel_policy_, data_, BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
+        ket::gate::ranges::pauli_z(parallel_policy_, data_, BOOST_PP_REPEAT_ ## z(num_operated_qubits, CONTROL_QUBITS, nil));\
         break;\
 
 BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
@@ -1923,9 +1875,6 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     assert(num_target_qubits > 0u);
     assert(num_control_qubits > 0u);
     assert(num_operated_qubits > 2u);
-
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
 
     switch (num_target_qubits)
     {
@@ -1979,9 +1928,6 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
 
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 0u);
-
-    if (num_control_qubits + 2u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 2u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
 
     switch (num_control_qubits)
     {
@@ -2058,9 +2004,6 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_DEC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
-    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
-
     switch (num_control_qubits)
     {
 # define CONTROL_QUBITS(z, n, _) BOOST_PP_COMMA_IF(n) control_qubits[n]
@@ -2099,9 +2042,6 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
 
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
-
-    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
 
     switch (num_control_qubits)
     {
@@ -2178,9 +2118,6 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
-    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
-
     switch (num_control_qubits)
     {
 # define CONTROL_QUBITS(z, n, _) BOOST_PP_COMMA_IF(n) control_qubits[n]
@@ -2220,9 +2157,6 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
-    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
-
     switch (num_control_qubits)
     {
 # define CONTROL_QUBITS(z, n, _) BOOST_PP_COMMA_IF(n) control_qubits[n]
@@ -2246,11 +2180,11 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     {
       fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_controlled_sqrt_pauli_z<fused_gate_iterator> >(
-          ket::make_control(to_qubit_in_fused_gate_.at(control_qubit1.qubit()), ket::make_control(to_qubit_in_fused_gate_.at(control_qubit2.qubit()))));
+          ket::make_control(to_qubit_in_fused_gate_.at(control_qubit1.qubit())), ket::make_control(to_qubit_in_fused_gate_.at(control_qubit2.qubit()))));
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
       cache_aware_fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_controlled_sqrt_pauli_z<cache_aware_fused_gate_iterator> >(
-          ket::make_control(to_qubit_in_fused_gate_.at(control_qubit1.qubit()), ket::make_control(to_qubit_in_fused_gate_.at(control_qubit2.qubit()))));
+          ket::make_control(to_qubit_in_fused_gate_.at(control_qubit1.qubit())), ket::make_control(to_qubit_in_fused_gate_.at(control_qubit2.qubit()))));
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
@@ -2264,11 +2198,11 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     {
       fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_adj_controlled_sqrt_pauli_z<fused_gate_iterator> >(
-          ket::make_control(to_qubit_in_fused_gate_.at(control_qubit1.qubit()), ket::make_control(to_qubit_in_fused_gate_.at(control_qubit2.qubit()))));
+          ket::make_control(to_qubit_in_fused_gate_.at(control_qubit1.qubit())), ket::make_control(to_qubit_in_fused_gate_.at(control_qubit2.qubit()))));
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
       cache_aware_fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_adj_controlled_sqrt_pauli_z<cache_aware_fused_gate_iterator> >(
-          ket::make_control(to_qubit_in_fused_gate_.at(control_qubit1.qubit()), ket::make_control(to_qubit_in_fused_gate_.at(control_qubit2.qubit()))));
+          ket::make_control(to_qubit_in_fused_gate_.at(control_qubit1.qubit())), ket::make_control(to_qubit_in_fused_gate_.at(control_qubit2.qubit()))));
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
@@ -2294,9 +2228,6 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
 
     auto const num_operated_qubits = control_qubits.size();
     assert(num_operated_qubits > 2u);
-
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
 
     switch (num_operated_qubits)
     {
@@ -2334,15 +2265,12 @@ BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_operated_qubits = control_qubits.size();
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
-
     switch (num_operated_qubits)
     {
 # define CONTROL_QUBITS(z, n, _) BOOST_PP_COMMA_IF(n) control_qubits[n]
 # define CASE_N(z, num_operated_qubits, _) \
        case num_operated_qubits:\
-        ket::gate::ranges::adj_sqrt_pauli_z(parallel_policy_, data_, BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
+        ket::gate::ranges::adj_sqrt_pauli_z(parallel_policy_, data_, BOOST_PP_REPEAT_ ## z(num_operated_qubits, CONTROL_QUBITS, nil));\
         break;\
 
 BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
@@ -2385,9 +2313,6 @@ BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     assert(num_target_qubits > 0u);
     assert(num_control_qubits > 0u);
     assert(num_operated_qubits > 2u);
-
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
 
     switch (num_target_qubits)
     {
@@ -2451,9 +2376,6 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     assert(num_control_qubits > 0u);
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
-
     switch (num_target_qubits)
     {
 # define TARGET_QUBITS(z, n, _) BOOST_PP_COMMA_IF(n) target_qubits[n]
@@ -2495,7 +2417,7 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
       cache_aware_fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_controlled_phase_shift<cache_aware_fused_gate_iterator> >(
-          phase_coefficient, ket::make_control(to_qubit_in_fused_gate_.at(control_qubit1)), ket::make_control(to_qubit_in_fused_gate_.at(control_qubit2.qubit()))));
+          phase_coefficient, ket::make_control(to_qubit_in_fused_gate_.at(control_qubit1.qubit())), ket::make_control(to_qubit_in_fused_gate_.at(control_qubit2.qubit()))));
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
@@ -2545,9 +2467,6 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_operated_qubits = control_qubits.size();
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
-
     switch (num_operated_qubits)
     {
 # define CONTROL_QUBITS(z, n, _) BOOST_PP_COMMA_IF(n) control_qubits[n]
@@ -2587,9 +2506,6 @@ BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
 
     auto const num_operated_qubits = control_qubits.size();
     assert(num_operated_qubits > 1u);
-
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
 
     switch (num_operated_qubits)
     {
@@ -2666,9 +2582,6 @@ BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_operated_qubits = control_qubits.size();
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
-
     switch (num_operated_qubits)
     {
 # define CONTROL_QUBITS(z, n, _) BOOST_PP_COMMA_IF(n) control_qubits[n]
@@ -2707,9 +2620,6 @@ BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
 
     auto const num_operated_qubits = control_qubits.size();
     assert(num_operated_qubits > 2u);
-
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
 
     switch (num_operated_qubits)
     {
@@ -2786,9 +2696,6 @@ BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
-    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
-
     switch (num_control_qubits)
     {
 # define CONTROL_QUBITS(z, n, _) BOOST_PP_COMMA_IF(n) control_qubits[n]
@@ -2827,9 +2734,6 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
 
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
-
-    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
 
     switch (num_control_qubits)
     {
@@ -2909,9 +2813,6 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
-    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
-
     switch (num_control_qubits)
     {
 # define CONTROL_QUBITS(z, n, _) BOOST_PP_COMMA_IF(n) control_qubits[n]
@@ -2951,9 +2852,6 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
 
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
-
-    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
 
     switch (num_control_qubits)
     {
@@ -3030,9 +2928,6 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
-    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
-
     switch (num_control_qubits)
     {
 # define CONTROL_QUBITS(z, n, _) BOOST_PP_COMMA_IF(n) control_qubits[n]
@@ -3071,9 +2966,6 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
 
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
-
-    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
 
     switch (num_control_qubits)
     {
@@ -3150,9 +3042,6 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
-    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
-
     switch (num_control_qubits)
     {
 # define CONTROL_QUBITS(z, n, _) BOOST_PP_COMMA_IF(n) control_qubits[n]
@@ -3191,9 +3080,6 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
 
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
-
-    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
 
     switch (num_control_qubits)
     {
@@ -3235,9 +3121,6 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
-    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
-
     switch (num_control_qubits)
     {
 # define CONTROL_QUBITS(z, n, _) BOOST_PP_COMMA_IF(n) control_qubits[n]
@@ -3277,9 +3160,6 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
 
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
-
-    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
 
     switch (num_control_qubits)
     {
@@ -3366,9 +3246,6 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     assert(num_control_qubits > 0u);
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
-
     switch (num_target_qubits)
     {
 # define TARGET_QUBITS(z, n, _) BOOST_PP_COMMA_IF(n) target_qubits[n]
@@ -3430,9 +3307,6 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     assert(num_target_qubits > 0u);
     assert(num_control_qubits > 0u);
     assert(num_operated_qubits > 2u);
-
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
 
     switch (num_target_qubits)
     {
@@ -3532,9 +3406,6 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     assert(num_control_qubits > 0u);
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
-
     switch (num_target_qubits)
     {
 # define TARGET_QUBITS(z, n, _) BOOST_PP_COMMA_IF(n) target_qubits[n]
@@ -3596,9 +3467,6 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     assert(num_target_qubits > 0u);
     assert(num_control_qubits > 0u);
     assert(num_operated_qubits > 2u);
-
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
 
     switch (num_target_qubits)
     {
@@ -3677,9 +3545,9 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
         [this](::bra::control_qubit_type const control_qubit) { return ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
 
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
-      cache_aware_fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_exponential_pauli_z<cache_aware_fused_gate_iterator> >(phase, control_qubits_in_fused_gate));
+      cache_aware_fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_exponential_pauli_z<cache_aware_fused_gate_iterator> >(phase, target_qubit, control_qubits_in_fused_gate));
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_exponential_pauli_z<fused_gate_iterator> >(phase, std::move(control_qubits_in_fused_gate)));
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_multi_controlled_exponential_pauli_z<fused_gate_iterator> >(phase, target_qubit, std::move(control_qubits_in_fused_gate)));
       return;
     }
 
@@ -3687,9 +3555,6 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_control_qubits = control_qubits.size();
     auto const num_operated_qubits = num_target_qubits + num_control_qubits;
     assert(num_operated_qubits > 2u);
-
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
 
     switch (num_control_qubits)
     {
@@ -3721,9 +3586,9 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
         [this](::bra::control_qubit_type const control_qubit) { return ket::make_control(this->to_qubit_in_fused_gate_.at(control_qubit.qubit())); });
 
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
-      cache_aware_fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_multi_controlled_exponential_pauli_z<cache_aware_fused_gate_iterator> >(phase, control_qubits_in_fused_gate));
+      cache_aware_fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_multi_controlled_exponential_pauli_z<cache_aware_fused_gate_iterator> >(phase, target_qubit, control_qubits_in_fused_gate));
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
-      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_multi_controlled_exponential_pauli_z<fused_gate_iterator> >(phase, std::move(control_qubits_in_fused_gate)));
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_adj_multi_controlled_exponential_pauli_z<fused_gate_iterator> >(phase, target_qubit, std::move(control_qubits_in_fused_gate)));
       return;
     }
 
@@ -3731,9 +3596,6 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_control_qubits = control_qubits.size();
     auto const num_operated_qubits = num_target_qubits + num_control_qubits;
     assert(num_operated_qubits > 2u);
-
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
 
     switch (num_control_qubits)
     {
@@ -3785,9 +3647,6 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     assert(num_target_qubits > 0u);
     assert(num_control_qubits > 0u);
     assert(num_operated_qubits > 2u);
-
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
 
     switch (num_target_qubits)
     {
@@ -3851,9 +3710,6 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     assert(num_control_qubits > 0u);
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
-
     switch (num_target_qubits)
     {
 # define TARGET_QUBITS(z, n, _) BOOST_PP_COMMA_IF(n) target_qubits[n]
@@ -3907,9 +3763,6 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 0u);
 
-    if (num_control_qubits + 2u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 2u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
-
     switch (num_control_qubits)
     {
 # define CONTROL_QUBITS(z, n, _) BOOST_PP_COMMA_IF(n) control_qubits[n]
@@ -3949,9 +3802,6 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_DEC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
 
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 0u);
-
-    if (num_control_qubits + 2u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 2u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
 
     switch (num_control_qubits)
     {

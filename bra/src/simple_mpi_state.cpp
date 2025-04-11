@@ -1687,7 +1687,6 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
         if (ket::mpi::page::page_size(mpi_policy_, data_, communicator_, environment_) <= cache_size)\
           ket::mpi::gate::local::nopage::all_on_cache::small::gate(\
             mpi_policy_, parallel_policy_, data_, communicator_, environment_,\
-            data_, permutation_, buffer_, communicator_, environment_,\
             [this](\
               auto const first, ::bra::state_integer_type const index_wo_qubits,\
               std::array< ::bra::state_integer_type, num_fused_qubits > const& qubit_masks,\
@@ -2869,7 +2868,7 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
       cache_aware_fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_controlled_phase_shift<cache_aware_fused_gate_iterator> >(
-          phase_coefficient, ket::make_control(to_qubit_in_fused_gate_.at(control_qubit1)), ket::make_control(to_qubit_in_fused_gate_.at(control_qubit2.qubit()))));
+          phase_coefficient, ket::make_control(to_qubit_in_fused_gate_.at(control_qubit1.qubit())), ket::make_control(to_qubit_in_fused_gate_.at(control_qubit2.qubit()))));
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
