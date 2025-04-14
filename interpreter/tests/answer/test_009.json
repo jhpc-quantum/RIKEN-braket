@@ -1,0 +1,16 @@
+{
+    "Expectation values of spins": [
+        {
+            "qubit": 0,
+            "Qx": 0.5,
+            "Qy": 0.5,
+            "Qz": 0
+        },
+        {
+            "qubit": 1,
+            "Qx": 0.5,
+            "Qy": 0.5,
+            "Qz": 0
+        }
+    ]
+}
