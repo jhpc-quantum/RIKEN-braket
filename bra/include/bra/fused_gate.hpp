@@ -35,8 +35,6 @@
 # include <bra/fused_gate/fused_adj_x_rotation_half_pi.hpp>
 # include <bra/fused_gate/fused_y_rotation_half_pi.hpp>
 # include <bra/fused_gate/fused_adj_y_rotation_half_pi.hpp>
-# include <bra/fused_gate/fused_controlled_v.hpp>
-# include <bra/fused_gate/fused_adj_controlled_v.hpp>
 # include <bra/fused_gate/fused_exponential_pauli_x.hpp>
 # include <bra/fused_gate/fused_adj_exponential_pauli_x.hpp>
 # include <bra/fused_gate/fused_exponential_pauli_xx.hpp>
@@ -108,8 +106,6 @@
 # include <bra/fused_gate/fused_adj_controlled_y_rotation_half_pi.hpp>
 # include <bra/fused_gate/fused_multi_controlled_y_rotation_half_pi.hpp>
 # include <bra/fused_gate/fused_adj_multi_controlled_y_rotation_half_pi.hpp>
-# include <bra/fused_gate/fused_multi_controlled_v.hpp>
-# include <bra/fused_gate/fused_adj_multi_controlled_v.hpp>
 # include <bra/fused_gate/fused_controlled_exponential_pauli_x.hpp>
 # include <bra/fused_gate/fused_adj_controlled_exponential_pauli_x.hpp>
 # include <bra/fused_gate/fused_multi_controlled_exponential_pauli_xn.hpp>

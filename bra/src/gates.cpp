@@ -7,11 +7,11 @@
 #include <iterator>
 #include <memory>
 #include <stdexcept>
-# if __cplusplus >= 201703L
-#   include <type_traits>
-# else
-#   include <boost/type_traits/is_nothrow_swappable.hpp>
-# endif
+#if __cplusplus >= 201703L
+# include <type_traits>
+#else
+# include <boost/type_traits/is_nothrow_swappable.hpp>
+#endif
 
 #include <boost/lexical_cast.hpp>
 
@@ -85,8 +85,6 @@
 #include <bra/gate/adj_y_rotation_half_pi.hpp>
 #include <bra/gate/controlled_phase_shift.hpp>
 #include <bra/gate/adj_controlled_phase_shift.hpp>
-#include <bra/gate/controlled_v.hpp>
-#include <bra/gate/adj_controlled_v.hpp>
 #include <bra/gate/exponential_pauli_x.hpp>
 #include <bra/gate/adj_exponential_pauli_x.hpp>
 #include <bra/gate/exponential_pauli_xx.hpp>
@@ -180,10 +178,6 @@
 #include <bra/gate/multi_controlled_y_rotation_half_pi.hpp>
 #include <bra/gate/adj_controlled_y_rotation_half_pi.hpp>
 #include <bra/gate/adj_multi_controlled_y_rotation_half_pi.hpp>
-#include <bra/gate/controlled_v_.hpp>
-#include <bra/gate/adj_controlled_v_.hpp>
-#include <bra/gate/multi_controlled_v.hpp>
-#include <bra/gate/adj_multi_controlled_v.hpp>
 #include <bra/gate/controlled_exponential_pauli_x.hpp>
 #include <bra/gate/adj_controlled_exponential_pauli_x.hpp>
 #include <bra/gate/multi_controlled_exponential_pauli_xn.hpp>
@@ -536,10 +530,6 @@ namespace bra
         add_u(columns);
       else if (mnemonic == "U+")
         add_adj_u(columns);
-      else if (mnemonic == "V")
-        add_v(columns);
-      else if (mnemonic == "V+")
-        add_adj_v(columns);
       else if (mnemonic == "EXIT")
       {
         if (boost::size(columns) != 1u)
@@ -1454,34 +1444,18 @@ namespace bra
 
     assert(column_size >= 2u);
 
-    if (column_size >= 4u)
-    {
-      using std::begin;
-      auto iter = begin(columns);
-      if (*++iter == "FUSION")
-        return ::bra::begin_statement::fusion;
-
-      throw wrong_mnemonics_error{columns};
-    }
-
-    if (column_size == 3u)
-    {
-      using std::begin;
-      auto iter = begin(columns);
-      if (*++iter == "LEARNING")
-        if (*++iter == "MACHINE")
-          return ::bra::begin_statement::learning_machine;
-
-      throw wrong_mnemonics_error{columns};
-    }
-
-    // if (column_size == 2u)
     using std::begin;
     auto iter = begin(columns);
-    if (*++iter != "MEASUREMENT")
-      throw wrong_mnemonics_error{columns};
+    ++iter;
 
-    return ::bra::begin_statement::measurement;
+    if (*iter == "FUSION"/* and column_size == 2u*/)
+      return ::bra::begin_statement::fusion;
+    else if (*iter == "LEARNING" and column_size == 3u and *std::next(iter) == "MACHINE")
+      return ::bra::begin_statement::learning_machine;
+    else if (*iter == "MEASUREMENT" and column_size == 2u)
+      return ::bra::begin_statement::measurement;
+
+    throw wrong_mnemonics_error{columns};
   }
 
   ::bra::end_statement gates::read_end_statement(gates::columns_type const& columns) const
@@ -1490,16 +1464,14 @@ namespace bra
 
     assert(column_size >= 2u);
 
-    if (column_size >= 3u)
-      throw wrong_mnemonics_error{columns};
-
-    // if (column_size == 2u)
     using std::begin;
     auto iter = begin(columns);
-    if (*++iter != "FUSION")
-      throw wrong_mnemonics_error{columns};
+    ++iter;
 
-    return ::bra::end_statement::fusion;
+    if (*iter == "FUSION" and column_size == 2u)
+      return ::bra::end_statement::fusion;
+
+    throw wrong_mnemonics_error{columns};
   }
 
   ::bra::bit_statement gates::read_bit_statement(gates::columns_type const& columns) const
@@ -1621,36 +1593,7 @@ namespace bra
   }
 
   void gates::add_begin_fusion(gates::columns_type const& columns)
-  {
-    auto const num_fused_qubits = static_cast< ::bra::bit_integer_type >(columns.size()) - ::bra::bit_integer_type{2u};
-    if (num_fused_qubits == ::bra::bit_integer_type{0u})
-      throw wrong_mnemonics_error{columns};
-
-#ifndef BRA_MAX_NUM_FUSED_QUBITS
-# ifdef KET_DEFAULT_NUM_ON_CACHE_QUBITS
-#   define BRA_MAX_NUM_FUSED_QUBITS BOOST_PP_DEC(KET_DEFAULT_NUM_ON_CACHE_QUBITS)
-# else // KET_DEFAULT_NUM_ON_CACHE_QUBITS
-#   define BRA_MAX_NUM_FUSED_QUBITS 10
-# endif // KET_DEFAULT_NUM_ON_CACHE_QUBITS
-#endif // BRA_MAX_NUM_FUSED_QUBITS
-    constexpr auto max_num_fused_qubits = ::bra::bit_integer_type{BRA_MAX_NUM_FUSED_QUBITS};
-    if (num_fused_qubits > max_num_fused_qubits)
-      throw wrong_mnemonics_error{columns};
-
-    auto fused_qubits = std::vector< ::bra::qubit_type >{};
-    fused_qubits.reserve(num_fused_qubits);
-
-    using std::begin;
-    auto iter = begin(columns);
-    ++iter;
-    ++iter;
-    using std::end;
-    auto const last = end(columns);
-    for (; iter != last; ++iter)
-      fused_qubits.emplace_back(boost::lexical_cast< ::bra::bit_integer_type >(*iter));
-
-    data_.push_back(std::make_unique< ::bra::gate::begin_fusion >(std::move(fused_qubits)));
-  }
+  { data_.push_back(std::make_unique< ::bra::gate::begin_fusion >()); }
 
   void gates::add_i(gates::columns_type const& columns)
   { data_.push_back(std::make_unique< ::bra::gate::i_gate >(read_target(columns))); }
@@ -2143,38 +2086,6 @@ namespace bra
     {
       phase_exponent *= -1;
       data_.push_back(std::make_unique< ::bra::gate::controlled_phase_shift >(phase_exponent, phase_coefficients_[phase_exponent], control1, control2));
-    }
-  }
-
-  void gates::add_v(gates::columns_type const& columns)
-  {
-    auto control = ::bra::control_qubit_type{};
-    auto target = ::bra::qubit_type{};
-    auto phase_exponent = int{};
-    std::tie(control, target, phase_exponent) = read_control_target_phaseexp(columns);
-
-    if (phase_exponent >= 0)
-      data_.push_back(std::make_unique< ::bra::gate::controlled_v >(phase_exponent, phase_coefficients_[phase_exponent], target, control));
-    else
-    {
-      phase_exponent *= -1;
-      data_.push_back(std::make_unique< ::bra::gate::adj_controlled_v >(phase_exponent, phase_coefficients_[phase_exponent], target, control));
-    }
-  }
-
-  void gates::add_adj_v(gates::columns_type const& columns)
-  {
-    auto control = ::bra::control_qubit_type{};
-    auto target = ::bra::qubit_type{};
-    auto phase_exponent = int{};
-    std::tie(control, target, phase_exponent) = read_control_target_phaseexp(columns);
-
-    if (phase_exponent >= 0)
-      data_.push_back(std::make_unique< ::bra::gate::adj_controlled_v >(phase_exponent, phase_coefficients_[phase_exponent], target, control));
-    else
-    {
-      phase_exponent *= -1;
-      data_.push_back(std::make_unique< ::bra::gate::controlled_v >(phase_exponent, phase_coefficients_[phase_exponent], target, control));
     }
   }
 
@@ -2747,10 +2658,6 @@ namespace bra
       add_croty(columns, num_control_qubits);
     else if (noncontrol_mnemonic == "-Y")
       add_adj_croty(columns, num_control_qubits);
-    else if (noncontrol_mnemonic == "V")
-      add_cv(columns, num_control_qubits);
-    else if (noncontrol_mnemonic == "V+")
-      add_adj_cv(columns, num_control_qubits);
     else if (noncontrol_mnemonic == "EX")
       add_cex(columns, num_control_qubits);
     else if (noncontrol_mnemonic == "EX+")
@@ -3524,74 +3431,6 @@ namespace bra
       auto const target = read_multi_controls_target(columns, controls);
 
       data_.push_back(std::make_unique< ::bra::gate::adj_multi_controlled_y_rotation_half_pi >(target, std::move(controls)));
-    }
-  }
-
-  void gates::add_cv(gates::columns_type const& columns, int const num_control_qubits)
-  {
-    if (num_control_qubits == 1)
-    {
-      auto control = ::bra::control_qubit_type{};
-      auto target = ::bra::qubit_type{};
-      auto phase_exponent = int{};
-      std::tie(control, target, phase_exponent) = read_control_target_phaseexp(columns);
-
-      if (phase_exponent >= 0)
-        data_.push_back(std::make_unique< ::bra::gate::controlled_v_ >(phase_exponent, phase_coefficients_[phase_exponent], target, control));
-      else
-      {
-        phase_exponent *= -1;
-        data_.push_back(std::make_unique< ::bra::gate::adj_controlled_v_ >(phase_exponent, phase_coefficients_[phase_exponent], target, control));
-      }
-    }
-    else // num_control_qubits >= 2
-    {
-      auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
-      auto target = ::bra::qubit_type{};
-      auto phase_exponent = int{};
-      std::tie(target, phase_exponent) = read_multi_controls_target_phaseexp(columns, controls);
-
-      if (phase_exponent >= 0)
-        data_.push_back(std::make_unique< ::bra::gate::multi_controlled_v >(phase_exponent, phase_coefficients_[phase_exponent], target, std::move(controls)));
-      else
-      {
-        phase_exponent *= -1;
-        data_.push_back(std::make_unique< ::bra::gate::adj_multi_controlled_v >(phase_exponent, phase_coefficients_[phase_exponent], target, std::move(controls)));
-      }
-    }
-  }
-
-  void gates::add_adj_cv(gates::columns_type const& columns, int const num_control_qubits)
-  {
-    if (num_control_qubits == 1)
-    {
-      auto control = ::bra::control_qubit_type{};
-      auto target = ::bra::qubit_type{};
-      auto phase_exponent = int{};
-      std::tie(control, target, phase_exponent) = read_control_target_phaseexp(columns);
-
-      if (phase_exponent >= 0)
-        data_.push_back(std::make_unique< ::bra::gate::adj_controlled_v_ >(phase_exponent, phase_coefficients_[phase_exponent], target, control));
-      else
-      {
-        phase_exponent *= -1;
-        data_.push_back(std::make_unique< ::bra::gate::controlled_v_ >(phase_exponent, phase_coefficients_[phase_exponent], target, control));
-      }
-    }
-    else // num_control_qubits >= 2
-    {
-      auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
-      auto target = ::bra::qubit_type{};
-      auto phase_exponent = int{};
-      std::tie(target, phase_exponent) = read_multi_controls_target_phaseexp(columns, controls);
-
-      if (phase_exponent >= 0)
-        data_.push_back(std::make_unique< ::bra::gate::adj_multi_controlled_v >(phase_exponent, phase_coefficients_[phase_exponent], target, std::move(controls)));
-      else
-      {
-        phase_exponent *= -1;
-        data_.push_back(std::make_unique< ::bra::gate::multi_controlled_v >(phase_exponent, phase_coefficients_[phase_exponent], target, std::move(controls)));
-      }
     }
   }
 

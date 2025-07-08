@@ -332,8 +332,6 @@ namespace bra
     void add_adj_roty(columns_type const& columns);
     void add_u(columns_type const& columns);
     void add_adj_u(columns_type const& columns);
-    void add_v(columns_type const& columns);
-    void add_adj_v(columns_type const& columns);
     void add_ex(columns_type const& columns);
     void add_adj_ex(columns_type const& columns);
     void add_exx(columns_type const& columns);
@@ -408,8 +406,6 @@ namespace bra
     void add_adj_crotx(columns_type const& columns, int const num_control_qubits);
     void add_croty(columns_type const& columns, int const num_control_qubits);
     void add_adj_croty(columns_type const& columns, int const num_control_qubits);
-    void add_cv(columns_type const& columns, int const num_control_qubits);
-    void add_adj_cv(columns_type const& columns, int const num_control_qubits);
     void add_cex(columns_type const& columns, int const num_control_qubits);
     void add_adj_cex(columns_type const& columns, int const num_control_qubits);
     void add_cexs(columns_type const& columns, int const num_control_qubits, std::string const& noncontrol_mnemonic);

@@ -82,7 +82,7 @@ int main(int argc, char* argv[])
   {
     if (is_io_root_rank)
       std::cerr << "multithread environment is required" << std::endl;
-    std::exit(EXIT_FAILURE);
+    return EXIT_FAILURE;
   }
 #endif // BRA_NO_MPI
 
@@ -121,7 +121,7 @@ int main(int argc, char* argv[])
 #else // BRA_NO_MPI
     std::cout << options.help() << std::endl;
 #endif // BRA_NO_MPI
-    std::exit(EXIT_SUCCESS);
+    return EXIT_SUCCESS;
   }
 
 #ifndef BRA_NO_MPI
@@ -132,7 +132,7 @@ int main(int argc, char* argv[])
   {
     if (is_io_root_rank)
       std::cerr << "Error: wrong number of arguments\n" << options.help() << std::endl;
-    std::exit(EXIT_FAILURE);
+    return EXIT_FAILURE;
   }
 
   auto const num_page_qubits = parse_result["page-qubits"].as<unsigned int>();
@@ -143,7 +143,7 @@ int main(int argc, char* argv[])
   {
     if (is_io_root_rank)
       std::cerr << "Error: wrong argument\n" << options.help() << std::flush;
-    std::exit(EXIT_FAILURE);
+    return EXIT_FAILURE;
   }
 #endif // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
 
@@ -159,14 +159,14 @@ int main(int argc, char* argv[])
     {
       if (is_io_root_rank)
         std::cerr << "Error: wrong argument\n" << options.help() << std::flush;
-      std::exit(EXIT_FAILURE);
+      return EXIT_FAILURE;
     }
   }
   else if (not is_simple)
   {
     if (is_io_root_rank)
       std::cerr << "Error: wrong argument\n" << options.help() << std::flush;
-    std::exit(EXIT_FAILURE);
+    return EXIT_FAILURE;
   }
 #endif // BRA_NO_MPI
 
@@ -188,10 +188,11 @@ int main(int argc, char* argv[])
 #else // BRA_NO_MPI
         std::cerr << "ERROR: cannot open an input file " << filename << '\n' << options.help() << std::endl;
 #endif // BRA_NO_MPI
-        std::exit(EXIT_FAILURE);
+        return EXIT_FAILURE;
       }
     }
   }
+
 
 #ifndef BRA_NO_MPI
   auto gates = bra::gates{parse_result.count("file") ? possible_input_stream : std::cin, num_unit_qubits, num_processes_per_unit, environment, root_rank, communicator};

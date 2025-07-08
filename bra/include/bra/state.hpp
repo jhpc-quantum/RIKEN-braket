@@ -4,7 +4,6 @@
 # include <cstddef>
 # include <complex>
 # include <vector>
-# include <unordered_map>
 # include <array>
 # include <utility>
 # ifdef BRA_NO_MPI
@@ -65,15 +64,57 @@ namespace bra
   }; // class unsupported_fused_gate_error
 } // namespace bra
 
-template <typename StateInteger, typename BitInteger>
-struct std::hash<ket::qubit<StateInteger, BitInteger>>
-{
-  std::size_t operator()(ket::qubit<StateInteger, BitInteger> const& qubit) const noexcept
-  { return static_cast<std::size_t>(static_cast<BitInteger>(qubit)); }
-};
-
 namespace bra
 {
+  enum class found_qubit : int
+  { not_found = 0, control_qubit = 1, ez_qubit = 2, cez_qubit = 3, qubit = 4 };
+
+  inline auto is_weaker(::bra::found_qubit const lhs, ::bra::found_qubit const rhs) -> bool
+  { return static_cast<int>(lhs) < static_cast<int>(rhs); }
+
+  template <typename FoundQubitsAllocator>
+  inline auto set_found_qubits(
+    std::vector< ::bra::found_qubit, FoundQubitsAllocator >& found_qubits,
+    ::bra::qubit_type const qubit)
+  -> void
+  {
+    /*
+    if (::bra::is_weaker(found_qubits[static_cast< ::bra::bit_integer_type >(qubit)], ::bra::found_qubit::qubit)
+      found_qubits[static_cast< ::bra::bit_integer_type >(qubit)] = ::bra::found_qubit::qubit;
+    */
+    found_qubits[static_cast< ::bra::bit_integer_type >(qubit)] = ::bra::found_qubit::qubit;
+  }
+
+  template <typename FoundQubitsAllocator>
+  inline auto set_found_qubits(
+    std::vector< ::bra::found_qubit, FoundQubitsAllocator >& found_qubits,
+    ::bra::control_qubit_type const control_qubit)
+  -> void
+  {
+    if (::bra::is_weaker(found_qubits[static_cast< ::bra::bit_integer_type >(control_qubit.qubit())], ::bra::found_qubit::control_qubit))
+      found_qubits[static_cast< ::bra::bit_integer_type >(control_qubit.qubit())] = ::bra::found_qubit::control_qubit;
+  }
+
+  template <typename FoundQubitsAllocator, typename Allocator>
+  inline auto set_found_qubits(
+    std::vector< ::bra::found_qubit, FoundQubitsAllocator >& found_qubits,
+    std::vector< ::bra::qubit_type, Allocator > const& qubits)
+  -> void
+  {
+    for (auto const qubit: qubits)
+      set_found_qubits(found_qubits, qubit);
+  }
+
+  template <typename FoundQubitsAllocator, typename Allocator>
+  inline auto set_found_qubits(
+    std::vector< ::bra::found_qubit, FoundQubitsAllocator >& found_qubits,
+    std::vector< ::bra::control_qubit_type, Allocator> const& control_qubits)
+  -> void
+  {
+    for (auto const control_qubit: control_qubits)
+      set_found_qubits(found_qubits, control_qubit);
+  }
+
   class state
   {
    public:
@@ -109,8 +150,7 @@ namespace bra
     state_integer_type measured_value_; // return value of ket(::mpi)::measure
     std::vector<state_integer_type> generated_events_; // results of ket(::mpi)::generate_events
     bool is_in_fusion_; // related to begin_fusion/end_fusion
-    std::vector< ::bra::qubit_type > fused_qubits_; // related to begin_fusion/end_fusion
-    std::unordered_map< ::bra::qubit_type,  ::bra::qubit_type > to_qubit_in_fused_gate_; // related to begin_fusion/end_fusion
+    std::vector< ::bra::found_qubit > found_qubits_; // related to begin_fusion/end_fusion
     random_number_generator_type random_number_generator_;
 # ifndef BRA_NO_MPI
 
@@ -235,12 +275,6 @@ namespace bra
     state& adj_x_rotation_half_pi(qubit_type const qubit);
     state& y_rotation_half_pi(qubit_type const qubit);
     state& adj_y_rotation_half_pi(qubit_type const qubit);
-    state& controlled_v(
-      complex_type const& phase_coefficient,
-      qubit_type const target_qubit, control_qubit_type const control_qubit);
-    state& adj_controlled_v(
-      complex_type const& phase_coefficient,
-      qubit_type const target_qubit, control_qubit_type const control_qubit);
     state& exponential_pauli_x(real_type const phase, qubit_type const qubit);
     state& adj_exponential_pauli_x(real_type const phase, qubit_type const qubit);
     state& exponential_pauli_xx(real_type const phase, qubit_type const qubit1, qubit_type const qubit2);
@@ -278,7 +312,7 @@ namespace bra
 # endif // BRA_NO_MPI
     state& shor_box(bit_integer_type const num_exponent_qubits, state_integer_type const divisor, state_integer_type const base);
 
-    state& begin_fusion(std::vector<qubit_type> const& fused_qubits);
+    state& begin_fusion();
     state& end_fusion();
 
     state& clear(qubit_type const qubit);
@@ -340,8 +374,6 @@ namespace bra
     state& adj_controlled_y_rotation_half_pi(qubit_type const target_qubit, control_qubit_type const control_qubit);
     state& multi_controlled_y_rotation_half_pi(qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits);
     state& adj_multi_controlled_y_rotation_half_pi(qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits);
-    state& multi_controlled_v(complex_type const& phase_coefficient, qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits);
-    state& adj_multi_controlled_v(complex_type const& phase_coefficient, qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits);
     state& controlled_exponential_pauli_x(real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit);
     state& adj_controlled_exponential_pauli_x(real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit);
     state& multi_controlled_exponential_pauli_xn(real_type const phase, std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits);
@@ -413,12 +445,6 @@ namespace bra
     virtual void do_adj_x_rotation_half_pi(qubit_type const qubit) = 0;
     virtual void do_y_rotation_half_pi(qubit_type const qubit) = 0;
     virtual void do_adj_y_rotation_half_pi(qubit_type const qubit) = 0;
-    virtual void do_controlled_v(
-      complex_type const& phase_coefficient,
-      qubit_type const target_qubit, control_qubit_type const control_qubit) = 0;
-    virtual void do_adj_controlled_v(
-      complex_type const& phase_coefficient,
-      qubit_type const target_qubit, control_qubit_type const control_qubit) = 0;
     virtual void do_exponential_pauli_x(real_type const phase, qubit_type const qubit) = 0;
     virtual void do_adj_exponential_pauli_x(real_type const phase, qubit_type const qubit) = 0;
     virtual void do_exponential_pauli_xx(
@@ -599,12 +625,6 @@ namespace bra
     virtual void do_multi_controlled_y_rotation_half_pi(
       qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits) = 0;
     virtual void do_adj_multi_controlled_y_rotation_half_pi(
-      qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits) = 0;
-    virtual void do_multi_controlled_v(
-      complex_type const& phase_coefficient,
-      qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits) = 0;
-    virtual void do_adj_multi_controlled_v(
-      complex_type const& phase_coefficient,
       qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits) = 0;
     virtual void do_controlled_exponential_pauli_x(
       real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit) = 0;
