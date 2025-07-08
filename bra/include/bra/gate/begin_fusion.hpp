@@ -16,17 +16,10 @@ namespace bra
     class begin_fusion final
       : public ::bra::gate::gate
     {
-     public:
-      using qubit_type = ::bra::state::qubit_type;
-
-     private:
-      std::vector<qubit_type> fused_qubits_;
-
       static std::string const name_;
 
      public:
-      explicit begin_fusion(std::vector<qubit_type> const& fused_qubits);
-      explicit begin_fusion(std::vector<qubit_type>&& fused_qubits);
+      explicit begin_fusion();
 
       ~begin_fusion() = default;
       begin_fusion(begin_fusion const&) = delete;

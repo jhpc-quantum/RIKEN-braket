@@ -133,14 +133,6 @@ namespace bra
     void do_adj_x_rotation_half_pi(qubit_type const qubit) override;
     void do_y_rotation_half_pi(qubit_type const qubit) override;
     void do_adj_y_rotation_half_pi(qubit_type const qubit) override;
-    void do_controlled_v(
-      complex_type const& phase_coefficient,
-      qubit_type const target_qubit,
-      control_qubit_type const control_qubit) override;
-    void do_adj_controlled_v(
-      complex_type const& phase_coefficient,
-      qubit_type const target_qubit,
-      control_qubit_type const control_qubit) override;
     void do_exponential_pauli_x(real_type const phase, qubit_type const qubit) override;
     void do_adj_exponential_pauli_x(real_type const phase, qubit_type const qubit) override;
     void do_exponential_pauli_xx(
@@ -313,12 +305,6 @@ namespace bra
     void do_multi_controlled_y_rotation_half_pi(
       qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits) override;
     void do_adj_multi_controlled_y_rotation_half_pi(
-      qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits) override;
-    void do_multi_controlled_v(
-      complex_type const& phase_coefficient,
-      qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits) override;
-    void do_adj_multi_controlled_v(
-      complex_type const& phase_coefficient,
       qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits) override;
     void do_controlled_exponential_pauli_x(
       real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit) override;
