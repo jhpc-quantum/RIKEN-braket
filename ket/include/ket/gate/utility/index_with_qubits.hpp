@@ -5,6 +5,7 @@
 # include <cstddef>
 # include <array>
 
+# include <ket/qubit.hpp>
 # include <ket/utility/integer_exp2.hpp>
 
 
