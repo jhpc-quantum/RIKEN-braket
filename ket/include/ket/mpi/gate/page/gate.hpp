@@ -247,12 +247,13 @@ namespace ket
             auto const modified_operated_qubits
               = ::ket::utility::variadic::transform(
                   [least_significant_chunk_permutated_qubit, num_nontag_qubits, &unsorted_tag_qubits, &present_chunk_permutated_qubit](auto permutated_qubit)
+                  -> std::remove_reference_t<decltype(permutated_qubit.qubit())>
                   {
                     if (permutated_qubit < least_significant_chunk_permutated_qubit)
                       return permutated_qubit.qubit();
 
                     unsorted_tag_qubits.push_back(::ket::remove_control(permutated_qubit.qubit()) - num_nontag_qubits);
-                    return static_cast<decltype(permutated_qubit.qubit())>((present_chunk_permutated_qubit++).qubit());
+                    return static_cast<std::remove_reference_t<decltype(permutated_qubit.qubit())>>((present_chunk_permutated_qubit++).qubit());
                   },
                   permutated_qubit, permutated_qubits...);
             assert(present_chunk_permutated_qubit == least_significant_off_cache_permutated_qubit);
@@ -513,12 +514,13 @@ namespace ket
           auto const modified_operated_qubits
             = ::ket::utility::variadic::transform(
                 [least_significant_chunk_permutated_qubit, num_nontag_qubits, &operated_tag_qubits, &present_chunk_permutated_qubit](auto permutated_qubit)
+                -> std::remove_reference_t<decltype(permutated_qubit.qubit())>
                 {
                   if (permutated_qubit < least_significant_chunk_permutated_qubit)
                     return permutated_qubit.qubit();
 
                   operated_tag_qubits.push_back(::ket::remove_control(permutated_qubit.qubit()) - num_nontag_qubits);
-                  return static_cast<decltype(permutated_qubit.qubit())>((present_chunk_permutated_qubit++).qubit());
+                  return static_cast<std::remove_reference_t<decltype(permutated_qubit.qubit())>>((present_chunk_permutated_qubit++).qubit());
                 },
                 permutated_qubit, permutated_qubits...);
           assert(present_chunk_permutated_qubit == least_significant_off_cache_permutated_qubit);
