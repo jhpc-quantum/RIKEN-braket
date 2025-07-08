@@ -60,21 +60,6 @@ namespace ket
     {
       namespace policy
       {
-        template <typename StateInteger, typename BitInteger, typename NumProcesses>
-        class unit_mpi;
-
-        template <typename StateInteger, typename BitInteger, typename NumProcesses>
-        inline auto rank_in_unit(
-          ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
-          yampi::communicator const& communicator, yampi::environment const& environment)
-        -> yampi::rank;
-
-        template <typename StateInteger, typename BitInteger, typename NumProcesses>
-        inline auto num_data_blocks(
-          ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
-          yampi::rank const rank_in_unit)
-        -> StateInteger;
-
         /*
          * qubit index: xxxxx|xxxxxx|xxxxxxxxx, global qubits, unit qubits, and local qubits from left to right
          * N = L + K + M: the number of qubits
@@ -150,169 +135,64 @@ namespace ket
           { }; // struct is_mpi_policy< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
         } // namespace meta
 
-        // 2^K
-        template <typename StateInteger, typename BitInteger, typename NumProcesses>
-        inline auto num_unit_qubit_values(::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy)
-        -> StateInteger
-        { return ::ket::utility::integer_exp2<StateInteger>(mpi_policy.num_unit_qubits()); }
-
-        // r_u = r % n_u
-        template <typename StateInteger, typename BitInteger, typename NumProcesses>
-        inline auto rank_in_unit(::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy, yampi::rank const rank)
-        -> yampi::rank
-        {
-          assert(rank.mpi_rank() >= 0);
-          return rank % mpi_policy.num_processes_per_unit();
-        }
-
-        // r_u = r % n_u
-        template <typename StateInteger, typename BitInteger, typename NumProcesses>
-        inline auto rank_in_unit(
-          ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
-          yampi::communicator const& communicator, yampi::environment const& environment)
-        -> yampi::rank
-        { return ::ket::mpi::utility::policy::rank_in_unit(mpi_policy, communicator.rank(environment)); }
-
-        // r_u = u / (k+1) if 0 <= u < m(k+1), m + [u - m(k+1)] / k if m(k+1) <= u < 2^K
-        template <typename StateInteger, typename BitInteger, typename NumProcesses>
-        inline auto rank_in_unit(
-          ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
-          StateInteger const unit_qubit_value)
-        -> yampi::rank
-        {
-          assert(unit_qubit_value < ::ket::mpi::utility::policy::num_unit_qubit_values(mpi_policy));
-
-          // k+1
-          auto const num_data_blocks_in_process_a = mpi_policy.num_data_blocks_in_process_b() + StateInteger{1u};
-          // m(k+1)
-          auto const threshold = static_cast<StateInteger>(mpi_policy.num_processes_a_per_unit()) * num_data_blocks_in_process_a;
-
-          auto const result
-            = unit_qubit_value < threshold
-              ? static_cast<int>(unit_qubit_value / num_data_blocks_in_process_a)
-              : static_cast<int>(mpi_policy.num_processes_a_per_unit() + (unit_qubit_value - threshold) / mpi_policy.num_data_blocks_in_process_b());
-
-          assert(result < static_cast<int>(mpi_policy.num_processes_per_unit()));
-          return yampi::rank{result};
-        }
-
-        // i_u = u % (k+1) if 0 <= u < m(k+1), [u - m(k+1)] % k if m(k+1) <= u < 2^K
-        template <typename StateInteger, typename BitInteger, typename NumProcesses>
-        inline auto data_block_index(
-          ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
-          StateInteger const unit_qubit_value)
-        -> StateInteger
-        {
-          assert(unit_qubit_value < ::ket::mpi::utility::policy::num_unit_qubit_values(mpi_policy));
-
-          // k+1
-          auto const num_data_blocks_in_process_a = mpi_policy.num_data_blocks_in_process_b() + StateInteger{1u};
-          // m(k+1)
-          auto const threshold = static_cast<StateInteger>(mpi_policy.num_processes_a_per_unit()) * num_data_blocks_in_process_a;
-
-          return unit_qubit_value < threshold
-            ? static_cast<int>(unit_qubit_value % num_data_blocks_in_process_a)
-            : static_cast<int>((unit_qubit_value - threshold) % mpi_policy.num_data_blocks_in_process_b());
-        }
-
-        // k~ = k+1 if 0 <= r_u < m, k if m <= r_u < n_u
-        template <typename StateInteger, typename BitInteger, typename NumProcesses>
-        inline auto num_data_blocks(
-          ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
-          yampi::rank const rank_in_unit)
-        -> StateInteger
-        {
-          assert(rank_in_unit.mpi_rank() >= 0 and rank_in_unit.mpi_rank() < static_cast<int>(mpi_policy.num_processes_per_unit()));
-
-          return rank_in_unit < yampi::rank{static_cast<int>(mpi_policy.num_processes_a_per_unit())}
-            ? mpi_policy.num_data_blocks_in_process_b() + StateInteger{1u}
-            : mpi_policy.num_data_blocks_in_process_b();
-        }
-
         namespace dispatch
         {
-          // k~
+          // n_u
           template <typename StateInteger, typename BitInteger, typename NumProcesses>
-          struct num_data_blocks< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
+          struct num_processes_per_unit< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
+          {
+            static auto call(
+              ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy)
+            -> NumProcesses
+            { return mpi_policy.num_processes_per_unit(); }
+          }; // struct num_processes_per_unit< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
+
+          // m
+          template <typename StateInteger, typename BitInteger, typename NumProcesses>
+          struct num_processes_a_per_unit< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
+          {
+            static auto call(
+              ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy)
+            -> NumProcesses
+            { return mpi_policy.num_processes_a_per_unit(); }
+          }; // struct num_processes_a_per_unit< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
+
+          // 2^M
+          template <typename StateInteger, typename BitInteger, typename NumProcesses>
+          struct num_units< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
           {
             static auto call(
               ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
               yampi::communicator const& communicator, yampi::environment const& environment)
             -> StateInteger
             {
-              return ::ket::mpi::utility::policy::num_data_blocks(
-                mpi_policy, ::ket::mpi::utility::policy::rank_in_unit(mpi_policy, communicator, environment));
+              auto const result
+                = static_cast<StateInteger>(communicator.size(environment))
+                  / static_cast<StateInteger>(::ket::mpi::utility::policy::num_processes_per_unit(mpi_policy));
+
+              assert(result * ::ket::mpi::utility::policy::num_processes_per_unit(mpi_policy) == static_cast<StateInteger>(communicator.size(environment)));
+              assert(::ket::utility::integer_exp2<StateInteger>(::ket::utility::integer_log2<BitInteger>(result)) == result);
+
+              return result;
             }
-          }; // struct num_data_blocks< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
-        } // namespace dispatch
+          }; // struct num_units< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
 
-        // u = (k+1) r_u + i_u if 0 <= r_u < m, k r_u + i_u + m if m <= r_u < n_u
-        template <typename StateInteger, typename BitInteger, typename NumProcesses>
-        inline auto unit_qubit_value(
-          ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
-          StateInteger const data_block_index, yampi::rank const rank_in_unit)
-        -> StateInteger
-        {
-          assert(rank_in_unit.mpi_rank() >= 0 and rank_in_unit.mpi_rank() < static_cast<int>(mpi_policy.num_processes_per_unit()));
-          assert(data_block_index < ::ket::mpi::utility::policy::num_data_blocks(mpi_policy, rank_in_unit));
-
-          auto const result
-            = rank_in_unit < yampi::rank{static_cast<int>(mpi_policy.num_processes_a_per_unit())}
-              ? static_cast<StateInteger>((mpi_policy.num_data_blocks_in_process_b() + NumProcesses{1u}) * rank_in_unit.mpi_rank()) + data_block_index
-              : static_cast<StateInteger>(mpi_policy.num_data_blocks_in_process_b() * rank_in_unit.mpi_rank() + mpi_policy.num_processes_a_per_unit()) + data_block_index;
-
-          assert(result < ::ket::mpi::utility::policy::num_unit_qubit_values(mpi_policy));
-          return result;
-        }
-
-        // 2^M
-        template <typename StateInteger, typename BitInteger, typename NumProcesses>
-        inline auto num_units(
-          ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
-          yampi::communicator const& communicator, yampi::environment const& environment)
-        -> StateInteger
-        {
-          auto const result
-            = static_cast<StateInteger>(communicator.size(environment))
-              / static_cast<StateInteger>(mpi_policy.num_processes_per_unit());
-          assert(
-            result * mpi_policy.num_processes_per_unit() == static_cast<StateInteger>(communicator.size(environment))
-            and ::ket::utility::integer_exp2<StateInteger>(::ket::utility::integer_log2<BitInteger>(result)) == result);
-          return result;
-        }
-
-        // M
-        template <typename StateInteger, typename BitInteger, typename NumProcesses>
-        inline auto num_global_qubits(
-          ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const&,
-          StateInteger const num_units)
-        -> StateInteger
-        {
-          assert(num_units >= StateInteger{1u});
-          auto const result = ::ket::utility::integer_log2<BitInteger>(num_units);
-          assert(::ket::utility::integer_exp2<StateInteger>(result) == num_units);
-          return result;
-        }
-
-        namespace dispatch
-        {
           // M
           template <typename StateInteger, typename BitInteger, typename NumProcesses>
           struct num_global_qubits< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
           {
             static auto call(
               ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
-              yampi::communicator const& communicator, yampi::environment const& environment)
-            -> StateInteger
+              StateInteger const num_units)
+            -> BitInteger
             {
-              return ::ket::mpi::utility::policy::num_global_qubits(
-                mpi_policy, ::ket::mpi::utility::policy::num_units(mpi_policy, communicator, environment));
+              assert(num_units >= StateInteger{1u});
+              auto const result = ::ket::utility::integer_log2<BitInteger>(num_units);
+              assert(::ket::utility::integer_exp2<StateInteger>(result) == num_units);
+              return result;
             }
           }; // struct num_global_qubits< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
-        } // namespace dispatch
 
-        namespace dispatch
-        {
           // g = r / n_u
           template <typename StateInteger, typename BitInteger, typename NumProcesses>
           struct global_qubit_value< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
@@ -322,76 +202,151 @@ namespace ket
               yampi::rank const rank)
             -> StateInteger
             {
-              assert(rank.mpi_rank() >= 0);
               return
                 static_cast<StateInteger>(rank.mpi_rank())
-                / static_cast<StateInteger>(mpi_policy.num_processes_per_unit());
+                / static_cast<StateInteger>(::ket::mpi::utility::policy::num_processes_per_unit(mpi_policy));
             }
+          }; // struct global_qubit_value< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
+
+          // K
+          template <typename StateInteger, typename BitInteger, typename NumProcesses>
+          struct num_unit_qubits< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
+          {
+            static auto call(
+              ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy)
+            -> BitInteger
+            { return mpi_policy.num_unit_qubits(); }
+          }; // struct num_unit_qubits< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
+
+          // 2^K
+          template <typename StateInteger, typename BitInteger, typename NumProcesses>
+          struct num_unit_qubit_values< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
+          {
+            static auto call(
+              ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy)
+            -> StateInteger
+            { return ::ket::utility::integer_exp2<StateInteger>(::ket::mpi::utility::policy::num_unit_qubits(mpi_policy)); }
+          }; // struct num_unit_qubit_values< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
+
+          // k
+          template <typename StateInteger, typename BitInteger, typename NumProcesses>
+          struct num_data_blocks_in_process_b< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
+          {
+            static auto call(
+              ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy)
+            -> BitInteger
+            { return mpi_policy.num_data_blocks_in_process_b(); }
+          }; // struct num_data_blocks_in_process_b< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
+
+          template <typename MpiPolicy>
+          struct rank_in_unit;
+
+          template <typename StateInteger, typename BitInteger, typename NumProcesses>
+          struct rank_in_unit< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
+          {
+            static auto call(
+              ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
+              yampi::rank const rank)
+            -> yampi::rank
+            { return rank % ::ket::mpi::utility::policy::num_processes_per_unit(mpi_policy); }
 
             static auto call(
               ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
-              yampi::communicator const& communicator, yampi::environment const& environment)
-            -> StateInteger
+              StateInteger const unit_qubit_value)
+            -> yampi::rank
             {
-              auto const result = call(mpi_policy, communicator.rank(environment));
-              assert(result < ::ket::mpi::utility::policy::num_units(mpi_policy, communicator, environment));
-              return result;
+              assert(unit_qubit_value < ::ket::mpi::utility::policy::num_unit_qubit_values(mpi_policy));
+
+              // k+1
+              auto const num_data_blocks_in_process_a = ::ket::mpi::utility::policy::num_data_blocks_in_process_a(mpi_policy);
+              // m(k+1)
+              auto const threshold = static_cast<StateInteger>(::ket::mpi::utility::policy::num_processes_a_per_unit(mpi_policy)) * num_data_blocks_in_process_a;
+
+              auto const result
+                = unit_qubit_value < threshold
+                  ? static_cast<int>(unit_qubit_value / num_data_blocks_in_process_a)
+                  : static_cast<int>(::ket::mpi::utility::policy::num_processes_a_per_unit(mpi_policy) + (unit_qubit_value - threshold) / ::ket::mpi::utility::policy::num_data_blocks_in_process_b(mpi_policy));
+
+              assert(result < static_cast<int>(::ket::mpi::utility::policy::num_processes_per_unit(mpi_policy)));
+              return yampi::rank{result};
             }
-          }; // struct global_qubit_value< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
-        } // namespace dispatch
+          }; // struct rank_in_unit< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
 
-        // r = g n_u + r_u
-        template <typename StateInteger, typename BitInteger, typename NumProcesses>
-        inline auto rank(
-          ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
-          StateInteger const global_qubit_value, yampi::rank const rank_in_unit)
-        -> yampi::rank
-        {
-          assert(rank_in_unit.mpi_rank() >= 0 and rank_in_unit.mpi_rank() < static_cast<int>(mpi_policy.num_processes_per_unit()));
-          return global_qubit_value * mpi_policy.num_processes_per_unit() + rank_in_unit;
-        }
-
-        namespace dispatch
-        {
           // r = g n_u + r_u
           template <typename StateInteger, typename BitInteger, typename NumProcesses>
           struct rank< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
           {
             static auto call(
               ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
-              StateInteger const global_qubit_value,
-              yampi::communicator const& communicator, yampi::environment const& environment)
+              StateInteger const global_qubit_value, yampi::rank const rank_in_unit)
             -> yampi::rank
             {
-              assert(global_qubit_value < ::ket::mpi::utility::policy::num_units(mpi_policy, communicator, environment));
-              return ::ket::mpi::utility::policy::rank(
-                mpi_policy, global_qubit_value,
-                ::ket::mpi::utility::policy::rank_in_unit(mpi_policy, communicator, environment));
+              assert(rank_in_unit.mpi_rank() >= 0 and rank_in_unit.mpi_rank() < static_cast<int>(::ket::mpi::utility::policy::num_processes_per_unit(mpi_policy)));
+              return global_qubit_value * ::ket::mpi::utility::policy::num_processes_per_unit(mpi_policy) + rank_in_unit;
             }
           }; // struct rank< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
-        } // namespace dispatch
 
-        // 2^L
-        template <typename StateInteger, typename BitInteger, typename NumProcesses, typename LocalState>
-        inline auto data_block_size(
-          ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
-          LocalState const& local_state, yampi::rank const rank_in_unit)
-        -> StateInteger
-        {
-          using std::begin;
-          using std::end;
-          auto const local_state_size = static_cast<StateInteger>(std::distance(begin(local_state), end(local_state)));
-          assert(rank_in_unit.mpi_rank() >= 0 and rank_in_unit.mpi_rank() < static_cast<int>(mpi_policy.num_processes_per_unit()));
-          assert(local_state_size % ::ket::mpi::utility::policy::num_data_blocks(mpi_policy, rank_in_unit) == 0u);
+          // k~ = k+1 if 0 <= r_u < m, k if m <= r_u < n_u
+          template <typename StateInteger, typename BitInteger, typename NumProcesses>
+          struct num_data_blocks< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
+          {
+            static auto call(
+              ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
+              yampi::rank const rank_in_unit)
+            -> StateInteger
+            {
+              assert(rank_in_unit.mpi_rank() >= 0 and rank_in_unit.mpi_rank() < static_cast<int>(::ket::mpi::utility::policy::num_processes_per_unit(mpi_policy)));
 
-          auto const result
-            = static_cast<StateInteger>(local_state_size / ::ket::mpi::utility::policy::num_data_blocks(mpi_policy, rank_in_unit));
-          assert(::ket::utility::integer_exp2<StateInteger>(::ket::utility::integer_log2<BitInteger>(result)) == result);
-          return result;
-        }
+              return rank_in_unit < yampi::rank{static_cast<int>(::ket::mpi::utility::policy::num_processes_a_per_unit(mpi_policy))}
+                ? ::ket::mpi::utility::policy::num_data_blocks_in_process_a(mpi_policy)
+                : ::ket::mpi::utility::policy::num_data_blocks_in_process_b(mpi_policy);
+            }
+          }; // struct num_data_blocks< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
 
-        namespace dispatch
-        {
+          // i_u = u % (k+1) if 0 <= u < m(k+1), [u - m(k+1)] % k if m(k+1) <= u < 2^K
+          template <typename StateInteger, typename BitInteger, typename NumProcesses>
+          struct data_block_index< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
+          {
+            static auto call(
+              ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
+              StateInteger const unit_qubit_value)
+            -> StateInteger
+            {
+              assert(unit_qubit_value < ::ket::mpi::utility::policy::num_unit_qubit_values(mpi_policy));
+
+              // k+1
+              auto const num_data_blocks_in_process_a = ::ket::mpi::utility::policy::num_data_blocks_in_process_a(mpi_policy);
+              // m(k+1)
+              auto const threshold = static_cast<StateInteger>(::ket::mpi::utility::policy::num_processes_a_per_unit(mpi_policy)) * num_data_blocks_in_process_a;
+
+              return unit_qubit_value < threshold
+                ? static_cast<int>(unit_qubit_value % num_data_blocks_in_process_a)
+                : static_cast<int>((unit_qubit_value - threshold) % ::ket::mpi::utility::policy::num_data_blocks_in_process_b(mpi_policy));
+            }
+          }; // struct data_block_index< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
+
+          // u = (k+1) r_u + i_u if 0 <= r_u < m, k r_u + i_u + m if m <= r_u < n_u
+          template <typename StateInteger, typename BitInteger, typename NumProcesses>
+          struct unit_qubit_value< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
+          {
+            static auto call(
+              ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
+              StateInteger const data_block_index, yampi::rank const rank_in_unit)
+            -> StateInteger
+            {
+              assert(rank_in_unit.mpi_rank() >= 0 and rank_in_unit.mpi_rank() < static_cast<int>(::ket::mpi::utility::policy::num_processes_per_unit(mpi_policy)));
+              assert(data_block_index < ::ket::mpi::utility::policy::num_data_blocks(mpi_policy, rank_in_unit));
+
+              auto const result
+                = rank_in_unit < yampi::rank{static_cast<int>(::ket::mpi::utility::policy::num_processes_a_per_unit(mpi_policy))}
+                  ? static_cast<StateInteger>(::ket::mpi::utility::policy::num_data_blocks_in_process_a(mpi_policy) * rank_in_unit.mpi_rank()) + data_block_index
+                  : static_cast<StateInteger>(::ket::mpi::utility::policy::num_data_blocks_in_process_b(mpi_policy) * rank_in_unit.mpi_rank() + ::ket::mpi::utility::policy::num_processes_a_per_unit(mpi_policy)) + data_block_index;
+
+              assert(result < ::ket::mpi::utility::policy::num_unit_qubit_values(mpi_policy));
+              return result;
+            }
+          }; // struct unit_qubit_value< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
+
           // 2^L
           template <typename StateInteger, typename BitInteger, typename NumProcesses>
           struct data_block_size< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
@@ -399,32 +354,22 @@ namespace ket
             template <typename LocalState>
             static auto call(
               ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
-              LocalState const& local_state,
-              yampi::communicator const& communicator, yampi::environment const& environment)
+              LocalState const& local_state, yampi::rank const rank_in_unit)
             -> StateInteger
             {
-              return ::ket::mpi::utility::policy::data_block_size(
-                mpi_policy, local_state,
-                ::ket::mpi::utility::policy::rank_in_unit(mpi_policy, communicator, environment));
+              using std::begin;
+              using std::end;
+              auto const local_state_size = static_cast<StateInteger>(std::distance(begin(local_state), end(local_state)));
+              assert(rank_in_unit.mpi_rank() >= 0 and rank_in_unit.mpi_rank() < static_cast<int>(::ket::mpi::utility::policy::num_processes_per_unit(mpi_policy)));
+              assert(local_state_size % ::ket::mpi::utility::policy::num_data_blocks(mpi_policy, rank_in_unit) == 0u);
+
+              auto const result
+                = static_cast<StateInteger>(local_state_size / ::ket::mpi::utility::policy::num_data_blocks(mpi_policy, rank_in_unit));
+              assert(::ket::utility::integer_exp2<StateInteger>(::ket::utility::integer_log2<BitInteger>(result)) == result);
+              return result;
             }
           }; // struct data_block_size< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
-        } // namespace dispatch
 
-        // 2^L
-        template <typename StateInteger, typename BitInteger, typename NumProcesses, typename LocalState>
-        inline auto data_block_size(
-          ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
-          LocalState const& local_state, StateInteger const unit_qubit_value)
-        -> StateInteger
-        {
-          assert(unit_qubit_value < ::ket::mpi::utility::policy::num_unit_qubit_values(mpi_policy));
-          return ::ket::mpi::utility::policy::data_block_size(
-            mpi_policy, local_state,
-            ::ket::mpi::utility::policy::rank_in_unit(mpi_policy, unit_qubit_value));
-        }
-
-        namespace dispatch
-        {
           // L
           template <typename StateInteger, typename BitInteger, typename NumProcesses>
           struct num_local_qubits< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
@@ -439,48 +384,22 @@ namespace ket
               assert(::ket::utility::integer_exp2<StateInteger>(result) == data_block_size);
               return result;
             }
+          }; // struct num_local_qubits< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
 
-            template <typename LocalState>
+          // N - M
+          template <typename StateInteger, typename BitInteger, typename NumProcesses>
+          struct num_nonglobal_qubits< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
+          {
             static auto call(
               ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
-              LocalState const& local_state,
-              yampi::communicator const& communicator, yampi::environment const& environment)
-            -> BitInteger
+              StateInteger const data_block_size)
+              -> BitInteger
             {
-              return call(
-                mpi_policy,
-                ::ket::mpi::utility::policy::dispatch::data_block_size< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >::call(
-                  mpi_policy, local_state, communicator, environment));
+              return ::ket::mpi::utility::policy::num_local_qubits(mpi_policy, data_block_size)
+                + ::ket::mpi::utility::policy::num_unit_qubits(mpi_policy);
             }
-          }; // struct num_local_qubits< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
-        } // namespace dispatch
+          }; // struct num_nonglobal_qubits< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
 
-        // L
-        template <typename StateInteger, typename BitInteger, typename NumProcesses, typename LocalState>
-        inline auto num_local_qubits(
-          ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
-          LocalState const& local_state, yampi::rank const rank_in_unit)
-        -> BitInteger
-        {
-          assert(rank_in_unit.mpi_rank() >= 0 and rank_in_unit.mpi_rank() < static_cast<int>(mpi_policy.num_processes_per_unit()));
-          return ::ket::mpi::utility::policy::num_local_qubits(
-            mpi_policy, ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, rank_in_unit));
-        }
-
-        // L
-        template <typename StateInteger, typename BitInteger, typename NumProcesses, typename LocalState>
-        inline auto num_local_qubits(
-          ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
-          LocalState const& local_state, StateInteger const unit_qubit_value)
-        -> BitInteger
-        {
-          assert(unit_qubit_value < ::ket::mpi::utility::policy::num_unit_qubit_values(mpi_policy));
-          return ::ket::mpi::utility::policy::num_local_qubits(
-            mpi_policy, ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, unit_qubit_value));
-        }
-
-        namespace dispatch
-        {
           // N = L + K + M
           template <typename StateInteger, typename BitInteger, typename NumProcesses>
           struct num_qubits< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
@@ -492,9 +411,9 @@ namespace ket
               yampi::communicator const& communicator, yampi::environment const& environment)
             -> BitInteger
             {
-              return ::ket::mpi::utility::policy::dispatch::num_local_qubits< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >::call(mpi_policy, local_state, communicator, environment)
-                + mpi_policy.num_unit_qubits()
-                + ::ket::mpi::utility::policy::dispatch::num_global_qubits< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >::call(mpi_policy, communicator, environment);
+              return ::ket::mpi::utility::policy::num_local_qubits(mpi_policy, local_state, communicator, environment)
+                + ::ket::mpi::utility::policy::num_unit_qubits(mpi_policy)
+                + ::ket::mpi::utility::policy::num_global_qubits(mpi_policy, communicator, environment);
             }
           }; // struct num_qubits< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
         } // namespace dispatch
