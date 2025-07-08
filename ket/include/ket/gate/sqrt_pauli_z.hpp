@@ -3,6 +3,7 @@
 
 # include <cassert>
 # include <cstddef>
+# include <cstdint>
 # include <array>
 # include <algorithm>
 # include <iterator>
@@ -28,6 +29,25 @@ namespace ket
   namespace gate
   {
     // Case 1: the first argument of qubits is ket::control<ket::qubit<S, B>>
+    template <typename ParallelPolicy, typename RandomAccessIterator>
+    inline auto sqrt_pauli_z(
+      ParallelPolicy const parallel_policy,
+      RandomAccessIterator const first, RandomAccessIterator const last)
+    -> void
+    {
+      assert(
+        ::ket::utility::integer_exp2<std::uint64_t>(::ket::utility::integer_log2<std::size_t>(last - first))
+        == static_cast<std::uint64_t>(last - first));
+
+      ::ket::utility::loop_n(
+        parallel_policy, static_cast<std::uint64_t>(last - first),
+        [first](std::uint64_t const index, int const)
+        {
+          using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+          *(first + index) *= ::ket::utility::imaginary_unit<complex_type>();
+        });
+    }
+
     // sZ_i
     // sZ_1 (a_0 |0> + a_1 |1>) = a_0 |0> + i a_1 |1>
     template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger>
@@ -184,31 +204,50 @@ namespace ket
 # endif // KET_USE_BIT_MASKS_EXPLICITLY
     }
 
-    template <typename RandomAccessIterator, typename StateInteger, typename BitInteger, typename... Qubits>
+    template <typename RandomAccessIterator, typename... Qubits>
     inline auto sqrt_pauli_z(
       RandomAccessIterator const first, RandomAccessIterator const last,
-      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ::ket::control<Qubits> const... control_qubits)
+      ::ket::control<Qubits> const... control_qubits)
     -> void
-    { ::ket::gate::sqrt_pauli_z(::ket::utility::policy::make_sequential(), first, last, control_qubit, control_qubits...); }
+    { ::ket::gate::sqrt_pauli_z(::ket::utility::policy::make_sequential(), first, last, control_qubits...); }
 
     namespace ranges
     {
-      template <typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename... Qubits>
+      template <typename ParallelPolicy, typename RandomAccessRange, typename... Qubits>
       inline auto sqrt_pauli_z(
         ParallelPolicy const parallel_policy, RandomAccessRange& state,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ::ket::control<Qubits> const... control_qubits)
+        ::ket::control<Qubits> const... control_qubits)
       -> RandomAccessRange&
       {
         using std::begin;
         using std::end;
-        ::ket::gate::sqrt_pauli_z(parallel_policy, begin(state), end(state), control_qubit, control_qubits...);
+        ::ket::gate::sqrt_pauli_z(parallel_policy, begin(state), end(state), control_qubits...);
         return state;
       }
 
-      template <typename RandomAccessRange, typename StateInteger, typename BitInteger, typename... Qubits>
-      inline auto sqrt_pauli_z(RandomAccessRange& state, ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ::ket::control<Qubits> const... control_qubits) -> RandomAccessRange&
-      { return ::ket::gate::ranges::sqrt_pauli_z(::ket::utility::policy::make_sequential(), state, control_qubit, control_qubits...); }
+      template <typename RandomAccessRange, typename... Qubits>
+      inline auto sqrt_pauli_z(RandomAccessRange& state, ::ket::control<Qubits> const... control_qubits) -> RandomAccessRange&
+      { return ::ket::gate::ranges::sqrt_pauli_z(::ket::utility::policy::make_sequential(), state, control_qubits...); }
     } // namespace ranges
+
+    template <typename ParallelPolicy, typename RandomAccessIterator>
+    inline auto adj_sqrt_pauli_z(
+      ParallelPolicy const parallel_policy,
+      RandomAccessIterator const first, RandomAccessIterator const last)
+    -> void
+    {
+      assert(
+        ::ket::utility::integer_exp2<std::uint64_t>(::ket::utility::integer_log2<std::size_t>(last - first))
+        == static_cast<std::uint64_t>(last - first));
+
+      ::ket::utility::loop_n(
+        parallel_policy, static_cast<std::uint64_t>(last - first),
+        [first](std::uint64_t const index, int const)
+        {
+          using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+          *(first + index) *= ::ket::utility::minus_imaginary_unit<complex_type>();
+        });
+    }
 
     // sZ+_i
     // sZ+_1 (a_0 |0> + a_1 |1>) = a_0 |0> - i a_1 |1>
@@ -366,30 +405,30 @@ namespace ket
 # endif // KET_USE_BIT_MASKS_EXPLICITLY
     }
 
-    template <typename RandomAccessIterator, typename StateInteger, typename BitInteger, typename... Qubits>
+    template <typename RandomAccessIterator, typename... Qubits>
     inline auto adj_sqrt_pauli_z(
       RandomAccessIterator const first, RandomAccessIterator const last,
-      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ::ket::control<Qubits> const... control_qubits)
+      ::ket::control<Qubits> const... control_qubits)
     -> void
-    { ::ket::gate::adj_sqrt_pauli_z(::ket::utility::policy::make_sequential(), first, last, control_qubit, control_qubits...); }
+    { ::ket::gate::adj_sqrt_pauli_z(::ket::utility::policy::make_sequential(), first, last, control_qubits...); }
 
     namespace ranges
     {
-      template <typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename... Qubits>
+      template <typename ParallelPolicy, typename RandomAccessRange, typename... Qubits>
       inline auto adj_sqrt_pauli_z(
         ParallelPolicy const parallel_policy, RandomAccessRange& state,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ::ket::control<Qubits> const... control_qubits)
+        ::ket::control<Qubits> const... control_qubits)
       -> RandomAccessRange&
       {
         using std::begin;
         using std::end;
-        ::ket::gate::adj_sqrt_pauli_z(parallel_policy, begin(state), end(state), control_qubit, control_qubits...);
+        ::ket::gate::adj_sqrt_pauli_z(parallel_policy, begin(state), end(state), control_qubits...);
         return state;
       }
 
-      template <typename RandomAccessRange, typename StateInteger, typename BitInteger, typename... Qubits>
-      inline auto adj_sqrt_pauli_z(RandomAccessRange& state, ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ::ket::control<Qubits> const... control_qubits) -> RandomAccessRange&
-      { return ::ket::gate::ranges::adj_sqrt_pauli_z(::ket::utility::policy::make_sequential(), state, control_qubit, control_qubits...); }
+      template <typename RandomAccessRange, typename... Qubits>
+      inline auto adj_sqrt_pauli_z(RandomAccessRange& state, ::ket::control<Qubits> const... control_qubits) -> RandomAccessRange&
+      { return ::ket::gate::ranges::adj_sqrt_pauli_z(::ket::utility::policy::make_sequential(), state, control_qubits...); }
     } // namespace ranges
 
     // Case 2: the first argument of qubits is ket::qubit<S, B>

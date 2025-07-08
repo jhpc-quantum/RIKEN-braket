@@ -28,23 +28,23 @@ namespace ket
     } // namespace none_in_state_vector_detail
 
 # endif // __cpp_constexpr >= 201603L
-    template <typename BitInteger, typename Qubit, typename... Qubits>
-    inline constexpr auto none_in_state_vector(BitInteger const num_qubits, Qubit&& qubit, Qubits&&... qubits) -> bool
+    template <typename BitInteger, typename... Qubits>
+    inline constexpr auto none_in_state_vector(BitInteger const num_qubits, Qubits&&... qubits) -> bool
     {
 # if __cpp_constexpr >= 201603L
 #   if __cpp_generic_lambdas >= 201707L
       return ::ket::utility::variadic::all_of(
         [num_qubits]<typename Qubit_>(Qubit_&& qubit) { return std::forward<Qubit_>(qubit) >= std::remove_cv_t<std::remove_reference_t<Qubit_>>{num_qubits}; },
-        std::forward<Qubit>(qubit), std::forward<Qubits>(qubits)...);
+        std::forward<Qubits>(qubits)...);
 #   else // __cpp_generic_lambdas >= 201707L
       return ::ket::utility::variadic::all_of(
         [num_qubits](auto&& qubit) { return std::forward<decltype(qubit)>(qubit) >= std::remove_cv_t<std::remove_reference_t<decltype(qubit)>>{num_qubits}; },
-        std::forward<Qubit>(qubit), std::forward<Qubits>(qubits)...);
+        std::forward<Qubits>(qubits)...);
 #   endif // __cpp_generic_lambdas >= 201707L
 # else // __cpp_constexpr >= 201603L
       return ::ket::utility::variadic::all_of(
         ::ket::utility::none_in_state_vector_detail::not_is_in_state_vector<BitInteger>{num_qubits},
-        std::forward<Qubit>(qubit), std::forward<Qubits>(qubits)...);
+        std::forward<Qubits>(qubits)...);
 # endif // __cpp_constexpr >= 201603L
     }
   } // namespace utility
