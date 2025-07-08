@@ -7,11 +7,11 @@
 #include <iterator>
 #include <memory>
 #include <stdexcept>
-# if __cplusplus >= 201703L
-#   include <type_traits>
-# else
-#   include <boost/type_traits/is_nothrow_swappable.hpp>
-# endif
+#if __cplusplus >= 201703L
+# include <type_traits>
+#else
+# include <boost/type_traits/is_nothrow_swappable.hpp>
+#endif
 
 #include <boost/lexical_cast.hpp>
 
