@@ -932,19 +932,25 @@ namespace ket
       template <bool has_page_qubits>
       struct for_each_local_range
       {
-        template <typename MpiPolicy, typename Complex, typename Allocator, typename Function>
+        template <typename MpiPolicy, typename LocalState, typename StateInteger, typename Function>
         static auto call(
-          MpiPolicy const&,
-          ::ket::mpi::state<Complex, has_page_qubits, Allocator>& local_state,
-          yampi::communicator const&, yampi::environment const&,
-          Function&& function)
-        -> ::ket::mpi::state<Complex, has_page_qubits, Allocator>&
+          MpiPolicy const& mpi_policy, LocalState&& local_state,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          StateInteger const unit_control_qubit_mask, Function&& function)
+        -> LocalState&&
         {
+          auto const rank_in_unit = ::ket::mpi::utility::policy::rank_in_unit(mpi_policy, communicator, environment);
+          auto const num_data_blocks = static_cast<StateInteger>(local_state.num_data_blocks());
+          assert(num_data_blocks == static_cast<StateInteger>(::ket::mpi::utility::policy::num_data_blocks(mpi_policy, rank_in_unit)));
+          auto const num_pages = static_cast<StateInteger>(local_state.num_pages());
+
           // Gates should not be on page qubits
-          auto const num_data_blocks = local_state.num_data_blocks();
-          auto const num_pages = local_state.num_pages();
-          for (auto data_block_index = std::size_t{0u}; data_block_index < num_data_blocks; ++data_block_index)
-            for (auto page_index = std::size_t{0u}; page_index < num_pages; ++page_index)
+          for (auto data_block_index = StateInteger{0u}; data_block_index < num_data_blocks; ++data_block_index)
+          {
+            if ((static_cast<StateInteger>(::ket::mpi::utility::policy::unit_qubit_value(mpi_policy, data_block_index, rank_in_unit)) bitand unit_control_qubit_mask) != unit_control_qubit_mask)
+              continue;
+
+            for (auto page_index = StateInteger{0u}; page_index < num_pages; ++page_index)
             {
               using std::begin;
               using std::end;
@@ -952,22 +958,26 @@ namespace ket
                 begin(local_state.page_range(std::make_pair(data_block_index, page_index))),
                 end(local_state.page_range(std::make_pair(data_block_index, page_index))));
             }
-          return local_state;
+          }
+
+          return std::forward<LocalState>(local_state);
         }
 
-        template <typename MpiPolicy, typename Complex, typename Allocator, typename Function>
+        template <typename MpiPolicy, typename LocalState, typename Function>
         static auto call(
-          MpiPolicy const&,
-          ::ket::mpi::state<Complex, has_page_qubits, Allocator> const& local_state,
-          yampi::communicator const&, yampi::environment const&,
+          MpiPolicy const& mpi_policy, LocalState&& local_state,
+          yampi::communicator const& communicator, yampi::environment const& environment,
           Function&& function)
-        -> ::ket::mpi::state<Complex, has_page_qubits, Allocator> const&
+        -> LocalState&&
         {
-          // Gates should not be on page qubits
+          auto const rank_in_unit = ::ket::mpi::utility::policy::rank_in_unit(mpi_policy, communicator, environment);
           auto const num_data_blocks = local_state.num_data_blocks();
+          assert(num_data_blocks == static_cast<decltype(num_data_blocks)>(::ket::mpi::utility::policy::num_data_blocks(mpi_policy, rank_in_unit)));
           auto const num_pages = local_state.num_pages();
-          for (auto data_block_index = std::size_t{0u}; data_block_index < num_data_blocks; ++data_block_index)
-            for (auto page_index = std::size_t{0u}; page_index < num_pages; ++page_index)
+
+          // Gates should not be on page qubits
+          for (auto data_block_index = decltype(num_data_blocks){0u}; data_block_index < num_data_blocks; ++data_block_index)
+            for (auto page_index = decltype(num_pages){0u}; page_index < num_pages; ++page_index)
             {
               using std::begin;
               using std::end;
@@ -975,7 +985,8 @@ namespace ket
                 begin(local_state.page_range(std::make_pair(data_block_index, page_index))),
                 end(local_state.page_range(std::make_pair(data_block_index, page_index))));
             }
-          return local_state;
+
+          return std::forward<LocalState>(local_state);
         }
       }; // struct for_each_local_range<has_page_qubits>
 
@@ -2189,34 +2200,32 @@ namespace ket
       template <>
       struct for_each_local_range<false>
       {
-        template <typename MpiPolicy, typename Complex, typename Allocator, typename Function>
+        template <typename MpiPolicy, typename LocalState, typename StateInteger, typename Function>
         static auto call(
-          MpiPolicy const& mpi_policy,
-          ::ket::mpi::state<Complex, false, Allocator>& local_state,
+          MpiPolicy const& mpi_policy, LocalState&& local_state,
           yampi::communicator const& communicator, yampi::environment const& environment,
-          Function&& function)
-        -> ::ket::mpi::state<Complex, false, Allocator>&
+          StateInteger const unit_control_qubit_mask, Function&& function)
+        -> LocalState&&
         {
           ::ket::mpi::utility::for_each_local_range(
             mpi_policy, local_state.data(),
-            communicator, environment, std::forward<Function>(function));
+            communicator, environment, unit_control_qubit_mask, std::forward<Function>(function));
 
-          return local_state;
+          return std::forward<LocalState>(local_state);
         }
 
-        template <typename MpiPolicy, typename Complex, typename Allocator, typename Function>
+        template <typename MpiPolicy, typename LocalState, typename Function>
         static auto call(
-          MpiPolicy const& mpi_policy,
-          ::ket::mpi::state<Complex, false, Allocator> const& local_state,
+          MpiPolicy const& mpi_policy, LocalState&& local_state,
           yampi::communicator const& communicator, yampi::environment const& environment,
           Function&& function)
-        -> ::ket::mpi::state<Complex, false, Allocator> const&
+        -> LocalState&&
         {
           ::ket::mpi::utility::for_each_local_range(
             mpi_policy, local_state.data(),
             communicator, environment, std::forward<Function>(function));
 
-          return local_state;
+          return std::forward<LocalState>(local_state);
         }
       }; // struct for_each_local_range<false>
 
@@ -2473,30 +2482,28 @@ namespace ket
         template <typename Complex, bool has_page_qubits, typename Allocator>
         struct for_each_local_range< ::ket::mpi::state<Complex, has_page_qubits, Allocator> >
         {
-          template <typename MpiPolicy, typename Function>
+          template <typename MpiPolicy, typename LocalState, typename StateInteger, typename Function>
           static auto call(
-            MpiPolicy const& mpi_policy,
-            ::ket::mpi::state<Complex, has_page_qubits, Allocator>& local_state,
+            MpiPolicy const& mpi_policy, LocalState&& local_state,
             yampi::communicator const& communicator, yampi::environment const& environment,
-            Function&& function)
-          -> ::ket::mpi::state<Complex, has_page_qubits, Allocator>&
+            StateInteger const unit_control_qubit_mask, Function&& function)
+          -> LocalState&&
           {
             using for_each_local_range_type = ::ket::mpi::state_detail::for_each_local_range<has_page_qubits>;
             return for_each_local_range_type::call(
-              mpi_policy, local_state, communicator, environment, std::forward<Function>(function));
+              mpi_policy, std::forward<LocalState>(local_state), communicator, environment, unit_control_qubit_mask, std::forward<Function>(function));
           }
 
-          template <typename MpiPolicy, typename Function>
+          template <typename MpiPolicy, typename LocalState, typename Function>
           static auto call(
-            MpiPolicy const& mpi_policy,
-            ::ket::mpi::state<Complex, has_page_qubits, Allocator> const& local_state,
+            MpiPolicy const& mpi_policy, LocalState&& local_state,
             yampi::communicator const& communicator, yampi::environment const& environment,
             Function&& function)
-          -> ::ket::mpi::state<Complex, has_page_qubits, Allocator> const&
+          -> LocalState&&
           {
             using for_each_local_range_type = ::ket::mpi::state_detail::for_each_local_range<has_page_qubits>;
             return for_each_local_range_type::call(
-              mpi_policy, local_state, communicator, environment, std::forward<Function>(function));
+              mpi_policy, std::forward<LocalState>(local_state), communicator, environment, std::forward<Function>(function));
           }
         }; // struct for_each_local_range< ::ket::mpi::state<Complex, has_page_qubits, Allocator> >
 
