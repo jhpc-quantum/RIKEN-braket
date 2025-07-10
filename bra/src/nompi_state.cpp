@@ -1109,6 +1109,12 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     for (auto const fused_control_qubit: fused_control_qubits)
       to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(fused_control_qubit.qubit())] = present_qubit_index++;
 
+#   ifndef KET_DEFAULT_NUM_ON_CACHE_QUBITS
+#     define KET_DEFAULT_NUM_ON_CACHE_QUBITS 16
+#   endif // KET_DEFAULT_NUM_ON_CACHE_QUBITS
+    constexpr auto num_on_cache_qubits = bit_integer_type{KET_DEFAULT_NUM_ON_CACHE_QUBITS};
+    constexpr auto cache_size = ket::utility::integer_exp2<state_integer_type>(num_on_cache_qubits);
+
     switch (fused_qubits.size())
     {
 # define FUSED_QUBITS(z, n, _) , fused_qubits[n]
