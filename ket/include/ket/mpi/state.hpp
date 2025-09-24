@@ -42,6 +42,7 @@
 # include <ket/mpi/utility/transform_inclusive_scan.hpp>
 # include <ket/mpi/utility/transform_inclusive_scan_self.hpp>
 # include <ket/mpi/utility/upper_bound.hpp>
+# include <ket/mpi/utility/resize_buffer_if_empty.hpp>
 # include <ket/mpi/utility/detail/swap_permutated_local_qubits.hpp>
 # include <ket/mpi/utility/detail/for_each_in_diagonal_loop.hpp>
 # include <ket/mpi/utility/detail/swap_local_data.hpp>
@@ -2678,6 +2679,35 @@ namespace ket
           -> typename std::vector<Complex, BufferAllocator>::const_iterator
           { using std::end; return end(buffer); }
         }; // struct buffer_range< ::ket::mpi::state<Complex, false, Allocator> >
+
+        template <typename Complex, typename Allocator>
+        struct resize_buffer_if_empty< ::ket::mpi::state<Complex, true, Allocator> >
+        {
+          template <typename BufferAllocator>
+          static auto call(
+            ::ket::mpi::state<Complex, true, Allocator> const&,
+            std::vector<Complex, BufferAllocator>&,
+            std::size_t const)
+          -> void
+          { }
+        }; // struct resize_buffer_if_empty< ::ket::mpi::state<Complex, true, Allocator> >
+
+        template <typename Complex, typename Allocator>
+        struct resize_buffer_if_empty< ::ket::mpi::state<Complex, false, Allocator> >
+        {
+          template <typename BufferAllocator>
+          static auto call(
+            ::ket::mpi::state<Complex, false, Allocator> const&,
+            std::vector<Complex, BufferAllocator>& buffer,
+            std::size_t const new_size)
+          -> void
+          {
+            if (not buffer.empty())
+              return;
+
+            buffer.resize(new_size);
+          }
+        }; // struct resize_buffer_if_empty< ::ket::mpi::state<Complex, false, Allocator> >
 
 # ifdef KET_USE_DIAGONAL_LOOP
         template <typename LocalState_>
