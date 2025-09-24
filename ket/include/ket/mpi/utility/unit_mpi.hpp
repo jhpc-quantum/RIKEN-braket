@@ -404,6 +404,16 @@ namespace ket
           template <typename StateInteger, typename BitInteger, typename NumProcesses>
           struct num_qubits< ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> >
           {
+            static auto call(
+              ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,
+              StateInteger const data_block_size, StateInteger const num_units)
+            -> BitInteger
+            {
+              return ::ket::mpi::utility::policy::num_local_qubits(mpi_policy, data_block_size)
+                + ::ket::mpi::utility::policy::num_unit_qubits(mpi_policy)
+                + ::ket::mpi::utility::policy::num_global_qubits(mpi_policy, num_units);
+            }
+
             template <typename LocalState>
             static auto call(
               ::ket::mpi::utility::policy::unit_mpi<StateInteger, BitInteger, NumProcesses> const& mpi_policy,

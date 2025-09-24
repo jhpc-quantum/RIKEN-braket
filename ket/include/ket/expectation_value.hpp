@@ -13,6 +13,11 @@
 # include <ket/meta/state_integer_of.hpp>
 # include <ket/meta/bit_integer_of.hpp>
 # include <ket/utility/loop_n.hpp>
+# ifndef NDEBUG
+#   include <ket/utility/integer_exp2.hpp>
+#   include <ket/utility/integer_log2.hpp>
+#   include <ket/utility/all_in_state_vector.hpp>
+# endif
 # include <ket/utility/variadic/all_of.hpp>
 # include <ket/utility/meta/real_of.hpp>
 # include <ket/utility/meta/ranges.hpp>
@@ -30,12 +35,6 @@ namespace ket
       constexpr auto operator()(T) const noexcept -> bool { return std::is_same<T, U>::value; }
     }; // struct is_same_to<U>
 
-    struct is_unsigned
-    {
-      template <typename T>
-      inline constexpr auto operator()(T) const noexcept -> bool { return std::is_unsigned<T>::value; }
-    }; // struct is_unsigned
-
     struct state_integer_of
     {
       template <typename Qubit>
@@ -50,6 +49,7 @@ namespace ket
 # endif // __cpp_constexpr < 201603L
   } // namespace expectation_value_detail
 
+  // <Psi| A_{ij} |Psi>
   template <typename ParallelPolicy, typename RandomAccessIterator, typename Observable, typename StateInteger, typename BitInteger, typename... Qubits>
   inline auto expectation_value(
     ParallelPolicy const parallel_policy,
@@ -68,7 +68,7 @@ namespace ket
 # else // __cpp_constexpr >= 201603L
     static_assert(
       ::ket::utility::variadic::proj::all_of(
-        ::ket::gate::gate_detail::is_same_to<StateInteger>{}, ::ket::gate::gate_detail::state_integer_of{},
+        ::ket::expectation_value_detail::is_same_to<StateInteger>{}, ::ket::expectation_value_detail::state_integer_of{},
         std::remove_cv_t<std::remove_reference_t<Qubits>>{}...),
       "state_integer_type's of Qubits should be same to StateInteger");
 # endif // __cpp_constexpr >= 201603L
@@ -84,37 +84,43 @@ namespace ket
 # else // __cpp_constexpr >= 201603L
     static_assert(
       ::ket::utility::variadic::proj::all_of(
-        ::ket::gate::gate_detail::is_same_to<BitInteger>{}, ::ket::gate::gate_detail::bit_integer_of{},
+        ::ket::expectation_value_detail::is_same_to<BitInteger>{}, ::ket::expectation_value_detail::bit_integer_of{},
         std::remove_cv_t<std::remove_reference_t<Qubits>>{}...),
       "bit_integer_type's of Qubits should be same to BitInteger");
 # endif // __cpp_constexpr >= 201603L
 
     constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 1u);
 
+#   ifndef NDEBUG
+    auto const state_size = static_cast<StateInteger>(last - first);
+    auto const num_qubits = ::ket::utility::integer_log2<BitInteger>(state_size);
+#   endif // NDEBUG
+    assert(::ket::utility::integer_exp2<StateInteger>(num_qubits) == state_size);
+    assert(::ket::utility::all_in_state_vector(num_qubits, qubit, qubits...));
+
     using real_type = ::ket::utility::meta::real_t<typename std::iterator_traits<RandomAccessIterator>::value_type>;
     auto partial_sums = std::vector<real_type>(::ket::utility::num_threads(parallel_policy));
 
-    struct { Observable call; } wrapped_observable{std::forward<Observable>(observable)};
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
     using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
     ::ket::gate::nocache::gate(
       parallel_policy, first, last,
-      [wrapped_observable = std::move(wrapped_observable), &partial_sums](
+      [&observable, &partial_sums](
         auto const first, StateInteger const index_wo_qubits,
         std::array<qubit_type, num_operated_qubits> const& unsorted_qubits,
         std::array<qubit_type, num_operated_qubits + 1u> const& sorted_qubits_with_sentinel,
         int const thread_index)
-      { partial_sums[thread_index] += wrapped_observable.call(first, index_wo_qubits, unsorted_qubits, sorted_qubits_with_sentinel); },
+      { partial_sums[thread_index] += observable(first, index_wo_qubits, unsorted_qubits, sorted_qubits_with_sentinel); },
       qubit, qubits...);
 # else // KET_USE_BIT_MASKS_EXPLICITLY
     ::ket::gate::nocache::gate(
       parallel_policy, first, last,
-      [wrapped_observable = std::move(wrapped_observable), &partial_sums](
+      [&observable, &partial_sums](
         auto const first, StateInteger const index_wo_qubits,
         std::array<StateInteger, num_operated_qubits> const& qubit_masks,
         std::array<StateInteger, num_operated_qubits + 1u> const& index_masks,
         int const thread_index)
-      { partial_sums[thread_index] += wrapped_observable.call(first, index_wo_qubits, qubit_masks, index_masks); },
+      { partial_sums[thread_index] += observable(first, index_wo_qubits, qubit_masks, index_masks); },
       qubit, qubits...);
 # endif // KET_USE_BIT_MASKS_EXPLICITLY
 

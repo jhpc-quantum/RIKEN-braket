@@ -844,6 +844,144 @@ namespace ket
       namespace none_on_cache
       {
         // First argument of Function: RandomAccessIterator2 (not RandomAccessIterator1)
+        namespace gate_detail
+        {
+          template <bool is_state_iterator_mutable>
+          struct gate
+          {
+            template <typename ParallelPolicy, typename RandomAccessIterator1, typename RandomAccessIterator2, typename Function>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              RandomAccessIterator1 const state_first, RandomAccessIterator1 const state_last,
+              RandomAccessIterator2 const on_cache_state_first, RandomAccessIterator2 const on_cache_state_last,
+              Function&& function)
+            -> void
+            {
+              using qubit_type = ::ket::qubit<>;
+              using state_integer_type = ::ket::meta::state_integer_t<qubit_type>;
+              using bit_integer_type = ::ket::meta::bit_integer_t<qubit_type>;
+
+              auto const state_size = static_cast<state_integer_type>(state_last - state_first);
+              auto const num_qubits = ::ket::utility::integer_log2<bit_integer_type>(state_size);
+              assert(::ket::utility::integer_exp2<state_integer_type>(num_qubits) == state_size);
+
+              auto const cache_size = static_cast<state_integer_type>(on_cache_state_last - on_cache_state_first);
+              auto const num_on_cache_qubits = ::ket::utility::integer_log2<bit_integer_type>(cache_size);
+              assert(::ket::utility::integer_exp2<state_integer_type>(num_on_cache_qubits) == cache_size);
+              assert(num_on_cache_qubits < num_qubits);
+              auto const num_off_cache_qubits = num_qubits - num_on_cache_qubits;
+
+              // xxxx|yyyy|zzzzzz: (local) qubits
+              // * xxxx: off-cache qubits
+              // * yyyy|zzzzzz: on-cache qubits
+              //   - yyyy: chunk qubits (chunk qubits are determined dynamically, and sometimes there is no chunk qubit)
+              // * xxxx|yyyy: tag qubits
+              // * zzzzzz: nontag qubits
+
+              // chunk_size, num_tag_qubits
+              auto const chunk_size = cache_size;
+              auto const num_tag_qubits = num_off_cache_qubits;
+
+              // unsorted_tag_qubits, sorted_tag_qubits_with_sentinel
+              std::array<qubit_type, 0u> unsorted_tag_qubits{};
+              std::array<qubit_type, 1u> sorted_tag_qubits_with_sentinel{qubit_type{num_tag_qubits}};
+
+              // unsorted_on_cache_qubits, sorted_on_cache_qubits_with_sentinel
+              std::array<qubit_type, 0u> unsorted_on_cache_qubits{};
+              std::array<qubit_type, 1u> sorted_on_cache_qubits_with_sentinel{::ket::make_qubit<state_integer_type>(num_on_cache_qubits)};
+
+              auto const tag_loop_size = ::ket::utility::integer_exp2<state_integer_type>(num_tag_qubits);
+              for (auto tag_index_wo_qubits = state_integer_type{0u}; tag_index_wo_qubits < tag_loop_size; ++tag_index_wo_qubits)
+              {
+                using std::begin;
+                using std::end;
+                ::ket::utility::copy_n(
+                  parallel_policy,
+                  state_first
+                  + ::ket::gate::utility::index_with_qubits(
+                      tag_index_wo_qubits, state_integer_type{0u},
+                      begin(unsorted_tag_qubits), end(unsorted_tag_qubits),
+                      begin(sorted_tag_qubits_with_sentinel), end(sorted_tag_qubits_with_sentinel)) * chunk_size,
+                  chunk_size, on_cache_state_first);
+
+                ::ket::gate::gate_detail::gate_n(parallel_policy, on_cache_state_first, cache_size, unsorted_on_cache_qubits, sorted_on_cache_qubits_with_sentinel, std::forward<Function>(function));
+
+                ::ket::utility::copy_n(
+                  parallel_policy,
+                  on_cache_state_first, chunk_size,
+                  state_first
+                  + ::ket::gate::utility::index_with_qubits(
+                      tag_index_wo_qubits, state_integer_type{0u},
+                      begin(unsorted_tag_qubits), end(unsorted_tag_qubits),
+                      begin(sorted_tag_qubits_with_sentinel), end(sorted_tag_qubits_with_sentinel)) * chunk_size);
+              }
+            }
+          }; // struct gate<is_state_iterator_mutable>
+
+          template <>
+          struct gate<false>
+          {
+            template <typename ParallelPolicy, typename RandomAccessIterator1, typename RandomAccessIterator2, typename Function>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              RandomAccessIterator1 const state_first, RandomAccessIterator1 const state_last,
+              RandomAccessIterator2 const on_cache_state_first, RandomAccessIterator2 const on_cache_state_last,
+              Function&& function)
+            -> void
+            {
+              using qubit_type = ::ket::qubit<>;
+              using state_integer_type = ::ket::meta::state_integer_t<qubit_type>;
+              using bit_integer_type = ::ket::meta::bit_integer_t<qubit_type>;
+
+              auto const state_size = static_cast<state_integer_type>(state_last - state_first);
+              auto const num_qubits = ::ket::utility::integer_log2<bit_integer_type>(state_size);
+              assert(::ket::utility::integer_exp2<state_integer_type>(num_qubits) == state_size);
+
+              auto const cache_size = static_cast<state_integer_type>(on_cache_state_last - on_cache_state_first);
+              auto const num_on_cache_qubits = ::ket::utility::integer_log2<bit_integer_type>(cache_size);
+              assert(::ket::utility::integer_exp2<state_integer_type>(num_on_cache_qubits) == cache_size);
+              assert(num_on_cache_qubits < num_qubits);
+              auto const num_off_cache_qubits = num_qubits - num_on_cache_qubits;
+
+              // xxxx|yyyy|zzzzzz: (local) qubits
+              // * xxxx: off-cache qubits
+              // * yyyy|zzzzzz: on-cache qubits
+              //   - yyyy: chunk qubits (chunk qubits are determined dynamically, and sometimes there is no chunk qubit)
+              // * xxxx|yyyy: tag qubits
+              // * zzzzzz: nontag qubits
+
+              // chunk_size, num_tag_qubits
+              auto const chunk_size = cache_size;
+              auto const num_tag_qubits = num_off_cache_qubits;
+
+              // unsorted_tag_qubits, sorted_tag_qubits_with_sentinel
+              std::array<qubit_type, 0u> unsorted_tag_qubits{};
+              std::array<qubit_type, 1u> sorted_tag_qubits_with_sentinel{qubit_type{num_tag_qubits}};
+
+              // unsorted_on_cache_qubits, sorted_on_cache_qubits_with_sentinel
+              std::array<qubit_type, 0u> unsorted_on_cache_qubits{};
+              std::array<qubit_type, 1u> sorted_on_cache_qubits_with_sentinel{::ket::make_qubit<state_integer_type>(num_on_cache_qubits)};
+
+              auto const tag_loop_size = ::ket::utility::integer_exp2<state_integer_type>(num_tag_qubits);
+              for (auto tag_index_wo_qubits = state_integer_type{0u}; tag_index_wo_qubits < tag_loop_size; ++tag_index_wo_qubits)
+              {
+                using std::begin;
+                using std::end;
+                ::ket::utility::copy_n(
+                  parallel_policy,
+                  state_first
+                  + ::ket::gate::utility::index_with_qubits(
+                      tag_index_wo_qubits, state_integer_type{0u},
+                      begin(unsorted_tag_qubits), end(unsorted_tag_qubits),
+                      begin(sorted_tag_qubits_with_sentinel), end(sorted_tag_qubits_with_sentinel)) * chunk_size,
+                  chunk_size, on_cache_state_first);
+
+                ::ket::gate::gate_detail::gate_n(parallel_policy, on_cache_state_first, cache_size, unsorted_on_cache_qubits, sorted_on_cache_qubits_with_sentinel, std::forward<Function>(function));
+              }
+            }
+          }; // struct gate<false>
+        } // namespace gate_detail
+
         template <typename ParallelPolicy, typename RandomAccessIterator1, typename RandomAccessIterator2, typename Function>
         inline auto gate(
           ParallelPolicy const parallel_policy,
@@ -852,68 +990,129 @@ namespace ket
           Function&& function)
         -> void
         {
-          using qubit_type = ::ket::qubit<>;
-          using state_integer_type = ::ket::meta::state_integer_t<qubit_type>;
-          using bit_integer_type = ::ket::meta::bit_integer_t<qubit_type>;
-
-          auto const state_size = static_cast<state_integer_type>(state_last - state_first);
-          auto const num_qubits = ::ket::utility::integer_log2<bit_integer_type>(state_size);
-          assert(::ket::utility::integer_exp2<state_integer_type>(num_qubits) == state_size);
-
-          auto const cache_size = static_cast<state_integer_type>(on_cache_state_last - on_cache_state_first);
-          auto const num_on_cache_qubits = ::ket::utility::integer_log2<bit_integer_type>(cache_size);
-          assert(::ket::utility::integer_exp2<state_integer_type>(num_on_cache_qubits) == cache_size);
-          assert(num_on_cache_qubits < num_qubits);
-          auto const num_off_cache_qubits = num_qubits - num_on_cache_qubits;
-
-          // xxxx|yyyy|zzzzzz: (local) qubits
-          // * xxxx: off-cache qubits
-          // * yyyy|zzzzzz: on-cache qubits
-          //   - yyyy: chunk qubits (chunk qubits are determined dynamically, and sometimes there is no chunk qubit)
-          // * xxxx|yyyy: tag qubits
-          // * zzzzzz: nontag qubits
-
-          // chunk_size, num_tag_qubits
-          auto const chunk_size = cache_size;
-          auto const num_tag_qubits = num_off_cache_qubits;
-
-          // unsorted_tag_qubits, sorted_tag_qubits_with_sentinel
-          std::array<qubit_type, 0u> unsorted_tag_qubits{};
-          std::array<qubit_type, 1u> sorted_tag_qubits_with_sentinel{qubit_type{num_tag_qubits}};
-
-          // unsorted_on_cache_qubits, sorted_on_cache_qubits_with_sentinel
-          std::array<qubit_type, 0u> unsorted_on_cache_qubits{};
-          std::array<qubit_type, 1u> sorted_on_cache_qubits_with_sentinel{::ket::make_qubit<state_integer_type>(num_on_cache_qubits)};
-
-          auto const tag_loop_size = ::ket::utility::integer_exp2<state_integer_type>(num_tag_qubits);
-          for (auto tag_index_wo_qubits = state_integer_type{0u}; tag_index_wo_qubits < tag_loop_size; ++tag_index_wo_qubits)
-          {
-            using std::begin;
-            using std::end;
-            ::ket::utility::copy_n(
-              parallel_policy,
-              state_first
-              + ::ket::gate::utility::index_with_qubits(
-                  tag_index_wo_qubits, state_integer_type{0u},
-                  begin(unsorted_tag_qubits), end(unsorted_tag_qubits),
-                  begin(sorted_tag_qubits_with_sentinel), end(sorted_tag_qubits_with_sentinel)) * chunk_size,
-              chunk_size, on_cache_state_first);
-
-            ::ket::gate::gate_detail::gate_n(parallel_policy, on_cache_state_first, cache_size, unsorted_on_cache_qubits, sorted_on_cache_qubits_with_sentinel, std::forward<Function>(function));
-
-            ::ket::utility::copy_n(
-              parallel_policy,
-              on_cache_state_first, chunk_size,
-              state_first
-              + ::ket::gate::utility::index_with_qubits(
-                  tag_index_wo_qubits, state_integer_type{0u},
-                  begin(unsorted_tag_qubits), end(unsorted_tag_qubits),
-                  begin(sorted_tag_qubits_with_sentinel), end(sorted_tag_qubits_with_sentinel)) * chunk_size);
-          }
+          ::ket::gate::cache::none_on_cache::gate_detail::gate<std::is_assignable<decltype(*state_first), typename std::iterator_traits<RandomAccessIterator1>::value_type>::value>::call(
+            parallel_policy, state_first, state_last, on_cache_state_first, on_cache_state_last,
+            std::forward<Function>(function));
         }
 
         namespace impl
         {
+          template <bool is_state_iterator_mutable>
+          struct gate_impl
+          {
+            template <
+              typename ParallelPolicy, typename RandomAccessIterator1, typename RandomAccessIterator2,
+              typename Qubit, std::size_t num_operated_qubits, typename Function>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              RandomAccessIterator1 const state_first, RandomAccessIterator1 const state_last,
+              RandomAccessIterator2 const on_cache_state_first, RandomAccessIterator2 const on_cache_state_last,
+              std::array<Qubit, num_operated_qubits> const& unsorted_tag_qubits,
+              std::array<Qubit, num_operated_qubits + 1u> const& sorted_tag_qubits_with_sentinel,
+              std::array<Qubit, num_operated_qubits> const& unsorted_on_cache_qubits,
+              std::array<Qubit, num_operated_qubits + 1u> const& sorted_on_cache_qubits_with_sentinel,
+              Function&& function)
+            -> void
+            {
+              using state_integer_type = ::ket::meta::state_integer_t<Qubit>;
+              using bit_integer_type = ::ket::meta::bit_integer_t<Qubit>;
+
+              auto const state_size = static_cast<state_integer_type>(state_last - state_first);
+              auto const num_qubits = ::ket::utility::integer_log2<bit_integer_type>(state_size);
+
+              auto const cache_size = static_cast<state_integer_type>(on_cache_state_last - on_cache_state_first);
+              auto const num_on_cache_qubits = ::ket::utility::integer_log2<bit_integer_type>(cache_size);
+              auto const num_off_cache_qubits = num_qubits - num_on_cache_qubits;
+
+              // num_chunk_qubits, chunk_size, num_tag_qubits
+              constexpr auto num_chunk_qubits = num_operated_qubits;
+              constexpr auto num_chunks_in_on_cache_state = ::ket::utility::integer_exp2<state_integer_type>(num_chunk_qubits);
+              auto const chunk_size = cache_size / num_chunks_in_on_cache_state;
+              auto const num_tag_qubits = num_off_cache_qubits + num_chunk_qubits;
+
+              auto const tag_loop_size = ::ket::utility::integer_exp2<state_integer_type>(num_tag_qubits - num_operated_qubits);
+              for (auto tag_index_wo_qubits = state_integer_type{0u}; tag_index_wo_qubits < tag_loop_size; ++tag_index_wo_qubits)
+              {
+                using std::begin;
+                using std::end;
+                for (auto chunk_index = state_integer_type{0u}; chunk_index < num_chunks_in_on_cache_state; ++chunk_index)
+                  ::ket::utility::copy_n(
+                    parallel_policy,
+                    state_first
+                    + ::ket::gate::utility::index_with_qubits(
+                        tag_index_wo_qubits, chunk_index,
+                        begin(unsorted_tag_qubits), end(unsorted_tag_qubits),
+                        begin(sorted_tag_qubits_with_sentinel), end(sorted_tag_qubits_with_sentinel)) * chunk_size,
+                    chunk_size, on_cache_state_first + chunk_index * chunk_size);
+
+                ::ket::gate::gate_detail::gate_n(parallel_policy, on_cache_state_first, cache_size, unsorted_on_cache_qubits, sorted_on_cache_qubits_with_sentinel, std::forward<Function>(function));
+
+                for (auto chunk_index = state_integer_type{0u}; chunk_index < num_chunks_in_on_cache_state; ++chunk_index)
+                  ::ket::utility::copy_n(
+                    parallel_policy,
+                    on_cache_state_first + chunk_index * chunk_size, chunk_size,
+                    state_first
+                    + ::ket::gate::utility::index_with_qubits(
+                        tag_index_wo_qubits, chunk_index,
+                        begin(unsorted_tag_qubits), end(unsorted_tag_qubits),
+                        begin(sorted_tag_qubits_with_sentinel), end(sorted_tag_qubits_with_sentinel)) * chunk_size);
+              }
+            }
+          }; // struct gate_impl<is_state_iterator_mutable>
+
+          template <>
+          struct gate_impl<false>
+          {
+            template <
+              typename ParallelPolicy, typename RandomAccessIterator1, typename RandomAccessIterator2,
+              typename Qubit, std::size_t num_operated_qubits, typename Function>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              RandomAccessIterator1 const state_first, RandomAccessIterator1 const state_last,
+              RandomAccessIterator2 const on_cache_state_first, RandomAccessIterator2 const on_cache_state_last,
+              std::array<Qubit, num_operated_qubits> const& unsorted_tag_qubits,
+              std::array<Qubit, num_operated_qubits + 1u> const& sorted_tag_qubits_with_sentinel,
+              std::array<Qubit, num_operated_qubits> const& unsorted_on_cache_qubits,
+              std::array<Qubit, num_operated_qubits + 1u> const& sorted_on_cache_qubits_with_sentinel,
+              Function&& function)
+            -> void
+            {
+              using state_integer_type = ::ket::meta::state_integer_t<Qubit>;
+              using bit_integer_type = ::ket::meta::bit_integer_t<Qubit>;
+
+              auto const state_size = static_cast<state_integer_type>(state_last - state_first);
+              auto const num_qubits = ::ket::utility::integer_log2<bit_integer_type>(state_size);
+
+              auto const cache_size = static_cast<state_integer_type>(on_cache_state_last - on_cache_state_first);
+              auto const num_on_cache_qubits = ::ket::utility::integer_log2<bit_integer_type>(cache_size);
+              auto const num_off_cache_qubits = num_qubits - num_on_cache_qubits;
+
+              // num_chunk_qubits, chunk_size, num_tag_qubits
+              constexpr auto num_chunk_qubits = num_operated_qubits;
+              constexpr auto num_chunks_in_on_cache_state = ::ket::utility::integer_exp2<state_integer_type>(num_chunk_qubits);
+              auto const chunk_size = cache_size / num_chunks_in_on_cache_state;
+              auto const num_tag_qubits = num_off_cache_qubits + num_chunk_qubits;
+
+              auto const tag_loop_size = ::ket::utility::integer_exp2<state_integer_type>(num_tag_qubits - num_operated_qubits);
+              for (auto tag_index_wo_qubits = state_integer_type{0u}; tag_index_wo_qubits < tag_loop_size; ++tag_index_wo_qubits)
+              {
+                using std::begin;
+                using std::end;
+                for (auto chunk_index = state_integer_type{0u}; chunk_index < num_chunks_in_on_cache_state; ++chunk_index)
+                  ::ket::utility::copy_n(
+                    parallel_policy,
+                    state_first
+                    + ::ket::gate::utility::index_with_qubits(
+                        tag_index_wo_qubits, chunk_index,
+                        begin(unsorted_tag_qubits), end(unsorted_tag_qubits),
+                        begin(sorted_tag_qubits_with_sentinel), end(sorted_tag_qubits_with_sentinel)) * chunk_size,
+                    chunk_size, on_cache_state_first + chunk_index * chunk_size);
+
+                ::ket::gate::gate_detail::gate_n(parallel_policy, on_cache_state_first, cache_size, unsorted_on_cache_qubits, sorted_on_cache_qubits_with_sentinel, std::forward<Function>(function));
+              }
+            }
+          }; // struct gate_impl<false>
+
           template <
             typename ParallelPolicy, typename RandomAccessIterator1, typename RandomAccessIterator2,
             typename Function, typename Qubit, typename... Qubits, std::size_t... indices_for_qubits>
@@ -985,10 +1184,8 @@ namespace ket
             using qubit_type = ::ket::qubit<state_integer_type, bit_integer_type>;
             auto const least_significant_off_cache_qubit = qubit_type{num_on_cache_qubits};
 
-            // num_chunk_qubits, chunk_size, least_significant_chunk_qubit, num_tag_qubits, num_nontag_qubits
+            // num_chunk_qubits, least_significant_chunk_qubit, num_tag_qubits, num_nontag_qubits
             constexpr auto num_chunk_qubits = num_operated_qubits;
-            constexpr auto num_chunks_in_on_cache_state = ::ket::utility::integer_exp2<state_integer_type>(num_chunk_qubits);
-            auto const chunk_size = cache_size / num_chunks_in_on_cache_state;
             auto const least_significant_chunk_qubit = least_significant_off_cache_qubit - num_chunk_qubits;
             auto const num_tag_qubits = num_off_cache_qubits + num_chunk_qubits;
             auto const num_nontag_qubits = num_on_cache_qubits - num_chunk_qubits;
@@ -1003,33 +1200,10 @@ namespace ket
             std::array<qubit_type, num_operated_qubits> unsorted_on_cache_qubits{least_significant_chunk_qubit, (least_significant_chunk_qubit + bit_integer_type{1u} + bit_integer_type{indices_for_qubits})...};
             std::array<qubit_type, num_operated_qubits + bit_integer_type{1u}> sorted_on_cache_qubits_with_sentinel{least_significant_chunk_qubit, (least_significant_chunk_qubit + bit_integer_type{1u} + bit_integer_type{indices_for_qubits})..., ::ket::make_qubit<state_integer_type>(num_on_cache_qubits)};
 
-            auto const tag_loop_size = ::ket::utility::integer_exp2<state_integer_type>(num_tag_qubits - num_operated_qubits);
-            for (auto tag_index_wo_qubits = state_integer_type{0u}; tag_index_wo_qubits < tag_loop_size; ++tag_index_wo_qubits)
-            {
-              using std::begin;
-              using std::end;
-              for (auto chunk_index = state_integer_type{0u}; chunk_index < num_chunks_in_on_cache_state; ++chunk_index)
-                ::ket::utility::copy_n(
-                  parallel_policy,
-                  state_first
-                  + ::ket::gate::utility::index_with_qubits(
-                      tag_index_wo_qubits, chunk_index,
-                      begin(unsorted_tag_qubits), end(unsorted_tag_qubits),
-                      begin(sorted_tag_qubits_with_sentinel), end(sorted_tag_qubits_with_sentinel)) * chunk_size,
-                  chunk_size, on_cache_state_first + chunk_index * chunk_size);
-
-              ::ket::gate::gate_detail::gate_n(parallel_policy, on_cache_state_first, cache_size, unsorted_on_cache_qubits, sorted_on_cache_qubits_with_sentinel, std::forward<Function>(function));
-
-              for (auto chunk_index = state_integer_type{0u}; chunk_index < num_chunks_in_on_cache_state; ++chunk_index)
-                ::ket::utility::copy_n(
-                  parallel_policy,
-                  on_cache_state_first + chunk_index * chunk_size, chunk_size,
-                  state_first
-                  + ::ket::gate::utility::index_with_qubits(
-                      tag_index_wo_qubits, chunk_index,
-                      begin(unsorted_tag_qubits), end(unsorted_tag_qubits),
-                      begin(sorted_tag_qubits_with_sentinel), end(sorted_tag_qubits_with_sentinel)) * chunk_size);
-            }
+            ::ket::gate::cache::none_on_cache::impl::gate_impl<std::is_assignable<decltype(*state_first), typename std::iterator_traits<RandomAccessIterator1>::value_type>::value>::call(
+              parallel_policy, state_first, state_last, on_cache_state_first, on_cache_state_last,
+              unsorted_tag_qubits, sorted_tag_qubits_with_sentinel, unsorted_on_cache_qubits, sorted_on_cache_qubits_with_sentinel,
+              std::forward<Function>(function));
           }
         } // namespace impl
 
@@ -1057,6 +1231,140 @@ namespace ket
       namespace some_on_cache
       {
         // First argument of Function: RandomAccessIterator2 (not RandomAccessIterator1)
+        namespace gate_detail
+        {
+          template <bool is_state_iterator_mutable>
+          struct gate
+          {
+            template <typename ParallelPolicy, typename RandomAccessIterator1, typename RandomAccessIterator2, typename Function>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              RandomAccessIterator1 const state_first, RandomAccessIterator1 const state_last,
+              RandomAccessIterator2 const on_cache_state_first, RandomAccessIterator2 const on_cache_state_last,
+              Function&& function)
+            -> void
+            {
+              using qubit_type = ::ket::qubit<>;
+              using state_integer_type = ::ket::meta::state_integer_t<qubit_type>;
+              using bit_integer_type = ::ket::meta::bit_integer_t<qubit_type>;
+
+              auto const state_size = static_cast<state_integer_type>(state_last - state_first);
+              auto const num_qubits = ::ket::utility::integer_log2<bit_integer_type>(state_size);
+              assert(::ket::utility::integer_exp2<state_integer_type>(num_qubits) == state_size);
+
+              auto const cache_size = static_cast<state_integer_type>(on_cache_state_last - on_cache_state_first);
+              auto const num_on_cache_qubits = ::ket::utility::integer_log2<bit_integer_type>(cache_size);
+              assert(::ket::utility::integer_exp2<state_integer_type>(num_on_cache_qubits) == cache_size);
+              assert(num_on_cache_qubits < num_qubits);
+              auto const num_off_cache_qubits = num_qubits - num_on_cache_qubits;
+
+              // xxxx|yyyy|zzzzzz: (local) qubits
+              // * xxxx: off-cache qubits
+              // * yyyy|zzzzzz: on-cache qubits
+              //   - yyyy: chunk qubits (chunk qubits are determined dynamically, and sometimes there is no chunk qubit)
+              // * xxxx|yyyy: tag qubits
+              // * zzzzzz: nontag qubits
+
+              // chunk_size, num_tag_qubits
+              auto const chunk_size = cache_size;
+              auto const num_tag_qubits = num_off_cache_qubits;
+
+              // unsorted_tag_qubits, sorted_tag_qubits_with_sentinel
+              auto unsorted_tag_qubits = std::vector<qubit_type>{};
+              auto sorted_tag_qubits_with_sentinel = std::vector<qubit_type>{qubit_type{num_tag_qubits}};
+
+              // unsorted_on_cache_qubits, sorted_on_cache_qubits_with_sentinel
+              std::array<qubit_type, 0u> unsorted_on_cache_qubits{};
+              std::array<qubit_type, 1u> sorted_on_cache_qubits_with_sentinel{::ket::make_qubit<state_integer_type>(num_on_cache_qubits)};
+
+              auto const tag_loop_size = ::ket::utility::integer_exp2<state_integer_type>(num_tag_qubits);
+              for (auto tag_index_wo_qubits = state_integer_type{0u}; tag_index_wo_qubits < tag_loop_size; ++tag_index_wo_qubits)
+              {
+                ::ket::utility::copy_n(
+                  parallel_policy,
+                  state_first
+                  + ::ket::gate::utility::index_with_qubits(
+                      tag_index_wo_qubits, state_integer_type{0u},
+                      begin(unsorted_tag_qubits), end(unsorted_tag_qubits),
+                      begin(sorted_tag_qubits_with_sentinel), end(sorted_tag_qubits_with_sentinel)) * chunk_size,
+                  chunk_size, on_cache_state_first);
+
+                ::ket::gate::gate_detail::gate_n(parallel_policy, on_cache_state_first, cache_size, unsorted_on_cache_qubits, sorted_on_cache_qubits_with_sentinel, std::forward<Function>(function));
+
+                ::ket::utility::copy_n(
+                  parallel_policy,
+                  on_cache_state_first, chunk_size,
+                  state_first
+                  + ::ket::gate::utility::index_with_qubits(
+                      tag_index_wo_qubits, state_integer_type{0u},
+                      begin(unsorted_tag_qubits), end(unsorted_tag_qubits),
+                      begin(sorted_tag_qubits_with_sentinel), end(sorted_tag_qubits_with_sentinel)) * chunk_size);
+              }
+            }
+          }; // struct gate<is_state_iterator_mutable>
+
+          template <>
+          struct gate<false>
+          {
+            template <typename ParallelPolicy, typename RandomAccessIterator1, typename RandomAccessIterator2, typename Function>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              RandomAccessIterator1 const state_first, RandomAccessIterator1 const state_last,
+              RandomAccessIterator2 const on_cache_state_first, RandomAccessIterator2 const on_cache_state_last,
+              Function&& function)
+            -> void
+            {
+              using qubit_type = ::ket::qubit<>;
+              using state_integer_type = ::ket::meta::state_integer_t<qubit_type>;
+              using bit_integer_type = ::ket::meta::bit_integer_t<qubit_type>;
+
+              auto const state_size = static_cast<state_integer_type>(state_last - state_first);
+              auto const num_qubits = ::ket::utility::integer_log2<bit_integer_type>(state_size);
+              assert(::ket::utility::integer_exp2<state_integer_type>(num_qubits) == state_size);
+
+              auto const cache_size = static_cast<state_integer_type>(on_cache_state_last - on_cache_state_first);
+              auto const num_on_cache_qubits = ::ket::utility::integer_log2<bit_integer_type>(cache_size);
+              assert(::ket::utility::integer_exp2<state_integer_type>(num_on_cache_qubits) == cache_size);
+              assert(num_on_cache_qubits < num_qubits);
+              auto const num_off_cache_qubits = num_qubits - num_on_cache_qubits;
+
+              // xxxx|yyyy|zzzzzz: (local) qubits
+              // * xxxx: off-cache qubits
+              // * yyyy|zzzzzz: on-cache qubits
+              //   - yyyy: chunk qubits (chunk qubits are determined dynamically, and sometimes there is no chunk qubit)
+              // * xxxx|yyyy: tag qubits
+              // * zzzzzz: nontag qubits
+
+              // chunk_size, num_tag_qubits
+              auto const chunk_size = cache_size;
+              auto const num_tag_qubits = num_off_cache_qubits;
+
+              // unsorted_tag_qubits, sorted_tag_qubits_with_sentinel
+              auto unsorted_tag_qubits = std::vector<qubit_type>{};
+              auto sorted_tag_qubits_with_sentinel = std::vector<qubit_type>{qubit_type{num_tag_qubits}};
+
+              // unsorted_on_cache_qubits, sorted_on_cache_qubits_with_sentinel
+              std::array<qubit_type, 0u> unsorted_on_cache_qubits{};
+              std::array<qubit_type, 1u> sorted_on_cache_qubits_with_sentinel{::ket::make_qubit<state_integer_type>(num_on_cache_qubits)};
+
+              auto const tag_loop_size = ::ket::utility::integer_exp2<state_integer_type>(num_tag_qubits);
+              for (auto tag_index_wo_qubits = state_integer_type{0u}; tag_index_wo_qubits < tag_loop_size; ++tag_index_wo_qubits)
+              {
+                ::ket::utility::copy_n(
+                  parallel_policy,
+                  state_first
+                  + ::ket::gate::utility::index_with_qubits(
+                      tag_index_wo_qubits, state_integer_type{0u},
+                      begin(unsorted_tag_qubits), end(unsorted_tag_qubits),
+                      begin(sorted_tag_qubits_with_sentinel), end(sorted_tag_qubits_with_sentinel)) * chunk_size,
+                  chunk_size, on_cache_state_first);
+
+                ::ket::gate::gate_detail::gate_n(parallel_policy, on_cache_state_first, cache_size, unsorted_on_cache_qubits, sorted_on_cache_qubits_with_sentinel, std::forward<Function>(function));
+              }
+            }
+          }; // struct gate<false>
+        } // namespace gate_detail
+
         template <typename ParallelPolicy, typename RandomAccessIterator1, typename RandomAccessIterator2, typename Function>
         inline auto gate(
           ParallelPolicy const parallel_policy,
@@ -1065,66 +1373,129 @@ namespace ket
           Function&& function)
         -> void
         {
-          using qubit_type = ::ket::qubit<>;
-          using state_integer_type = ::ket::meta::state_integer_t<qubit_type>;
-          using bit_integer_type = ::ket::meta::bit_integer_t<qubit_type>;
-
-          auto const state_size = static_cast<state_integer_type>(state_last - state_first);
-          auto const num_qubits = ::ket::utility::integer_log2<bit_integer_type>(state_size);
-          assert(::ket::utility::integer_exp2<state_integer_type>(num_qubits) == state_size);
-
-          auto const cache_size = static_cast<state_integer_type>(on_cache_state_last - on_cache_state_first);
-          auto const num_on_cache_qubits = ::ket::utility::integer_log2<bit_integer_type>(cache_size);
-          assert(::ket::utility::integer_exp2<state_integer_type>(num_on_cache_qubits) == cache_size);
-          assert(num_on_cache_qubits < num_qubits);
-          auto const num_off_cache_qubits = num_qubits - num_on_cache_qubits;
-
-          // xxxx|yyyy|zzzzzz: (local) qubits
-          // * xxxx: off-cache qubits
-          // * yyyy|zzzzzz: on-cache qubits
-          //   - yyyy: chunk qubits (chunk qubits are determined dynamically, and sometimes there is no chunk qubit)
-          // * xxxx|yyyy: tag qubits
-          // * zzzzzz: nontag qubits
-
-          // chunk_size, num_tag_qubits
-          auto const chunk_size = cache_size;
-          auto const num_tag_qubits = num_off_cache_qubits;
-
-          // unsorted_tag_qubits, sorted_tag_qubits_with_sentinel
-          auto unsorted_tag_qubits = std::vector<qubit_type>{};
-          auto sorted_tag_qubits_with_sentinel = std::vector<qubit_type>{qubit_type{num_tag_qubits}};
-
-          // unsorted_on_cache_qubits, sorted_on_cache_qubits_with_sentinel
-          std::array<qubit_type, 0u> unsorted_on_cache_qubits{};
-          std::array<qubit_type, 1u> sorted_on_cache_qubits_with_sentinel{::ket::make_qubit<state_integer_type>(num_on_cache_qubits)};
-
-          auto const tag_loop_size = ::ket::utility::integer_exp2<state_integer_type>(num_tag_qubits);
-          for (auto tag_index_wo_qubits = state_integer_type{0u}; tag_index_wo_qubits < tag_loop_size; ++tag_index_wo_qubits)
-          {
-            ::ket::utility::copy_n(
-              parallel_policy,
-              state_first
-              + ::ket::gate::utility::index_with_qubits(
-                  tag_index_wo_qubits, state_integer_type{0u},
-                  begin(unsorted_tag_qubits), end(unsorted_tag_qubits),
-                  begin(sorted_tag_qubits_with_sentinel), end(sorted_tag_qubits_with_sentinel)) * chunk_size,
-              chunk_size, on_cache_state_first);
-
-            ::ket::gate::gate_detail::gate_n(parallel_policy, on_cache_state_first, cache_size, unsorted_on_cache_qubits, sorted_on_cache_qubits_with_sentinel, std::forward<Function>(function));
-
-            ::ket::utility::copy_n(
-              parallel_policy,
-              on_cache_state_first, chunk_size,
-              state_first
-              + ::ket::gate::utility::index_with_qubits(
-                  tag_index_wo_qubits, state_integer_type{0u},
-                  begin(unsorted_tag_qubits), end(unsorted_tag_qubits),
-                  begin(sorted_tag_qubits_with_sentinel), end(sorted_tag_qubits_with_sentinel)) * chunk_size);
-          }
+          ::ket::gate::cache::some_on_cache::gate_detail::gate<std::is_assignable<decltype(*state_first), typename std::iterator_traits<RandomAccessIterator1>::value_type>::value>::call(
+            parallel_policy, state_first, state_last, on_cache_state_first, on_cache_state_last,
+            std::forward<Function>(function));
         }
 
         namespace impl
         {
+          template <bool is_state_iterator_mutable>
+          struct gate_impl
+          {
+            template <
+              typename ParallelPolicy, typename RandomAccessIterator1, typename RandomAccessIterator2,
+              typename Qubit, std::size_t num_operated_qubits, typename Function>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              RandomAccessIterator1 const state_first, RandomAccessIterator1 const state_last,
+              RandomAccessIterator2 const on_cache_state_first, RandomAccessIterator2 const on_cache_state_last,
+              std::vector<Qubit> const& unsorted_tag_qubits,
+              std::vector<Qubit> const& sorted_tag_qubits_with_sentinel,
+              std::array<Qubit, num_operated_qubits> const& unsorted_on_cache_qubits,
+              std::array<Qubit, num_operated_qubits + 1u> const& sorted_on_cache_qubits_with_sentinel,
+              Function&& function)
+            -> void
+            {
+              using state_integer_type = ::ket::meta::state_integer_t<Qubit>;
+              using bit_integer_type = ::ket::meta::bit_integer_t<Qubit>;
+
+              auto const state_size = static_cast<state_integer_type>(state_last - state_first);
+              auto const num_qubits = ::ket::utility::integer_log2<bit_integer_type>(state_size);
+
+              auto const cache_size = static_cast<state_integer_type>(on_cache_state_last - on_cache_state_first);
+              auto const num_on_cache_qubits = ::ket::utility::integer_log2<bit_integer_type>(cache_size);
+              auto const num_off_cache_qubits = num_qubits - num_on_cache_qubits;
+
+              // num_chunk_qubits, chunk_size, num_tag_qubits
+              auto const num_chunk_qubits = unsorted_tag_qubits.size();
+              auto const num_chunks_in_on_cache_state = ::ket::utility::integer_exp2<state_integer_type>(num_chunk_qubits);
+              auto const chunk_size = cache_size / num_chunks_in_on_cache_state;
+              auto const num_tag_qubits = num_off_cache_qubits + num_chunk_qubits;
+
+              auto const tag_loop_size = ::ket::utility::integer_exp2<state_integer_type>(num_tag_qubits - num_chunk_qubits); // num_chunk_qubits == operated_tag_qubits.size()
+              for (auto tag_index_wo_qubits = state_integer_type{0u}; tag_index_wo_qubits < tag_loop_size; ++tag_index_wo_qubits)
+              {
+                using std::begin;
+                using std::end;
+                for (auto chunk_index = state_integer_type{0u}; chunk_index < num_chunks_in_on_cache_state; ++chunk_index)
+                  ::ket::utility::copy_n(
+                    parallel_policy,
+                    state_first
+                    + ::ket::gate::utility::index_with_qubits(
+                        tag_index_wo_qubits, chunk_index,
+                        begin(unsorted_tag_qubits), end(unsorted_tag_qubits),
+                        begin(sorted_tag_qubits_with_sentinel), end(sorted_tag_qubits_with_sentinel)) * chunk_size,
+                    chunk_size, on_cache_state_first + chunk_index * chunk_size);
+
+                ::ket::gate::gate_detail::gate_n(parallel_policy, on_cache_state_first, cache_size, unsorted_on_cache_qubits, sorted_on_cache_qubits_with_sentinel, std::forward<Function>(function));
+
+                for (auto chunk_index = state_integer_type{0u}; chunk_index < num_chunks_in_on_cache_state; ++chunk_index)
+                  ::ket::utility::copy_n(
+                    parallel_policy,
+                    on_cache_state_first + chunk_index * chunk_size, chunk_size,
+                    state_first
+                    + ::ket::gate::utility::index_with_qubits(
+                        tag_index_wo_qubits, chunk_index,
+                        begin(unsorted_tag_qubits), end(unsorted_tag_qubits),
+                        begin(sorted_tag_qubits_with_sentinel), end(sorted_tag_qubits_with_sentinel)) * chunk_size);
+              }
+            }
+          }; // struct gate_impl<is_state_iterator_mutable>
+
+          template <>
+          struct gate_impl<false>
+          {
+            template <
+              typename ParallelPolicy, typename RandomAccessIterator1, typename RandomAccessIterator2,
+              typename Qubit, std::size_t num_operated_qubits, typename Function>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              RandomAccessIterator1 const state_first, RandomAccessIterator1 const state_last,
+              RandomAccessIterator2 const on_cache_state_first, RandomAccessIterator2 const on_cache_state_last,
+              std::vector<Qubit> const& unsorted_tag_qubits,
+              std::vector<Qubit> const& sorted_tag_qubits_with_sentinel,
+              std::array<Qubit, num_operated_qubits> const& unsorted_on_cache_qubits,
+              std::array<Qubit, num_operated_qubits + 1u> const& sorted_on_cache_qubits_with_sentinel,
+              Function&& function)
+            -> void
+            {
+              using state_integer_type = ::ket::meta::state_integer_t<Qubit>;
+              using bit_integer_type = ::ket::meta::bit_integer_t<Qubit>;
+
+              auto const state_size = static_cast<state_integer_type>(state_last - state_first);
+              auto const num_qubits = ::ket::utility::integer_log2<bit_integer_type>(state_size);
+
+              auto const cache_size = static_cast<state_integer_type>(on_cache_state_last - on_cache_state_first);
+              auto const num_on_cache_qubits = ::ket::utility::integer_log2<bit_integer_type>(cache_size);
+              auto const num_off_cache_qubits = num_qubits - num_on_cache_qubits;
+
+              // num_chunk_qubits, chunk_size, num_tag_qubits
+              auto const num_chunk_qubits = unsorted_tag_qubits.size();
+              auto const num_chunks_in_on_cache_state = ::ket::utility::integer_exp2<state_integer_type>(num_chunk_qubits);
+              auto const chunk_size = cache_size / num_chunks_in_on_cache_state;
+              auto const num_tag_qubits = num_off_cache_qubits + num_chunk_qubits;
+
+              auto const tag_loop_size = ::ket::utility::integer_exp2<state_integer_type>(num_tag_qubits - num_chunk_qubits); // num_chunk_qubits == operated_tag_qubits.size()
+              for (auto tag_index_wo_qubits = state_integer_type{0u}; tag_index_wo_qubits < tag_loop_size; ++tag_index_wo_qubits)
+              {
+                using std::begin;
+                using std::end;
+                for (auto chunk_index = state_integer_type{0u}; chunk_index < num_chunks_in_on_cache_state; ++chunk_index)
+                  ::ket::utility::copy_n(
+                    parallel_policy,
+                    state_first
+                    + ::ket::gate::utility::index_with_qubits(
+                        tag_index_wo_qubits, chunk_index,
+                        begin(unsorted_tag_qubits), end(unsorted_tag_qubits),
+                        begin(sorted_tag_qubits_with_sentinel), end(sorted_tag_qubits_with_sentinel)) * chunk_size,
+                    chunk_size, on_cache_state_first + chunk_index * chunk_size);
+
+                ::ket::gate::gate_detail::gate_n(parallel_policy, on_cache_state_first, cache_size, unsorted_on_cache_qubits, sorted_on_cache_qubits_with_sentinel, std::forward<Function>(function));
+              }
+            }
+          }; // struct gate_impl<false>
+
           template <
             typename ParallelPolicy, typename RandomAccessIterator1, typename RandomAccessIterator2,
             typename Function, typename Qubit, typename... Qubits, std::size_t... indices_for_qubits>
@@ -1212,7 +1583,7 @@ namespace ket
             assert(operated_on_cache_qubits_first != operated_on_cache_qubits_last);
             assert(operated_off_cache_qubits_first != operated_off_cache_qubits_last);
 
-            // least_significant_chunk_qubit, num_chunk_qubits, chunk_size, num_tag_qubits, num_nontag_qubits
+            // least_significant_chunk_qubit, num_chunk_qubits, num_tag_qubits, num_nontag_qubits
             auto operated_on_cache_qubits_iter = std::prev(operated_on_cache_qubits_last);
             auto free_most_significant_on_cache_qubit = least_significant_off_cache_qubit - bit_integer_type{1u};
             auto const num_operated_off_cache_qubits
@@ -1225,8 +1596,6 @@ namespace ket
             auto const least_significant_chunk_qubit = free_most_significant_on_cache_qubit + bit_integer_type{1u};
             auto const num_chunk_qubits = static_cast<bit_integer_type>(least_significant_off_cache_qubit - least_significant_chunk_qubit);
             assert(num_chunk_qubits <= num_operated_qubits);
-            auto const num_chunks_in_on_cache_state = ::ket::utility::integer_exp2<state_integer_type>(num_chunk_qubits);
-            auto const chunk_size = cache_size / num_chunks_in_on_cache_state;
             auto const num_tag_qubits = num_off_cache_qubits + num_chunk_qubits;
             auto const num_nontag_qubits = num_on_cache_qubits - num_chunk_qubits;
 
@@ -1261,31 +1630,10 @@ namespace ket
             std::array<qubit_type, num_operated_qubits + bit_integer_type{1u}> sorted_on_cache_qubits_with_sentinel{ket::remove_control(std::get<0u>(modified_operated_qubits)), ket::remove_control(std::get<1u + indices_for_qubits>(modified_operated_qubits))..., ::ket::make_qubit<state_integer_type>(num_on_cache_qubits)};
             std::sort(begin(sorted_on_cache_qubits_with_sentinel), std::prev(end(sorted_on_cache_qubits_with_sentinel)));
 
-            auto const tag_loop_size = ::ket::utility::integer_exp2<state_integer_type>(num_tag_qubits - num_chunk_qubits); // num_chunk_qubits == operated_tag_qubits.size()
-            for (auto tag_index_wo_qubits = state_integer_type{0u}; tag_index_wo_qubits < tag_loop_size; ++tag_index_wo_qubits)
-            {
-              for (auto chunk_index = state_integer_type{0u}; chunk_index < num_chunks_in_on_cache_state; ++chunk_index)
-                ::ket::utility::copy_n(
-                  parallel_policy,
-                  state_first
-                  + ::ket::gate::utility::index_with_qubits(
-                      tag_index_wo_qubits, chunk_index,
-                      begin(unsorted_tag_qubits), end(unsorted_tag_qubits),
-                      begin(sorted_tag_qubits_with_sentinel), end(sorted_tag_qubits_with_sentinel)) * chunk_size,
-                  chunk_size, on_cache_state_first + chunk_index * chunk_size);
-
-              ::ket::gate::gate_detail::gate_n(parallel_policy, on_cache_state_first, cache_size, unsorted_on_cache_qubits, sorted_on_cache_qubits_with_sentinel, std::forward<Function>(function));
-
-              for (auto chunk_index = state_integer_type{0u}; chunk_index < num_chunks_in_on_cache_state; ++chunk_index)
-                ::ket::utility::copy_n(
-                  parallel_policy,
-                  on_cache_state_first + chunk_index * chunk_size, chunk_size,
-                  state_first
-                  + ::ket::gate::utility::index_with_qubits(
-                      tag_index_wo_qubits, chunk_index,
-                      begin(unsorted_tag_qubits), end(unsorted_tag_qubits),
-                      begin(sorted_tag_qubits_with_sentinel), end(sorted_tag_qubits_with_sentinel)) * chunk_size);
-            }
+            ::ket::gate::cache::some_on_cache::impl::gate_impl<std::is_assignable<decltype(*state_first), typename std::iterator_traits<RandomAccessIterator1>::value_type>::value>::call(
+              parallel_policy, state_first, state_last, on_cache_state_first, on_cache_state_last,
+              unsorted_tag_qubits, sorted_tag_qubits_with_sentinel, unsorted_on_cache_qubits, sorted_on_cache_qubits_with_sentinel,
+              std::forward<Function>(function));
           }
         } // namespace impl
 

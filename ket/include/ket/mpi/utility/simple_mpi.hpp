@@ -552,6 +552,16 @@ namespace ket
           template <>
           struct num_qubits< ::ket::mpi::utility::policy::simple_mpi >
           {
+            template <typename StateInteger>
+            static auto call(
+              ::ket::mpi::utility::policy::simple_mpi const mpi_policy,
+              StateInteger const data_block_size, StateInteger const num_units)
+            -> unsigned int
+            {
+              return ::ket::mpi::utility::policy::num_local_qubits(mpi_policy, data_block_size)
+                + ::ket::mpi::utility::policy::num_global_qubits(mpi_policy, num_units);
+            }
+
             template <typename LocalState>
             static auto call(
               ::ket::mpi::utility::policy::simple_mpi const mpi_policy, LocalState const& local_state,
@@ -565,6 +575,11 @@ namespace ket
         } // namespace dispatch
 
         // N = L + M
+        template <typename MpiPolicy, typename StateInteger>
+        inline auto num_qubits(
+          MpiPolicy const& mpi_policy, StateInteger const data_block_size, StateInteger const num_units)
+        { return ::ket::mpi::utility::policy::dispatch::num_qubits<MpiPolicy>::call(mpi_policy, data_block_size, num_units); }
+
         template <typename MpiPolicy, typename LocalState>
         inline auto num_qubits(
           MpiPolicy const& mpi_policy, LocalState const& local_state,

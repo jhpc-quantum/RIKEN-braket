@@ -19,18 +19,16 @@
 # include <yampi/reduce.hpp>
 # include <yampi/binary_operation.hpp>
 
-# include <ket/expectation_value.hpp>
 # include <ket/qubit.hpp>
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/meta/real_of.hpp>
 # include <ket/utility/meta/ranges.hpp>
 # include <ket/mpi/permutated.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
-# include <ket/mpi/page/none_on_page.hpp>
 # include <ket/mpi/gate/gate.hpp>
+# include <ket/mpi/gate/detail/append_qubits_string.hpp>
 # include <ket/mpi/gate/detail/assert_all_qubits_are_local.hpp>
 # include <ket/mpi/utility/simple_mpi.hpp>
-# include <ket/mpi/utility/for_each_local_range.hpp>
 # include <ket/mpi/utility/logger.hpp>
 
 
@@ -38,6 +36,7 @@ namespace ket
 {
   namespace mpi
   {
+    // <Psi| A_{ij} |Psi>
     namespace local
     {
       template <
@@ -45,7 +44,7 @@ namespace ket
         typename LocalState, typename BufferAllocator, typename Observable, typename StateInteger, typename BitInteger, typename... Qubits>
       inline auto expectation_value(
         MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
-        LocalState& local_state,
+        LocalState const& local_state,
         std::vector< ::ket::utility::meta::range_value_t<LocalState>, BufferAllocator >& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment,
         Observable&& observable,
@@ -59,41 +58,29 @@ namespace ket
         constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 1u);
         using real_type = ::ket::utility::meta::real_t< ::ket::utility::meta::range_value_t<LocalState> >;
 
-        struct { Observable call; } wrapped_observable{std::forward<Observable>(observable)};
-        if (::ket::mpi::page::none_on_page(local_state, permutated_qubit, permutated_qubits...))
-        {
-          auto result = real_type{0};
-          ::ket::mpi::utility::for_each_local_range(
-            mpi_policy, local_state, communicator, environment,
-            [parallel_policy, wrapped_observable = std::move(wrapped_observable), permutated_qubit, permutated_qubits..., &result](auto const first, auto const last)
-            { result += ::ket::expectation_value(parallel_policy, first, last, wrapped_observable.call, permutated_qubit.qubit(), permutated_qubits.qubit()...); });
-
-          return result;
-        }
-
         auto partial_sums = std::vector<real_type>(::ket::utility::num_threads(parallel_policy));
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
         ::ket::mpi::gate::local::gate(
           mpi_policy, parallel_policy,
-          local_state, buffer, communicator, environment,
-          [wrapped_observable = std::move(wrapped_observable), &partial_sums](
+          local_state, buffer, communicator, environment, StateInteger{0u},
+          [&observable, &partial_sums](
             auto const first, StateInteger const index_wo_qubits,
             std::array<qubit_type, num_operated_qubits> const& unsorted_qubits,
             std::array<qubit_type, num_operated_qubits + 1u> const& sorted_qubits_with_sentinel,
             int const thread_index)
-          { partial_sums[thread_index] += wrapped_observable.call(first, index_wo_qubits, unsorted_qubits, sorted_qubits_with_sentinel); },
+          { partial_sums[thread_index] += observable(first, index_wo_qubits, unsorted_qubits, sorted_qubits_with_sentinel); },
           permutated_qubit, permutated_qubits...);
 # else // KET_USE_BIT_MASKS_EXPLICITLY
         ::ket::mpi::gate::local::gate(
           mpi_policy, parallel_policy,
-          local_state, buffer, communicator, environment,
-          [wrapped_observable = std::move(wrapped_observable), &partial_sums](
+          local_state, buffer, communicator, environment, StateInteger{0u},
+          [&observable, &partial_sums](
             auto const first, StateInteger const index_wo_qubits,
             std::array<StateInteger, num_operated_qubits> const& qubit_masks,
             std::array<StateInteger, num_operated_qubits + 1u> const& index_masks,
             int const thread_index)
-          { partial_sums[thread_index] += wrapped_observable.call(first, index_wo_qubits, qubit_masks, index_masks); },
+          { partial_sums[thread_index] += observable(first, index_wo_qubits, qubit_masks, index_masks); },
           permutated_qubit, permutated_qubits...);
 # endif // KET_USE_BIT_MASKS_EXPLICITLY
 
@@ -119,7 +106,9 @@ namespace ket
       yampi::communicator const& communicator, yampi::environment const& environment,
       Observable&& observable, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
     {
-      ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Expectation value for qubits "}, qubit, qubits...), environment};
+      ::ket::mpi::utility::log_with_time_guard<char> print{
+        ::ket::mpi::gate::detail::append_qubits_string(std::string{"Expectation value for qubits"}, qubit, qubits...),
+        environment};
 
       ::ket::mpi::utility::maybe_interchange_qubits(
         mpi_policy, parallel_policy,
@@ -156,7 +145,9 @@ namespace ket
       yampi::communicator const& communicator, yampi::environment const& environment,
       Observable&& observable, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
     {
-      ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Expectation value for qubits "}, qubit, qubits...), environment};
+      ::ket::mpi::utility::log_with_time_guard<char> print{
+        ::ket::mpi::gate::detail::append_qubits_string(std::string{"Expectation value for qubits"}, qubit, qubits...),
+        environment};
 
       ::ket::mpi::utility::maybe_interchange_qubits(
         mpi_policy, parallel_policy,
@@ -284,7 +275,9 @@ namespace ket
       yampi::rank const root, yampi::communicator const& communicator, yampi::environment const& environment,
       Observable&& observable, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
     {
-      ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Expectation value for qubits "}, qubit, qubits...), environment};
+      ::ket::mpi::utility::log_with_time_guard<char> print{
+        ::ket::mpi::gate::detail::append_qubits_string(std::string{"Expectation value for qubits"}, qubit, qubits...),
+        environment};
 
       ::ket::mpi::utility::maybe_interchange_qubits(
         mpi_policy, parallel_policy,
@@ -324,7 +317,9 @@ namespace ket
       yampi::rank const root, yampi::communicator const& communicator, yampi::environment const& environment,
       Observable&& observable, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
     {
-      ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Expectation value for qubits "}, qubit, qubits...), environment};
+      ::ket::mpi::utility::log_with_time_guard<char> print{
+        ::ket::mpi::gate::detail::append_qubits_string(std::string{"Expectation value for qubits"}, qubit, qubits...),
+        environment};
 
       ::ket::mpi::utility::maybe_interchange_qubits(
         mpi_policy, parallel_policy,
