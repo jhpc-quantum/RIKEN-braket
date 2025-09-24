@@ -16,8 +16,6 @@
 # include <array>
 # include <initializer_list>
 
-# include <boost/iterator/iterator_facade.hpp>
-
 # include <boost/range/sub_range.hpp>
 # include <boost/range/iterator_range.hpp>
 
@@ -63,35 +61,46 @@ namespace ket
     {
       template <typename State>
       class state_iterator
-        : public boost::iterators::iterator_facade<state_iterator<State>, typename State::value_type, std::random_access_iterator_tag>
       {
-        State* state_ptr_;
-        int index_;
+       public:
+        using value_type = typename State::value_type;
+        using difference_type = std::ptrdiff_t;
+        using pointer = value_type*;
+        using reference = value_type&;
+        using iterator_category = std::random_access_iterator_tag;
 
-        friend class boost::iterators::iterator_core_access;
+       private:
+        State* state_ptr_;
+        difference_type index_;
 
        public:
         constexpr state_iterator() noexcept
           : state_ptr_{nullptr}, index_{}
         { }
 
-        constexpr state_iterator(State& state, int const index) noexcept
+        constexpr state_iterator(State& state, difference_type const index) noexcept
           : state_ptr_{std::addressof(state)}, index_{index}
         { }
 
+        auto operator==(state_iterator const& other) const noexcept -> bool
+        { assert(state_ptr_ == other.state_ptr_); return index_ == other.index_; }
 
-        auto dereference() const -> typename State::value_type&
-        { return const_cast<typename State::value_type&>((*state_ptr_)[index_]); }
+        auto operator<(state_iterator const& other) const noexcept -> bool
+        { assert(state_ptr_ == other.state_ptr_); return index_ < other.index_; }
 
-        auto equal(state_iterator const& other) const -> bool
-        { return state_ptr_ == other.state_ptr_ and index_ == other.index_; }
+        auto operator*() const noexcept -> reference
+        { return const_cast<reference>((*state_ptr_)[index_]); }
 
-        auto increment() -> state_iterator& { ++index_; return *this; }
-        auto decrement() -> state_iterator& { --index_; return *this; }
-        auto advance(typename State::difference_type const n) -> state_iterator&
-        { index_ += n; return *this; }
-        auto distance_to(state_iterator const& other) const -> typename State::difference_type
-        { return other.index_-index_; }
+        auto operator[](difference_type const n) const -> reference
+        { return const_cast<reference>((*state_ptr_)[index_ + n]); }
+
+        auto operator++() noexcept -> state_iterator& { ++index_; return *this; }
+        auto operator++(int) noexcept -> state_iterator { auto result = *this; ++*this; return result; }
+        auto operator--() noexcept -> state_iterator& { --index_; return *this; }
+        auto operator--(int) noexcept -> state_iterator { auto result = *this; --*this; return result; }
+        auto operator+=(difference_type const n) noexcept -> state_iterator& { index_ += n; return *this; }
+        auto operator-=(difference_type const n) noexcept -> state_iterator& { index_ -= n; return *this; }
+        auto operator-(state_iterator const& other) const noexcept -> difference_type { return index_ - other.index_; }
 
         auto swap(state_iterator& other) noexcept -> void
         {
@@ -100,6 +109,55 @@ namespace ket
           swap(index_, other.index_);
         }
       }; // class state_iterator<State>
+
+      template <typename State>
+      inline auto operator!=(
+        ::ket::mpi::state_detail::state_iterator<State> const& lhs,
+        ::ket::mpi::state_detail::state_iterator<State> const& rhs)
+      -> bool
+      { return not (lhs == rhs); }
+
+      template <typename State>
+      inline auto operator>(
+        ::ket::mpi::state_detail::state_iterator<State> const& lhs,
+        ::ket::mpi::state_detail::state_iterator<State> const& rhs)
+      -> bool
+      { return rhs < lhs; }
+
+      template <typename State>
+      inline auto operator<=(
+        ::ket::mpi::state_detail::state_iterator<State> const& lhs,
+        ::ket::mpi::state_detail::state_iterator<State> const& rhs)
+      -> bool
+      { return not (lhs > rhs); }
+
+      template <typename State>
+      inline auto operator>=(
+        ::ket::mpi::state_detail::state_iterator<State> const& lhs,
+        ::ket::mpi::state_detail::state_iterator<State> const& rhs)
+      -> bool
+      { return not (lhs < rhs); }
+
+      template <typename State>
+      inline auto operator+(
+        ::ket::mpi::state_detail::state_iterator<State> iter,
+        typename ::ket::mpi::state_detail::state_iterator<State>::difference_type const n)
+      -> ::ket::mpi::state_detail::state_iterator<State>
+      { return iter += n; }
+
+      template <typename State>
+      inline auto operator+(
+        typename ::ket::mpi::state_detail::state_iterator<State>::difference_type const n,
+        ::ket::mpi::state_detail::state_iterator<State> iter)
+      -> ::ket::mpi::state_detail::state_iterator<State>
+      { return iter += n; }
+
+      template <typename State>
+      inline auto operator-(
+        ::ket::mpi::state_detail::state_iterator<State> iter,
+        typename ::ket::mpi::state_detail::state_iterator<State>::difference_type const n)
+      -> ::ket::mpi::state_detail::state_iterator<State>
+      { return iter -= n; }
 
       template <typename State>
       inline auto swap(
