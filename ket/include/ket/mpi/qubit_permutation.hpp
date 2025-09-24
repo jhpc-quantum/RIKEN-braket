@@ -302,6 +302,28 @@ namespace ket
     }; // class qubit_permutation<StateInteger, BitInteger, Allocator>
 
     template <typename StateInteger, typename BitInteger, typename Allocator>
+    inline auto operator==(
+      ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const& lhs,
+      ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const& rhs)
+    -> bool
+    {
+      using std::begin;
+      using std::end;
+      auto const lhs_first = begin(lhs);
+      auto const lhs_last = end(lhs);
+      auto const rhs_first = begin(rhs);
+      auto const rhs_last = end(rhs);
+      return lhs_last - lhs_first == rhs_last - rhs_first and std::equal(lhs_first, lhs_last, rhs_first);
+    }
+
+    template <typename StateInteger, typename BitInteger, typename Allocator>
+    inline auto operator!=(
+      ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const& lhs,
+      ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator> const& rhs)
+    -> bool
+    { return not (lhs == rhs); }
+
+    template <typename StateInteger, typename BitInteger, typename Allocator>
     inline auto swap(
       ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& lhs,
       ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& rhs)
