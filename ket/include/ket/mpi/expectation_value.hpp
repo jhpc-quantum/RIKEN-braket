@@ -25,11 +25,10 @@
 # include <ket/utility/meta/ranges.hpp>
 # include <ket/mpi/permutated.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
-# include <ket/mpi/page/none_on_page.hpp>
 # include <ket/mpi/gate/gate.hpp>
+# include <ket/mpi/gate/detail/append_qubits_string.hpp>
 # include <ket/mpi/gate/detail/assert_all_qubits_are_local.hpp>
 # include <ket/mpi/utility/simple_mpi.hpp>
-# include <ket/mpi/utility/for_each_local_range.hpp>
 # include <ket/mpi/utility/logger.hpp>
 
 
@@ -107,7 +106,9 @@ namespace ket
       yampi::communicator const& communicator, yampi::environment const& environment,
       Observable&& observable, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
     {
-      ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Expectation value for qubits "}, qubit, qubits...), environment};
+      ::ket::mpi::utility::log_with_time_guard<char> print{
+        ::ket::mpi::gate::detail::append_qubits_string(std::string{"Expectation value for qubits"}, qubit, qubits...),
+        environment};
 
       ::ket::mpi::utility::maybe_interchange_qubits(
         mpi_policy, parallel_policy,
@@ -144,7 +145,9 @@ namespace ket
       yampi::communicator const& communicator, yampi::environment const& environment,
       Observable&& observable, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
     {
-      ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Expectation value for qubits "}, qubit, qubits...), environment};
+      ::ket::mpi::utility::log_with_time_guard<char> print{
+        ::ket::mpi::gate::detail::append_qubits_string(std::string{"Expectation value for qubits"}, qubit, qubits...),
+        environment};
 
       ::ket::mpi::utility::maybe_interchange_qubits(
         mpi_policy, parallel_policy,
@@ -272,7 +275,9 @@ namespace ket
       yampi::rank const root, yampi::communicator const& communicator, yampi::environment const& environment,
       Observable&& observable, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
     {
-      ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Expectation value for qubits "}, qubit, qubits...), environment};
+      ::ket::mpi::utility::log_with_time_guard<char> print{
+        ::ket::mpi::gate::detail::append_qubits_string(std::string{"Expectation value for qubits"}, qubit, qubits...),
+        environment};
 
       ::ket::mpi::utility::maybe_interchange_qubits(
         mpi_policy, parallel_policy,
@@ -312,7 +317,9 @@ namespace ket
       yampi::rank const root, yampi::communicator const& communicator, yampi::environment const& environment,
       Observable&& observable, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
     {
-      ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Expectation value for qubits "}, qubit, qubits...), environment};
+      ::ket::mpi::utility::log_with_time_guard<char> print{
+        ::ket::mpi::gate::detail::append_qubits_string(std::string{"Expectation value for qubits"}, qubit, qubits...),
+        environment};
 
       ::ket::mpi::utility::maybe_interchange_qubits(
         mpi_policy, parallel_policy,
