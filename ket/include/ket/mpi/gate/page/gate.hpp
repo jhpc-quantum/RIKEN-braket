@@ -526,9 +526,9 @@ namespace ket
           assert(present_chunk_permutated_qubit == least_significant_off_cache_permutated_qubit);
           assert(static_cast<bit_integer_type>(operated_tag_qubits.size()) == num_chunk_qubits);
           std::array<StateInteger, num_operated_qubits> on_cache_qubit_masks{};
-          ::ket::gate::gate_detail::make_qubit_masks(modified_operated_qubits, on_cache_qubit_masks);
+          ::ket::gate::gate_detail::make_qubit_masks_from_tuple(modified_operated_qubits, on_cache_qubit_masks);
           std::array<StateInteger, num_operated_qubits + 1u> on_cache_index_masks{};
-          ::ket::gate::gate_detail::make_index_masks(modified_operated_qubits, on_cache_index_masks);
+          ::ket::gate::gate_detail::make_index_masks_from_tuple(modified_operated_qubits, on_cache_index_masks);
 
           // tag_qubit_masks, tag_index_masks
           auto tag_qubit_masks = std::vector<StateInteger>{};

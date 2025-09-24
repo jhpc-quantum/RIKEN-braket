@@ -178,7 +178,7 @@ namespace ket
       }
 
       template <typename Qubits, typename StateInteger, std::size_t num_operated_qubits>
-      inline auto make_qubit_masks(
+      inline auto make_qubit_masks_from_tuple(
         Qubits const& qubits,
         std::array<StateInteger, num_operated_qubits>& result)
       -> void
@@ -317,7 +317,7 @@ namespace ket
       }
 
       template <typename Qubits, typename StateInteger>
-      inline auto make_index_masks(
+      inline auto make_index_masks_from_tuple(
         Qubits const& qubits,
         std::array<StateInteger, std::tuple_size<Qubits>::value + 1u>& result)
       -> void
@@ -362,7 +362,7 @@ namespace ket
       }
 
       template <typename Qubit1, typename Qubit2, typename StateInteger>
-      inline auto make_index_masks(std::tuple<Qubit1&&, Qubit2&&> const qubits, std::array<StateInteger, 3u>& result) -> void
+      inline auto make_index_masks_from_tuple(std::tuple<Qubit1&&, Qubit2&&> const qubits, std::array<StateInteger, 3u>& result) -> void
       {
         static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
 # if __cpp_constexpr >= 201603L
@@ -389,7 +389,7 @@ namespace ket
       }
 
       template <typename Qubit, typename StateInteger>
-      inline auto make_index_masks(std::tuple<Qubit&&> const qubit, std::array<StateInteger, 2u>& result) -> void
+      inline auto make_index_masks_from_tuple(std::tuple<Qubit&&> const qubit, std::array<StateInteger, 2u>& result) -> void
       {
         static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
         static_assert(
@@ -401,7 +401,7 @@ namespace ket
       }
 
       template <typename StateInteger>
-      inline auto make_index_masks(std::tuple<> const qubit, std::array<StateInteger, 1u>& result) -> void
+      inline auto make_index_masks_from_tuple(std::tuple<> const qubit, std::array<StateInteger, 1u>& result) -> void
       {
         static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
         result[0u] = compl StateInteger{0u};
@@ -914,9 +914,9 @@ namespace ket
           // operated_tag_qubits, on_cache_qubit_masks, on_cache_index_masks
           auto operated_tag_qubits = std::vector<qubit_type>{};
           std::array<state_integer_type, 0u> on_cache_qubit_masks{};
-          ::ket::gate::gate_detail::make_qubit_masks(std::tuple<>{}, on_cache_qubit_masks);
+          ::ket::gate::gate_detail::make_qubit_masks_from_tuple(std::tuple<>{}, on_cache_qubit_masks);
           std::array<state_integer_type, 1u> on_cache_index_masks{};
-          ::ket::gate::gate_detail::make_index_masks(std::tuple<>{}, on_cache_index_masks);
+          ::ket::gate::gate_detail::make_index_masks_from_tuple(std::tuple<>{}, on_cache_index_masks);
 
           // tag_qubit_masks, tag_index_masks
           auto tag_qubit_masks = std::vector<state_integer_type>{};
@@ -1059,9 +1059,9 @@ namespace ket
           assert(present_chunk_qubit == least_significant_off_cache_qubit);
           assert(static_cast<bit_integer_type>(operated_tag_qubits.size()) == num_chunk_qubits);
           std::array<state_integer_type, num_operated_qubits> on_cache_qubit_masks{};
-          ::ket::gate::gate_detail::make_qubit_masks(modified_operated_qubits, on_cache_qubit_masks);
+          ::ket::gate::gate_detail::make_qubit_masks_from_tuple(modified_operated_qubits, on_cache_qubit_masks);
           std::array<state_integer_type, num_operated_qubits + 1u> on_cache_index_masks{};
-          ::ket::gate::gate_detail::make_index_masks(modified_operated_qubits, on_cache_index_masks);
+          ::ket::gate::gate_detail::make_index_masks_from_tuple(modified_operated_qubits, on_cache_index_masks);
 
           // tag_qubit_masks, tag_index_masks
           auto tag_qubit_masks = std::vector<state_integer_type>{};
@@ -1532,9 +1532,9 @@ namespace ket
               // operated_tag_qubits, on_cache_qubit_masks, on_cache_index_masks
               auto operated_tag_qubits = std::vector<qubit_type>{};
               std::array<state_integer_type, 0u> on_cache_qubit_masks{};
-              ::ket::gate::gate_detail::make_qubit_masks(std::tuple<>{}, on_cache_qubit_masks);
+              ::ket::gate::gate_detail::make_qubit_masks_from_tuple(std::tuple<>{}, on_cache_qubit_masks);
               std::array<state_integer_type, 1u> on_cache_index_masks{};
-              ::ket::gate::gate_detail::make_index_masks(std::tuple<>{}, on_cache_index_masks);
+              ::ket::gate::gate_detail::make_index_masks_from_tuple(std::tuple<>{}, on_cache_index_masks);
 
               // tag_qubit_masks, tag_index_masks
               auto tag_qubit_masks = std::vector<state_integer_type>{};
@@ -1690,9 +1690,9 @@ namespace ket
               assert(present_chunk_qubit == least_significant_off_cache_qubit);
               assert(static_cast<bit_integer_type>(operated_tag_qubits.size()) == num_chunk_qubits);
               std::array<state_integer_type, num_operated_qubits> on_cache_qubit_masks{};
-              ::ket::gate::gate_detail::make_qubit_masks(modified_operated_qubits, on_cache_qubit_masks);
+              ::ket::gate::gate_detail::make_qubit_masks_from_tuple(modified_operated_qubits, on_cache_qubit_masks);
               std::array<state_integer_type, num_operated_qubits + 1u> on_cache_index_masks{};
-              ::ket::gate::gate_detail::make_index_masks(modified_operated_qubits, on_cache_index_masks);
+              ::ket::gate::gate_detail::make_index_masks_from_tuple(modified_operated_qubits, on_cache_index_masks);
 
               // tag_qubit_masks, tag_index_masks
               auto tag_qubit_masks = std::vector<state_integer_type>{};
@@ -1771,9 +1771,9 @@ namespace ket
               // operated_tag_qubits, on_cache_qubit_masks, on_cache_index_masks
               auto operated_tag_qubits = std::vector<qubit_type>{};
               std::array<state_integer_type, 0u> on_cache_qubit_masks{};
-              ::ket::gate::gate_detail::make_qubit_masks(std::tuple<>{}, on_cache_qubit_masks);
+              ::ket::gate::gate_detail::make_qubit_masks_from_tuple(std::tuple<>{}, on_cache_qubit_masks);
               std::array<state_integer_type, 1u> on_cache_index_masks{};
-              ::ket::gate::gate_detail::make_index_masks(std::tuple<>{}, on_cache_index_masks);
+              ::ket::gate::gate_detail::make_index_masks_from_tuple(std::tuple<>{}, on_cache_index_masks);
 
               // tag_qubit_masks, tag_index_masks
               auto tag_qubit_masks = std::vector<state_integer_type>{};
@@ -1921,9 +1921,9 @@ namespace ket
               assert(present_chunk_qubit == least_significant_off_cache_qubit);
               assert(static_cast<bit_integer_type>(operated_tag_qubits.size()) == num_chunk_qubits);
               std::array<state_integer_type, num_operated_qubits> on_cache_qubit_masks{};
-              ::ket::gate::gate_detail::make_qubit_masks(modified_operated_qubits, on_cache_qubit_masks);
+              ::ket::gate::gate_detail::make_qubit_masks_from_tuple(modified_operated_qubits, on_cache_qubit_masks);
               std::array<state_integer_type, num_operated_qubits + 1u> on_cache_index_masks{};
-              ::ket::gate::gate_detail::make_index_masks(modified_operated_qubits, on_cache_index_masks);
+              ::ket::gate::gate_detail::make_index_masks_from_tuple(modified_operated_qubits, on_cache_index_masks);
 
               // tag_qubit_masks, tag_index_masks
               auto tag_qubit_masks = std::vector<state_integer_type>{};
