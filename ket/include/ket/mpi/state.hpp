@@ -25,16 +25,22 @@
 # include <yampi/communicator.hpp>
 # include <yampi/rank.hpp>
 # include <yampi/status.hpp>
+# include <yampi/send_receive.hpp>
+# include <yampi/broadcast.hpp>
 # include <yampi/algorithm/swap.hpp>
 
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
+# ifdef KET_USE_BIT_MASKS_EXPLICITLY
+#   include <ket/gate/gate.hpp>
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
 # include <ket/utility/integer_exp2.hpp>
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/meta/ranges.hpp>
 # include <ket/mpi/permutated.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
+# include <ket/mpi/page/none_on_page.hpp>
 # include <ket/mpi/page/page_size.hpp>
 # include <ket/mpi/utility/simple_mpi.hpp>
 # include <ket/mpi/utility/for_each_local_range.hpp>
@@ -2423,6 +2429,1514 @@ namespace ket
         { return ::ket::mpi::utility::upper_bound(local_state.data(), value, compare, environment); }
       }; // struct upper_bound<false>
     } // namespace state_detail
+
+    namespace dispatch
+    {
+      template <typename LocalState1_, typename LocalState2_>
+      struct inner_product;
+
+      template <typename Complex, typename Allocator1, typename Allocator2>
+      struct inner_product< ::ket::mpi::state<Complex, true, Allocator1>, ::ket::mpi::state<Complex, true, Allocator2> >
+      {
+        template <typename MpiPolicy, typename ParallelPolicy>
+        static auto call(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          ::ket::mpi::state<Complex, true, Allocator1> const& local_state1,
+          ::ket::mpi::state<Complex, true, Allocator2> const& local_state2,
+          yampi::rank const)
+        -> Complex
+        {
+          auto partial_sums = std::vector<Complex>(::ket::utility::num_threads(parallel_policy));
+
+          auto const num_data_blocks = local_state1.num_data_blocks();
+          auto const num_pages = local_state1.num_pages();
+          assert(num_data_blocks == local_state2.num_data_blocks() and num_pages == local_state2.num_pages());
+
+          using std::begin;
+          using std::end;
+          auto const& tmp_page_range = local_state1.page_range(std::make_pair(0u, 0u));
+          auto const page_size = end(tmp_page_range) - begin(tmp_page_range);
+
+          for (auto data_block_index = decltype(num_data_blocks){0u}; data_block_index < num_data_blocks; ++data_block_index)
+            for (auto page_index = decltype(num_pages){0u}; page_index < num_pages; ++page_index)
+            {
+              auto const& page_range1 = local_state1.page_range(std::make_pair(data_block_index, page_index));
+              auto const first1 = begin(page_range1);
+              auto const first2 = begin(local_state2.page_range(std::make_pair(data_block_index, page_index)));
+
+              ::ket::utility::loop_n(
+                parallel_policy, page_size,
+                [&partial_sums, first1, first2](decltype(page_size) const index, int const thread_index)
+                { using std::conj; partial_sums[thread_index] += conj(*(first2 + index)) * *(first1 + index); });
+            }
+
+          return std::accumulate(begin(partial_sums), end(partial_sums), Complex{});
+        }
+      }; // struct inner_product< ::ket::mpi::state<Complex, true, Allocator1>, ::ket::mpi::state<Complex, true, Allocator2> >
+
+      template <typename Complex, typename Allocator1, typename LocalState2_>
+      struct inner_product< ::ket::mpi::state<Complex, true, Allocator1>, LocalState2_ >
+      {
+        template <typename MpiPolicy, typename ParallelPolicy, typename LocalState2>
+        static auto call(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          ::ket::mpi::state<Complex, true, Allocator1> const& local_state1, LocalState2 const& local_state2,
+          yampi::rank const rank_in_unit)
+        -> Complex
+        {
+          auto partial_sums = std::vector<Complex>(::ket::utility::num_threads(parallel_policy));
+
+          auto const num_data_blocks = local_state1.num_data_blocks();
+          auto const num_pages = local_state1.num_pages();
+          auto const data_block_size = ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state2, rank_in_unit);
+          assert(data_block_size == ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state1, rank_in_unit));
+
+          using std::begin;
+          using std::end;
+          auto const& tmp_page_range = local_state1.page_range(std::make_pair(0u, 0u));
+          auto const page_size = end(tmp_page_range) - begin(tmp_page_range);
+
+          for (auto data_block_index = decltype(num_data_blocks){0u}; data_block_index < num_data_blocks; ++data_block_index)
+          {
+            auto const data_block_first2 = begin(local_state2) + data_block_index * data_block_size;
+
+            for (auto page_index = decltype(num_pages){0u}; page_index < num_pages; ++page_index)
+            {
+              auto const first1 = begin(local_state1.page_range(std::make_pair(data_block_index, page_index)));
+              auto const first2 = data_block_first2 + page_index * page_size;
+
+              ::ket::utility::loop_n(
+                parallel_policy, page_size,
+                [&partial_sums, first1, first2](decltype(page_size) const index, int const thread_index)
+                { using std::conj; partial_sums[thread_index] += conj(*(first2 + index)) * *(first1 + index); });
+            }
+          }
+
+          return std::accumulate(begin(partial_sums), end(partial_sums), Complex{});
+        }
+      }; // struct inner_product< ::ket::mpi::state<Complex, true, Allocator1>, LocalState2_ >
+
+      template <typename LocalState1_, typename Complex, typename Allocator2>
+      struct inner_product<LocalState1_, ::ket::mpi::state<Complex, true, Allocator2>>
+      {
+        template <typename MpiPolicy, typename ParallelPolicy, typename LocalState1>
+        static auto call(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          LocalState1 const& local_state1, ::ket::mpi::state<Complex, true, Allocator2> const& local_state2,
+          yampi::rank const rank_in_unit)
+        -> Complex
+        {
+          using inner_product_impl
+            = ::ket::mpi::dispatch::inner_product< ::ket::mpi::state<Complex, true, Allocator2>, LocalState1_ >;
+          using std::conj;
+          return conj(inner_product_impl::call(mpi_policy, parallel_policy, local_state2, local_state1, rank_in_unit));
+        }
+      }; // struct inner_product<LocalState1_, ::ket::mpi::state<Complex, true, Allocator2>>
+
+      namespace inner_product_detail
+      {
+        template <typename PermutatedQubitIterator, typename StateInteger, typename BitInteger>
+        inline auto base_page_index(
+          PermutatedQubitIterator const permutated_operated_page_qubit_first,
+          PermutatedQubitIterator const permutated_operated_page_qubit_last,
+          StateInteger const page_index_wo_qubits, BitInteger const num_nonpage_local_qubits)
+        -> StateInteger
+        {
+          using permutated_qubit_type
+            = typename std::iterator_traits<PermutatedQubitIterator>::value_type;
+          return std::accumulate(
+            permutated_operated_page_qubit_first, permutated_operated_page_qubit_last,
+            page_index_wo_qubits,
+            [num_nonpage_local_qubits](
+              StateInteger const partial_base_page_index,
+              permutated_qubit_type const permutated_operated_page_qubit)
+            {
+              auto const corrected_permutated_operated_page_qubit
+                = permutated_operated_page_qubit - num_nonpage_local_qubits;
+              auto const lower_mask
+                = (StateInteger{1u} << corrected_permutated_operated_page_qubit)
+                    - StateInteger{1u};
+              auto const upper_mask = compl lower_mask;
+              return ((partial_base_page_index bitand upper_mask) << 1) bitor (partial_base_page_index bitand lower_mask);
+            });
+        }
+
+        template <
+          typename StateInteger, typename PermutatedQubitIterator1,
+          typename PermutatedQubitIterator2, typename BitInteger>
+        inline auto transpage_index_to_page_index(
+          StateInteger const transpage_index,
+          PermutatedQubitIterator1 const mapped_permutated_nonpage_qubit_first,
+          PermutatedQubitIterator1 const mapped_permutated_nonpage_qubit_last,
+          PermutatedQubitIterator2 const permutated_operated_page_qubit_first,
+          StateInteger const base_page_index, BitInteger const num_nonpage_local_qubits)
+        -> StateInteger
+        {
+          using permutated_qubit_type
+            = typename std::iterator_traits<PermutatedQubitIterator1>::value_type;
+          static_assert(
+            std::is_same<permutated_qubit_type, typename std::iterator_traits<PermutatedQubitIterator2>::value_type>::value,
+            "The value_type's of PermutatedQubitIteratot1 and PermutatedQubitIterator2 are the same");
+          return std::inner_product(
+            mapped_permutated_nonpage_qubit_first,
+            mapped_permutated_nonpage_qubit_last,
+            permutated_operated_page_qubit_first,
+            base_page_index, std::bit_or<StateInteger>{},
+            [transpage_index, num_nonpage_local_qubits](
+              permutated_qubit_type const mapped_permutated_nonpage_qubit,
+              permutated_qubit_type const permutated_operated_page_qubit)
+            {
+              return
+                ((transpage_index bitand (StateInteger{1u} << mapped_permutated_nonpage_qubit))
+                   >> mapped_permutated_nonpage_qubit)
+                  << (permutated_operated_page_qubit - num_nonpage_local_qubits);
+            });
+        }
+
+        template <typename StateInteger, typename PermutatedQubitIterator, typename BitInteger>
+        inline auto nonpage_index(
+          PermutatedQubitIterator const mapped_permutated_nonpage_qubit_first,
+          PermutatedQubitIterator const mapped_permutated_nonpage_qubit_last,
+          StateInteger const transpage_index, StateInteger const mapped_nonpage_qubits_bits,
+          BitInteger const num_nonpage_local_qubits)
+        -> StateInteger
+        {
+          auto result = transpage_index;
+
+          for (auto mapped_permutated_nonpage_qubit_iter = mapped_permutated_nonpage_qubit_first;
+               mapped_permutated_nonpage_qubit_iter != mapped_permutated_nonpage_qubit_last;
+               ++mapped_permutated_nonpage_qubit_iter)
+          {
+            auto const iter_index
+              = mapped_permutated_nonpage_qubit_iter - mapped_permutated_nonpage_qubit_first;
+            result
+              = (result bitand (compl (StateInteger{1u} << *mapped_permutated_nonpage_qubit_iter)))
+                  bitor (((mapped_nonpage_qubits_bits bitand (StateInteger{1u} << iter_index)) >> iter_index) << *mapped_permutated_nonpage_qubit_iter);
+          }
+
+          return result;
+        }
+
+        template <typename PermutatedQubitIterator, typename StateInteger, typename BitInteger>
+        inline auto generate_mapped_permutated_nonpage_qubits(
+          PermutatedQubitIterator const permutated_operated_nonpage_qubit_first,
+          PermutatedQubitIterator const permutated_operated_nonpage_qubit_last,
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const least_permutated_page_qubit,
+          BitInteger const num_operated_page_qubits)
+        -> std::vector< ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > >
+        {
+          using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+          using permutated_qubit_type = ::ket::mpi::permutated<qubit_type>;
+          auto result = std::vector<permutated_qubit_type>(num_operated_page_qubits);
+
+          auto possible_mapped_permutated_nonpage_qubit = least_permutated_page_qubit;
+          auto permutated_operated_nonpage_qubit_iter = permutated_operated_nonpage_qubit_last;
+
+          using std::rbegin;
+          using std::rend;
+          auto const rlast = rend(result);
+          for (auto riter = rbegin(result); riter != rlast; ++riter)
+          {
+            --possible_mapped_permutated_nonpage_qubit;
+            if (possible_mapped_permutated_nonpage_qubit < *permutated_operated_nonpage_qubit_first)
+            {
+              *riter = possible_mapped_permutated_nonpage_qubit;
+              continue;
+            }
+
+            if (permutated_operated_nonpage_qubit_iter != permutated_operated_nonpage_qubit_first)
+              --permutated_operated_nonpage_qubit_iter;
+
+            while (possible_mapped_permutated_nonpage_qubit == *permutated_operated_nonpage_qubit_iter)
+            {
+              --possible_mapped_permutated_nonpage_qubit;
+
+              if (permutated_operated_nonpage_qubit_iter == permutated_operated_nonpage_qubit_first)
+                break;
+
+              --permutated_operated_nonpage_qubit_iter;
+            }
+
+            *riter = possible_mapped_permutated_nonpage_qubit;
+          }
+
+          return result;
+        }
+
+        struct transpage_sentinel { };
+
+        template <typename State, typename PermutatedQubitIterator1, typename PermutatedQubitIterator2>
+        class transpage_iterator
+        {
+          using permutated_qubit_type = typename std::iterator_traits<PermutatedQubitIterator1>::value_type;
+          static_assert(
+            std::is_same<permutated_qubit_type, typename std::iterator_traits<PermutatedQubitIterator2>::value_type>::value,
+            "The value_type's of PermutatedQubitIterator1 and PermutatedQubitIterator2 are the same");
+          using state_integer_type = ::ket::meta::state_integer_t<permutated_qubit_type>;
+          using bit_integer_type = ::ket::meta::bit_integer_t<permutated_qubit_type>;
+
+         public:
+          using value_type = ::ket::utility::meta::range_value_t<State>;
+          using difference_type = ::ket::utility::meta::range_difference_t<State>;
+          using pointer = ::ket::utility::meta::range_pointer_t<State>;
+          using reference = ::ket::utility::meta::range_reference_t<State>;
+          using iterator_category = std::random_access_iterator_tag;
+
+         private:
+          State* state_ptr_;
+          PermutatedQubitIterator1 mapped_permutated_nonpage_qubit_first_;
+          PermutatedQubitIterator1 mapped_permutated_nonpage_qubit_last_;
+          PermutatedQubitIterator2 permutated_operated_page_qubit_first_;
+          state_integer_type data_block_index_;
+          state_integer_type base_page_index_;
+          state_integer_type mapped_nonpage_qubits_bits_;
+
+          difference_type index_;
+
+         public:
+          template <typename StateInteger>
+          transpage_iterator(
+            State& state,
+            PermutatedQubitIterator1 const mapped_permutated_nonpage_qubit_first,
+            PermutatedQubitIterator1 const mapped_permutated_nonpage_qubit_last,
+            PermutatedQubitIterator2 const permutated_operated_page_qubit_first,
+            PermutatedQubitIterator2 const permutated_operated_page_qubit_last,
+            StateInteger const data_block_index,
+            StateInteger const page_index_wo_qubits,
+            StateInteger const mapped_nonpage_qubit_bits,
+            difference_type const index = difference_type{0}) noexcept
+            : state_ptr_{std::addressof(state)},
+              mapped_permutated_nonpage_qubit_first_{mapped_permutated_nonpage_qubit_first},
+              mapped_permutated_nonpage_qubit_last_{mapped_permutated_nonpage_qubit_last},
+              permutated_operated_page_qubit_first_{permutated_operated_page_qubit_first},
+              data_block_index_{data_block_index},
+              base_page_index_{
+                ::ket::mpi::dispatch::inner_product_detail::base_page_index(
+                  permutated_operated_page_qubit_first, permutated_operated_page_qubit_last,
+                  page_index_wo_qubits,
+                  static_cast<bit_integer_type>(state.num_local_qubits() - state.num_page_qubits()))},
+              mapped_nonpage_qubits_bits_{mapped_nonpage_qubit_bits},
+              index_{index}
+          {
+            static_assert(
+              std::is_same<StateInteger, state_integer_type>::value,
+              "StateInteger should be the same as state_integer_type of value_type of PermutatedQubitIterator1");
+            assert(
+              mapped_permutated_nonpage_qubit_last - mapped_permutated_nonpage_qubit_first
+              == permutated_operated_page_qubit_last - permutated_operated_page_qubit_first);
+          }
+
+          auto operator==(transpage_iterator const& other) const noexcept -> bool
+          {
+            assert(state_ptr_ == other.state_ptr_);
+            return index_ == other.index_;
+          }
+
+          auto operator<(transpage_iterator const& other) const noexcept -> bool
+          {
+            assert(state_ptr_ == other.state_ptr_);
+            return index_ < other.index_;
+          }
+
+          auto operator==(::ket::mpi::dispatch::inner_product_detail::transpage_sentinel const& other) const noexcept -> bool
+          { return index_ == last_index(*state_ptr_); }
+
+          auto operator<(::ket::mpi::dispatch::inner_product_detail::transpage_sentinel const& other) const noexcept -> bool
+          { return index_ < last_index(*state_ptr_); }
+
+          auto operator*() const noexcept -> reference
+          {
+            auto const num_nonpage_local_qubits
+              = static_cast<bit_integer_type>(state_ptr_->num_local_qubits() - state_ptr_->num_page_qubits());
+
+            auto const page_index
+              = ::ket::mpi::dispatch::inner_product_detail::transpage_index_to_page_index(
+                  static_cast<state_integer_type>(index_),
+                  mapped_permutated_nonpage_qubit_first_, mapped_permutated_nonpage_qubit_last_,
+                  permutated_operated_page_qubit_first_, base_page_index_, num_nonpage_local_qubits);
+
+            auto const nonpage_index
+              = ::ket::mpi::dispatch::inner_product_detail::nonpage_index(
+                  mapped_permutated_nonpage_qubit_first_, mapped_permutated_nonpage_qubit_last_,
+                  static_cast<state_integer_type>(index_), mapped_nonpage_qubits_bits_,
+                  num_nonpage_local_qubits);
+
+            using std::begin;
+            return *(begin(state_ptr_->page_range(std::make_pair(data_block_index_, page_index))) + nonpage_index);
+          }
+
+          auto operator[](difference_type const n) const -> reference
+          {
+            auto const index = static_cast<state_integer_type>(index_ + n);
+            auto const num_nonpage_local_qubits
+              = static_cast<bit_integer_type>(state_ptr_->num_local_qubits() - state_ptr_->num_page_qubits());
+
+            auto const page_index
+              = ::ket::mpi::dispatch::inner_product_detail::transpage_index_to_page_index(
+                  index, mapped_permutated_nonpage_qubit_first_, mapped_permutated_nonpage_qubit_last_,
+                  permutated_operated_page_qubit_first_, base_page_index_, num_nonpage_local_qubits);
+
+            auto const nonpage_index
+              = ::ket::mpi::dispatch::inner_product_detail::nonpage_index(
+                  mapped_permutated_nonpage_qubit_first_, mapped_permutated_nonpage_qubit_last_,
+                  index, mapped_nonpage_qubits_bits_, num_nonpage_local_qubits);
+
+            using std::begin;
+            return *(begin(state_ptr_->page_range(std::make_pair(data_block_index_, page_index))) + nonpage_index);
+          }
+
+          auto operator++() noexcept -> transpage_iterator& { ++index_; return *this; }
+          auto operator++(int) noexcept -> transpage_iterator { auto result = *this; ++*this; return result; }
+          auto operator--() noexcept -> transpage_iterator& { --index_; return *this; }
+          auto operator--(int) noexcept -> transpage_iterator { auto result = *this; --*this; return result; }
+          auto operator+=(difference_type const n) noexcept -> transpage_iterator& { index_ += n; return *this; }
+          auto operator-=(difference_type const n) noexcept -> transpage_iterator& { index_ -= n; return *this; }
+          auto operator-(transpage_iterator const& other) const noexcept -> difference_type { return index_ - other.index_; }
+
+          auto swap(transpage_iterator& other) noexcept -> void
+          {
+            using std::swap;
+            swap(state_ptr_, other.state_ptr_);
+            swap(mapped_permutated_nonpage_qubit_first_, other.mapped_permutated_nonpage_qubit_first_);
+            swap(mapped_permutated_nonpage_qubit_last_, other.mapped_permutated_nonpage_qubit_last_);
+            swap(permutated_operated_page_qubit_first_, other.permutated_operated_page_qubit_first_);
+            swap(data_block_index_, other.data_block_index_);
+            swap(base_page_index_, other.base_page_index_);
+            swap(mapped_nonpage_qubits_bits_, other.mapped_nonpage_qubits_bits_);
+            swap(index_, other.index_);
+          }
+
+         private:
+          auto last_index(State& state) const noexcept -> difference_type
+          {
+            auto const& tmp_page_range
+              = state.page_range(std::make_pair(state_integer_type{0u}, state_integer_type{0u}));
+
+            using std::begin;
+            using std::end;
+            return static_cast<difference_type>(end(tmp_page_range) - begin(tmp_page_range));
+          }
+        }; // class transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2>
+
+        template <typename State, typename PermutatedQubitIterator1, typename PermutatedQubitIterator2>
+        inline auto operator!=(
+          ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2> const& lhs,
+          ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2> const& rhs)
+        -> bool
+        { return not (lhs == rhs); }
+
+        template <typename State, typename PermutatedQubitIterator1, typename PermutatedQubitIterator2>
+        inline auto operator>(
+          ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2> const& lhs,
+          ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2> const& rhs)
+        -> bool
+        { return rhs < lhs; }
+
+        template <typename State, typename PermutatedQubitIterator1, typename PermutatedQubitIterator2>
+        inline auto operator<=(
+          ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2> const& lhs,
+          ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2> const& rhs)
+        -> bool
+        { return not (lhs > rhs); }
+
+        template <typename State, typename PermutatedQubitIterator1, typename PermutatedQubitIterator2>
+        inline auto operator>=(
+          ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2> const& lhs,
+          ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2> const& rhs)
+        -> bool
+        { return not (lhs < rhs); }
+
+        template <typename State, typename PermutatedQubitIterator1, typename PermutatedQubitIterator2>
+        inline auto operator+(
+          ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2> iter,
+          typename ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2>::difference_type const n)
+        -> ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2>
+        { return iter += n; }
+
+        template <typename State, typename PermutatedQubitIterator1, typename PermutatedQubitIterator2>
+        inline auto operator+(
+          typename ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2>::difference_type const n,
+          ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2> iter)
+        -> ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2>
+        { return iter += n; }
+
+        template <typename State, typename PermutatedQubitIterator1, typename PermutatedQubitIterator2>
+        inline auto operator-(
+          ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2> iter,
+          typename ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2>::difference_type const n)
+        -> ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2>
+        { return iter -= n; }
+
+        template <typename State, typename PermutatedQubitIterator1, typename PermutatedQubitIterator2>
+        inline auto swap(
+          ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2>& lhs,
+          ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2>& rhs) noexcept
+        -> void
+        { lhs.swap(rhs); }
+
+        template <typename State, typename PermutatedQubitIterator1, typename PermutatedQubitIterator2>
+        inline auto make_transpage_iterator(
+          State& state,
+          PermutatedQubitIterator1 const mapped_permutated_nonpage_qubit_first,
+          PermutatedQubitIterator1 const mapped_permutated_nonpage_qubit_last,
+          PermutatedQubitIterator2 const permutated_operated_page_qubit_first,
+          PermutatedQubitIterator2 const permutated_operated_page_qubit_last,
+          ::ket::meta::state_integer_t<typename std::iterator_traits<PermutatedQubitIterator1>::value_type> const data_block_index,
+          ::ket::meta::state_integer_t<typename std::iterator_traits<PermutatedQubitIterator1>::value_type> const page_index_wo_qubits,
+          ::ket::meta::state_integer_t<typename std::iterator_traits<PermutatedQubitIterator1>::value_type> const mapped_nonpage_qubit_bits,
+          typename std::iterator_traits<PermutatedQubitIterator1>::difference_type const index
+            = typename std::iterator_traits<PermutatedQubitIterator1>::difference_type{0u}) noexcept
+        -> ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2>
+        {
+          return {state,
+            mapped_permutated_nonpage_qubit_first, mapped_permutated_nonpage_qubit_last,
+            permutated_operated_page_qubit_first, permutated_operated_page_qubit_last,
+            data_block_index, page_index_wo_qubits, mapped_nonpage_qubit_bits, index};
+        }
+      } // namespace inner_product_detail
+
+      template <typename LocalState>
+      struct inner_product_page;
+
+      template <typename Complex, typename Allocator>
+      struct inner_product_page< ::ket::mpi::state<Complex, true, Allocator> >
+      {
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename BufferAllocator, std::size_t num_operated_qubits,
+          typename Observable, typename StateInteger, typename BitInteger, typename... Qubits>
+        static auto call(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          ::ket::mpi::state<Complex, true, Allocator>& local_state,
+          std::vector<Complex, BufferAllocator>& buffer,
+          yampi::rank const rank, yampi::intercommunicator const& intercommunicator,
+          yampi::environment const& environment,
+          std::array< ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >, num_operated_qubits > const& sorted_permutated_operated_qubits_array,
+          Observable&& observable,
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit,
+          ::ket::mpi::permutated<Qubits> const... permutated_qubits)
+        -> Complex
+        {
+          static_assert(num_operated_qubits == sizeof...(Qubits) + 1u, "The number of permutated_qubit's is the same as num_operated_qubits");
+
+          auto const num_nonpage_local_qubits
+            = static_cast<BitInteger>(local_state.num_local_qubits() - local_state.num_page_qubits());
+          auto const nonpage_size
+            = ::ket::utility::integer_exp2<StateInteger>(num_nonpage_local_qubits);
+          auto const least_permutated_page_qubit
+            = ::ket::mpi::make_permutated(::ket::make_qubit<StateInteger>(num_nonpage_local_qubits));
+
+          // generate permutated_operated_page_qubits and mapped_permutated_nonpage_qubits
+          using std::begin;
+          using std::end;
+          auto const permutated_operated_nonpage_qubit_first = begin(sorted_permutated_operated_qubits_array);
+          auto const permutated_operated_page_qubit_last = end(sorted_permutated_operated_qubits_array);
+          auto const permutated_operated_page_qubit_first
+            = std::lower_bound(
+                begin(sorted_permutated_operated_qubits_array), end(sorted_permutated_operated_qubits_array),
+                least_permutated_page_qubit);
+          auto const permutated_operated_nonpage_qubit_last = permutated_operated_page_qubit_first;
+
+          auto const num_operated_page_qubits
+            = static_cast<BitInteger>(permutated_operated_page_qubit_last - permutated_operated_page_qubit_first);
+          auto const mapped_permutated_nonpage_qubits
+            = ::ket::mpi::dispatch::inner_product_detail::generate_mapped_permutated_nonpage_qubits(
+                permutated_operated_nonpage_qubit_first, permutated_operated_nonpage_qubit_last,
+                least_permutated_page_qubit, num_operated_page_qubits);
+          auto const mapped_permutated_nonpage_qubit_first = begin(mapped_permutated_nonpage_qubits);
+          auto const mapped_permutated_nonpage_qubit_last = end(mapped_permutated_nonpage_qubits);
+
+          // main loop
+          using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+          std::array<qubit_type, num_operated_qubits> modified_unsorted_qubits{
+            ::ket::remove_control(permutated_qubit.qubit()),
+            ::ket::remove_control(permutated_qubits.qubit())...};
+          auto mapped_permutated_nonpage_qubit_iter = mapped_permutated_nonpage_qubit_first;
+          for (auto permutated_operated_page_qubit_iter = permutated_operated_page_qubit_first;
+               permutated_operated_page_qubit_iter != permutated_operated_page_qubit_last;
+               ++permutated_operated_page_qubit_iter, ++mapped_permutated_nonpage_qubit_iter)
+          {
+            auto const found
+              = std::find(
+                  begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                  permutated_operated_page_qubit_iter->qubit());
+            if (found != end(modified_unsorted_qubits))
+              *found = mapped_permutated_nonpage_qubit_iter->qubit();
+          }
+
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+          std::array<qubit_type, num_operated_qubits + 1u> modified_sorted_qubits_with_sentinel{ };
+          std::copy(
+            begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+            begin(modified_sorted_qubits_with_sentinel));
+          modified_sorted_qubits_with_sentinel.back()
+            = ::ket::make_qubit<StateInteger>(num_nonpage_local_qubits);
+          std::sort(
+            begin(modified_sorted_qubits_with_sentinel),
+            std::prev(end(modified_sorted_qubits_with_sentinel)));
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+          std::array<StateInteger, num_operated_qubits> qubit_masks{};
+          ::ket::gate::gate_detail::make_qubit_masks_from_tuple(modified_unsorted_qubits, qubit_masks);
+          std::array<StateInteger, num_operated_qubits + 1u> index_masks{};
+          ::ket::gate::gate_detail::make_index_masks_from_tuple(modified_unsorted_qubits, index_masks);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+
+          auto partial_sums = std::vector<Complex>(::ket::utility::num_threads(parallel_policy));
+
+          auto const buffer_first = begin(local_state.buffer_range());
+          auto const buffer_last = end(local_state.buffer_range());
+          auto const page_size = static_cast<StateInteger>(buffer_last - buffer_first);
+
+          auto const num_data_blocks = static_cast<StateInteger>(local_state.num_data_blocks());
+          auto const num_pages_wo_qubits
+            = static_cast<StateInteger>(local_state.num_pages()) >> num_operated_page_qubits;
+          auto const num_operated_page_qubit_values = ::ket::utility::integer_exp2<StateInteger>(num_operated_page_qubits);
+
+          auto const num_lower_nonpage_indices = StateInteger{1u} << *mapped_permutated_nonpage_qubit_first;
+
+          //   xxxxx|xxxxxxxxxx
+          //    ^ ^  ^ ^   ^    <- operated qubits
+          //   p p p            <- page_index_wo_qubits
+          //          * *       <- mapped_nonpage_qubit_bits
+          //    @ @             <- operated_page_qubit_bits
+          //         u u dddddd <- "nonpage_index_wo_qubits"
+          //         u u        <- upper_nonpage_index_wo_qubits
+          //             dddddd <- "lower_nonpage_index_wo_qubits"
+          //    @ @  u*u*dddddd <- "transpage_index" (** => @@)
+          //
+          //         xxxxxxxxxx
+          //         ^^^^  ^    <- "operated qubits" in buffer
+          //             ^^ ^^^ <- index_wo_qubits in loop_n
+          for (auto data_block_index = StateInteger{0u};
+               data_block_index < num_data_blocks; ++data_block_index)
+            // ppp
+            for (auto page_index_wo_qubits = StateInteger{0u};
+                 page_index_wo_qubits < num_pages_wo_qubits; ++page_index_wo_qubits)
+            {
+              // p0p0p
+              auto const base_page_index
+                = ::ket::mpi::dispatch::inner_product_detail::base_page_index(
+                    permutated_operated_page_qubit_first, permutated_operated_page_qubit_last,
+                    page_index_wo_qubits, num_nonpage_local_qubits);
+
+              // **
+              for (auto mapped_nonpage_qubit_bits = StateInteger{0u};
+                   mapped_nonpage_qubit_bits < num_operated_page_qubit_values;
+                   ++mapped_nonpage_qubit_bits)
+              {
+                auto buffer_iter = buffer_first;
+
+                for (auto transpage_first_index = StateInteger{0u};
+                     transpage_first_index < nonpage_size;
+                     transpage_first_index += num_lower_nonpage_indices,
+                     buffer_iter += num_lower_nonpage_indices)
+                {
+                  auto const page_first_index
+                    = ::ket::mpi::dispatch::inner_product_detail::transpage_index_to_page_index(
+                        transpage_first_index,
+                        mapped_permutated_nonpage_qubit_first, mapped_permutated_nonpage_qubit_last,
+                        permutated_operated_page_qubit_first,
+                        base_page_index, num_nonpage_local_qubits);
+
+                  auto const nonpage_first_index
+                    = ::ket::mpi::dispatch::inner_product_detail::nonpage_index(
+                        mapped_permutated_nonpage_qubit_first, mapped_permutated_nonpage_qubit_last,
+                        transpage_first_index, mapped_nonpage_qubit_bits,
+                        num_nonpage_local_qubits);
+
+                  using std::begin;
+                  auto const chunk_first
+                    = begin(local_state.page_range(std::make_pair(data_block_index, page_first_index))) + nonpage_first_index;
+
+                  auto const tag = yampi::tag{rank.mpi_rank()};
+                  yampi::send_receive(
+                    yampi::ignore_status,
+                    yampi::make_buffer(chunk_first, chunk_first + num_lower_nonpage_indices), rank, tag,
+                    yampi::make_buffer(buffer_iter, buffer_iter + num_lower_nonpage_indices), rank, tag,
+                    intercommunicator, environment);
+                }
+
+                auto const transpage_first
+                  = ::ket::mpi::dispatch::inner_product_detail::make_transpage_iterator(
+                      local_state,
+                      mapped_permutated_nonpage_qubit_first, mapped_permutated_nonpage_qubit_last,
+                      permutated_operated_page_qubit_first, permutated_operated_page_qubit_last,
+                      data_block_index, page_index_wo_qubits, mapped_nonpage_qubit_bits);
+
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+                ::ket::utility::loop_n(
+                  parallel_policy, page_size >> num_operated_qubits,
+                  [&observable, &modified_unsorted_qubits, &modified_sorted_qubits_with_sentinel, &partial_sums, buffer_first, transpage_first](
+                    StateInteger const index_wo_qubits, int const thread_index)
+                  {
+                    partial_sums[thread_index]
+                      += observable(transpage_first, buffer_first, index_wo_qubits, modified_unsorted_qubits, modified_sorted_qubits_with_sentinel);
+                  });
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+                ::ket::utility::loop_n(
+                  parallel_policy, page_size >> num_operated_qubits,
+                  [&observable, &qubit_masks, &index_masks, &partial_sums, buffer_first, transpage_first](
+                    StateInteger const index_wo_qubits, int const thread_index)
+                  {
+                    partial_sums[thread_index]
+                      += observable(transpage_first, buffer_first, index_wo_qubits, qubit_masks, index_masks);
+                  });
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+              }
+            }
+
+          return std::accumulate(begin(partial_sums), end(partial_sums), Complex{});
+        }
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename BufferAllocator, typename DerivedDatatype, std::size_t num_operated_qubits,
+          typename Observable, typename StateInteger, typename BitInteger, typename... Qubits>
+        static auto call(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          ::ket::mpi::state<Complex, true, Allocator>& local_state,
+          std::vector<Complex, BufferAllocator>& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::rank const rank, yampi::intercommunicator const& intercommunicator,
+          yampi::environment const& environment,
+          std::array< ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >, num_operated_qubits > const& sorted_permutated_operated_qubits_array,
+          Observable&& observable,
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit,
+          ::ket::mpi::permutated<Qubits> const... permutated_qubits)
+        -> Complex
+        {
+          static_assert(num_operated_qubits == sizeof...(Qubits) + 1u, "The number of permutated_qubit's is the same as num_operated_qubits");
+
+          auto const num_nonpage_local_qubits
+            = static_cast<BitInteger>(local_state.num_local_qubits() - local_state.num_page_qubits());
+          auto const nonpage_size
+            = ::ket::utility::integer_exp2<StateInteger>(num_nonpage_local_qubits);
+          auto const least_permutated_page_qubit
+            = ::ket::mpi::make_permutated(::ket::make_qubit<StateInteger>(num_nonpage_local_qubits));
+
+          // generate permutated_operated_page_qubits and mapped_permutated_nonpage_qubits
+          using std::begin;
+          using std::end;
+          auto const permutated_operated_nonpage_qubit_first = begin(sorted_permutated_operated_qubits_array);
+          auto const permutated_operated_page_qubit_last = end(sorted_permutated_operated_qubits_array);
+          auto const permutated_operated_page_qubit_first
+            = std::lower_bound(
+                begin(sorted_permutated_operated_qubits_array), end(sorted_permutated_operated_qubits_array),
+                least_permutated_page_qubit);
+          auto const permutated_operated_nonpage_qubit_last = permutated_operated_page_qubit_first;
+
+          auto const num_operated_page_qubits
+            = static_cast<BitInteger>(permutated_operated_page_qubit_last - permutated_operated_page_qubit_first);
+          auto const mapped_permutated_nonpage_qubits
+            = ::ket::mpi::dispatch::inner_product_detail::generate_mapped_permutated_nonpage_qubits(
+                permutated_operated_nonpage_qubit_first, permutated_operated_nonpage_qubit_last,
+                least_permutated_page_qubit, num_operated_page_qubits);
+          auto const mapped_permutated_nonpage_qubit_first = begin(mapped_permutated_nonpage_qubits);
+          auto const mapped_permutated_nonpage_qubit_last = end(mapped_permutated_nonpage_qubits);
+
+          // main loop
+          using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+          std::array<qubit_type, num_operated_qubits> modified_unsorted_qubits{
+            ::ket::remove_control(permutated_qubit.qubit()),
+            ::ket::remove_control(permutated_qubits.qubit())...};
+          auto mapped_permutated_nonpage_qubit_iter = mapped_permutated_nonpage_qubit_first;
+          for (auto permutated_operated_page_qubit_iter = permutated_operated_page_qubit_first;
+               permutated_operated_page_qubit_iter != permutated_operated_page_qubit_last;
+               ++permutated_operated_page_qubit_iter, ++mapped_permutated_nonpage_qubit_iter)
+          {
+            auto const found
+              = std::find(
+                  begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                  permutated_operated_page_qubit_iter->qubit());
+            if (found != end(modified_unsorted_qubits))
+              *found = mapped_permutated_nonpage_qubit_iter->qubit();
+          }
+
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+          std::array<qubit_type, num_operated_qubits + 1u> modified_sorted_qubits_with_sentinel{ };
+          std::copy(
+            begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+            begin(modified_sorted_qubits_with_sentinel));
+          modified_sorted_qubits_with_sentinel.back()
+            = ::ket::make_qubit<StateInteger>(num_nonpage_local_qubits);
+          std::sort(
+            begin(modified_sorted_qubits_with_sentinel),
+            std::prev(end(modified_sorted_qubits_with_sentinel)));
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+          std::array<StateInteger, num_operated_qubits> qubit_masks{};
+          ::ket::gate::gate_detail::make_qubit_masks_from_tuple(modified_unsorted_qubits, qubit_masks);
+          std::array<StateInteger, num_operated_qubits + 1u> index_masks{};
+          ::ket::gate::gate_detail::make_index_masks_from_tuple(modified_unsorted_qubits, index_masks);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+
+          auto partial_sums = std::vector<Complex>(::ket::utility::num_threads(parallel_policy));
+
+          auto const buffer_first = begin(local_state.buffer_range());
+          auto const buffer_last = end(local_state.buffer_range());
+          auto const page_size = static_cast<StateInteger>(buffer_last - buffer_first);
+
+          auto const num_data_blocks = static_cast<StateInteger>(local_state.num_data_blocks());
+          auto const num_pages_wo_qubits
+            = static_cast<StateInteger>(local_state.num_pages()) >> num_operated_page_qubits;
+          auto const num_operated_page_qubit_values = ::ket::utility::integer_exp2<StateInteger>(num_operated_page_qubits);
+
+          auto const num_lower_nonpage_indices = StateInteger{1u} << *mapped_permutated_nonpage_qubit_first;
+
+          //   xxxxx|xxxxxxxxxx
+          //    ^ ^  ^ ^   ^    <- operated qubits
+          //   p p p            <- page_index_wo_qubits
+          //          * *       <- mapped_nonpage_qubit_bits
+          //    @ @             <- operated_page_qubit_bits
+          //         u u dddddd <- "nonpage_index_wo_qubits"
+          //         u u        <- upper_nonpage_index_wo_qubits
+          //             dddddd <- "lower_nonpage_index_wo_qubits"
+          //    @ @  u*u*dddddd <- "transpage_index" (** => @@)
+          //
+          //         xxxxxxxxxx
+          //         ^^^^  ^    <- "operated qubits" in buffer
+          //             ^^ ^^^ <- index_wo_qubits in loop_n
+          for (auto data_block_index = StateInteger{0u};
+               data_block_index < num_data_blocks; ++data_block_index)
+            // ppp
+            for (auto page_index_wo_qubits = StateInteger{0u};
+                 page_index_wo_qubits < num_pages_wo_qubits; ++page_index_wo_qubits)
+            {
+              // p0p0p
+              auto const base_page_index
+                = ::ket::mpi::dispatch::inner_product_detail::base_page_index(
+                    permutated_operated_page_qubit_first, permutated_operated_page_qubit_last,
+                    page_index_wo_qubits, num_nonpage_local_qubits);
+
+              // **
+              for (auto mapped_nonpage_qubit_bits = StateInteger{0u};
+                   mapped_nonpage_qubit_bits < num_operated_page_qubit_values;
+                   ++mapped_nonpage_qubit_bits)
+              {
+                auto buffer_iter = buffer_first;
+
+                for (auto transpage_first_index = StateInteger{0u};
+                     transpage_first_index < nonpage_size;
+                     transpage_first_index += num_lower_nonpage_indices,
+                     buffer_iter += num_lower_nonpage_indices)
+                {
+                  auto const page_first_index
+                    = ::ket::mpi::dispatch::inner_product_detail::transpage_index_to_page_index(
+                        transpage_first_index,
+                        mapped_permutated_nonpage_qubit_first, mapped_permutated_nonpage_qubit_last,
+                        permutated_operated_page_qubit_first,
+                        base_page_index, num_nonpage_local_qubits);
+
+                  auto const nonpage_first_index
+                    = ::ket::mpi::dispatch::inner_product_detail::nonpage_index(
+                        mapped_permutated_nonpage_qubit_first, mapped_permutated_nonpage_qubit_last,
+                        transpage_first_index, mapped_nonpage_qubit_bits,
+                        num_nonpage_local_qubits);
+
+                  using std::begin;
+                  auto const chunk_first
+                    = begin(local_state.page_range(std::make_pair(data_block_index, page_first_index))) + nonpage_first_index;
+
+                  auto const tag = yampi::tag{rank.mpi_rank()};
+                  yampi::send_receive(
+                    yampi::ignore_status,
+                    yampi::make_buffer(chunk_first, chunk_first + num_lower_nonpage_indices, datatype), rank, tag,
+                    yampi::make_buffer(buffer_iter, buffer_iter + num_lower_nonpage_indices, datatype), rank, tag,
+                    intercommunicator, environment);
+                }
+
+                auto const transpage_first
+                  = ::ket::mpi::dispatch::inner_product_detail::make_transpage_iterator(
+                      local_state,
+                      mapped_permutated_nonpage_qubit_first, mapped_permutated_nonpage_qubit_last,
+                      permutated_operated_page_qubit_first, permutated_operated_page_qubit_last,
+                      data_block_index, page_index_wo_qubits, mapped_nonpage_qubit_bits);
+
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+                ::ket::utility::loop_n(
+                  parallel_policy, page_size >> num_operated_qubits,
+                  [&observable, &modified_unsorted_qubits, &modified_sorted_qubits_with_sentinel, &partial_sums, buffer_first, transpage_first](
+                    StateInteger const index_wo_qubits, int const thread_index)
+                  {
+                    partial_sums[thread_index]
+                      += observable(transpage_first, buffer_first, index_wo_qubits, modified_unsorted_qubits, modified_sorted_qubits_with_sentinel);
+                  });
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+                ::ket::utility::loop_n(
+                  parallel_policy, page_size >> num_operated_qubits,
+                  [&observable, &qubit_masks, &index_masks, &partial_sums, buffer_first, transpage_first](
+                    StateInteger const index_wo_qubits, int const thread_index)
+                  {
+                    partial_sums[thread_index]
+                      += observable(transpage_first, buffer_first, index_wo_qubits, qubit_masks, index_masks);
+                  });
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+              }
+            }
+
+          return std::accumulate(begin(partial_sums), end(partial_sums), Complex{});
+        }
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename BufferAllocator, std::size_t num_operated_qubits,
+          typename Observable, typename StateInteger, typename BitInteger, typename... Qubits>
+        static auto call(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          ::ket::mpi::state<Complex, true, Allocator>& local_state,
+          std::vector<Complex, BufferAllocator>& buffer,
+          yampi::rank const intercircuit_root, yampi::communicator const& intercircuit_communicator,
+          yampi::environment const& environment,
+          std::array< ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >, num_operated_qubits > const& sorted_permutated_operated_qubits_array,
+          Observable&& observable,
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit,
+          ::ket::mpi::permutated<Qubits> const... permutated_qubits)
+        -> Complex
+        {
+          static_assert(num_operated_qubits == sizeof...(Qubits) + 1u, "The number of permutated_qubit's is the same as num_operated_qubits");
+
+          auto const num_nonpage_local_qubits
+            = static_cast<BitInteger>(local_state.num_local_qubits() - local_state.num_page_qubits());
+          auto const nonpage_size
+            = ::ket::utility::integer_exp2<StateInteger>(num_nonpage_local_qubits);
+          auto const least_permutated_page_qubit
+            = ::ket::mpi::make_permutated(::ket::make_qubit<StateInteger>(num_nonpage_local_qubits));
+
+          // generate permutated_operated_page_qubits and mapped_permutated_nonpage_qubits
+          using std::begin;
+          using std::end;
+          auto const permutated_operated_nonpage_qubit_first = begin(sorted_permutated_operated_qubits_array);
+          auto const permutated_operated_page_qubit_last = end(sorted_permutated_operated_qubits_array);
+          auto const permutated_operated_page_qubit_first
+            = std::lower_bound(
+                begin(sorted_permutated_operated_qubits_array), end(sorted_permutated_operated_qubits_array),
+                least_permutated_page_qubit);
+          auto const permutated_operated_nonpage_qubit_last = permutated_operated_page_qubit_first;
+
+          auto const num_operated_page_qubits
+            = static_cast<BitInteger>(permutated_operated_page_qubit_last - permutated_operated_page_qubit_first);
+          auto const mapped_permutated_nonpage_qubits
+            = ::ket::mpi::dispatch::inner_product_detail::generate_mapped_permutated_nonpage_qubits(
+                permutated_operated_nonpage_qubit_first, permutated_operated_nonpage_qubit_last,
+                least_permutated_page_qubit, num_operated_page_qubits);
+          auto const mapped_permutated_nonpage_qubit_first = begin(mapped_permutated_nonpage_qubits);
+          auto const mapped_permutated_nonpage_qubit_last = end(mapped_permutated_nonpage_qubits);
+
+          // main loop
+          using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+          std::array<qubit_type, num_operated_qubits> modified_unsorted_qubits{
+            ::ket::remove_control(permutated_qubit.qubit()),
+            ::ket::remove_control(permutated_qubits.qubit())...};
+          auto mapped_permutated_nonpage_qubit_iter = mapped_permutated_nonpage_qubit_first;
+          for (auto permutated_operated_page_qubit_iter = permutated_operated_page_qubit_first;
+               permutated_operated_page_qubit_iter != permutated_operated_page_qubit_last;
+               ++permutated_operated_page_qubit_iter, ++mapped_permutated_nonpage_qubit_iter)
+          {
+            auto const found
+              = std::find(
+                  begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                  permutated_operated_page_qubit_iter->qubit());
+            if (found != end(modified_unsorted_qubits))
+              *found = mapped_permutated_nonpage_qubit_iter->qubit();
+          }
+
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+          std::array<qubit_type, num_operated_qubits + 1u> modified_sorted_qubits_with_sentinel{ };
+          std::copy(
+            begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+            begin(modified_sorted_qubits_with_sentinel));
+          modified_sorted_qubits_with_sentinel.back()
+            = ::ket::make_qubit<StateInteger>(num_nonpage_local_qubits);
+          std::sort(
+            begin(modified_sorted_qubits_with_sentinel),
+            std::prev(end(modified_sorted_qubits_with_sentinel)));
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+          std::array<StateInteger, num_operated_qubits> qubit_masks{};
+          ::ket::gate::gate_detail::make_qubit_masks_from_tuple(modified_unsorted_qubits, qubit_masks);
+          std::array<StateInteger, num_operated_qubits + 1u> index_masks{};
+          ::ket::gate::gate_detail::make_index_masks_from_tuple(modified_unsorted_qubits, index_masks);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+
+          auto partial_sums = std::vector<Complex>(::ket::utility::num_threads(parallel_policy));
+
+          auto const intercircuit_rank = intercircuit_communicator.rank(environment);
+
+          auto const buffer_first = begin(local_state.buffer_range());
+          auto const buffer_last = end(local_state.buffer_range());
+          auto const page_size = static_cast<StateInteger>(buffer_last - buffer_first);
+
+          auto const num_data_blocks = static_cast<StateInteger>(local_state.num_data_blocks());
+          auto const num_pages_wo_qubits
+            = static_cast<StateInteger>(local_state.num_pages()) >> num_operated_page_qubits;
+          auto const num_operated_page_qubit_values = ::ket::utility::integer_exp2<StateInteger>(num_operated_page_qubits);
+
+          auto const num_lower_nonpage_indices = StateInteger{1u} << *mapped_permutated_nonpage_qubit_first;
+
+          //   xxxxx|xxxxxxxxxx
+          //    ^ ^  ^ ^   ^    <- operated qubits
+          //   p p p            <- page_index_wo_qubits
+          //          * *       <- mapped_nonpage_qubit_bits
+          //    @ @             <- operated_page_qubit_bits
+          //         u u dddddd <- "nonpage_index_wo_qubits"
+          //         u u        <- upper_nonpage_index_wo_qubits
+          //             dddddd <- "lower_nonpage_index_wo_qubits"
+          //    @ @  u*u*dddddd <- "transpage_index" (** => @@)
+          //
+          //         xxxxxxxxxx
+          //         ^^^^  ^    <- "operated qubits" in buffer
+          //             ^^ ^^^ <- index_wo_qubits in loop_n
+          if (intercircuit_rank == intercircuit_root)
+            for (auto data_block_index = StateInteger{0u};
+                 data_block_index < num_data_blocks; ++data_block_index)
+              // ppp
+              for (auto page_index_wo_qubits = StateInteger{0u};
+                   page_index_wo_qubits < num_pages_wo_qubits; ++page_index_wo_qubits)
+              {
+                // p0p0p
+                auto const base_page_index
+                  = ::ket::mpi::dispatch::inner_product_detail::base_page_index(
+                      permutated_operated_page_qubit_first, permutated_operated_page_qubit_last,
+                      page_index_wo_qubits, num_nonpage_local_qubits);
+
+                // **
+                for (auto mapped_nonpage_qubit_bits = StateInteger{0u};
+                     mapped_nonpage_qubit_bits < num_operated_page_qubit_values;
+                     ++mapped_nonpage_qubit_bits)
+                {
+                  for (auto transpage_first_index = StateInteger{0u};
+                       transpage_first_index < nonpage_size;
+                       transpage_first_index += num_lower_nonpage_indices)
+                  {
+                    auto const page_first_index
+                      = ::ket::mpi::dispatch::inner_product_detail::transpage_index_to_page_index(
+                          transpage_first_index,
+                          mapped_permutated_nonpage_qubit_first, mapped_permutated_nonpage_qubit_last,
+                          permutated_operated_page_qubit_first,
+                          base_page_index, num_nonpage_local_qubits);
+
+                    auto const nonpage_first_index
+                      = ::ket::mpi::dispatch::inner_product_detail::nonpage_index(
+                          mapped_permutated_nonpage_qubit_first, mapped_permutated_nonpage_qubit_last,
+                          transpage_first_index, mapped_nonpage_qubit_bits,
+                          num_nonpage_local_qubits);
+
+                    using std::begin;
+                    auto const chunk_first
+                      = begin(local_state.page_range(std::make_pair(data_block_index, page_first_index))) + nonpage_first_index;
+
+                    yampi::broadcast(
+                      yampi::make_buffer(chunk_first, chunk_first + num_lower_nonpage_indices),
+                      intercircuit_root, intercircuit_communicator, environment);
+                  }
+
+                  auto const transpage_first
+                    = ::ket::mpi::dispatch::inner_product_detail::make_transpage_iterator(
+                        local_state,
+                        mapped_permutated_nonpage_qubit_first, mapped_permutated_nonpage_qubit_last,
+                        permutated_operated_page_qubit_first, permutated_operated_page_qubit_last,
+                        data_block_index, page_index_wo_qubits, mapped_nonpage_qubit_bits);
+
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+                  ::ket::utility::loop_n(
+                    parallel_policy, page_size >> num_operated_qubits,
+                    [&observable, &modified_unsorted_qubits, &modified_sorted_qubits_with_sentinel, &partial_sums, transpage_first](
+                      StateInteger const index_wo_qubits, int const thread_index)
+                    {
+                      partial_sums[thread_index]
+                        += observable(transpage_first, transpage_first, index_wo_qubits, modified_unsorted_qubits, modified_sorted_qubits_with_sentinel);
+                    });
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+                  ::ket::utility::loop_n(
+                    parallel_policy, page_size >> num_operated_qubits,
+                    [&observable, &qubit_masks, &index_masks, &partial_sums, transpage_first](
+                      StateInteger const index_wo_qubits, int const thread_index)
+                    {
+                      partial_sums[thread_index]
+                        += observable(transpage_first, transpage_first, index_wo_qubits, qubit_masks, index_masks);
+                    });
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+                }
+              }
+          else
+            for (auto data_block_index = StateInteger{0u};
+                 data_block_index < num_data_blocks; ++data_block_index)
+              // ppp
+              for (auto page_index_wo_qubits = StateInteger{0u};
+                   page_index_wo_qubits < num_pages_wo_qubits; ++page_index_wo_qubits)
+              {
+                // u*u*
+                for (auto buffer_iter = buffer_first;
+                     buffer_iter != buffer_last; buffer_iter += num_lower_nonpage_indices)
+                  yampi::broadcast(
+                    yampi::make_buffer(buffer_iter, buffer_iter + num_lower_nonpage_indices),
+                    intercircuit_root, intercircuit_communicator, environment);
+
+                // **
+                for (auto mapped_nonpage_qubit_bits = StateInteger{0u};
+                     mapped_nonpage_qubit_bits < num_operated_page_qubit_values;
+                     ++mapped_nonpage_qubit_bits)
+                {
+                  auto const transpage_first
+                    = ::ket::mpi::dispatch::inner_product_detail::make_transpage_iterator(
+                        local_state,
+                        mapped_permutated_nonpage_qubit_first, mapped_permutated_nonpage_qubit_last,
+                        permutated_operated_page_qubit_first, permutated_operated_page_qubit_last,
+                        data_block_index, page_index_wo_qubits, mapped_nonpage_qubit_bits);
+
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+                  ::ket::utility::loop_n(
+                    parallel_policy, page_size >> num_operated_qubits,
+                    [&observable, &modified_unsorted_qubits, &modified_sorted_qubits_with_sentinel, &partial_sums, transpage_first, buffer_first](
+                      StateInteger const index_wo_qubits, int const thread_index)
+                    {
+                      partial_sums[thread_index]
+                        += observable(buffer_first, transpage_first, index_wo_qubits, modified_unsorted_qubits, modified_sorted_qubits_with_sentinel);
+                    });
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+                  ::ket::utility::loop_n(
+                    parallel_policy, page_size >> num_operated_qubits,
+                    [&observable, &qubit_masks, &index_masks, &partial_sums, transpage_first, buffer_first](
+                      StateInteger const index_wo_qubits, int const thread_index)
+                    {
+                      partial_sums[thread_index]
+                        += observable(buffer_first, transpage_first, index_wo_qubits, qubit_masks, index_masks);
+                    });
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+                }
+              }
+
+          return std::accumulate(begin(partial_sums), end(partial_sums), Complex{});
+        }
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename BufferAllocator, typename DerivedDatatype, std::size_t num_operated_qubits,
+          typename Observable, typename StateInteger, typename BitInteger, typename... Qubits>
+        static auto call(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          ::ket::mpi::state<Complex, true, Allocator>& local_state,
+          std::vector<Complex, BufferAllocator>& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::rank const intercircuit_root, yampi::communicator const& intercircuit_communicator,
+          yampi::environment const& environment,
+          std::array< ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >, num_operated_qubits > const& sorted_permutated_operated_qubits_array,
+          Observable&& observable,
+          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit,
+          ::ket::mpi::permutated<Qubits> const... permutated_qubits)
+        -> Complex
+        {
+          static_assert(num_operated_qubits == sizeof...(Qubits) + 1u, "The number of permutated_qubit's is the same as num_operated_qubits");
+
+          auto const num_nonpage_local_qubits
+            = static_cast<BitInteger>(local_state.num_local_qubits() - local_state.num_page_qubits());
+          auto const nonpage_size
+            = ::ket::utility::integer_exp2<StateInteger>(num_nonpage_local_qubits);
+          auto const least_permutated_page_qubit
+            = ::ket::mpi::make_permutated(::ket::make_qubit<StateInteger>(num_nonpage_local_qubits));
+
+          // generate permutated_operated_page_qubits and mapped_permutated_nonpage_qubits
+          using std::begin;
+          using std::end;
+          auto const permutated_operated_nonpage_qubit_first = begin(sorted_permutated_operated_qubits_array);
+          auto const permutated_operated_page_qubit_last = end(sorted_permutated_operated_qubits_array);
+          auto const permutated_operated_page_qubit_first
+            = std::lower_bound(
+                begin(sorted_permutated_operated_qubits_array),
+                end(sorted_permutated_operated_qubits_array),
+                least_permutated_page_qubit);
+          auto const permutated_operated_nonpage_qubit_last = permutated_operated_page_qubit_first;
+
+          auto const num_operated_page_qubits
+            = static_cast<BitInteger>(permutated_operated_page_qubit_last - permutated_operated_page_qubit_first);
+          auto const mapped_permutated_nonpage_qubits
+            = ::ket::mpi::dispatch::inner_product_detail::generate_mapped_permutated_nonpage_qubits(
+                permutated_operated_nonpage_qubit_first, permutated_operated_nonpage_qubit_last,
+                least_permutated_page_qubit, num_operated_page_qubits);
+          auto const mapped_permutated_nonpage_qubit_first = begin(mapped_permutated_nonpage_qubits);
+          auto const mapped_permutated_nonpage_qubit_last = end(mapped_permutated_nonpage_qubits);
+
+          // main loop
+          using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+          std::array<qubit_type, num_operated_qubits> modified_unsorted_qubits{
+            ::ket::remove_control(permutated_qubit.qubit()),
+            ::ket::remove_control(permutated_qubits.qubit())...};
+          auto mapped_permutated_nonpage_qubit_iter = mapped_permutated_nonpage_qubit_first;
+          for (auto permutated_operated_page_qubit_iter = permutated_operated_page_qubit_first;
+               permutated_operated_page_qubit_iter != permutated_operated_page_qubit_last;
+               ++permutated_operated_page_qubit_iter, ++mapped_permutated_nonpage_qubit_iter)
+          {
+            auto const found
+              = std::find(
+                  begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                  permutated_operated_page_qubit_iter->qubit());
+            if (found != end(modified_unsorted_qubits))
+              *found = mapped_permutated_nonpage_qubit_iter->qubit();
+          }
+
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+          std::array<qubit_type, num_operated_qubits + 1u> modified_sorted_qubits_with_sentinel{ };
+          std::copy(
+            begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+            begin(modified_sorted_qubits_with_sentinel));
+          modified_sorted_qubits_with_sentinel.back()
+            = ::ket::make_qubit<StateInteger>(num_nonpage_local_qubits);
+          std::sort(
+            begin(modified_sorted_qubits_with_sentinel),
+            std::prev(end(modified_sorted_qubits_with_sentinel)));
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+          std::array<StateInteger, num_operated_qubits> qubit_masks{};
+          ::ket::gate::gate_detail::make_qubit_masks_from_tuple(modified_unsorted_qubits, qubit_masks);
+          std::array<StateInteger, num_operated_qubits + 1u> index_masks{};
+          ::ket::gate::gate_detail::make_index_masks_from_tuple(modified_unsorted_qubits, index_masks);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+
+          auto partial_sums = std::vector<Complex>(::ket::utility::num_threads(parallel_policy));
+
+          auto const intercircuit_rank = intercircuit_communicator.rank(environment);
+
+          auto const buffer_first = begin(local_state.buffer_range());
+          auto const buffer_last = end(local_state.buffer_range());
+          auto const page_size = static_cast<StateInteger>(buffer_last - buffer_first);
+
+          auto const num_data_blocks = static_cast<StateInteger>(local_state.num_data_blocks());
+          auto const num_pages_wo_qubits
+            = static_cast<StateInteger>(local_state.num_pages()) >> num_operated_page_qubits;
+          auto const num_operated_page_qubit_values = ::ket::utility::integer_exp2<StateInteger>(num_operated_page_qubits);
+
+          auto const num_lower_nonpage_indices = StateInteger{1u} << *mapped_permutated_nonpage_qubit_first;
+
+          //   xxxxx|xxxxxxxxxx
+          //    ^ ^  ^ ^   ^    <- operated qubits
+          //   p p p            <- page_index_wo_qubits
+          //          * *       <- mapped_nonpage_qubit_bits
+          //    @ @             <- operated_page_qubit_bits
+          //         u u dddddd <- "nonpage_index_wo_qubits"
+          //         u u        <- upper_nonpage_index_wo_qubits
+          //             dddddd <- "lower_nonpage_index_wo_qubits"
+          //    @ @  u*u*dddddd <- "transpage_index" (** => @@)
+          //
+          //         xxxxxxxxxx
+          //         ^^^^  ^    <- "operated qubits" in buffer
+          //             ^^ ^^^ <- index_wo_qubits in loop_n
+          if (intercircuit_rank == intercircuit_root)
+            for (auto data_block_index = StateInteger{0u};
+                 data_block_index < num_data_blocks; ++data_block_index)
+              // ppp
+              for (auto page_index_wo_qubits = StateInteger{0u};
+                   page_index_wo_qubits < num_pages_wo_qubits; ++page_index_wo_qubits)
+              {
+                // p0p0p
+                auto const base_page_index
+                  = ::ket::mpi::dispatch::inner_product_detail::base_page_index(
+                      permutated_operated_page_qubit_first, permutated_operated_page_qubit_last,
+                      page_index_wo_qubits, num_nonpage_local_qubits);
+
+                // **
+                for (auto mapped_nonpage_qubit_bits = StateInteger{0u};
+                     mapped_nonpage_qubit_bits < num_operated_page_qubit_values;
+                     ++mapped_nonpage_qubit_bits)
+                {
+                  for (auto transpage_first_index = StateInteger{0u};
+                       transpage_first_index < nonpage_size;
+                       transpage_first_index += num_lower_nonpage_indices)
+                  {
+                    auto const page_first_index
+                      = ::ket::mpi::dispatch::inner_product_detail::transpage_index_to_page_index(
+                          transpage_first_index,
+                          mapped_permutated_nonpage_qubit_first, mapped_permutated_nonpage_qubit_last,
+                          permutated_operated_page_qubit_first,
+                          base_page_index, num_nonpage_local_qubits);
+
+                    auto const nonpage_first_index
+                      = ::ket::mpi::dispatch::inner_product_detail::nonpage_index(
+                          mapped_permutated_nonpage_qubit_first, mapped_permutated_nonpage_qubit_last,
+                          transpage_first_index, mapped_nonpage_qubit_bits,
+                          num_nonpage_local_qubits);
+
+                    using std::begin;
+                    auto const chunk_first
+                      = begin(local_state.page_range(std::make_pair(data_block_index, page_first_index))) + nonpage_first_index;
+
+                    yampi::broadcast(
+                      yampi::make_buffer(chunk_first, chunk_first + num_lower_nonpage_indices, datatype),
+                      intercircuit_root, intercircuit_communicator, environment);
+                  }
+
+                  auto const transpage_first
+                    = ::ket::mpi::dispatch::inner_product_detail::make_transpage_iterator(
+                        local_state,
+                        mapped_permutated_nonpage_qubit_first, mapped_permutated_nonpage_qubit_last,
+                        permutated_operated_page_qubit_first, permutated_operated_page_qubit_last,
+                        data_block_index, page_index_wo_qubits, mapped_nonpage_qubit_bits);
+
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+                  ::ket::utility::loop_n(
+                    parallel_policy, page_size >> num_operated_qubits,
+                    [&observable, &modified_unsorted_qubits, &modified_sorted_qubits_with_sentinel, &partial_sums, transpage_first](
+                      StateInteger const index_wo_qubits, int const thread_index)
+                    {
+                      partial_sums[thread_index]
+                        += observable(transpage_first, transpage_first, index_wo_qubits, modified_unsorted_qubits, modified_sorted_qubits_with_sentinel);
+                    });
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+                  ::ket::utility::loop_n(
+                    parallel_policy, page_size >> num_operated_qubits,
+                    [&observable, &qubit_masks, &index_masks, &partial_sums, transpage_first](
+                      StateInteger const index_wo_qubits, int const thread_index)
+                    {
+                      partial_sums[thread_index]
+                        += observable(transpage_first, transpage_first, index_wo_qubits, qubit_masks, index_masks);
+                    });
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+                }
+              }
+          else
+            for (auto data_block_index = StateInteger{0u};
+                 data_block_index < num_data_blocks; ++data_block_index)
+              // ppp
+              for (auto page_index_wo_qubits = StateInteger{0u};
+                   page_index_wo_qubits < num_pages_wo_qubits; ++page_index_wo_qubits)
+              {
+                // u*u*
+                for (auto buffer_iter = buffer_first;
+                     buffer_iter != buffer_last; buffer_iter += num_lower_nonpage_indices)
+                  yampi::broadcast(
+                    yampi::make_buffer(buffer_iter, buffer_iter + num_lower_nonpage_indices, datatype),
+                    intercircuit_root, intercircuit_communicator, environment);
+
+                // **
+                for (auto mapped_nonpage_qubit_bits = StateInteger{0u};
+                     mapped_nonpage_qubit_bits < num_operated_page_qubit_values;
+                     ++mapped_nonpage_qubit_bits)
+                {
+                  auto const transpage_first
+                    = ::ket::mpi::dispatch::inner_product_detail::make_transpage_iterator(
+                        local_state,
+                        mapped_permutated_nonpage_qubit_first, mapped_permutated_nonpage_qubit_last,
+                        permutated_operated_page_qubit_first, permutated_operated_page_qubit_last,
+                        data_block_index, page_index_wo_qubits, mapped_nonpage_qubit_bits);
+
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+                  ::ket::utility::loop_n(
+                    parallel_policy, page_size >> num_operated_qubits,
+                    [&observable, &modified_unsorted_qubits, &modified_sorted_qubits_with_sentinel, &partial_sums, transpage_first, buffer_first](
+                      StateInteger const index_wo_qubits, int const thread_index)
+                    {
+                      partial_sums[thread_index]
+                        += observable(buffer_first, transpage_first, index_wo_qubits, modified_unsorted_qubits, modified_sorted_qubits_with_sentinel);
+                    });
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+                  ::ket::utility::loop_n(
+                    parallel_policy, page_size >> num_operated_qubits,
+                    [&observable, &qubit_masks, &index_masks, &partial_sums, transpage_first, buffer_first](
+                      StateInteger const index_wo_qubits, int const thread_index)
+                    {
+                      partial_sums[thread_index]
+                        += observable(buffer_first, transpage_first, index_wo_qubits, qubit_masks, index_masks);
+                    });
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+                }
+              }
+
+          return std::accumulate(begin(partial_sums), end(partial_sums), Complex{});
+        }
+      }; // struct inner_product_page< ::ket::mpi::state<Complex, true, Allocator> >
+    } // namespace dispatch
+
+    namespace local
+    {
+      namespace dispatch
+      {
+        template <typename LocalState1_, typename LocalState2_>
+        struct inner_product;
+
+        template <typename Complex, typename Allocator1, typename Allocator2>
+        struct inner_product< ::ket::mpi::state<Complex, true, Allocator1>, ::ket::mpi::state<Complex, true, Allocator2> >
+        {
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename Observable, typename StateInteger, typename BitInteger, typename... Qubits>
+          static auto call(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            ::ket::mpi::state<Complex, true, Allocator1> const& local_state1,
+            ::ket::mpi::state<Complex, true, Allocator2> const& local_state2,
+            yampi::rank const rank_in_unit, Observable&& observable,
+            ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit,
+            ::ket::mpi::permutated<Qubits> const... permutated_qubits)
+          -> Complex
+          {
+            assert(::ket::mpi::page::none_on_page(local_state1, permutated_qubit, permutated_qubits...));
+            assert(::ket::mpi::page::none_on_page(local_state2, permutated_qubit, permutated_qubits...));
+
+            using std::begin;
+            using std::end;
+
+            constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 1u);
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+            auto const data_block_size
+              = static_cast<StateInteger>(::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state1, rank_in_unit));
+            assert(data_block_size == static_cast<StateInteger>(::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state2, rank_in_unit)));
+
+            auto const num_local_qubits
+              = static_cast<BitInteger>(::ket::mpi::utility::policy::num_local_qubits(mpi_policy, data_block_size));
+            using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+            std::array<qubit_type, num_operated_qubits + BitInteger{1u}> sorted_qubits_with_sentinel{
+              ::ket::remove_control(permutated_qubit.qubit()), ::ket::remove_control(permutated_qubits.qubit())...,
+              ::ket::make_qubit<StateInteger>(num_local_qubits)};
+            std::sort(begin(sorted_qubits_with_sentinel), std::prev(end(sorted_qubits_with_sentinel)));
+
+            std::array<qubit_type, num_operated_qubits> unsorted_qubits{
+              ::ket::remove_control(permutated_qubit.qubit()), ::ket::remove_control(permutated_qubits.qubit())...};
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+            std::array<StateInteger, num_operated_qubits> qubit_masks{};
+            ::ket::gate::gate_detail::make_qubit_masks(qubit_masks, permutated_qubit.qubit(), permutated_qubits.qubit()...);
+            std::array<StateInteger, num_operated_qubits + 1u> index_masks{};
+            ::ket::gate::gate_detail::make_index_masks(index_masks, permutated_qubit.qubit(), permutated_qubits.qubit()...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+
+            auto partial_sums = std::vector<Complex>(::ket::utility::num_threads(parallel_policy));
+
+            auto const num_data_blocks
+              = static_cast<StateInteger>(::ket::mpi::utility::policy::num_data_blocks(mpi_policy, rank_in_unit));
+
+            auto const& tmp_page_range = local_state1.page_range(std::make_pair(0u, 0u));
+            auto const page_size = static_cast<StateInteger>(end(tmp_page_range) - begin(tmp_page_range));
+            assert(page_size == static_cast<StateInteger>(end(local_state2.page_range(std::make_pair(0u, 0u))) - begin(local_state2.page_range(std::make_pair(0u, 0u)))));
+            auto const num_pages = static_cast<StateInteger>(local_state1.num_pages());
+            assert(num_pages == static_cast<StateInteger>(local_state2.num_pages()));
+
+            for (auto data_block_index = StateInteger{0u}; data_block_index < num_data_blocks; ++data_block_index)
+              for (auto page_index = StateInteger{0u}; page_index < num_pages; ++page_index)
+              {
+                auto const first1 = begin(local_state1.page_range(std::make_pair(data_block_index, page_index)));
+                auto const first2 = begin(local_state2.page_range(std::make_pair(data_block_index, page_index)));
+
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+                ::ket::utility::loop_n(
+                  parallel_policy, page_size,
+                  [&observable, &partial_sums, first1, first2, &unsorted_qubits, &sorted_qubits_with_sentinel](
+                    StateInteger const index_wo_qubits, int const thread_index)
+                  { partial_sums[thread_index] += observable(first1, first2, index_wo_qubits, unsorted_qubits, sorted_qubits_with_sentinel); });
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+                ::ket::utility::loop_n(
+                  parallel_policy, page_size,
+                  [&observable, &partial_sums, first1, first2, &qubit_masks, &index_masks](
+                    StateInteger const index_wo_qubits, int const thread_index)
+                  { partial_sums[thread_index] += observable(first1, first2, index_wo_qubits, qubit_masks, index_masks); });
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+              }
+
+            return std::accumulate(begin(partial_sums), end(partial_sums), Complex{});
+          }
+        }; // struct inner_product< ::ket::mpi::state<Complex, true, Allocator1>, ::ket::mpi::state<Complex, true, Allocator2> >
+
+        template <typename Complex, typename Allocator1, typename LocalState2_>
+        struct inner_product< ::ket::mpi::state<Complex, true, Allocator1>, LocalState2_ >
+        {
+          template <
+            typename MpiPolicy, typename ParallelPolicy, typename LocalState2,
+            typename Observable, typename StateInteger, typename BitInteger, typename... Qubits>
+          static auto call(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            ::ket::mpi::state<Complex, true, Allocator1> const& local_state1, LocalState2 const& local_state2,
+            yampi::rank const rank_in_unit, Observable&& observable,
+            ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit,
+            ::ket::mpi::permutated<Qubits> const... permutated_qubits)
+          -> Complex
+          {
+            assert(::ket::mpi::page::none_on_page(local_state1, permutated_qubit, permutated_qubits...));
+            assert(::ket::mpi::page::none_on_page(local_state2, permutated_qubit, permutated_qubits...));
+
+            auto const data_block_size
+              = static_cast<StateInteger>(::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state1, rank_in_unit));
+            auto const num_data_blocks
+              = static_cast<StateInteger>(::ket::mpi::utility::policy::num_data_blocks(mpi_policy, rank_in_unit));
+
+            using std::begin;
+            using std::end;
+
+            constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 1u);
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+            auto const num_local_qubits
+              = static_cast<BitInteger>(::ket::mpi::utility::policy::num_local_qubits(mpi_policy, rank_in_unit));
+            using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+            std::array<qubit_type, num_operated_qubits + BitInteger{1u}> sorted_qubits_with_sentinel{
+              ::ket::remove_control(permutated_qubit.qubit()), ::ket::remove_control(permutated_qubits.qubit())...,
+              ::ket::make_qubit<StateInteger>(num_local_qubits)};
+            std::sort(begin(sorted_qubits_with_sentinel), std::prev(end(sorted_qubits_with_sentinel)));
+
+            std::array<qubit_type, num_operated_qubits> unsorted_qubits{
+              ::ket::remove_control(permutated_qubit.qubit()), ::ket::remove_control(permutated_qubits.qubit())...};
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+            std::array<StateInteger, num_operated_qubits> qubit_masks{};
+            ::ket::gate::gate_detail::make_qubit_masks(qubit_masks, permutated_qubit.qubit(), permutated_qubits.qubit()...);
+            std::array<StateInteger, num_operated_qubits + 1u> index_masks{};
+            ::ket::gate::gate_detail::make_index_masks(index_masks, permutated_qubit.qubit(), permutated_qubits.qubit()...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+
+            auto partial_sums = std::vector<Complex>(::ket::utility::num_threads(parallel_policy));
+
+            auto const& tmp_page_range = local_state1.page_range(std::make_pair(0u, 0u));
+            auto const page_size = static_cast<StateInteger>(end(tmp_page_range) - begin(tmp_page_range));
+            assert(page_size == static_cast<StateInteger>(end(local_state2.page_range(std::make_pair(0u, 0u))) - begin(local_state2.page_range(std::make_pair(0u, 0u)))));
+            auto const num_pages = static_cast<StateInteger>(local_state1.num_pages());
+            assert(num_pages == static_cast<StateInteger>(local_state2.num_pages()));
+
+            auto const local_state_first2 = begin(local_state2);
+
+            for (auto data_block_index = StateInteger{0u}; data_block_index < num_data_blocks; ++data_block_index)
+            {
+              auto const data_block_first2 = local_state_first2 + data_block_index * data_block_size;
+
+              for (auto page_index = StateInteger{0u}; page_index < num_pages; ++page_index)
+              {
+                auto const first1 = begin(local_state1.page_range(std::make_pair(data_block_index, page_index)));
+                auto const first2 = data_block_first2 + page_index * page_size;
+
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+                ::ket::utility::loop_n(
+                  parallel_policy, page_size,
+                  [&observable, &partial_sums, first1, first2, unsorted_qubits, sorted_qubits_with_sentinel](
+                    StateInteger const index_wo_qubits, int const thread_index)
+                  { partial_sums[thread_index] += observable(first1, first2, index_wo_qubits, unsorted_qubits, sorted_qubits_with_sentinel); });
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+                ::ket::utility::loop_n(
+                  parallel_policy, page_size,
+                  [&observable, &partial_sums, first1, first2, qubit_masks, index_masks](
+                    StateInteger const index_wo_qubits, int const thread_index)
+                  { partial_sums[thread_index] += observable(first1, first2, index_wo_qubits, qubit_masks, index_masks); });
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+              }
+            }
+
+            return std::accumulate(begin(partial_sums), end(partial_sums), Complex{});
+          }
+        }; // struct inner_product< ::ket::mpi::state<Complex, true, Allocator1>, LocalState2_ >
+
+        template <typename LocalState1_, typename Complex, typename Allocator2>
+        struct inner_product<LocalState1_, ::ket::mpi::state<Complex, true, Allocator2>>
+        {
+          template <
+            typename MpiPolicy, typename ParallelPolicy, typename LocalState1,
+            typename Observable, typename StateInteger, typename BitInteger, typename... Qubits>
+          static auto call(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            LocalState1 const& local_state1, ::ket::mpi::state<Complex, true, Allocator2> const& local_state2,
+            yampi::rank const rank_in_unit, Observable&& observable,
+            ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit,
+            ::ket::mpi::permutated<Qubits> const... permutated_qubits)
+          -> Complex
+          {
+            using inner_product_impl
+              = ::ket::mpi::local::dispatch::inner_product< ::ket::mpi::state<Complex, true, Allocator2>, LocalState1_ >;
+            using std::conj;
+            return conj(inner_product_impl::call(
+              mpi_policy, parallel_policy,
+              local_state2, local_state1, rank_in_unit,
+              std::forward<Observable>(observable), permutated_qubit, permutated_qubits...));
+          }
+        }; // struct inner_product<LocalState1_, ::ket::mpi::state<Complex, true, Allocator2>>
+      } // namespace dispatch
+    } // namespace local
 
     namespace page
     {
