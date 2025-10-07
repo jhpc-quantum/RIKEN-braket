@@ -166,6 +166,28 @@ namespace ket
 
         // C...CeY...Y_{t...t'c...c'}(theta) = C...C[exp(i theta Y_t ... Y_t')]_{c...c'} = C...C[I cos(theta) + i Y_t ... Y_t' sin(theta)]_{c...c'}, CneY...Y_{...}, C...CeYm_{...}, or CneYm_{...}
         //   (Y_1...Y_N)_{n,2^N-n+1} = (-1)^{N-f(n-1)} i^N for 1<=n<=2^N, where f(n): num. of "1" bits in n
+        namespace dispatch
+        {
+          template <typename LocalState>
+          struct transpage_exponential_pauli_y_coeff
+          {
+            template <
+              typename ParallelPolicy,
+              typename RandomAccessRange, typename Complex,
+              typename StateInteger, typename BitInteger, typename Qubit2, typename Qubit3, typename... Qubits>
+            [[noreturn]] static auto call(
+              ParallelPolicy const parallel_policy,
+              RandomAccessRange& local_state,
+              Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit1,
+              ::ket::mpi::permutated<Qubit2> const permutated_qubit2,
+              ::ket::mpi::permutated<Qubit3> const permutated_qubit3,
+              ::ket::mpi::permutated<Qubits> const... permutated_qubits)
+            -> RandomAccessRange&
+            { throw 1; }
+          }; // struct transpage_exponential_pauli_y_coeff<LocalState>
+        } // namespace dispatch
+
         template <
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange,
@@ -184,21 +206,23 @@ namespace ket
             mpi_policy, local_state, communicator, environment,
             permutation[qubit1], permutation[qubit2], permutation[qubit3], permutation[qubits]...);
 
-          auto const data_block_size
-            = ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment);
-          auto const num_data_blocks
-            = ::ket::mpi::utility::policy::num_data_blocks(mpi_policy, communicator, environment);
+          if (::ket::mpi::page::any_on_page(local_state, permutation[qubit1], permutation[qubit2], permutation[qubit3], permutation[qubits]...))
+          {
+            using local_state_type = std::remove_const_t<std::remove_reference_t<RandomAccessRange>>;
+            ::ket::mpi::gate::local::dispatch::transpage_exponential_pauli_y_coeff<local_state_type>::call(
+              parallel_policy, local_state, phase_coefficient,
+              permutation[qubit1], permutation[qubit2], permutation[qubit3], permutation[qubits]...);
+          }
 
-          using std::begin;
-          auto const first = begin(local_state);
-          for (auto data_block_index = decltype(num_data_blocks){0u}; data_block_index < num_data_blocks; ++data_block_index)
-            ::ket::gate::exponential_pauli_y_coeff(
-              parallel_policy,
-              first + data_block_index * data_block_size,
-              first + (data_block_index + 1u) * data_block_size,
-              phase_coefficient, permutation[qubit1].qubit(), permutation[qubit2].qubit(), permutation[qubit3].qubit(), permutation[qubits].qubit()...);
-
-          return local_state;
+          return ::ket::mpi::utility::for_each_local_range(
+            mpi_policy, local_state, communicator, environment,
+            [parallel_policy, &permutation, &phase_coefficient, qubit1, qubit2, qubit3, qubits...](auto const first, auto const last)
+            {
+              ::ket::gate::exponential_pauli_y_coeff(
+                parallel_policy, first, last, phase_coefficient,
+                permutation[qubit1].qubit(), permutation[qubit2].qubit(),
+                permutation[qubit3].qubit(), permutation[qubits].qubit()...);
+            });
         }
       } // namespace local
 

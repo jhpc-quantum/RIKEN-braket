@@ -79,10 +79,31 @@ namespace ket
         }
 
         // C...CSWAP_{tt'c...c'} or CnSWAP_{tt'c...c'}
+        namespace dispatch
+        {
+          template <typename LocalState>
+          struct transpage_swap
+          {
+            template <
+              typename ParallelPolicy, typename RandomAccessRange,
+              typename StateInteger, typename BitInteger, typename... ControlQubits>
+            [[noreturn]] static auto call(
+              ParallelPolicy const parallel_policy,
+              RandomAccessRange& local_state,
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit1,
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit2,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit,
+              ::ket::mpi::permutated<ControlQubits> const... permutated_control_qubits)
+            -> RandomAccessRange&
+            { throw 1; }
+          }; // struct transpage_swap<LocalState>
+        } // namespace dispatch
+
         template <
           typename MpiPolicy, typename ParallelPolicy,
-          typename RandomAccessRange, typename StateInteger, typename BitInteger,
-          typename Allocator, typename... ControlQubits>
+          typename RandomAccessRange,
+          typename StateInteger, typename BitInteger, typename Allocator,
+          typename... ControlQubits>
         inline auto swap(
           MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
           RandomAccessRange& local_state,
@@ -98,21 +119,23 @@ namespace ket
             mpi_policy, local_state, communicator, environment,
             permutation[target_qubit1], permutation[target_qubit2], permutation[control_qubit], permutation[control_qubits]...);
 
-          auto const data_block_size
-            = ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment);
-          auto const num_data_blocks
-            = ::ket::mpi::utility::policy::num_data_blocks(mpi_policy, communicator, environment);
+          if (::ket::mpi::page::any_on_page(local_state, permutation[target_qubit1], permutation[target_qubit2], permutation[control_qubit], permutation[control_qubits]...))
+          {
+            using local_state_type = std::remove_const_t<std::remove_reference_t<RandomAccessRange>>;
+            ::ket::mpi::gate::local::dispatch::transpage_swap<local_state_type>::call(
+              parallel_policy, local_state,
+              permutation[target_qubit1], permutation[target_qubit2], permutation[control_qubit], permutation[control_qubits]...);
+          }
 
-          using std::begin;
-          auto const first = begin(local_state);
-          for (auto data_block_index = decltype(num_data_blocks){0u}; data_block_index < num_data_blocks; ++data_block_index)
-            ::ket::gate::swap(
-              parallel_policy,
-              first + data_block_index * data_block_size,
-              first + (data_block_index + 1u) * data_block_size,
-              permutation[target_qubit1].qubit(), permutation[target_qubit2].qubit(), permutation[control_qubit].qubit(), permutation[control_qubits].qubit()...);
-
-          return local_state;
+          return ::ket::mpi::utility::for_each_local_range(
+            mpi_policy, local_state, communicator, environment,
+            [parallel_policy, &permutation, target_qubit1, target_qubit2, control_qubit, control_qubits...](auto const first, auto const last)
+            {
+              ::ket::gate::swap(
+                parallel_policy, first, last,
+                permutation[target_qubit1].qubit(), permutation[target_qubit2].qubit(),
+                permutation[control_qubit].qubit(), permutation[control_qubits].qubit()...);
+            });
         }
       } // namespace local
 
