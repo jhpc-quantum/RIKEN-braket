@@ -19,6 +19,8 @@
 # include <boost/range/sub_range.hpp>
 # include <boost/range/iterator_range.hpp>
 
+# include <boost/math/constants/constants.hpp>
+
 # include <yampi/environment.hpp>
 # include <yampi/buffer.hpp>
 # include <yampi/datatype_base.hpp>
@@ -34,14 +36,20 @@
 # ifdef KET_USE_BIT_MASKS_EXPLICITLY
 #   include <ket/gate/gate.hpp>
 # endif // KET_USE_BIT_MASKS_EXPLICITLY
+# include <ket/gate/meta/num_control_qubits.hpp>
+# include <ket/gate/utility/index_with_qubits.hpp>
 # include <ket/utility/integer_exp2.hpp>
+# include <ket/utility/imaginary_unit.hpp>
+# include <ket/utility/exp_i.hpp>
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/meta/ranges.hpp>
+# include <ket/utility/meta/real_of.hpp>
 # include <ket/mpi/permutated.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
 # include <ket/mpi/page/none_on_page.hpp>
 # include <ket/mpi/page/page_size.hpp>
+# include <ket/mpi/page/transpage_iterator.hpp>
 # include <ket/mpi/utility/simple_mpi.hpp>
 # include <ket/mpi/utility/for_each_local_range.hpp>
 # include <ket/mpi/utility/buffer_range.hpp>
@@ -2533,368 +2541,6 @@ namespace ket
         }
       }; // struct inner_product<LocalState1_, ::ket::mpi::state<Complex, true, Allocator2>>
 
-      namespace inner_product_detail
-      {
-        template <typename PermutatedQubitIterator, typename StateInteger, typename BitInteger>
-        inline auto base_page_index(
-          PermutatedQubitIterator const permutated_operated_page_qubit_first,
-          PermutatedQubitIterator const permutated_operated_page_qubit_last,
-          StateInteger const page_index_wo_qubits, BitInteger const num_nonpage_local_qubits)
-        -> StateInteger
-        {
-          using permutated_qubit_type
-            = typename std::iterator_traits<PermutatedQubitIterator>::value_type;
-          return std::accumulate(
-            permutated_operated_page_qubit_first, permutated_operated_page_qubit_last,
-            page_index_wo_qubits,
-            [num_nonpage_local_qubits](
-              StateInteger const partial_base_page_index,
-              permutated_qubit_type const permutated_operated_page_qubit)
-            {
-              auto const corrected_permutated_operated_page_qubit
-                = permutated_operated_page_qubit - num_nonpage_local_qubits;
-              auto const lower_mask
-                = (StateInteger{1u} << corrected_permutated_operated_page_qubit)
-                    - StateInteger{1u};
-              auto const upper_mask = compl lower_mask;
-              return ((partial_base_page_index bitand upper_mask) << 1) bitor (partial_base_page_index bitand lower_mask);
-            });
-        }
-
-        template <
-          typename StateInteger, typename PermutatedQubitIterator1,
-          typename PermutatedQubitIterator2, typename BitInteger>
-        inline auto transpage_index_to_page_index(
-          StateInteger const transpage_index,
-          PermutatedQubitIterator1 const mapped_permutated_nonpage_qubit_first,
-          PermutatedQubitIterator1 const mapped_permutated_nonpage_qubit_last,
-          PermutatedQubitIterator2 const permutated_operated_page_qubit_first,
-          StateInteger const base_page_index, BitInteger const num_nonpage_local_qubits)
-        -> StateInteger
-        {
-          using permutated_qubit_type
-            = typename std::iterator_traits<PermutatedQubitIterator1>::value_type;
-          static_assert(
-            std::is_same<permutated_qubit_type, typename std::iterator_traits<PermutatedQubitIterator2>::value_type>::value,
-            "The value_type's of PermutatedQubitIteratot1 and PermutatedQubitIterator2 are the same");
-          return std::inner_product(
-            mapped_permutated_nonpage_qubit_first,
-            mapped_permutated_nonpage_qubit_last,
-            permutated_operated_page_qubit_first,
-            base_page_index, std::bit_or<StateInteger>{},
-            [transpage_index, num_nonpage_local_qubits](
-              permutated_qubit_type const mapped_permutated_nonpage_qubit,
-              permutated_qubit_type const permutated_operated_page_qubit)
-            {
-              return
-                ((transpage_index bitand (StateInteger{1u} << mapped_permutated_nonpage_qubit))
-                   >> mapped_permutated_nonpage_qubit)
-                  << (permutated_operated_page_qubit - num_nonpage_local_qubits);
-            });
-        }
-
-        template <typename StateInteger, typename PermutatedQubitIterator, typename BitInteger>
-        inline auto nonpage_index(
-          PermutatedQubitIterator const mapped_permutated_nonpage_qubit_first,
-          PermutatedQubitIterator const mapped_permutated_nonpage_qubit_last,
-          StateInteger const transpage_index, StateInteger const mapped_nonpage_qubits_bits,
-          BitInteger const num_nonpage_local_qubits)
-        -> StateInteger
-        {
-          auto result = transpage_index;
-
-          for (auto mapped_permutated_nonpage_qubit_iter = mapped_permutated_nonpage_qubit_first;
-               mapped_permutated_nonpage_qubit_iter != mapped_permutated_nonpage_qubit_last;
-               ++mapped_permutated_nonpage_qubit_iter)
-          {
-            auto const iter_index
-              = mapped_permutated_nonpage_qubit_iter - mapped_permutated_nonpage_qubit_first;
-            result
-              = (result bitand (compl (StateInteger{1u} << *mapped_permutated_nonpage_qubit_iter)))
-                  bitor (((mapped_nonpage_qubits_bits bitand (StateInteger{1u} << iter_index)) >> iter_index) << *mapped_permutated_nonpage_qubit_iter);
-          }
-
-          return result;
-        }
-
-        template <typename PermutatedQubitIterator, typename StateInteger, typename BitInteger>
-        inline auto generate_mapped_permutated_nonpage_qubits(
-          PermutatedQubitIterator const permutated_operated_nonpage_qubit_first,
-          PermutatedQubitIterator const permutated_operated_nonpage_qubit_last,
-          ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const least_permutated_page_qubit,
-          BitInteger const num_operated_page_qubits)
-        -> std::vector< ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > >
-        {
-          using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-          using permutated_qubit_type = ::ket::mpi::permutated<qubit_type>;
-          auto result = std::vector<permutated_qubit_type>(num_operated_page_qubits);
-
-          auto possible_mapped_permutated_nonpage_qubit = least_permutated_page_qubit;
-          auto permutated_operated_nonpage_qubit_iter = permutated_operated_nonpage_qubit_last;
-
-          using std::rbegin;
-          using std::rend;
-          auto const rlast = rend(result);
-          for (auto riter = rbegin(result); riter != rlast; ++riter)
-          {
-            --possible_mapped_permutated_nonpage_qubit;
-            if (possible_mapped_permutated_nonpage_qubit < *permutated_operated_nonpage_qubit_first)
-            {
-              *riter = possible_mapped_permutated_nonpage_qubit;
-              continue;
-            }
-
-            if (permutated_operated_nonpage_qubit_iter != permutated_operated_nonpage_qubit_first)
-              --permutated_operated_nonpage_qubit_iter;
-
-            while (possible_mapped_permutated_nonpage_qubit == *permutated_operated_nonpage_qubit_iter)
-            {
-              --possible_mapped_permutated_nonpage_qubit;
-
-              if (permutated_operated_nonpage_qubit_iter == permutated_operated_nonpage_qubit_first)
-                break;
-
-              --permutated_operated_nonpage_qubit_iter;
-            }
-
-            *riter = possible_mapped_permutated_nonpage_qubit;
-          }
-
-          return result;
-        }
-
-        struct transpage_sentinel { };
-
-        template <typename State, typename PermutatedQubitIterator1, typename PermutatedQubitIterator2>
-        class transpage_iterator
-        {
-          using permutated_qubit_type = typename std::iterator_traits<PermutatedQubitIterator1>::value_type;
-          static_assert(
-            std::is_same<permutated_qubit_type, typename std::iterator_traits<PermutatedQubitIterator2>::value_type>::value,
-            "The value_type's of PermutatedQubitIterator1 and PermutatedQubitIterator2 are the same");
-          using state_integer_type = ::ket::meta::state_integer_t<permutated_qubit_type>;
-          using bit_integer_type = ::ket::meta::bit_integer_t<permutated_qubit_type>;
-
-         public:
-          using value_type = ::ket::utility::meta::range_value_t<State>;
-          using difference_type = ::ket::utility::meta::range_difference_t<State>;
-          using pointer = ::ket::utility::meta::range_pointer_t<State>;
-          using reference = ::ket::utility::meta::range_reference_t<State>;
-          using iterator_category = std::random_access_iterator_tag;
-
-         private:
-          State* state_ptr_;
-          PermutatedQubitIterator1 mapped_permutated_nonpage_qubit_first_;
-          PermutatedQubitIterator1 mapped_permutated_nonpage_qubit_last_;
-          PermutatedQubitIterator2 permutated_operated_page_qubit_first_;
-          state_integer_type data_block_index_;
-          state_integer_type base_page_index_;
-          state_integer_type mapped_nonpage_qubits_bits_;
-
-          difference_type index_;
-
-         public:
-          template <typename StateInteger>
-          transpage_iterator(
-            State& state,
-            PermutatedQubitIterator1 const mapped_permutated_nonpage_qubit_first,
-            PermutatedQubitIterator1 const mapped_permutated_nonpage_qubit_last,
-            PermutatedQubitIterator2 const permutated_operated_page_qubit_first,
-            PermutatedQubitIterator2 const permutated_operated_page_qubit_last,
-            StateInteger const data_block_index,
-            StateInteger const page_index_wo_qubits,
-            StateInteger const mapped_nonpage_qubit_bits,
-            difference_type const index = difference_type{0}) noexcept
-            : state_ptr_{std::addressof(state)},
-              mapped_permutated_nonpage_qubit_first_{mapped_permutated_nonpage_qubit_first},
-              mapped_permutated_nonpage_qubit_last_{mapped_permutated_nonpage_qubit_last},
-              permutated_operated_page_qubit_first_{permutated_operated_page_qubit_first},
-              data_block_index_{data_block_index},
-              base_page_index_{
-                ::ket::mpi::dispatch::inner_product_detail::base_page_index(
-                  permutated_operated_page_qubit_first, permutated_operated_page_qubit_last,
-                  page_index_wo_qubits,
-                  static_cast<bit_integer_type>(state.num_local_qubits() - state.num_page_qubits()))},
-              mapped_nonpage_qubits_bits_{mapped_nonpage_qubit_bits},
-              index_{index}
-          {
-            static_assert(
-              std::is_same<StateInteger, state_integer_type>::value,
-              "StateInteger should be the same as state_integer_type of value_type of PermutatedQubitIterator1");
-            assert(
-              mapped_permutated_nonpage_qubit_last - mapped_permutated_nonpage_qubit_first
-              == permutated_operated_page_qubit_last - permutated_operated_page_qubit_first);
-          }
-
-          auto operator==(transpage_iterator const& other) const noexcept -> bool
-          {
-            assert(state_ptr_ == other.state_ptr_);
-            return index_ == other.index_;
-          }
-
-          auto operator<(transpage_iterator const& other) const noexcept -> bool
-          {
-            assert(state_ptr_ == other.state_ptr_);
-            return index_ < other.index_;
-          }
-
-          auto operator==(::ket::mpi::dispatch::inner_product_detail::transpage_sentinel const& other) const noexcept -> bool
-          { return index_ == last_index(*state_ptr_); }
-
-          auto operator<(::ket::mpi::dispatch::inner_product_detail::transpage_sentinel const& other) const noexcept -> bool
-          { return index_ < last_index(*state_ptr_); }
-
-          auto operator*() const noexcept -> reference
-          {
-            auto const num_nonpage_local_qubits
-              = static_cast<bit_integer_type>(state_ptr_->num_local_qubits() - state_ptr_->num_page_qubits());
-
-            auto const page_index
-              = ::ket::mpi::dispatch::inner_product_detail::transpage_index_to_page_index(
-                  static_cast<state_integer_type>(index_),
-                  mapped_permutated_nonpage_qubit_first_, mapped_permutated_nonpage_qubit_last_,
-                  permutated_operated_page_qubit_first_, base_page_index_, num_nonpage_local_qubits);
-
-            auto const nonpage_index
-              = ::ket::mpi::dispatch::inner_product_detail::nonpage_index(
-                  mapped_permutated_nonpage_qubit_first_, mapped_permutated_nonpage_qubit_last_,
-                  static_cast<state_integer_type>(index_), mapped_nonpage_qubits_bits_,
-                  num_nonpage_local_qubits);
-
-            using std::begin;
-            return *(begin(state_ptr_->page_range(std::make_pair(data_block_index_, page_index))) + nonpage_index);
-          }
-
-          auto operator[](difference_type const n) const -> reference
-          {
-            auto const index = static_cast<state_integer_type>(index_ + n);
-            auto const num_nonpage_local_qubits
-              = static_cast<bit_integer_type>(state_ptr_->num_local_qubits() - state_ptr_->num_page_qubits());
-
-            auto const page_index
-              = ::ket::mpi::dispatch::inner_product_detail::transpage_index_to_page_index(
-                  index, mapped_permutated_nonpage_qubit_first_, mapped_permutated_nonpage_qubit_last_,
-                  permutated_operated_page_qubit_first_, base_page_index_, num_nonpage_local_qubits);
-
-            auto const nonpage_index
-              = ::ket::mpi::dispatch::inner_product_detail::nonpage_index(
-                  mapped_permutated_nonpage_qubit_first_, mapped_permutated_nonpage_qubit_last_,
-                  index, mapped_nonpage_qubits_bits_, num_nonpage_local_qubits);
-
-            using std::begin;
-            return *(begin(state_ptr_->page_range(std::make_pair(data_block_index_, page_index))) + nonpage_index);
-          }
-
-          auto operator++() noexcept -> transpage_iterator& { ++index_; return *this; }
-          auto operator++(int) noexcept -> transpage_iterator { auto result = *this; ++*this; return result; }
-          auto operator--() noexcept -> transpage_iterator& { --index_; return *this; }
-          auto operator--(int) noexcept -> transpage_iterator { auto result = *this; --*this; return result; }
-          auto operator+=(difference_type const n) noexcept -> transpage_iterator& { index_ += n; return *this; }
-          auto operator-=(difference_type const n) noexcept -> transpage_iterator& { index_ -= n; return *this; }
-          auto operator-(transpage_iterator const& other) const noexcept -> difference_type { return index_ - other.index_; }
-
-          auto swap(transpage_iterator& other) noexcept -> void
-          {
-            using std::swap;
-            swap(state_ptr_, other.state_ptr_);
-            swap(mapped_permutated_nonpage_qubit_first_, other.mapped_permutated_nonpage_qubit_first_);
-            swap(mapped_permutated_nonpage_qubit_last_, other.mapped_permutated_nonpage_qubit_last_);
-            swap(permutated_operated_page_qubit_first_, other.permutated_operated_page_qubit_first_);
-            swap(data_block_index_, other.data_block_index_);
-            swap(base_page_index_, other.base_page_index_);
-            swap(mapped_nonpage_qubits_bits_, other.mapped_nonpage_qubits_bits_);
-            swap(index_, other.index_);
-          }
-
-         private:
-          auto last_index(State& state) const noexcept -> difference_type
-          {
-            auto const& tmp_page_range
-              = state.page_range(std::make_pair(state_integer_type{0u}, state_integer_type{0u}));
-
-            using std::begin;
-            using std::end;
-            return static_cast<difference_type>(end(tmp_page_range) - begin(tmp_page_range));
-          }
-        }; // class transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2>
-
-        template <typename State, typename PermutatedQubitIterator1, typename PermutatedQubitIterator2>
-        inline auto operator!=(
-          ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2> const& lhs,
-          ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2> const& rhs)
-        -> bool
-        { return not (lhs == rhs); }
-
-        template <typename State, typename PermutatedQubitIterator1, typename PermutatedQubitIterator2>
-        inline auto operator>(
-          ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2> const& lhs,
-          ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2> const& rhs)
-        -> bool
-        { return rhs < lhs; }
-
-        template <typename State, typename PermutatedQubitIterator1, typename PermutatedQubitIterator2>
-        inline auto operator<=(
-          ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2> const& lhs,
-          ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2> const& rhs)
-        -> bool
-        { return not (lhs > rhs); }
-
-        template <typename State, typename PermutatedQubitIterator1, typename PermutatedQubitIterator2>
-        inline auto operator>=(
-          ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2> const& lhs,
-          ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2> const& rhs)
-        -> bool
-        { return not (lhs < rhs); }
-
-        template <typename State, typename PermutatedQubitIterator1, typename PermutatedQubitIterator2>
-        inline auto operator+(
-          ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2> iter,
-          typename ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2>::difference_type const n)
-        -> ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2>
-        { return iter += n; }
-
-        template <typename State, typename PermutatedQubitIterator1, typename PermutatedQubitIterator2>
-        inline auto operator+(
-          typename ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2>::difference_type const n,
-          ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2> iter)
-        -> ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2>
-        { return iter += n; }
-
-        template <typename State, typename PermutatedQubitIterator1, typename PermutatedQubitIterator2>
-        inline auto operator-(
-          ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2> iter,
-          typename ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2>::difference_type const n)
-        -> ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2>
-        { return iter -= n; }
-
-        template <typename State, typename PermutatedQubitIterator1, typename PermutatedQubitIterator2>
-        inline auto swap(
-          ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2>& lhs,
-          ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2>& rhs) noexcept
-        -> void
-        { lhs.swap(rhs); }
-
-        template <typename State, typename PermutatedQubitIterator1, typename PermutatedQubitIterator2>
-        inline auto make_transpage_iterator(
-          State& state,
-          PermutatedQubitIterator1 const mapped_permutated_nonpage_qubit_first,
-          PermutatedQubitIterator1 const mapped_permutated_nonpage_qubit_last,
-          PermutatedQubitIterator2 const permutated_operated_page_qubit_first,
-          PermutatedQubitIterator2 const permutated_operated_page_qubit_last,
-          ::ket::meta::state_integer_t<typename std::iterator_traits<PermutatedQubitIterator1>::value_type> const data_block_index,
-          ::ket::meta::state_integer_t<typename std::iterator_traits<PermutatedQubitIterator1>::value_type> const page_index_wo_qubits,
-          ::ket::meta::state_integer_t<typename std::iterator_traits<PermutatedQubitIterator1>::value_type> const mapped_nonpage_qubit_bits,
-          typename std::iterator_traits<PermutatedQubitIterator1>::difference_type const index
-            = typename std::iterator_traits<PermutatedQubitIterator1>::difference_type{0u}) noexcept
-        -> ::ket::mpi::dispatch::inner_product_detail::transpage_iterator<State, PermutatedQubitIterator1, PermutatedQubitIterator2>
-        {
-          return {state,
-            mapped_permutated_nonpage_qubit_first, mapped_permutated_nonpage_qubit_last,
-            permutated_operated_page_qubit_first, permutated_operated_page_qubit_last,
-            data_block_index, page_index_wo_qubits, mapped_nonpage_qubit_bits, index};
-        }
-      } // namespace inner_product_detail
-
       template <typename LocalState>
       struct inner_product_page;
 
@@ -2940,7 +2586,7 @@ namespace ket
           auto const num_operated_page_qubits
             = static_cast<BitInteger>(permutated_operated_page_qubit_last - permutated_operated_page_qubit_first);
           auto const mapped_permutated_nonpage_qubits
-            = ::ket::mpi::dispatch::inner_product_detail::generate_mapped_permutated_nonpage_qubits(
+            = ::ket::mpi::page::generate_mapped_permutated_nonpage_qubits(
                 permutated_operated_nonpage_qubit_first, permutated_operated_nonpage_qubit_last,
                 least_permutated_page_qubit, num_operated_page_qubits);
           auto const mapped_permutated_nonpage_qubit_first = begin(mapped_permutated_nonpage_qubits);
@@ -3015,7 +2661,7 @@ namespace ket
             {
               // p0p0p
               auto const base_page_index
-                = ::ket::mpi::dispatch::inner_product_detail::base_page_index(
+                = ::ket::mpi::page::base_page_index(
                     permutated_operated_page_qubit_first, permutated_operated_page_qubit_last,
                     page_index_wo_qubits, num_nonpage_local_qubits);
 
@@ -3032,14 +2678,14 @@ namespace ket
                      buffer_iter += num_lower_nonpage_indices)
                 {
                   auto const page_first_index
-                    = ::ket::mpi::dispatch::inner_product_detail::transpage_index_to_page_index(
+                    = ::ket::mpi::page::transpage_index_to_page_index(
                         transpage_first_index,
                         mapped_permutated_nonpage_qubit_first, mapped_permutated_nonpage_qubit_last,
                         permutated_operated_page_qubit_first,
                         base_page_index, num_nonpage_local_qubits);
 
                   auto const nonpage_first_index
-                    = ::ket::mpi::dispatch::inner_product_detail::nonpage_index(
+                    = ::ket::mpi::page::nonpage_index(
                         mapped_permutated_nonpage_qubit_first, mapped_permutated_nonpage_qubit_last,
                         transpage_first_index, mapped_nonpage_qubit_bits,
                         num_nonpage_local_qubits);
@@ -3057,7 +2703,7 @@ namespace ket
                 }
 
                 auto const transpage_first
-                  = ::ket::mpi::dispatch::inner_product_detail::make_transpage_iterator(
+                  = ::ket::mpi::page::make_transpage_iterator(
                       local_state,
                       mapped_permutated_nonpage_qubit_first, mapped_permutated_nonpage_qubit_last,
                       permutated_operated_page_qubit_first, permutated_operated_page_qubit_last,
@@ -3128,7 +2774,7 @@ namespace ket
           auto const num_operated_page_qubits
             = static_cast<BitInteger>(permutated_operated_page_qubit_last - permutated_operated_page_qubit_first);
           auto const mapped_permutated_nonpage_qubits
-            = ::ket::mpi::dispatch::inner_product_detail::generate_mapped_permutated_nonpage_qubits(
+            = ::ket::mpi::page::generate_mapped_permutated_nonpage_qubits(
                 permutated_operated_nonpage_qubit_first, permutated_operated_nonpage_qubit_last,
                 least_permutated_page_qubit, num_operated_page_qubits);
           auto const mapped_permutated_nonpage_qubit_first = begin(mapped_permutated_nonpage_qubits);
@@ -3203,7 +2849,7 @@ namespace ket
             {
               // p0p0p
               auto const base_page_index
-                = ::ket::mpi::dispatch::inner_product_detail::base_page_index(
+                = ::ket::mpi::page::base_page_index(
                     permutated_operated_page_qubit_first, permutated_operated_page_qubit_last,
                     page_index_wo_qubits, num_nonpage_local_qubits);
 
@@ -3220,14 +2866,14 @@ namespace ket
                      buffer_iter += num_lower_nonpage_indices)
                 {
                   auto const page_first_index
-                    = ::ket::mpi::dispatch::inner_product_detail::transpage_index_to_page_index(
+                    = ::ket::mpi::page::transpage_index_to_page_index(
                         transpage_first_index,
                         mapped_permutated_nonpage_qubit_first, mapped_permutated_nonpage_qubit_last,
                         permutated_operated_page_qubit_first,
                         base_page_index, num_nonpage_local_qubits);
 
                   auto const nonpage_first_index
-                    = ::ket::mpi::dispatch::inner_product_detail::nonpage_index(
+                    = ::ket::mpi::page::nonpage_index(
                         mapped_permutated_nonpage_qubit_first, mapped_permutated_nonpage_qubit_last,
                         transpage_first_index, mapped_nonpage_qubit_bits,
                         num_nonpage_local_qubits);
@@ -3245,7 +2891,7 @@ namespace ket
                 }
 
                 auto const transpage_first
-                  = ::ket::mpi::dispatch::inner_product_detail::make_transpage_iterator(
+                  = ::ket::mpi::page::make_transpage_iterator(
                       local_state,
                       mapped_permutated_nonpage_qubit_first, mapped_permutated_nonpage_qubit_last,
                       permutated_operated_page_qubit_first, permutated_operated_page_qubit_last,
@@ -3315,7 +2961,7 @@ namespace ket
           auto const num_operated_page_qubits
             = static_cast<BitInteger>(permutated_operated_page_qubit_last - permutated_operated_page_qubit_first);
           auto const mapped_permutated_nonpage_qubits
-            = ::ket::mpi::dispatch::inner_product_detail::generate_mapped_permutated_nonpage_qubits(
+            = ::ket::mpi::page::generate_mapped_permutated_nonpage_qubits(
                 permutated_operated_nonpage_qubit_first, permutated_operated_nonpage_qubit_last,
                 least_permutated_page_qubit, num_operated_page_qubits);
           auto const mapped_permutated_nonpage_qubit_first = begin(mapped_permutated_nonpage_qubits);
@@ -3393,7 +3039,7 @@ namespace ket
               {
                 // p0p0p
                 auto const base_page_index
-                  = ::ket::mpi::dispatch::inner_product_detail::base_page_index(
+                  = ::ket::mpi::page::base_page_index(
                       permutated_operated_page_qubit_first, permutated_operated_page_qubit_last,
                       page_index_wo_qubits, num_nonpage_local_qubits);
 
@@ -3407,14 +3053,14 @@ namespace ket
                        transpage_first_index += num_lower_nonpage_indices)
                   {
                     auto const page_first_index
-                      = ::ket::mpi::dispatch::inner_product_detail::transpage_index_to_page_index(
+                      = ::ket::mpi::page::transpage_index_to_page_index(
                           transpage_first_index,
                           mapped_permutated_nonpage_qubit_first, mapped_permutated_nonpage_qubit_last,
                           permutated_operated_page_qubit_first,
                           base_page_index, num_nonpage_local_qubits);
 
                     auto const nonpage_first_index
-                      = ::ket::mpi::dispatch::inner_product_detail::nonpage_index(
+                      = ::ket::mpi::page::nonpage_index(
                           mapped_permutated_nonpage_qubit_first, mapped_permutated_nonpage_qubit_last,
                           transpage_first_index, mapped_nonpage_qubit_bits,
                           num_nonpage_local_qubits);
@@ -3429,7 +3075,7 @@ namespace ket
                   }
 
                   auto const transpage_first
-                    = ::ket::mpi::dispatch::inner_product_detail::make_transpage_iterator(
+                    = ::ket::mpi::page::make_transpage_iterator(
                         local_state,
                         mapped_permutated_nonpage_qubit_first, mapped_permutated_nonpage_qubit_last,
                         permutated_operated_page_qubit_first, permutated_operated_page_qubit_last,
@@ -3476,7 +3122,7 @@ namespace ket
                      ++mapped_nonpage_qubit_bits)
                 {
                   auto const transpage_first
-                    = ::ket::mpi::dispatch::inner_product_detail::make_transpage_iterator(
+                    = ::ket::mpi::page::make_transpage_iterator(
                         local_state,
                         mapped_permutated_nonpage_qubit_first, mapped_permutated_nonpage_qubit_last,
                         permutated_operated_page_qubit_first, permutated_operated_page_qubit_last,
@@ -3548,7 +3194,7 @@ namespace ket
           auto const num_operated_page_qubits
             = static_cast<BitInteger>(permutated_operated_page_qubit_last - permutated_operated_page_qubit_first);
           auto const mapped_permutated_nonpage_qubits
-            = ::ket::mpi::dispatch::inner_product_detail::generate_mapped_permutated_nonpage_qubits(
+            = ::ket::mpi::page::generate_mapped_permutated_nonpage_qubits(
                 permutated_operated_nonpage_qubit_first, permutated_operated_nonpage_qubit_last,
                 least_permutated_page_qubit, num_operated_page_qubits);
           auto const mapped_permutated_nonpage_qubit_first = begin(mapped_permutated_nonpage_qubits);
@@ -3626,7 +3272,7 @@ namespace ket
               {
                 // p0p0p
                 auto const base_page_index
-                  = ::ket::mpi::dispatch::inner_product_detail::base_page_index(
+                  = ::ket::mpi::page::base_page_index(
                       permutated_operated_page_qubit_first, permutated_operated_page_qubit_last,
                       page_index_wo_qubits, num_nonpage_local_qubits);
 
@@ -3640,14 +3286,14 @@ namespace ket
                        transpage_first_index += num_lower_nonpage_indices)
                   {
                     auto const page_first_index
-                      = ::ket::mpi::dispatch::inner_product_detail::transpage_index_to_page_index(
+                      = ::ket::mpi::page::transpage_index_to_page_index(
                           transpage_first_index,
                           mapped_permutated_nonpage_qubit_first, mapped_permutated_nonpage_qubit_last,
                           permutated_operated_page_qubit_first,
                           base_page_index, num_nonpage_local_qubits);
 
                     auto const nonpage_first_index
-                      = ::ket::mpi::dispatch::inner_product_detail::nonpage_index(
+                      = ::ket::mpi::page::nonpage_index(
                           mapped_permutated_nonpage_qubit_first, mapped_permutated_nonpage_qubit_last,
                           transpage_first_index, mapped_nonpage_qubit_bits,
                           num_nonpage_local_qubits);
@@ -3662,7 +3308,7 @@ namespace ket
                   }
 
                   auto const transpage_first
-                    = ::ket::mpi::dispatch::inner_product_detail::make_transpage_iterator(
+                    = ::ket::mpi::page::make_transpage_iterator(
                         local_state,
                         mapped_permutated_nonpage_qubit_first, mapped_permutated_nonpage_qubit_last,
                         permutated_operated_page_qubit_first, permutated_operated_page_qubit_last,
@@ -3709,7 +3355,7 @@ namespace ket
                      ++mapped_nonpage_qubit_bits)
                 {
                   auto const transpage_first
-                    = ::ket::mpi::dispatch::inner_product_detail::make_transpage_iterator(
+                    = ::ket::mpi::page::make_transpage_iterator(
                         local_state,
                         mapped_permutated_nonpage_qubit_first, mapped_permutated_nonpage_qubit_last,
                         permutated_operated_page_qubit_first, permutated_operated_page_qubit_last,
@@ -3937,6 +3583,3173 @@ namespace ket
         }; // struct inner_product<LocalState1_, ::ket::mpi::state<Complex, true, Allocator2>>
       } // namespace dispatch
     } // namespace local
+
+    namespace gate
+    {
+      namespace local
+      {
+        template <
+          typename ParallelPolicy, typename Complex, typename Allocator,
+          typename Function, typename Qubit, typename... Qubits>
+        inline auto transpage_gate(
+          ParallelPolicy const parallel_policy,
+          ::ket::mpi::state<Complex, true, Allocator>& local_state, Function&& function,
+          ::ket::mpi::permutated<Qubit> const permutated_qubit, ::ket::mpi::permutated<Qubits> const... permutated_qubits)
+        -> ::ket::mpi::state<Complex, true, Allocator>&
+        {
+          using state_integer_type = ::ket::meta::state_integer_t<Qubit>;
+          using bit_integer_type = ::ket::meta::bit_integer_t<Qubit>;
+          using qubit_type = ::ket::qubit<state_integer_type, bit_integer_type>;
+
+          auto const num_nonpage_local_qubits
+            = static_cast<bit_integer_type>(local_state.num_local_qubits() - local_state.num_page_qubits());
+          auto const least_permutated_page_qubit
+            = ::ket::mpi::make_permutated(::ket::make_qubit<state_integer_type>(num_nonpage_local_qubits));
+
+          constexpr auto num_operated_qubits = static_cast<bit_integer_type>(sizeof...(Qubits) + 1u);
+          using permutated_qubit_type = ::ket::mpi::permutated<qubit_type>;
+          std::array<permutated_qubit_type, num_operated_qubits> sorted_permutated_operated_qubits_array{
+            ::ket::mpi::remove_control(permutated_qubit), ::ket::mpi::remove_control(permutated_qubits)...};
+          using std::begin;
+          using std::end;
+          std::sort(begin(sorted_permutated_operated_qubits_array), end(sorted_permutated_operated_qubits_array));
+
+          // generate permutated_operated_page_qubits and mapped_permutated_nonpage_qubits
+          auto const permutated_operated_nonpage_qubit_first = begin(sorted_permutated_operated_qubits_array);
+          auto const permutated_operated_page_qubit_last = end(sorted_permutated_operated_qubits_array);
+          auto const permutated_operated_page_qubit_first
+            = std::lower_bound(
+                begin(sorted_permutated_operated_qubits_array), end(sorted_permutated_operated_qubits_array),
+                least_permutated_page_qubit);
+          auto const permutated_operated_nonpage_qubit_last = permutated_operated_page_qubit_first;
+
+          auto const num_operated_page_qubits
+            = static_cast<bit_integer_type>(permutated_operated_page_qubit_last - permutated_operated_page_qubit_first);
+          auto const mapped_permutated_nonpage_qubits
+            = ::ket::mpi::page::generate_mapped_permutated_nonpage_qubits(
+                permutated_operated_nonpage_qubit_first, permutated_operated_nonpage_qubit_last,
+                least_permutated_page_qubit, num_operated_page_qubits);
+          auto const mapped_permutated_nonpage_qubit_first = begin(mapped_permutated_nonpage_qubits);
+          auto const mapped_permutated_nonpage_qubit_last = end(mapped_permutated_nonpage_qubits);
+
+          // main loop
+          std::array<qubit_type, num_operated_qubits> modified_unsorted_qubits{
+            ::ket::remove_control(permutated_qubit.qubit()), ::ket::remove_control(permutated_qubits.qubit())...};
+          auto mapped_permutated_nonpage_qubit_iter = mapped_permutated_nonpage_qubit_first;
+          for (auto permutated_operated_page_qubit_iter = permutated_operated_page_qubit_first;
+               permutated_operated_page_qubit_iter != permutated_operated_page_qubit_last;
+               ++permutated_operated_page_qubit_iter, ++mapped_permutated_nonpage_qubit_iter)
+          {
+            auto const found
+              = std::find(
+                  begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                  permutated_operated_page_qubit_iter->qubit());
+            if (found != end(modified_unsorted_qubits))
+              *found = mapped_permutated_nonpage_qubit_iter->qubit();
+          }
+
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+          std::array<qubit_type, num_operated_qubits + 1u> modified_sorted_qubits_with_sentinel{ };
+          std::copy(
+            begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+            begin(modified_sorted_qubits_with_sentinel));
+          modified_sorted_qubits_with_sentinel.back()
+            = ::ket::make_qubit<state_integer_type>(num_nonpage_local_qubits);
+          std::sort(
+            begin(modified_sorted_qubits_with_sentinel),
+            std::prev(end(modified_sorted_qubits_with_sentinel)));
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+          std::array<state_integer_type, num_operated_qubits> qubit_masks{};
+          ::ket::gate::gate_detail::make_qubit_masks_from_tuple(modified_unsorted_qubits, qubit_masks);
+          std::array<state_integer_type, num_operated_qubits + 1u> index_masks{};
+          ::ket::gate::gate_detail::make_index_masks_from_tuple(modified_unsorted_qubits, index_masks);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+
+          auto const page_size = static_cast<state_integer_type>(end(local_state.buffer_range()) - begin(local_state.buffer_range()));
+
+          auto const num_data_blocks = static_cast<state_integer_type>(local_state.num_data_blocks());
+          auto const num_pages_wo_qubits
+            = static_cast<state_integer_type>(local_state.num_pages()) >> num_operated_page_qubits;
+          auto const num_operated_page_qubit_values = ::ket::utility::integer_exp2<state_integer_type>(num_operated_page_qubits);
+
+          //   xxxxx|xxxxxxxxxx
+          //    ^ ^  ^ ^   ^    <- operated qubits
+          //   p p p            <- page_index_wo_qubits
+          //          * *       <- mapped_nonpage_qubit_bits
+          //    @ @             <- operated_page_qubit_bits
+          //         u u dddddd <- "nonpage_index_wo_qubits"
+          //         u u        <- upper_nonpage_index_wo_qubits
+          //             dddddd <- "lower_nonpage_index_wo_qubits"
+          //    @ @  u*u*dddddd <- "transpage_index" (** => @@)
+          //
+          //         xxxxxxxxxx
+          //         ^^^^  ^    <- "operated qubits" in buffer
+          //             ^^ ^^^ <- index_wo_qubits in loop_n
+          for (auto data_block_index = state_integer_type{0u};
+               data_block_index < num_data_blocks; ++data_block_index)
+            // ppp
+            for (auto page_index_wo_qubits = state_integer_type{0u};
+                 page_index_wo_qubits < num_pages_wo_qubits; ++page_index_wo_qubits)
+              // **
+              for (auto mapped_nonpage_qubit_bits = state_integer_type{0u};
+                   mapped_nonpage_qubit_bits < num_operated_page_qubit_values;
+                   ++mapped_nonpage_qubit_bits)
+              {
+                auto const transpage_first
+                  = ::ket::mpi::page::make_transpage_iterator(
+                      local_state,
+                      mapped_permutated_nonpage_qubit_first, mapped_permutated_nonpage_qubit_last,
+                      permutated_operated_page_qubit_first, permutated_operated_page_qubit_last,
+                      data_block_index, page_index_wo_qubits, mapped_nonpage_qubit_bits);
+
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+                ::ket::utility::loop_n(
+                  parallel_policy, page_size >> num_operated_qubits,
+                  [&function, &modified_unsorted_qubits, &modified_sorted_qubits_with_sentinel, transpage_first](
+                    state_integer_type const index_wo_qubits, int const thread_index)
+                  { function(transpage_first, index_wo_qubits, modified_unsorted_qubits, modified_sorted_qubits_with_sentinel, thread_index); });
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+                ::ket::utility::loop_n(
+                  parallel_policy, page_size >> num_operated_qubits,
+                  [&function, &qubit_masks, &index_masks, transpage_first](
+                    state_integer_type const index_wo_qubits, int const thread_index)
+                  { function(transpage_first, index_wo_qubits, qubit_masks, index_masks, thread_index); });
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+              }
+
+          return local_state;
+        }
+
+        namespace dispatch
+        {
+          template <typename LocalState>
+          struct transpage_controlled_v_coeff;
+
+          template <typename Complex, typename Allocator>
+          struct transpage_controlled_v_coeff< ::ket::mpi::state<Complex, true, Allocator> >
+          {
+            template <typename ParallelPolicy, typename StateInteger, typename BitInteger, typename... ControlQubits>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              ::ket::mpi::state<Complex, true, Allocator>& local_state,
+              Complex const& phase_coefficient,
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit1,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit2,
+              ::ket::mpi::permutated<ControlQubits> const... permutated_control_qubits)
+            -> ::ket::mpi::state<Complex, true, Allocator>&
+            {
+              using real_type = ::ket::utility::meta::real_t<Complex>;
+              auto const one_plus_phase_coefficient = Complex{real_type{1}} + phase_coefficient;
+              auto const one_minus_phase_coefficient = Complex{real_type{1}} - phase_coefficient;
+
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+              using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [&one_plus_phase_coefficient, &one_minus_phase_coefficient](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<qubit_type, num_operated_qubits> const& modified_unsorted_qubits,
+                  std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& modified_sorted_qubits_with_sentinel,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = sizeof...(ControlQubits) + 2u;
+                  // 0b11...10u
+                  constexpr auto index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{1u};
+                  // 0b11...11u
+                  constexpr auto index1 = index0 bitor std::size_t{1u};
+
+                  auto const iter0
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index0,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  auto const iter1
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index1,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  auto const value0 = *iter0;
+
+                  using boost::math::constants::half;
+                  *iter0 = half<real_type>() * (one_plus_phase_coefficient * value0 + one_minus_phase_coefficient * *iter1);
+                  *iter1 = half<real_type>() * (one_minus_phase_coefficient * value0 + one_plus_phase_coefficient * *iter1);
+                },
+                permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [&one_plus_phase_coefficient, &one_minus_phase_coefficient](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<StateInteger, num_operated_qubits> const& qubit_masks,
+                  std::array<StateInteger, num_operated_qubits + BitInteger{1u}> const& index_masks,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = sizeof...(ControlQubits) + 2u;
+                  // 0b11...10u
+                  constexpr auto index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{1u};
+                  // 0b11...11u
+                  constexpr auto index1 = index0 bitor std::size_t{1u};
+
+                  auto const iter0
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index0,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  auto const iter1
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index1,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  auto const value0 = *iter0;
+
+                  using boost::math::constants::half;
+                  *iter0 = half<real_type>() * (one_plus_phase_coefficient * value0 + one_minus_phase_coefficient * *iter1);
+                  *iter1 = half<real_type>() * (one_minus_phase_coefficient * value0 + one_plus_phase_coefficient * *iter1);
+                },
+                permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+            }
+          }; // struct transpage_controlled_v_coeff<LocalState>
+
+          template <typename LocalState>
+          struct transpage_exponential_pauli_x_coeff;
+
+          template <typename Complex, typename Allocator>
+          struct transpage_exponential_pauli_x_coeff< ::ket::mpi::state<Complex, true, Allocator> >
+          {
+            template <
+              typename ParallelPolicy,
+              typename StateInteger, typename BitInteger, typename Qubit2, typename Qubit3, typename... Qubits>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              ::ket::mpi::state<Complex, true, Allocator>& local_state,
+              Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit1,
+              ::ket::mpi::permutated<Qubit2> const permutated_qubit2,
+              ::ket::mpi::permutated<Qubit3> const permutated_qubit3,
+              ::ket::mpi::permutated<Qubits> const... permutated_qubits)
+            -> ::ket::mpi::state<Complex, true, Allocator>&
+            {
+              using std::real;
+              using std::imag;
+              auto const cos_theta = real(phase_coefficient);
+              auto const i_sin_theta = ::ket::utility::imaginary_unit<Complex>() * imag(phase_coefficient);
+
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+              using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [cos_theta, &i_sin_theta](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<qubit_type, num_operated_qubits> const& modified_unsorted_qubits,
+                  std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& modified_sorted_qubits_with_sentinel,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubit2, Qubit3, Qubits...>::value;
+                  constexpr auto num_target_qubits = num_operated_qubits - num_control_qubits;
+                  constexpr auto num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
+                  constexpr auto half_num_target_indices = num_target_indices / std::size_t{2u};
+
+                  // 0b1...10...0u
+                  constexpr auto base_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
+
+                  for (auto i = std::size_t{0u}; i < half_num_target_indices; ++i)
+                  {
+                    using std::begin;
+                    using std::end;
+                    auto iter1
+                      = transpage_first
+                        + ::ket::gate::utility::index_with_qubits(
+                            index_wo_qubits, base_index + i,
+                            begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                            begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                    auto iter2
+                      = transpage_first
+                        + ::ket::gate::utility::index_with_qubits(
+                            index_wo_qubits, base_index + (num_target_indices - std::size_t{1u} - i),
+                            begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                            begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                    auto const value1 = *iter1;
+
+                    *iter1 *= cos_theta;
+                    *iter1 += *iter2 * i_sin_theta;
+                    *iter2 *= cos_theta;
+                    *iter2 += value1 * i_sin_theta;
+                  }
+                },
+                permutated_qubit1, permutated_qubit2, permutated_qubit3, permutated_qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [cos_theta, &i_sin_theta](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<StateInteger, num_operated_qubits> const& qubit_masks,
+                  std::array<StateInteger, num_operated_qubits + BitInteger{1u}> const& index_masks,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubit2, Qubit3, Qubits...>::value;
+                  constexpr auto num_target_qubits = num_operated_qubits - num_control_qubits;
+                  constexpr auto num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
+                  constexpr auto half_num_target_indices = num_target_indices / std::size_t{2u};
+
+                  // 0b1...10...0u
+                  constexpr auto base_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
+
+                  for (auto i = std::size_t{0u}; i < half_num_target_indices; ++i)
+                  {
+                    using std::begin;
+                    using std::end;
+                    auto iter1
+                      = transpage_first
+                        + ::ket::gate::utility::index_with_qubits(
+                            index_wo_qubits, base_index + i,
+                            begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                    auto iter2
+                      = transpage_first
+                        + ::ket::gate::utility::index_with_qubits(
+                            index_wo_qubits, base_index + (num_target_indices - std::size_t{1u} - i),
+                            begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                    auto const value1 = *iter1;
+
+                    *iter1 *= cos_theta;
+                    *iter1 += *iter2 * i_sin_theta;
+                    *iter2 *= cos_theta;
+                    *iter2 += value1 * i_sin_theta;
+                  }
+                },
+                permutated_qubit1, permutated_qubit2, permutated_qubit3, permutated_qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+            }
+          }; // struct transpage_exponential_pauli_x_coeff<LocalState>
+
+          template <typename LocalState>
+          struct transpage_exponential_pauli_y_coeff;
+
+          template <typename Complex, typename Allocator>
+          struct transpage_exponential_pauli_y_coeff< ::ket::mpi::state<Complex, true, Allocator> >
+          {
+            template <
+              typename ParallelPolicy,
+              typename StateInteger, typename BitInteger, typename Qubit2, typename Qubit3, typename... Qubits>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              ::ket::mpi::state<Complex, true, Allocator>& local_state,
+              Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit1,
+              ::ket::mpi::permutated<Qubit2> const permutated_qubit2,
+              ::ket::mpi::permutated<Qubit3> const permutated_qubit3,
+              ::ket::mpi::permutated<Qubits> const... permutated_qubits)
+            -> ::ket::mpi::state<Complex, true, Allocator>&
+            {
+              using std::real;
+              using std::imag;
+              auto const cos_theta = real(phase_coefficient);
+              auto const sin_theta = static_cast<Complex>(imag(phase_coefficient));
+              auto const i_sin_theta = ::ket::utility::imaginary_unit<Complex>() * sin_theta;
+
+              auto sin_part = Complex{};
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+              switch (num_operated_qubits % BitInteger{4u})
+              {
+               case BitInteger{0u}:
+                sin_part = i_sin_theta;
+
+               case BitInteger{1u}:
+                sin_part = -sin_theta;
+
+               case BitInteger{2u}:
+                sin_part = -i_sin_theta;
+
+               default: //case BitInteger{3u}:
+                sin_part = sin_theta;
+              }
+
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+              using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [cos_theta, &sin_part](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<qubit_type, num_operated_qubits> const& modified_unsorted_qubits,
+                  std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& modified_sorted_qubits_with_sentinel,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubit2, Qubit3, Qubits...>::value;
+                  constexpr auto num_target_qubits = num_operated_qubits - num_control_qubits;
+                  constexpr auto num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
+                  constexpr auto half_num_target_indices = num_target_indices / std::size_t{2u};
+
+                  // 0b1...10...0u
+                  constexpr auto base_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
+
+                  for (auto i = std::size_t{0u}; i < half_num_target_indices; ++i)
+                  {
+                    auto const j = num_target_indices - std::size_t{1u} - i;
+
+                    auto num_ones_in_i = BitInteger{0u};
+                    auto num_ones_in_j = BitInteger{0u};
+                    auto i_tmp = i;
+                    auto j_tmp = j;
+                    for (auto count = BitInteger{0u}; count < num_target_qubits; ++count)
+                    {
+                      if ((i_tmp bitand std::size_t{1u}) == std::size_t{1u})
+                        ++num_ones_in_i;
+                      if ((j_tmp bitand std::size_t{1u}) == std::size_t{1u})
+                        ++num_ones_in_j;
+
+                      i_tmp >>= BitInteger{1u};
+                      j_tmp >>= BitInteger{1u};
+                    }
+
+                    using std::begin;
+                    using std::end;
+                    auto iter1
+                      = transpage_first
+                        + ::ket::gate::utility::index_with_qubits(
+                            index_wo_qubits, base_index + i,
+                            begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                            begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                    auto iter2
+                      = transpage_first
+                        + ::ket::gate::utility::index_with_qubits(
+                            index_wo_qubits, base_index + (num_target_indices - std::size_t{1u} - i),
+                            begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                            begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                    auto const value1 = *iter1;
+
+                    *iter1 *= cos_theta;
+                    *iter1 += (num_target_qubits - num_ones_in_i) % BitInteger{2u} == BitInteger{0u} ? *iter2 * sin_part : *iter2 * (-sin_part);
+                    *iter2 *= cos_theta;
+                    *iter2 += (num_target_qubits - num_ones_in_j) % BitInteger{2u} == BitInteger{0u} ? value1 * sin_part : value1 * (-sin_part);
+                  }
+                },
+                permutated_qubit1, permutated_qubit2, permutated_qubit3, permutated_qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [cos_theta, &sin_part](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<StateInteger, num_operated_qubits> const& qubit_masks,
+                  std::array<StateInteger, num_operated_qubits + BitInteger{1u}> const& index_masks,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubit2, Qubit3, Qubits...>::value;
+                  constexpr auto num_target_qubits = num_operated_qubits - num_control_qubits;
+                  constexpr auto num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
+                  constexpr auto half_num_target_indices = num_target_indices / std::size_t{2u};
+
+                  // 0b1...10...0u
+                  constexpr auto base_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
+
+                  for (auto i = std::size_t{0u}; i < half_num_target_indices; ++i)
+                  {
+                    auto const j = num_target_indices - std::size_t{1u} - i;
+
+                    auto num_ones_in_i = BitInteger{0u};
+                    auto num_ones_in_j = BitInteger{0u};
+                    auto i_tmp = i;
+                    auto j_tmp = j;
+                    for (auto count = BitInteger{0u}; count < num_target_qubits; ++count)
+                    {
+                      if ((i_tmp bitand std::size_t{1u}) == std::size_t{1u})
+                        ++num_ones_in_i;
+                      if ((j_tmp bitand std::size_t{1u}) == std::size_t{1u})
+                        ++num_ones_in_j;
+
+                      i_tmp >>= BitInteger{1u};
+                      j_tmp >>= BitInteger{1u};
+                    }
+
+                    using std::begin;
+                    using std::end;
+                    auto iter1
+                      = transpage_first
+                        + ::ket::gate::utility::index_with_qubits(
+                            index_wo_qubits, base_index + i,
+                            begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                    auto iter2
+                      = transpage_first
+                        + ::ket::gate::utility::index_with_qubits(
+                            index_wo_qubits, base_index + (num_target_indices - std::size_t{1u} - i),
+                            begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                    auto const value1 = *iter1;
+
+                    *iter1 *= cos_theta;
+                    *iter1 += (num_target_qubits - num_ones_in_i) % BitInteger{2u} == BitInteger{0u} ? *iter2 * sin_part : *iter2 * (-sin_part);
+                    *iter2 *= cos_theta;
+                    *iter2 += (num_target_qubits - num_ones_in_j) % BitInteger{2u} == BitInteger{0u} ? value1 * sin_part : value1 * (-sin_part);
+                  }
+                },
+                permutated_qubit1, permutated_qubit2, permutated_qubit3, permutated_qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+            }
+          }; // struct transpage_exponential_pauli_y_coeff<LocalState>
+
+          template <typename LocalState>
+          struct transpage_exponential_pauli_z_coeff;
+
+          template <typename Complex, typename Allocator>
+          struct transpage_exponential_pauli_z_coeff< ::ket::mpi::state<Complex, true, Allocator> >
+          {
+            template <
+              typename ParallelPolicy,
+              typename StateInteger, typename BitInteger, typename Qubit2, typename Qubit3, typename... Qubits>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              ::ket::mpi::state<Complex, true, Allocator>& local_state,
+              Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit1,
+              ::ket::mpi::permutated<Qubit2> const permutated_qubit2,
+              ::ket::mpi::permutated<Qubit3> const permutated_qubit3,
+              ::ket::mpi::permutated<Qubits> const... permutated_qubits)
+            -> ::ket::mpi::state<Complex, true, Allocator>&
+            {
+              using std::conj;
+              auto const conj_phase_coefficient = conj(phase_coefficient);
+
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+              using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [&phase_coefficient, &conj_phase_coefficient](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<qubit_type, num_operated_qubits> const& modified_unsorted_qubits,
+                  std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& modified_sorted_qubits_with_sentinel,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubit2, Qubit3, Qubits...>::value;
+                  constexpr auto num_target_qubits = num_operated_qubits - num_control_qubits;
+                  constexpr auto num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
+
+                  // 0b1...10...0u
+                  constexpr auto base_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
+
+                  for (auto i = std::size_t{0u}; i < num_target_indices; ++i)
+                  {
+                    auto num_ones_in_i = BitInteger{0u};
+                    auto i_tmp = i;
+                    for (auto count = BitInteger{0u}; count < num_target_qubits; ++count)
+                    {
+                      if ((i_tmp bitand std::size_t{1u}) == std::size_t{1u})
+                        ++num_ones_in_i;
+
+                      i_tmp >>= BitInteger{1u};
+                    }
+
+                    using std::begin;
+                    using std::end;
+                    auto const iter
+                      = transpage_first
+                        + ::ket::gate::utility::index_with_qubits(
+                            index_wo_qubits, base_index + i,
+                            begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                            begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                    *iter *= num_ones_in_i % BitInteger{2u} == BitInteger{0u} ? phase_coefficient : conj_phase_coefficient;
+                  }
+                },
+                permutated_qubit1, permutated_qubit2, permutated_qubit3, permutated_qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [&phase_coefficient, &conj_phase_coefficient](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<StateInteger, num_operated_qubits> const& qubit_masks,
+                  std::array<StateInteger, num_operated_qubits + BitInteger{1u}> const& index_masks,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubit2, Qubit3, Qubits...>::value;
+                  constexpr auto num_target_qubits = num_operated_qubits - num_control_qubits;
+                  constexpr auto num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
+
+                  // 0b1...10...0u
+                  constexpr auto base_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
+
+                  for (auto i = std::size_t{0u}; i < num_target_indices; ++i)
+                  {
+                    auto num_ones_in_i = BitInteger{0u};
+                    auto i_tmp = i;
+                    for (auto count = BitInteger{0u}; count < num_target_qubits; ++count)
+                    {
+                      if ((i_tmp bitand std::size_t{1u}) == std::size_t{1u})
+                        ++num_ones_in_i;
+
+                      i_tmp >>= BitInteger{1u};
+                    }
+
+                    using std::begin;
+                    using std::end;
+                    auto const iter
+                      = transpage_first
+                        + ::ket::gate::utility::index_with_qubits(
+                            index_wo_qubits, base_index + i,
+                            begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                    *iter *= num_ones_in_i % BitInteger{2u} == BitInteger{0u} ? phase_coefficient : conj_phase_coefficient;
+                  }
+                },
+                permutated_qubit1, permutated_qubit2, permutated_qubit3, permutated_qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+            }
+          }; // struct transpage_exponential_pauli_z_coeff<LocalState>
+
+          template <typename LocalState>
+          struct transpage_exponential_swap_coeff;
+
+          template <typename Complex, typename Allocator>
+          struct transpage_exponential_swap_coeff< ::ket::mpi::state<Complex, true, Allocator> >
+          {
+            template <
+              typename ParallelPolicy,
+              typename StateInteger, typename BitInteger, typename Qubit2, typename Qubit3, typename... Qubits>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              ::ket::mpi::state<Complex, true, Allocator>& local_state,
+              Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit1,
+              ::ket::mpi::permutated<Qubit2> const permutated_qubit2,
+              ::ket::mpi::permutated<Qubit3> const permutated_qubit3,
+              ::ket::mpi::permutated<Qubits> const... permutated_qubits)
+            -> ::ket::mpi::state<Complex, true, Allocator>&
+            {
+              using std::imag;
+              auto const i_sin_theta = ::ket::utility::imaginary_unit<Complex>() * imag(phase_coefficient);
+
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+              using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [&phase_coefficient, &i_sin_theta](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<qubit_type, num_operated_qubits> const& modified_unsorted_qubits,
+                  std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& modified_sorted_qubits_with_sentinel,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubit2, Qubit3, Qubits...>::value;
+
+                  // 0b11...100u
+                  constexpr auto index00 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{2u};
+                  // 0b11...101u
+                  constexpr auto index01 = index00 bitor std::size_t{1u};
+                  // 0b11...110u
+                  constexpr auto index10 = index00 bitor (std::size_t{1u} << BitInteger{1u});
+                  // 0b11...111u
+                  constexpr auto index11 = index10 bitor std::size_t{1u};
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter00
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index00,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  auto const iter11
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index11,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  *iter00 *= phase_coefficient;
+                  *iter11 *= phase_coefficient;
+
+                  auto const iter01
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index01,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  auto const iter10
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index10,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  auto const value01 = *iter01;
+                  using std::real;
+                  *iter01 *= real(phase_coefficient);
+                  *iter01 += *iter10 * i_sin_theta;
+                  *iter10 *= real(phase_coefficient);
+                  *iter10 += value01 * i_sin_theta;
+                },
+                permutated_qubit1, permutated_qubit2, permutated_qubit3, permutated_qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [&phase_coefficient, &i_sin_theta](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<StateInteger, num_operated_qubits> const& qubit_masks,
+                  std::array<StateInteger, num_operated_qubits + BitInteger{1u}> const& index_masks,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubit2, Qubit3, Qubits...>::value;
+
+                  // 0b11...100u
+                  constexpr auto index00 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{2u};
+                  // 0b11...101u
+                  constexpr auto index01 = index00 bitor std::size_t{1u};
+                  // 0b11...110u
+                  constexpr auto index10 = index00 bitor (std::size_t{1u} << BitInteger{1u});
+                  // 0b11...111u
+                  constexpr auto index11 = index10 bitor std::size_t{1u};
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter00
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index00,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  auto const iter11
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index11,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  *iter00 *= phase_coefficient;
+                  *iter11 *= phase_coefficient;
+
+                  auto const iter01
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index01,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  auto const iter10
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index10,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  auto const value01 = *iter01;
+                  using std::real;
+                  *iter01 *= real(phase_coefficient);
+                  *iter01 += *iter10 * i_sin_theta;
+                  *iter10 *= real(phase_coefficient);
+                  *iter10 += value01 * i_sin_theta;
+                },
+                permutated_qubit1, permutated_qubit2, permutated_qubit3, permutated_qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+            }
+          }; // struct transpage_exponential_swap_coeff<LocalState>
+
+          template <typename LocalState>
+          struct transpage_hadamard;
+
+          template <typename Complex, typename Allocator>
+          struct transpage_hadamard< ::ket::mpi::state<Complex, true, Allocator> >
+          {
+            template <typename ParallelPolicy, typename StateInteger, typename BitInteger, typename... ControlQubits>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              ::ket::mpi::state<Complex, true, Allocator>& local_state,
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit1,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit2,
+              ::ket::mpi::permutated<ControlQubits> const... permutated_control_qubits)
+            -> ::ket::mpi::state<Complex, true, Allocator>&
+            {
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+              using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<qubit_type, num_operated_qubits> const& modified_unsorted_qubits,
+                  std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& modified_sorted_qubits_with_sentinel,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = sizeof...(ControlQubits) + 2u;
+                  // 0b11...10u
+                  constexpr auto index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{1u};
+                  // 0b11...11u
+                  constexpr auto index1 = index0 bitor std::size_t{1u};
+
+                  auto const iter0
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index0,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  auto const iter1
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index1,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  auto const value0 = *iter0;
+
+                  using real_type = ::ket::utility::meta::real_t<Complex>;
+                  using boost::math::constants::one_div_root_two;
+                  *iter0 += *iter1;
+                  *iter0 *= one_div_root_two<real_type>();
+                  *iter1 = value0 - *iter1;
+                  *iter1 *= one_div_root_two<real_type>();
+                },
+                permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<StateInteger, num_operated_qubits> const& qubit_masks,
+                  std::array<StateInteger, num_operated_qubits + BitInteger{1u}> const& index_masks,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = sizeof...(ControlQubits) + 2u;
+                  // 0b11...10u
+                  constexpr auto index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{1u};
+                  // 0b11...11u
+                  constexpr auto index1 = index0 bitor std::size_t{1u};
+
+                  auto const iter0
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index0,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  auto const iter1
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index1,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  auto const value0 = *iter0;
+
+                  using real_type = ::ket::utility::meta::real_t<Complex>;
+                  using boost::math::constants::one_div_root_two;
+                  *iter0 += *iter1;
+                  *iter0 *= one_div_root_two<real_type>();
+                  *iter1 = value0 - *iter1;
+                  *iter1 *= one_div_root_two<real_type>();
+                },
+                permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+            }
+          }; // struct transpage_hadamard<LocalState>
+
+          template <typename LocalState>
+          struct transpage_pauli_x;
+
+          template <typename Complex, typename Allocator>
+          struct transpage_pauli_x< ::ket::mpi::state<Complex, true, Allocator> >
+          {
+            template <
+              typename ParallelPolicy,
+              typename StateInteger, typename BitInteger, typename Qubit2, typename Qubit3, typename... Qubits>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              ::ket::mpi::state<Complex, true, Allocator>& local_state,
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit1,
+              ::ket::mpi::permutated<Qubit2> const permutated_qubit2,
+              ::ket::mpi::permutated<Qubit3> const permutated_qubit3,
+              ::ket::mpi::permutated<Qubits> const... permutated_qubits)
+            -> ::ket::mpi::state<Complex, true, Allocator>&
+            {
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+              using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<qubit_type, num_operated_qubits> const& modified_unsorted_qubits,
+                  std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& modified_sorted_qubits_with_sentinel,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubit2, Qubit3, Qubits...>::value;
+                  constexpr auto num_target_qubits = num_operated_qubits - num_control_qubits;
+                  constexpr auto num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
+                  constexpr auto half_num_target_indices = num_target_indices / std::size_t{2u};
+
+                  // 0b1...10...0u
+                  constexpr auto base_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
+
+                  using std::begin;
+                  using std::end;
+                  for (auto i = std::size_t{0u}; i < half_num_target_indices; ++i)
+                    std::iter_swap(
+                      transpage_first
+                        + ::ket::gate::utility::index_with_qubits(
+                            index_wo_qubits, base_index + i,
+                            begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                            begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel)),
+                      transpage_first
+                        + ::ket::gate::utility::index_with_qubits(
+                            index_wo_qubits, base_index + (num_target_indices - std::size_t{1u} - i),
+                            begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                            begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel)));
+                },
+                permutated_qubit1, permutated_qubit2, permutated_qubit3, permutated_qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<StateInteger, num_operated_qubits> const& qubit_masks,
+                  std::array<StateInteger, num_operated_qubits + BitInteger{1u}> const& index_masks,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubit2, Qubit3, Qubits...>::value;
+                  constexpr auto num_target_qubits = num_operated_qubits - num_control_qubits;
+                  constexpr auto num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
+                  constexpr auto half_num_target_indices = num_target_indices / std::size_t{2u};
+
+                  // 0b1...10...0u
+                  constexpr auto base_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
+
+                  using std::begin;
+                  using std::end;
+                  for (auto i = std::size_t{0u}; i < half_num_target_indices; ++i)
+                    std::iter_swap(
+                      transpage_first
+                        + ::ket::gate::utility::index_with_qubits(
+                            index_wo_qubits, base_index + i,
+                            begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks)),
+                      transpage_first
+                        + ::ket::gate::utility::index_with_qubits(
+                            index_wo_qubits, base_index + (num_target_indices - std::size_t{1u} - i),
+                            begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks)));
+                },
+                permutated_qubit1, permutated_qubit2, permutated_qubit3, permutated_qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+            }
+          }; // struct transpage_pauli_x<LocalState>
+
+          template <typename LocalState>
+          struct transpage_pauli_y;
+
+          template <typename Complex, typename Allocator>
+          struct transpage_pauli_y< ::ket::mpi::state<Complex, true, Allocator> >
+          {
+            template <
+              typename ParallelPolicy,
+              typename StateInteger, typename BitInteger, typename Qubit2, typename Qubit3, typename... Qubits>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              ::ket::mpi::state<Complex, true, Allocator>& local_state,
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit1,
+              ::ket::mpi::permutated<Qubit2> const permutated_qubit2,
+              ::ket::mpi::permutated<Qubit3> const permutated_qubit3,
+              ::ket::mpi::permutated<Qubits> const... permutated_qubits)
+            -> ::ket::mpi::state<Complex, true, Allocator>&
+            {
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+              using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<qubit_type, num_operated_qubits> const& modified_unsorted_qubits,
+                  std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& modified_sorted_qubits_with_sentinel,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubit2, Qubit3, Qubits...>::value;
+                  constexpr auto num_target_qubits = num_operated_qubits - num_control_qubits;
+                  constexpr auto num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
+                  constexpr auto half_num_target_indices = num_target_indices / std::size_t{2u};
+
+                  // 0b1...10...0u
+                  constexpr auto base_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
+
+                  for (auto i = std::size_t{0u}; i < half_num_target_indices; ++i)
+                  {
+                    auto const j = num_target_indices - std::size_t{1u} - i;
+
+                    auto num_ones_in_i = BitInteger{0u};
+                    auto num_ones_in_j = BitInteger{0u};
+                    auto i_tmp = i;
+                    auto j_tmp = j;
+                    for (auto count = BitInteger{0u}; count < num_target_qubits; ++count)
+                    {
+                      if ((i_tmp bitand std::size_t{1u}) == std::size_t{1u})
+                        ++num_ones_in_i;
+                      if ((j_tmp bitand std::size_t{1u}) == std::size_t{1u})
+                        ++num_ones_in_j;
+
+                      i_tmp >>= BitInteger{1u};
+                      j_tmp >>= BitInteger{1u};
+                    }
+
+                    constexpr auto residual = num_target_qubits % BitInteger{4u};
+                    constexpr auto coefficient
+                      = residual == BitInteger{0u}
+                        ? Complex{1}
+                        : residual == BitInteger{1u}
+                          ? ::ket::utility::imaginary_unit<Complex>()
+                          : residual == BitInteger{2u}
+                            ? Complex{-1}
+                            : ::ket::utility::minus_imaginary_unit<Complex>();
+                    using std::begin;
+                    using std::end;
+                    auto iter1
+                      = transpage_first
+                        + ::ket::gate::utility::index_with_qubits(
+                            index_wo_qubits, base_index + i,
+                            begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                            begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                    auto iter2
+                      = transpage_first
+                        + ::ket::gate::utility::index_with_qubits(
+                            index_wo_qubits, base_index + j,
+                            begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                            begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                    std::iter_swap(iter1, iter2);
+                    *iter1 *= (num_target_qubits - num_ones_in_i) % BitInteger{2u} == BitInteger{0u} ? coefficient : -coefficient;
+                    *iter2 *= (num_target_qubits - num_ones_in_j) % BitInteger{2u} == BitInteger{0u} ? coefficient : -coefficient;
+                  }
+                },
+                permutated_qubit1, permutated_qubit2, permutated_qubit3, permutated_qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<StateInteger, num_operated_qubits> const& qubit_masks,
+                  std::array<StateInteger, num_operated_qubits + BitInteger{1u}> const& index_masks,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubit2, Qubit3, Qubits...>::value;
+                  constexpr auto num_target_qubits = num_operated_qubits - num_control_qubits;
+                  constexpr auto num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
+                  constexpr auto half_num_target_indices = num_target_indices / std::size_t{2u};
+
+                  // 0b1...10...0u
+                  constexpr auto base_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
+
+                  for (auto i = std::size_t{0u}; i < half_num_target_indices; ++i)
+                  {
+                    auto const j = num_target_indices - std::size_t{1u} - i;
+
+                    auto num_ones_in_i = BitInteger{0u};
+                    auto num_ones_in_j = BitInteger{0u};
+                    auto i_tmp = i;
+                    auto j_tmp = j;
+                    for (auto count = BitInteger{0u}; count < num_target_qubits; ++count)
+                    {
+                      if ((i_tmp bitand std::size_t{1u}) == std::size_t{1u})
+                        ++num_ones_in_i;
+                      if ((j_tmp bitand std::size_t{1u}) == std::size_t{1u})
+                        ++num_ones_in_j;
+
+                      i_tmp >>= BitInteger{1u};
+                      j_tmp >>= BitInteger{1u};
+                    }
+
+                    constexpr auto residual = num_target_qubits % BitInteger{4u};
+                    constexpr auto coefficient
+                      = residual == BitInteger{0u}
+                        ? Complex{1}
+                        : residual == BitInteger{1u}
+                          ? ::ket::utility::imaginary_unit<Complex>()
+                          : residual == BitInteger{2u}
+                            ? Complex{-1}
+                            : ::ket::utility::minus_imaginary_unit<Complex>();
+
+                    using std::begin;
+                    using std::end;
+                    auto iter1
+                      = transpage_first
+                        + ::ket::gate::utility::index_with_qubits(
+                            index_wo_qubits, base_index + i,
+                            begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                    auto iter2
+                      = transpage_first
+                        + ::ket::gate::utility::index_with_qubits(
+                            index_wo_qubits, base_index + j,
+                            begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                    std::iter_swap(iter1, iter2);
+                    *iter1 *= (num_target_qubits - num_ones_in_i) % BitInteger{2u} == BitInteger{0u} ? coefficient : -coefficient;
+                    *iter2 *= (num_target_qubits - num_ones_in_j) % BitInteger{2u} == BitInteger{0u} ? coefficient : -coefficient;
+                  }
+                },
+                permutated_qubit1, permutated_qubit2, permutated_qubit3, permutated_qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+            }
+          }; // struct transpage_pauli_y<LocalState>
+
+          template <typename LocalState>
+          struct transpage_pauli_z;
+
+          template <typename Complex, typename Allocator>
+          struct transpage_pauli_z< ::ket::mpi::state<Complex, true, Allocator> >
+          {
+            template <
+              typename ParallelPolicy,
+              typename StateInteger, typename BitInteger, typename... Qubits>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              ::ket::mpi::state<Complex, true, Allocator>& local_state,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit1,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit2,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit3,
+              ::ket::mpi::permutated< ::ket::control<Qubits> > const... permutated_control_qubits)
+            -> ::ket::mpi::state<Complex, true, Allocator>&
+            {
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+              using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<qubit_type, num_operated_qubits> const& modified_unsorted_qubits,
+                  std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& modified_sorted_qubits_with_sentinel,
+                  int const)
+                {
+                  // 0b11...11u
+                  constexpr auto index = ((std::size_t{1u} << num_operated_qubits) - std::size_t{1u});
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  using real_type = ::ket::utility::meta::real_t<Complex>;
+                  *iter *= real_type{-1};
+                },
+                permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubit3, permutated_control_qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<StateInteger, num_operated_qubits> const& qubit_masks,
+                  std::array<StateInteger, num_operated_qubits + BitInteger{1u}> const& index_masks,
+                  int const)
+                {
+                  // 0b11...11u
+                  constexpr auto index = ((std::size_t{1u} << num_operated_qubits) - std::size_t{1u});
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  using real_type = ::ket::utility::meta::real_t<Complex>;
+                  *iter *= real_type{-1};
+                },
+                permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubit3, permutated_control_qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+            }
+
+            template <
+              typename ParallelPolicy,
+              typename StateInteger, typename BitInteger,
+              typename Qubit2, typename Qubit3, typename... Qubits>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              ::ket::mpi::state<Complex, true, Allocator>& local_state,
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit1,
+              ::ket::mpi::permutated<Qubit2> const permutated_qubit2,
+              ::ket::mpi::permutated<Qubit3> const permutated_qubit3,
+              ::ket::mpi::permutated<Qubits> const... permutated_qubits)
+            -> ::ket::mpi::state<Complex, true, Allocator>&
+            {
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+              using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<qubit_type, num_operated_qubits> const& modified_unsorted_qubits,
+                  std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& modified_sorted_qubits_with_sentinel,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubit2, Qubit3, Qubits...>::value;
+                  constexpr auto num_target_qubits = num_operated_qubits - num_control_qubits;
+                  constexpr auto num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
+
+                  // 0b1...10...0u
+                  constexpr auto base_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
+
+                  for (auto i = std::size_t{0u}; i < num_target_indices; ++i)
+                  {
+                    auto num_ones_in_i = BitInteger{0u};
+                    auto i_tmp = i;
+                    for (auto count = BitInteger{0u}; count < num_target_qubits; ++count)
+                    {
+                      if ((i_tmp bitand StateInteger{1u}) == StateInteger{1u})
+                        ++num_ones_in_i;
+
+                      i_tmp >>= BitInteger{1u};
+                    }
+
+                    using real_type = ::ket::utility::meta::real_t<Complex>;
+                    if (num_ones_in_i % BitInteger{2u} == BitInteger{1u})
+                    {
+                      using std::begin;
+                      using std::end;
+                      auto const iter
+                        = transpage_first
+                          + ::ket::gate::utility::index_with_qubits(
+                              index_wo_qubits, base_index + i,
+                              begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                              begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                      *iter *= real_type{-1.0};
+                    }
+                  }
+                },
+                permutated_qubit1, permutated_qubit2, permutated_qubit3, permutated_qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<StateInteger, num_operated_qubits> const& qubit_masks,
+                  std::array<StateInteger, num_operated_qubits + BitInteger{1u}> const& index_masks,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubit2, Qubit3, Qubits...>::value;
+                  constexpr auto num_target_qubits = num_operated_qubits - num_control_qubits;
+                  constexpr auto num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
+
+                  // 0b1...10...0u
+                  constexpr auto base_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
+
+                  for (auto i = std::size_t{0u}; i < num_target_indices; ++i)
+                  {
+                    auto num_ones_in_i = BitInteger{0u};
+                    auto i_tmp = i;
+                    for (auto count = BitInteger{0u}; count < num_target_qubits; ++count)
+                    {
+                      if ((i_tmp bitand StateInteger{1u}) == StateInteger{1u})
+                        ++num_ones_in_i;
+
+                      i_tmp >>= BitInteger{1u};
+                    }
+
+                    using real_type = ::ket::utility::meta::real_t<Complex>;
+                    if (num_ones_in_i % BitInteger{2u} == BitInteger{1u})
+                    {
+                      using std::begin;
+                      using std::end;
+                      auto const iter
+                        = transpage_first
+                          + ::ket::gate::utility::index_with_qubits(
+                              index_wo_qubits, base_index + i,
+                              begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                      *iter *= real_type{-1.0};
+                    }
+                  }
+                },
+                permutated_qubit1, permutated_qubit2, permutated_qubit3, permutated_qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+            }
+          }; // struct transpage_pauli_z<LocalState>
+
+          template <typename LocalState>
+          struct transpage_phase_shift_coeff;
+
+          template <typename Complex, typename Allocator>
+          struct transpage_phase_shift_coeff< ::ket::mpi::state<Complex, true, Allocator> >
+          {
+            template <
+              typename ParallelPolicy,
+              typename StateInteger, typename BitInteger, typename... Qubits>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              ::ket::mpi::state<Complex, true, Allocator>& local_state,
+              Complex const& phase_coefficient,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit1,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit2,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit3,
+              ::ket::mpi::permutated< ::ket::control<Qubits> > const... permutated_control_qubits)
+            -> ::ket::mpi::state<Complex, true, Allocator>&
+            {
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+              using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [&phase_coefficient](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<qubit_type, num_operated_qubits> const& modified_unsorted_qubits,
+                  std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& modified_sorted_qubits_with_sentinel,
+                  int const)
+                {
+                  // 0b11...11u
+                  constexpr auto index = ((std::size_t{1u} << num_operated_qubits) - std::size_t{1u});
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  *iter *= phase_coefficient;
+                },
+                permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubit3, permutated_control_qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [&phase_coefficient](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<StateInteger, num_operated_qubits> const& qubit_masks,
+                  std::array<StateInteger, num_operated_qubits + BitInteger{1u}> const& index_masks,
+                  int const)
+                {
+                  // 0b11...11u
+                  constexpr auto index = ((std::size_t{1u} << num_operated_qubits) - std::size_t{1u});
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  *iter *= phase_coefficient;
+                },
+                permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubit3, permutated_control_qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+            }
+
+            template <
+              typename ParallelPolicy,
+              typename StateInteger, typename BitInteger, typename... Qubits>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              ::ket::mpi::state<Complex, true, Allocator>& local_state,
+              Complex const& phase_coefficient,
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit1,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit2,
+              ::ket::mpi::permutated< ::ket::control<Qubits> > const... permutated_control_qubits)
+            -> ::ket::mpi::state<Complex, true, Allocator>&
+            {
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+              using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [&phase_coefficient](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<qubit_type, num_operated_qubits> const& modified_unsorted_qubits,
+                  std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& modified_sorted_qubits_with_sentinel,
+                  int const)
+                {
+                  // 0b11...11u
+                  constexpr auto index = ((std::size_t{1u} << num_operated_qubits) - std::size_t{1u});
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  *iter *= phase_coefficient;
+                },
+                permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [&phase_coefficient](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<StateInteger, num_operated_qubits> const& qubit_masks,
+                  std::array<StateInteger, num_operated_qubits + BitInteger{1u}> const& index_masks,
+                  int const)
+                {
+                  // 0b11...11u
+                  constexpr auto index = ((std::size_t{1u} << num_operated_qubits) - std::size_t{1u});
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  *iter *= phase_coefficient;
+                },
+                permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+            }
+          }; // struct transpage_phase_shift_coeff<LocalState>
+
+          template <typename LocalState>
+          struct transpage_phase_shift2;
+
+          template <typename Complex, typename Allocator>
+          struct transpage_phase_shift2< ::ket::mpi::state<Complex, true, Allocator> >
+          {
+            template <
+              typename ParallelPolicy,
+              typename Real, typename StateInteger, typename BitInteger, typename... Qubits>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              ::ket::mpi::state<Complex, true, Allocator>& local_state,
+              Real const phase1, Real const phase2,
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit1,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit2,
+              ::ket::mpi::permutated< ::ket::control<Qubits> > const... permutated_control_qubits)
+            -> ::ket::mpi::state<Complex, true, Allocator>&
+            {
+              auto const phase_coefficient1 = ::ket::utility::exp_i<Complex>(phase1);
+              auto const phase_coefficient2 = ::ket::utility::exp_i<Complex>(phase2);
+
+              using boost::math::constants::one_div_root_two;
+              auto const modified_phase_coefficient1 = one_div_root_two<Real>() * phase_coefficient1;
+
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+              using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [&modified_phase_coefficient1, &phase_coefficient2](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<qubit_type, num_operated_qubits> const& modified_unsorted_qubits,
+                  std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& modified_sorted_qubits_with_sentinel,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 2u);
+                  // 0b11...10u
+                  constexpr auto index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << std::size_t{1u};
+                  // 0b11...11u
+                  constexpr auto index1 = index0 bitor std::size_t{1u};
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter0
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index0,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  auto const iter1
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index1,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  auto const value0 = *iter0;
+
+                  *iter0 -= phase_coefficient2 * *iter1;
+                  *iter0 *= one_div_root_two<Real>();
+                  *iter1 *= phase_coefficient2;
+                  *iter1 += value0;
+                  *iter1 *= modified_phase_coefficient1;
+                },
+                permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [&modified_phase_coefficient1, &phase_coefficient2](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<StateInteger, num_operated_qubits> const& qubit_masks,
+                  std::array<StateInteger, num_operated_qubits + BitInteger{1u}> const& index_masks,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 2u);
+                  // 0b11...10u
+                  constexpr auto index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << std::size_t{1u};
+                  // 0b11...11u
+                  constexpr auto index1 = index0 bitor std::size_t{1u};
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter0
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index0,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  auto const iter1
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index1,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  auto const value0 = *iter0;
+
+                  *iter0 -= phase_coefficient2 * *iter1;
+                  *iter0 *= one_div_root_two<Real>();
+                  *iter1 *= phase_coefficient2;
+                  *iter1 += value0;
+                  *iter1 *= modified_phase_coefficient1;
+                },
+                permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+            }
+          }; // struct transpage_phase_shift2<LocalState>
+
+          template <typename LocalState>
+          struct transpage_adj_phase_shift2;
+
+          template <typename Complex, typename Allocator>
+          struct transpage_adj_phase_shift2< ::ket::mpi::state<Complex, true, Allocator> >
+          {
+            template <
+              typename ParallelPolicy,
+              typename Real, typename StateInteger, typename BitInteger, typename... Qubits>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              ::ket::mpi::state<Complex, true, Allocator>& local_state,
+              Real const phase1, Real const phase2,
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit1,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit2,
+              ::ket::mpi::permutated< ::ket::control<Qubits> > const... permutated_control_qubits)
+            -> ::ket::mpi::state<Complex, true, Allocator>&
+            {
+              auto const phase_coefficient1 = ::ket::utility::exp_i<Complex>(-phase1);
+              auto const phase_coefficient2 = ::ket::utility::exp_i<Complex>(-phase2);
+
+              using boost::math::constants::one_div_root_two;
+              auto const modified_phase_coefficient2 = one_div_root_two<Real>() * phase_coefficient2;
+
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+              using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [&phase_coefficient1, &modified_phase_coefficient2](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<qubit_type, num_operated_qubits> const& modified_unsorted_qubits,
+                  std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& modified_sorted_qubits_with_sentinel,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 2u);
+                  // 0b11...10u
+                  constexpr auto index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << std::size_t{1u};
+                  // 0b11...11u
+                  constexpr auto index1 = index0 bitor std::size_t{1u};
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter0
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index0,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  auto const iter1
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index1,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  auto const value0 = *iter0;
+
+                  *iter0 += phase_coefficient1 * *iter1;
+                  *iter0 *= one_div_root_two<Real>();
+                  *iter1 *= phase_coefficient1;
+                  *iter1 -= value0;
+                  *iter1 *= modified_phase_coefficient2;
+                },
+                permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [&phase_coefficient1, &modified_phase_coefficient2](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<StateInteger, num_operated_qubits> const& qubit_masks,
+                  std::array<StateInteger, num_operated_qubits + BitInteger{1u}> const& index_masks,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 2u);
+                  // 0b11...10u
+                  constexpr auto index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << std::size_t{1u};
+                  // 0b11...11u
+                  constexpr auto index1 = index0 bitor std::size_t{1u};
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter0
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index0,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  auto const iter1
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index1,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  auto const value0 = *iter0;
+
+                  *iter0 += phase_coefficient1 * *iter1;
+                  *iter0 *= one_div_root_two<Real>();
+                  *iter1 *= phase_coefficient1;
+                  *iter1 -= value0;
+                  *iter1 *= modified_phase_coefficient2;
+                },
+                permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+            }
+          }; // struct transpage_adj_phase_shift2<LocalState>
+
+          template <typename LocalState>
+          struct transpage_phase_shift3;
+
+          template <typename Complex, typename Allocator>
+          struct transpage_phase_shift3< ::ket::mpi::state<Complex, true, Allocator> >
+          {
+            template <
+              typename ParallelPolicy,
+              typename Real, typename StateInteger, typename BitInteger, typename... Qubits>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              ::ket::mpi::state<Complex, true, Allocator>& local_state,
+              Real const phase1, Real const phase2, Real const phase3,
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit1,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit2,
+              ::ket::mpi::permutated< ::ket::control<Qubits> > const... permutated_control_qubits)
+            -> ::ket::mpi::state<Complex, true, Allocator>&
+            {
+              using std::cos;
+              using std::sin;
+              using boost::math::constants::half;
+              auto const sine = sin(half<Real>() * phase1);
+              auto const cosine = cos(half<Real>() * phase1);
+
+              auto const phase_coefficient2 = ::ket::utility::exp_i<Complex>(phase2);
+              auto const phase_coefficient3 = ::ket::utility::exp_i<Complex>(phase3);
+
+              auto const sine_phase_coefficient3 = sine * phase_coefficient3;
+              auto const cosine_phase_coefficient3 = cosine * phase_coefficient3;
+
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+              using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [sine, cosine, &phase_coefficient2, &sine_phase_coefficient3, &cosine_phase_coefficient3](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<qubit_type, num_operated_qubits> const& modified_unsorted_qubits,
+                  std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& modified_sorted_qubits_with_sentinel,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 2u);
+                  // 0b11...10u
+                  constexpr auto index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << std::size_t{1u};
+                  // 0b11...11u
+                  constexpr auto index1 = index0 bitor std::size_t{1u};
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter0
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index0,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  auto const iter1
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index1,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  auto const value0 = *iter0;
+
+                  *iter0 *= cosine;
+                  *iter0 -= sine_phase_coefficient3 * *iter1;
+                  *iter1 *= cosine_phase_coefficient3;
+                  *iter1 += sine * value0;
+                  *iter1 *= phase_coefficient2;
+                },
+                permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [sine, cosine, &phase_coefficient2, &sine_phase_coefficient3, &cosine_phase_coefficient3](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<StateInteger, num_operated_qubits> const& qubit_masks,
+                  std::array<StateInteger, num_operated_qubits + BitInteger{1u}> const& index_masks,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 2u);
+                  // 0b11...10u
+                  constexpr auto index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << std::size_t{1u};
+                  // 0b11...11u
+                  constexpr auto index1 = index0 bitor std::size_t{1u};
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter0
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index0,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  auto const iter1
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index1,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  auto const value0 = *iter0;
+
+                  *iter0 *= cosine;
+                  *iter0 -= sine_phase_coefficient3 * *iter1;
+                  *iter1 *= cosine_phase_coefficient3;
+                  *iter1 += sine * value0;
+                  *iter1 *= phase_coefficient2;
+                },
+                permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+            }
+          }; // struct transpage_phase_shift3<LocalState>
+
+          template <typename LocalState>
+          struct transpage_adj_phase_shift3;
+
+          template <typename Complex, typename Allocator>
+          struct transpage_adj_phase_shift3< ::ket::mpi::state<Complex, true, Allocator> >
+          {
+            template <
+              typename ParallelPolicy,
+              typename Real, typename StateInteger, typename BitInteger, typename... Qubits>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              ::ket::mpi::state<Complex, true, Allocator>& local_state,
+              Real const phase1, Real const phase2, Real const phase3,
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit1,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit2,
+              ::ket::mpi::permutated< ::ket::control<Qubits> > const... permutated_control_qubits)
+            -> ::ket::mpi::state<Complex, true, Allocator>&
+            {
+              using std::cos;
+              using std::sin;
+              using boost::math::constants::half;
+              auto const sine = sin(half<Real>() * phase1);
+              auto const cosine = cos(half<Real>() * phase1);
+
+              auto const phase_coefficient2 = ::ket::utility::exp_i<Complex>(-phase2);
+              auto const phase_coefficient3 = ::ket::utility::exp_i<Complex>(-phase3);
+
+              auto const sine_phase_coefficient2 = sine * phase_coefficient2;
+              auto const cosine_phase_coefficient2 = cosine * phase_coefficient2;
+
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+              using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [sine, cosine, &sine_phase_coefficient2, &cosine_phase_coefficient2, &phase_coefficient3](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<qubit_type, num_operated_qubits> const& modified_unsorted_qubits,
+                  std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& modified_sorted_qubits_with_sentinel,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 2u);
+                  // 0b11...10u
+                  constexpr auto index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << std::size_t{1u};
+                  // 0b11...11u
+                  constexpr auto index1 = index0 bitor std::size_t{1u};
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter0
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index0,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  auto const iter1
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index1,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  auto const value0 = *iter0;
+
+                  *iter0 *= cosine;
+                  *iter0 += sine_phase_coefficient2 * *iter1;
+                  *iter1 *= cosine_phase_coefficient2;
+                  *iter1 -= sine * value0;
+                  *iter1 *= phase_coefficient3;
+                },
+                permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [sine, cosine, &sine_phase_coefficient2, &cosine_phase_coefficient2, &phase_coefficient3](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<StateInteger, num_operated_qubits> const& qubit_masks,
+                  std::array<StateInteger, num_operated_qubits + BitInteger{1u}> const& index_masks,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 2u);
+                  // 0b11...10u
+                  constexpr auto index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << std::size_t{1u};
+                  // 0b11...11u
+                  constexpr auto index1 = index0 bitor std::size_t{1u};
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter0
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index0,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  auto const iter1
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index1,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  auto const value0 = *iter0;
+
+                  *iter0 *= cosine;
+                  *iter0 += sine_phase_coefficient2 * *iter1;
+                  *iter1 *= cosine_phase_coefficient2;
+                  *iter1 -= sine * value0;
+                  *iter1 *= phase_coefficient3;
+                },
+                permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+            }
+          }; // struct transpage_adj_phase_shift3<LocalState>
+
+          template <typename LocalState>
+          struct transpage_sqrt_pauli_x;
+
+          template <typename Complex, typename Allocator>
+          struct transpage_sqrt_pauli_x< ::ket::mpi::state<Complex, true, Allocator> >
+          {
+            template <typename ParallelPolicy, typename StateInteger, typename BitInteger, typename... ControlQubits>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              ::ket::mpi::state<Complex, true, Allocator>& local_state,
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit1,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit2,
+              ::ket::mpi::permutated<ControlQubits> const... permutated_control_qubits)
+            -> ::ket::mpi::state<Complex, true, Allocator>&
+            {
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+              using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<qubit_type, num_operated_qubits> const& modified_unsorted_qubits,
+                  std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& modified_sorted_qubits_with_sentinel,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = sizeof...(ControlQubits) + 2u;
+                  // 0b11...10u
+                  constexpr auto index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{1u};
+                  // 0b11...11u
+                  constexpr auto index1 = index0 bitor std::size_t{1u};
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter0
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index0,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  auto const iter1
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index1,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  auto const value0 = *iter0;
+
+                  using real_type = ::ket::utility::meta::real_t<Complex>;
+                  using boost::math::constants::half;
+                  constexpr auto half_one_plus_i = Complex{half<real_type>(), half<real_type>()};
+                  constexpr auto half_one_minus_i = Complex{half<real_type>(), -half<real_type>()};
+                  *iter0 *= half_one_plus_i;
+                  *iter0 += half_one_minus_i * *iter1;
+                  *iter1 *= half_one_plus_i;
+                  *iter1 += half_one_minus_i * value0;
+                },
+                permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<StateInteger, num_operated_qubits> const& qubit_masks,
+                  std::array<StateInteger, num_operated_qubits + BitInteger{1u}> const& index_masks,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = sizeof...(ControlQubits) + 2u;
+                  // 0b11...10u
+                  constexpr auto index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{1u};
+                  // 0b11...11u
+                  constexpr auto index1 = index0 bitor std::size_t{1u};
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter0
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index0,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  auto const iter1
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index1,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  auto const value0 = *iter0;
+
+                  using real_type = ::ket::utility::meta::real_t<Complex>;
+                  using boost::math::constants::half;
+                  constexpr auto half_one_plus_i = Complex{half<real_type>(), half<real_type>()};
+                  constexpr auto half_one_minus_i = Complex{half<real_type>(), -half<real_type>()};
+                  *iter0 *= half_one_plus_i;
+                  *iter0 += half_one_minus_i * *iter1;
+                  *iter1 *= half_one_plus_i;
+                  *iter1 += half_one_minus_i * value0;
+                },
+                permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+            }
+          }; // struct transpage_sqrt_pauli_x<LocalState>
+
+          template <typename LocalState>
+          struct transpage_adj_sqrt_pauli_x;
+
+          template <typename Complex, typename Allocator>
+          struct transpage_adj_sqrt_pauli_x< ::ket::mpi::state<Complex, true, Allocator> >
+          {
+            template <typename ParallelPolicy, typename StateInteger, typename BitInteger, typename... ControlQubits>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              ::ket::mpi::state<Complex, true, Allocator>& local_state,
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit1,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit2,
+              ::ket::mpi::permutated<ControlQubits> const... permutated_control_qubits)
+            -> ::ket::mpi::state<Complex, true, Allocator>&
+            {
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+              using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<qubit_type, num_operated_qubits> const& modified_unsorted_qubits,
+                  std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& modified_sorted_qubits_with_sentinel,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = sizeof...(ControlQubits) + 2u;
+                  // 0b11...10u
+                  constexpr auto index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{1u};
+                  // 0b11...11u
+                  constexpr auto index1 = index0 bitor std::size_t{1u};
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter0
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index0,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  auto const iter1
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index1,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  auto const value0 = *iter0;
+
+                  using real_type = ::ket::utility::meta::real_t<Complex>;
+                  using boost::math::constants::half;
+                  constexpr auto half_one_plus_i = Complex{half<real_type>(), half<real_type>()};
+                  constexpr auto half_one_minus_i = Complex{half<real_type>(), -half<real_type>()};
+                  *iter0 *= half_one_minus_i;
+                  *iter0 += half_one_plus_i * *iter1;
+                  *iter1 *= half_one_minus_i;
+                  *iter1 += half_one_plus_i * value0;
+                },
+                permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<StateInteger, num_operated_qubits> const& qubit_masks,
+                  std::array<StateInteger, num_operated_qubits + BitInteger{1u}> const& index_masks,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = sizeof...(ControlQubits) + 2u;
+                  // 0b11...10u
+                  constexpr auto index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{1u};
+                  // 0b11...11u
+                  constexpr auto index1 = index0 bitor std::size_t{1u};
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter0
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index0,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  auto const iter1
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index1,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  auto const value0 = *iter0;
+
+                  using real_type = ::ket::utility::meta::real_t<Complex>;
+                  using boost::math::constants::half;
+                  constexpr auto half_one_plus_i = Complex{half<real_type>(), half<real_type>()};
+                  constexpr auto half_one_minus_i = Complex{half<real_type>(), -half<real_type>()};
+                  *iter0 *= half_one_minus_i;
+                  *iter0 += half_one_plus_i * *iter1;
+                  *iter1 *= half_one_minus_i;
+                  *iter1 += half_one_plus_i * value0;
+                },
+                permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+            }
+          }; // struct transpage_adj_sqrt_pauli_x<LocalState>
+
+          template <typename LocalState>
+          struct transpage_sqrt_pauli_y;
+
+          template <typename Complex, typename Allocator>
+          struct transpage_sqrt_pauli_y< ::ket::mpi::state<Complex, true, Allocator> >
+          {
+            template <typename ParallelPolicy, typename StateInteger, typename BitInteger, typename... ControlQubits>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              ::ket::mpi::state<Complex, true, Allocator>& local_state,
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit1,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit2,
+              ::ket::mpi::permutated<ControlQubits> const... permutated_control_qubits)
+            -> ::ket::mpi::state<Complex, true, Allocator>&
+            {
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+              using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<qubit_type, num_operated_qubits> const& modified_unsorted_qubits,
+                  std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& modified_sorted_qubits_with_sentinel,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = sizeof...(ControlQubits) + 2u;
+                  // 0b11...10u
+                  constexpr auto index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{1u};
+                  // 0b11...11u
+                  constexpr auto index1 = index0 bitor std::size_t{1u};
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter0
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index0,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  auto const iter1
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index1,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  auto const value0 = *iter0;
+
+                  using real_type = ::ket::utility::meta::real_t<Complex>;
+                  using boost::math::constants::half;
+                  constexpr auto half_one_plus_i = Complex{half<real_type>(), half<real_type>()};
+                  *iter0 *= half_one_plus_i;
+                  *iter0 -= half_one_plus_i * *iter1;
+                  *iter1 *= half_one_plus_i;
+                  *iter1 += half_one_plus_i * value0;
+                },
+                permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<StateInteger, num_operated_qubits> const& qubit_masks,
+                  std::array<StateInteger, num_operated_qubits + BitInteger{1u}> const& index_masks,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = sizeof...(ControlQubits) + 2u;
+                  // 0b11...10u
+                  constexpr auto index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{1u};
+                  // 0b11...11u
+                  constexpr auto index1 = index0 bitor std::size_t{1u};
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter0
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index0,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  auto const iter1
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index1,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  auto const value0 = *iter0;
+
+                  using real_type = ::ket::utility::meta::real_t<Complex>;
+                  using boost::math::constants::half;
+                  constexpr auto half_one_plus_i = Complex{half<real_type>(), half<real_type>()};
+                  *iter0 *= half_one_plus_i;
+                  *iter0 -= half_one_plus_i * *iter1;
+                  *iter1 *= half_one_plus_i;
+                  *iter1 += half_one_plus_i * value0;
+                },
+                permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+            }
+          }; // struct transpage_sqrt_pauli_y<LocalState>
+
+          template <typename LocalState>
+          struct transpage_adj_sqrt_pauli_y;
+
+          template <typename Complex, typename Allocator>
+          struct transpage_adj_sqrt_pauli_y< ::ket::mpi::state<Complex, true, Allocator> >
+          {
+            template <typename ParallelPolicy, typename StateInteger, typename BitInteger, typename... ControlQubits>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              ::ket::mpi::state<Complex, true, Allocator>& local_state,
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit1,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit2,
+              ::ket::mpi::permutated<ControlQubits> const... permutated_control_qubits)
+            -> ::ket::mpi::state<Complex, true, Allocator>&
+            {
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+              using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<qubit_type, num_operated_qubits> const& modified_unsorted_qubits,
+                  std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& modified_sorted_qubits_with_sentinel,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = sizeof...(ControlQubits) + 2u;
+                  // 0b11...10u
+                  constexpr auto index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{1u};
+                  // 0b11...11u
+                  constexpr auto index1 = index0 bitor std::size_t{1u};
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter0
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index0,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  auto const iter1
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index1,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  auto const value0 = *iter0;
+
+                  using real_type = ::ket::utility::meta::real_t<Complex>;
+                  using boost::math::constants::half;
+                  constexpr auto half_one_minus_i = Complex{half<real_type>(), -half<real_type>()};
+                  *iter0 *= half_one_minus_i;
+                  *iter0 += half_one_minus_i * *iter1;
+                  *iter1 *= half_one_minus_i;
+                  *iter1 -= half_one_minus_i * value0;
+                },
+                permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<StateInteger, num_operated_qubits> const& qubit_masks,
+                  std::array<StateInteger, num_operated_qubits + BitInteger{1u}> const& index_masks,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = sizeof...(ControlQubits) + 2u;
+                  // 0b11...10u
+                  constexpr auto index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{1u};
+                  // 0b11...11u
+                  constexpr auto index1 = index0 bitor std::size_t{1u};
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter0
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index0,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  auto const iter1
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index1,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  auto const value0 = *iter0;
+
+                  using real_type = ::ket::utility::meta::real_t<Complex>;
+                  using boost::math::constants::half;
+                  constexpr auto half_one_minus_i = Complex{half<real_type>(), -half<real_type>()};
+                  *iter0 *= half_one_minus_i;
+                  *iter0 += half_one_minus_i * *iter1;
+                  *iter1 *= half_one_minus_i;
+                  *iter1 -= half_one_minus_i * value0;
+                },
+                permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+            }
+          }; // struct transpage_adj_sqrt_pauli_y<LocalState>
+
+          template <typename LocalState>
+          struct transpage_sqrt_pauli_z;
+
+          template <typename Complex, typename Allocator>
+          struct transpage_sqrt_pauli_z< ::ket::mpi::state<Complex, true, Allocator> >
+          {
+            template <typename ParallelPolicy, typename StateInteger, typename BitInteger, typename... ControlQubits>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              ::ket::mpi::state<Complex, true, Allocator>& local_state,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit1,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit2,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit3,
+              ::ket::mpi::permutated<ControlQubits> const... permutated_control_qubits)
+            -> ::ket::mpi::state<Complex, true, Allocator>&
+            {
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+              using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<qubit_type, num_operated_qubits> const& modified_unsorted_qubits,
+                  std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& modified_sorted_qubits_with_sentinel,
+                  int const)
+                {
+                  // 0b11...11u
+                  constexpr auto index = ((std::size_t{1u} << num_operated_qubits) - std::size_t{1u});
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  *iter *= ::ket::utility::imaginary_unit<Complex>();
+                },
+                permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubit3, permutated_control_qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<StateInteger, num_operated_qubits> const& qubit_masks,
+                  std::array<StateInteger, num_operated_qubits + BitInteger{1u}> const& index_masks,
+                  int const)
+                {
+                  // 0b11...11u
+                  constexpr auto index = ((std::size_t{1u} << num_operated_qubits) - std::size_t{1u});
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  *iter *= ::ket::utility::imaginary_unit<Complex>();
+                },
+                permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubit3, permutated_control_qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+            }
+
+            template <
+              typename ParallelPolicy, typename StateInteger, typename BitInteger,
+              typename Qubit2, typename Qubit3, typename... Qubits>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              ::ket::mpi::state<Complex, true, Allocator>& local_state,
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit1,
+              ::ket::mpi::permutated<Qubit2> const permutated_qubit2,
+              ::ket::mpi::permutated<Qubit3> const permutated_qubit3,
+              ::ket::mpi::permutated<Qubits> const... permutated_qubits)
+            -> ::ket::mpi::state<Complex, true, Allocator>&
+            {
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+              using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<qubit_type, num_operated_qubits> const& modified_unsorted_qubits,
+                  std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& modified_sorted_qubits_with_sentinel,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubit2, Qubit3, Qubits...>::value;
+                  constexpr auto num_target_qubits = num_operated_qubits - num_control_qubits;
+                  constexpr auto num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
+
+                  // 0b1...10...0u
+                  constexpr auto base_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
+
+                  for (auto i = std::size_t{0u}; i < num_target_indices; ++i)
+                  {
+                    auto num_ones_in_i = BitInteger{0u};
+                    auto i_tmp = i;
+                    for (auto count = BitInteger{0u}; count < num_target_qubits; ++count)
+                    {
+                      if ((i_tmp bitand StateInteger{1u}) == StateInteger{1u})
+                        ++num_ones_in_i;
+
+                      i_tmp >>= BitInteger{1u};
+                    }
+
+                    using real_type = ::ket::utility::meta::real_t<Complex>;
+                    auto const remainder = num_ones_in_i % BitInteger{4u};
+                    auto const coefficient
+                      = remainder == BitInteger{0u}
+                        ? Complex{real_type{1}}
+                        : remainder == BitInteger{1u}
+                          ? ::ket::utility::imaginary_unit<Complex>()
+                          : remainder == BitInteger{2u}
+                            ? Complex{real_type{-1}}
+                            : ::ket::utility::minus_imaginary_unit<Complex>();
+
+                    using std::begin;
+                    using std::end;
+                    auto const iter
+                      = transpage_first
+                        + ::ket::gate::utility::index_with_qubits(
+                            index_wo_qubits, base_index + i,
+                            begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                            begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                    *iter *= coefficient;
+                  }
+                },
+                permutated_qubit1, permutated_qubit2, permutated_qubit3, permutated_qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<StateInteger, num_operated_qubits> const& qubit_masks,
+                  std::array<StateInteger, num_operated_qubits + BitInteger{1u}> const& index_masks,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubit2, Qubit3, Qubits...>::value;
+                  constexpr auto num_target_qubits = num_operated_qubits - num_control_qubits;
+                  constexpr auto num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
+
+                  // 0b1...10...0u
+                  constexpr auto base_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
+
+                  for (auto i = std::size_t{0u}; i < num_target_indices; ++i)
+                  {
+                    auto num_ones_in_i = BitInteger{0u};
+                    auto i_tmp = i;
+                    for (auto count = BitInteger{0u}; count < num_target_qubits; ++count)
+                    {
+                      if ((i_tmp bitand StateInteger{1u}) == StateInteger{1u})
+                        ++num_ones_in_i;
+
+                      i_tmp >>= BitInteger{1u};
+                    }
+
+                    using real_type = ::ket::utility::meta::real_t<Complex>;
+                    auto const remainder = num_ones_in_i % BitInteger{4u};
+                    auto const coefficient
+                      = remainder == BitInteger{0u}
+                        ? Complex{real_type{1}}
+                        : remainder == BitInteger{1u}
+                          ? ::ket::utility::imaginary_unit<Complex>()
+                          : remainder == BitInteger{2u}
+                            ? Complex{real_type{-1}}
+                            : ::ket::utility::minus_imaginary_unit<Complex>();
+
+                    using std::begin;
+                    using std::end;
+                    auto const iter
+                      = transpage_first
+                        + ::ket::gate::utility::index_with_qubits(
+                            index_wo_qubits, base_index + i,
+                            begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                    *iter *= coefficient;
+                  }
+                },
+                permutated_qubit1, permutated_qubit2, permutated_qubit3, permutated_qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+            }
+          }; // struct transpage_sqrt_pauli_z<LocalState>
+
+          template <typename LocalState>
+          struct transpage_adj_sqrt_pauli_z;
+
+          template <typename Complex, typename Allocator>
+          struct transpage_adj_sqrt_pauli_z< ::ket::mpi::state<Complex, true, Allocator> >
+          {
+            template <typename ParallelPolicy, typename StateInteger, typename BitInteger, typename... ControlQubits>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              ::ket::mpi::state<Complex, true, Allocator>& local_state,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit1,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit2,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit3,
+              ::ket::mpi::permutated<ControlQubits> const... permutated_control_qubits)
+            -> ::ket::mpi::state<Complex, true, Allocator>&
+            {
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+              using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<qubit_type, num_operated_qubits> const& modified_unsorted_qubits,
+                  std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& modified_sorted_qubits_with_sentinel,
+                  int const)
+                {
+                  // 0b11...11u
+                  constexpr auto index = ((std::size_t{1u} << num_operated_qubits) - std::size_t{1u});
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  *iter *= ::ket::utility::minus_imaginary_unit<Complex>();
+                },
+                permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubit3, permutated_control_qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<StateInteger, num_operated_qubits> const& qubit_masks,
+                  std::array<StateInteger, num_operated_qubits + BitInteger{1u}> const& index_masks,
+                  int const)
+                {
+                  // 0b11...11u
+                  constexpr auto index = ((std::size_t{1u} << num_operated_qubits) - std::size_t{1u});
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  *iter *= ::ket::utility::minus_imaginary_unit<Complex>();
+                },
+                permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubit3, permutated_control_qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+            }
+
+            template <
+              typename ParallelPolicy, typename StateInteger, typename BitInteger,
+              typename Qubit2, typename Qubit3, typename... Qubits>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              ::ket::mpi::state<Complex, true, Allocator>& local_state,
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit1,
+              ::ket::mpi::permutated<Qubit2> const permutated_qubit2,
+              ::ket::mpi::permutated<Qubit3> const permutated_qubit3,
+              ::ket::mpi::permutated<Qubits> const... permutated_qubits)
+            -> ::ket::mpi::state<Complex, true, Allocator>&
+            {
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+              using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<qubit_type, num_operated_qubits> const& modified_unsorted_qubits,
+                  std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& modified_sorted_qubits_with_sentinel,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubit2, Qubit3, Qubits...>::value;
+                  constexpr auto num_target_qubits = num_operated_qubits - num_control_qubits;
+                  constexpr auto num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
+
+                  // 0b1...10...0u
+                  constexpr auto base_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
+
+                  for (auto i = std::size_t{0u}; i < num_target_indices; ++i)
+                  {
+                    auto num_ones_in_i = BitInteger{0u};
+                    auto i_tmp = i;
+                    for (auto count = BitInteger{0u}; count < num_target_qubits; ++count)
+                    {
+                      if ((i_tmp bitand StateInteger{1u}) == StateInteger{1u})
+                        ++num_ones_in_i;
+
+                      i_tmp >>= BitInteger{1u};
+                    }
+
+                    using real_type = ::ket::utility::meta::real_t<Complex>;
+                    auto const remainder = num_ones_in_i % BitInteger{4u};
+                    auto const coefficient
+                      = remainder == BitInteger{0u}
+                        ? Complex{real_type{1}}
+                        : remainder == BitInteger{1u}
+                          ? ::ket::utility::minus_imaginary_unit<Complex>()
+                          : remainder == BitInteger{2u}
+                            ? Complex{real_type{-1}}
+                            : ::ket::utility::imaginary_unit<Complex>();
+
+                    using std::begin;
+                    using std::end;
+                    auto const iter
+                      = transpage_first
+                        + ::ket::gate::utility::index_with_qubits(
+                            index_wo_qubits, base_index + i,
+                            begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                            begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                    *iter *= coefficient;
+                  }
+                },
+                permutated_qubit1, permutated_qubit2, permutated_qubit3, permutated_qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<StateInteger, num_operated_qubits> const& qubit_masks,
+                  std::array<StateInteger, num_operated_qubits + BitInteger{1u}> const& index_masks,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubit2, Qubit3, Qubits...>::value;
+                  constexpr auto num_target_qubits = num_operated_qubits - num_control_qubits;
+                  constexpr auto num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
+
+                  // 0b1...10...0u
+                  constexpr auto base_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
+
+                  for (auto i = std::size_t{0u}; i < num_target_indices; ++i)
+                  {
+                    auto num_ones_in_i = BitInteger{0u};
+                    auto i_tmp = i;
+                    for (auto count = BitInteger{0u}; count < num_target_qubits; ++count)
+                    {
+                      if ((i_tmp bitand StateInteger{1u}) == StateInteger{1u})
+                        ++num_ones_in_i;
+
+                      i_tmp >>= BitInteger{1u};
+                    }
+
+                    using real_type = ::ket::utility::meta::real_t<Complex>;
+                    auto const remainder = num_ones_in_i % BitInteger{4u};
+                    auto const coefficient
+                      = remainder == BitInteger{0u}
+                        ? Complex{real_type{1}}
+                        : remainder == BitInteger{1u}
+                          ? ::ket::utility::minus_imaginary_unit<Complex>()
+                          : remainder == BitInteger{2u}
+                            ? Complex{real_type{-1}}
+                            : ::ket::utility::imaginary_unit<Complex>();
+
+                    using std::begin;
+                    using std::end;
+                    auto const iter
+                      = transpage_first
+                        + ::ket::gate::utility::index_with_qubits(
+                            index_wo_qubits, base_index + i,
+                            begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                    *iter *= coefficient;
+                  }
+                },
+                permutated_qubit1, permutated_qubit2, permutated_qubit3, permutated_qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+            }
+          }; // struct transpage_adj_sqrt_pauli_z<LocalState>
+
+          template <typename LocalState>
+          struct transpage_swap;
+
+          template <typename Complex, typename Allocator>
+          struct transpage_swap< ::ket::mpi::state<Complex, true, Allocator> >
+          {
+            template <
+              typename ParallelPolicy,
+              typename StateInteger, typename BitInteger, typename... ControlQubits>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              ::ket::mpi::state<Complex, true, Allocator>& local_state,
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit1,
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit2,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit,
+              ::ket::mpi::permutated<ControlQubits> const... permutated_control_qubits)
+            -> ::ket::mpi::state<Complex, true, Allocator>&
+            {
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+              using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<qubit_type, num_operated_qubits> const& modified_unsorted_qubits,
+                  std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& modified_sorted_qubits_with_sentinel,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 1u);
+                  // 0b11...100u
+                  constexpr auto base_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{2u};
+                  // 0b11...101u
+                  constexpr auto index01 = base_index bitor std::size_t{1u};
+                  // 0b11...110u
+                  constexpr auto index10 = base_index bitor (std::size_t{1u} << BitInteger{1u});
+
+                  using std::begin;
+                  using std::end;
+                  std::iter_swap(
+                    transpage_first
+                    + ::ket::gate::utility::index_with_qubits(
+                        index_wo_qubits, index01,
+                        begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                        begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel)),
+                    transpage_first
+                    + ::ket::gate::utility::index_with_qubits(
+                        index_wo_qubits, index10,
+                        begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                        begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel)));
+                },
+                permutated_target_qubit1, permutated_target_qubit2, permutated_control_qubit, permutated_control_qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<StateInteger, num_operated_qubits> const& qubit_masks,
+                  std::array<StateInteger, num_operated_qubits + BitInteger{1u}> const& index_masks,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 1u);
+                  // 0b11...100u
+                  constexpr auto base_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{2u};
+                  // 0b11...101u
+                  constexpr auto index01 = base_index bitor std::size_t{1u};
+                  // 0b11...110u
+                  constexpr auto index10 = base_index bitor (std::size_t{1u} << BitInteger{1u});
+
+                  using std::begin;
+                  using std::end;
+                  std::iter_swap(
+                    transpage_first
+                    + ::ket::gate::utility::index_with_qubits(
+                        index_wo_qubits, index01,
+                        begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks)),
+                    transpage_first
+                    + ::ket::gate::utility::index_with_qubits(
+                        index_wo_qubits, index10,
+                        begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks)));
+                },
+                permutated_target_qubit1, permutated_target_qubit2, permutated_control_qubit, permutated_control_qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+            }
+          }; // struct transpage_swap<LocalState>
+
+          template <typename LocalState>
+          struct transpage_x_rotation_half_pi;
+
+          template <typename Complex, typename Allocator>
+          struct transpage_x_rotation_half_pi< ::ket::mpi::state<Complex, true, Allocator> >
+          {
+            template <typename ParallelPolicy, typename StateInteger, typename BitInteger, typename... ControlQubits>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              ::ket::mpi::state<Complex, true, Allocator>& local_state,
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit1,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit2,
+              ::ket::mpi::permutated<ControlQubits> const... permutated_control_qubits)
+            -> ::ket::mpi::state<Complex, true, Allocator>&
+            {
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+              using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<qubit_type, num_operated_qubits> const& modified_unsorted_qubits,
+                  std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& modified_sorted_qubits_with_sentinel,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = sizeof...(ControlQubits) + 2u;
+                  // 0b11...10u
+                  constexpr auto index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{1u};
+                  // 0b11...11u
+                  constexpr auto index1 = index0 bitor std::size_t{1u};
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter0
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index0,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  auto const iter1
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index1,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  auto const value0 = *iter0;
+
+                  using real_type = ::ket::utility::meta::real_t<Complex>;
+                  using boost::math::constants::one_div_root_two;
+                  *iter0 += ::ket::utility::imaginary_unit<Complex>() * (*iter1);
+                  *iter0 *= one_div_root_two<real_type>();
+                  *iter1 += ::ket::utility::imaginary_unit<Complex>() * value0;
+                  *iter1 *= one_div_root_two<real_type>();
+                },
+                permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<StateInteger, num_operated_qubits> const& qubit_masks,
+                  std::array<StateInteger, num_operated_qubits + BitInteger{1u}> const& index_masks,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = sizeof...(ControlQubits) + 2u;
+                  // 0b11...10u
+                  constexpr auto index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{1u};
+                  // 0b11...11u
+                  constexpr auto index1 = index0 bitor std::size_t{1u};
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter0
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index0,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  auto const iter1
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index1,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  auto const value0 = *iter0;
+
+                  using real_type = ::ket::utility::meta::real_t<Complex>;
+                  using boost::math::constants::one_div_root_two;
+                  *iter0 += ::ket::utility::imaginary_unit<Complex>() * (*iter1);
+                  *iter0 *= one_div_root_two<real_type>();
+                  *iter1 += ::ket::utility::imaginary_unit<Complex>() * value0;
+                  *iter1 *= one_div_root_two<real_type>();
+                },
+                permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+            }
+          }; // struct transpage_x_rotation_half_pi<LocalState>
+
+          template <typename LocalState>
+          struct transpage_adj_x_rotation_half_pi;
+
+          template <typename Complex, typename Allocator>
+          struct transpage_adj_x_rotation_half_pi< ::ket::mpi::state<Complex, true, Allocator> >
+          {
+            template <typename ParallelPolicy, typename StateInteger, typename BitInteger, typename... ControlQubits>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              ::ket::mpi::state<Complex, true, Allocator>& local_state,
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit1,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit2,
+              ::ket::mpi::permutated<ControlQubits> const... permutated_control_qubits)
+            -> ::ket::mpi::state<Complex, true, Allocator>&
+            {
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+              using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<qubit_type, num_operated_qubits> const& modified_unsorted_qubits,
+                  std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& modified_sorted_qubits_with_sentinel,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = sizeof...(ControlQubits) + 2u;
+                  // 0b11...10u
+                  constexpr auto index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{1u};
+                  // 0b11...11u
+                  constexpr auto index1 = index0 bitor std::size_t{1u};
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter0
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index0,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  auto const iter1
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index1,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  auto const value0 = *iter0;
+
+                  using real_type = ::ket::utility::meta::real_t<Complex>;
+                  using boost::math::constants::one_div_root_two;
+                  *iter0 -= ::ket::utility::imaginary_unit<Complex>() * (*iter1);
+                  *iter0 *= one_div_root_two<real_type>();
+                  *iter1 -= ::ket::utility::imaginary_unit<Complex>() * value0;
+                  *iter1 *= one_div_root_two<real_type>();
+                },
+                permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<StateInteger, num_operated_qubits> const& qubit_masks,
+                  std::array<StateInteger, num_operated_qubits + BitInteger{1u}> const& index_masks,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = sizeof...(ControlQubits) + 2u;
+                  // 0b11...10u
+                  constexpr auto index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{1u};
+                  // 0b11...11u
+                  constexpr auto index1 = index0 bitor std::size_t{1u};
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter0
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index0,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  auto const iter1
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index1,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  auto const value0 = *iter0;
+
+                  using real_type = ::ket::utility::meta::real_t<Complex>;
+                  using boost::math::constants::one_div_root_two;
+                  *iter0 -= ::ket::utility::imaginary_unit<Complex>() * (*iter1);
+                  *iter0 *= one_div_root_two<real_type>();
+                  *iter1 -= ::ket::utility::imaginary_unit<Complex>() * value0;
+                  *iter1 *= one_div_root_two<real_type>();
+                },
+                permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+            }
+          }; // struct transpage_adj_x_rotation_half_pi<LocalState>
+
+          template <typename LocalState>
+          struct transpage_y_rotation_half_pi;
+
+          template <typename Complex, typename Allocator>
+          struct transpage_y_rotation_half_pi< ::ket::mpi::state<Complex, true, Allocator> >
+          {
+            template <typename ParallelPolicy, typename StateInteger, typename BitInteger, typename... ControlQubits>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              ::ket::mpi::state<Complex, true, Allocator>& local_state,
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit1,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit2,
+              ::ket::mpi::permutated<ControlQubits> const... permutated_control_qubits)
+            -> ::ket::mpi::state<Complex, true, Allocator>&
+            {
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+              using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<qubit_type, num_operated_qubits> const& modified_unsorted_qubits,
+                  std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& modified_sorted_qubits_with_sentinel,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = sizeof...(ControlQubits) + 2u;
+                  // 0b11...10u
+                  constexpr auto index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{1u};
+                  // 0b11...11u
+                  constexpr auto index1 = index0 bitor std::size_t{1u};
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter0
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index0,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  auto const iter1
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index1,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  auto const value0 = *iter0;
+
+                  using real_type = ::ket::utility::meta::real_t<Complex>;
+                  using boost::math::constants::one_div_root_two;
+                  *iter0 += *iter1;
+                  *iter0 *= one_div_root_two<real_type>();
+                  *iter1 -= value0;
+                  *iter1 *= one_div_root_two<real_type>();
+                },
+                permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<StateInteger, num_operated_qubits> const& qubit_masks,
+                  std::array<StateInteger, num_operated_qubits + BitInteger{1u}> const& index_masks,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = sizeof...(ControlQubits) + 2u;
+                  // 0b11...10u
+                  constexpr auto index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{1u};
+                  // 0b11...11u
+                  constexpr auto index1 = index0 bitor std::size_t{1u};
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter0
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index0,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  auto const iter1
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index1,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  auto const value0 = *iter0;
+
+                  using real_type = ::ket::utility::meta::real_t<Complex>;
+                  using boost::math::constants::one_div_root_two;
+                  *iter0 += *iter1;
+                  *iter0 *= one_div_root_two<real_type>();
+                  *iter1 -= value0;
+                  *iter1 *= one_div_root_two<real_type>();
+                },
+                permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+            }
+          }; // struct transpage_y_rotation_half_pi<LocalState>
+
+          template <typename LocalState>
+          struct transpage_adj_y_rotation_half_pi;
+
+          template <typename Complex, typename Allocator>
+          struct transpage_adj_y_rotation_half_pi< ::ket::mpi::state<Complex, true, Allocator> >
+          {
+            template <typename ParallelPolicy, typename StateInteger, typename BitInteger, typename... ControlQubits>
+            static auto call(
+              ParallelPolicy const parallel_policy,
+              ::ket::mpi::state<Complex, true, Allocator>& local_state,
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit1,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit2,
+              ::ket::mpi::permutated<ControlQubits> const... permutated_control_qubits)
+            -> ::ket::mpi::state<Complex, true, Allocator>&
+            {
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+              using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<qubit_type, num_operated_qubits> const& modified_unsorted_qubits,
+                  std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& modified_sorted_qubits_with_sentinel,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = sizeof...(ControlQubits) + 2u;
+                  // 0b11...10u
+                  constexpr auto index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{1u};
+                  // 0b11...11u
+                  constexpr auto index1 = index0 bitor std::size_t{1u};
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter0
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index0,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  auto const iter1
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index1,
+                          begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
+                          begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
+                  auto const value0 = *iter0;
+
+                  using real_type = ::ket::utility::meta::real_t<Complex>;
+                  using boost::math::constants::one_div_root_two;
+                  *iter0 -= *iter1;
+                  *iter0 *= one_div_root_two<real_type>();
+                  *iter1 += value0;
+                  *iter1 *= one_div_root_two<real_type>();
+                },
+                permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+              constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 3u);
+
+              return ::ket::mpi::gate::local::transpage_gate(
+                parallel_policy, local_state,
+                [](
+                  auto const transpage_first, StateInteger const index_wo_qubits,
+                  std::array<StateInteger, num_operated_qubits> const& qubit_masks,
+                  std::array<StateInteger, num_operated_qubits + BitInteger{1u}> const& index_masks,
+                  int const)
+                {
+                  constexpr auto num_control_qubits = sizeof...(ControlQubits) + 2u;
+                  // 0b11...10u
+                  constexpr auto index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{1u};
+                  // 0b11...11u
+                  constexpr auto index1 = index0 bitor std::size_t{1u};
+
+                  using std::begin;
+                  using std::end;
+                  auto const iter0
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index0,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  auto const iter1
+                    = transpage_first
+                      + ::ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, index1,
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                  auto const value0 = *iter0;
+
+                  using real_type = ::ket::utility::meta::real_t<Complex>;
+                  using boost::math::constants::one_div_root_two;
+                  *iter0 -= *iter1;
+                  *iter0 *= one_div_root_two<real_type>();
+                  *iter1 += value0;
+                  *iter1 *= one_div_root_two<real_type>();
+                },
+                permutated_target_qubit, permutated_control_qubit1, permutated_control_qubit2, permutated_control_qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+            }
+          }; // struct transpage_adj_y_rotation_half_pi<LocalState>
+        } // namespace dispatch
+      } // namespace local
+    } // namespace gate
 
     namespace page
     {
