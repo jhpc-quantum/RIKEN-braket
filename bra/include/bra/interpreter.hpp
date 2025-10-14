@@ -1,5 +1,5 @@
-#ifndef BRA_GATES_HPP
-# define BRA_GATES_HPP
+#ifndef BRA_INTERPRETER_HPP
+# define BRA_INTERPRETER_HPP
 
 # include <cassert>
 # include <iosfwd>
@@ -65,17 +65,20 @@ namespace bra
   }; // class wrong_mpi_communicator_size_error
 # endif // BRA_NO_MPI
 
-  enum class begin_statement : int { measurement, fusion, learning_machine };
-  enum class end_statement : int { fusion };
+  enum class begin_statement : int { measurement, fusion, circuit, learning_machine };
+  enum class end_statement : int { fusion, circuit };
   enum class bit_statement : int { assignment };
   enum class generate_statement : int { events };
   enum class depolarizing_statement : int { channel };
 
-  class gates
+  class interpreter
   {
-    using value_type_ = std::unique_ptr< ::bra::gate::gate >;
-    using data_type = std::vector<value_type_>;
-    data_type data_;
+   public:
+    using gate_pointer = std::unique_ptr< ::bra::gate::gate >;
+    using circuit_type = std::vector<gate_pointer>;
+
+   private:
+    std::vector<circuit_type> circuits_;
 
    public:
     using columns_type = wrong_mnemonics_error::columns_type;
@@ -99,142 +102,104 @@ namespace bra
     yampi::rank root_;
 # endif
 
+    int circuit_index_;
+    bool is_in_circuit_;
+
    public:
-    using value_type = data_type::value_type;
-    using allocator_type = data_type::allocator_type;
-    using size_type = data_type::size_type;
-    using difference_type = data_type::difference_type;
-    using reference = data_type::reference;
-    using const_reference = data_type::const_reference;
-    using pointer = data_type::pointer;
-    using const_pointer = data_type::const_pointer;
-    using iterator = data_type::iterator;
-    using const_iterator = data_type::const_iterator;
-    using reverse_iterator = data_type::reverse_iterator;
-    using const_reverse_iterator = data_type::const_reverse_iterator;
+    using size_type = circuit_type::size_type;
+    using const_circuit_iterator = circuit_type::const_iterator;
+    using const_reverse_circuit_iterator = circuit_type::const_reverse_iterator;
 
-    gates();
-    explicit gates(allocator_type const& allocator);
-
-    gates(gates&& other, allocator_type const& allocator);
+    interpreter();
 
 # ifndef BRA_NO_MPI
-    gates(
+    interpreter(
       std::istream& input_stream,
       ::bra::bit_integer_type num_uqubits, unsigned int num_processes_per_unit,
       yampi::environment const& environment,
       yampi::rank const root = yampi::rank{},
-      yampi::communicator const& communicator = yampi::communicator{::yampi::tags::world_communicator},
+      yampi::communicator const& total_communicator = yampi::communicator{::yampi::tags::world_communicator},
       size_type const num_reserved_gates = size_type{0u});
 # else // BRA_NO_MPI
-    explicit gates(std::istream& input_stream);
-    gates(std::istream& input_stream, size_type const num_reserved_gates);
+    explicit interpreter(std::istream& input_stream);
+    interpreter(std::istream& input_stream, size_type const num_reserved_gates);
 # endif // BRA_NO_MPI
 
-    bool operator==(gates const& other) const;
+    auto operator==(interpreter const& other) const -> bool;
 
-    ::bra::bit_integer_type const& num_qubits() const { return num_qubits_; }
+    auto num_qubits() const -> ::bra::bit_integer_type const& { return num_qubits_; }
 # ifndef BRA_NO_MPI
-    ::bra::bit_integer_type const& num_lqubits() const { return num_lqubits_; }
-    ::bra::bit_integer_type const& num_uqubits() const { return num_uqubits_; }
-    unsigned int const& num_processes_per_unit() const { return num_processes_per_unit_; }
+    auto num_lqubits() const -> ::bra::bit_integer_type const& { return num_lqubits_; }
+    auto num_uqubits() const -> ::bra::bit_integer_type const& { return num_uqubits_; }
+    auto num_processes_per_unit() const -> unsigned int const& { return num_processes_per_unit_; }
 # endif
-    ::bra::state_integer_type const& initial_state_value() const { return initial_state_value_; }
+    auto num_circuits() const -> std::size_t { return circuits_.size(); }
+    auto initial_state_value() const -> ::bra::state_integer_type const& { return initial_state_value_; }
 # ifndef BRA_NO_MPI
-    std::vector< ::bra::permutated_qubit_type > const& initial_permutation() const { return initial_permutation_; }
+    auto initial_permutation() const -> std::vector< ::bra::permutated_qubit_type > const& { return initial_permutation_; }
 # endif
 
 # ifndef BRA_NO_MPI
-    void num_qubits(
+    auto num_qubits(
       ::bra::bit_integer_type const new_num_qubits,
-      yampi::communicator const& communicator, yampi::environment const& environment);
-    void num_lqubits(
+      yampi::communicator const& communicator, yampi::environment const& environment) -> void;
+    auto num_lqubits(
       ::bra::bit_integer_type const new_num_lqubits,
-      yampi::communicator const& communicator, yampi::environment const& environment);
+      yampi::communicator const& communicator, yampi::environment const& environment) -> void;
 # else // BRA_NO_MPI
-    void num_qubits(::bra::bit_integer_type const new_num_qubits);
+    auto num_qubits(::bra::bit_integer_type const new_num_qubits) -> void;
 # endif // BRA_NO_MPI
 
    private:
 # ifndef BRA_NO_MPI
-    void set_num_qubits_params(
+    auto set_num_qubits_params(
       ::bra::bit_integer_type const new_num_lqubits, ::bra::bit_integer_type const num_gqubits,
-      yampi::communicator const& communicator, yampi::environment const& environment);
+      yampi::communicator const& communicator, yampi::environment const& environment) -> void;
 # else // BRA_NO_MPI
-    void set_num_qubits_params(::bra::bit_integer_type const new_num_qubits);
+    auto set_num_qubits_params(::bra::bit_integer_type const new_num_qubits) -> void;
 # endif // BRA_NO_MPI
 
    public:
 # ifndef BRA_NO_MPI
-    void assign(
+    auto invoke(
       std::istream& input_stream, yampi::environment const& environment,
       yampi::communicator const& communicator = yampi::communicator{yampi::tags::world_communicator},
-      size_type const num_reserved_gates = size_type{0u});
+      size_type const num_reserved_gates = size_type{0u}) -> void;
 # else // BRA_NO_MPI
-    void assign(
+    auto invoke(
       std::istream& input_stream,
-      size_type const num_reserved_gates = size_type{0u});
+      size_type const num_reserved_gates = size_type{0u}) -> void;
 # endif // BRA_NO_MPI
-    allocator_type get_allocator() const { return data_.get_allocator(); }
 
-    // Element access
-    //reference at(size_type const index) { return data_.at(index); }
-    const_reference at(size_type const index) const { return data_.at(index); }
-    //reference operator[](size_type const index) { return data_[index]; }
-    const_reference operator[](size_type const index) const { return data_[index]; }
-    //reference front() { return data_.front(); }
-    const_reference front() const { return data_.front(); }
-    //reference back() { return data_.back(); }
-    const_reference back() const { return data_.back(); }
+    auto circuit(int const circuit_index) const -> circuit_type const& { return circuits_[circuit_index]; }
+    auto circuit_at(int const circuit_index) const -> circuit_type const& { return circuits_.at(circuit_index); }
+    auto front_circuit() const -> circuit_type const& { return circuits_.front(); }
+    auto back_circuit() const -> circuit_type const& { return circuits_.back(); }
 
-    // Iterators
-    //iterator begin() noexcept { return data_.begin(); }
-    const_iterator begin() const noexcept { return data_.begin(); }
-    //iterator end() noexcept { return data_.end(); }
-    const_iterator end() const noexcept { return data_.end(); }
-    //reverse_iterator rbegin() noexcept { return data_.rbegin(); }
-    const_reverse_iterator rbegin() const noexcept { return data_.rbegin(); }
-    //reverse_iterator rend() noexcept { return data_.rend(); }
-    const_reverse_iterator rend() const noexcept { return data_.rend(); }
+    auto circuit_begin(int const circuit_index) const noexcept -> const_circuit_iterator { return circuits_[circuit_index].begin(); }
+    auto circuit_end(int const circuit_index) const noexcept -> const_circuit_iterator { return circuits_[circuit_index].end(); }
+    auto circuit_rbegin(int const circuit_index) const noexcept -> const_reverse_circuit_iterator { return circuits_[circuit_index].rbegin(); }
+    auto circuit_rend(int const circuit_index) const noexcept -> const_reverse_circuit_iterator { return circuits_[circuit_index].rend(); }
 
-    // Capacity
-    bool empty() const noexcept { return data_.empty(); }
-    size_type size() const noexcept { return data_.size(); }
-    size_type max_size() const noexcept { return data_.max_size(); }
-    void reserve(size_type const new_capacity) { data_.reserve(new_capacity); }
-    size_type capacity() const noexcept { return data_.capacity(); }
-
-    // Modifiers
-    void clear() noexcept { data_.clear(); }
-    /*
-    iterator insert(const_iterator position, value_type&& value)
-    { return data_.insert(position, std::move(value)); }
-    template <typename... Arguments>
-    iterator emplace(const_iterator const position, Arguments&&... arguments)
-    { return data_.emplace(position, std::forward<Arguments>(arguments)...); }
-*/
-    iterator erase(iterator const position) { return data_.erase(position); }
-    iterator erase(iterator const first, iterator const last) { return data_.erase(first, last); }
-    /*
-    void push_back(value_type&& value) { data_.push_back(std::move(value)); }
-    template <typename... Arguments>
-    void emplace_back(Arguments&&... arguments)
-    { data_.emplace_back(std::forward<Arguments>(arguments)...); }
-*/
-    void pop_back() { data_.pop_back(); }
-    //void resize(size_type const count) { data_.resize(count); }
-    void swap(gates& other)
+    void swap(interpreter& other)
       noexcept(
         BRA_is_nothrow_swappable<data_type>::value
         and BRA_is_nothrow_swappable< ::bra::bit_integer_type >::value
         and BRA_is_nothrow_swappable< ::bra::state_integer_type >::value
         and BRA_is_nothrow_swappable< ::bra::qubit_type >::value);
 
+    void apply_circuit(::bra::state& state, int const circuit_index)
+    {
+      for (auto const& gate_ptr: circuits_[circuit_index])
+        state << *gate_ptr;
+    }
+
    private:
     ::bra::bit_integer_type read_num_qubits(columns_type const& columns) const;
     ::bra::state_integer_type read_initial_state_value(columns_type& columns) const;
     ::bra::bit_integer_type read_num_mpi_processes(columns_type const& columns) const;
     ::bra::state_integer_type read_mpi_buffer_size(columns_type const& columns) const;
+    ::bra::state_integer_type read_num_circuits(columns_type const& columns) const;
 # ifndef BRA_NO_MPI
     std::vector< ::bra::permutated_qubit_type > read_initial_permutation(columns_type const& columns) const;
 # endif
@@ -279,8 +244,6 @@ namespace bra
     std::tuple< ::bra::bit_integer_type, ::bra::state_integer_type, ::bra::state_integer_type > read_shor_box(columns_type const& columns) const;
     std::tuple< ::bra::generate_statement, int, int > read_generate_statement(columns_type const& columns) const;
     std::tuple< ::bra::depolarizing_statement, ::bra::real_type, ::bra::real_type, ::bra::real_type, int > read_depolarizing_statement(columns_type const& columns) const;
-
-    void add_begin_fusion(columns_type const& columns);
 
     void add_i(columns_type const& columns);
     void add_ic(columns_type const& columns);
@@ -452,30 +415,23 @@ namespace bra
     void add_adj_cszn(
       columns_type const& columns, int const num_control_qubits,
       std::string const& noncontrol_mnemonic, std::string const& mnemonic);
-  }; // class gates
+  }; // class interpreter
 
-  inline bool operator!=(::bra::gates const& lhs, ::bra::gates const& rhs)
+  inline bool operator!=(::bra::interpreter const& lhs, ::bra::interpreter const& rhs)
   { return not (lhs == rhs); }
 
-  inline void swap(::bra::gates& lhs, ::bra::gates& rhs)
+  inline void swap(::bra::interpreter& lhs, ::bra::interpreter& rhs)
     noexcept(noexcept(lhs.swap(rhs)))
   { lhs.swap(rhs); }
 
-  inline ::bra::state& operator<<(::bra::state& state, ::bra::gates const& gates)
-  {
-    for (auto const& gate_ptr: gates)
-      state << *gate_ptr;
-    return state;
-  }
-
-  namespace gates_detail
+  namespace interpreter_detail
   {
     template <typename Value>
     void read_value_in_depolarizing_statement(
       Value& value, std::string& present_string, // "xxx" or "xxx," or "xxx,..."
-      ::bra::gates::columns_type::const_iterator& column_iter,
-      ::bra::gates::columns_type::const_iterator const& column_last,
-      ::bra::gates::columns_type const& columns)
+      ::bra::interpreter::columns_type::const_iterator& column_iter,
+      ::bra::interpreter::columns_type::const_iterator const& column_last,
+      ::bra::interpreter::columns_type const& columns)
     {
       auto string_found = std::find(present_string.cbegin(), present_string.cend(), ',');
       value = boost::lexical_cast<Value>(std::string{present_string.cbegin(), string_found});
@@ -518,9 +474,9 @@ namespace bra
     template <typename Value>
     void read_depolarizing_statement(
       Value& value, std::string& present_string,
-      ::bra::gates::columns_type::const_iterator& column_iter,
-      ::bra::gates::columns_type::const_iterator const& column_last,
-      std::string::const_iterator string_found, ::bra::gates::columns_type const& columns)
+      ::bra::interpreter::columns_type::const_iterator& column_iter,
+      ::bra::interpreter::columns_type::const_iterator const& column_last,
+      std::string::const_iterator string_found, ::bra::interpreter::columns_type const& columns)
     {
       if (string_found == present_string.cend()) // present_string == "XXX"
       {
@@ -555,10 +511,10 @@ namespace bra
 
       read_value_in_depolarizing_statement(value, present_string, column_iter, column_last, columns);
     }
-  } // namespace gates_detail
+  } // namespace interpreter_detail
 } // namespace bra
 
 
 # undef BRA_is_nothrow_swappable
 
-#endif // BRA_GATES_HPP
+#endif // BRA_INTERPRETER_HPP
