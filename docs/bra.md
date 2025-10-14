@@ -164,7 +164,8 @@ The instruction set supported by *bra* is as follows[^1].
 * `BEGIN MEASUREMENT`: computes and prints out the expectation values of all qubits.
 * `GENERATE EVENTS n seed`: computes the probabilities of each of the basis states and exits. It generates $n$ events by using random number generator with the initial seed `seed` and prints out the states according to these probabilites.
 * `M i`: projective measurement on qubit $i$.
-* `QUBITS n`: specifies the number of qubits. This must be the first instruction.
+* `CIRCUITS n`: specifies the number of quantum circuits. This should be placed before the `QUBITS` instruction. If this `CIRCUITS` instruction is omitted, the number of circuits is assumed to be 1.
+* `QUBITS n`: specifies the number of qubits. This should be placed before any insstructions except for the `CIRCUITS` instruction.
 * `BIT ASSIGNMENT i j k...`: specifies the initial permutation of qubits. The number of qubits specified as arguments of this instruction must be equal to the number of qubits specified in the `QUBITS n` instruction.
 * `SHORBOX nx G y`
 * `CLEAR i`: projects the state of qubit $i$ to $\ket{0}$.
@@ -172,6 +173,7 @@ The instruction set supported by *bra* is as follows[^1].
 * `DEPOLARIZING CHANNEL P_X=px,P_Y=py,P_Z=pz,SEED=seed`: inserts the Pauli $X$, $Y$, and $Z$ gates with specified probabilities to all qubits. For example, the Pauli $X$ gate is inserted with probability $p_x$. The random number generator uses the `seed` value as its initial seed. If the specified `seed` is negative, the value specified in the command line option of *bra* is used as the initial seed.
 * `EXIT`: measures all qubits and terminate execution.
 * `BEGIN FUSION q1 q2 q3 q4`/`END FUSION`: starts/ends gate fusion[^2]. Qubits $q_1$, $q_2$, ... should be appeared gate instructions between `BEGIN FUSION` and `END FUSION`.
+* `BEGIN CIRCUIT n`/`END CIRCUIT`: starts/ends description of quantum gates in the quantum circuit with specified circuit index $n$. The index $n$ should be less than the number of quantum circuits specified in the `CIRCUITS` instruction. The gates out of `BEGIN CIRCUIT`/`END CIRCUIT` are assumed to be gates in the quantum circuit $0$.
 
 [^2]: The number of qubits which can be specified in `BEGIN FUSION` instruction is determined by the macro `BRA_MAX_NUM_FUSED_QUBITS`, which can be set when building *bra*. Its default value is 10.
 
