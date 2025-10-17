@@ -1,6 +1,8 @@
+#include <cctype>
 #include <istream>
 #include <string>
 #include <vector>
+#include <unordered_map>
 #include <tuple>
 #include <utility>
 #include <algorithm>
@@ -235,12 +237,14 @@ namespace bra
 #ifndef BRA_NO_MPI
   interpreter::interpreter()
     : circuits_(1u), num_qubits_{}, num_lqubits_{}, num_uqubits_{}, num_processes_per_unit_{1u},
-      initial_state_value_{}, initial_permutation_{}, phase_coefficients_{}, root_{}, circuit_index_{0}, is_in_circuit_{false}
+      initial_state_value_{}, initial_permutation_{}, phase_coefficients_{}, root_{}, circuit_index_{0}, is_in_circuit_{false},
+      real_variables_{}, int_variables_{}
   { }
 #else // BRA_NO_MPI
   interpreter::interpreter()
     : circuits_(1u), num_qubits_{},
-      initial_state_value_{}, phase_coefficients_{}, circuit_index_{0}, is_in_circuit_{false}
+      initial_state_value_{}, phase_coefficients_{}, circuit_index_{0}, is_in_circuit_{false},
+      real_variables_{}, int_variables_{}
   { }
 #endif // BRA_NO_MPI
 
@@ -253,7 +257,8 @@ namespace bra
     size_type const num_reserved_gates)
     : circuits_(1u), num_qubits_{}, num_lqubits_{},
       num_uqubits_{num_uqubits}, num_processes_per_unit_{num_processes_per_unit},
-      initial_state_value_{}, initial_permutation_{}, phase_coefficients_{}, root_{root}, circuit_index_{0}, is_in_circuit_{false}
+      initial_state_value_{}, initial_permutation_{}, phase_coefficients_{}, root_{root}, circuit_index_{0}, is_in_circuit_{false},
+      real_variables_{}, int_variables_{}
   {
     assert(num_processes_per_unit >= 1u);
     invoke(input_stream, environment, total_communicator, num_reserved_gates);
@@ -261,12 +266,14 @@ namespace bra
 #else // BRA_NO_MPI
   interpreter::interpreter(std::istream& input_stream)
     : circuits_(1u), num_qubits_{},
-      initial_state_value_{}, phase_coefficients_{}, circuit_index_{0}, is_in_circuit_{false}
+      initial_state_value_{}, phase_coefficients_{}, circuit_index_{0}, is_in_circuit_{false},
+      real_variables_{}, int_variables_{}
   { invoke(input_stream, size_type{0u}); }
 
   interpreter::interpreter(std::istream& input_stream, size_type const num_reserved_gates)
     : circuits_(1u), num_qubits_{},
-      initial_state_value_{}, phase_coefficients_{}, circuit_index_{0}, is_in_circuit_{false}
+      initial_state_value_{}, phase_coefficients_{}, circuit_index_{0}, is_in_circuit_{false},
+      real_variables_{}, int_variables_{}
   { invoke(input_stream, num_reserved_gates); }
 #endif // BRA_NO_MPI
 
@@ -283,14 +290,18 @@ namespace bra
       and phase_coefficients_ == other.phase_coefficients_
       and root_ == other.root_
       and circuit_index_ == other.circuit_index_
-      and is_in_circuit_ == other.is_in_circuit_;
+      and is_in_circuit_ == other.is_in_circuit_
+      and real_variables_ == other.real_variables_
+      and int_variables_ == other.int_variables_;
 #else // BRA_NO_MPI
     return circuits_ == other.circuits_
       and num_qubits_ == other.num_qubits_
       and initial_state_value_ == other.initial_state_value_
       and phase_coefficients_ == other.phase_coefficients_
       and circuit_index_ == other.circuit_index_
-      and is_in_circuit_ == other.is_in_circuit_;
+      and is_in_circuit_ == other.is_in_circuit_
+      and real_variables_ == other.real_variables_
+      and int_variables_ == other.int_variables_;
 #endif // BRA_NO_MPI
   }
 
@@ -434,6 +445,10 @@ namespace bra
         throw unsupported_mnemonic_error{mnemonic};
       else if (mnemonic == "RANDOM") // RANDOM PERMUTATION
         throw unsupported_mnemonic_error{mnemonic};
+      else if (mnemonic == "DECLARE")
+        declare_variable(columns);
+      else if (mnemonic == "LET")
+        let_variable(columns);
       else if (mnemonic == "I")
         add_i(columns);
       else if (mnemonic == "IC")
@@ -755,20 +770,151 @@ namespace bra
       and BRA_is_nothrow_swappable< ::bra::qubit_type >::value)
   {
     using std::swap;
+    swap(circuits_, other.circuits_);
+    swap(num_qubits_, other.num_qubits_);
 #ifndef BRA_NO_MPI
-    swap(circuits_, other.circuits_);
-    swap(num_qubits_, other.num_qubits_);
     swap(num_lqubits_, other.num_lqubits_);
-    swap(initial_state_value_, other.initial_state_value_);
-    swap(initial_permutation_, other.initial_permutation_);
-    swap(phase_coefficients_, other.phase_coefficients_);
-    swap(root_, other.root_);
-#else // BRA_NO_MPI
-    swap(circuits_, other.circuits_);
-    swap(num_qubits_, other.num_qubits_);
-    swap(initial_state_value_, other.initial_state_value_);
-    swap(phase_coefficients_, other.phase_coefficients_);
+    swap(num_uqubits_, other.num_uqubits_);
+    swap(num_processes_per_unit_, other.num_processes_per_unit_);
 #endif // BRA_NO_MPI
+    swap(initial_state_value_, other.initial_state_value_);
+#ifndef BRA_NO_MPI
+    swap(initial_permutation_, other.initial_permutation_);
+#endif // BRA_NO_MPI
+    swap(phase_coefficients_, other.phase_coefficients_);
+#ifndef BRA_NO_MPI
+    swap(root_, other.root_);
+#endif // BRA_NO_MPI
+    swap(circuit_index_, other.circuit_index_);
+    swap(is_in_circuit_, other.is_in_circuit_);
+    swap(real_variables_, other.real_variables_);
+    swap(int_variables_, other.int_variables_);
+  }
+
+  ::bra::real_type interpreter::to_predefined_real(std::string const& predefined_constant, interpreter::columns_type const& columns) const
+  {
+    if (predefined_constant.empty())
+      throw ::bra::wrong_mnemonics_error{columns};
+
+    auto const first_character = predefined_constant.front();
+    if (std::isdigit(static_cast<unsigned char>(first_character)) or first_character == '+' or first_character == '-')
+      return boost::lexical_cast< ::bra::real_type >(predefined_constant);
+
+    if (not std::isalpha(static_cast<unsigned char>(first_character)))
+      throw ::bra::wrong_mnemonics_error{columns};
+
+    auto const constant = boost::algorithm::to_upper_copy(predefined_constant);
+    if (constant == "PI")
+      return boost::math::constants::pi< ::bra::real_type >();
+    else if (constant == "HALF_PI")
+      return boost::math::constants::half_pi< ::bra::real_type >();
+    else if (constant == "TWO_PI")
+      return boost::math::constants::two_pi< ::bra::real_type >();
+
+    throw ::bra::wrong_mnemonics_error{columns};
+  }
+
+  ::bra::real_type interpreter::to_real(std::string const& literal_or_variable, interpreter::columns_type const& columns) const
+  {
+    if (literal_or_variable.empty())
+      throw ::bra::wrong_mnemonics_error{columns};
+
+    auto const first_character = literal_or_variable.front();
+    if (std::isdigit(static_cast<unsigned char>(first_character)) or first_character == '+' or first_character == '-' or first_character == '.')
+      return boost::lexical_cast< ::bra::real_type >(literal_or_variable);
+
+    if (first_character == ':')
+    {
+      using std::begin;
+      using std::end;
+      return to_predefined_real(std::string{std::next(begin(literal_or_variable)), end(literal_or_variable)}, columns);
+    }
+
+    if (not std::isalpha(static_cast<unsigned char>(first_character)))
+      throw ::bra::wrong_mnemonics_error{columns};
+
+    using std::begin;
+    using std::end;
+    auto const first = begin(literal_or_variable);
+    auto const last = end(literal_or_variable);
+    auto const found = std::find(first, last, ':');
+    if (found == last)
+      return real_variables_.at(boost::algorithm::to_upper_copy(literal_or_variable)).front();
+
+    auto const variable = boost::algorithm::to_upper_copy(std::string{first, found});
+    if (real_variables_.find(variable) == end(real_variables_))
+      throw ::bra::wrong_mnemonics_error{columns};
+
+    auto const& vec = real_variables_.at(variable);
+
+    auto const index = to_int(std::string{std::next(found), last}, columns);
+    if (index >= static_cast<int>(vec.size()) or index < 0)
+      throw ::bra::wrong_mnemonics_error{columns};
+
+    return vec[index];
+  }
+
+  ::bra::int_type interpreter::to_predefined_int(std::string const& predefined_constant, interpreter::columns_type const& columns) const
+  {
+    if (predefined_constant.empty())
+      throw ::bra::wrong_mnemonics_error{columns};
+
+    auto const first_character = predefined_constant.front();
+    if (std::isdigit(static_cast<unsigned char>(first_character)) or first_character == '+' or first_character == '-')
+      return boost::lexical_cast< ::bra::int_type >(predefined_constant);
+
+    if (not std::isalpha(static_cast<unsigned char>(first_character)))
+      throw ::bra::wrong_mnemonics_error{columns};
+
+    auto const constant = boost::algorithm::to_upper_copy(predefined_constant);
+    if (constant == "QUBITS")
+      return static_cast< ::bra::int_type >(num_qubits_);
+    else if (constant == "CIRCUITS")
+      return static_cast< ::bra::int_type >(circuits_.size());
+    else if (constant == "CIRCUIT")
+      return static_cast< ::bra::int_type >(circuit_index_);
+
+    throw ::bra::wrong_mnemonics_error{columns};
+  }
+
+  ::bra::int_type interpreter::to_int(std::string const& literal_or_variable, interpreter::columns_type const& columns) const
+  {
+    if (literal_or_variable.empty())
+      throw ::bra::wrong_mnemonics_error{columns};
+
+    auto const first_character = literal_or_variable.front();
+    if (std::isdigit(static_cast<unsigned char>(first_character)) or first_character == '+' or first_character == '-')
+      return boost::lexical_cast< ::bra::int_type >(literal_or_variable);
+
+    if (first_character == ':')
+    {
+      using std::begin;
+      using std::end;
+      return to_predefined_int(std::string{std::next(begin(literal_or_variable)), end(literal_or_variable)}, columns);
+    }
+
+    if (not std::isalpha(static_cast<unsigned char>(first_character)))
+      throw ::bra::wrong_mnemonics_error{columns};
+
+    using std::begin;
+    using std::end;
+    auto const first = begin(literal_or_variable);
+    auto const last = end(literal_or_variable);
+    auto const found = std::find(first, last, ':');
+    if (found == last)
+      return int_variables_.at(boost::algorithm::to_upper_copy(literal_or_variable)).front();
+
+    auto const variable = boost::algorithm::to_upper_copy(std::string{first, found});
+    if (int_variables_.find(variable) == end(int_variables_))
+      throw ::bra::wrong_mnemonics_error{columns};
+
+    auto const& vec = int_variables_.at(variable);
+
+    auto const index = to_int(std::string{std::next(found), last}, columns);
+    if (index >= static_cast<int>(vec.size()) or index < 0)
+      throw ::bra::wrong_mnemonics_error{columns};
+
+    return vec[index];
   }
 
   ::bra::bit_integer_type interpreter::read_num_qubits(interpreter::columns_type const& columns) const
@@ -852,7 +998,7 @@ namespace bra
 
     using std::begin;
     auto iter = begin(columns);
-    auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
+    auto const target = static_cast< ::bra::bit_integer_type >(to_int(*++iter, columns));
 
     return ket::make_qubit< ::bra::state_integer_type >(target);
   }
@@ -864,9 +1010,9 @@ namespace bra
 
     using std::begin;
     auto iter = begin(columns);
-    auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
+    auto const control = static_cast< ::bra::bit_integer_type >(to_int(*++iter, columns));
 
-    return ket::make_control(ket::make_qubit< ::bra::state_integer_type >(target));
+    return ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control));
   }
 
   std::tuple< ::bra::qubit_type, ::bra::qubit_type > interpreter::read_2targets(interpreter::columns_type const& columns) const
@@ -876,8 +1022,8 @@ namespace bra
 
     using std::begin;
     auto iter = begin(columns);
-    auto const target1 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const target2 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
+    auto const target1 = static_cast< ::bra::bit_integer_type >(to_int(*++iter, columns));
+    auto const target2 = static_cast< ::bra::bit_integer_type >(to_int(*++iter, columns));
 
     return std::make_tuple(ket::make_qubit< ::bra::state_integer_type >(target1), ket::make_qubit< ::bra::state_integer_type >(target2));
   }
@@ -889,10 +1035,10 @@ namespace bra
 
     using std::begin;
     auto iter = begin(columns);
-    auto const target1 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const target2 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
+    auto const control1 = static_cast< ::bra::bit_integer_type >(to_int(*++iter, columns));
+    auto const control2 = static_cast< ::bra::bit_integer_type >(to_int(*++iter, columns));
 
-    return std::make_tuple(ket::make_control(ket::make_qubit< ::bra::state_integer_type >(target1)), ket::make_control(ket::make_qubit< ::bra::state_integer_type >(target2)));
+    return std::make_tuple(ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control1)), ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control2)));
   }
 
   void interpreter::read_multi_targets(interpreter::columns_type const& columns, std::vector< ::bra::qubit_type >& targets) const
@@ -907,7 +1053,7 @@ namespace bra
     auto const targets_last = end(targets);
     for (auto targets_iter = begin(targets); targets_iter != targets_last; ++targets_iter, ++iter)
     {
-      auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
+      auto const target = static_cast< ::bra::bit_integer_type >(to_int(*iter, columns));
       *targets_iter = ket::make_qubit< ::bra::state_integer_type >(target);
     }
   }
@@ -924,7 +1070,7 @@ namespace bra
     auto const controls_last = end(controls);
     for (auto controls_iter = begin(controls); controls_iter != controls_last; ++controls_iter, ++iter)
     {
-      auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
+      auto const control = static_cast< ::bra::bit_integer_type >(to_int(*iter, columns));
       *controls_iter = ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control));
     }
   }
@@ -937,8 +1083,8 @@ namespace bra
 
     using std::begin;
     auto iter = begin(columns);
-    auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const phase = boost::lexical_cast<real_type>(*++iter);
+    auto const target = static_cast< ::bra::bit_integer_type >(to_int(*++iter, columns));
+    auto const phase = to_real(*++iter, columns);
 
     return std::make_tuple(ket::make_qubit< ::bra::state_integer_type >(target), phase);
   }
@@ -951,10 +1097,10 @@ namespace bra
 
     using std::begin;
     auto iter = begin(columns);
-    auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const phase = boost::lexical_cast<real_type>(*++iter);
+    auto const control = static_cast< ::bra::bit_integer_type >(to_int(*++iter, columns));
+    auto const phase = to_real(*++iter, columns);
 
-    return std::make_tuple(ket::make_control(ket::make_qubit< ::bra::state_integer_type >(target)), phase);
+    return std::make_tuple(ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control)), phase);
   }
 
   std::tuple< ::bra::qubit_type, ::bra::real_type, ::bra::real_type >
@@ -965,9 +1111,9 @@ namespace bra
 
     using std::begin;
     auto iter = begin(columns);
-    auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const phase1 = boost::lexical_cast<real_type>(*++iter);
-    auto const phase2 = boost::lexical_cast<real_type>(*++iter);
+    auto const target = static_cast< ::bra::bit_integer_type >(to_int(*++iter, columns));
+    auto const phase1 = to_real(*++iter, columns);
+    auto const phase2 = to_real(*++iter, columns);
 
     return std::make_tuple(ket::make_qubit< ::bra::state_integer_type >(target), phase1, phase2);
   }
@@ -980,10 +1126,10 @@ namespace bra
 
     using std::begin;
     auto iter = begin(columns);
-    auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const phase1 = boost::lexical_cast<real_type>(*++iter);
-    auto const phase2 = boost::lexical_cast<real_type>(*++iter);
-    auto const phase3 = boost::lexical_cast<real_type>(*++iter);
+    auto const target = static_cast< ::bra::bit_integer_type >(to_int(*++iter, columns));
+    auto const phase1 = to_real(*++iter, columns);
+    auto const phase2 = to_real(*++iter, columns);
+    auto const phase3 = to_real(*++iter, columns);
 
     return std::make_tuple(ket::make_qubit< ::bra::state_integer_type >(target), phase1, phase2, phase3);
   }
@@ -995,8 +1141,8 @@ namespace bra
 
     using std::begin;
     auto iter = begin(columns);
-    auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const phase_exponent = boost::lexical_cast<int>(*++iter);
+    auto const target = static_cast< ::bra::bit_integer_type >(to_int(*++iter, columns));
+    auto const phase_exponent = static_cast<int>(to_int(*++iter, columns));
 
     return std::make_tuple(ket::make_qubit< ::bra::state_integer_type >(target), phase_exponent);
   }
@@ -1008,10 +1154,10 @@ namespace bra
 
     using std::begin;
     auto iter = begin(columns);
-    auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const phase_exponent = boost::lexical_cast<int>(*++iter);
+    auto const control = static_cast< ::bra::bit_integer_type >(to_int(*++iter, columns));
+    auto const phase_exponent = static_cast<int>(to_int(*++iter, columns));
 
-    return std::make_tuple(ket::make_control(ket::make_qubit< ::bra::state_integer_type >(target)), phase_exponent);
+    return std::make_tuple(ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control)), phase_exponent);
   }
 
   std::tuple< ::bra::qubit_type, ::bra::qubit_type, ::bra::real_type >
@@ -1022,9 +1168,9 @@ namespace bra
 
     using std::begin;
     auto iter = begin(columns);
-    auto const target1 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const target2 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const phase = boost::lexical_cast<real_type>(*++iter);
+    auto const target1 = static_cast< ::bra::bit_integer_type >(to_int(*++iter, columns));
+    auto const target2 = static_cast< ::bra::bit_integer_type >(to_int(*++iter, columns));
+    auto const phase = to_real(*++iter, columns);
 
     return std::make_tuple(ket::make_qubit< ::bra::state_integer_type >(target1), ket::make_qubit< ::bra::state_integer_type >(target2), phase);
   }
@@ -1041,10 +1187,10 @@ namespace bra
     auto const targets_last = end(targets);
     for (auto targets_iter = begin(targets); targets_iter != targets_last; ++targets_iter, ++iter)
     {
-      auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
+      auto const target = static_cast< ::bra::bit_integer_type >(to_int(*iter, columns));
       *targets_iter = ket::make_qubit< ::bra::state_integer_type >(target);
     }
-    auto const phase = boost::lexical_cast<real_type>(*iter);
+    auto const phase = to_real(*iter, columns);
 
     return phase;
   }
@@ -1056,8 +1202,8 @@ namespace bra
 
     using std::begin;
     auto iter = begin(columns);
-    auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
+    auto const control = static_cast< ::bra::bit_integer_type >(to_int(*++iter, columns));
+    auto const target = static_cast< ::bra::bit_integer_type >(to_int(*++iter, columns));
 
     return std::make_tuple(
       ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control)),
@@ -1072,9 +1218,9 @@ namespace bra
 
     using std::begin;
     auto iter = begin(columns);
-    auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const phase_exponent = boost::lexical_cast<int>(*++iter);
+    auto const control = static_cast< ::bra::bit_integer_type >(to_int(*++iter, columns));
+    auto const target = static_cast< ::bra::bit_integer_type >(to_int(*++iter, columns));
+    auto const phase_exponent = static_cast<int>(to_int(*++iter, columns));
 
     return std::make_tuple(
       ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control)),
@@ -1090,9 +1236,9 @@ namespace bra
 
     using std::begin;
     auto iter = begin(columns);
-    auto const control1 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const control2 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const phase_exponent = boost::lexical_cast<int>(*++iter);
+    auto const control1 = static_cast< ::bra::bit_integer_type >(to_int(*++iter, columns));
+    auto const control2 = static_cast< ::bra::bit_integer_type >(to_int(*++iter, columns));
+    auto const phase_exponent = static_cast<int>(to_int(*++iter, columns));
 
     return std::make_tuple(
       ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control1)),
@@ -1108,9 +1254,9 @@ namespace bra
 
     using std::begin;
     auto iter = begin(columns);
-    auto const control1 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const control2 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
+    auto const control1 = static_cast< ::bra::bit_integer_type >(to_int(*++iter, columns));
+    auto const control2 = static_cast< ::bra::bit_integer_type >(to_int(*++iter, columns));
+    auto const target = static_cast< ::bra::bit_integer_type >(to_int(*++iter, columns));
 
     return std::make_tuple(
       ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control1)),
@@ -1131,11 +1277,12 @@ namespace bra
     auto const controls_last = end(controls);
     for (auto controls_iter = begin(controls); controls_iter != controls_last; ++controls_iter, ++iter)
     {
-      auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
+      auto const control = static_cast< ::bra::bit_integer_type >(to_int(*iter, columns));
       *controls_iter = ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control));
     }
+    auto const phase = to_real(*iter, columns);
 
-    return boost::lexical_cast< ::bra::real_type >(*iter);
+    return phase;
   }
 
   ::bra::qubit_type interpreter::read_multi_controls_target(
@@ -1151,11 +1298,11 @@ namespace bra
     auto const controls_last = end(controls);
     for (auto controls_iter = begin(controls); controls_iter != controls_last; ++controls_iter, ++iter)
     {
-      auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
+      auto const control = static_cast< ::bra::bit_integer_type >(to_int(*iter, columns));
       *controls_iter = ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control));
     }
 
-    auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
+    auto const target = static_cast< ::bra::bit_integer_type >(to_int(*iter, columns));
     return ket::make_qubit< ::bra::state_integer_type >(target);
   }
 
@@ -1173,12 +1320,12 @@ namespace bra
     auto const controls_last = end(controls);
     for (auto controls_iter = begin(controls); controls_iter != controls_last; ++controls_iter, ++iter)
     {
-      auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
+      auto const control = static_cast< ::bra::bit_integer_type >(to_int(*iter, columns));
       *controls_iter = ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control));
     }
 
-    auto const target1 = boost::lexical_cast< ::bra::bit_integer_type >(*iter++);
-    auto const target2 = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
+    auto const target1 = static_cast< ::bra::bit_integer_type >(to_int(*iter++, columns));
+    auto const target2 = static_cast< ::bra::bit_integer_type >(to_int(*iter, columns));
     return std::make_tuple(
        ket::make_qubit< ::bra::state_integer_type >(target1),
        ket::make_qubit< ::bra::state_integer_type >(target2));
@@ -1197,14 +1344,14 @@ namespace bra
     auto const controls_last = end(controls);
     for (auto controls_iter = begin(controls); controls_iter != controls_last; ++controls_iter, ++iter)
     {
-      auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
+      auto const control = static_cast< ::bra::bit_integer_type >(to_int(*iter, columns));
       *controls_iter = ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control));
     }
 
     auto const targets_last = end(targets);
     for (auto targets_iter = begin(targets); targets_iter != targets_last; ++targets_iter, ++iter)
     {
-      auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
+      auto const target = static_cast< ::bra::bit_integer_type >(to_int(*iter, columns));
       *targets_iter = ket::make_qubit< ::bra::state_integer_type >(target);
     }
   }
@@ -1217,9 +1364,9 @@ namespace bra
 
     using std::begin;
     auto iter = begin(columns);
-    auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const phase = boost::lexical_cast<real_type>(*++iter);
+    auto const control = static_cast< ::bra::bit_integer_type >(to_int(*++iter, columns));
+    auto const target = static_cast< ::bra::bit_integer_type >(to_int(*++iter, columns));
+    auto const phase = to_real(*++iter, columns);
 
     return std::make_tuple(
       ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control)),
@@ -1235,9 +1382,9 @@ namespace bra
 
     using std::begin;
     auto iter = begin(columns);
-    auto const control1 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const control2 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const phase = boost::lexical_cast<real_type>(*++iter);
+    auto const control1 = static_cast< ::bra::bit_integer_type >(to_int(*++iter, columns));
+    auto const control2 = static_cast< ::bra::bit_integer_type >(to_int(*++iter, columns));
+    auto const phase = to_real(*++iter, columns);
 
     return std::make_tuple(
       ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control1)),
@@ -1259,12 +1406,12 @@ namespace bra
     auto const controls_last = end(controls);
     for (auto controls_iter = begin(controls); controls_iter != controls_last; ++controls_iter, ++iter)
     {
-      auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
+      auto const control = static_cast< ::bra::bit_integer_type >(to_int(*iter, columns));
       *controls_iter = ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control));
     }
 
-    auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*iter++);
-    auto const phase = boost::lexical_cast<real_type>(*iter);
+    auto const target = static_cast< ::bra::bit_integer_type >(to_int(*iter++, columns));
+    auto const phase = to_real(*iter, columns);
     return std::make_tuple(ket::make_qubit< ::bra::state_integer_type >(target), phase);
   }
 
@@ -1276,10 +1423,10 @@ namespace bra
 
     using std::begin;
     auto iter = begin(columns);
-    auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const phase1 = boost::lexical_cast<real_type>(*++iter);
-    auto const phase2 = boost::lexical_cast<real_type>(*++iter);
+    auto const control = static_cast< ::bra::bit_integer_type >(to_int(*++iter, columns));
+    auto const target = static_cast< ::bra::bit_integer_type >(to_int(*++iter, columns));
+    auto const phase1 = to_real(*++iter, columns);
+    auto const phase2 = to_real(*++iter, columns);
 
     return std::make_tuple(
       ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control)),
@@ -1301,13 +1448,13 @@ namespace bra
     auto const controls_last = end(controls);
     for (auto controls_iter = begin(controls); controls_iter != controls_last; ++controls_iter, ++iter)
     {
-      auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
+      auto const control = static_cast< ::bra::bit_integer_type >(to_int(*iter, columns));
       *controls_iter = ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control));
     }
 
-    auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*iter++);
-    auto const phase1 = boost::lexical_cast<real_type>(*iter++);
-    auto const phase2 = boost::lexical_cast<real_type>(*iter);
+    auto const target = static_cast< ::bra::bit_integer_type >(to_int(*iter++, columns));
+    auto const phase1 = to_real(*iter++, columns);
+    auto const phase2 = to_real(*iter, columns);
     return std::make_tuple(ket::make_qubit< ::bra::state_integer_type >(target), phase1, phase2);
   }
 
@@ -1319,11 +1466,11 @@ namespace bra
 
     using std::begin;
     auto iter = begin(columns);
-    auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const phase1 = boost::lexical_cast<real_type>(*++iter);
-    auto const phase2 = boost::lexical_cast<real_type>(*++iter);
-    auto const phase3 = boost::lexical_cast<real_type>(*++iter);
+    auto const control = static_cast< ::bra::bit_integer_type >(to_int(*++iter, columns));
+    auto const target = static_cast< ::bra::bit_integer_type >(to_int(*++iter, columns));
+    auto const phase1 = to_real(*++iter, columns);
+    auto const phase2 = to_real(*++iter, columns);
+    auto const phase3 = to_real(*++iter, columns);
 
     return std::make_tuple(
       ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control)),
@@ -1345,14 +1492,14 @@ namespace bra
     auto const controls_last = end(controls);
     for (auto controls_iter = begin(controls); controls_iter != controls_last; ++controls_iter, ++iter)
     {
-      auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
+      auto const control = static_cast< ::bra::bit_integer_type >(to_int(*iter, columns));
       *controls_iter = ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control));
     }
 
-    auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*iter++);
-    auto const phase1 = boost::lexical_cast<real_type>(*iter++);
-    auto const phase2 = boost::lexical_cast<real_type>(*iter++);
-    auto const phase3 = boost::lexical_cast<real_type>(*iter);
+    auto const target = static_cast< ::bra::bit_integer_type >(to_int(*iter++, columns));
+    auto const phase1 = to_real(*iter++, columns);
+    auto const phase2 = to_real(*iter++, columns);
+    auto const phase3 = to_real(*iter, columns);
     return std::make_tuple(ket::make_qubit< ::bra::state_integer_type >(target), phase1, phase2, phase3);
   }
 
@@ -1369,11 +1516,11 @@ namespace bra
     auto const controls_last = end(controls);
     for (auto controls_iter = begin(controls); controls_iter != controls_last; ++controls_iter, ++iter)
     {
-      auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
+      auto const control = static_cast< ::bra::bit_integer_type >(to_int(*iter, columns));
       *controls_iter = ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control));
     }
 
-    auto const phase_exponent = boost::lexical_cast<int>(*iter);
+    auto const phase_exponent = static_cast<int>(to_int(*iter, columns));
     return phase_exponent;
   }
 
@@ -1391,12 +1538,12 @@ namespace bra
     auto const controls_last = end(controls);
     for (auto controls_iter = begin(controls); controls_iter != controls_last; ++controls_iter, ++iter)
     {
-      auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
+      auto const control = static_cast< ::bra::bit_integer_type >(to_int(*iter, columns));
       *controls_iter = ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control));
     }
 
-    auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*iter++);
-    auto const phase_exponent = boost::lexical_cast<int>(*iter);
+    auto const target = static_cast< ::bra::bit_integer_type >(to_int(*iter++, columns));
+    auto const phase_exponent = static_cast<int>(to_int(*iter, columns));
     return std::make_tuple(ket::make_qubit< ::bra::state_integer_type >(target), phase_exponent);
   }
 
@@ -1414,18 +1561,18 @@ namespace bra
     auto const controls_last = end(controls);
     for (auto controls_iter = begin(controls); controls_iter != controls_last; ++controls_iter, ++iter)
     {
-      auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
+      auto const control = static_cast< ::bra::bit_integer_type >(to_int(*iter, columns));
       *controls_iter = ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control));
     }
 
     auto const targets_last = end(targets);
     for (auto targets_iter = begin(targets); targets_iter != targets_last; ++targets_iter, ++iter)
     {
-      auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
+      auto const target = static_cast< ::bra::bit_integer_type >(to_int(*iter, columns));
       *targets_iter = ket::make_qubit< ::bra::state_integer_type >(target);
     }
 
-    auto const phase = boost::lexical_cast<real_type>(*iter);
+    auto const phase = to_real(*iter, columns);
     return phase;
   }
 
@@ -1443,13 +1590,13 @@ namespace bra
     auto const controls_last = end(controls);
     for (auto controls_iter = begin(controls); controls_iter != controls_last; ++controls_iter, ++iter)
     {
-      auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
+      auto const control = static_cast< ::bra::bit_integer_type >(to_int(*iter, columns));
       *controls_iter = ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control));
     }
 
-    auto const target1 = boost::lexical_cast< ::bra::bit_integer_type >(*iter++);
-    auto const target2 = boost::lexical_cast< ::bra::bit_integer_type >(*iter++);
-    auto const phase = boost::lexical_cast<real_type>(*iter);
+    auto const target1 = static_cast< ::bra::bit_integer_type >(to_int(*iter++, columns));
+    auto const target2 = static_cast< ::bra::bit_integer_type >(to_int(*iter++, columns));
+    auto const phase = to_real(*iter, columns);
     return std::make_tuple(
        ket::make_qubit< ::bra::state_integer_type >(target1),
        ket::make_qubit< ::bra::state_integer_type >(target2),
@@ -1516,9 +1663,9 @@ namespace bra
 
     using std::begin;
     auto iter = begin(columns);
-    auto const num_exponent_qubits = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const divisor = boost::lexical_cast< ::bra::state_integer_type >(*++iter);
-    auto const base = boost::lexical_cast< ::bra::state_integer_type >(*++iter);
+    auto const num_exponent_qubits = static_cast< ::bra::bit_integer_type >(to_int(*++iter, columns));
+    auto const divisor = static_cast< ::bra::state_integer_type >(to_int(*++iter, columns));
+    auto const base = static_cast< ::bra::state_integer_type >(to_int(*++iter, columns));
 
     return std::make_tuple(num_exponent_qubits, divisor, base);
   }
@@ -1532,9 +1679,177 @@ namespace bra
     if (*++iter != "EVENTS")
       throw wrong_mnemonics_error{columns};
 
-    auto const num_events = boost::lexical_cast<int>(*++iter);
-    auto const seed = boost::lexical_cast<int>(*++iter);
+    auto const num_events = static_cast<int>(to_int(*++iter, columns));
+    auto const seed = static_cast<int>(to_int(*++iter, columns));
     return std::make_tuple(::bra::generate_statement::events, num_events, seed);
+  }
+
+  void interpreter::read_value_in_depolarizing_statement(
+    ::bra::real_type& value, std::string& present_string, // "xxx" or "xxx," or "xxx,..."
+    interpreter::columns_type::const_iterator& column_iter,
+    interpreter::columns_type::const_iterator const& column_last,
+    interpreter::columns_type const& columns) const
+  {
+    auto string_found = std::find(present_string.cbegin(), present_string.cend(), ',');
+    value = to_real(std::string{present_string.cbegin(), string_found}, columns);
+
+    if (string_found == present_string.cend()) // present_string == "xxx"
+    {
+      if (++column_iter == column_last)
+      {
+        present_string.clear();
+        return;
+      }
+
+      present_string = *column_iter; // present_string == "," or ",..."
+      if (present_string[0] != ',')
+        throw wrong_mnemonics_error{columns};
+
+      if (present_string.size() == 1u) // present_string == ","
+      {
+        if (++column_iter == column_last)
+          throw wrong_mnemonics_error{columns};
+
+        present_string = *column_iter; // present_string == "..."
+      }
+      else // present_string == ",..."
+        present_string.assign(present_string, 1u, std::string::npos); // present_string == "..."
+    }
+    else // present_string == "xxx," or "xxx,..."
+    {
+      present_string.assign(++string_found, present_string.cend()); // present_string == "" or "..."
+      if (present_string.empty()) // present_string == ""
+      {
+        if (++column_iter == column_last)
+          throw wrong_mnemonics_error{columns};
+
+        present_string = *column_iter; // present_string == "..."
+      }
+    }
+  }
+
+  void interpreter::read_value_in_depolarizing_statement(
+    ::bra::int_type& value, std::string& present_string, // "xxx" or "xxx," or "xxx,..."
+    interpreter::columns_type::const_iterator& column_iter,
+    interpreter::columns_type::const_iterator const& column_last,
+    interpreter::columns_type const& columns) const
+  {
+    auto string_found = std::find(present_string.cbegin(), present_string.cend(), ',');
+    value = to_int(std::string{present_string.cbegin(), string_found}, columns);
+
+    if (string_found == present_string.cend()) // present_string == "xxx"
+    {
+      if (++column_iter == column_last)
+      {
+        present_string.clear();
+        return;
+      }
+
+      present_string = *column_iter; // present_string == "," or ",..."
+      if (present_string[0] != ',')
+        throw wrong_mnemonics_error{columns};
+
+      if (present_string.size() == 1u) // present_string == ","
+      {
+        if (++column_iter == column_last)
+          throw wrong_mnemonics_error{columns};
+
+        present_string = *column_iter; // present_string == "..."
+      }
+      else // present_string == ",..."
+        present_string.assign(present_string, 1u, std::string::npos); // present_string == "..."
+    }
+    else // present_string == "xxx," or "xxx,..."
+    {
+      present_string.assign(++string_found, present_string.cend()); // present_string == "" or "..."
+      if (present_string.empty()) // present_string == ""
+      {
+        if (++column_iter == column_last)
+          throw wrong_mnemonics_error{columns};
+
+        present_string = *column_iter; // present_string == "..."
+      }
+    }
+  }
+
+  void interpreter::read_depolarizing_statement(
+    ::bra::real_type& value, std::string& present_string,
+    interpreter::columns_type::const_iterator& column_iter,
+    interpreter::columns_type::const_iterator const& column_last,
+    std::string::const_iterator string_found, interpreter::columns_type const& columns) const
+  {
+    if (string_found == present_string.cend()) // present_string == "XXX"
+    {
+      if (++column_iter == column_last)
+        throw wrong_mnemonics_error{columns};
+
+      present_string = *column_iter; // present_string == "=" or "=xxx" or "=xxx," or "=xxx,..."
+      if (present_string[0] != '=')
+        throw wrong_mnemonics_error{columns};
+
+      if (present_string.size() == 1u) // present_string == "="
+      {
+        if (++column_iter == column_last)
+          throw wrong_mnemonics_error{columns};
+
+        present_string = *column_iter; // present_string == "xxx" or "xxx," or "xxx,..."
+      }
+      else // presnet_string == "=xxx" or "=xxx," or "=xxx,..."
+        present_string.assign(present_string, 1u, std::string::npos); // presnet_string == "xxx" or "xxx," or "xxx,..."
+    }
+    else // present_string == "XXX=" or "XXX=xxx" or "XXX=xxx," or "XXX=xxx,..."
+    {
+      present_string.assign(++string_found, present_string.cend()); // present_string == "" or "xxx" or "xxx," or "xxx,..."
+      if (present_string.empty()) // present_string == ""
+      {
+        if (++column_iter == column_last)
+          throw wrong_mnemonics_error{columns};
+
+        present_string = *column_iter; // present_string == "xxx" or "xxx," or "xxx,..."
+      }
+    }
+
+    read_value_in_depolarizing_statement(value, present_string, column_iter, column_last, columns);
+  }
+
+  void interpreter::read_depolarizing_statement(
+    ::bra::int_type& value, std::string& present_string,
+    interpreter::columns_type::const_iterator& column_iter,
+    interpreter::columns_type::const_iterator const& column_last,
+    std::string::const_iterator string_found, interpreter::columns_type const& columns) const
+  {
+    if (string_found == present_string.cend()) // present_string == "XXX"
+    {
+      if (++column_iter == column_last)
+        throw wrong_mnemonics_error{columns};
+
+      present_string = *column_iter; // present_string == "=" or "=xxx" or "=xxx," or "=xxx,..."
+      if (present_string[0] != '=')
+        throw wrong_mnemonics_error{columns};
+
+      if (present_string.size() == 1u) // present_string == "="
+      {
+        if (++column_iter == column_last)
+          throw wrong_mnemonics_error{columns};
+
+        present_string = *column_iter; // present_string == "xxx" or "xxx," or "xxx,..."
+      }
+      else // presnet_string == "=xxx" or "=xxx," or "=xxx,..."
+        present_string.assign(present_string, 1u, std::string::npos); // presnet_string == "xxx" or "xxx," or "xxx,..."
+    }
+    else // present_string == "XXX=" or "XXX=xxx" or "XXX=xxx," or "XXX=xxx,..."
+    {
+      present_string.assign(++string_found, present_string.cend()); // present_string == "" or "xxx" or "xxx," or "xxx,..."
+      if (present_string.empty()) // present_string == ""
+      {
+        if (++column_iter == column_last)
+          throw wrong_mnemonics_error{columns};
+
+        present_string = *column_iter; // present_string == "xxx" or "xxx," or "xxx,..."
+      }
+    }
+
+    read_value_in_depolarizing_statement(value, present_string, column_iter, column_last, columns);
   }
 
   std::tuple< ::bra::depolarizing_statement, ::bra::real_type, ::bra::real_type, ::bra::real_type, int >
@@ -1568,7 +1883,7 @@ namespace bra
         if (is_px_checked)
           throw wrong_mnemonics_error{columns};
 
-        ::bra::interpreter_detail::read_depolarizing_statement(px, present_string, iter, last, string_found, columns);
+        read_depolarizing_statement(px, present_string, iter, last, string_found, columns);
         if (px < 0.0 or px > 1.0)
           throw wrong_mnemonics_error{columns};
 
@@ -1579,7 +1894,7 @@ namespace bra
         if (is_py_checked)
           throw wrong_mnemonics_error{columns};
 
-        ::bra::interpreter_detail::read_depolarizing_statement(py, present_string, iter, last, string_found, columns);
+        read_depolarizing_statement(py, present_string, iter, last, string_found, columns);
         if (py < 0.0 or py > 1.0)
           throw wrong_mnemonics_error{columns};
 
@@ -1590,7 +1905,7 @@ namespace bra
         if (is_pz_checked)
           throw wrong_mnemonics_error{columns};
 
-        ::bra::interpreter_detail::read_depolarizing_statement(pz, present_string, iter, last, string_found, columns);
+        read_depolarizing_statement(pz, present_string, iter, last, string_found, columns);
         if (pz < 0.0 or pz > 1.0)
           throw wrong_mnemonics_error{columns};
 
@@ -1601,7 +1916,7 @@ namespace bra
         if (is_seed_checked)
           throw wrong_mnemonics_error{columns};
 
-        ::bra::interpreter_detail::read_depolarizing_statement(seed, present_string, iter, last, string_found, columns);
+        read_depolarizing_statement(seed, present_string, iter, last, string_found, columns);
         is_seed_checked = true;
       }
       else
@@ -1612,6 +1927,104 @@ namespace bra
       throw wrong_mnemonics_error{columns};
 
     return std::make_tuple(::bra::depolarizing_statement::channel, px, py, pz, seed);
+  }
+
+  // DECLARE X REAL ! declare real variable X
+  // DECLARE XS REAL 4 ! declare array with 4 real elements, XS
+  // DECLARE N INT ! declare integer variable N
+  // DECLARE NS INT 8 ! declare array with 8 integer elements, NS
+  void interpreter::declare_variable(interpreter::columns_type const& columns)
+  {
+    auto const column_size = boost::size(columns);
+    if (not (column_size == 3u or column_size == 4u))
+      throw wrong_mnemonics_error{columns};
+
+    using std::begin;
+    auto iter = begin(columns);
+    ++iter;
+
+    auto const variable = boost::algorithm::to_upper_copy(*iter++);
+    using std::end;
+    if (real_variables_.find(variable) != end(real_variables_) or int_variables_.find(variable) != end(int_variables_))
+      throw wrong_mnemonics_error{columns};
+
+    auto const type = boost::algorithm::to_upper_copy(*iter++);
+
+    auto const num_elements = iter == end(columns) ? 1 : boost::lexical_cast<int>(*iter);
+    if (num_elements <= 0)
+      throw wrong_mnemonics_error{columns};
+
+    if (type == "REAL")
+      real_variables_[variable] = std::vector< ::bra::real_type >(num_elements);
+    else if (type == "INT")
+      int_variables_[variable] = std::vector< ::bra::int_type >(num_elements);
+    else
+      throw wrong_mnemonics_error{columns};
+  }
+
+  // LET VAR := 3
+  // LET VAR += 4.0
+  // LET ARR:3 -= 1
+  void interpreter::let_variable(interpreter::columns_type const& columns)
+  {
+    if (boost::size(columns) != 4u)
+      throw wrong_mnemonics_error{columns};
+
+    using std::begin;
+    auto iter = begin(columns);
+    ++iter;
+
+    auto const lhs_column = *iter++;
+    using std::end;
+    auto const lhs_column_first = begin(lhs_column);
+    auto const lhs_column_last = end(lhs_column);
+    auto const lhs_column_found = std::find(lhs_column_first, lhs_column_last, ':');
+    auto const variable = boost::algorithm::to_upper_copy(std::string{lhs_column_first, lhs_column_found});
+    auto const index
+      = lhs_column_found == lhs_column_last
+        ? 0
+        : to_int(std::string{std::next(lhs_column_found), lhs_column_last}, columns);
+
+    auto const is_real
+      = real_variables_.find(variable) != end(real_variables_)
+        ? true
+        : int_variables_.find(variable) != end(int_variables_)
+          ? false
+          : throw wrong_mnemonics_error{columns};
+
+    auto const op_column = *iter++;
+    auto const rhs_column = *iter;
+
+    if (is_real)
+    {
+      if (op_column == ":=")
+        real_variables_[variable][index] = to_real(rhs_column, columns);
+      else if (op_column == "+=")
+        real_variables_[variable][index] += to_real(rhs_column, columns);
+      else if (op_column == "-=")
+        real_variables_[variable][index] -= to_real(rhs_column, columns);
+      else if (op_column == "*=")
+        real_variables_[variable][index] *= to_real(rhs_column, columns);
+      else if (op_column == "/=")
+        real_variables_[variable][index] /= to_real(rhs_column, columns);
+      else
+        throw wrong_mnemonics_error{columns};
+
+      return;
+    }
+
+    if (op_column == ":=")
+      int_variables_[variable][index] = to_int(rhs_column, columns);
+    else if (op_column == "+=")
+      int_variables_[variable][index] += to_int(rhs_column, columns);
+    else if (op_column == "-=")
+      int_variables_[variable][index] -= to_int(rhs_column, columns);
+    else if (op_column == "*=")
+      int_variables_[variable][index] *= to_int(rhs_column, columns);
+    else if (op_column == "/=")
+      int_variables_[variable][index] /= to_int(rhs_column, columns);
+    else
+      throw wrong_mnemonics_error{columns};
   }
 
   void interpreter::add_i(interpreter::columns_type const& columns)

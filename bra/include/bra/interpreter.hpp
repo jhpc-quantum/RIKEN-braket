@@ -4,6 +4,7 @@
 # include <cassert>
 # include <iosfwd>
 # include <vector>
+# include <unordered_map>
 # include <string>
 # include <tuple>
 # include <algorithm>
@@ -105,6 +106,9 @@ namespace bra
     int circuit_index_;
     bool is_in_circuit_;
 
+    std::unordered_map<std::string, std::vector< ::bra::real_type >> real_variables_;
+    std::unordered_map<std::string, std::vector< ::bra::int_type >> int_variables_;
+
    public:
     using size_type = circuit_type::size_type;
     using const_circuit_iterator = circuit_type::const_iterator;
@@ -195,6 +199,11 @@ namespace bra
     }
 
    private:
+    ::bra::real_type to_predefined_real(std::string const& literal_or_variable, interpreter::columns_type const& columns) const;
+    ::bra::real_type to_real(std::string const& literal_or_variable, columns_type const& columns) const;
+    ::bra::int_type to_predefined_int(std::string const& literal_or_variable, interpreter::columns_type const& columns) const;
+    ::bra::int_type to_int(std::string const& literal_or_variable, columns_type const& columns) const;
+
     ::bra::bit_integer_type read_num_qubits(columns_type const& columns) const;
     ::bra::state_integer_type read_initial_state_value(columns_type& columns) const;
     ::bra::bit_integer_type read_num_mpi_processes(columns_type const& columns) const;
@@ -243,7 +252,31 @@ namespace bra
     ::bra::bit_statement read_bit_statement(columns_type const& columns) const;
     std::tuple< ::bra::bit_integer_type, ::bra::state_integer_type, ::bra::state_integer_type > read_shor_box(columns_type const& columns) const;
     std::tuple< ::bra::generate_statement, int, int > read_generate_statement(columns_type const& columns) const;
+
+    void read_value_in_depolarizing_statement(
+      ::bra::real_type& value, std::string& present_string,
+      ::bra::interpreter::columns_type::const_iterator& column_iter,
+      ::bra::interpreter::columns_type::const_iterator const& column_last,
+      ::bra::interpreter::columns_type const& columns) const;
+    void read_value_in_depolarizing_statement(
+      ::bra::int_type& value, std::string& present_string,
+      ::bra::interpreter::columns_type::const_iterator& column_iter,
+      ::bra::interpreter::columns_type::const_iterator const& column_last,
+      ::bra::interpreter::columns_type const& columns) const;
+    void read_depolarizing_statement(
+      ::bra::real_type& value, std::string& present_string,
+      ::bra::interpreter::columns_type::const_iterator& column_iter,
+      ::bra::interpreter::columns_type::const_iterator const& column_last,
+      std::string::const_iterator string_found, ::bra::interpreter::columns_type const& columns) const;
+    void read_depolarizing_statement(
+      ::bra::int_type& value, std::string& present_string,
+      ::bra::interpreter::columns_type::const_iterator& column_iter,
+      ::bra::interpreter::columns_type::const_iterator const& column_last,
+      std::string::const_iterator string_found, ::bra::interpreter::columns_type const& columns) const;
     std::tuple< ::bra::depolarizing_statement, ::bra::real_type, ::bra::real_type, ::bra::real_type, int > read_depolarizing_statement(columns_type const& columns) const;
+
+    void declare_variable(columns_type const& columns);
+    void let_variable(columns_type const& columns);
 
     void add_i(columns_type const& columns);
     void add_ic(columns_type const& columns);
@@ -423,95 +456,6 @@ namespace bra
   inline void swap(::bra::interpreter& lhs, ::bra::interpreter& rhs)
     noexcept(noexcept(lhs.swap(rhs)))
   { lhs.swap(rhs); }
-
-  namespace interpreter_detail
-  {
-    template <typename Value>
-    void read_value_in_depolarizing_statement(
-      Value& value, std::string& present_string, // "xxx" or "xxx," or "xxx,..."
-      ::bra::interpreter::columns_type::const_iterator& column_iter,
-      ::bra::interpreter::columns_type::const_iterator const& column_last,
-      ::bra::interpreter::columns_type const& columns)
-    {
-      auto string_found = std::find(present_string.cbegin(), present_string.cend(), ',');
-      value = boost::lexical_cast<Value>(std::string{present_string.cbegin(), string_found});
-
-      if (string_found == present_string.cend()) // present_string == "xxx"
-      {
-        if (++column_iter == column_last)
-        {
-          present_string.clear();
-          return;
-        }
-
-        present_string = *column_iter; // present_string == "," or ",..."
-        if (present_string[0] != ',')
-          throw wrong_mnemonics_error{columns};
-
-        if (present_string.size() == 1u) // present_string == ","
-        {
-          if (++column_iter == column_last)
-            throw wrong_mnemonics_error{columns};
-
-          present_string = *column_iter; // present_string == "..."
-        }
-        else // present_string == ",..."
-          present_string.assign(present_string, 1u, std::string::npos); // present_string == "..."
-      }
-      else // present_string == "xxx," or "xxx,..."
-      {
-        present_string.assign(++string_found, present_string.cend()); // present_string == "" or "..."
-        if (present_string.empty()) // present_string == ""
-        {
-          if (++column_iter == column_last)
-            throw wrong_mnemonics_error{columns};
-
-          present_string = *column_iter; // present_string == "..."
-        }
-      }
-    }
-
-    template <typename Value>
-    void read_depolarizing_statement(
-      Value& value, std::string& present_string,
-      ::bra::interpreter::columns_type::const_iterator& column_iter,
-      ::bra::interpreter::columns_type::const_iterator const& column_last,
-      std::string::const_iterator string_found, ::bra::interpreter::columns_type const& columns)
-    {
-      if (string_found == present_string.cend()) // present_string == "XXX"
-      {
-        if (++column_iter == column_last)
-          throw wrong_mnemonics_error{columns};
-
-        present_string = *column_iter; // present_string == "=" or "=xxx" or "=xxx," or "=xxx,..."
-        if (present_string[0] != '=')
-          throw wrong_mnemonics_error{columns};
-
-        if (present_string.size() == 1u) // present_string == "="
-        {
-          if (++column_iter == column_last)
-            throw wrong_mnemonics_error{columns};
-
-          present_string = *column_iter; // present_string == "xxx" or "xxx," or "xxx,..."
-        }
-        else // presnet_string == "=xxx" or "=xxx," or "=xxx,..."
-          present_string.assign(present_string, 1u, std::string::npos); // presnet_string == "xxx" or "xxx," or "xxx,..."
-      }
-      else // present_string == "XXX=" or "XXX=xxx" or "XXX=xxx," or "XXX=xxx,..."
-      {
-        present_string.assign(++string_found, present_string.cend()); // present_string == "" or "xxx" or "xxx," or "xxx,..."
-        if (present_string.empty()) // present_string == ""
-        {
-          if (++column_iter == column_last)
-            throw wrong_mnemonics_error{columns};
-
-          present_string = *column_iter; // present_string == "xxx" or "xxx," or "xxx,..."
-        }
-      }
-
-      read_value_in_depolarizing_statement(value, present_string, column_iter, column_last, columns);
-    }
-  } // namespace interpreter_detail
 } // namespace bra
 
 
