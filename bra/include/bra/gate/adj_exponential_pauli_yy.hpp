@@ -4,6 +4,8 @@
 # include <string>
 # include <iosfwd>
 
+# include <boost/variant/variant.hpp>
+
 # include <bra/gate/gate.hpp>
 # include <bra/state.hpp>
 
@@ -20,14 +22,14 @@ namespace bra
       using real_type = ::bra::state::real_type;
 
      private:
-      real_type phase_;
+      boost::variant<real_type, std::string> phase_;
       qubit_type qubit1_;
       qubit_type qubit2_;
 
       static std::string const name_;
 
      public:
-      adj_exponential_pauli_yy(real_type const phase, qubit_type const qubit1, qubit_type const qubit2);
+      adj_exponential_pauli_yy(boost::variant<real_type, std::string> const& phase, qubit_type const qubit1, qubit_type const qubit2);
 
       ~adj_exponential_pauli_yy() = default;
       adj_exponential_pauli_yy(adj_exponential_pauli_yy const&) = delete;

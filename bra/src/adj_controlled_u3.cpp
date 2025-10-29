@@ -2,6 +2,10 @@
 #include <ios>
 #include <iomanip>
 #include <sstream>
+#include <utility>
+
+#include <boost/variant/variant.hpp>
+#include <boost/variant/apply_visitor.hpp>
 
 #include <ket/qubit_io.hpp>
 #include <ket/control_io.hpp>
@@ -18,7 +22,9 @@ namespace bra
     std::string const adj_controlled_u3::name_ = "CU3+";
 
     adj_controlled_u3::adj_controlled_u3(
-      real_type const phase1, real_type const phase2, real_type const phase3,
+      boost::variant<real_type, std::string> const& phase1,
+      boost::variant<real_type, std::string> const& phase2,
+      boost::variant<real_type, std::string> const& phase3,
       qubit_type const target_qubit, control_qubit_type const control_qubit)
       : ::bra::gate::gate{},
         phase1_{phase1}, phase2_{phase2}, phase3_{phase3},
@@ -36,9 +42,9 @@ namespace bra
         << std::right
         << std::setw(parameter_width) << control_qubit_
         << std::setw(parameter_width) << target_qubit_
-        << std::setw(parameter_width) << phase1_
-        << std::setw(parameter_width) << phase2_
-        << std::setw(parameter_width) << phase3_;
+        << std::setw(parameter_width) << boost::apply_visitor(::bra::gate::gate_detail::output_visitor<real_type>{}, phase1_)
+        << std::setw(parameter_width) << boost::apply_visitor(::bra::gate::gate_detail::output_visitor<real_type>{}, phase2_)
+        << std::setw(parameter_width) << boost::apply_visitor(::bra::gate::gate_detail::output_visitor<real_type>{}, phase3_);
       return repr_stream.str();
     }
   } // namespace gate

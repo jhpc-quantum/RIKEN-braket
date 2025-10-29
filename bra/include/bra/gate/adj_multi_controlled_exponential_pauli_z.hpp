@@ -5,6 +5,8 @@
 # include <vector>
 # include <iosfwd>
 
+# include <boost/variant/variant.hpp>
+
 # include <bra/gate/gate.hpp>
 # include <bra/state.hpp>
 
@@ -22,7 +24,7 @@ namespace bra
       using real_type = ::bra::state::real_type;
 
      private:
-      real_type phase_;
+      boost::variant<real_type, std::string> phase_;
       qubit_type target_qubit_;
       std::vector<control_qubit_type> control_qubits_;
 
@@ -30,11 +32,11 @@ namespace bra
 
      public:
       adj_multi_controlled_exponential_pauli_z(
-        real_type const& phase, qubit_type const target_qubit,
+        boost::variant<real_type, std::string> const& phase, qubit_type const target_qubit,
         std::vector<control_qubit_type> const& control_qubits);
 
       adj_multi_controlled_exponential_pauli_z(
-        real_type const& phase, qubit_type const target_qubit,
+        boost::variant<real_type, std::string> const& phase, qubit_type const target_qubit,
         std::vector<control_qubit_type>&& control_qubits);
 
       ~adj_multi_controlled_exponential_pauli_z() = default;

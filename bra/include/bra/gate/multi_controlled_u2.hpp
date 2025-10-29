@@ -5,6 +5,8 @@
 # include <vector>
 # include <iosfwd>
 
+# include <boost/variant/variant.hpp>
+
 # include <bra/gate/gate.hpp>
 # include <bra/state.hpp>
 
@@ -22,8 +24,8 @@ namespace bra
       using real_type = ::bra::state::real_type;
 
      private:
-      real_type phase1_;
-      real_type phase2_;
+      boost::variant<real_type, std::string> phase1_;
+      boost::variant<real_type, std::string> phase2_;
       qubit_type target_qubit_;
       std::vector<control_qubit_type> control_qubits_;
 
@@ -31,11 +33,11 @@ namespace bra
 
      public:
       multi_controlled_u2(
-        real_type const& phase1, real_type const& phase2,
+        boost::variant<real_type, std::string> const& phase1, boost::variant<real_type, std::string> const& phase2,
         qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits);
 
       multi_controlled_u2(
-        real_type const& phase1, real_type const& phase2,
+        boost::variant<real_type, std::string> const& phase1, boost::variant<real_type, std::string> const& phase2,
         qubit_type const target_qubit, std::vector<control_qubit_type>&& control_qubits);
 
       ~multi_controlled_u2() = default;

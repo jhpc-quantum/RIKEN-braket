@@ -6,6 +6,9 @@
 #include <vector>
 #include <utility>
 
+#include <boost/variant/variant.hpp>
+#include <boost/variant/apply_visitor.hpp>
+
 #include <ket/qubit_io.hpp>
 #include <ket/control_io.hpp>
 
@@ -19,27 +22,25 @@ namespace bra
   namespace gate
   {
     multi_controlled_phase_shift::multi_controlled_phase_shift(
-      int const phase_exponent, complex_type const& phase_coefficient,
+      boost::variant<int_type, std::string> const& phase_exponent,
       std::vector<control_qubit_type> const& control_qubits)
       : ::bra::gate::gate{},
         phase_exponent_{phase_exponent},
-        phase_coefficient_{phase_coefficient},
         control_qubits_{control_qubits},
         name_{std::string(control_qubits_.size() - std::size_t{1u}, 'C').append("R")}
     { }
 
     multi_controlled_phase_shift::multi_controlled_phase_shift(
-      int const phase_exponent, complex_type const& phase_coefficient,
+      boost::variant<int_type, std::string> const& phase_exponent,
       std::vector<control_qubit_type>&& control_qubits)
       : ::bra::gate::gate{},
         phase_exponent_{phase_exponent},
-        phase_coefficient_{phase_coefficient},
         control_qubits_{std::move(control_qubits)},
         name_{std::string(control_qubits_.size() - std::size_t{1u}, 'C').append("R")}
     { }
 
     ::bra::state& multi_controlled_phase_shift::do_apply(::bra::state& state) const
-    { return state.multi_controlled_phase_shift(phase_coefficient_, control_qubits_); }
+    { return state.multi_controlled_phase_shift(phase_exponent_, control_qubits_); }
 
     std::string const& multi_controlled_phase_shift::do_name() const { return name_; }
     std::string multi_controlled_phase_shift::do_representation(
@@ -49,7 +50,7 @@ namespace bra
         repr_stream << std::right << std::setw(parameter_width) << control_qubit;
       repr_stream
         << std::right
-        << std::setw(parameter_width) << phase_exponent_;
+        << std::setw(parameter_width) << boost::apply_visitor(::bra::gate::gate_detail::output_visitor<int_type>{}, phase_exponent_);
       return repr_stream.str();
     }
   } // namespace gate

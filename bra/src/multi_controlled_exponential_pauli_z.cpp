@@ -5,6 +5,9 @@
 #include <vector>
 #include <utility>
 
+#include <boost/variant/variant.hpp>
+#include <boost/variant/apply_visitor.hpp>
+
 #include <ket/qubit_io.hpp>
 #include <ket/control_io.hpp>
 
@@ -18,14 +21,16 @@ namespace bra
   namespace gate
   {
     multi_controlled_exponential_pauli_z::multi_controlled_exponential_pauli_z(
-      real_type const& phase, qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
+      boost::variant<real_type, std::string> const& phase,
+      qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
       : ::bra::gate::gate{},
         phase_{phase}, target_qubit_{target_qubit}, control_qubits_{control_qubits},
         name_{std::string(control_qubits_.size(), 'C').append("eZ")}
     { }
 
     multi_controlled_exponential_pauli_z::multi_controlled_exponential_pauli_z(
-      real_type const& phase, qubit_type const target_qubit, std::vector<control_qubit_type>&& control_qubits)
+      boost::variant<real_type, std::string> const& phase,
+      qubit_type const target_qubit, std::vector<control_qubit_type>&& control_qubits)
       : ::bra::gate::gate{},
         phase_{phase}, target_qubit_{target_qubit}, control_qubits_{std::move(control_qubits)},
         name_{std::string(control_qubits_.size(), 'C').append("eZ")}
@@ -43,7 +48,7 @@ namespace bra
       repr_stream
         << std::right
         << std::setw(parameter_width) << target_qubit_
-        << std::setw(parameter_width) << phase_;
+        << std::setw(parameter_width) << boost::apply_visitor(::bra::gate::gate_detail::output_visitor<real_type>{}, phase_);
       return repr_stream.str();
     }
   } // namespace gate

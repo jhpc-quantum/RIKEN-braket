@@ -34,13 +34,14 @@
 #include <ket/control.hpp>
 #include <ket/utility/integer_log2.hpp>
 #include <ket/utility/integer_exp2.hpp>
-#include <ket/utility/generate_phase_coefficients.hpp>
 
 #include <bra/types.hpp>
 #include <bra/interpreter.hpp>
 #include <bra/state.hpp>
 #include <bra/utility/to_integer.hpp>
 #include <bra/gate/gate.hpp>
+#include <bra/gate/var_op.hpp>
+#include <bra/gate/let_op.hpp>
 #include <bra/gate/i_gate.hpp>
 #include <bra/gate/ic_gate.hpp>
 #include <bra/gate/ii_gate.hpp>
@@ -235,12 +236,12 @@ namespace bra
 #ifndef BRA_NO_MPI
   interpreter::interpreter()
     : circuits_(1u), num_qubits_{}, num_lqubits_{}, num_uqubits_{}, num_processes_per_unit_{1u},
-      initial_state_value_{}, initial_permutation_{}, phase_coefficients_{}, root_{}, circuit_index_{0}, is_in_circuit_{false}
+      initial_state_value_{}, initial_permutation_{}, root_{}, circuit_index_{0}, is_in_circuit_{false}
   { }
 #else // BRA_NO_MPI
   interpreter::interpreter()
     : circuits_(1u), num_qubits_{},
-      initial_state_value_{}, phase_coefficients_{}, circuit_index_{0}, is_in_circuit_{false}
+      initial_state_value_{}, circuit_index_{0}, is_in_circuit_{false}
   { }
 #endif // BRA_NO_MPI
 
@@ -253,7 +254,7 @@ namespace bra
     size_type const num_reserved_gates)
     : circuits_(1u), num_qubits_{}, num_lqubits_{},
       num_uqubits_{num_uqubits}, num_processes_per_unit_{num_processes_per_unit},
-      initial_state_value_{}, initial_permutation_{}, phase_coefficients_{}, root_{root}, circuit_index_{0}, is_in_circuit_{false}
+      initial_state_value_{}, initial_permutation_{}, root_{root}, circuit_index_{0}, is_in_circuit_{false}
   {
     assert(num_processes_per_unit >= 1u);
     invoke(input_stream, environment, total_communicator, num_reserved_gates);
@@ -261,12 +262,12 @@ namespace bra
 #else // BRA_NO_MPI
   interpreter::interpreter(std::istream& input_stream)
     : circuits_(1u), num_qubits_{},
-      initial_state_value_{}, phase_coefficients_{}, circuit_index_{0}, is_in_circuit_{false}
+      initial_state_value_{}, circuit_index_{0}, is_in_circuit_{false}
   { invoke(input_stream, size_type{0u}); }
 
   interpreter::interpreter(std::istream& input_stream, size_type const num_reserved_gates)
     : circuits_(1u), num_qubits_{},
-      initial_state_value_{}, phase_coefficients_{}, circuit_index_{0}, is_in_circuit_{false}
+      initial_state_value_{}, circuit_index_{0}, is_in_circuit_{false}
   { invoke(input_stream, num_reserved_gates); }
 #endif // BRA_NO_MPI
 
@@ -280,7 +281,6 @@ namespace bra
       and num_processes_per_unit_ == other.num_processes_per_unit_
       and initial_state_value_ == other.initial_state_value_
       and initial_permutation_ == other.initial_permutation_
-      and phase_coefficients_ == other.phase_coefficients_
       and root_ == other.root_
       and circuit_index_ == other.circuit_index_
       and is_in_circuit_ == other.is_in_circuit_;
@@ -288,7 +288,6 @@ namespace bra
     return circuits_ == other.circuits_
       and num_qubits_ == other.num_qubits_
       and initial_state_value_ == other.initial_state_value_
-      and phase_coefficients_ == other.phase_coefficients_
       and circuit_index_ == other.circuit_index_
       and is_in_circuit_ == other.is_in_circuit_;
 #endif // BRA_NO_MPI
@@ -331,7 +330,6 @@ namespace bra
 
     num_lqubits_ = new_num_lqubits;
     num_qubits_ = new_num_lqubits + num_uqubits_ + num_gqubits;
-    ket::utility::generate_phase_coefficients(phase_coefficients_, num_qubits_);
 
     initial_permutation_.clear();
     initial_permutation_.reserve(num_qubits_);
@@ -342,7 +340,6 @@ namespace bra
   void interpreter::set_num_qubits_params(::bra::bit_integer_type const new_num_qubits)
   {
     num_qubits_ = new_num_qubits;
-    ket::utility::generate_phase_coefficients(phase_coefficients_, num_qubits_);
   }
 #endif // BRA_NO_MPI
 
@@ -434,6 +431,10 @@ namespace bra
         throw unsupported_mnemonic_error{mnemonic};
       else if (mnemonic == "RANDOM") // RANDOM PERMUTATION
         throw unsupported_mnemonic_error{mnemonic};
+      else if (mnemonic == "VAR")
+        add_var(columns);
+      else if (mnemonic == "LET")
+        add_let(columns);
       else if (mnemonic == "I")
         add_i(columns);
       else if (mnemonic == "IC")
@@ -761,13 +762,11 @@ namespace bra
     swap(num_lqubits_, other.num_lqubits_);
     swap(initial_state_value_, other.initial_state_value_);
     swap(initial_permutation_, other.initial_permutation_);
-    swap(phase_coefficients_, other.phase_coefficients_);
     swap(root_, other.root_);
 #else // BRA_NO_MPI
     swap(circuits_, other.circuits_);
     swap(num_qubits_, other.num_qubits_);
     swap(initial_state_value_, other.initial_state_value_);
-    swap(phase_coefficients_, other.phase_coefficients_);
 #endif // BRA_NO_MPI
   }
 
@@ -929,8 +928,9 @@ namespace bra
     }
   }
 
-  std::tuple< ::bra::qubit_type, ::bra::real_type >
-  interpreter::read_target_phase(interpreter::columns_type const& columns) const
+  ::bra::qubit_type interpreter::read_target_phase(
+    interpreter::columns_type const& columns,
+    boost::variant< ::bra::real_type, std::string >& phase) const
   {
     if (boost::size(columns) != 3u)
       throw wrong_mnemonics_error{columns};
@@ -938,13 +938,18 @@ namespace bra
     using std::begin;
     auto iter = begin(columns);
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const phase = boost::lexical_cast<real_type>(*++iter);
+    auto const phase_string = *++iter;
+    if (std::isdigit(static_cast<unsigned char>(phase_string.front())))
+      phase = boost::lexical_cast< ::bra::real_type >(phase_string);
+    else
+      phase = phase_string;
 
-    return std::make_tuple(ket::make_qubit< ::bra::state_integer_type >(target), phase);
+    return ket::make_qubit< ::bra::state_integer_type >(target);
   }
 
-  std::tuple< ::bra::control_qubit_type, ::bra::real_type >
-  interpreter::read_control_phase(interpreter::columns_type const& columns) const
+  ::bra::control_qubit_type interpreter::read_control_phase(
+    interpreter::columns_type const& columns,
+    boost::variant< ::bra::real_type, std::string >& phase) const
   {
     if (boost::size(columns) != 3u)
       throw wrong_mnemonics_error{columns};
@@ -952,13 +957,19 @@ namespace bra
     using std::begin;
     auto iter = begin(columns);
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const phase = boost::lexical_cast<real_type>(*++iter);
+    auto const phase_string = *++iter;
+    if (std::isdigit(static_cast<unsigned char>(phase_string.front())))
+      phase = boost::lexical_cast< ::bra::real_type >(phase_string);
+    else
+      phase = phase_string;
 
-    return std::make_tuple(ket::make_control(ket::make_qubit< ::bra::state_integer_type >(target)), phase);
+    return ket::make_control(ket::make_qubit< ::bra::state_integer_type >(target));
   }
 
-  std::tuple< ::bra::qubit_type, ::bra::real_type, ::bra::real_type >
-  interpreter::read_target_2phases(interpreter::columns_type const& columns) const
+  ::bra::qubit_type interpreter::read_target_2phases(
+    interpreter::columns_type const& columns,
+    boost::variant< ::bra::real_type, std::string >& phase1,
+    boost::variant< ::bra::real_type, std::string >& phase2) const
   {
     if (boost::size(columns) != 4u)
       throw wrong_mnemonics_error{columns};
@@ -966,14 +977,25 @@ namespace bra
     using std::begin;
     auto iter = begin(columns);
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const phase1 = boost::lexical_cast<real_type>(*++iter);
-    auto const phase2 = boost::lexical_cast<real_type>(*++iter);
+    auto const phase1_string = *++iter;
+    if (std::isdigit(static_cast<unsigned char>(phase1_string.front())))
+      phase1 = boost::lexical_cast< ::bra::real_type >(phase1_string);
+    else
+      phase1 = phase1_string;
+    auto const phase2_string = *++iter;
+    if (std::isdigit(static_cast<unsigned char>(phase2_string.front())))
+      phase2 = boost::lexical_cast< ::bra::real_type >(phase2_string);
+    else
+      phase2 = phase2_string;
 
-    return std::make_tuple(ket::make_qubit< ::bra::state_integer_type >(target), phase1, phase2);
+    return ket::make_qubit< ::bra::state_integer_type >(target);
   }
 
-  std::tuple< ::bra::qubit_type, ::bra::real_type, ::bra::real_type, ::bra::real_type >
-  interpreter::read_target_3phases(interpreter::columns_type const& columns) const
+  ::bra::qubit_type interpreter::read_target_3phases(
+    interpreter::columns_type const& columns,
+    boost::variant< ::bra::real_type, std::string >& phase1,
+    boost::variant< ::bra::real_type, std::string >& phase2,
+    boost::variant< ::bra::real_type, std::string >& phase3) const
   {
     if (boost::size(columns) != 5u)
       throw wrong_mnemonics_error{columns};
@@ -981,14 +1003,28 @@ namespace bra
     using std::begin;
     auto iter = begin(columns);
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const phase1 = boost::lexical_cast<real_type>(*++iter);
-    auto const phase2 = boost::lexical_cast<real_type>(*++iter);
-    auto const phase3 = boost::lexical_cast<real_type>(*++iter);
+    auto const phase1_string = *++iter;
+    if (std::isdigit(static_cast<unsigned char>(phase1_string.front())))
+      phase1 = boost::lexical_cast< ::bra::real_type >(phase1_string);
+    else
+      phase1 = phase1_string;
+    auto const phase2_string = *++iter;
+    if (std::isdigit(static_cast<unsigned char>(phase2_string.front())))
+      phase2 = boost::lexical_cast< ::bra::real_type >(phase2_string);
+    else
+      phase2 = phase2_string;
+    auto const phase3_string = *++iter;
+    if (std::isdigit(static_cast<unsigned char>(phase3_string.front())))
+      phase3 = boost::lexical_cast< ::bra::real_type >(phase3_string);
+    else
+      phase3 = phase3_string;
 
-    return std::make_tuple(ket::make_qubit< ::bra::state_integer_type >(target), phase1, phase2, phase3);
+    return ket::make_qubit< ::bra::state_integer_type >(target);
   }
 
-  std::tuple< ::bra::qubit_type, int > interpreter::read_target_phaseexp(interpreter::columns_type const& columns) const
+  ::bra::qubit_type interpreter::read_target_phaseexp(
+    interpreter::columns_type const& columns,
+    boost::variant< ::bra::int_type, std::string >& phase_exponent) const
   {
     if (boost::size(columns) != 3u)
       throw wrong_mnemonics_error{columns};
@@ -996,12 +1032,18 @@ namespace bra
     using std::begin;
     auto iter = begin(columns);
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const phase_exponent = boost::lexical_cast<int>(*++iter);
+    auto const phase_exponent_string = *++iter;
+    if (std::isdigit(static_cast<unsigned char>(phase_exponent_string.front())))
+      phase_exponent = boost::lexical_cast< ::bra::int_type >(phase_exponent_string);
+    else
+      phase_exponent = phase_exponent_string;
 
-    return std::make_tuple(ket::make_qubit< ::bra::state_integer_type >(target), phase_exponent);
+    return ket::make_qubit< ::bra::state_integer_type >(target);
   }
 
-  std::tuple< ::bra::control_qubit_type, int > interpreter::read_control_phaseexp(interpreter::columns_type const& columns) const
+  ::bra::control_qubit_type interpreter::read_control_phaseexp(
+    interpreter::columns_type const& columns,
+    boost::variant< ::bra::int_type, std::string >& phase_exponent) const
   {
     if (boost::size(columns) != 3u)
       throw wrong_mnemonics_error{columns};
@@ -1009,13 +1051,19 @@ namespace bra
     using std::begin;
     auto iter = begin(columns);
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const phase_exponent = boost::lexical_cast<int>(*++iter);
+    auto const phase_exponent_string = *++iter;
+    if (std::isdigit(static_cast<unsigned char>(phase_exponent_string.front())))
+      phase_exponent = boost::lexical_cast< ::bra::int_type >(phase_exponent_string);
+    else
+      phase_exponent = phase_exponent_string;
 
-    return std::make_tuple(ket::make_control(ket::make_qubit< ::bra::state_integer_type >(target)), phase_exponent);
+    return ket::make_control(ket::make_qubit< ::bra::state_integer_type >(target));
   }
 
-  std::tuple< ::bra::qubit_type, ::bra::qubit_type, ::bra::real_type >
-  interpreter::read_2targets_phase(interpreter::columns_type const& columns) const
+  std::tuple< ::bra::qubit_type, ::bra::qubit_type >
+  interpreter::read_2targets_phase(
+    interpreter::columns_type const& columns,
+    boost::variant< ::bra::real_type, std::string >& phase) const
   {
     if (boost::size(columns) != 4u)
       throw wrong_mnemonics_error{columns};
@@ -1024,12 +1072,19 @@ namespace bra
     auto iter = begin(columns);
     auto const target1 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
     auto const target2 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const phase = boost::lexical_cast<real_type>(*++iter);
+    auto const phase_string = *++iter;
+    if (std::isdigit(static_cast<unsigned char>(phase_string.front())))
+      phase = boost::lexical_cast< ::bra::real_type >(phase_string);
+    else
+      phase = phase_string;
 
-    return std::make_tuple(ket::make_qubit< ::bra::state_integer_type >(target1), ket::make_qubit< ::bra::state_integer_type >(target2), phase);
+    return std::make_tuple(ket::make_qubit< ::bra::state_integer_type >(target1), ket::make_qubit< ::bra::state_integer_type >(target2));
   }
 
-  ::bra::real_type interpreter::read_multi_targets_phase(interpreter::columns_type const& columns, std::vector< ::bra::qubit_type >& targets) const
+  void interpreter::read_multi_targets_phase(
+    interpreter::columns_type const& columns,
+    std::vector< ::bra::qubit_type >& targets,
+    boost::variant< ::bra::real_type, std::string >& phase) const
   {
     if (boost::size(columns) < 5u or targets.size() == boost::size(columns) - 2u)
       throw wrong_mnemonics_error{columns};
@@ -1044,9 +1099,11 @@ namespace bra
       auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
       *targets_iter = ket::make_qubit< ::bra::state_integer_type >(target);
     }
-    auto const phase = boost::lexical_cast<real_type>(*iter);
-
-    return phase;
+    auto const phase_string = *iter;
+    if (std::isdigit(static_cast<unsigned char>(phase_string.front())))
+      phase = boost::lexical_cast< ::bra::real_type >(phase_string);
+    else
+      phase = phase_string;
   }
 
   std::tuple< ::bra::control_qubit_type, ::bra::qubit_type > interpreter::read_control_target(interpreter::columns_type const& columns) const
@@ -1064,8 +1121,10 @@ namespace bra
       ket::make_qubit< ::bra::state_integer_type >(target));
   }
 
-  std::tuple< ::bra::control_qubit_type, ::bra::qubit_type, int >
-  interpreter::read_control_target_phaseexp(interpreter::columns_type const& columns) const
+  std::tuple< ::bra::control_qubit_type, ::bra::qubit_type >
+  interpreter::read_control_target_phaseexp(
+    interpreter::columns_type const& columns,
+    boost::variant< ::bra::int_type, std::string >& phase_exponent) const
   {
     if (boost::size(columns) != 4u)
       throw wrong_mnemonics_error{columns};
@@ -1074,16 +1133,21 @@ namespace bra
     auto iter = begin(columns);
     auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const phase_exponent = boost::lexical_cast<int>(*++iter);
+    auto const phase_exponent_string = *++iter;
+    if (std::isdigit(static_cast<unsigned char>(phase_exponent_string.front())))
+      phase_exponent = boost::lexical_cast< ::bra::int_type >(phase_exponent_string);
+    else
+      phase_exponent = phase_exponent_string;
 
     return std::make_tuple(
       ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control)),
-      ket::make_qubit< ::bra::state_integer_type >(target),
-      phase_exponent);
+      ket::make_qubit< ::bra::state_integer_type >(target));
   }
 
-  std::tuple< ::bra::control_qubit_type, ::bra::control_qubit_type, int >
-  interpreter::read_2controls_phaseexp(interpreter::columns_type const& columns) const
+  std::tuple< ::bra::control_qubit_type, ::bra::control_qubit_type >
+  interpreter::read_2controls_phaseexp(
+    interpreter::columns_type const& columns,
+    boost::variant< ::bra::int_type, std::string >& phase_exponent) const
   {
     if (boost::size(columns) != 4u)
       throw wrong_mnemonics_error{columns};
@@ -1092,12 +1156,15 @@ namespace bra
     auto iter = begin(columns);
     auto const control1 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
     auto const control2 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const phase_exponent = boost::lexical_cast<int>(*++iter);
+    auto const phase_exponent_string = *++iter;
+    if (std::isdigit(static_cast<unsigned char>(phase_exponent_string.front())))
+      phase_exponent = boost::lexical_cast< ::bra::int_type >(phase_exponent_string);
+    else
+      phase_exponent = phase_exponent_string;
 
     return std::make_tuple(
       ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control1)),
-      ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control2)),
-      phase_exponent);
+      ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control2)));
   }
 
   std::tuple< ::bra::control_qubit_type, ::bra::control_qubit_type, ::bra::qubit_type >
@@ -1118,8 +1185,10 @@ namespace bra
       ket::make_qubit< ::bra::state_integer_type >(target));
   }
 
-  ::bra::real_type interpreter::read_multi_controls_phase(
-    interpreter::columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const
+  void interpreter::read_multi_controls_phase(
+    interpreter::columns_type const& columns,
+    std::vector< ::bra::control_qubit_type >& controls,
+    boost::variant< ::bra::real_type, std::string >& phase) const
   {
     if (boost::size(columns) < 4u or controls.size() != boost::size(columns) - 2u)
       throw wrong_mnemonics_error{columns};
@@ -1135,7 +1204,11 @@ namespace bra
       *controls_iter = ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control));
     }
 
-    return boost::lexical_cast< ::bra::real_type >(*iter);
+    auto const phase_string = *iter;
+    if (std::isdigit(static_cast<unsigned char>(phase_string.front())))
+      phase = boost::lexical_cast< ::bra::real_type >(phase_string);
+    else
+      phase = phase_string;
   }
 
   ::bra::qubit_type interpreter::read_multi_controls_target(
@@ -1209,8 +1282,10 @@ namespace bra
     }
   }
 
-  std::tuple< ::bra::control_qubit_type, ::bra::qubit_type, ::bra::real_type >
-  interpreter::read_control_target_phase(interpreter::columns_type const& columns) const
+  std::tuple< ::bra::control_qubit_type, ::bra::qubit_type >
+  interpreter::read_control_target_phase(
+    interpreter::columns_type const& columns,
+    boost::variant< ::bra::real_type, std::string >& phase) const
   {
     if (boost::size(columns) != 4u)
       throw wrong_mnemonics_error{columns};
@@ -1219,16 +1294,21 @@ namespace bra
     auto iter = begin(columns);
     auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const phase = boost::lexical_cast<real_type>(*++iter);
+    auto const phase_string = *++iter;
+    if (std::isdigit(static_cast<unsigned char>(phase_string.front())))
+      phase = boost::lexical_cast< ::bra::real_type >(phase_string);
+    else
+      phase = phase_string;
 
     return std::make_tuple(
       ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control)),
-      ket::make_qubit< ::bra::state_integer_type >(target),
-      phase);
+      ket::make_qubit< ::bra::state_integer_type >(target));
   }
 
-  std::tuple< ::bra::control_qubit_type, ::bra::control_qubit_type, ::bra::real_type >
-  interpreter::read_2controls_phase(interpreter::columns_type const& columns) const
+  std::tuple< ::bra::control_qubit_type, ::bra::control_qubit_type >
+  interpreter::read_2controls_phase(
+    interpreter::columns_type const& columns,
+    boost::variant< ::bra::real_type, std::string >& phase) const
   {
     if (boost::size(columns) != 4u)
       throw wrong_mnemonics_error{columns};
@@ -1237,17 +1317,21 @@ namespace bra
     auto iter = begin(columns);
     auto const control1 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
     auto const control2 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const phase = boost::lexical_cast<real_type>(*++iter);
+    auto const phase_string = *++iter;
+    if (std::isdigit(static_cast<unsigned char>(phase_string.front())))
+      phase = boost::lexical_cast< ::bra::real_type >(phase_string);
+    else
+      phase = phase_string;
 
     return std::make_tuple(
       ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control1)),
-      ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control2)),
-      phase);
+      ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control2)));
   }
 
-  std::tuple< ::bra::qubit_type, ::bra::real_type >
-  interpreter::read_multi_controls_target_phase(
-    interpreter::columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const
+  ::bra::qubit_type interpreter::read_multi_controls_target_phase(
+    interpreter::columns_type const& columns,
+    std::vector< ::bra::control_qubit_type >& controls,
+    boost::variant< ::bra::real_type, std::string >& phase) const
   {
     if (boost::size(columns) < 5u or controls.size() != boost::size(columns) - 3u)
       throw wrong_mnemonics_error{columns};
@@ -1264,12 +1348,20 @@ namespace bra
     }
 
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*iter++);
-    auto const phase = boost::lexical_cast<real_type>(*iter);
-    return std::make_tuple(ket::make_qubit< ::bra::state_integer_type >(target), phase);
+    auto const phase_string = *iter;
+    if (std::isdigit(static_cast<unsigned char>(phase_string.front())))
+      phase = boost::lexical_cast< ::bra::real_type >(phase_string);
+    else
+      phase = phase_string;
+
+    return ket::make_qubit< ::bra::state_integer_type >(target);
   }
 
-  std::tuple< ::bra::control_qubit_type, ::bra::qubit_type, ::bra::real_type, ::bra::real_type >
-  interpreter::read_control_target_2phases(interpreter::columns_type const& columns) const
+  std::tuple< ::bra::control_qubit_type, ::bra::qubit_type >
+  interpreter::read_control_target_2phases(
+    interpreter::columns_type const& columns,
+    boost::variant< ::bra::real_type, std::string >& phase1,
+    boost::variant< ::bra::real_type, std::string >& phase2) const
   {
     if (boost::size(columns) != 5u)
       throw wrong_mnemonics_error{columns};
@@ -1278,18 +1370,27 @@ namespace bra
     auto iter = begin(columns);
     auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const phase1 = boost::lexical_cast<real_type>(*++iter);
-    auto const phase2 = boost::lexical_cast<real_type>(*++iter);
+    auto const phase1_string = *++iter;
+    if (std::isdigit(static_cast<unsigned char>(phase1_string.front())))
+      phase1 = boost::lexical_cast< ::bra::real_type >(phase1_string);
+    else
+      phase1 = phase1_string;
+    auto const phase2_string = *++iter;
+    if (std::isdigit(static_cast<unsigned char>(phase2_string.front())))
+      phase2 = boost::lexical_cast< ::bra::real_type >(phase2_string);
+    else
+      phase2 = phase2_string;
 
     return std::make_tuple(
       ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control)),
-      ket::make_qubit< ::bra::state_integer_type >(target),
-      phase1, phase2);
+      ket::make_qubit< ::bra::state_integer_type >(target));
   }
 
-  std::tuple< ::bra::qubit_type, ::bra::real_type, ::bra::real_type >
-  interpreter::read_multi_controls_target_2phases(
-    interpreter::columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const
+  ::bra::qubit_type interpreter::read_multi_controls_target_2phases(
+    interpreter::columns_type const& columns,
+    std::vector< ::bra::control_qubit_type >& controls,
+    boost::variant< ::bra::real_type, std::string >& phase1,
+    boost::variant< ::bra::real_type, std::string >& phase2) const
   {
     if (boost::size(columns) < 6u or controls.size() != boost::size(columns) - 4u)
       throw wrong_mnemonics_error{columns};
@@ -1306,13 +1407,26 @@ namespace bra
     }
 
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*iter++);
-    auto const phase1 = boost::lexical_cast<real_type>(*iter++);
-    auto const phase2 = boost::lexical_cast<real_type>(*iter);
-    return std::make_tuple(ket::make_qubit< ::bra::state_integer_type >(target), phase1, phase2);
+    auto const phase1_string = *iter++;
+    if (std::isdigit(static_cast<unsigned char>(phase1_string.front())))
+      phase1 = boost::lexical_cast< ::bra::real_type >(phase1_string);
+    else
+      phase1 = phase1_string;
+    auto const phase2_string = *iter;
+    if (std::isdigit(static_cast<unsigned char>(phase2_string.front())))
+      phase2 = boost::lexical_cast< ::bra::real_type >(phase2_string);
+    else
+      phase2 = phase2_string;
+
+    return ket::make_qubit< ::bra::state_integer_type >(target);
   }
 
-  std::tuple< ::bra::control_qubit_type, ::bra::qubit_type, ::bra::real_type, ::bra::real_type, ::bra::real_type >
-  interpreter::read_control_target_3phases(interpreter::columns_type const& columns) const
+  std::tuple< ::bra::control_qubit_type, ::bra::qubit_type >
+  interpreter::read_control_target_3phases(
+    interpreter::columns_type const& columns,
+    boost::variant< ::bra::real_type, std::string >& phase1,
+    boost::variant< ::bra::real_type, std::string >& phase2,
+    boost::variant< ::bra::real_type, std::string >& phase3) const
   {
     if (boost::size(columns) != 6u)
       throw wrong_mnemonics_error{columns};
@@ -1321,19 +1435,33 @@ namespace bra
     auto iter = begin(columns);
     auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const phase1 = boost::lexical_cast<real_type>(*++iter);
-    auto const phase2 = boost::lexical_cast<real_type>(*++iter);
-    auto const phase3 = boost::lexical_cast<real_type>(*++iter);
+    auto const phase1_string = *++iter;
+    if (std::isdigit(static_cast<unsigned char>(phase1_string.front())))
+      phase1 = boost::lexical_cast< ::bra::real_type >(phase1_string);
+    else
+      phase1 = phase1_string;
+    auto const phase2_string = *++iter;
+    if (std::isdigit(static_cast<unsigned char>(phase2_string.front())))
+      phase2 = boost::lexical_cast< ::bra::real_type >(phase2_string);
+    else
+      phase2 = phase1_string;
+    auto const phase3_string = *++iter;
+    if (std::isdigit(static_cast<unsigned char>(phase3_string.front())))
+      phase3 = boost::lexical_cast< ::bra::real_type >(phase3_string);
+    else
+      phase3 = phase3_string;
 
     return std::make_tuple(
       ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control)),
-      ket::make_qubit< ::bra::state_integer_type >(target),
-      phase1, phase2, phase3);
+      ket::make_qubit< ::bra::state_integer_type >(target));
   }
 
-  std::tuple< ::bra::qubit_type, ::bra::real_type, ::bra::real_type, ::bra::real_type >
-  interpreter::read_multi_controls_target_3phases(
-    interpreter::columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const
+  ::bra::qubit_type interpreter::read_multi_controls_target_3phases(
+    interpreter::columns_type const& columns,
+    std::vector< ::bra::control_qubit_type >& controls,
+    boost::variant< ::bra::real_type, std::string >& phase1,
+    boost::variant< ::bra::real_type, std::string >& phase2,
+    boost::variant< ::bra::real_type, std::string >& phase3) const
   {
     if (boost::size(columns) < 7u or controls.size() != boost::size(columns) - 5u)
       throw wrong_mnemonics_error{columns};
@@ -1350,14 +1478,29 @@ namespace bra
     }
 
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*iter++);
-    auto const phase1 = boost::lexical_cast<real_type>(*iter++);
-    auto const phase2 = boost::lexical_cast<real_type>(*iter++);
-    auto const phase3 = boost::lexical_cast<real_type>(*iter);
-    return std::make_tuple(ket::make_qubit< ::bra::state_integer_type >(target), phase1, phase2, phase3);
+    auto const phase1_string = *iter++;
+    if (std::isdigit(static_cast<unsigned char>(phase1_string.front())))
+      phase1 = boost::lexical_cast< ::bra::real_type >(phase1_string);
+    else
+      phase1 = phase1_string;
+    auto const phase2_string = *iter++;
+    if (std::isdigit(static_cast<unsigned char>(phase2_string.front())))
+      phase2 = boost::lexical_cast< ::bra::real_type >(phase2_string);
+    else
+      phase2 = phase1_string;
+    auto const phase3_string = *iter;
+    if (std::isdigit(static_cast<unsigned char>(phase3_string.front())))
+      phase3 = boost::lexical_cast< ::bra::real_type >(phase3_string);
+    else
+      phase3 = phase3_string;
+
+    return ket::make_qubit< ::bra::state_integer_type >(target);
   }
 
-  int interpreter::read_multi_controls_phaseexp(
-    interpreter::columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const
+  void interpreter::read_multi_controls_phaseexp(
+    interpreter::columns_type const& columns,
+    std::vector< ::bra::control_qubit_type >& controls,
+    boost::variant< ::bra::int_type, std::string >& phase_exponent) const
   {
     if (boost::size(columns) < 4u or controls.size() != boost::size(columns) - 2u)
       throw wrong_mnemonics_error{columns};
@@ -1373,13 +1516,17 @@ namespace bra
       *controls_iter = ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control));
     }
 
-    auto const phase_exponent = boost::lexical_cast<int>(*iter);
-    return phase_exponent;
+    auto const phase_exponent_string = *iter;
+    if (std::isdigit(static_cast<unsigned char>(phase_exponent_string.front())))
+      phase_exponent = boost::lexical_cast< ::bra::real_type >(phase_exponent_string);
+    else
+      phase_exponent = phase_exponent_string;
   }
 
-  std::tuple< ::bra::qubit_type, int >
-  interpreter::read_multi_controls_target_phaseexp(
-    interpreter::columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const
+  ::bra::qubit_type interpreter::read_multi_controls_target_phaseexp(
+    interpreter::columns_type const& columns,
+    std::vector< ::bra::control_qubit_type >& controls,
+    boost::variant< ::bra::int_type, std::string >& phase_exponent) const
   {
     if (boost::size(columns) < 5u or controls.size() != boost::size(columns) - 3u)
       throw wrong_mnemonics_error{columns};
@@ -1396,13 +1543,20 @@ namespace bra
     }
 
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*iter++);
-    auto const phase_exponent = boost::lexical_cast<int>(*iter);
-    return std::make_tuple(ket::make_qubit< ::bra::state_integer_type >(target), phase_exponent);
+    auto const phase_exponent_string = *iter;
+    if (std::isdigit(static_cast<unsigned char>(phase_exponent_string.front())))
+      phase_exponent = boost::lexical_cast< ::bra::real_type >(phase_exponent_string);
+    else
+      phase_exponent = phase_exponent_string;
+
+    return ket::make_qubit< ::bra::state_integer_type >(target);
   }
 
-  ::bra::real_type interpreter::read_multi_controls_multi_targets_phase(
+  void interpreter::read_multi_controls_multi_targets_phase(
     interpreter::columns_type const& columns,
-    std::vector< ::bra::control_qubit_type >& controls, std::vector< ::bra::qubit_type >& targets) const
+    std::vector< ::bra::control_qubit_type >& controls,
+    std::vector< ::bra::qubit_type >& targets,
+    boost::variant< ::bra::real_type, std::string >& phase) const
   {
     if (boost::size(columns) < 5u or controls.size() + targets.size() != boost::size(columns) - 2u)
       throw wrong_mnemonics_error{columns};
@@ -1425,13 +1579,18 @@ namespace bra
       *targets_iter = ket::make_qubit< ::bra::state_integer_type >(target);
     }
 
-    auto const phase = boost::lexical_cast<real_type>(*iter);
-    return phase;
+    auto const phase_string = *iter;
+    if (std::isdigit(static_cast<unsigned char>(phase_string.front())))
+      phase = boost::lexical_cast< ::bra::real_type >(phase_string);
+    else
+      phase = phase_string;
   }
 
-  std::tuple< ::bra::qubit_type, ::bra::qubit_type, ::bra::real_type >
+  std::tuple< ::bra::qubit_type, ::bra::qubit_type >
   interpreter::read_multi_controls_2targets_phase(
-    interpreter::columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const
+    interpreter::columns_type const& columns,
+    std::vector< ::bra::control_qubit_type >& controls,
+    boost::variant< ::bra::real_type, std::string >& phase) const
   {
     if (boost::size(columns) < 6u or controls.size() != boost::size(columns) - 4u)
       throw wrong_mnemonics_error{columns};
@@ -1449,11 +1608,15 @@ namespace bra
 
     auto const target1 = boost::lexical_cast< ::bra::bit_integer_type >(*iter++);
     auto const target2 = boost::lexical_cast< ::bra::bit_integer_type >(*iter++);
-    auto const phase = boost::lexical_cast<real_type>(*iter);
+    auto const phase_string = *iter;
+    if (std::isdigit(static_cast<unsigned char>(phase_string.front())))
+      phase = boost::lexical_cast< ::bra::real_type >(phase_string);
+    else
+      phase = phase_string;
+
     return std::make_tuple(
        ket::make_qubit< ::bra::state_integer_type >(target1),
-       ket::make_qubit< ::bra::state_integer_type >(target2),
-       phase);
+       ket::make_qubit< ::bra::state_integer_type >(target2));
   }
 
   ::bra::begin_statement interpreter::read_begin_statement(interpreter::columns_type const& columns) const
@@ -1612,6 +1775,63 @@ namespace bra
       throw wrong_mnemonics_error{columns};
 
     return std::make_tuple(::bra::depolarizing_statement::channel, px, py, pz, seed);
+  }
+
+  // VAR X REAL ! declare real variable X
+  // VAR NS INT 4 ! declare array with 4 integer elements NS
+  void interpreter::add_var(interpreter::columns_type const& columns)
+  {
+    auto const column_size = boost::size(columns);
+    if (not (column_size == 3u or column_size == 4u))
+      throw wrong_mnemonics_error{columns};
+
+    using std::begin;
+    auto iter = begin(columns);
+    auto variable_name = *++iter;
+    boost::algorithm::to_upper(variable_name);
+    auto type_name = *++iter;
+    boost::algorithm::to_upper(type_name);
+    auto const num_elements = column_size == 3u ? 1 : boost::lexical_cast<int>(*++iter);
+
+    auto const type
+      = type_name == "REAL"
+        ? ::bra::variable_type::real
+        : type_name == "INT"
+          ? ::bra::variable_type::integer
+          : throw 1;
+
+    circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::var_op >(variable_name, type, num_elements));
+  }
+
+  // LET X := 1.0
+  // LET NS:1 += N
+  void interpreter::add_let(interpreter::columns_type const& columns)
+  {
+    if (boost::size(columns) != 4u)
+      throw wrong_mnemonics_error{columns};
+
+    using std::begin;
+    auto iter = begin(columns);
+    auto lhs_variable_name = *++iter;
+    boost::algorithm::to_upper(lhs_variable_name);
+    auto const op_str = *++iter;
+    auto rhs_literal_or_variable_name = *++iter;
+    boost::algorithm::to_upper(rhs_literal_or_variable_name);
+
+    auto const op
+      = op_str == ":="
+        ? ::bra::assign_operation_type::assign
+        : op_str == "+="
+          ? ::bra::assign_operation_type::plus_assign
+          : op_str == "-="
+            ? ::bra::assign_operation_type::minus_assign
+            : op_str == "*="
+              ? ::bra::assign_operation_type::multiplies_assign
+              : op_str == "/="
+                ? ::bra::assign_operation_type::divides_assign
+                : throw 1;
+
+    circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::let_op >(lhs_variable_name, op, rhs_literal_or_variable_name));
   }
 
   void interpreter::add_i(interpreter::columns_type const& columns)
@@ -1969,99 +2189,79 @@ namespace bra
   { circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_s_gate >(read_control(columns))); }
 
   void interpreter::add_t(interpreter::columns_type const& columns)
-  { circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::t_gate >(phase_coefficients_[3u], read_control(columns))); }
+  { circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::t_gate >(read_control(columns))); }
 
   void interpreter::add_adj_t(interpreter::columns_type const& columns)
-  { circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_t_gate >(phase_coefficients_[3u], read_control(columns))); }
+  { circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_t_gate >(read_control(columns))); }
 
   void interpreter::add_u1(interpreter::columns_type const& columns)
   {
-    auto control = ::bra::control_qubit_type{};
-    auto phase = real_type{};
-    std::tie(control, phase) = read_control_phase(columns);
+    auto phase = boost::variant<real_type, std::string>{};
+    auto const control = read_control_phase(columns, phase);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::u1 >(phase, control));
   }
 
   void interpreter::add_adj_u1(interpreter::columns_type const& columns)
   {
-    auto control = ::bra::control_qubit_type{};
-    auto phase = real_type{};
-    std::tie(control, phase) = read_control_phase(columns);
+    auto phase = boost::variant<real_type, std::string>{};
+    auto const control = read_control_phase(columns, phase);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_u1 >(phase, control));
   }
 
   void interpreter::add_u2(interpreter::columns_type const& columns)
   {
-    auto target = ::bra::qubit_type{};
-    auto phase1 = real_type{};
-    auto phase2 = real_type{};
-    std::tie(target, phase1, phase2) = read_target_2phases(columns);
+    auto phase1 = boost::variant<real_type, std::string>{};
+    auto phase2 = boost::variant<real_type, std::string>{};
+    auto const target = read_target_2phases(columns, phase1, phase2);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::u2 >(phase1, phase2, target));
   }
 
   void interpreter::add_adj_u2(interpreter::columns_type const& columns)
   {
-    auto target = ::bra::qubit_type{};
-    auto phase1 = real_type{};
-    auto phase2 = real_type{};
-    std::tie(target, phase1, phase2) = read_target_2phases(columns);
+    auto phase1 = boost::variant<real_type, std::string>{};
+    auto phase2 = boost::variant<real_type, std::string>{};
+    auto const target = read_target_2phases(columns, phase1, phase2);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_u2 >(phase1, phase2, target));
   }
 
   void interpreter::add_u3(interpreter::columns_type const& columns)
   {
-    auto target = ::bra::qubit_type{};
-    auto phase1 = real_type{};
-    auto phase2 = real_type{};
-    auto phase3 = real_type{};
-    std::tie(target, phase1, phase2, phase3) = read_target_3phases(columns);
+    auto phase1 = boost::variant<real_type, std::string>{};
+    auto phase2 = boost::variant<real_type, std::string>{};
+    auto phase3 = boost::variant<real_type, std::string>{};
+    auto const target = read_target_3phases(columns, phase1, phase2, phase3);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::u3 >(phase1, phase2, phase3, target));
   }
 
   void interpreter::add_adj_u3(interpreter::columns_type const& columns)
   {
-    auto target = ::bra::qubit_type{};
-    auto phase1 = real_type{};
-    auto phase2 = real_type{};
-    auto phase3 = real_type{};
-    std::tie(target, phase1, phase2, phase3) = read_target_3phases(columns);
+    auto phase1 = boost::variant<real_type, std::string>{};
+    auto phase2 = boost::variant<real_type, std::string>{};
+    auto phase3 = boost::variant<real_type, std::string>{};
+    auto const target = read_target_3phases(columns, phase1, phase2, phase3);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_u3 >(phase1, phase2, phase3, target));
   }
 
   void interpreter::add_r(interpreter::columns_type const& columns)
   {
-    auto control = ::bra::control_qubit_type{};
-    auto phase_exponent = int{};
-    std::tie(control, phase_exponent) = read_control_phaseexp(columns);
+    auto phase_exponent = boost::variant<int_type, std::string>{};
+    auto const control = read_control_phaseexp(columns, phase_exponent);
 
-    if (phase_exponent >= 0)
-      circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::phase_shift >(phase_exponent, phase_coefficients_[phase_exponent], control));
-    else
-    {
-      phase_exponent *= -1;
-      circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_phase_shift >(phase_exponent, phase_coefficients_[phase_exponent], control));
-    }
+    circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::phase_shift >(phase_exponent, control));
   }
 
   void interpreter::add_adj_r(interpreter::columns_type const& columns)
   {
-    auto control = ::bra::control_qubit_type{};
-    auto phase_exponent = int{};
-    std::tie(control, phase_exponent) = read_control_phaseexp(columns);
+    auto phase_exponent = boost::variant<int_type, std::string>{};
+    auto const control = read_control_phaseexp(columns, phase_exponent);
 
-    if (phase_exponent >= 0)
-      circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_phase_shift >(phase_exponent, phase_coefficients_[phase_exponent], control));
-    else
-    {
-      phase_exponent *= -1;
-      circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::phase_shift >(phase_exponent, phase_coefficients_[phase_exponent], control));
-    }
+    circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_phase_shift >(phase_exponent, control));
   }
 
   void interpreter::add_rotx(interpreter::columns_type const& columns)
@@ -2080,48 +2280,34 @@ namespace bra
   {
     auto control1 = ::bra::control_qubit_type{};
     auto control2 = ::bra::control_qubit_type{};
-    auto phase_exponent = int{};
-    std::tie(control1, control2, phase_exponent) = read_2controls_phaseexp(columns);
+    auto phase_exponent = boost::variant<int_type, std::string>{};
+    std::tie(control1, control2) = read_2controls_phaseexp(columns, phase_exponent);
 
-    if (phase_exponent >= 0)
-      circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::controlled_phase_shift >(phase_exponent, phase_coefficients_[phase_exponent], control1, control2));
-    else
-    {
-      phase_exponent *= -1;
-      circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_controlled_phase_shift >(phase_exponent, phase_coefficients_[phase_exponent], control1, control2));
-    }
+    circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::controlled_phase_shift >(phase_exponent, control1, control2));
   }
 
   void interpreter::add_adj_u(interpreter::columns_type const& columns)
   {
     auto control1 = ::bra::control_qubit_type{};
     auto control2 = ::bra::control_qubit_type{};
-    auto phase_exponent = int{};
-    std::tie(control1, control2, phase_exponent) = read_2controls_phaseexp(columns);
+    auto phase_exponent = boost::variant<int_type, std::string>{};
+    std::tie(control1, control2) = read_2controls_phaseexp(columns, phase_exponent);
 
-    if (phase_exponent >= 0)
-      circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_controlled_phase_shift >(phase_exponent, phase_coefficients_[phase_exponent], control1, control2));
-    else
-    {
-      phase_exponent *= -1;
-      circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::controlled_phase_shift >(phase_exponent, phase_coefficients_[phase_exponent], control1, control2));
-    }
+    circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_controlled_phase_shift >(phase_exponent, control1, control2));
   }
 
   void interpreter::add_ex(interpreter::columns_type const& columns)
   {
-    auto target = ::bra::qubit_type{};
-    auto phase = real_type{};
-    std::tie(target, phase) = read_target_phase(columns);
+    auto phase = boost::variant<real_type, std::string>{};
+    auto const target = read_target_phase(columns, phase);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::exponential_pauli_x >(phase, target));
   }
 
   void interpreter::add_adj_ex(interpreter::columns_type const& columns)
   {
-    auto target = ::bra::qubit_type{};
-    auto phase = real_type{};
-    std::tie(target, phase) = read_target_phase(columns);
+    auto phase = boost::variant<real_type, std::string>{};
+    auto const target = read_target_phase(columns, phase);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_exponential_pauli_x >(phase, target));
   }
@@ -2130,8 +2316,8 @@ namespace bra
   {
     auto target1 = ::bra::qubit_type{};
     auto target2 = ::bra::qubit_type{};
-    auto phase = real_type{};
-    std::tie(target1, target2, phase) = read_2targets_phase(columns);
+    auto phase = boost::variant<real_type, std::string>{};
+    std::tie(target1, target2) = read_2targets_phase(columns, phase);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::exponential_pauli_xx >(phase, target1, target2));
   }
@@ -2140,8 +2326,8 @@ namespace bra
   {
     auto target1 = ::bra::qubit_type{};
     auto target2 = ::bra::qubit_type{};
-    auto phase = real_type{};
-    std::tie(target1, target2, phase) = read_2targets_phase(columns);
+    auto phase = boost::variant<real_type, std::string>{};
+    std::tie(target1, target2) = read_2targets_phase(columns, phase);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_exponential_pauli_xx >(phase, target1, target2));
   }
@@ -2149,7 +2335,8 @@ namespace bra
   void interpreter::add_exs(interpreter::columns_type const& columns, std::string const& mnemonic)
   {
     auto targets = std::vector< ::bra::qubit_type >(mnemonic.size() - 1u);
-    auto const phase = read_multi_targets_phase(columns, targets);
+    auto phase = boost::variant<real_type, std::string>{};
+    read_multi_targets_phase(columns, targets, phase);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::exponential_pauli_xn >(phase, std::move(targets)));
   }
@@ -2157,7 +2344,8 @@ namespace bra
   void interpreter::add_adj_exs(interpreter::columns_type const& columns, std::string const& mnemonic)
   {
     auto targets = std::vector< ::bra::qubit_type >(mnemonic.size() - 2u);
-    auto const phase = read_multi_targets_phase(columns, targets);
+    auto phase = boost::variant<real_type, std::string>{};
+    read_multi_targets_phase(columns, targets, phase);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_exponential_pauli_xn >(phase, std::move(targets)));
   }
@@ -2176,9 +2364,8 @@ namespace bra
     auto const num_qubits = ::bra::utility::to_integer<int>(possible_digits_first, possible_digits_last);
     if (num_qubits == 1)
     {
-      auto target = ::bra::qubit_type{};
-      auto phase = real_type{};
-      std::tie(target, phase) = read_target_phase(columns);
+      auto phase = boost::variant<real_type, std::string>{};
+      auto const target = read_target_phase(columns, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::exponential_pauli_x >(phase, target));
     }
@@ -2186,15 +2373,16 @@ namespace bra
     {
       auto target1 = ::bra::qubit_type{};
       auto target2 = ::bra::qubit_type{};
-      auto phase = real_type{};
-      std::tie(target1, target2, phase) = read_2targets_phase(columns);
+      auto phase = boost::variant<real_type, std::string>{};
+      std::tie(target1, target2) = read_2targets_phase(columns, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::exponential_pauli_xx >(phase, target1, target2));
     }
     else if (num_qubits >= 3)
     {
       auto targets = std::vector< ::bra::qubit_type >(num_qubits);
-      auto const phase = read_multi_targets_phase(columns, targets);
+      auto phase = boost::variant<real_type, std::string>{};
+      read_multi_targets_phase(columns, targets, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::exponential_pauli_xn >(phase, std::move(targets)));
     }
@@ -2216,9 +2404,8 @@ namespace bra
     auto const num_qubits = ::bra::utility::to_integer<int>(possible_digits_first, possible_digits_last);
     if (num_qubits == 1)
     {
-      auto target = ::bra::qubit_type{};
-      auto phase = real_type{};
-      std::tie(target, phase) = read_target_phase(columns);
+      auto phase = boost::variant<real_type, std::string>{};
+      auto const target = read_target_phase(columns, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_exponential_pauli_x >(phase, target));
     }
@@ -2226,15 +2413,16 @@ namespace bra
     {
       auto target1 = ::bra::qubit_type{};
       auto target2 = ::bra::qubit_type{};
-      auto phase = real_type{};
-      std::tie(target1, target2, phase) = read_2targets_phase(columns);
+      auto phase = boost::variant<real_type, std::string>{};
+      std::tie(target1, target2) = read_2targets_phase(columns, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_exponential_pauli_xx >(phase, target1, target2));
     }
     else if (num_qubits >= 3)
     {
       auto targets = std::vector< ::bra::qubit_type >(num_qubits);
-      auto const phase = read_multi_targets_phase(columns, targets);
+      auto phase = boost::variant<real_type, std::string>{};
+      read_multi_targets_phase(columns, targets, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_exponential_pauli_xn >(phase, std::move(targets)));
     }
@@ -2244,18 +2432,16 @@ namespace bra
 
   void interpreter::add_ey(interpreter::columns_type const& columns)
   {
-    auto target = ::bra::qubit_type{};
-    auto phase = real_type{};
-    std::tie(target, phase) = read_target_phase(columns);
+    auto phase = boost::variant<real_type, std::string>{};
+    auto const target = read_target_phase(columns, phase);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::exponential_pauli_y >(phase, target));
   }
 
   void interpreter::add_adj_ey(interpreter::columns_type const& columns)
   {
-    auto target = ::bra::qubit_type{};
-    auto phase = real_type{};
-    std::tie(target, phase) = read_target_phase(columns);
+    auto phase = boost::variant<real_type, std::string>{};
+    auto const target = read_target_phase(columns, phase);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_exponential_pauli_y >(phase, target));
   }
@@ -2264,8 +2450,8 @@ namespace bra
   {
     auto target1 = ::bra::qubit_type{};
     auto target2 = ::bra::qubit_type{};
-    auto phase = real_type{};
-    std::tie(target1, target2, phase) = read_2targets_phase(columns);
+    auto phase = boost::variant<real_type, std::string>{};
+    std::tie(target1, target2) = read_2targets_phase(columns, phase);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::exponential_pauli_yy >(phase, target1, target2));
   }
@@ -2274,8 +2460,8 @@ namespace bra
   {
     auto target1 = ::bra::qubit_type{};
     auto target2 = ::bra::qubit_type{};
-    auto phase = real_type{};
-    std::tie(target1, target2, phase) = read_2targets_phase(columns);
+    auto phase = boost::variant<real_type, std::string>{};
+    std::tie(target1, target2) = read_2targets_phase(columns, phase);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_exponential_pauli_yy >(phase, target1, target2));
   }
@@ -2283,7 +2469,8 @@ namespace bra
   void interpreter::add_eys(interpreter::columns_type const& columns, std::string const& mnemonic)
   {
     auto targets = std::vector< ::bra::qubit_type >(mnemonic.size() - 1u);
-    auto const phase = read_multi_targets_phase(columns, targets);
+    auto phase = boost::variant<real_type, std::string>{};
+    read_multi_targets_phase(columns, targets, phase);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::exponential_pauli_yn >(phase, std::move(targets)));
   }
@@ -2291,7 +2478,8 @@ namespace bra
   void interpreter::add_adj_eys(interpreter::columns_type const& columns, std::string const& mnemonic)
   {
     auto targets = std::vector< ::bra::qubit_type >(mnemonic.size() - 1u);
-    auto const phase = read_multi_targets_phase(columns, targets);
+    auto phase = boost::variant<real_type, std::string>{};
+    read_multi_targets_phase(columns, targets, phase);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_exponential_pauli_yn >(phase, std::move(targets)));
   }
@@ -2310,9 +2498,8 @@ namespace bra
     auto const num_qubits = ::bra::utility::to_integer<int>(possible_digits_first, possible_digits_last);
     if (num_qubits == 1)
     {
-      auto target = ::bra::qubit_type{};
-      auto phase = real_type{};
-      std::tie(target, phase) = read_target_phase(columns);
+      auto phase = boost::variant<real_type, std::string>{};
+      auto const target = read_target_phase(columns, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::exponential_pauli_y >(phase, target));
     }
@@ -2320,15 +2507,16 @@ namespace bra
     {
       auto target1 = ::bra::qubit_type{};
       auto target2 = ::bra::qubit_type{};
-      auto phase = real_type{};
-      std::tie(target1, target2, phase) = read_2targets_phase(columns);
+      auto phase = boost::variant<real_type, std::string>{};
+      std::tie(target1, target2) = read_2targets_phase(columns, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::exponential_pauli_yy >(phase, target1, target2));
     }
     else if (num_qubits >= 3)
     {
       auto targets = std::vector< ::bra::qubit_type >(num_qubits);
-      auto const phase = read_multi_targets_phase(columns, targets);
+      auto phase = boost::variant<real_type, std::string>{};
+      read_multi_targets_phase(columns, targets, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::exponential_pauli_yn >(phase, std::move(targets)));
     }
@@ -2350,9 +2538,8 @@ namespace bra
     auto const num_qubits = ::bra::utility::to_integer<int>(possible_digits_first, possible_digits_last);
     if (num_qubits == 1)
     {
-      auto target = ::bra::qubit_type{};
-      auto phase = real_type{};
-      std::tie(target, phase) = read_target_phase(columns);
+      auto phase = boost::variant<real_type, std::string>{};
+      auto const target = read_target_phase(columns, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_exponential_pauli_y >(phase, target));
     }
@@ -2360,15 +2547,16 @@ namespace bra
     {
       auto target1 = ::bra::qubit_type{};
       auto target2 = ::bra::qubit_type{};
-      auto phase = real_type{};
-      std::tie(target1, target2, phase) = read_2targets_phase(columns);
+      auto phase = boost::variant<real_type, std::string>{};
+      std::tie(target1, target2) = read_2targets_phase(columns, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_exponential_pauli_yy >(phase, target1, target2));
     }
     else if (num_qubits >= 3)
     {
       auto targets = std::vector< ::bra::qubit_type >(num_qubits);
-      auto const phase = read_multi_targets_phase(columns, targets);
+      auto phase = boost::variant<real_type, std::string>{};
+      read_multi_targets_phase(columns, targets, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_exponential_pauli_yn >(phase, std::move(targets)));
     }
@@ -2378,18 +2566,16 @@ namespace bra
 
   void interpreter::add_ez(interpreter::columns_type const& columns)
   {
-    auto target = ::bra::qubit_type{};
-    auto phase = real_type{};
-    std::tie(target, phase) = read_target_phase(columns);
+    auto phase = boost::variant<real_type, std::string>{};
+    auto const target = read_target_phase(columns, phase);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::exponential_pauli_z >(phase, target));
   }
 
   void interpreter::add_adj_ez(interpreter::columns_type const& columns)
   {
-    auto target = ::bra::qubit_type{};
-    auto phase = real_type{};
-    std::tie(target, phase) = read_target_phase(columns);
+    auto phase = boost::variant<real_type, std::string>{};
+    auto const target = read_target_phase(columns, phase);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_exponential_pauli_z >(phase, target));
   }
@@ -2398,8 +2584,8 @@ namespace bra
   {
     auto target1 = ::bra::qubit_type{};
     auto target2 = ::bra::qubit_type{};
-    auto phase = real_type{};
-    std::tie(target1, target2, phase) = read_2targets_phase(columns);
+    auto phase = boost::variant<real_type, std::string>{};
+    std::tie(target1, target2) = read_2targets_phase(columns, phase);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::exponential_pauli_zz >(phase, target1, target2));
   }
@@ -2408,8 +2594,8 @@ namespace bra
   {
     auto target1 = ::bra::qubit_type{};
     auto target2 = ::bra::qubit_type{};
-    auto phase = real_type{};
-    std::tie(target1, target2, phase) = read_2targets_phase(columns);
+    auto phase = boost::variant<real_type, std::string>{};
+    std::tie(target1, target2) = read_2targets_phase(columns, phase);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_exponential_pauli_zz >(phase, target1, target2));
   }
@@ -2417,7 +2603,8 @@ namespace bra
   void interpreter::add_ezs(interpreter::columns_type const& columns, std::string const& mnemonic)
   {
     auto targets = std::vector< ::bra::qubit_type >(mnemonic.size() - 1u);
-    auto const phase = read_multi_targets_phase(columns, targets);
+    auto phase = boost::variant<real_type, std::string>{};
+    read_multi_targets_phase(columns, targets, phase);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::exponential_pauli_zn >(phase, std::move(targets)));
   }
@@ -2425,7 +2612,8 @@ namespace bra
   void interpreter::add_adj_ezs(interpreter::columns_type const& columns, std::string const& mnemonic)
   {
     auto targets = std::vector< ::bra::qubit_type >(mnemonic.size() - 1u);
-    auto const phase = read_multi_targets_phase(columns, targets);
+    auto phase = boost::variant<real_type, std::string>{};
+    read_multi_targets_phase(columns, targets, phase);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_exponential_pauli_zn >(phase, std::move(targets)));
   }
@@ -2444,9 +2632,8 @@ namespace bra
     auto const num_qubits = ::bra::utility::to_integer<int>(possible_digits_first, possible_digits_last);
     if (num_qubits == 1)
     {
-      auto target = ::bra::qubit_type{};
-      auto phase = real_type{};
-      std::tie(target, phase) = read_target_phase(columns);
+      auto phase = boost::variant<real_type, std::string>{};
+      auto const target = read_target_phase(columns, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::exponential_pauli_z >(phase, target));
     }
@@ -2454,15 +2641,16 @@ namespace bra
     {
       auto target1 = ::bra::qubit_type{};
       auto target2 = ::bra::qubit_type{};
-      auto phase = real_type{};
-      std::tie(target1, target2, phase) = read_2targets_phase(columns);
+      auto phase = boost::variant<real_type, std::string>{};
+      std::tie(target1, target2) = read_2targets_phase(columns, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::exponential_pauli_zz >(phase, target1, target2));
     }
     else if (num_qubits >= 3)
     {
       auto targets = std::vector< ::bra::qubit_type >(num_qubits);
-      auto const phase = read_multi_targets_phase(columns, targets);
+      auto phase = boost::variant<real_type, std::string>{};
+      read_multi_targets_phase(columns, targets, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::exponential_pauli_zn >(phase, std::move(targets)));
     }
@@ -2484,9 +2672,8 @@ namespace bra
     auto const num_qubits = ::bra::utility::to_integer<int>(possible_digits_first, possible_digits_last);
     if (num_qubits == 1)
     {
-      auto target = ::bra::qubit_type{};
-      auto phase = real_type{};
-      std::tie(target, phase) = read_target_phase(columns);
+      auto phase = boost::variant<real_type, std::string>{};
+      auto const target = read_target_phase(columns, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_exponential_pauli_z >(phase, target));
     }
@@ -2494,15 +2681,16 @@ namespace bra
     {
       auto target1 = ::bra::qubit_type{};
       auto target2 = ::bra::qubit_type{};
-      auto phase = real_type{};
-      std::tie(target1, target2, phase) = read_2targets_phase(columns);
+      auto phase = boost::variant<real_type, std::string>{};
+      std::tie(target1, target2) = read_2targets_phase(columns, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_exponential_pauli_zz >(phase, target1, target2));
     }
     else if (num_qubits >= 3)
     {
       auto targets = std::vector< ::bra::qubit_type >(num_qubits);
-      auto const phase = read_multi_targets_phase(columns, targets);
+      auto phase = boost::variant<real_type, std::string>{};
+      read_multi_targets_phase(columns, targets, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_exponential_pauli_zn >(phase, std::move(targets)));
     }
@@ -2514,8 +2702,8 @@ namespace bra
   {
     auto target1 = ::bra::qubit_type{};
     auto target2 = ::bra::qubit_type{};
-    auto phase = real_type{};
-    std::tie(target1, target2, phase) = read_2targets_phase(columns);
+    auto phase = boost::variant<real_type, std::string>{};
+    std::tie(target1, target2) = read_2targets_phase(columns, phase);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::exponential_swap >(phase, target1, target2));
   }
@@ -2524,8 +2712,8 @@ namespace bra
   {
     auto target1 = ::bra::qubit_type{};
     auto target2 = ::bra::qubit_type{};
-    auto phase = real_type{};
-    std::tie(target1, target2, phase) = read_2targets_phase(columns);
+    auto phase = boost::variant<real_type, std::string>{};
+    std::tie(target1, target2) = read_2targets_phase(columns, phase);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_exponential_swap >(phase, target1, target2));
   }
@@ -3143,14 +3331,14 @@ namespace bra
       auto control2 = ::bra::control_qubit_type{};
       std::tie(control1, control2) = read_2controls(columns);
 
-      circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::controlled_t_gate >(phase_coefficients_[3u], control1, control2));
+      circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::controlled_t_gate >(control1, control2));
     }
     else // num_control_qubits >= 2
     {
       auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits + 1u);
       read_multi_controls(columns, controls);
 
-      circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::multi_controlled_t_gate >(phase_coefficients_[3u], std::move(controls)));
+      circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::multi_controlled_t_gate >(std::move(controls)));
     }
   }
 
@@ -3162,14 +3350,14 @@ namespace bra
       auto control2 = ::bra::control_qubit_type{};
       std::tie(control1, control2) = read_2controls(columns);
 
-      circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_controlled_t_gate >(phase_coefficients_[3u], control1, control2));
+      circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_controlled_t_gate >(control1, control2));
     }
     else // num_control_qubits >= 2
     {
       auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits + 1u);
       read_multi_controls(columns, controls);
 
-      circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_multi_controlled_t_gate >(phase_coefficients_[3u], std::move(controls)));
+      circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_multi_controlled_t_gate >(std::move(controls)));
     }
   }
 
@@ -3179,15 +3367,16 @@ namespace bra
     {
       auto control1 = ::bra::control_qubit_type{};
       auto control2 = ::bra::control_qubit_type{};
-      auto phase = real_type{};
-      std::tie(control1, control2, phase) = read_2controls_phase(columns);
+      auto phase = boost::variant<real_type, std::string>{};
+      std::tie(control1, control2) = read_2controls_phase(columns, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::controlled_u1 >(phase, control1, control2));
     }
     else // num_control_qubits >= 2
     {
       auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits + 1u);
-      auto phase = read_multi_controls_phase(columns, controls);
+      auto phase = boost::variant<real_type, std::string>{};
+      read_multi_controls_phase(columns, controls, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::multi_controlled_u1 >(phase, std::move(controls)));
     }
@@ -3199,15 +3388,16 @@ namespace bra
     {
       auto control1 = ::bra::control_qubit_type{};
       auto control2 = ::bra::control_qubit_type{};
-      auto phase = real_type{};
-      std::tie(control1, control2, phase) = read_2controls_phase(columns);
+      auto phase = boost::variant<real_type, std::string>{};
+      std::tie(control1, control2) = read_2controls_phase(columns, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_controlled_u1 >(phase, control1, control2));
     }
     else // num_control_qubits >= 2
     {
       auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits + 1u);
-      auto phase = read_multi_controls_phase(columns, controls);
+      auto phase = boost::variant<real_type, std::string>{};
+      read_multi_controls_phase(columns, controls, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_multi_controlled_u1 >(phase, std::move(controls)));
     }
@@ -3219,19 +3409,18 @@ namespace bra
     {
       auto control = ::bra::control_qubit_type{};
       auto target = ::bra::qubit_type{};
-      auto phase1 = real_type{};
-      auto phase2 = real_type{};
-      std::tie(control, target, phase1, phase2) = read_control_target_2phases(columns);
+      auto phase1 = boost::variant<real_type, std::string>{};
+      auto phase2 = boost::variant<real_type, std::string>{};
+      std::tie(control, target) = read_control_target_2phases(columns, phase1, phase2);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::controlled_u2 >(phase1, phase2, target, control));
     }
     else // num_control_qubits >= 2
     {
       auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
-      auto target = ::bra::qubit_type{};
-      auto phase1 = real_type{};
-      auto phase2 = real_type{};
-      std::tie(target, phase1, phase2) = read_multi_controls_target_2phases(columns, controls);
+      auto phase1 = boost::variant<real_type, std::string>{};
+      auto phase2 = boost::variant<real_type, std::string>{};
+      auto const target = read_multi_controls_target_2phases(columns, controls, phase1, phase2);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::multi_controlled_u2 >(phase1, phase2, target, std::move(controls)));
     }
@@ -3243,19 +3432,18 @@ namespace bra
     {
       auto control = ::bra::control_qubit_type{};
       auto target = ::bra::qubit_type{};
-      auto phase1 = real_type{};
-      auto phase2 = real_type{};
-      std::tie(control, target, phase1, phase2) = read_control_target_2phases(columns);
+      auto phase1 = boost::variant<real_type, std::string>{};
+      auto phase2 = boost::variant<real_type, std::string>{};
+      std::tie(control, target) = read_control_target_2phases(columns, phase1, phase2);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_controlled_u2 >(phase1, phase2, target, control));
     }
     else // num_control_qubits >= 2
     {
       auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
-      auto target = ::bra::qubit_type{};
-      auto phase1 = real_type{};
-      auto phase2 = real_type{};
-      std::tie(target, phase1, phase2) = read_multi_controls_target_2phases(columns, controls);
+      auto phase1 = boost::variant<real_type, std::string>{};
+      auto phase2 = boost::variant<real_type, std::string>{};
+      auto const target = read_multi_controls_target_2phases(columns, controls, phase1, phase2);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_multi_controlled_u2 >(phase1, phase2, target, std::move(controls)));
     }
@@ -3267,21 +3455,20 @@ namespace bra
     {
       auto control = ::bra::control_qubit_type{};
       auto target = ::bra::qubit_type{};
-      auto phase1 = real_type{};
-      auto phase2 = real_type{};
-      auto phase3 = real_type{};
-      std::tie(control, target, phase1, phase2, phase3) = read_control_target_3phases(columns);
+      auto phase1 = boost::variant<real_type, std::string>{};
+      auto phase2 = boost::variant<real_type, std::string>{};
+      auto phase3 = boost::variant<real_type, std::string>{};
+      std::tie(control, target) = read_control_target_3phases(columns, phase1, phase2, phase3);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::controlled_u3 >(phase1, phase2, phase3, target, control));
     }
     else // num_control_qubits >= 2
     {
       auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
-      auto target = ::bra::qubit_type{};
-      auto phase1 = real_type{};
-      auto phase2 = real_type{};
-      auto phase3 = real_type{};
-      std::tie(target, phase1, phase2, phase3) = read_multi_controls_target_3phases(columns, controls);
+      auto phase1 = boost::variant<real_type, std::string>{};
+      auto phase2 = boost::variant<real_type, std::string>{};
+      auto phase3 = boost::variant<real_type, std::string>{};
+      auto const target = read_multi_controls_target_3phases(columns, controls, phase1, phase2, phase3);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::multi_controlled_u3 >(phase1, phase2, phase3, target, std::move(controls)));
     }
@@ -3293,21 +3480,20 @@ namespace bra
     {
       auto control = ::bra::control_qubit_type{};
       auto target = ::bra::qubit_type{};
-      auto phase1 = real_type{};
-      auto phase2 = real_type{};
-      auto phase3 = real_type{};
-      std::tie(control, target, phase1, phase2, phase3) = read_control_target_3phases(columns);
+      auto phase1 = boost::variant<real_type, std::string>{};
+      auto phase2 = boost::variant<real_type, std::string>{};
+      auto phase3 = boost::variant<real_type, std::string>{};
+      std::tie(control, target) = read_control_target_3phases(columns, phase1, phase2, phase3);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_controlled_u3 >(phase1, phase2, phase3, target, control));
     }
     else // num_control_qubits >= 2
     {
       auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
-      auto target = ::bra::qubit_type{};
-      auto phase1 = real_type{};
-      auto phase2 = real_type{};
-      auto phase3 = real_type{};
-      std::tie(target, phase1, phase2, phase3) = read_multi_controls_target_3phases(columns, controls);
+      auto phase1 = boost::variant<real_type, std::string>{};
+      auto phase2 = boost::variant<real_type, std::string>{};
+      auto phase3 = boost::variant<real_type, std::string>{};
+      auto const target = read_multi_controls_target_3phases(columns, controls, phase1, phase2, phase3);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_multi_controlled_u3 >(phase1, phase2, phase3, target, std::move(controls)));
     }
@@ -3319,29 +3505,18 @@ namespace bra
     {
       auto control1 = ::bra::control_qubit_type{};
       auto control2 = ::bra::control_qubit_type{};
-      auto phase_exponent = int{};
-      std::tie(control1, control2, phase_exponent) = read_2controls_phaseexp(columns);
+      auto phase_exponent = boost::variant<int_type, std::string>{};
+      std::tie(control1, control2) = read_2controls_phaseexp(columns, phase_exponent);
 
-      if (phase_exponent >= 0)
-        circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::controlled_phase_shift_ >(phase_exponent, phase_coefficients_[phase_exponent], control1, control2));
-      else
-      {
-        phase_exponent *= -1;
-        circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_controlled_phase_shift_ >(phase_exponent, phase_coefficients_[phase_exponent], control1, control2));
-      }
+      circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::controlled_phase_shift_ >(phase_exponent, control1, control2));
     }
     else // num_control_qubits >= 2
     {
       auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits + 1u);
-      auto phase_exponent = read_multi_controls_phaseexp(columns, controls);
+      auto phase_exponent = boost::variant<int_type, std::string>{};
+      read_multi_controls_phaseexp(columns, controls, phase_exponent);
 
-      if (phase_exponent >= 0)
-        circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::multi_controlled_phase_shift >(phase_exponent, phase_coefficients_[phase_exponent], std::move(controls)));
-      else
-      {
-        phase_exponent *= -1;
-        circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_multi_controlled_phase_shift >(phase_exponent, phase_coefficients_[phase_exponent], std::move(controls)));
-      }
+      circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::multi_controlled_phase_shift >(phase_exponent, std::move(controls)));
     }
   }
 
@@ -3351,29 +3526,18 @@ namespace bra
     {
       auto control1 = ::bra::control_qubit_type{};
       auto control2 = ::bra::control_qubit_type{};
-      auto phase_exponent = int{};
-      std::tie(control1, control2, phase_exponent) = read_2controls_phaseexp(columns);
+      auto phase_exponent = boost::variant<int_type, std::string>{};
+      std::tie(control1, control2) = read_2controls_phaseexp(columns, phase_exponent);
 
-      if (phase_exponent >= 0)
-        circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_controlled_phase_shift >(phase_exponent, phase_coefficients_[phase_exponent], control1, control2));
-      else
-      {
-        phase_exponent *= -1;
-        circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::controlled_phase_shift >(phase_exponent, phase_coefficients_[phase_exponent], control1, control2));
-      }
+      circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_controlled_phase_shift >(phase_exponent, control1, control2));
     }
     else // num_control_qubits >= 2
     {
       auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
-      auto phase_exponent = read_multi_controls_phaseexp(columns, controls);
+      auto phase_exponent = boost::variant<int_type, std::string>{};
+      read_multi_controls_phaseexp(columns, controls, phase_exponent);
 
-      if (phase_exponent >= 0)
-        circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_multi_controlled_phase_shift >(phase_exponent, phase_coefficients_[phase_exponent], std::move(controls)));
-      else
-      {
-        phase_exponent *= -1;
-        circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::multi_controlled_phase_shift >(phase_exponent, phase_coefficients_[phase_exponent], std::move(controls)));
-      }
+      circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_multi_controlled_phase_shift >(phase_exponent, std::move(controls)));
     }
   }
 
@@ -3459,8 +3623,8 @@ namespace bra
     {
       auto control = ::bra::control_qubit_type{};
       auto target = ::bra::qubit_type{};
-      auto phase = real_type{};
-      std::tie(control, target, phase) = read_control_target_phase(columns);
+      auto phase = boost::variant<real_type, std::string>{};
+      std::tie(control, target) = read_control_target_phase(columns, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::controlled_exponential_pauli_x >(phase, target, control));
     }
@@ -3468,7 +3632,8 @@ namespace bra
     {
       auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
       auto targets = std::vector< ::bra::qubit_type >(1u);
-      auto const phase = read_multi_controls_multi_targets_phase(columns, controls, targets);
+      auto phase = boost::variant<real_type, std::string>{};
+      read_multi_controls_multi_targets_phase(columns, controls, targets, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::multi_controlled_exponential_pauli_xn >(phase, std::move(targets), std::move(controls)));
     }
@@ -3480,8 +3645,8 @@ namespace bra
     {
       auto control = ::bra::control_qubit_type{};
       auto target = ::bra::qubit_type{};
-      auto phase = real_type{};
-      std::tie(control, target, phase) = read_control_target_phase(columns);
+      auto phase = boost::variant<real_type, std::string>{};
+      std::tie(control, target) = read_control_target_phase(columns, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_controlled_exponential_pauli_x >(phase, target, control));
     }
@@ -3489,7 +3654,8 @@ namespace bra
     {
       auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
       auto targets = std::vector< ::bra::qubit_type >(1u);
-      auto const phase = read_multi_controls_multi_targets_phase(columns, controls, targets);
+      auto phase = boost::variant<real_type, std::string>{};
+      read_multi_controls_multi_targets_phase(columns, controls, targets, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_multi_controlled_exponential_pauli_xn >(phase, std::move(targets), std::move(controls)));
     }
@@ -3501,7 +3667,8 @@ namespace bra
   {
     auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
     auto targets = std::vector< ::bra::qubit_type >(noncontrol_mnemonic.size() - 1u);
-    auto const phase = read_multi_controls_multi_targets_phase(columns, controls, targets);
+    auto phase = boost::variant<real_type, std::string>{};
+    read_multi_controls_multi_targets_phase(columns, controls, targets, phase);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::multi_controlled_exponential_pauli_xn >(phase, std::move(targets), std::move(controls)));
   }
@@ -3512,7 +3679,8 @@ namespace bra
   {
     auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
     auto targets = std::vector< ::bra::qubit_type >(noncontrol_mnemonic.size() - 1u);
-    auto const phase = read_multi_controls_multi_targets_phase(columns, controls, targets);
+    auto phase = boost::variant<real_type, std::string>{};
+    read_multi_controls_multi_targets_phase(columns, controls, targets, phase);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_multi_controlled_exponential_pauli_xn >(phase, std::move(targets), std::move(controls)));
   }
@@ -3538,8 +3706,8 @@ namespace bra
     {
       auto control = ::bra::control_qubit_type{};
       auto target = ::bra::qubit_type{};
-      auto phase = real_type{};
-      std::tie(control, target, phase) = read_control_target_phase(columns);
+      auto phase = boost::variant<real_type, std::string>{};
+      std::tie(control, target) = read_control_target_phase(columns, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::controlled_exponential_pauli_x >(phase, target, control));
     }
@@ -3547,7 +3715,8 @@ namespace bra
     {
       auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
       auto targets = std::vector< ::bra::qubit_type >(num_target_qubits);
-      auto const phase = read_multi_controls_multi_targets_phase(columns, controls, targets);
+      auto phase = boost::variant<real_type, std::string>{};
+      read_multi_controls_multi_targets_phase(columns, controls, targets, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::multi_controlled_exponential_pauli_xn >(phase, std::move(targets), std::move(controls)));
     }
@@ -3574,8 +3743,8 @@ namespace bra
     {
       auto control = ::bra::control_qubit_type{};
       auto target = ::bra::qubit_type{};
-      auto phase = real_type{};
-      std::tie(control, target, phase) = read_control_target_phase(columns);
+      auto phase = boost::variant<real_type, std::string>{};
+      std::tie(control, target) = read_control_target_phase(columns, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_controlled_exponential_pauli_x >(phase, target, control));
     }
@@ -3583,7 +3752,8 @@ namespace bra
     {
       auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
       auto targets = std::vector< ::bra::qubit_type >(num_target_qubits);
-      auto const phase = read_multi_controls_multi_targets_phase(columns, controls, targets);
+      auto phase = boost::variant<real_type, std::string>{};
+      read_multi_controls_multi_targets_phase(columns, controls, targets, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_multi_controlled_exponential_pauli_xn >(phase, std::move(targets), std::move(controls)));
     }
@@ -3595,8 +3765,8 @@ namespace bra
     {
       auto control = ::bra::control_qubit_type{};
       auto target = ::bra::qubit_type{};
-      auto phase = real_type{};
-      std::tie(control, target, phase) = read_control_target_phase(columns);
+      auto phase = boost::variant<real_type, std::string>{};
+      std::tie(control, target) = read_control_target_phase(columns, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::controlled_exponential_pauli_y >(phase, target, control));
     }
@@ -3604,7 +3774,8 @@ namespace bra
     {
       auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
       auto targets = std::vector< ::bra::qubit_type >(1u);
-      auto const phase = read_multi_controls_multi_targets_phase(columns, controls, targets);
+      auto phase = boost::variant<real_type, std::string>{};
+      read_multi_controls_multi_targets_phase(columns, controls, targets, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::multi_controlled_exponential_pauli_yn >(phase, std::move(targets), std::move(controls)));
     }
@@ -3616,8 +3787,8 @@ namespace bra
     {
       auto control = ::bra::control_qubit_type{};
       auto target = ::bra::qubit_type{};
-      auto phase = real_type{};
-      std::tie(control, target, phase) = read_control_target_phase(columns);
+      auto phase = boost::variant<real_type, std::string>{};
+      std::tie(control, target) = read_control_target_phase(columns, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_controlled_exponential_pauli_y >(phase, target, control));
     }
@@ -3625,7 +3796,8 @@ namespace bra
     {
       auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
       auto targets = std::vector< ::bra::qubit_type >(1u);
-      auto const phase = read_multi_controls_multi_targets_phase(columns, controls, targets);
+      auto phase = boost::variant<real_type, std::string>{};
+      read_multi_controls_multi_targets_phase(columns, controls, targets, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_multi_controlled_exponential_pauli_yn >(phase, std::move(targets), std::move(controls)));
     }
@@ -3637,7 +3809,8 @@ namespace bra
   {
     auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
     auto targets = std::vector< ::bra::qubit_type >(noncontrol_mnemonic.size() - 1u);
-    auto const phase = read_multi_controls_multi_targets_phase(columns, controls, targets);
+    auto phase = boost::variant<real_type, std::string>{};
+    read_multi_controls_multi_targets_phase(columns, controls, targets, phase);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::multi_controlled_exponential_pauli_yn >(phase, std::move(targets), std::move(controls)));
   }
@@ -3648,7 +3821,8 @@ namespace bra
   {
     auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
     auto targets = std::vector< ::bra::qubit_type >(noncontrol_mnemonic.size() - 1u);
-    auto const phase = read_multi_controls_multi_targets_phase(columns, controls, targets);
+    auto phase = boost::variant<real_type, std::string>{};
+    read_multi_controls_multi_targets_phase(columns, controls, targets, phase);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_multi_controlled_exponential_pauli_yn >(phase, std::move(targets), std::move(controls)));
   }
@@ -3674,8 +3848,8 @@ namespace bra
     {
       auto control = ::bra::control_qubit_type{};
       auto target = ::bra::qubit_type{};
-      auto phase = real_type{};
-      std::tie(control, target, phase) = read_control_target_phase(columns);
+      auto phase = boost::variant<real_type, std::string>{};
+      std::tie(control, target) = read_control_target_phase(columns, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::controlled_exponential_pauli_y >(phase, target, control));
     }
@@ -3683,7 +3857,8 @@ namespace bra
     {
       auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
       auto targets = std::vector< ::bra::qubit_type >(num_target_qubits);
-      auto const phase = read_multi_controls_multi_targets_phase(columns, controls, targets);
+      auto phase = boost::variant<real_type, std::string>{};
+      read_multi_controls_multi_targets_phase(columns, controls, targets, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::multi_controlled_exponential_pauli_yn >(phase, std::move(targets), std::move(controls)));
     }
@@ -3710,8 +3885,8 @@ namespace bra
     {
       auto control = ::bra::control_qubit_type{};
       auto target = ::bra::qubit_type{};
-      auto phase = real_type{};
-      std::tie(control, target, phase) = read_control_target_phase(columns);
+      auto phase = boost::variant<real_type, std::string>{};
+      std::tie(control, target) = read_control_target_phase(columns, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_controlled_exponential_pauli_y >(phase, target, control));
     }
@@ -3719,7 +3894,8 @@ namespace bra
     {
       auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
       auto targets = std::vector< ::bra::qubit_type >(num_target_qubits);
-      auto const phase = read_multi_controls_multi_targets_phase(columns, controls, targets);
+      auto phase = boost::variant<real_type, std::string>{};
+      read_multi_controls_multi_targets_phase(columns, controls, targets, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_multi_controlled_exponential_pauli_yn >(phase, std::move(targets), std::move(controls)));
     }
@@ -3731,17 +3907,16 @@ namespace bra
     {
       auto control = ::bra::control_qubit_type{};
       auto target = ::bra::qubit_type{};
-      auto phase = real_type{};
-      std::tie(control, target, phase) = read_control_target_phase(columns);
+      auto phase = boost::variant<real_type, std::string>{};
+      std::tie(control, target) = read_control_target_phase(columns, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::controlled_exponential_pauli_z >(phase, target, control));
     }
     else // num_control_qubits >= 2
     {
       auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
-      auto target = ::bra::qubit_type{};
-      auto phase = real_type{};
-      std::tie(target, phase) = read_multi_controls_target_phase(columns, controls);
+      auto phase = boost::variant<real_type, std::string>{};
+      auto const target = read_multi_controls_target_phase(columns, controls, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::multi_controlled_exponential_pauli_z >(phase, target, std::move(controls)));
     }
@@ -3753,17 +3928,16 @@ namespace bra
     {
       auto control = ::bra::control_qubit_type{};
       auto target = ::bra::qubit_type{};
-      auto phase = real_type{};
-      std::tie(control, target, phase) = read_control_target_phase(columns);
+      auto phase = boost::variant<real_type, std::string>{};
+      std::tie(control, target) = read_control_target_phase(columns, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_controlled_exponential_pauli_z >(phase, target, control));
     }
     else // num_control_qubits >= 2
     {
       auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
-      auto target = ::bra::qubit_type{};
-      auto phase = real_type{};
-      std::tie(target, phase) = read_multi_controls_target_phase(columns, controls);
+      auto phase = boost::variant<real_type, std::string>{};
+      auto const target = read_multi_controls_target_phase(columns, controls, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_multi_controlled_exponential_pauli_z >(phase, target, std::move(controls)));
     }
@@ -3775,7 +3949,8 @@ namespace bra
   {
     auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
     auto targets = std::vector< ::bra::qubit_type >(noncontrol_mnemonic.size() - 1u);
-    auto const phase = read_multi_controls_multi_targets_phase(columns, controls, targets);
+    auto phase = boost::variant<real_type, std::string>{};
+    read_multi_controls_multi_targets_phase(columns, controls, targets, phase);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::multi_controlled_exponential_pauli_zn >(phase, std::move(targets), std::move(controls)));
   }
@@ -3786,7 +3961,8 @@ namespace bra
   {
     auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
     auto targets = std::vector< ::bra::qubit_type >(noncontrol_mnemonic.size() - 1u);
-    auto const phase = read_multi_controls_multi_targets_phase(columns, controls, targets);
+    auto phase = boost::variant<real_type, std::string>{};
+    read_multi_controls_multi_targets_phase(columns, controls, targets, phase);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_multi_controlled_exponential_pauli_zn >(phase, std::move(targets), std::move(controls)));
   }
@@ -3812,17 +3988,16 @@ namespace bra
     {
       auto control = ::bra::control_qubit_type{};
       auto target = ::bra::qubit_type{};
-      auto phase = real_type{};
-      std::tie(control, target, phase) = read_control_target_phase(columns);
+      auto phase = boost::variant<real_type, std::string>{};
+      std::tie(control, target) = read_control_target_phase(columns, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::controlled_exponential_pauli_z >(phase, target, control));
     }
     else if (num_target_qubits == 1)
     {
       auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
-      auto target = ::bra::qubit_type{};
-      auto phase = real_type{};
-      std::tie(target, phase) = read_multi_controls_target_phase(columns, controls);
+      auto phase = boost::variant<real_type, std::string>{};
+      auto const target = read_multi_controls_target_phase(columns, controls, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::multi_controlled_exponential_pauli_z >(phase, target, std::move(controls)));
     }
@@ -3830,7 +4005,8 @@ namespace bra
     {
       auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
       auto targets = std::vector< ::bra::qubit_type >(num_target_qubits);
-      auto const phase = read_multi_controls_multi_targets_phase(columns, controls, targets);
+      auto phase = boost::variant<real_type, std::string>{};
+      read_multi_controls_multi_targets_phase(columns, controls, targets, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::multi_controlled_exponential_pauli_zn >(phase, std::move(targets), std::move(controls)));
     }
@@ -3857,17 +4033,16 @@ namespace bra
     {
       auto control = ::bra::control_qubit_type{};
       auto target = ::bra::qubit_type{};
-      auto phase = real_type{};
-      std::tie(control, target, phase) = read_control_target_phase(columns);
+      auto phase = boost::variant<real_type, std::string>{};
+      std::tie(control, target) = read_control_target_phase(columns, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_controlled_exponential_pauli_z >(phase, target, control));
     }
     else if (num_target_qubits == 1)
     {
       auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
-      auto target = ::bra::qubit_type{};
-      auto phase = real_type{};
-      std::tie(target, phase) = read_multi_controls_target_phase(columns, controls);
+      auto phase = boost::variant<real_type, std::string>{};
+      auto const target = read_multi_controls_target_phase(columns, controls, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_multi_controlled_exponential_pauli_z >(phase, target, std::move(controls)));
     }
@@ -3875,7 +4050,8 @@ namespace bra
     {
       auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
       auto targets = std::vector< ::bra::qubit_type >(num_target_qubits);
-      auto const phase = read_multi_controls_multi_targets_phase(columns, controls, targets);
+      auto phase = boost::variant<real_type, std::string>{};
+      read_multi_controls_multi_targets_phase(columns, controls, targets, phase);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_multi_controlled_exponential_pauli_zn >(phase, std::move(targets), std::move(controls)));
     }
@@ -3886,8 +4062,8 @@ namespace bra
     auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
     auto target1 = ::bra::qubit_type{};
     auto target2 = ::bra::qubit_type{};
-    auto phase = real_type{};
-    std::tie(target1, target2, phase) = read_multi_controls_2targets_phase(columns, controls);
+    auto phase = boost::variant<real_type, std::string>{};
+    std::tie(target1, target2) = read_multi_controls_2targets_phase(columns, controls, phase);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::multi_controlled_exponential_swap >(phase, target1, target2, std::move(controls)));
   }
@@ -3897,8 +4073,8 @@ namespace bra
     auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
     auto target1 = ::bra::qubit_type{};
     auto target2 = ::bra::qubit_type{};
-    auto phase = real_type{};
-    std::tie(target1, target2, phase) = read_multi_controls_2targets_phase(columns, controls);
+    auto phase = boost::variant<real_type, std::string>{};
+    std::tie(target1, target2) = read_multi_controls_2targets_phase(columns, controls, phase);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_multi_controlled_exponential_swap >(phase, target1, target2, std::move(controls)));
   }

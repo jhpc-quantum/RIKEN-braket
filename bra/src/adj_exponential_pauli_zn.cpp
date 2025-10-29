@@ -5,6 +5,9 @@
 #include <vector>
 #include <utility>
 
+#include <boost/variant/variant.hpp>
+#include <boost/variant/apply_visitor.hpp>
+
 #include <ket/qubit_io.hpp>
 
 #include <bra/gate/gate.hpp>
@@ -16,11 +19,15 @@ namespace bra
 {
   namespace gate
   {
-    adj_exponential_pauli_zn::adj_exponential_pauli_zn(real_type const phase, std::vector<qubit_type> const& qubits)
+    adj_exponential_pauli_zn::adj_exponential_pauli_zn(
+      boost::variant<real_type, std::string> const& phase,
+      std::vector<qubit_type> const& qubits)
       : ::bra::gate::gate{}, phase_{phase}, qubits_{qubits}, name_{std::string{"e"}.append(qubits_.size(), 'Z').append("+")}
     { }
 
-    adj_exponential_pauli_zn::adj_exponential_pauli_zn(real_type const phase, std::vector<qubit_type>&& qubits)
+    adj_exponential_pauli_zn::adj_exponential_pauli_zn(
+      boost::variant<real_type, std::string> const& phase,
+      std::vector<qubit_type>&& qubits)
       : ::bra::gate::gate{}, phase_{phase}, qubits_{std::move(qubits)}, name_{std::string{"e"}.append(qubits_.size(), 'Z').append("+")}
     { }
 
@@ -33,7 +40,7 @@ namespace bra
     {
       for (auto&& qubit: qubits_)
         repr_stream << std::right << std::setw(parameter_width) << qubit;
-      repr_stream << std::right << std::setw(parameter_width) << phase_;
+      repr_stream << std::right << std::setw(parameter_width) << boost::apply_visitor(::bra::gate::gate_detail::output_visitor<real_type>{}, phase_);
       return repr_stream.str();
     }
   } // namespace gate
