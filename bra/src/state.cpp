@@ -51,6 +51,7 @@ namespace bra
     yampi::environment const& environment)
     : total_num_qubits_{total_num_qubits},
       last_outcomes_{total_num_qubits, ket::gate::outcome::unspecified},
+      last_measured_qubit_{qubit_type{total_num_qubits_}},
       maybe_expectation_values_{},
       measured_value_{},
       generated_events_{},
@@ -79,6 +80,7 @@ namespace bra
     yampi::environment const& environment)
     : total_num_qubits_{total_num_qubits},
       last_outcomes_{total_num_qubits, ket::gate::outcome::unspecified},
+      last_measured_qubit_{qubit_type{total_num_qubits_}},
       maybe_expectation_values_{},
       measured_value_{},
       generated_events_{},
@@ -106,6 +108,7 @@ namespace bra
     yampi::environment const& environment)
     : total_num_qubits_{static_cast<bit_integer_type>(initial_permutation.size())},
       last_outcomes_{total_num_qubits_, ket::gate::outcome::unspecified},
+      last_measured_qubit_{qubit_type{total_num_qubits_}},
       maybe_expectation_values_{},
       measured_value_{},
       generated_events_{},
@@ -135,6 +138,7 @@ namespace bra
     yampi::environment const& environment)
     : total_num_qubits_{static_cast<bit_integer_type>(initial_permutation.size())},
       last_outcomes_{total_num_qubits_, ket::gate::outcome::unspecified},
+      last_measured_qubit_{qubit_type{total_num_qubits_}},
       maybe_expectation_values_{},
       measured_value_{},
       generated_events_{},
@@ -159,6 +163,7 @@ namespace bra
   state::state(bit_integer_type const total_num_qubits, seed_type const seed)
     : total_num_qubits_{total_num_qubits},
       last_outcomes_{total_num_qubits, ket::gate::outcome::unspecified},
+      last_measured_qubit_{qubit_type{total_num_qubits_}},
       maybe_expectation_values_{},
       measured_value_{},
       generated_events_{},
@@ -252,7 +257,22 @@ namespace bra
       return boost::lexical_cast<int_type>(colon_separated_string);
 
     if (colon_separated_string.front() == ':')
+    {
+      using std::begin;
+      auto const first = begin(colon_separated_string);
+      if (std::string{first, first + 8} == ":OUTCOME")
+      {
+        using std::end;
+        auto const last = end(colon_separated_string);
+        auto const found = std::find(std::next(first), last, ':');
+        if (found == last)
+          return static_cast<int_type>(static_cast<int>(last_outcomes_[static_cast<bit_integer_type>(last_measured_qubit_)]));
+
+        return static_cast<int_type>(static_cast<int>(last_outcomes_[boost::lexical_cast<int>(std::string{std::next(found), last})]));
+      }
+
       throw 1;
+    }
 
     using std::begin;
     using std::end;
@@ -971,6 +991,7 @@ namespace bra
 
     last_outcomes_[static_cast<bit_integer_type>(qubit)]
       = do_projective_measurement(qubit, root);
+    last_measured_qubit_ = qubit;
     return *this;
   }
 
@@ -1032,6 +1053,7 @@ namespace bra
 
     last_outcomes_[static_cast<bit_integer_type>(qubit)]
       = do_projective_measurement(qubit);
+    last_measured_qubit_ = qubit;
     return *this;
   }
 

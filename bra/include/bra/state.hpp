@@ -157,6 +157,7 @@ namespace bra
    protected:
     bit_integer_type total_num_qubits_;
     std::vector<ket::gate::outcome> last_outcomes_; // return values of ket(::mpi)::gate::projective_measurement
+    qubit_type last_measured_qubit_; // return values of ket(::mpi)::gate::projective_measurement
     boost::optional<spins_type> maybe_expectation_values_; // return value of ket(::mpi)::all_spin_expectation_values
     state_integer_type measured_value_; // return value of ket(::mpi)::measure
     std::vector<state_integer_type> generated_events_; // results of ket(::mpi)::generate_events
