@@ -43,60 +43,6 @@ namespace bra
     : std::runtime_error{(mnemonic + " is not supported in gate fusion").c_str()}
   { }
 
-  auto ::bra::state_detail::to_int(
-    std::string const& colon_separated_string,
-    std::unordered_map<std::string, std::vector< ::bra::int_type >> const& int_variables)
-  -> real_type
-  {
-    if (std::isdigit(static_cast<unsigned char>(colon_separated_string.front())) or colon_separated_string.front() == '+' or colon_separated_string.front() == '-')
-      return boost::lexical_cast<int_type>(colon_separated_string);
-
-    if (colon_separated_string.front() == ':')
-      throw 1;
-
-    using std::begin;
-    using std::end;
-    auto const first = begin(colon_separated_string);
-    auto const last = end(colon_separated_string);
-    auto const found = std::find(first, last, ':');
-    if (found == last)
-      return int_variables.at(colon_separated_string).front();
-
-    return int_variables.at(std::string{first, found})[::bra::state_detail::to_int(std::string{std::next(found), last}, int_variables)];
-  }
-
-  auto ::bra::state_detail::to_real(
-    std::string const& colon_separated_string,
-    std::unordered_map<std::string, std::vector< ::bra::real_type >> const& real_variables,
-    std::unordered_map<std::string, std::vector< ::bra::int_type >> const& int_variables)
-  -> real_type
-  {
-    if (std::isdigit(static_cast<unsigned char>(colon_separated_string.front())) or colon_separated_string.front() == '+' or colon_separated_string.front() == '-' or colon_separated_string.front() == '.')
-      return boost::lexical_cast<real_type>(colon_separated_string);
-
-    if (colon_separated_string.front() == ':')
-    {
-      if (colon_separated_string == ":PI")
-        return boost::math::constants::pi<real_type>();
-      else if (colon_separated_string == ":HALF_PI")
-        return boost::math::constants::half_pi<real_type>();
-      else if (colon_separated_string == ":TWO_PI")
-        return boost::math::constants::two_pi<real_type>();
-
-      throw 1;
-    }
-
-    using std::begin;
-    using std::end;
-    auto const first = begin(colon_separated_string);
-    auto const last = end(colon_separated_string);
-    auto const found = std::find(first, last, ':');
-    if (found == last)
-      return real_variables.at(colon_separated_string).front();
-
-    return real_variables.at(std::string{first, found})[::bra::state_detail::to_int(std::string{std::next(found), last}, int_variables)];
-  }
-
 #ifndef BRA_NO_MPI
   state::state(
     bit_integer_type const total_num_qubits,
@@ -268,11 +214,11 @@ namespace bra
     auto const last = end(lhs_variable_name);
     auto const found = std::find(first, last, ':');
     auto const variable_name = std::string{first, found};
-    auto const index = found == last ? 0 : ::bra::state_detail::to_int(std::string{std::next(found), last}, int_variables_);
+    auto const index = found == last ? 0 : to_int(std::string{std::next(found), last});
 
     if (real_variables_.find(variable_name) != end(real_variables_))
     {
-      auto const rhs_value = ::bra::state_detail::to_real(rhs_literal_or_variable_name, real_variables_, int_variables_);
+      auto const rhs_value = to_real(rhs_literal_or_variable_name);
       if (op == ::bra::assign_operation_type::assign)
         real_variables_.at(variable_name)[index] = rhs_value;
       else if (op == ::bra::assign_operation_type::plus_assign)
@@ -286,7 +232,7 @@ namespace bra
     }
     else if (int_variables_.find(lhs_variable_name) != end(int_variables_))
     {
-      auto const rhs_value = ::bra::state_detail::to_int(rhs_literal_or_variable_name, int_variables_);
+      auto const rhs_value = to_int(rhs_literal_or_variable_name);
       if (op == ::bra::assign_operation_type::assign)
         int_variables_.at(variable_name)[index] = rhs_value;
       else if (op == ::bra::assign_operation_type::plus_assign)
@@ -298,6 +244,53 @@ namespace bra
       else if (op == ::bra::assign_operation_type::divides_assign)
         int_variables_.at(variable_name)[index] /= rhs_value;
     }
+  }
+
+  auto state::to_int(std::string const& colon_separated_string) const -> real_type
+  {
+    if (std::isdigit(static_cast<unsigned char>(colon_separated_string.front())) or colon_separated_string.front() == '+' or colon_separated_string.front() == '-')
+      return boost::lexical_cast<int_type>(colon_separated_string);
+
+    if (colon_separated_string.front() == ':')
+      throw 1;
+
+    using std::begin;
+    using std::end;
+    auto const first = begin(colon_separated_string);
+    auto const last = end(colon_separated_string);
+    auto const found = std::find(first, last, ':');
+    if (found == last)
+      return int_variables_.at(colon_separated_string).front();
+
+    return int_variables_.at(std::string{first, found})[to_int(std::string{std::next(found), last})];
+  }
+
+  auto state::to_real(std::string const& colon_separated_string) const -> real_type
+  {
+    if (std::isdigit(static_cast<unsigned char>(colon_separated_string.front())) or colon_separated_string.front() == '+' or colon_separated_string.front() == '-' or colon_separated_string.front() == '.')
+      return boost::lexical_cast<real_type>(colon_separated_string);
+
+    if (colon_separated_string.front() == ':')
+    {
+      if (colon_separated_string == ":PI")
+        return boost::math::constants::pi<real_type>();
+      else if (colon_separated_string == ":HALF_PI")
+        return boost::math::constants::half_pi<real_type>();
+      else if (colon_separated_string == ":TWO_PI")
+        return boost::math::constants::two_pi<real_type>();
+
+      throw 1;
+    }
+
+    using std::begin;
+    using std::end;
+    auto const first = begin(colon_separated_string);
+    auto const last = end(colon_separated_string);
+    auto const found = std::find(first, last, ':');
+    if (found == last)
+      return real_variables_.at(colon_separated_string).front();
+
+    return real_variables_.at(std::string{first, found})[to_int(std::string{std::next(found), last})];
   }
 
   state& state::i_gate(qubit_type const qubit)
@@ -562,9 +555,7 @@ namespace bra
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, control_qubit);
 
-    do_u1(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      control_qubit);
+    do_u1(boost::apply_visitor(real_visitor{*this}, phase), control_qubit);
     return *this;
   }
 
@@ -575,9 +566,7 @@ namespace bra
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, control_qubit);
 
-    do_adj_u1(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      control_qubit);
+    do_adj_u1(boost::apply_visitor(real_visitor{*this}, phase), control_qubit);
     return *this;
   }
 
@@ -590,8 +579,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit);
 
     do_u2(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase1),
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase2),
+      boost::apply_visitor(real_visitor{*this}, phase1),
+      boost::apply_visitor(real_visitor{*this}, phase2),
       qubit);
     return *this;
   }
@@ -605,8 +594,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit);
 
     do_adj_u2(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase1),
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase2),
+      boost::apply_visitor(real_visitor{*this}, phase1),
+      boost::apply_visitor(real_visitor{*this}, phase2),
       qubit);
     return *this;
   }
@@ -621,9 +610,9 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit);
 
     do_u3(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase1),
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase2),
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase3),
+      boost::apply_visitor(real_visitor{*this}, phase1),
+      boost::apply_visitor(real_visitor{*this}, phase2),
+      boost::apply_visitor(real_visitor{*this}, phase3),
       qubit);
     return *this;
   }
@@ -638,9 +627,9 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit);
 
     do_adj_u3(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase1),
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase2),
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase3),
+      boost::apply_visitor(real_visitor{*this}, phase1),
+      boost::apply_visitor(real_visitor{*this}, phase2),
+      boost::apply_visitor(real_visitor{*this}, phase3),
       qubit);
     return *this;
   }
@@ -652,7 +641,7 @@ namespace bra
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, control_qubit);
 
-    auto const phase_exponent_value = boost::apply_visitor(int_visitor{int_variables_}, phase_exponent);
+    auto const phase_exponent_value = boost::apply_visitor(int_visitor{*this}, phase_exponent);
 
     if (phase_exponent_value >= 0)
       do_phase_shift(phase_coefficients_[phase_exponent_value], control_qubit);
@@ -668,7 +657,7 @@ namespace bra
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, control_qubit);
 
-    auto const phase_exponent_value = boost::apply_visitor(int_visitor{int_variables_}, phase_exponent);
+    auto const phase_exponent_value = boost::apply_visitor(int_visitor{*this}, phase_exponent);
 
     if (phase_exponent_value >= 0)
       do_adj_phase_shift(phase_coefficients_[phase_exponent_value], control_qubit);
@@ -720,9 +709,7 @@ namespace bra
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, qubit);
 
-    do_exponential_pauli_x(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      qubit);
+    do_exponential_pauli_x(boost::apply_visitor(real_visitor{*this}, phase), qubit);
     return *this;
   }
 
@@ -733,9 +720,7 @@ namespace bra
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, qubit);
 
-    do_adj_exponential_pauli_x(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      qubit);
+    do_adj_exponential_pauli_x(boost::apply_visitor(real_visitor{*this}, phase), qubit);
     return *this;
   }
 
@@ -749,9 +734,7 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit2);
     }
 
-    do_exponential_pauli_xx(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      qubit1, qubit2);
+    do_exponential_pauli_xx(boost::apply_visitor(real_visitor{*this}, phase), qubit1, qubit2);
     return *this;
   }
 
@@ -765,9 +748,7 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit2);
     }
 
-    do_adj_exponential_pauli_xx(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      qubit1, qubit2);
+    do_adj_exponential_pauli_xx(boost::apply_visitor(real_visitor{*this}, phase), qubit1, qubit2);
     return *this;
   }
 
@@ -778,9 +759,7 @@ namespace bra
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, qubits);
 
-    do_exponential_pauli_xn(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      qubits);
+    do_exponential_pauli_xn(boost::apply_visitor(real_visitor{*this}, phase), qubits);
     return *this;
   }
 
@@ -791,9 +770,7 @@ namespace bra
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, qubits);
 
-    do_adj_exponential_pauli_xn(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      qubits);
+    do_adj_exponential_pauli_xn(boost::apply_visitor(real_visitor{*this}, phase), qubits);
     return *this;
   }
 
@@ -804,9 +781,7 @@ namespace bra
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, qubit);
 
-    do_exponential_pauli_y(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      qubit);
+    do_exponential_pauli_y(boost::apply_visitor(real_visitor{*this}, phase), qubit);
     return *this;
   }
 
@@ -817,9 +792,7 @@ namespace bra
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, qubit);
 
-    do_adj_exponential_pauli_y(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      qubit);
+    do_adj_exponential_pauli_y(boost::apply_visitor(real_visitor{*this}, phase), qubit);
     return *this;
   }
 
@@ -833,9 +806,7 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit2);
     }
 
-    do_exponential_pauli_yy(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      qubit1, qubit2);
+    do_exponential_pauli_yy(boost::apply_visitor(real_visitor{*this}, phase), qubit1, qubit2);
     return *this;
   }
 
@@ -849,9 +820,7 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit2);
     }
 
-    do_adj_exponential_pauli_yy(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      qubit1, qubit2);
+    do_adj_exponential_pauli_yy(boost::apply_visitor(real_visitor{*this}, phase), qubit1, qubit2);
     return *this;
   }
 
@@ -862,9 +831,7 @@ namespace bra
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, qubits);
 
-    do_exponential_pauli_yn(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      qubits);
+    do_exponential_pauli_yn(boost::apply_visitor(real_visitor{*this}, phase), qubits);
     return *this;
   }
 
@@ -875,9 +842,7 @@ namespace bra
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, qubits);
 
-    do_adj_exponential_pauli_yn(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      qubits);
+    do_adj_exponential_pauli_yn(boost::apply_visitor(real_visitor{*this}, phase), qubits);
     return *this;
   }
 
@@ -889,9 +854,7 @@ namespace bra
       if (::bra::is_weaker(found_qubits_[static_cast< ::bra::bit_integer_type >(qubit)], ::bra::found_qubit::ez_qubit))
         found_qubits_[static_cast< ::bra::bit_integer_type >(qubit)] = ::bra::found_qubit::ez_qubit;
 
-    do_exponential_pauli_z(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      qubit);
+    do_exponential_pauli_z(boost::apply_visitor(real_visitor{*this}, phase), qubit);
     return *this;
   }
 
@@ -903,9 +866,7 @@ namespace bra
       if (::bra::is_weaker(found_qubits_[static_cast< ::bra::bit_integer_type >(qubit)], ::bra::found_qubit::ez_qubit))
         found_qubits_[static_cast< ::bra::bit_integer_type >(qubit)] = ::bra::found_qubit::ez_qubit;
 
-    do_adj_exponential_pauli_z(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      qubit);
+    do_adj_exponential_pauli_z(boost::apply_visitor(real_visitor{*this}, phase), qubit);
     return *this;
   }
 
@@ -919,9 +880,7 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit2);
     }
 
-    do_exponential_pauli_zz(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      qubit1, qubit2);
+    do_exponential_pauli_zz(boost::apply_visitor(real_visitor{*this}, phase), qubit1, qubit2);
     return *this;
   }
 
@@ -935,9 +894,7 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit2);
     }
 
-    do_adj_exponential_pauli_zz(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      qubit1, qubit2);
+    do_adj_exponential_pauli_zz(boost::apply_visitor(real_visitor{*this}, phase), qubit1, qubit2);
     return *this;
   }
 
@@ -948,9 +905,7 @@ namespace bra
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, qubits);
 
-    do_exponential_pauli_zn(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      qubits);
+    do_exponential_pauli_zn(boost::apply_visitor(real_visitor{*this}, phase), qubits);
     return *this;
   }
 
@@ -961,9 +916,7 @@ namespace bra
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, qubits);
 
-    do_adj_exponential_pauli_zn(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      qubits);
+    do_adj_exponential_pauli_zn(boost::apply_visitor(real_visitor{*this}, phase), qubits);
     return *this;
   }
 
@@ -977,9 +930,7 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit2);
     }
 
-    do_exponential_swap(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      qubit1, qubit2);
+    do_exponential_swap(boost::apply_visitor(real_visitor{*this}, phase), qubit1, qubit2);
     return *this;
   }
 
@@ -993,9 +944,7 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit2);
     }
 
-    do_adj_exponential_swap(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      qubit1, qubit2);
+    do_adj_exponential_swap(boost::apply_visitor(real_visitor{*this}, phase), qubit1, qubit2);
     return *this;
   }
 
@@ -1203,17 +1152,11 @@ namespace bra
   }
 
   state& state::depolarizing_channel(
-    boost::variant<real_type, std::string> const& px,
-    boost::variant<real_type, std::string> const& py,
-    boost::variant<real_type, std::string> const& pz,
+    real_type const px, real_type const py, real_type const pz,
     int const seed)
   {
     if (is_in_fusion_)
       throw ::bra::unsupported_fused_gate_error{"DEPOLARIZING CHANNEL"};
-
-    auto const px_value = boost::apply_visitor(real_visitor{real_variables_, int_variables_}, px);
-    auto const py_value = boost::apply_visitor(real_visitor{real_variables_, int_variables_}, py);
-    auto const pz_value = boost::apply_visitor(real_visitor{real_variables_, int_variables_}, pz);
 
     using floating_point_type = typename ::bra::utility::closest_floating_point_of<real_type>::type;
     auto distribution = std::uniform_real_distribution<floating_point_type>{0.0, 1.0};
@@ -1222,11 +1165,11 @@ namespace bra
       for (auto qubit = ket::make_qubit<state_integer_type>(bit_integer_type{0u}); qubit < last_qubit; ++qubit)
       {
         auto const probability = static_cast<real_type>(distribution(random_number_generator_));
-        if (probability < px_value)
+        if (probability < px)
           pauli_x(qubit);
-        else if (probability < px_value + py_value)
+        else if (probability < px + py)
           pauli_y(qubit);
-        else if (probability < px_value + py_value + pz_value)
+        else if (probability < px + py + pz)
           pauli_z(ket::make_control(qubit));
       }
     else
@@ -1235,11 +1178,11 @@ namespace bra
       for (auto qubit = ket::make_qubit<state_integer_type>(static_cast<bit_integer_type>(0u)); qubit < last_qubit; ++qubit)
       {
         auto const probability = static_cast<real_type>(distribution(temporal_random_number_generator));
-        if (probability < px_value)
+        if (probability < px)
           pauli_x(qubit);
-        else if (probability < px_value + py_value)
+        else if (probability < px + py)
           pauli_y(qubit);
-        else if (probability < px_value + py_value + pz_value)
+        else if (probability < px + py + pz)
           pauli_z(ket::make_control(qubit));
       }
     }
@@ -1606,7 +1549,7 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubit2);
     }
 
-    auto const phase_exponent_value = boost::apply_visitor(int_visitor{int_variables_}, phase_exponent);
+    auto const phase_exponent_value = boost::apply_visitor(int_visitor{*this}, phase_exponent);
 
     if (phase_exponent_value >= 0)
       do_controlled_phase_shift(phase_coefficients_[phase_exponent_value], control_qubit1, control_qubit2);
@@ -1625,7 +1568,7 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubit2);
     }
 
-    auto const phase_exponent_value = boost::apply_visitor(int_visitor{int_variables_}, phase_exponent);
+    auto const phase_exponent_value = boost::apply_visitor(int_visitor{*this}, phase_exponent);
 
     if (phase_exponent_value >= 0)
       do_adj_controlled_phase_shift(phase_coefficients_[phase_exponent_value], control_qubit1, control_qubit2);
@@ -1641,7 +1584,7 @@ namespace bra
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, control_qubits);
 
-    auto const phase_exponent_value = boost::apply_visitor(int_visitor{int_variables_}, phase_exponent);
+    auto const phase_exponent_value = boost::apply_visitor(int_visitor{*this}, phase_exponent);
 
     if (phase_exponent_value >= 0)
       do_multi_controlled_phase_shift(phase_coefficients_[phase_exponent_value], control_qubits);
@@ -1657,7 +1600,7 @@ namespace bra
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, control_qubits);
 
-    auto const phase_exponent_value = boost::apply_visitor(int_visitor{int_variables_}, phase_exponent);
+    auto const phase_exponent_value = boost::apply_visitor(int_visitor{*this}, phase_exponent);
 
     if (phase_exponent_value >= 0)
       do_adj_multi_controlled_phase_shift(phase_coefficients_[phase_exponent_value], control_qubits);
@@ -1676,9 +1619,7 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubit2);
     }
 
-    do_controlled_u1(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      control_qubit1, control_qubit2);
+    do_controlled_u1(boost::apply_visitor(real_visitor{*this}, phase), control_qubit1, control_qubit2);
     return *this;
   }
 
@@ -1692,9 +1633,7 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubit2);
     }
 
-    do_adj_controlled_u1(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      control_qubit1, control_qubit2);
+    do_adj_controlled_u1(boost::apply_visitor(real_visitor{*this}, phase), control_qubit1, control_qubit2);
     return *this;
   }
 
@@ -1705,9 +1644,7 @@ namespace bra
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, control_qubits);
 
-    do_multi_controlled_u1(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      control_qubits);
+    do_multi_controlled_u1(boost::apply_visitor(real_visitor{*this}, phase), control_qubits);
     return *this;
   }
 
@@ -1718,9 +1655,7 @@ namespace bra
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, control_qubits);
 
-    do_adj_multi_controlled_u1(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      control_qubits);
+    do_adj_multi_controlled_u1(boost::apply_visitor(real_visitor{*this}, phase), control_qubits);
     return *this;
   }
 
@@ -1736,8 +1671,8 @@ namespace bra
     }
 
     do_controlled_u2(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase1),
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase2),
+      boost::apply_visitor(real_visitor{*this}, phase1),
+      boost::apply_visitor(real_visitor{*this}, phase2),
       target_qubit, control_qubit);
     return *this;
   }
@@ -1754,8 +1689,8 @@ namespace bra
     }
 
     do_adj_controlled_u2(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase1),
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase2),
+      boost::apply_visitor(real_visitor{*this}, phase1),
+      boost::apply_visitor(real_visitor{*this}, phase2),
       target_qubit, control_qubit);
     return *this;
   }
@@ -1772,8 +1707,8 @@ namespace bra
     }
 
     do_multi_controlled_u2(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase1),
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase2),
+      boost::apply_visitor(real_visitor{*this}, phase1),
+      boost::apply_visitor(real_visitor{*this}, phase2),
       target_qubit, control_qubits);
     return *this;
   }
@@ -1790,8 +1725,8 @@ namespace bra
     }
 
     do_adj_multi_controlled_u2(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase1),
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase2),
+      boost::apply_visitor(real_visitor{*this}, phase1),
+      boost::apply_visitor(real_visitor{*this}, phase2),
       target_qubit, control_qubits);
     return *this;
   }
@@ -1809,9 +1744,9 @@ namespace bra
     }
 
     do_controlled_u3(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase1),
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase2),
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase3),
+      boost::apply_visitor(real_visitor{*this}, phase1),
+      boost::apply_visitor(real_visitor{*this}, phase2),
+      boost::apply_visitor(real_visitor{*this}, phase3),
       target_qubit, control_qubit);
     return *this;
   }
@@ -1829,9 +1764,9 @@ namespace bra
     }
 
     do_adj_controlled_u3(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase1),
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase2),
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase3),
+      boost::apply_visitor(real_visitor{*this}, phase1),
+      boost::apply_visitor(real_visitor{*this}, phase2),
+      boost::apply_visitor(real_visitor{*this}, phase3),
       target_qubit, control_qubit);
     return *this;
   }
@@ -1849,9 +1784,9 @@ namespace bra
     }
 
     do_multi_controlled_u3(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase1),
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase2),
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase3),
+      boost::apply_visitor(real_visitor{*this}, phase1),
+      boost::apply_visitor(real_visitor{*this}, phase2),
+      boost::apply_visitor(real_visitor{*this}, phase3),
       target_qubit, control_qubits);
     return *this;
   }
@@ -1869,9 +1804,9 @@ namespace bra
     }
 
     do_adj_multi_controlled_u3(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase1),
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase2),
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase3),
+      boost::apply_visitor(real_visitor{*this}, phase1),
+      boost::apply_visitor(real_visitor{*this}, phase2),
+      boost::apply_visitor(real_visitor{*this}, phase3),
       target_qubit, control_qubits);
     return *this;
   }
@@ -1982,9 +1917,7 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubit);
     }
 
-    do_controlled_exponential_pauli_x(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      target_qubit, control_qubit);
+    do_controlled_exponential_pauli_x(boost::apply_visitor(real_visitor{*this}, phase), target_qubit, control_qubit);
     return *this;
   }
 
@@ -1998,9 +1931,7 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubit);
     }
 
-    do_adj_controlled_exponential_pauli_x(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      target_qubit, control_qubit);
+    do_adj_controlled_exponential_pauli_x(boost::apply_visitor(real_visitor{*this}, phase), target_qubit, control_qubit);
     return *this;
   }
 
@@ -2014,9 +1945,7 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubits);
     }
 
-    do_multi_controlled_exponential_pauli_xn(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      target_qubits, control_qubits);
+    do_multi_controlled_exponential_pauli_xn(boost::apply_visitor(real_visitor{*this}, phase), target_qubits, control_qubits);
     return *this;
   }
 
@@ -2030,9 +1959,7 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubits);
     }
 
-    do_adj_multi_controlled_exponential_pauli_xn(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      target_qubits, control_qubits);
+    do_adj_multi_controlled_exponential_pauli_xn(boost::apply_visitor(real_visitor{*this}, phase), target_qubits, control_qubits);
     return *this;
   }
 
@@ -2046,9 +1973,7 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubit);
     }
 
-    do_controlled_exponential_pauli_y(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      target_qubit, control_qubit);
+    do_controlled_exponential_pauli_y(boost::apply_visitor(real_visitor{*this}, phase), target_qubit, control_qubit);
     return *this;
   }
 
@@ -2062,9 +1987,7 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubit);
     }
 
-    do_adj_controlled_exponential_pauli_y(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      target_qubit, control_qubit);
+    do_adj_controlled_exponential_pauli_y(boost::apply_visitor(real_visitor{*this}, phase), target_qubit, control_qubit);
     return *this;
   }
 
@@ -2078,9 +2001,7 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubits);
     }
 
-    do_multi_controlled_exponential_pauli_yn(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      target_qubits, control_qubits);
+    do_multi_controlled_exponential_pauli_yn(boost::apply_visitor(real_visitor{*this}, phase), target_qubits, control_qubits);
     return *this;
   }
 
@@ -2094,9 +2015,7 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubits);
     }
 
-    do_adj_multi_controlled_exponential_pauli_yn(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      target_qubits, control_qubits);
+    do_adj_multi_controlled_exponential_pauli_yn(boost::apply_visitor(real_visitor{*this}, phase), target_qubits, control_qubits);
     return *this;
   }
 
@@ -2112,9 +2031,7 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubit);
     }
 
-    do_controlled_exponential_pauli_z(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      target_qubit, control_qubit);
+    do_controlled_exponential_pauli_z(boost::apply_visitor(real_visitor{*this}, phase), target_qubit, control_qubit);
     return *this;
   }
 
@@ -2130,9 +2047,7 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubit);
     }
 
-    do_adj_controlled_exponential_pauli_z(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      target_qubit, control_qubit);
+    do_adj_controlled_exponential_pauli_z(boost::apply_visitor(real_visitor{*this}, phase), target_qubit, control_qubit);
     return *this;
   }
 
@@ -2148,9 +2063,7 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubits);
     }
 
-    do_multi_controlled_exponential_pauli_z(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      target_qubit, control_qubits);
+    do_multi_controlled_exponential_pauli_z(boost::apply_visitor(real_visitor{*this}, phase), target_qubit, control_qubits);
     return *this;
   }
 
@@ -2166,9 +2079,7 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubits);
     }
 
-    do_adj_multi_controlled_exponential_pauli_z(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      target_qubit, control_qubits);
+    do_adj_multi_controlled_exponential_pauli_z(boost::apply_visitor(real_visitor{*this}, phase), target_qubit, control_qubits);
     return *this;
   }
 
@@ -2182,9 +2093,7 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubits);
     }
 
-    do_multi_controlled_exponential_pauli_zn(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      target_qubits, control_qubits);
+    do_multi_controlled_exponential_pauli_zn(boost::apply_visitor(real_visitor{*this}, phase), target_qubits, control_qubits);
     return *this;
   }
 
@@ -2198,9 +2107,7 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubits);
     }
 
-    do_adj_multi_controlled_exponential_pauli_zn(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      target_qubits, control_qubits);
+    do_adj_multi_controlled_exponential_pauli_zn(boost::apply_visitor(real_visitor{*this}, phase), target_qubits, control_qubits);
     return *this;
   }
 
@@ -2215,9 +2122,7 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubits);
     }
 
-    do_multi_controlled_exponential_swap(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      target_qubit1, target_qubit2, control_qubits);
+    do_multi_controlled_exponential_swap(boost::apply_visitor(real_visitor{*this}, phase), target_qubit1, target_qubit2, control_qubits);
     return *this;
   }
 
@@ -2232,9 +2137,7 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubits);
     }
 
-    do_adj_multi_controlled_exponential_swap(
-      boost::apply_visitor(real_visitor{real_variables_, int_variables_}, phase),
-      target_qubit1, target_qubit2, control_qubits);
+    do_adj_multi_controlled_exponential_swap(boost::apply_visitor(real_visitor{*this}, phase), target_qubit1, target_qubit2, control_qubits);
     return *this;
   }
 } // namespace bra

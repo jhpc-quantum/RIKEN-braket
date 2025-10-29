@@ -125,20 +125,6 @@ namespace bra
       set_found_qubits(found_qubits, control_qubit);
   }
 
-  namespace state_detail
-  {
-    auto to_int(
-      std::string const& colon_separated_string,
-      std::unordered_map<std::string, std::vector< ::bra::int_type >> const& int_variables)
-    -> real_type;
-
-    auto to_real(
-      std::string const& colon_separated_string,
-      std::unordered_map<std::string, std::vector< ::bra::real_type >> const& real_variables,
-      std::unordered_map<std::string, std::vector< ::bra::int_type >> const& int_variables)
-    -> real_type;
-  }
-
   class state
   {
    public:
@@ -268,37 +254,38 @@ namespace bra
 # endif // BRA_NO_MPI
 
    private:
+    auto to_int(std::string const& colon_separated_string) const -> real_type;
+    auto to_real(std::string const& colon_separated_string) const -> real_type;
+
+    friend class real_visitor;
+    friend class int_visitor;
+
     class real_visitor
       : public boost::static_visitor<real_type>
     {
-      real_variables_type const* real_variables_ptr_;
-      int_variables_type const* int_variables_ptr_;
+      state const* state_ptr_;
 
      public:
-      real_visitor(real_variables_type const& real_variables, int_variables_type const& int_variables)
-        : real_variables_ptr_{std::addressof(real_variables)}, int_variables_ptr_{std::addressof(int_variables)}
-      { }
+      real_visitor(state const& s) : state_ptr_{std::addressof(s)} { }
 
       real_type operator()(real_type const value) const { return value; }
 
       real_type operator()(std::string const& colon_separated_string) const
-      { return ::bra::state_detail::to_real(colon_separated_string, *real_variables_ptr_, *int_variables_ptr_); }
+      { return state_ptr_->to_real(colon_separated_string); }
     }; // class real_visitor
 
     class int_visitor
       : public boost::static_visitor<int_type>
     {
-      int_variables_type const* int_variables_ptr_;
+      state const* state_ptr_;
 
      public:
-      int_visitor(int_variables_type const& int_variables)
-        : int_variables_ptr_{std::addressof(int_variables)}
-      { }
+      int_visitor(state const& s) : state_ptr_{std::addressof(s)} { }
 
       int_type operator()(int_type const value) const { return value; }
 
       int_type operator()(std::string const& colon_separated_string) const
-      { return ::bra::state_detail::to_int(colon_separated_string, *int_variables_ptr_); }
+      { return state_ptr_->to_int(colon_separated_string); }
     }; // class int_visitor
 
    public:
@@ -446,9 +433,7 @@ namespace bra
     state& set(qubit_type const qubit);
 
     state& depolarizing_channel(
-      boost::variant<real_type, std::string> const& px,
-      boost::variant<real_type, std::string> const& py,
-      boost::variant<real_type, std::string> const& pz,
+      real_type const px, real_type const py, real_type const pz,
       int const seed);
 
     state& controlled_i_gate(qubit_type const target_qubit, control_qubit_type const control_qubit);
