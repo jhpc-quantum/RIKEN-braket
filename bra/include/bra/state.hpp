@@ -254,7 +254,7 @@ namespace bra
 # endif // BRA_NO_MPI
 
    private:
-    auto to_int(std::string const& colon_separated_string) const -> real_type;
+    auto to_int(std::string const& colon_separated_string) const -> int_type;
     auto to_real(std::string const& colon_separated_string) const -> real_type;
 
     friend class real_visitor;

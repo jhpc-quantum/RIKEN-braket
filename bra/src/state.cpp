@@ -246,7 +246,7 @@ namespace bra
     }
   }
 
-  auto state::to_int(std::string const& colon_separated_string) const -> real_type
+  auto state::to_int(std::string const& colon_separated_string) const -> int_type
   {
     if (std::isdigit(static_cast<unsigned char>(colon_separated_string.front())) or colon_separated_string.front() == '+' or colon_separated_string.front() == '-')
       return boost::lexical_cast<int_type>(colon_separated_string);
