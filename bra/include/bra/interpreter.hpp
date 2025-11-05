@@ -79,6 +79,7 @@ namespace bra
 
    private:
     std::vector<circuit_type> circuits_;
+    std::vector<std::map<std::string, int>> label_maps_;
 
    public:
     using columns_type = wrong_mnemonics_error::columns_type;
@@ -185,11 +186,7 @@ namespace bra
         and BRA_is_nothrow_swappable< ::bra::state_integer_type >::value
         and BRA_is_nothrow_swappable< ::bra::qubit_type >::value);
 
-    void apply_circuit(::bra::state& state, int const circuit_index)
-    {
-      for (auto const& gate_ptr: circuits_[circuit_index])
-        state << *gate_ptr;
-    }
+    void apply_circuit(::bra::state& state, int const circuit_index) const;
 
    private:
     ::bra::bit_integer_type read_num_qubits(columns_type const& columns) const;
@@ -307,6 +304,9 @@ namespace bra
 
     void add_var(columns_type const& columns);
     void add_let(columns_type const& columns);
+    void add_label(columns_type const& columns, std::string const& mnemonic);
+    void add_jump(columns_type const& columns);
+    void add_jumpif(columns_type const& columns);
 
     void add_i(columns_type const& columns);
     void add_ic(columns_type const& columns);

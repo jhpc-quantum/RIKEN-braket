@@ -42,6 +42,8 @@
 #include <bra/gate/gate.hpp>
 #include <bra/gate/var_op.hpp>
 #include <bra/gate/let_op.hpp>
+#include <bra/gate/jump_op.hpp>
+#include <bra/gate/jumpif_op.hpp>
 #include <bra/gate/i_gate.hpp>
 #include <bra/gate/ic_gate.hpp>
 #include <bra/gate/ii_gate.hpp>
@@ -235,12 +237,12 @@ namespace bra
 
 #ifndef BRA_NO_MPI
   interpreter::interpreter()
-    : circuits_(1u), num_qubits_{}, num_lqubits_{}, num_uqubits_{}, num_processes_per_unit_{1u},
+    : circuits_(1u), label_maps_(1u), num_qubits_{}, num_lqubits_{}, num_uqubits_{}, num_processes_per_unit_{1u},
       initial_state_value_{}, initial_permutation_{}, root_{}, circuit_index_{0}, is_in_circuit_{false}
   { }
 #else // BRA_NO_MPI
   interpreter::interpreter()
-    : circuits_(1u), num_qubits_{},
+    : circuits_(1u), label_maps_(1u), num_qubits_{},
       initial_state_value_{}, circuit_index_{0}, is_in_circuit_{false}
   { }
 #endif // BRA_NO_MPI
@@ -252,7 +254,7 @@ namespace bra
     yampi::environment const& environment,
     yampi::rank const root, yampi::communicator const& total_communicator,
     size_type const num_reserved_gates)
-    : circuits_(1u), num_qubits_{}, num_lqubits_{},
+    : circuits_(1u), label_maps_(1u), num_qubits_{}, num_lqubits_{},
       num_uqubits_{num_uqubits}, num_processes_per_unit_{num_processes_per_unit},
       initial_state_value_{}, initial_permutation_{}, root_{root}, circuit_index_{0}, is_in_circuit_{false}
   {
@@ -261,12 +263,12 @@ namespace bra
   }
 #else // BRA_NO_MPI
   interpreter::interpreter(std::istream& input_stream)
-    : circuits_(1u), num_qubits_{},
+    : circuits_(1u), label_maps_(1u), num_qubits_{},
       initial_state_value_{}, circuit_index_{0}, is_in_circuit_{false}
   { invoke(input_stream, size_type{0u}); }
 
   interpreter::interpreter(std::istream& input_stream, size_type const num_reserved_gates)
-    : circuits_(1u), num_qubits_{},
+    : circuits_(1u), label_maps_(1u), num_qubits_{},
       initial_state_value_{}, circuit_index_{0}, is_in_circuit_{false}
   { invoke(input_stream, num_reserved_gates); }
 #endif // BRA_NO_MPI
@@ -275,6 +277,7 @@ namespace bra
   {
 #ifndef BRA_NO_MPI
     return circuits_ == other.circuits_
+      and label_maps_ == other.label_maps_
       and num_qubits_ == other.num_qubits_
       and num_lqubits_ == other.num_lqubits_
       and num_uqubits_ == other.num_uqubits_
@@ -286,6 +289,7 @@ namespace bra
       and is_in_circuit_ == other.is_in_circuit_;
 #else // BRA_NO_MPI
     return circuits_ == other.circuits_
+      and label_maps_ == other.label_maps_
       and num_qubits_ == other.num_qubits_
       and initial_state_value_ == other.initial_state_value_
       and circuit_index_ == other.circuit_index_
@@ -356,6 +360,8 @@ namespace bra
       circuit.clear();
       circuit.reserve(num_reserved_gates);
     }
+    for (auto& label_map: label_maps_)
+      label_map.clear();
 
     auto line = std::string{};
     auto columns = columns_type{};
@@ -385,6 +391,7 @@ namespace bra
       if (mnemonic == "CIRCUITS")
       {
         circuits_.resize(read_num_circuits(columns));
+        label_maps_.resize(read_num_circuits(columns));
         for (auto& circuit: circuits_)
           circuit.reserve(num_reserved_gates);
       }
@@ -435,6 +442,12 @@ namespace bra
         add_var(columns);
       else if (mnemonic == "LET")
         add_let(columns);
+      else if (mnemonic.front() == '@')
+        add_label(columns, mnemonic);
+      else if (mnemonic == "JUMP")
+        add_jump(columns);
+      else if (mnemonic == "JUMPIF")
+        add_jumpif(columns);
       else if (mnemonic == "I")
         add_i(columns);
       else if (mnemonic == "IC")
@@ -758,6 +771,7 @@ namespace bra
     using std::swap;
 #ifndef BRA_NO_MPI
     swap(circuits_, other.circuits_);
+    swap(label_maps_, other.label_maps_);
     swap(num_qubits_, other.num_qubits_);
     swap(num_lqubits_, other.num_lqubits_);
     swap(initial_state_value_, other.initial_state_value_);
@@ -765,9 +779,26 @@ namespace bra
     swap(root_, other.root_);
 #else // BRA_NO_MPI
     swap(circuits_, other.circuits_);
+    swap(label_maps_, other.label_maps_);
     swap(num_qubits_, other.num_qubits_);
     swap(initial_state_value_, other.initial_state_value_);
 #endif // BRA_NO_MPI
+  }
+
+  void interpreter::apply_circuit(::bra::state& state, int const circuit_index) const
+  {
+    auto const count = static_cast<int>(circuits_[circuit_index].size());
+    for (auto index = 0; index < count; ++index)
+    {
+      state << *(circuits_[circuit_index][index]);
+
+      if (!state.maybe_label())
+        continue;
+
+      index = static_cast<int>(label_maps_[circuit_index].at(*(state.maybe_label())));
+      --index;
+      state.delete_label();
+    }
   }
 
   ::bra::bit_integer_type interpreter::read_num_qubits(interpreter::columns_type const& columns) const
@@ -1787,10 +1818,8 @@ namespace bra
 
     using std::begin;
     auto iter = begin(columns);
-    auto variable_name = *++iter;
-    boost::algorithm::to_upper(variable_name);
-    auto type_name = *++iter;
-    boost::algorithm::to_upper(type_name);
+    auto const variable_name = boost::algorithm::to_upper_copy(*++iter);
+    auto const type_name = boost::algorithm::to_upper_copy(*++iter);
     auto const num_elements = column_size == 3u ? 1 : boost::lexical_cast<int>(*++iter);
 
     auto const type
@@ -1812,11 +1841,9 @@ namespace bra
 
     using std::begin;
     auto iter = begin(columns);
-    auto lhs_variable_name = *++iter;
-    boost::algorithm::to_upper(lhs_variable_name);
+    auto const lhs_variable_name = boost::algorithm::to_upper_copy(*++iter);
     auto const op_str = *++iter;
-    auto rhs_literal_or_variable_name = *++iter;
-    boost::algorithm::to_upper(rhs_literal_or_variable_name);
+    auto const rhs_literal_or_variable_name = boost::algorithm::to_upper_copy(*++iter);
 
     auto const op
       = op_str == ":="
@@ -1832,6 +1859,68 @@ namespace bra
                 : throw 1;
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::let_op >(lhs_variable_name, op, rhs_literal_or_variable_name));
+  }
+
+  // @LABEL
+  void interpreter::add_label(interpreter::columns_type const& columns, std::string const& mnemonic)
+  {
+    if (boost::size(columns) != 1u)
+      throw wrong_mnemonics_error{columns};
+
+    using std::begin;
+    using std::end;
+    auto label = std::string{std::next(begin(mnemonic)), end(mnemonic)};
+    boost::algorithm::to_upper(label);
+
+    if (label_maps_[circuit_index_].find(label) != end(label_maps_[circuit_index_]))
+      throw wrong_mnemonics_error{columns};
+
+    label_maps_[circuit_index_].emplace(label, static_cast<int>(circuits_[circuit_index_].size()));
+  }
+
+  // JUMP LABEL
+  void interpreter::add_jump(interpreter::columns_type const& columns)
+  {
+    if (boost::size(columns) != 2u)
+      throw wrong_mnemonics_error{columns};
+
+    using std::begin;
+    auto iter = begin(columns);
+    auto const label = boost::algorithm::to_upper_copy(*++iter);
+
+    circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::jump_op >(label));
+  }
+
+  // JUMPIF LABEL N < 5
+  void interpreter::add_jumpif(interpreter::columns_type const& columns)
+  {
+    if (boost::size(columns) != 5u)
+      throw wrong_mnemonics_error{columns};
+
+    using std::begin;
+    auto iter = begin(columns);
+    auto const label = boost::algorithm::to_upper_copy(*++iter);
+    auto const lhs_variable_name = boost::algorithm::to_upper_copy(*++iter);
+    auto const op_str = *++iter;
+    auto const rhs_literal_or_variable_name = boost::algorithm::to_upper_copy(*++iter);
+
+    auto const op
+      = op_str == "=="
+        ? ::bra::compare_operation_type::equal_to
+        : op_str == "\\="
+          ? ::bra::compare_operation_type::not_equal_to
+          : op_str == ">"
+            ? ::bra::compare_operation_type::greater
+            : op_str == "<"
+              ? ::bra::compare_operation_type::less
+              : op_str == ">="
+                ? ::bra::compare_operation_type::greater_equal
+                : op_str == "<="
+                  ? ::bra::compare_operation_type::less_equal
+                  : throw 1;
+
+    circuits_[circuit_index_].push_back(
+      std::make_unique< ::bra::gate::jumpif_op >(label, lhs_variable_name, op, rhs_literal_or_variable_name));
   }
 
   void interpreter::add_i(interpreter::columns_type const& columns)

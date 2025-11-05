@@ -76,6 +76,9 @@ namespace bra
   enum class assign_operation_type : int
   { assign = 0, plus_assign = 1, minus_assign = 2, multiplies_assign = 3, divides_assign = 4 };
 
+  enum class compare_operation_type : int
+  { equal_to = 0, not_equal_to = 1, greater = 2, less = 3, greater_equal = 4, less_equal = 5 };
+
   enum class found_qubit : int
   { not_found = 0, control_qubit = 1, ez_qubit = 2, cez_qubit = 3, qubit = 4 };
 
@@ -178,6 +181,8 @@ namespace bra
     phase_coefficients_type phase_coefficients_;
 
    private:
+    boost::optional<std::string> maybe_label_;
+
     using real_variables_type = std::unordered_map<std::string, std::vector<real_type>>;
     real_variables_type real_variables_;
 
@@ -248,6 +253,11 @@ namespace bra
     void generate_new_real_variable(std::string const& variable_name, int const num_elements);
     void generate_new_int_variable(std::string const& variable_name, int const num_elements);
     void invoke_assign_operation(std::string const& lhs_variable_name, ::bra::assign_operation_type const op, std::string const& rhs_literal_or_variable_name);
+
+    void invoke_jump_operation(std::string const& label);
+    void invoke_jump_operation(std::string const& label, std::string const& lhs_variable_name, ::bra::compare_operation_type const op, std::string const& rhs_literal_or_variable_name);
+    boost::optional<std::string> const& maybe_label() const { return maybe_label_; }
+    void delete_label() { maybe_label_ = boost::none; }
 
 # ifndef BRA_NO_MPI
     unsigned int num_page_qubits() const { return do_num_page_qubits(); }

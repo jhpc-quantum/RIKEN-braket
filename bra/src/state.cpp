@@ -64,6 +64,7 @@ namespace bra
       environment_{environment},
       finish_times_and_processes_{},
       phase_coefficients_{},
+      maybe_label_{},
       real_variables_{},
       int_variables_{}
   {
@@ -93,6 +94,7 @@ namespace bra
       environment_{environment},
       finish_times_and_processes_{},
       phase_coefficients_{},
+      maybe_label_{},
       real_variables_{},
       int_variables_{}
   {
@@ -122,6 +124,7 @@ namespace bra
       environment_{environment},
       finish_times_and_processes_{},
       phase_coefficients_{},
+      maybe_label_{},
       real_variables_{},
       int_variables_{}
   {
@@ -152,6 +155,7 @@ namespace bra
       environment_{environment},
       finish_times_and_processes_{},
       phase_coefficients_{},
+      maybe_label_{},
       real_variables_{},
       int_variables_{}
   {
@@ -172,6 +176,7 @@ namespace bra
       random_number_generator_{seed},
       finish_times_and_processes_{},
       phase_coefficients_{},
+      maybe_label_{},
       real_variables_{},
       int_variables_{}
   {
@@ -251,6 +256,70 @@ namespace bra
     }
   }
 
+  void state::invoke_jump_operation(std::string const& label)
+  { maybe_label_ = label; }
+
+  void state::invoke_jump_operation(
+    std::string const& label,
+    std::string const& lhs_variable_name, ::bra::compare_operation_type const op, std::string const& rhs_literal_or_variable_name)
+  {
+    if (not std::isalpha(static_cast<unsigned char>(lhs_variable_name.front())))
+      return;
+
+    using std::begin;
+    using std::end;
+    auto const first = begin(lhs_variable_name);
+    auto const last = end(lhs_variable_name);
+    auto const found = std::find(first, last, ':');
+    auto const variable_name = std::string{first, found};
+    auto const index = found == last ? 0 : to_int(std::string{std::next(found), last});
+
+    if (real_variables_.find(variable_name) != end(real_variables_))
+    {
+      auto const rhs_value = to_real(rhs_literal_or_variable_name);
+      if (op == ::bra::compare_operation_type::equal_to
+          and real_variables_.at(variable_name)[index] == rhs_value)
+        maybe_label_ = label;
+      else if (op == ::bra::compare_operation_type::not_equal_to
+               and real_variables_.at(variable_name)[index] != rhs_value)
+        maybe_label_ = label;
+      else if (op == ::bra::compare_operation_type::greater
+               and real_variables_.at(variable_name)[index] > rhs_value)
+          maybe_label_ = label;
+      else if (op == ::bra::compare_operation_type::less
+               and real_variables_.at(variable_name)[index] < rhs_value)
+          maybe_label_ = label;
+      else if (op == ::bra::compare_operation_type::greater_equal
+               and real_variables_.at(variable_name)[index] >= rhs_value)
+          maybe_label_ = label;
+      else if (op == ::bra::compare_operation_type::less_equal
+               and real_variables_.at(variable_name)[index] <= rhs_value)
+          maybe_label_ = label;
+    }
+    else if (int_variables_.find(lhs_variable_name) != end(int_variables_))
+    {
+      auto const rhs_value = to_int(rhs_literal_or_variable_name);
+      if (op == ::bra::compare_operation_type::equal_to
+          and int_variables_.at(variable_name)[index] == rhs_value)
+          maybe_label_ = label;
+      else if (op == ::bra::compare_operation_type::not_equal_to
+               and int_variables_.at(variable_name)[index] != rhs_value)
+          maybe_label_ = label;
+      else if (op == ::bra::compare_operation_type::greater
+               and int_variables_.at(variable_name)[index] > rhs_value)
+          maybe_label_ = label;
+      else if (op == ::bra::compare_operation_type::less
+               and int_variables_.at(variable_name)[index] < rhs_value)
+          maybe_label_ = label;
+      else if (op == ::bra::compare_operation_type::greater_equal
+               and int_variables_.at(variable_name)[index] >= rhs_value)
+          maybe_label_ = label;
+      else if (op == ::bra::compare_operation_type::less_equal
+               and int_variables_.at(variable_name)[index] <= rhs_value)
+          maybe_label_ = label;
+    }
+  }
+
   auto state::to_int(std::string const& colon_separated_string) const -> int_type
   {
     if (std::isdigit(static_cast<unsigned char>(colon_separated_string.front())) or colon_separated_string.front() == '+' or colon_separated_string.front() == '-')
@@ -260,13 +329,15 @@ namespace bra
     {
       using std::begin;
       auto const first = begin(colon_separated_string);
-      if (std::string{first, first + 8} == ":OUTCOME")
+      if (std::string{first, end(colon_separated_string)} == ":OUTCOME")
+        return static_cast<int_type>(static_cast<int>(last_outcomes_[static_cast<bit_integer_type>(last_measured_qubit_)]));
+      if (std::string{first, first + 9} == ":OUTCOMES")
       {
         using std::end;
         auto const last = end(colon_separated_string);
         auto const found = std::find(std::next(first), last, ':');
         if (found == last)
-          return static_cast<int_type>(static_cast<int>(last_outcomes_[static_cast<bit_integer_type>(last_measured_qubit_)]));
+          return static_cast<int_type>(static_cast<int>(last_outcomes_.front()));
 
         return static_cast<int_type>(static_cast<int>(last_outcomes_[boost::lexical_cast<int>(std::string{std::next(found), last})]));
       }
