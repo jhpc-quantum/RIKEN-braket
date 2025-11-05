@@ -2,6 +2,10 @@
 #include <ios>
 #include <iomanip>
 #include <sstream>
+#include <utility>
+
+#include <boost/variant/variant.hpp>
+#include <boost/variant/apply_visitor.hpp>
 
 #include <ket/qubit_io.hpp>
 
@@ -16,7 +20,9 @@ namespace bra
   {
     std::string const adj_exponential_swap::name_ = "eSWAP+";
 
-    adj_exponential_swap::adj_exponential_swap(real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
+    adj_exponential_swap::adj_exponential_swap(
+      boost::variant<real_type, std::string> const& phase,
+      qubit_type const qubit1, qubit_type const qubit2)
       : ::bra::gate::gate{}, phase_{phase}, qubit1_{qubit1}, qubit2_{qubit2}
     { }
 
@@ -31,7 +37,7 @@ namespace bra
         << std::right
         << std::setw(parameter_width) << qubit1_
         << std::setw(parameter_width) << qubit2_
-        << std::setw(parameter_width) << phase_;
+        << std::setw(parameter_width) << boost::apply_visitor(::bra::gate::gate_detail::output_visitor<real_type>{}, phase_);
       return repr_stream.str();
     }
   } // namespace gate

@@ -5,6 +5,9 @@
 #include <vector>
 #include <utility>
 
+#include <boost/variant/variant.hpp>
+#include <boost/variant/apply_visitor.hpp>
+
 #include <ket/qubit_io.hpp>
 #include <ket/control_io.hpp>
 
@@ -18,7 +21,8 @@ namespace bra
   namespace gate
   {
     adj_multi_controlled_u2::adj_multi_controlled_u2(
-      real_type const& phase1, real_type const& phase2,
+      boost::variant<real_type, std::string> const& phase1,
+      boost::variant<real_type, std::string> const& phase2,
       qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
       : ::bra::gate::gate{},
         phase1_{phase1}, phase2_{phase2},
@@ -27,7 +31,8 @@ namespace bra
     { }
 
     adj_multi_controlled_u2::adj_multi_controlled_u2(
-      real_type const& phase1, real_type const& phase2,
+      boost::variant<real_type, std::string> const& phase1,
+      boost::variant<real_type, std::string> const& phase2,
       qubit_type const target_qubit, std::vector<control_qubit_type>&& control_qubits)
       : ::bra::gate::gate{},
         phase1_{phase1}, phase2_{phase2},
@@ -47,8 +52,8 @@ namespace bra
       repr_stream
         << std::right
         << std::setw(parameter_width) << target_qubit_
-        << std::setw(parameter_width) << phase1_
-        << std::setw(parameter_width) << phase2_;
+        << std::setw(parameter_width) << boost::apply_visitor(::bra::gate::gate_detail::output_visitor<real_type>{}, phase1_)
+        << std::setw(parameter_width) << boost::apply_visitor(::bra::gate::gate_detail::output_visitor<real_type>{}, phase2_);
       return repr_stream.str();
     }
   } // namespace gate

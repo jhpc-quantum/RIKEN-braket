@@ -1,13 +1,17 @@
+#include <string>
 #include <vector>
 #include <random>
 #include <algorithm>
 #include <iterator>
+#include <utility>
 #ifdef BRA_NO_MPI
 # include <chrono>
 # include <memory>
 #endif
 #include <stdexcept>
 
+#include <boost/variant/variant.hpp>
+#include <boost/variant/apply_visitor.hpp>
 #include <boost/preprocessor/arithmetic/dec.hpp>
 
 #ifndef BRA_NO_MPI
@@ -47,6 +51,7 @@ namespace bra
     yampi::environment const& environment)
     : total_num_qubits_{total_num_qubits},
       last_outcomes_{total_num_qubits, ket::gate::outcome::unspecified},
+      last_measured_qubit_{qubit_type{total_num_qubits_}},
       maybe_expectation_values_{},
       measured_value_{},
       generated_events_{},
@@ -57,10 +62,15 @@ namespace bra
       buffer_{},
       communicator_{communicator},
       environment_{environment},
-      finish_times_and_processes_{}
+      finish_times_and_processes_{},
+      phase_coefficients_{},
+      maybe_label_{},
+      real_variables_{},
+      int_variables_{}
   {
     found_qubits_.reserve(total_num_qubits_);
     finish_times_and_processes_.reserve(2u);
+    ket::utility::generate_phase_coefficients(phase_coefficients_, total_num_qubits_);
   }
 
   state::state(
@@ -71,6 +81,7 @@ namespace bra
     yampi::environment const& environment)
     : total_num_qubits_{total_num_qubits},
       last_outcomes_{total_num_qubits, ket::gate::outcome::unspecified},
+      last_measured_qubit_{qubit_type{total_num_qubits_}},
       maybe_expectation_values_{},
       measured_value_{},
       generated_events_{},
@@ -81,10 +92,15 @@ namespace bra
       buffer_(num_elements_in_buffer),
       communicator_{communicator},
       environment_{environment},
-      finish_times_and_processes_{}
+      finish_times_and_processes_{},
+      phase_coefficients_{},
+      maybe_label_{},
+      real_variables_{},
+      int_variables_{}
   {
     found_qubits_.reserve(total_num_qubits_);
     finish_times_and_processes_.reserve(2u);
+    ket::utility::generate_phase_coefficients(phase_coefficients_, total_num_qubits_);
   }
 
   state::state(
@@ -94,6 +110,7 @@ namespace bra
     yampi::environment const& environment)
     : total_num_qubits_{static_cast<bit_integer_type>(initial_permutation.size())},
       last_outcomes_{total_num_qubits_, ket::gate::outcome::unspecified},
+      last_measured_qubit_{qubit_type{total_num_qubits_}},
       maybe_expectation_values_{},
       measured_value_{},
       generated_events_{},
@@ -105,10 +122,15 @@ namespace bra
       buffer_{},
       communicator_{communicator},
       environment_{environment},
-      finish_times_and_processes_{}
+      finish_times_and_processes_{},
+      phase_coefficients_{},
+      maybe_label_{},
+      real_variables_{},
+      int_variables_{}
   {
     found_qubits_.reserve(total_num_qubits_);
     finish_times_and_processes_.reserve(2u);
+    ket::utility::generate_phase_coefficients(phase_coefficients_, total_num_qubits_);
   }
 
   state::state(
@@ -119,6 +141,7 @@ namespace bra
     yampi::environment const& environment)
     : total_num_qubits_{static_cast<bit_integer_type>(initial_permutation.size())},
       last_outcomes_{total_num_qubits_, ket::gate::outcome::unspecified},
+      last_measured_qubit_{qubit_type{total_num_qubits_}},
       maybe_expectation_values_{},
       measured_value_{},
       generated_events_{},
@@ -130,27 +153,236 @@ namespace bra
       buffer_(num_elements_in_buffer),
       communicator_{communicator},
       environment_{environment},
-      finish_times_and_processes_{}
+      finish_times_and_processes_{},
+      phase_coefficients_{},
+      maybe_label_{},
+      real_variables_{},
+      int_variables_{}
   {
     found_qubits_.reserve(total_num_qubits_);
     finish_times_and_processes_.reserve(2u);
+    ket::utility::generate_phase_coefficients(phase_coefficients_, total_num_qubits_);
   }
 #else // BRA_NO_MPI
   state::state(bit_integer_type const total_num_qubits, seed_type const seed)
     : total_num_qubits_{total_num_qubits},
       last_outcomes_{total_num_qubits, ket::gate::outcome::unspecified},
+      last_measured_qubit_{qubit_type{total_num_qubits_}},
       maybe_expectation_values_{},
       measured_value_{},
       generated_events_{},
       is_in_fusion_{false},
       found_qubits_{},
       random_number_generator_{seed},
-      finish_times_and_processes_{}
+      finish_times_and_processes_{},
+      phase_coefficients_{},
+      maybe_label_{},
+      real_variables_{},
+      int_variables_{}
   {
     found_qubits_.reserve(total_num_qubits_);
     finish_times_and_processes_.reserve(2u);
+    ket::utility::generate_phase_coefficients(phase_coefficients_, total_num_qubits_);
   }
 #endif // BRA_NO_MPI
+
+  void state::generate_new_real_variable(std::string const& variable_name, int const num_elements)
+  {
+    using std::end;
+    if (real_variables_.find(variable_name) != end(real_variables_))
+      throw 1;
+
+    if (num_elements <= 0)
+      throw 1;
+
+    using size_type = std::vector<real_type>::size_type;
+    real_variables_[variable_name] = std::vector<real_type>(static_cast<size_type>(num_elements));
+  }
+
+  void state::generate_new_int_variable(std::string const& variable_name, int const num_elements)
+  {
+    using std::end;
+    if (int_variables_.find(variable_name) != end(int_variables_))
+      throw 1;
+
+    if (num_elements <= 0)
+      throw 1;
+
+    using size_type = std::vector<int_type>::size_type;
+    int_variables_[variable_name] = std::vector<int_type>(static_cast<size_type>(num_elements));
+  }
+
+  void state::invoke_assign_operation(
+    std::string const& lhs_variable_name, ::bra::assign_operation_type const op, std::string const& rhs_literal_or_variable_name)
+  {
+    if (not std::isalpha(static_cast<unsigned char>(lhs_variable_name.front())))
+      return;
+
+    using std::begin;
+    using std::end;
+    auto const first = begin(lhs_variable_name);
+    auto const last = end(lhs_variable_name);
+    auto const found = std::find(first, last, ':');
+    auto const variable_name = std::string{first, found};
+    auto const index = found == last ? 0 : to_int(std::string{std::next(found), last});
+
+    if (real_variables_.find(variable_name) != end(real_variables_))
+    {
+      auto const rhs_value = to_real(rhs_literal_or_variable_name);
+      if (op == ::bra::assign_operation_type::assign)
+        real_variables_.at(variable_name)[index] = rhs_value;
+      else if (op == ::bra::assign_operation_type::plus_assign)
+        real_variables_.at(variable_name)[index] += rhs_value;
+      else if (op == ::bra::assign_operation_type::minus_assign)
+        real_variables_.at(variable_name)[index] -= rhs_value;
+      else if (op == ::bra::assign_operation_type::multiplies_assign)
+        real_variables_.at(variable_name)[index] *= rhs_value;
+      else if (op == ::bra::assign_operation_type::divides_assign)
+        real_variables_.at(variable_name)[index] /= rhs_value;
+    }
+    else if (int_variables_.find(lhs_variable_name) != end(int_variables_))
+    {
+      auto const rhs_value = to_int(rhs_literal_or_variable_name);
+      if (op == ::bra::assign_operation_type::assign)
+        int_variables_.at(variable_name)[index] = rhs_value;
+      else if (op == ::bra::assign_operation_type::plus_assign)
+        int_variables_.at(variable_name)[index] += rhs_value;
+      else if (op == ::bra::assign_operation_type::minus_assign)
+        int_variables_.at(variable_name)[index] -= rhs_value;
+      else if (op == ::bra::assign_operation_type::multiplies_assign)
+        int_variables_.at(variable_name)[index] *= rhs_value;
+      else if (op == ::bra::assign_operation_type::divides_assign)
+        int_variables_.at(variable_name)[index] /= rhs_value;
+    }
+  }
+
+  void state::invoke_jump_operation(std::string const& label)
+  { maybe_label_ = label; }
+
+  void state::invoke_jump_operation(
+    std::string const& label,
+    std::string const& lhs_variable_name, ::bra::compare_operation_type const op, std::string const& rhs_literal_or_variable_name)
+  {
+    if (not std::isalpha(static_cast<unsigned char>(lhs_variable_name.front())))
+      return;
+
+    using std::begin;
+    using std::end;
+    auto const first = begin(lhs_variable_name);
+    auto const last = end(lhs_variable_name);
+    auto const found = std::find(first, last, ':');
+    auto const variable_name = std::string{first, found};
+    auto const index = found == last ? 0 : to_int(std::string{std::next(found), last});
+
+    if (real_variables_.find(variable_name) != end(real_variables_))
+    {
+      auto const rhs_value = to_real(rhs_literal_or_variable_name);
+      if (op == ::bra::compare_operation_type::equal_to
+          and real_variables_.at(variable_name)[index] == rhs_value)
+        maybe_label_ = label;
+      else if (op == ::bra::compare_operation_type::not_equal_to
+               and real_variables_.at(variable_name)[index] != rhs_value)
+        maybe_label_ = label;
+      else if (op == ::bra::compare_operation_type::greater
+               and real_variables_.at(variable_name)[index] > rhs_value)
+          maybe_label_ = label;
+      else if (op == ::bra::compare_operation_type::less
+               and real_variables_.at(variable_name)[index] < rhs_value)
+          maybe_label_ = label;
+      else if (op == ::bra::compare_operation_type::greater_equal
+               and real_variables_.at(variable_name)[index] >= rhs_value)
+          maybe_label_ = label;
+      else if (op == ::bra::compare_operation_type::less_equal
+               and real_variables_.at(variable_name)[index] <= rhs_value)
+          maybe_label_ = label;
+    }
+    else if (int_variables_.find(lhs_variable_name) != end(int_variables_))
+    {
+      auto const rhs_value = to_int(rhs_literal_or_variable_name);
+      if (op == ::bra::compare_operation_type::equal_to
+          and int_variables_.at(variable_name)[index] == rhs_value)
+          maybe_label_ = label;
+      else if (op == ::bra::compare_operation_type::not_equal_to
+               and int_variables_.at(variable_name)[index] != rhs_value)
+          maybe_label_ = label;
+      else if (op == ::bra::compare_operation_type::greater
+               and int_variables_.at(variable_name)[index] > rhs_value)
+          maybe_label_ = label;
+      else if (op == ::bra::compare_operation_type::less
+               and int_variables_.at(variable_name)[index] < rhs_value)
+          maybe_label_ = label;
+      else if (op == ::bra::compare_operation_type::greater_equal
+               and int_variables_.at(variable_name)[index] >= rhs_value)
+          maybe_label_ = label;
+      else if (op == ::bra::compare_operation_type::less_equal
+               and int_variables_.at(variable_name)[index] <= rhs_value)
+          maybe_label_ = label;
+    }
+  }
+
+  auto state::to_int(std::string const& colon_separated_string) const -> int_type
+  {
+    if (std::isdigit(static_cast<unsigned char>(colon_separated_string.front())) or colon_separated_string.front() == '+' or colon_separated_string.front() == '-')
+      return boost::lexical_cast<int_type>(colon_separated_string);
+
+    if (colon_separated_string.front() == ':')
+    {
+      using std::begin;
+      auto const first = begin(colon_separated_string);
+      if (std::string{first, end(colon_separated_string)} == ":OUTCOME")
+        return static_cast<int_type>(static_cast<int>(last_outcomes_[static_cast<bit_integer_type>(last_measured_qubit_)]));
+      if (std::string{first, first + 9} == ":OUTCOMES")
+      {
+        using std::end;
+        auto const last = end(colon_separated_string);
+        auto const found = std::find(std::next(first), last, ':');
+        if (found == last)
+          return static_cast<int_type>(static_cast<int>(last_outcomes_.front()));
+
+        return static_cast<int_type>(static_cast<int>(last_outcomes_[boost::lexical_cast<int>(std::string{std::next(found), last})]));
+      }
+
+      throw 1;
+    }
+
+    using std::begin;
+    using std::end;
+    auto const first = begin(colon_separated_string);
+    auto const last = end(colon_separated_string);
+    auto const found = std::find(first, last, ':');
+    if (found == last)
+      return int_variables_.at(colon_separated_string).front();
+
+    return int_variables_.at(std::string{first, found})[to_int(std::string{std::next(found), last})];
+  }
+
+  auto state::to_real(std::string const& colon_separated_string) const -> real_type
+  {
+    if (std::isdigit(static_cast<unsigned char>(colon_separated_string.front())) or colon_separated_string.front() == '+' or colon_separated_string.front() == '-' or colon_separated_string.front() == '.')
+      return boost::lexical_cast<real_type>(colon_separated_string);
+
+    if (colon_separated_string.front() == ':')
+    {
+      if (colon_separated_string == ":PI")
+        return boost::math::constants::pi<real_type>();
+      else if (colon_separated_string == ":HALF_PI")
+        return boost::math::constants::half_pi<real_type>();
+      else if (colon_separated_string == ":TWO_PI")
+        return boost::math::constants::two_pi<real_type>();
+
+      throw 1;
+    }
+
+    using std::begin;
+    using std::end;
+    auto const first = begin(colon_separated_string);
+    auto const last = end(colon_separated_string);
+    auto const found = std::find(first, last, ':');
+    if (found == last)
+      return real_variables_.at(colon_separated_string).front();
+
+    return real_variables_.at(std::string{first, found})[to_int(std::string{std::next(found), last})];
+  }
 
   state& state::i_gate(qubit_type const qubit)
   {
@@ -407,83 +639,121 @@ namespace bra
     return *this;
   }
 
-  state& state::u1(real_type const phase, control_qubit_type const control_qubit)
+  state& state::u1(
+    boost::variant<real_type, std::string> const& phase,
+    control_qubit_type const control_qubit)
   {
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, control_qubit);
 
-    do_u1(phase, control_qubit);
+    do_u1(boost::apply_visitor(real_visitor{*this}, phase), control_qubit);
     return *this;
   }
 
-  state& state::adj_u1(real_type const phase, control_qubit_type const control_qubit)
+  state& state::adj_u1(
+    boost::variant<real_type, std::string> const& phase,
+    control_qubit_type const control_qubit)
   {
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, control_qubit);
 
-    do_adj_u1(phase, control_qubit);
+    do_adj_u1(boost::apply_visitor(real_visitor{*this}, phase), control_qubit);
     return *this;
   }
 
   state& state::u2(
-    real_type const phase1, real_type const phase2, qubit_type const qubit)
+    boost::variant<real_type, std::string> const& phase1,
+    boost::variant<real_type, std::string> const& phase2,
+    qubit_type const qubit)
   {
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, qubit);
 
-    do_u2(phase1, phase2, qubit);
+    do_u2(
+      boost::apply_visitor(real_visitor{*this}, phase1),
+      boost::apply_visitor(real_visitor{*this}, phase2),
+      qubit);
     return *this;
   }
 
   state& state::adj_u2(
-    real_type const phase1, real_type const phase2, qubit_type const qubit)
+    boost::variant<real_type, std::string> const& phase1,
+    boost::variant<real_type, std::string> const& phase2,
+    qubit_type const qubit)
   {
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, qubit);
 
-    do_adj_u2(phase1, phase2, qubit);
+    do_adj_u2(
+      boost::apply_visitor(real_visitor{*this}, phase1),
+      boost::apply_visitor(real_visitor{*this}, phase2),
+      qubit);
     return *this;
   }
 
   state& state::u3(
-    real_type const phase1, real_type const phase2, real_type const phase3,
+    boost::variant<real_type, std::string> const& phase1,
+    boost::variant<real_type, std::string> const& phase2,
+    boost::variant<real_type, std::string> const& phase3,
     qubit_type const qubit)
   {
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, qubit);
 
-    do_u3(phase1, phase2, phase3, qubit);
+    do_u3(
+      boost::apply_visitor(real_visitor{*this}, phase1),
+      boost::apply_visitor(real_visitor{*this}, phase2),
+      boost::apply_visitor(real_visitor{*this}, phase3),
+      qubit);
     return *this;
   }
 
   state& state::adj_u3(
-    real_type const phase1, real_type const phase2, real_type const phase3,
+    boost::variant<real_type, std::string> const& phase1,
+    boost::variant<real_type, std::string> const& phase2,
+    boost::variant<real_type, std::string> const& phase3,
     qubit_type const qubit)
   {
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, qubit);
 
-    do_adj_u3(phase1, phase2, phase3, qubit);
+    do_adj_u3(
+      boost::apply_visitor(real_visitor{*this}, phase1),
+      boost::apply_visitor(real_visitor{*this}, phase2),
+      boost::apply_visitor(real_visitor{*this}, phase3),
+      qubit);
     return *this;
   }
 
   state& state::phase_shift(
-    complex_type const& phase_coefficient, control_qubit_type const control_qubit)
+    boost::variant<int_type, std::string> const& phase_exponent,
+    control_qubit_type const control_qubit)
   {
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, control_qubit);
 
-    do_phase_shift(phase_coefficient, control_qubit);
+    auto const phase_exponent_value = boost::apply_visitor(int_visitor{*this}, phase_exponent);
+
+    if (phase_exponent_value >= 0)
+      do_phase_shift(phase_coefficients_[phase_exponent_value], control_qubit);
+    else
+      do_adj_phase_shift(phase_coefficients_[-phase_exponent_value], control_qubit);
     return *this;
   }
 
   state& state::adj_phase_shift(
-    complex_type const& phase_coefficient, control_qubit_type const control_qubit)
+    boost::variant<int_type, std::string> const& phase_exponent,
+    control_qubit_type const control_qubit)
   {
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, control_qubit);
 
-    do_adj_phase_shift(phase_coefficient, control_qubit);
+    auto const phase_exponent_value = boost::apply_visitor(int_visitor{*this}, phase_exponent);
+
+    if (phase_exponent_value >= 0)
+      do_adj_phase_shift(phase_coefficients_[phase_exponent_value], control_qubit);
+    else
+      do_phase_shift(phase_coefficients_[-phase_exponent_value], control_qubit);
     return *this;
   }
 
@@ -523,25 +793,31 @@ namespace bra
     return *this;
   }
 
-  state& state::exponential_pauli_x(real_type const phase, qubit_type const qubit)
+  state& state::exponential_pauli_x(
+    boost::variant<real_type, std::string> const& phase,
+    qubit_type const qubit)
   {
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, qubit);
 
-    do_exponential_pauli_x(phase, qubit);
+    do_exponential_pauli_x(boost::apply_visitor(real_visitor{*this}, phase), qubit);
     return *this;
   }
 
-  state& state::adj_exponential_pauli_x(real_type const phase, qubit_type const qubit)
+  state& state::adj_exponential_pauli_x(
+    boost::variant<real_type, std::string> const& phase,
+    qubit_type const qubit)
   {
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, qubit);
 
-    do_adj_exponential_pauli_x(phase, qubit);
+    do_adj_exponential_pauli_x(boost::apply_visitor(real_visitor{*this}, phase), qubit);
     return *this;
   }
 
-  state& state::exponential_pauli_xx(real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
+  state& state::exponential_pauli_xx(
+    boost::variant<real_type, std::string> const& phase,
+    qubit_type const qubit1, qubit_type const qubit2)
   {
     if (is_in_fusion_)
     {
@@ -549,11 +825,13 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit2);
     }
 
-    do_exponential_pauli_xx(phase, qubit1, qubit2);
+    do_exponential_pauli_xx(boost::apply_visitor(real_visitor{*this}, phase), qubit1, qubit2);
     return *this;
   }
 
-  state& state::adj_exponential_pauli_xx(real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
+  state& state::adj_exponential_pauli_xx(
+    boost::variant<real_type, std::string> const& phase,
+    qubit_type const qubit1, qubit_type const qubit2)
   {
     if (is_in_fusion_)
     {
@@ -561,47 +839,57 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit2);
     }
 
-    do_adj_exponential_pauli_xx(phase, qubit1, qubit2);
+    do_adj_exponential_pauli_xx(boost::apply_visitor(real_visitor{*this}, phase), qubit1, qubit2);
     return *this;
   }
 
-  state& state::exponential_pauli_xn(real_type const phase, std::vector<qubit_type> const& qubits)
+  state& state::exponential_pauli_xn(
+    boost::variant<real_type, std::string> const& phase,
+    std::vector<qubit_type> const& qubits)
   {
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, qubits);
 
-    do_exponential_pauli_xn(phase, qubits);
+    do_exponential_pauli_xn(boost::apply_visitor(real_visitor{*this}, phase), qubits);
     return *this;
   }
 
-  state& state::adj_exponential_pauli_xn(real_type const phase, std::vector<qubit_type> const& qubits)
+  state& state::adj_exponential_pauli_xn(
+    boost::variant<real_type, std::string> const& phase,
+    std::vector<qubit_type> const& qubits)
   {
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, qubits);
 
-    do_adj_exponential_pauli_xn(phase, qubits);
+    do_adj_exponential_pauli_xn(boost::apply_visitor(real_visitor{*this}, phase), qubits);
     return *this;
   }
 
-  state& state::exponential_pauli_y(real_type const phase, qubit_type const qubit)
+  state& state::exponential_pauli_y(
+    boost::variant<real_type, std::string> const& phase,
+    qubit_type const qubit)
   {
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, qubit);
 
-    do_exponential_pauli_y(phase, qubit);
+    do_exponential_pauli_y(boost::apply_visitor(real_visitor{*this}, phase), qubit);
     return *this;
   }
 
-  state& state::adj_exponential_pauli_y(real_type const phase, qubit_type const qubit)
+  state& state::adj_exponential_pauli_y(
+    boost::variant<real_type, std::string> const& phase,
+    qubit_type const qubit)
   {
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, qubit);
 
-    do_adj_exponential_pauli_y(phase, qubit);
+    do_adj_exponential_pauli_y(boost::apply_visitor(real_visitor{*this}, phase), qubit);
     return *this;
   }
 
-  state& state::exponential_pauli_yy(real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
+  state& state::exponential_pauli_yy(
+    boost::variant<real_type, std::string> const& phase,
+    qubit_type const qubit1, qubit_type const qubit2)
   {
     if (is_in_fusion_)
     {
@@ -609,11 +897,13 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit2);
     }
 
-    do_exponential_pauli_yy(phase, qubit1, qubit2);
+    do_exponential_pauli_yy(boost::apply_visitor(real_visitor{*this}, phase), qubit1, qubit2);
     return *this;
   }
 
-  state& state::adj_exponential_pauli_yy(real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
+  state& state::adj_exponential_pauli_yy(
+    boost::variant<real_type, std::string> const& phase,
+    qubit_type const qubit1, qubit_type const qubit2)
   {
     if (is_in_fusion_)
     {
@@ -621,49 +911,59 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit2);
     }
 
-    do_adj_exponential_pauli_yy(phase, qubit1, qubit2);
+    do_adj_exponential_pauli_yy(boost::apply_visitor(real_visitor{*this}, phase), qubit1, qubit2);
     return *this;
   }
 
-  state& state::exponential_pauli_yn(real_type const phase, std::vector<qubit_type> const& qubits)
+  state& state::exponential_pauli_yn(
+    boost::variant<real_type, std::string> const& phase,
+    std::vector<qubit_type> const& qubits)
   {
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, qubits);
 
-    do_exponential_pauli_yn(phase, qubits);
+    do_exponential_pauli_yn(boost::apply_visitor(real_visitor{*this}, phase), qubits);
     return *this;
   }
 
-  state& state::adj_exponential_pauli_yn(real_type const phase, std::vector<qubit_type> const& qubits)
+  state& state::adj_exponential_pauli_yn(
+    boost::variant<real_type, std::string> const& phase,
+    std::vector<qubit_type> const& qubits)
   {
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, qubits);
 
-    do_adj_exponential_pauli_yn(phase, qubits);
+    do_adj_exponential_pauli_yn(boost::apply_visitor(real_visitor{*this}, phase), qubits);
     return *this;
   }
 
-  state& state::exponential_pauli_z(real_type const phase, qubit_type const qubit)
+  state& state::exponential_pauli_z(
+    boost::variant<real_type, std::string> const& phase,
+    qubit_type const qubit)
   {
     if (is_in_fusion_)
       if (::bra::is_weaker(found_qubits_[static_cast< ::bra::bit_integer_type >(qubit)], ::bra::found_qubit::ez_qubit))
         found_qubits_[static_cast< ::bra::bit_integer_type >(qubit)] = ::bra::found_qubit::ez_qubit;
 
-    do_exponential_pauli_z(phase, qubit);
+    do_exponential_pauli_z(boost::apply_visitor(real_visitor{*this}, phase), qubit);
     return *this;
   }
 
-  state& state::adj_exponential_pauli_z(real_type const phase, qubit_type const qubit)
+  state& state::adj_exponential_pauli_z(
+    boost::variant<real_type, std::string> const& phase,
+    qubit_type const qubit)
   {
     if (is_in_fusion_)
       if (::bra::is_weaker(found_qubits_[static_cast< ::bra::bit_integer_type >(qubit)], ::bra::found_qubit::ez_qubit))
         found_qubits_[static_cast< ::bra::bit_integer_type >(qubit)] = ::bra::found_qubit::ez_qubit;
 
-    do_adj_exponential_pauli_z(phase, qubit);
+    do_adj_exponential_pauli_z(boost::apply_visitor(real_visitor{*this}, phase), qubit);
     return *this;
   }
 
-  state& state::exponential_pauli_zz(real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
+  state& state::exponential_pauli_zz(
+    boost::variant<real_type, std::string> const& phase,
+    qubit_type const qubit1, qubit_type const qubit2)
   {
     if (is_in_fusion_)
     {
@@ -671,11 +971,13 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit2);
     }
 
-    do_exponential_pauli_zz(phase, qubit1, qubit2);
+    do_exponential_pauli_zz(boost::apply_visitor(real_visitor{*this}, phase), qubit1, qubit2);
     return *this;
   }
 
-  state& state::adj_exponential_pauli_zz(real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
+  state& state::adj_exponential_pauli_zz(
+    boost::variant<real_type, std::string> const& phase,
+    qubit_type const qubit1, qubit_type const qubit2)
   {
     if (is_in_fusion_)
     {
@@ -683,29 +985,35 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit2);
     }
 
-    do_adj_exponential_pauli_zz(phase, qubit1, qubit2);
+    do_adj_exponential_pauli_zz(boost::apply_visitor(real_visitor{*this}, phase), qubit1, qubit2);
     return *this;
   }
 
-  state& state::exponential_pauli_zn(real_type const phase, std::vector<qubit_type> const& qubits)
+  state& state::exponential_pauli_zn(
+    boost::variant<real_type, std::string> const& phase,
+    std::vector<qubit_type> const& qubits)
   {
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, qubits);
 
-    do_exponential_pauli_zn(phase, qubits);
+    do_exponential_pauli_zn(boost::apply_visitor(real_visitor{*this}, phase), qubits);
     return *this;
   }
 
-  state& state::adj_exponential_pauli_zn(real_type const phase, std::vector<qubit_type> const& qubits)
+  state& state::adj_exponential_pauli_zn(
+    boost::variant<real_type, std::string> const& phase,
+    std::vector<qubit_type> const& qubits)
   {
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, qubits);
 
-    do_adj_exponential_pauli_zn(phase, qubits);
+    do_adj_exponential_pauli_zn(boost::apply_visitor(real_visitor{*this}, phase), qubits);
     return *this;
   }
 
-  state& state::exponential_swap(real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
+  state& state::exponential_swap(
+    boost::variant<real_type, std::string> const& phase,
+    qubit_type const qubit1, qubit_type const qubit2)
   {
     if (is_in_fusion_)
     {
@@ -713,11 +1021,13 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit2);
     }
 
-    do_exponential_swap(phase, qubit1, qubit2);
+    do_exponential_swap(boost::apply_visitor(real_visitor{*this}, phase), qubit1, qubit2);
     return *this;
   }
 
-  state& state::adj_exponential_swap(real_type const phase, qubit_type const qubit1, qubit_type const qubit2)
+  state& state::adj_exponential_swap(
+    boost::variant<real_type, std::string> const& phase,
+    qubit_type const qubit1, qubit_type const qubit2)
   {
     if (is_in_fusion_)
     {
@@ -725,7 +1035,7 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit2);
     }
 
-    do_adj_exponential_swap(phase, qubit1, qubit2);
+    do_adj_exponential_swap(boost::apply_visitor(real_visitor{*this}, phase), qubit1, qubit2);
     return *this;
   }
 
@@ -752,6 +1062,7 @@ namespace bra
 
     last_outcomes_[static_cast<bit_integer_type>(qubit)]
       = do_projective_measurement(qubit, root);
+    last_measured_qubit_ = qubit;
     return *this;
   }
 
@@ -813,6 +1124,7 @@ namespace bra
 
     last_outcomes_[static_cast<bit_integer_type>(qubit)]
       = do_projective_measurement(qubit);
+    last_measured_qubit_ = qubit;
     return *this;
   }
 
@@ -932,7 +1244,9 @@ namespace bra
     return *this;
   }
 
-  state& state::depolarizing_channel(real_type const px, real_type const py, real_type const pz, int const seed)
+  state& state::depolarizing_channel(
+    real_type const px, real_type const py, real_type const pz,
+    int const seed)
   {
     if (is_in_fusion_)
       throw ::bra::unsupported_fused_gate_error{"DEPOLARIZING CHANNEL"};
@@ -1318,7 +1632,9 @@ namespace bra
     return *this;
   }
 
-  state& state::controlled_phase_shift(complex_type const& phase_coefficient, control_qubit_type const control_qubit1, control_qubit_type const control_qubit2)
+  state& state::controlled_phase_shift(
+    boost::variant<int_type, std::string> const& phase_exponent,
+    control_qubit_type const control_qubit1, control_qubit_type const control_qubit2)
   {
     if (is_in_fusion_)
     {
@@ -1326,11 +1642,18 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubit2);
     }
 
-    do_controlled_phase_shift(phase_coefficient, control_qubit1, control_qubit2);
+    auto const phase_exponent_value = boost::apply_visitor(int_visitor{*this}, phase_exponent);
+
+    if (phase_exponent_value >= 0)
+      do_controlled_phase_shift(phase_coefficients_[phase_exponent_value], control_qubit1, control_qubit2);
+    else
+      do_adj_controlled_phase_shift(phase_coefficients_[-phase_exponent_value], control_qubit1, control_qubit2);
     return *this;
   }
 
-  state& state::adj_controlled_phase_shift(complex_type const& phase_coefficient, control_qubit_type const control_qubit1, control_qubit_type const control_qubit2)
+  state& state::adj_controlled_phase_shift(
+    boost::variant<int_type, std::string> const& phase_exponent,
+    control_qubit_type const control_qubit1, control_qubit_type const control_qubit2)
   {
     if (is_in_fusion_)
     {
@@ -1338,29 +1661,50 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubit2);
     }
 
-    do_adj_controlled_phase_shift(phase_coefficient, control_qubit1, control_qubit2);
+    auto const phase_exponent_value = boost::apply_visitor(int_visitor{*this}, phase_exponent);
+
+    if (phase_exponent_value >= 0)
+      do_adj_controlled_phase_shift(phase_coefficients_[phase_exponent_value], control_qubit1, control_qubit2);
+    else
+      do_controlled_phase_shift(phase_coefficients_[-phase_exponent_value], control_qubit1, control_qubit2);
     return *this;
   }
 
-  state& state::multi_controlled_phase_shift(complex_type const& phase_coefficient, std::vector<control_qubit_type> const& control_qubits)
+  state& state::multi_controlled_phase_shift(
+    boost::variant<int_type, std::string> const& phase_exponent,
+    std::vector<control_qubit_type> const& control_qubits)
   {
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, control_qubits);
 
-    do_multi_controlled_phase_shift(phase_coefficient, control_qubits);
+    auto const phase_exponent_value = boost::apply_visitor(int_visitor{*this}, phase_exponent);
+
+    if (phase_exponent_value >= 0)
+      do_multi_controlled_phase_shift(phase_coefficients_[phase_exponent_value], control_qubits);
+    else
+      do_adj_multi_controlled_phase_shift(phase_coefficients_[-phase_exponent_value], control_qubits);
     return *this;
   }
 
-  state& state::adj_multi_controlled_phase_shift(complex_type const& phase_coefficient, std::vector<control_qubit_type> const& control_qubits)
+  state& state::adj_multi_controlled_phase_shift(
+    boost::variant<int_type, std::string> const& phase_exponent,
+    std::vector<control_qubit_type> const& control_qubits)
   {
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, control_qubits);
 
-    do_adj_multi_controlled_phase_shift(phase_coefficient, control_qubits);
+    auto const phase_exponent_value = boost::apply_visitor(int_visitor{*this}, phase_exponent);
+
+    if (phase_exponent_value >= 0)
+      do_adj_multi_controlled_phase_shift(phase_coefficients_[phase_exponent_value], control_qubits);
+    else
+      do_multi_controlled_phase_shift(phase_coefficients_[-phase_exponent_value], control_qubits);
     return *this;
   }
 
-  state& state::controlled_u1(real_type const phase, control_qubit_type const control_qubit1, control_qubit_type const control_qubit2)
+  state& state::controlled_u1(
+    boost::variant<real_type, std::string> const& phase,
+    control_qubit_type const control_qubit1, control_qubit_type const control_qubit2)
   {
     if (is_in_fusion_)
     {
@@ -1368,11 +1712,13 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubit2);
     }
 
-    do_controlled_u1(phase, control_qubit1, control_qubit2);
+    do_controlled_u1(boost::apply_visitor(real_visitor{*this}, phase), control_qubit1, control_qubit2);
     return *this;
   }
 
-  state& state::adj_controlled_u1(real_type const phase, control_qubit_type const control_qubit1, control_qubit_type const control_qubit2)
+  state& state::adj_controlled_u1(
+    boost::variant<real_type, std::string> const& phase,
+    control_qubit_type const control_qubit1, control_qubit_type const control_qubit2)
   {
     if (is_in_fusion_)
     {
@@ -1380,29 +1726,36 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubit2);
     }
 
-    do_adj_controlled_u1(phase, control_qubit1, control_qubit2);
+    do_adj_controlled_u1(boost::apply_visitor(real_visitor{*this}, phase), control_qubit1, control_qubit2);
     return *this;
   }
 
-  state& state::multi_controlled_u1(real_type const phase, std::vector<control_qubit_type> const& control_qubits)
+  state& state::multi_controlled_u1(
+    boost::variant<real_type, std::string> const& phase,
+    std::vector<control_qubit_type> const& control_qubits)
   {
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, control_qubits);
 
-    do_multi_controlled_u1(phase, control_qubits);
+    do_multi_controlled_u1(boost::apply_visitor(real_visitor{*this}, phase), control_qubits);
     return *this;
   }
 
-  state& state::adj_multi_controlled_u1(real_type const phase, std::vector<control_qubit_type> const& control_qubits)
+  state& state::adj_multi_controlled_u1(
+    boost::variant<real_type, std::string> const& phase,
+    std::vector<control_qubit_type> const& control_qubits)
   {
     if (is_in_fusion_)
       ::bra::set_found_qubits(found_qubits_, control_qubits);
 
-    do_adj_multi_controlled_u1(phase, control_qubits);
+    do_adj_multi_controlled_u1(boost::apply_visitor(real_visitor{*this}, phase), control_qubits);
     return *this;
   }
 
-  state& state::controlled_u2(real_type const phase1, real_type const phase2, qubit_type const target_qubit, control_qubit_type const control_qubit)
+  state& state::controlled_u2(
+    boost::variant<real_type, std::string> const& phase1,
+    boost::variant<real_type, std::string> const& phase2,
+    qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
     if (is_in_fusion_)
     {
@@ -1410,11 +1763,17 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubit);
     }
 
-    do_controlled_u2(phase1, phase2, target_qubit, control_qubit);
+    do_controlled_u2(
+      boost::apply_visitor(real_visitor{*this}, phase1),
+      boost::apply_visitor(real_visitor{*this}, phase2),
+      target_qubit, control_qubit);
     return *this;
   }
 
-  state& state::adj_controlled_u2(real_type const phase1, real_type const phase2, qubit_type const target_qubit, control_qubit_type const control_qubit)
+  state& state::adj_controlled_u2(
+    boost::variant<real_type, std::string> const& phase1,
+    boost::variant<real_type, std::string> const& phase2,
+    qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
     if (is_in_fusion_)
     {
@@ -1422,11 +1781,17 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubit);
     }
 
-    do_adj_controlled_u2(phase1, phase2, target_qubit, control_qubit);
+    do_adj_controlled_u2(
+      boost::apply_visitor(real_visitor{*this}, phase1),
+      boost::apply_visitor(real_visitor{*this}, phase2),
+      target_qubit, control_qubit);
     return *this;
   }
 
-  state& state::multi_controlled_u2(real_type const phase1, real_type const phase2, qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
+  state& state::multi_controlled_u2(
+    boost::variant<real_type, std::string> const& phase1,
+    boost::variant<real_type, std::string> const& phase2,
+    qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
   {
     if (is_in_fusion_)
     {
@@ -1434,11 +1799,17 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubits);
     }
 
-    do_multi_controlled_u2(phase1, phase2, target_qubit, control_qubits);
+    do_multi_controlled_u2(
+      boost::apply_visitor(real_visitor{*this}, phase1),
+      boost::apply_visitor(real_visitor{*this}, phase2),
+      target_qubit, control_qubits);
     return *this;
   }
 
-  state& state::adj_multi_controlled_u2(real_type const phase1, real_type const phase2, qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
+  state& state::adj_multi_controlled_u2(
+    boost::variant<real_type, std::string> const& phase1,
+    boost::variant<real_type, std::string> const& phase2,
+    qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
   {
     if (is_in_fusion_)
     {
@@ -1446,11 +1817,18 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubits);
     }
 
-    do_adj_multi_controlled_u2(phase1, phase2, target_qubit, control_qubits);
+    do_adj_multi_controlled_u2(
+      boost::apply_visitor(real_visitor{*this}, phase1),
+      boost::apply_visitor(real_visitor{*this}, phase2),
+      target_qubit, control_qubits);
     return *this;
   }
 
-  state& state::controlled_u3(real_type const phase1, real_type const phase2, real_type const phase3, qubit_type const target_qubit, control_qubit_type const control_qubit)
+  state& state::controlled_u3(
+    boost::variant<real_type, std::string> const& phase1,
+    boost::variant<real_type, std::string> const& phase2,
+    boost::variant<real_type, std::string> const& phase3,
+    qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
     if (is_in_fusion_)
     {
@@ -1458,11 +1836,19 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubit);
     }
 
-    do_controlled_u3(phase1, phase2, phase3, target_qubit, control_qubit);
+    do_controlled_u3(
+      boost::apply_visitor(real_visitor{*this}, phase1),
+      boost::apply_visitor(real_visitor{*this}, phase2),
+      boost::apply_visitor(real_visitor{*this}, phase3),
+      target_qubit, control_qubit);
     return *this;
   }
 
-  state& state::adj_controlled_u3(real_type const phase1, real_type const phase2, real_type const phase3, qubit_type const target_qubit, control_qubit_type const control_qubit)
+  state& state::adj_controlled_u3(
+    boost::variant<real_type, std::string> const& phase1,
+    boost::variant<real_type, std::string> const& phase2,
+    boost::variant<real_type, std::string> const& phase3,
+    qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
     if (is_in_fusion_)
     {
@@ -1470,11 +1856,19 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubit);
     }
 
-    do_adj_controlled_u3(phase1, phase2, phase3, target_qubit, control_qubit);
+    do_adj_controlled_u3(
+      boost::apply_visitor(real_visitor{*this}, phase1),
+      boost::apply_visitor(real_visitor{*this}, phase2),
+      boost::apply_visitor(real_visitor{*this}, phase3),
+      target_qubit, control_qubit);
     return *this;
   }
 
-  state& state::multi_controlled_u3(real_type const phase1, real_type const phase2, real_type const phase3, qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
+  state& state::multi_controlled_u3(
+    boost::variant<real_type, std::string> const& phase1,
+    boost::variant<real_type, std::string> const& phase2,
+    boost::variant<real_type, std::string> const& phase3,
+    qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
   {
     if (is_in_fusion_)
     {
@@ -1482,11 +1876,19 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubits);
     }
 
-    do_multi_controlled_u3(phase1, phase2, phase3, target_qubit, control_qubits);
+    do_multi_controlled_u3(
+      boost::apply_visitor(real_visitor{*this}, phase1),
+      boost::apply_visitor(real_visitor{*this}, phase2),
+      boost::apply_visitor(real_visitor{*this}, phase3),
+      target_qubit, control_qubits);
     return *this;
   }
 
-  state& state::adj_multi_controlled_u3(real_type const phase1, real_type const phase2, real_type const phase3, qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
+  state& state::adj_multi_controlled_u3(
+    boost::variant<real_type, std::string> const& phase1,
+    boost::variant<real_type, std::string> const& phase2,
+    boost::variant<real_type, std::string> const& phase3,
+    qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
   {
     if (is_in_fusion_)
     {
@@ -1494,7 +1896,11 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubits);
     }
 
-    do_adj_multi_controlled_u3(phase1, phase2, phase3, target_qubit, control_qubits);
+    do_adj_multi_controlled_u3(
+      boost::apply_visitor(real_visitor{*this}, phase1),
+      boost::apply_visitor(real_visitor{*this}, phase2),
+      boost::apply_visitor(real_visitor{*this}, phase3),
+      target_qubit, control_qubits);
     return *this;
   }
 
@@ -1594,7 +2000,9 @@ namespace bra
     return *this;
   }
 
-  state& state::controlled_exponential_pauli_x(real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit)
+  state& state::controlled_exponential_pauli_x(
+    boost::variant<real_type, std::string> const& phase,
+    qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
     if (is_in_fusion_)
     {
@@ -1602,11 +2010,13 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubit);
     }
 
-    do_controlled_exponential_pauli_x(phase, target_qubit, control_qubit);
+    do_controlled_exponential_pauli_x(boost::apply_visitor(real_visitor{*this}, phase), target_qubit, control_qubit);
     return *this;
   }
 
-  state& state::adj_controlled_exponential_pauli_x(real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit)
+  state& state::adj_controlled_exponential_pauli_x(
+    boost::variant<real_type, std::string> const& phase,
+    qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
     if (is_in_fusion_)
     {
@@ -1614,11 +2024,13 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubit);
     }
 
-    do_adj_controlled_exponential_pauli_x(phase, target_qubit, control_qubit);
+    do_adj_controlled_exponential_pauli_x(boost::apply_visitor(real_visitor{*this}, phase), target_qubit, control_qubit);
     return *this;
   }
 
-  state& state::multi_controlled_exponential_pauli_xn(real_type const phase, std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
+  state& state::multi_controlled_exponential_pauli_xn(
+    boost::variant<real_type, std::string> const& phase,
+    std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
   {
     if (is_in_fusion_)
     {
@@ -1626,11 +2038,13 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubits);
     }
 
-    do_multi_controlled_exponential_pauli_xn(phase, target_qubits, control_qubits);
+    do_multi_controlled_exponential_pauli_xn(boost::apply_visitor(real_visitor{*this}, phase), target_qubits, control_qubits);
     return *this;
   }
 
-  state& state::adj_multi_controlled_exponential_pauli_xn(real_type const phase, std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
+  state& state::adj_multi_controlled_exponential_pauli_xn(
+    boost::variant<real_type, std::string> const& phase,
+    std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
   {
     if (is_in_fusion_)
     {
@@ -1638,11 +2052,13 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubits);
     }
 
-    do_adj_multi_controlled_exponential_pauli_xn(phase, target_qubits, control_qubits);
+    do_adj_multi_controlled_exponential_pauli_xn(boost::apply_visitor(real_visitor{*this}, phase), target_qubits, control_qubits);
     return *this;
   }
 
-  state& state::controlled_exponential_pauli_y(real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit)
+  state& state::controlled_exponential_pauli_y(
+    boost::variant<real_type, std::string> const& phase,
+    qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
     if (is_in_fusion_)
     {
@@ -1650,11 +2066,13 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubit);
     }
 
-    do_controlled_exponential_pauli_y(phase, target_qubit, control_qubit);
+    do_controlled_exponential_pauli_y(boost::apply_visitor(real_visitor{*this}, phase), target_qubit, control_qubit);
     return *this;
   }
 
-  state& state::adj_controlled_exponential_pauli_y(real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit)
+  state& state::adj_controlled_exponential_pauli_y(
+    boost::variant<real_type, std::string> const& phase,
+    qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
     if (is_in_fusion_)
     {
@@ -1662,11 +2080,13 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubit);
     }
 
-    do_adj_controlled_exponential_pauli_y(phase, target_qubit, control_qubit);
+    do_adj_controlled_exponential_pauli_y(boost::apply_visitor(real_visitor{*this}, phase), target_qubit, control_qubit);
     return *this;
   }
 
-  state& state::multi_controlled_exponential_pauli_yn(real_type const phase, std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
+  state& state::multi_controlled_exponential_pauli_yn(
+    boost::variant<real_type, std::string> const& phase,
+    std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
   {
     if (is_in_fusion_)
     {
@@ -1674,11 +2094,13 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubits);
     }
 
-    do_multi_controlled_exponential_pauli_yn(phase, target_qubits, control_qubits);
+    do_multi_controlled_exponential_pauli_yn(boost::apply_visitor(real_visitor{*this}, phase), target_qubits, control_qubits);
     return *this;
   }
 
-  state& state::adj_multi_controlled_exponential_pauli_yn(real_type const phase, std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
+  state& state::adj_multi_controlled_exponential_pauli_yn(
+    boost::variant<real_type, std::string> const& phase,
+    std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
   {
     if (is_in_fusion_)
     {
@@ -1686,11 +2108,13 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubits);
     }
 
-    do_adj_multi_controlled_exponential_pauli_yn(phase, target_qubits, control_qubits);
+    do_adj_multi_controlled_exponential_pauli_yn(boost::apply_visitor(real_visitor{*this}, phase), target_qubits, control_qubits);
     return *this;
   }
 
-  state& state::controlled_exponential_pauli_z(real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit)
+  state& state::controlled_exponential_pauli_z(
+    boost::variant<real_type, std::string> const& phase,
+    qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
     if (is_in_fusion_)
     {
@@ -1700,11 +2124,13 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubit);
     }
 
-    do_controlled_exponential_pauli_z(phase, target_qubit, control_qubit);
+    do_controlled_exponential_pauli_z(boost::apply_visitor(real_visitor{*this}, phase), target_qubit, control_qubit);
     return *this;
   }
 
-  state& state::adj_controlled_exponential_pauli_z(real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit)
+  state& state::adj_controlled_exponential_pauli_z(
+    boost::variant<real_type, std::string> const& phase,
+    qubit_type const target_qubit, control_qubit_type const control_qubit)
   {
     if (is_in_fusion_)
     {
@@ -1714,11 +2140,13 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubit);
     }
 
-    do_adj_controlled_exponential_pauli_z(phase, target_qubit, control_qubit);
+    do_adj_controlled_exponential_pauli_z(boost::apply_visitor(real_visitor{*this}, phase), target_qubit, control_qubit);
     return *this;
   }
 
-  state& state::multi_controlled_exponential_pauli_z(real_type const phase, qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
+  state& state::multi_controlled_exponential_pauli_z(
+    boost::variant<real_type, std::string> const& phase,
+    qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
   {
     if (is_in_fusion_)
     {
@@ -1728,11 +2156,13 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubits);
     }
 
-    do_multi_controlled_exponential_pauli_z(phase, target_qubit, control_qubits);
+    do_multi_controlled_exponential_pauli_z(boost::apply_visitor(real_visitor{*this}, phase), target_qubit, control_qubits);
     return *this;
   }
 
-  state& state::adj_multi_controlled_exponential_pauli_z(real_type const phase, qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
+  state& state::adj_multi_controlled_exponential_pauli_z(
+    boost::variant<real_type, std::string> const& phase,
+    qubit_type const target_qubit, std::vector<control_qubit_type> const& control_qubits)
   {
     if (is_in_fusion_)
     {
@@ -1742,11 +2172,13 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubits);
     }
 
-    do_adj_multi_controlled_exponential_pauli_z(phase, target_qubit, control_qubits);
+    do_adj_multi_controlled_exponential_pauli_z(boost::apply_visitor(real_visitor{*this}, phase), target_qubit, control_qubits);
     return *this;
   }
 
-  state& state::multi_controlled_exponential_pauli_zn(real_type const phase, std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
+  state& state::multi_controlled_exponential_pauli_zn(
+    boost::variant<real_type, std::string> const& phase,
+    std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
   {
     if (is_in_fusion_)
     {
@@ -1754,11 +2186,13 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubits);
     }
 
-    do_multi_controlled_exponential_pauli_zn(phase, target_qubits, control_qubits);
+    do_multi_controlled_exponential_pauli_zn(boost::apply_visitor(real_visitor{*this}, phase), target_qubits, control_qubits);
     return *this;
   }
 
-  state& state::adj_multi_controlled_exponential_pauli_zn(real_type const phase, std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
+  state& state::adj_multi_controlled_exponential_pauli_zn(
+    boost::variant<real_type, std::string> const& phase,
+    std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits)
   {
     if (is_in_fusion_)
     {
@@ -1766,11 +2200,13 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubits);
     }
 
-    do_adj_multi_controlled_exponential_pauli_zn(phase, target_qubits, control_qubits);
+    do_adj_multi_controlled_exponential_pauli_zn(boost::apply_visitor(real_visitor{*this}, phase), target_qubits, control_qubits);
     return *this;
   }
 
-  state& state::multi_controlled_exponential_swap(real_type const phase, qubit_type const target_qubit1, qubit_type const target_qubit2, std::vector<control_qubit_type> const& control_qubits)
+  state& state::multi_controlled_exponential_swap(
+    boost::variant<real_type, std::string> const& phase,
+    qubit_type const target_qubit1, qubit_type const target_qubit2, std::vector<control_qubit_type> const& control_qubits)
   {
     if (is_in_fusion_)
     {
@@ -1779,11 +2215,13 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubits);
     }
 
-    do_multi_controlled_exponential_swap(phase, target_qubit1, target_qubit2, control_qubits);
+    do_multi_controlled_exponential_swap(boost::apply_visitor(real_visitor{*this}, phase), target_qubit1, target_qubit2, control_qubits);
     return *this;
   }
 
-  state& state::adj_multi_controlled_exponential_swap(real_type const phase, qubit_type const target_qubit1, qubit_type const target_qubit2, std::vector<control_qubit_type> const& control_qubits)
+  state& state::adj_multi_controlled_exponential_swap(
+    boost::variant<real_type, std::string> const& phase,
+    qubit_type const target_qubit1, qubit_type const target_qubit2, std::vector<control_qubit_type> const& control_qubits)
   {
     if (is_in_fusion_)
     {
@@ -1792,7 +2230,7 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubits);
     }
 
-    do_adj_multi_controlled_exponential_swap(phase, target_qubit1, target_qubit2, control_qubits);
+    do_adj_multi_controlled_exponential_swap(boost::apply_visitor(real_visitor{*this}, phase), target_qubit1, target_qubit2, control_qubits);
     return *this;
   }
 } // namespace bra

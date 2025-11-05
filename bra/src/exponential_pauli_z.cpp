@@ -2,6 +2,10 @@
 #include <ios>
 #include <iomanip>
 #include <sstream>
+#include <utility>
+
+#include <boost/variant/variant.hpp>
+#include <boost/variant/apply_visitor.hpp>
 
 #include <ket/qubit_io.hpp>
 
@@ -16,7 +20,9 @@ namespace bra
   {
     std::string const exponential_pauli_z::name_ = "eZ";
 
-    exponential_pauli_z::exponential_pauli_z(real_type const phase, qubit_type const qubit)
+    exponential_pauli_z::exponential_pauli_z(
+      boost::variant<real_type, std::string> const& phase,
+      qubit_type const qubit)
       : ::bra::gate::gate{}, phase_{phase}, qubit_{qubit}
     { }
 
@@ -30,7 +36,7 @@ namespace bra
       repr_stream
         << std::right
         << std::setw(parameter_width) << qubit_
-        << std::setw(parameter_width) << phase_;
+        << std::setw(parameter_width) << boost::apply_visitor(::bra::gate::gate_detail::output_visitor<real_type>{}, phase_);
       return repr_stream.str();
     }
   } // namespace gate

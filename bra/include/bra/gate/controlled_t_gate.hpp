@@ -20,16 +20,13 @@ namespace bra
       using complex_type = ::bra::state::complex_type;
 
      private:
-      complex_type phase_coefficient_;
       control_qubit_type control_qubit1_;
       control_qubit_type control_qubit2_;
 
       static std::string const name_;
 
      public:
-      controlled_t_gate(
-        complex_type const& phase_coefficient,
-        control_qubit_type const control_qubit1, control_qubit_type const control_qubit2);
+      controlled_t_gate(control_qubit_type const control_qubit1, control_qubit_type const control_qubit2);
 
       ~controlled_t_gate() = default;
       controlled_t_gate(controlled_t_gate const&) = delete;

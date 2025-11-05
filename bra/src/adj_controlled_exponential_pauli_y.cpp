@@ -2,6 +2,10 @@
 #include <ios>
 #include <iomanip>
 #include <sstream>
+#include <utility>
+
+#include <boost/variant/variant.hpp>
+#include <boost/variant/apply_visitor.hpp>
 
 #include <ket/qubit_io.hpp>
 #include <ket/control_io.hpp>
@@ -18,7 +22,8 @@ namespace bra
     std::string const adj_controlled_exponential_pauli_y::name_ = "CeY+";
 
     adj_controlled_exponential_pauli_y::adj_controlled_exponential_pauli_y(
-      real_type const phase, qubit_type const target_qubit, control_qubit_type const control_qubit)
+      boost::variant<real_type, std::string> const& phase,
+      qubit_type const target_qubit, control_qubit_type const control_qubit)
       : ::bra::gate::gate{}, phase_{phase}, target_qubit_{target_qubit}, control_qubit_{control_qubit}
     { }
 
@@ -33,7 +38,7 @@ namespace bra
         << std::right
         << std::setw(parameter_width) << control_qubit_
         << std::setw(parameter_width) << target_qubit_
-        << std::setw(parameter_width) << phase_;
+        << std::setw(parameter_width) << boost::apply_visitor(::bra::gate::gate_detail::output_visitor<real_type>{}, phase_);
       return repr_stream.str();
     }
   } // namespace gate

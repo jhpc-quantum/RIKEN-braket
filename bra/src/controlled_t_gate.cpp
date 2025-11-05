@@ -18,16 +18,14 @@ namespace bra
     std::string const controlled_t_gate::name_ = "CT";
 
     controlled_t_gate::controlled_t_gate(
-      complex_type const& phase_coefficient,
       control_qubit_type const control_qubit1, control_qubit_type const control_qubit2)
       : ::bra::gate::gate{},
-        phase_coefficient_{phase_coefficient},
         control_qubit1_{control_qubit1},
         control_qubit2_{control_qubit2}
     { }
 
     ::bra::state& controlled_t_gate::do_apply(::bra::state& state) const
-    { return state.controlled_phase_shift(phase_coefficient_, control_qubit1_, control_qubit2_); }
+    { return state.controlled_phase_shift(3, control_qubit1_, control_qubit2_); }
 
     std::string const& controlled_t_gate::do_name() const { return name_; }
     std::string controlled_t_gate::do_representation(

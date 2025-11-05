@@ -2,6 +2,10 @@
 #include <ios>
 #include <iomanip>
 #include <sstream>
+#include <utility>
+
+#include <boost/variant/variant.hpp>
+#include <boost/variant/apply_visitor.hpp>
 
 #include <ket/qubit_io.hpp>
 #include <ket/control_io.hpp>
@@ -18,13 +22,14 @@ namespace bra
     std::string const adj_phase_shift::name_ = "R+";
 
     adj_phase_shift::adj_phase_shift(
-      int const phase_exponent, complex_type const& phase_coefficient, control_qubit_type const control_qubit)
+      boost::variant<int_type, std::string> const& phase_exponent,
+      control_qubit_type const control_qubit)
       : ::bra::gate::gate{},
-        phase_exponent_{phase_exponent}, phase_coefficient_{phase_coefficient}, control_qubit_{control_qubit}
+        phase_exponent_{phase_exponent}, control_qubit_{control_qubit}
     { }
 
     ::bra::state& adj_phase_shift::do_apply(::bra::state& state) const
-    { return state.adj_phase_shift(phase_coefficient_, control_qubit_); }
+    { return state.adj_phase_shift(phase_exponent_, control_qubit_); }
 
     std::string const& adj_phase_shift::do_name() const { return name_; }
     std::string adj_phase_shift::do_representation(
@@ -33,7 +38,7 @@ namespace bra
       repr_stream
         << std::right
         << std::setw(parameter_width) << control_qubit_
-        << std::setw(parameter_width) << phase_exponent_;
+        << std::setw(parameter_width) << boost::apply_visitor(::bra::gate::gate_detail::output_visitor<int_type>{}, phase_exponent_);
       return repr_stream.str();
     }
   } // namespace gate

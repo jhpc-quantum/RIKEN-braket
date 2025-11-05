@@ -19,25 +19,21 @@ namespace bra
   namespace gate
   {
     multi_controlled_t_gate::multi_controlled_t_gate(
-      complex_type const& phase_coefficient,
       std::vector<control_qubit_type> const& control_qubits)
       : ::bra::gate::gate{},
-        phase_coefficient_{phase_coefficient},
         control_qubits_{control_qubits},
         name_{std::string(control_qubits_.size() - std::size_t{1u}, 'C').append("T")}
     { }
 
     multi_controlled_t_gate::multi_controlled_t_gate(
-      complex_type const& phase_coefficient,
       std::vector<control_qubit_type>&& control_qubits)
       : ::bra::gate::gate{},
-        phase_coefficient_{phase_coefficient},
         control_qubits_{std::move(control_qubits)},
         name_{std::string(control_qubits_.size() - std::size_t{1u}, 'C').append("T")}
     { }
 
     ::bra::state& multi_controlled_t_gate::do_apply(::bra::state& state) const
-    { return state.multi_controlled_phase_shift(phase_coefficient_, control_qubits_); }
+    { return state.multi_controlled_phase_shift(3, control_qubits_); }
 
     std::string const& multi_controlled_t_gate::do_name() const { return name_; }
     std::string multi_controlled_t_gate::do_representation(

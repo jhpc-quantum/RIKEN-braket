@@ -21,19 +21,14 @@ namespace bra
       using complex_type = ::bra::state::complex_type;
 
      private:
-      complex_type phase_coefficient_;
       std::vector<control_qubit_type> control_qubits_;
 
       std::string name_;
 
      public:
-      adj_multi_controlled_t_gate(
-        complex_type const& phase_coefficient,
-        std::vector<control_qubit_type> const& control_qubit);
+      adj_multi_controlled_t_gate(std::vector<control_qubit_type> const& control_qubit);
 
-      adj_multi_controlled_t_gate(
-        complex_type const& phase_coefficient,
-        std::vector<control_qubit_type>&& control_qubit);
+      adj_multi_controlled_t_gate(std::vector<control_qubit_type>&& control_qubit);
 
       ~adj_multi_controlled_t_gate() = default;
       adj_multi_controlled_t_gate(adj_multi_controlled_t_gate const&) = delete;

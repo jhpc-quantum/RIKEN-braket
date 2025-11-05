@@ -4,6 +4,8 @@
 # include <string>
 # include <iosfwd>
 
+# include <boost/variant/variant.hpp>
+
 # include <bra/gate/gate.hpp>
 # include <bra/state.hpp>
 
@@ -20,7 +22,7 @@ namespace bra
       using real_type = ::bra::state::real_type;
 
      private:
-      real_type phase_;
+      boost::variant<real_type, std::string> phase_;
       control_qubit_type control_qubit1_;
       control_qubit_type control_qubit2_;
 
@@ -28,7 +30,7 @@ namespace bra
 
      public:
       adj_controlled_u1(
-        real_type const phase,
+        boost::variant<real_type, std::string> const& phase,
         control_qubit_type const control_qubit1,
         control_qubit_type const control_qubit2);
 

@@ -38,6 +38,7 @@ namespace bra
   using real_type = double;
 # endif // BRA_REAL_TYPE
   using complex_type = std::complex<real_type>;
+  using int_type = int;
 
   using data_type = std::vector<complex_type>;
 # ifndef BRA_NO_MPI

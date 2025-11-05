@@ -79,6 +79,7 @@ namespace bra
 
    private:
     std::vector<circuit_type> circuits_;
+    std::vector<std::map<std::string, int>> label_maps_;
 
    public:
     using columns_type = wrong_mnemonics_error::columns_type;
@@ -94,9 +95,6 @@ namespace bra
 # ifndef BRA_NO_MPI
     std::vector< ::bra::permutated_qubit_type > initial_permutation_;
 # endif
-
-    using phase_coefficients_type = std::vector< ::bra::complex_type >;
-    phase_coefficients_type phase_coefficients_;
 
 # ifndef BRA_NO_MPI
     yampi::rank root_;
@@ -188,11 +186,7 @@ namespace bra
         and BRA_is_nothrow_swappable< ::bra::state_integer_type >::value
         and BRA_is_nothrow_swappable< ::bra::qubit_type >::value);
 
-    void apply_circuit(::bra::state& state, int const circuit_index)
-    {
-      for (auto const& gate_ptr: circuits_[circuit_index])
-        state << *gate_ptr;
-    }
+    void apply_circuit(::bra::state& state, int const circuit_index) const;
 
    private:
     ::bra::bit_integer_type read_num_qubits(columns_type const& columns) const;
@@ -210,33 +204,96 @@ namespace bra
     std::tuple< ::bra::control_qubit_type, ::bra::control_qubit_type > read_2controls(columns_type const& columns) const;
     void read_multi_targets(columns_type const& columns, std::vector< ::bra::qubit_type >& targets) const;
     void read_multi_controls(columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const;
-    std::tuple< ::bra::qubit_type, ::bra::real_type > read_target_phase(columns_type const& columns) const;
-    std::tuple< ::bra::control_qubit_type, ::bra::real_type > read_control_phase(columns_type const& columns) const;
-    std::tuple< ::bra::qubit_type, ::bra::real_type, ::bra::real_type > read_target_2phases(columns_type const& columns) const;
-    std::tuple< ::bra::qubit_type, ::bra::real_type, ::bra::real_type, ::bra::real_type > read_target_3phases(columns_type const& columns) const;
-    std::tuple< ::bra::qubit_type, int > read_target_phaseexp(columns_type const& columns) const;
-    std::tuple< ::bra::control_qubit_type, int > read_control_phaseexp(columns_type const& columns) const;
-    std::tuple< ::bra::qubit_type, ::bra::qubit_type, ::bra::real_type > read_2targets_phase(columns_type const& columns) const;
-    ::bra::real_type read_multi_targets_phase(columns_type const& columns, std::vector< ::bra::qubit_type >& targets) const;
+    ::bra::qubit_type read_target_phase(
+      columns_type const& columns,
+      boost::variant< ::bra::real_type, std::string >& phase) const;
+    ::bra::control_qubit_type read_control_phase(
+      columns_type const& columns,
+      boost::variant< ::bra::real_type, std::string >& phase) const;
+    ::bra::qubit_type read_target_2phases(
+      columns_type const& columns,
+      boost::variant< ::bra::real_type, std::string >& phase1,
+      boost::variant< ::bra::real_type, std::string >& phase2) const;
+    ::bra::qubit_type read_target_3phases(
+      columns_type const& columns,
+      boost::variant< ::bra::real_type, std::string >& phase1,
+      boost::variant< ::bra::real_type, std::string >& phase2,
+      boost::variant< ::bra::real_type, std::string >& phase3) const;
+    ::bra::qubit_type read_target_phaseexp(
+      columns_type const& columns,
+      boost::variant< ::bra::int_type, std::string >& phase_exponent) const;
+    ::bra::control_qubit_type read_control_phaseexp(
+      columns_type const& columns,
+      boost::variant< ::bra::int_type, std::string >& phase_exponent) const;
+    std::tuple< ::bra::qubit_type, ::bra::qubit_type > read_2targets_phase(
+      columns_type const& columns,
+      boost::variant< ::bra::real_type, std::string >& phase) const;
+    void read_multi_targets_phase(
+      columns_type const& columns,
+      std::vector< ::bra::qubit_type >& targets,
+      boost::variant< ::bra::real_type, std::string >& phase) const;
     std::tuple< ::bra::control_qubit_type, ::bra::qubit_type > read_control_target(columns_type const& columns) const;
-    std::tuple< ::bra::control_qubit_type, ::bra::qubit_type, int > read_control_target_phaseexp(columns_type const& columns) const;
-    std::tuple< ::bra::control_qubit_type, ::bra::control_qubit_type, int > read_2controls_phaseexp(columns_type const& columns) const;
+    std::tuple< ::bra::control_qubit_type, ::bra::qubit_type > read_control_target_phaseexp(
+      columns_type const& columns,
+      boost::variant< ::bra::int_type, std::string >& phase_exponent) const;
+    std::tuple< ::bra::control_qubit_type, ::bra::control_qubit_type > read_2controls_phaseexp(
+      columns_type const& columns,
+      boost::variant< ::bra::int_type, std::string >& phase_exponent) const;
     std::tuple< ::bra::control_qubit_type, ::bra::control_qubit_type, ::bra::qubit_type > read_2controls_target(columns_type const& columns) const;
-    ::bra::real_type read_multi_controls_phase(columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const;
-    std::tuple< ::bra::qubit_type, ::bra::qubit_type > read_multi_controls_2targets(columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const;
+    void read_multi_controls_phase(
+      columns_type const& columns,
+      std::vector< ::bra::control_qubit_type >& controls,
+      boost::variant< ::bra::real_type, std::string >& phase) const;
     ::bra::qubit_type read_multi_controls_target(columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const;
+    std::tuple< ::bra::qubit_type, ::bra::qubit_type > read_multi_controls_2targets(columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const;
     void read_multi_controls_multi_targets(columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls, std::vector< ::bra::qubit_type >& targets) const;
-    std::tuple< ::bra::control_qubit_type, ::bra::qubit_type, ::bra::real_type > read_control_target_phase(columns_type const& columns) const;
-    std::tuple< ::bra::control_qubit_type, ::bra::control_qubit_type, ::bra::real_type > read_2controls_phase(columns_type const& columns) const;
-    std::tuple< ::bra::qubit_type, ::bra::real_type > read_multi_controls_target_phase(columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const;
-    std::tuple< ::bra::control_qubit_type, ::bra::qubit_type, ::bra::real_type, ::bra::real_type > read_control_target_2phases(columns_type const& columns) const;
-    std::tuple< ::bra::qubit_type, ::bra::real_type, ::bra::real_type > read_multi_controls_target_2phases(columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const;
-    std::tuple< ::bra::control_qubit_type, ::bra::qubit_type, ::bra::real_type, ::bra::real_type, ::bra::real_type > read_control_target_3phases(columns_type const& columns) const;
-    std::tuple< ::bra::qubit_type, ::bra::real_type, ::bra::real_type, ::bra::real_type > read_multi_controls_target_3phases(columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const;
-    int read_multi_controls_phaseexp(columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const;
-    std::tuple< ::bra::qubit_type, int > read_multi_controls_target_phaseexp(columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const;
-    ::bra::real_type read_multi_controls_multi_targets_phase(columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls, std::vector< ::bra::qubit_type >& targets) const;
-    std::tuple< ::bra::qubit_type, ::bra::qubit_type, ::bra::real_type > read_multi_controls_2targets_phase(columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const;
+    std::tuple< ::bra::control_qubit_type, ::bra::qubit_type > read_control_target_phase(
+      columns_type const& columns,
+      boost::variant< ::bra::real_type, std::string >& phase) const;
+    std::tuple< ::bra::control_qubit_type, ::bra::control_qubit_type > read_2controls_phase(
+      columns_type const& columns,
+      boost::variant< ::bra::real_type, std::string >& phase) const;
+    ::bra::qubit_type read_multi_controls_target_phase(
+      columns_type const& columns,
+      std::vector< ::bra::control_qubit_type >& controls,
+      boost::variant< ::bra::real_type, std::string >& phase) const;
+    std::tuple< ::bra::control_qubit_type, ::bra::qubit_type > read_control_target_2phases(
+      columns_type const& columns,
+      boost::variant< ::bra::real_type, std::string >& phase1,
+      boost::variant< ::bra::real_type, std::string >& phase2) const;
+    ::bra::qubit_type read_multi_controls_target_2phases(
+      columns_type const& columns,
+      std::vector< ::bra::control_qubit_type >& controls,
+      boost::variant< ::bra::real_type, std::string >& phase1,
+      boost::variant< ::bra::real_type, std::string >& phase2) const;
+    std::tuple< ::bra::control_qubit_type, ::bra::qubit_type > read_control_target_3phases(
+      columns_type const& columns,
+      boost::variant< ::bra::real_type, std::string >& phase1,
+      boost::variant< ::bra::real_type, std::string >& phase2,
+      boost::variant< ::bra::real_type, std::string >& phase3) const;
+    ::bra::qubit_type read_multi_controls_target_3phases(
+      columns_type const& columns,
+      std::vector< ::bra::control_qubit_type >& controls,
+      boost::variant< ::bra::real_type, std::string >& phase1,
+      boost::variant< ::bra::real_type, std::string >& phase2,
+      boost::variant< ::bra::real_type, std::string >& phase3) const;
+    void read_multi_controls_phaseexp(
+      columns_type const& columns,
+      std::vector< ::bra::control_qubit_type >& controls,
+      boost::variant< ::bra::int_type, std::string >& phase_exponent) const;
+    ::bra::qubit_type read_multi_controls_target_phaseexp(
+      columns_type const& columns,
+      std::vector< ::bra::control_qubit_type >& controls,
+      boost::variant< ::bra::int_type, std::string >& phase_exponent) const;
+    void read_multi_controls_multi_targets_phase(
+      columns_type const& columns,
+      std::vector< ::bra::control_qubit_type >& controls,
+      std::vector< ::bra::qubit_type >& targets,
+      boost::variant< ::bra::real_type, std::string >& phase) const;
+    std::tuple< ::bra::qubit_type, ::bra::qubit_type > read_multi_controls_2targets_phase(
+      columns_type const& columns,
+      std::vector< ::bra::control_qubit_type >& controls,
+      boost::variant< ::bra::real_type, std::string >& phase) const;
 
     ::bra::begin_statement read_begin_statement(columns_type const& columns) const;
     ::bra::end_statement read_end_statement(columns_type const& columns) const;
@@ -244,6 +301,12 @@ namespace bra
     std::tuple< ::bra::bit_integer_type, ::bra::state_integer_type, ::bra::state_integer_type > read_shor_box(columns_type const& columns) const;
     std::tuple< ::bra::generate_statement, int, int > read_generate_statement(columns_type const& columns) const;
     std::tuple< ::bra::depolarizing_statement, ::bra::real_type, ::bra::real_type, ::bra::real_type, int > read_depolarizing_statement(columns_type const& columns) const;
+
+    void add_var(columns_type const& columns);
+    void add_let(columns_type const& columns);
+    void add_label(columns_type const& columns, std::string const& mnemonic);
+    void add_jump(columns_type const& columns);
+    void add_jumpif(columns_type const& columns);
 
     void add_i(columns_type const& columns);
     void add_ic(columns_type const& columns);

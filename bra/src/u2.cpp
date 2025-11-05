@@ -2,6 +2,10 @@
 #include <ios>
 #include <iomanip>
 #include <sstream>
+#include <utility>
+
+#include <boost/variant/variant.hpp>
+#include <boost/variant/apply_visitor.hpp>
 
 #include <ket/qubit_io.hpp>
 
@@ -16,7 +20,10 @@ namespace bra
   {
     std::string const u2::name_ = "U2";
 
-    u2::u2(real_type const phase1, real_type const phase2, qubit_type const qubit)
+    u2::u2(
+      boost::variant<real_type, std::string> const& phase1,
+      boost::variant<real_type, std::string> const& phase2,
+      qubit_type const qubit)
       : ::bra::gate::gate{},
         phase1_{phase1}, phase2_{phase2}, qubit_{qubit}
     { }
@@ -31,8 +38,8 @@ namespace bra
       repr_stream
         << std::right
         << std::setw(parameter_width) << qubit_
-        << std::setw(parameter_width) << phase1_
-        << std::setw(parameter_width) << phase2_;
+        << std::setw(parameter_width) << boost::apply_visitor(::bra::gate::gate_detail::output_visitor<real_type>{}, phase1_)
+        << std::setw(parameter_width) << boost::apply_visitor(::bra::gate::gate_detail::output_visitor<real_type>{}, phase2_);
       return repr_stream.str();
     }
   } // namespace gate

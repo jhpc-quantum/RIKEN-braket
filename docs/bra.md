@@ -163,7 +163,7 @@ The instruction set supported by *bra* is as follows[^1].
 * `CCCCESWAP c1 c2 c3 c4 t1 t2 theta` or `C4ESWAP c1 c2 c3 c4 t1 t2 theta`: the controlled exponential SWAP gate. Qubits $c_1$, ..., $c_4$ are control qubits, and qubits $t_1$ and $t_2$ are target qubits. If you use two control qubits, use `CCESWAP c1 c2 t1 t2 theta` or `C2ESWAP c1 c2 t1 t2 theta` instead.
 * `BEGIN MEASUREMENT`: computes and prints out the expectation values of all qubits.
 * `GENERATE EVENTS n seed`: computes the probabilities of each of the basis states and exits. It generates $n$ events by using random number generator with the initial seed `seed` and prints out the states according to these probabilites.
-* `M i`: projective measurement on qubit $i$.
+* `M i`: projective measurement on qubit $i$. Its result is assigned to `:OUTCOME` AND `:OUTCOME:i`.
 * `CIRCUITS n`: specifies the number of quantum circuits. This should be placed before the `QUBITS` instruction. If this `CIRCUITS` instruction is omitted, the number of circuits is assumed to be 1.
 * `QUBITS n`: specifies the number of qubits. This should be placed before any insstructions except for the `CIRCUITS` instruction.
 * `BIT ASSIGNMENT i j k...`: specifies the initial permutation of qubits. The number of qubits specified as arguments of this instruction must be equal to the number of qubits specified in the `QUBITS n` instruction.
@@ -174,6 +174,11 @@ The instruction set supported by *bra* is as follows[^1].
 * `EXIT`: measures all qubits and terminate execution.
 * `BEGIN FUSION q1 q2 q3 q4`/`END FUSION`: starts/ends gate fusion[^2]. Qubits $q_1$, $q_2$, ... should be appeared gate instructions between `BEGIN FUSION` and `END FUSION`.
 * `BEGIN CIRCUIT n`/`END CIRCUIT`: starts/ends description of quantum gates in the quantum circuit with specified circuit index $n$. The index $n$ should be less than the number of quantum circuits specified in the `CIRCUITS` instruction. The gates out of `BEGIN CIRCUIT`/`END CIRCUIT` are assumed to be gates in the quantum circuit $0$.
+* `VAR name type [size]`: declares classical variable/array whose name is `name`, type is `type`, and size is `size`. Possible `type`'s are `REAL` or `INT`. If `size` is not specified, array size is assumed to be 1. Note that classical variable is just an array whose size is 1. In order to get an element of array `XS`, specify such as `XS:0`, which corresponds to `XS[0]` in C/C++. In this quantum assembly language, `A:B:C:D` is for example a valid expression, and corresponding to `A[B[C[D]]]` in C/C++.
+* There are built-in constants/immutable variables; `:PI`, `:HALF_PI`, `:TWO_PI`, `:OUTCOME`, `:OUTCOMES:n`.
+* `LET lhs op rhs`: applies an operation `op` to `lhs` and `rhs`, and assign the value to `lhs`. Possible `op`'s are `:=`, `+=`, `-=`, `*=`, and `/=`. While only classical variables can be specified to `lhs`, any variables and literals can be set to `rhs`.
+* `@label`: declares label `label`. Do not insert any spaces between `@` and `label`.
+* `JUMP label`/`JUMPIF label lhs op rhs`: jumps to the label `label`. In the case of `JUMPIF`, one can specify a condition to jump by `lhs op rhs`, where possible `op`'s are `==`, `\=`, `>`, `<`, `<=`, and `>=`.
 
 [^2]: The number of qubits which can be specified in `BEGIN FUSION` instruction is determined by the macro `BRA_MAX_NUM_FUSED_QUBITS`, which can be set when building *bra*. Its default value is 10.
 
