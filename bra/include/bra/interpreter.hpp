@@ -4,6 +4,7 @@
 # include <cassert>
 # include <iosfwd>
 # include <vector>
+# include <unordered_map>
 # include <string>
 # include <tuple>
 # include <algorithm>
@@ -79,7 +80,7 @@ namespace bra
 
    private:
     std::vector<circuit_type> circuits_;
-    std::vector<std::map<std::string, int>> label_maps_;
+    std::vector<std::unordered_map<std::string, int>> label_maps_;
 
    public:
     using columns_type = wrong_mnemonics_error::columns_type;
