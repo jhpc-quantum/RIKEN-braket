@@ -1114,6 +1114,36 @@ namespace bra
     return *this;
   }
 
+  state& state::amplitudes(yampi::rank const root)
+  {
+    if (is_in_fusion_)
+      throw ::bra::unsupported_fused_gate_error{"AMPLITUDES"};
+
+    auto const operation_finish_time = BRA_clock::now(environment_);
+    std::ostringstream oss;
+    if (communicator_.rank(environment_) == root)
+    {
+      oss << "Operations finished: " << ::bra::state_detail::duration_to_second(start_time_, operation_finish_time)
+          << " (" << ::bra::state_detail::duration_to_second(last_processed_time_, operation_finish_time) << ")\n";
+      std::cout << oss.str() << std::flush;
+    }
+    last_processed_time_ = operation_finish_time;
+
+    do_amplitudes(root);
+
+    auto const amplitudes_finish_time = BRA_clock::now(environment_);
+    if (communicator_.rank(environment_) == root)
+    {
+      oss.str("");
+      oss << "Amplitudes finished: " << ::bra::state_detail::duration_to_second(start_time_, amplitudes_finish_time)
+          << " (" << ::bra::state_detail::duration_to_second(last_processed_time_, amplitudes_finish_time) << ")\n";
+      std::cout << oss.str() << std::flush;
+    }
+    last_processed_time_ = amplitudes_finish_time;
+
+    return *this;
+  }
+
   state& state::generate_events(yampi::rank const root, int const num_events, int const seed)
   {
     if (is_in_fusion_)
@@ -1230,6 +1260,30 @@ namespace bra
         << " (" << ::bra::state_detail::duration_to_second(last_processed_time_, expectation_values_finish_time) << ")\n";
     std::cout << oss.str() << std::flush;
     last_processed_time_ = expectation_values_finish_time;
+
+    return *this;
+  }
+
+  state& state::amplitudes()
+  {
+    if (is_in_fusion_)
+      throw ::bra::unsupported_fused_gate_error{"AMPLITUDES"};
+
+    auto const operation_finish_time = BRA_clock::now();
+    std::ostringstream oss;
+    oss << "Operations finished: " << ::bra::state_detail::duration_to_second(start_time_, operation_finish_time)
+        << " (" << ::bra::state_detail::duration_to_second(last_processed_time_, operation_finish_time) << ")\n";
+    std::cout << oss.str() << std::flush;
+    last_processed_time_ = operation_finish_time;
+
+    do_amplitudes();
+
+    auto const amplitudes_finish_time = BRA_clock::now();
+    oss.str("");
+    oss << "Amplitudes finished: " << ::bra::state_detail::duration_to_second(start_time_, amplitudes_finish_time)
+        << " (" << ::bra::state_detail::duration_to_second(last_processed_time_, amplitudes_finish_time) << ")\n";
+    std::cout << oss.str() << std::flush;
+    last_processed_time_ = amplitudes_finish_time;
 
     return *this;
   }

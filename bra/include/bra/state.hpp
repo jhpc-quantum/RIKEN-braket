@@ -444,11 +444,13 @@ namespace bra
 # ifndef BRA_NO_MPI
     state& projective_measurement(qubit_type const qubit, yampi::rank const root);
     state& measurement(yampi::rank const root);
+    state& amplitudes(yampi::rank const root);
     state& generate_events(yampi::rank const root, int const num_events, int const seed);
     state& exit(yampi::rank const root);
 # else // BRA_NO_MPI
     state& projective_measurement(qubit_type const qubit);
     state& measurement();
+    state& amplitudes();
     state& generate_events(int const num_events, int const seed);
     state& exit();
 # endif // BRA_NO_MPI
@@ -709,11 +711,13 @@ namespace bra
     virtual ket::gate::outcome do_projective_measurement(
       qubit_type const qubit, yampi::rank const root) = 0;
     virtual void do_expectation_values(yampi::rank const root) = 0;
+    virtual void do_amplitudes(yampi::rank const root) = 0;
     virtual void do_measure(yampi::rank const root) = 0;
     virtual void do_generate_events(yampi::rank const root, int const num_events, int const seed) = 0;
 # else // BRA_NO_MPI
     virtual ket::gate::outcome do_projective_measurement(qubit_type const qubit) = 0;
     virtual void do_expectation_values() = 0;
+    virtual void do_amplitudes() = 0;
     virtual void do_measure() = 0;
     virtual void do_generate_events(int const num_events, int const seed) = 0;
 # endif // BRA_NO_MPI

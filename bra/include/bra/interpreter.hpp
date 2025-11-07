@@ -68,7 +68,7 @@ namespace bra
 
   enum class begin_statement : int { measurement, fusion, circuit, learning_machine };
   enum class end_statement : int { fusion, circuit };
-  enum class do_statement : int { measurement };
+  enum class do_statement : int { measurement, amplitudes };
   enum class bit_statement : int { assignment };
   enum class generate_statement : int { events };
   enum class depolarizing_statement : int { channel };

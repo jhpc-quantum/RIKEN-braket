@@ -110,6 +110,7 @@
 #include <bra/gate/adj_exponential_swap.hpp>
 #include <bra/gate/toffoli.hpp>
 #include <bra/gate/projective_measurement.hpp>
+#include <bra/gate/amplitudes.hpp>
 #include <bra/gate/measurement.hpp>
 #include <bra/gate/generate_events.hpp>
 #include <bra/gate/shor_box.hpp>
@@ -666,6 +667,14 @@ namespace bra
           circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::measurement >(root_));
 #else // BRA_NO_MPI
           circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::measurement >());
+#endif // BRA_NO_MPI
+        }
+        else if (statement == ::bra::do_statement::amplitudes)
+        {
+#ifndef BRA_NO_MPI
+          circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::amplitudes >(root_));
+#else // BRA_NO_MPI
+          circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::amplitudes >());
 #endif // BRA_NO_MPI
         }
         else
@@ -1714,6 +1723,8 @@ namespace bra
 
     if (*iter == "MEASUREMENT" and column_size == 2u)
       return ::bra::do_statement::measurement;
+    else if (*iter == "AMPLITUDES" and column_size == 2u)
+      return ::bra::do_statement::amplitudes;
 
     throw wrong_mnemonics_error{columns};
   }

@@ -1,4 +1,6 @@
 #ifndef BRA_NO_MPI
+# include <iostream>
+# include <sstream>
 # include <vector>
 # include <array>
 # include <iterator>
@@ -48,6 +50,7 @@
 # include <ket/mpi/gate/clear.hpp>
 # include <ket/mpi/gate/set.hpp>
 # include <ket/mpi/all_spin_expectation_values.hpp>
+# include <ket/mpi/print_amplitudes.hpp>
 # include <ket/mpi/measure.hpp>
 # include <ket/mpi/generate_events.hpp>
 # include <ket/mpi/shor_box.hpp>
@@ -1564,6 +1567,25 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
       = ket::mpi::all_spin_expectation_values<typename spins_type::allocator_type>(
           mpi_policy_, parallel_policy_,
           data_, permutation_, total_num_qubits_, buffer_, root, communicator_, environment_);
+  }
+
+  void paged_simple_mpi_state::do_amplitudes(yampi::rank const root)
+  {
+    std::ostringstream oss;
+
+    ket::mpi::println_amplitudes(
+      mpi_policy_, oss, data_, permutation_, root, communicator_, environment_,
+      [](::bra::state_integer_type const qubit_value, ::bra::complex_type const& amplitude)
+      {
+        std::ostringstream oss;
+        using std::real;
+        using std::imag;
+        oss << qubit_value << " => " << real(amplitude) << " + " << imag(amplitude) << " i";
+        return oss.str();
+      }, std::string{"\n"});
+
+    if (communicator_.rank(environment_) == root)
+      std::cout << oss.str() << std::flush;
   }
 
   void paged_simple_mpi_state::do_measure(yampi::rank const root)
