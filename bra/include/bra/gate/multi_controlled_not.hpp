@@ -29,6 +29,10 @@ namespace bra
      public:
       multi_controlled_not(
         qubit_type const target_qubit,
+        std::vector<control_qubit_type> const& control_qubits);
+
+      multi_controlled_not(
+        qubit_type const target_qubit,
         std::vector<control_qubit_type>&& control_qubits);
 
       ~multi_controlled_not() = default;

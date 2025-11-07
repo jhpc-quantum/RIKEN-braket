@@ -18,6 +18,13 @@ namespace bra
   namespace gate
   {
     multi_controlled_pauli_yn::multi_controlled_pauli_yn(
+      std::vector<qubit_type> const& target_qubits,
+      std::vector<control_qubit_type> const& control_qubits)
+      : ::bra::gate::gate{}, target_qubits_{target_qubits}, control_qubits_{control_qubits},
+        name_{std::string(control_qubits_.size(), 'C').append(target_qubits_.size(), 'Y')}
+    { }
+
+    multi_controlled_pauli_yn::multi_controlled_pauli_yn(
       std::vector<qubit_type>&& target_qubits,
       std::vector<control_qubit_type>&& control_qubits)
       : ::bra::gate::gate{}, target_qubits_{std::move(target_qubits)}, control_qubits_{std::move(control_qubits)},

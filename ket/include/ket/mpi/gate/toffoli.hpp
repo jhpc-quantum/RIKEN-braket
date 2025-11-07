@@ -118,12 +118,9 @@ namespace ket
       {
         ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Toffoli "}, target_qubit, ' ', control_qubit1, ' ', control_qubit2), environment};
 
-        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-        auto const qubits
-          = std::array<qubit_type, 3u>{target_qubit, control_qubit1.qubit(), control_qubit2.qubit()};
         ::ket::mpi::utility::maybe_interchange_qubits(
           mpi_policy, parallel_policy,
-          local_state, qubits, permutation, buffer, communicator, environment);
+          local_state, permutation, buffer, communicator, environment, target_qubit, control_qubit1, control_qubit2);
 
         return ::ket::mpi::gate::local::toffoli(
           mpi_policy, parallel_policy, local_state, permutation, communicator, environment, target_qubit, control_qubit1, control_qubit2);
@@ -147,12 +144,9 @@ namespace ket
       {
         ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Toffoli "}, target_qubit, ' ', control_qubit1, ' ', control_qubit2), environment};
 
-        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-        auto const qubits
-          = std::array<qubit_type, 3u>{target_qubit, control_qubit1.qubit(), control_qubit2.qubit()};
         ::ket::mpi::utility::maybe_interchange_qubits(
           mpi_policy, parallel_policy,
-          local_state, qubits, permutation, buffer, datatype, communicator, environment);
+          local_state, permutation, buffer, datatype, communicator, environment, target_qubit, control_qubit1, control_qubit2);
 
         return ::ket::mpi::gate::local::toffoli(
           mpi_policy, parallel_policy, local_state, permutation, communicator, environment, target_qubit, control_qubit1, control_qubit2);
@@ -174,12 +168,9 @@ namespace ket
       {
         ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Toffoli "}, target_qubit, ' ', control_qubit1, ' ', control_qubit2), environment};
 
-        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-        auto const qubits
-          = std::array<qubit_type, 3u>{target_qubit, control_qubit1.qubit(), control_qubit2.qubit()};
         ::ket::mpi::utility::maybe_interchange_qubits(
           mpi_policy, parallel_policy,
-          local_state, qubits, permutation, buffer, communicator, environment);
+          local_state, permutation, buffer, communicator, environment, target_qubit, control_qubit1, control_qubit2);
 
         return ::ket::mpi::gate::local::toffoli(
           mpi_policy, parallel_policy, local_state, permutation, communicator, environment, target_qubit, control_qubit1, control_qubit2);
@@ -203,12 +194,9 @@ namespace ket
       {
         ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Toffoli "}, target_qubit, ' ', control_qubit1, ' ', control_qubit2), environment};
 
-        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-        auto const qubits
-          = std::array<qubit_type, 3u>{target_qubit, control_qubit1.qubit(), control_qubit2.qubit()};
         ::ket::mpi::utility::maybe_interchange_qubits(
           mpi_policy, parallel_policy,
-          local_state, qubits, permutation, buffer, datatype, communicator, environment);
+          local_state, permutation, buffer, datatype, communicator, environment, target_qubit, control_qubit1, control_qubit2);
 
         return ::ket::mpi::gate::local::toffoli(
           mpi_policy, parallel_policy, local_state, permutation, communicator, environment, target_qubit, control_qubit1, control_qubit2);
@@ -461,12 +449,9 @@ namespace ket
       {
         ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(Toffoli) "}, target_qubit, ' ', control_qubit1, ' ', control_qubit2), environment};
 
-        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-        auto const qubits
-          = std::array<qubit_type, 3u>{target_qubit, control_qubit1.qubit(), control_qubit2.qubit()};
         ::ket::mpi::utility::maybe_interchange_qubits(
           mpi_policy, parallel_policy,
-          local_state, qubits, permutation, buffer, communicator, environment);
+          local_state, permutation, buffer, communicator, environment, target_qubit, control_qubit1, control_qubit2);
 
         return ::ket::mpi::gate::local::adj_toffoli(
           mpi_policy, parallel_policy, local_state, permutation, communicator, environment, target_qubit, control_qubit1, control_qubit2);
@@ -490,12 +475,9 @@ namespace ket
       {
         ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(Toffoli) "}, target_qubit, ' ', control_qubit1, ' ', control_qubit2), environment};
 
-        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-        auto const qubits
-          = std::array<qubit_type, 3u>{target_qubit, control_qubit1.qubit(), control_qubit2.qubit()};
         ::ket::mpi::utility::maybe_interchange_qubits(
           mpi_policy, parallel_policy,
-          local_state, qubits, permutation, buffer, datatype, communicator, environment);
+          local_state, permutation, buffer, datatype, communicator, environment, target_qubit, control_qubit1, control_qubit2);
 
         return ::ket::mpi::gate::local::adj_toffoli(
           mpi_policy, parallel_policy, local_state, permutation, communicator, environment, target_qubit, control_qubit1, control_qubit2);
@@ -517,12 +499,9 @@ namespace ket
       {
         ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(Toffoli) "}, target_qubit, ' ', control_qubit1, ' ', control_qubit2), environment};
 
-        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-        auto const qubits
-          = std::array<qubit_type, 3u>{target_qubit, control_qubit1.qubit(), control_qubit2.qubit()};
         ::ket::mpi::utility::maybe_interchange_qubits(
           mpi_policy, parallel_policy,
-          local_state, qubits, permutation, buffer, communicator, environment);
+          local_state, permutation, buffer, communicator, environment, target_qubit, control_qubit1, control_qubit2);
 
         return ::ket::mpi::gate::local::adj_toffoli(
           mpi_policy, parallel_policy, local_state, permutation, communicator, environment, target_qubit, control_qubit1, control_qubit2);
@@ -547,12 +526,9 @@ namespace ket
       {
         ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Adj(Toffoli) "}, target_qubit, ' ', control_qubit1, ' ', control_qubit2), environment};
 
-        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-        auto const qubits
-          = std::array<qubit_type, 3u>{target_qubit, control_qubit1.qubit(), control_qubit2.qubit()};
         ::ket::mpi::utility::maybe_interchange_qubits(
           mpi_policy, parallel_policy,
-          local_state, qubits, permutation, buffer, datatype, communicator, environment);
+          local_state, permutation, buffer, datatype, communicator, environment, target_qubit, control_qubit1, control_qubit2);
 
         return ::ket::mpi::gate::local::adj_toffoli(
           mpi_policy, parallel_policy, local_state, permutation, communicator, environment, target_qubit, control_qubit1, control_qubit2);

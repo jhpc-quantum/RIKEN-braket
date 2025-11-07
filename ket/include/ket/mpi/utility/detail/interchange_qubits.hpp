@@ -46,7 +46,11 @@ namespace ket
             auto const last = begin(local_state) + data_block_index * data_block_size + source_local_last_index;
 
 #ifndef BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
-            buffer.resize(source_local_last_index - source_local_first_index);
+            auto const new_size = source_local_last_index - source_local_first_index;
+            if (new_size > buffer.capacity())
+              std::vector< ::ket::utility::meta::range_value_t<LocalState>, Allocator >{}.swap(buffer);
+            buffer.resize(new_size);
+
             using std::end;
             yampi::algorithm::swap(
               yampi::ignore_status,
@@ -56,7 +60,11 @@ namespace ket
 #else // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
             if (buffer.empty())
             {
-              buffer.resize(source_local_last_index - source_local_first_index);
+              auto const new_size = source_local_last_index - source_local_first_index;
+              if (new_size > buffer.capacity())
+                std::vector< ::ket::utility::meta::range_value_t<LocalState>, Allocator >{}.swap(buffer);
+              buffer.resize(new_size);
+
               using std::end;
               yampi::algorithm::swap(
                 yampi::ignore_status,
@@ -92,7 +100,7 @@ namespace ket
                   yampi::make_buffer(present_first, present_first + remainder_size),
                   yampi::make_buffer(begin(buffer), begin(buffer) + remainder_size),
                   target_rank, communicator, environment);
-                std::copy(begin(buffer), begin(buffer) + remainder_size, present_first);
+                std::copy_n(begin(buffer), remainder_size, present_first);
               }
             }
 #endif // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
@@ -163,7 +171,7 @@ namespace ket
                   yampi::make_buffer(present_first, present_first + remainder_size, datatype),
                   yampi::make_buffer(begin(buffer), begin(buffer) + remainder_size, datatype),
                   target_rank, communicator, environment);
-                std::copy(begin(buffer), begin(buffer) + remainder_size, present_first);
+                std::copy_n(begin(buffer), remainder_size, present_first);
               }
             }
 #endif // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS

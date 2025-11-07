@@ -30,6 +30,10 @@ namespace bra
      public:
       multi_controlled_swap(
         qubit_type const target_qubit1, qubit_type const target_qubit2,
+        std::vector<control_qubit_type> const& control_qubits);
+
+      multi_controlled_swap(
+        qubit_type const target_qubit1, qubit_type const target_qubit2,
         std::vector<control_qubit_type>&& control_qubits);
 
       ~multi_controlled_swap() = default;

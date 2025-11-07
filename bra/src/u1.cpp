@@ -2,8 +2,13 @@
 #include <ios>
 #include <iomanip>
 #include <sstream>
+#include <utility>
+
+#include <boost/variant/variant.hpp>
+#include <boost/variant/apply_visitor.hpp>
 
 #include <ket/qubit_io.hpp>
+#include <ket/control_io.hpp>
 
 #include <bra/gate/gate.hpp>
 #include <bra/gate/u1.hpp>
@@ -16,13 +21,15 @@ namespace bra
   {
     std::string const u1::name_ = "U1";
 
-    u1::u1(real_type const phase, qubit_type const qubit)
+    u1::u1(
+      boost::variant<real_type, std::string> const& phase,
+      control_qubit_type const control_qubit)
       : ::bra::gate::gate{},
-        phase_{phase}, qubit_{qubit}
+        phase_{phase}, control_qubit_{control_qubit}
     { }
 
     ::bra::state& u1::do_apply(::bra::state& state) const
-    { return state.u1(phase_, qubit_); }
+    { return state.u1(phase_, control_qubit_); }
 
     std::string const& u1::do_name() const { return name_; }
     std::string u1::do_representation(
@@ -30,8 +37,8 @@ namespace bra
     {
       repr_stream
         << std::right
-        << std::setw(parameter_width) << qubit_
-        << std::setw(parameter_width) << phase_;
+        << std::setw(parameter_width) << control_qubit_
+        << std::setw(parameter_width) << boost::apply_visitor(::bra::gate::gate_detail::output_visitor<real_type>{}, phase_);
       return repr_stream.str();
     }
   } // namespace gate

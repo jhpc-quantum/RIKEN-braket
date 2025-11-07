@@ -119,7 +119,7 @@ namespace ket
                   static_cast<StateInteger>(std::distance(begin(control_on_page_range), end(control_on_page_range))),
                   [control_on_first, target_control_on_first](StateInteger const index, int const)
                   {
-                    *(control_on_first + index) *= -::ket::utility::imaginary_unit<Complex>();
+                    *(control_on_first + index) *= ::ket::utility::minus_imaginary_unit<Complex>();
                     *(target_control_on_first + index) *= ::ket::utility::imaginary_unit<Complex>();
                   });
               }

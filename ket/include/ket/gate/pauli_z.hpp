@@ -2,6 +2,8 @@
 # define KET_GATE_PAULI_Z_HPP
 
 # include <cassert>
+# include <cstddef>
+# include <cstdint>
 # include <array>
 # include <algorithm>
 # include <iterator>
@@ -11,6 +13,7 @@
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
 # include <ket/gate/gate.hpp>
+# include <ket/gate/utility/index_with_qubits.hpp>
 # include <ket/gate/meta/num_control_qubits.hpp>
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/integer_exp2.hpp>
@@ -24,6 +27,243 @@ namespace ket
 {
   namespace gate
   {
+    // Case 1: the first argument of qubits is ket::control<ket::qubit<S, B>>
+    template <typename ParallelPolicy, typename RandomAccessIterator>
+    inline auto pauli_z(
+      ParallelPolicy const parallel_policy,
+      RandomAccessIterator const first, RandomAccessIterator const last)
+    -> void
+    {
+      assert(
+        ::ket::utility::integer_exp2<std::uint64_t>(::ket::utility::integer_log2<std::size_t>(last - first))
+        == static_cast<std::uint64_t>(last - first));
+
+      ::ket::utility::loop_n(
+        parallel_policy, static_cast<std::uint64_t>(last - first),
+        [first](std::uint64_t const index, int const)
+        {
+          using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+          using real_type = ::ket::utility::meta::real_t<complex_type>;
+          *(first + index) *= static_cast<real_type>(-1);
+        });
+    }
+
+    // Z_i or Z1_i
+    // Z_1 (a_0 |0> + a_1 |1>) = a_0 |0> - a_1 |1>
+    template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger>
+    inline auto pauli_z(
+      ParallelPolicy const parallel_policy,
+      RandomAccessIterator const first, RandomAccessIterator const last,
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit)
+    -> void
+    {
+      static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+      static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
+      assert(::ket::utility::integer_exp2<StateInteger>(control_qubit) < static_cast<StateInteger>(last - first));
+      assert(
+        ::ket::utility::integer_exp2<StateInteger>(::ket::utility::integer_log2<BitInteger>(last - first))
+        == static_cast<StateInteger>(last - first));
+
+      auto const qubit_mask = ::ket::utility::integer_exp2<StateInteger>(control_qubit);
+      auto const lower_bits_mask = qubit_mask - StateInteger{1u};
+      auto const upper_bits_mask = compl lower_bits_mask;
+
+      ::ket::utility::loop_n(
+        parallel_policy, static_cast<StateInteger>(last - first) >> 1u,
+        [first, qubit_mask, lower_bits_mask, upper_bits_mask](StateInteger const value_wo_qubit, int const)
+        {
+          // xxxxx0xxxxxx
+          auto const zero_index = ((value_wo_qubit bitand upper_bits_mask) << 1u) bitor (value_wo_qubit bitand lower_bits_mask);
+          // xxxxx1xxxxxx
+          auto const one_index = zero_index bitor qubit_mask;
+
+          using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+          using real_type = ::ket::utility::meta::real_t<complex_type>;
+          *(first + one_index) *= static_cast<real_type>(-1);
+        });
+    }
+
+    // CZ_{cc'} or C1Z_{cc'}
+    // CZ_{1,2} (a_{00} |00> + a_{01} |01> + a_{10} |10> + a{11} |11>)
+    //   = a_{00} |00> + a_{01} |01> + a_{10} |10> - a{11} |11>
+    template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger>
+    inline auto pauli_z(
+      ParallelPolicy const parallel_policy,
+      RandomAccessIterator const first, RandomAccessIterator const last,
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
+    -> void
+    {
+      static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+      static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
+
+      assert(::ket::utility::integer_exp2<StateInteger>(control_qubit1) < static_cast<StateInteger>(last - first));
+      assert(::ket::utility::integer_exp2<StateInteger>(control_qubit2) < static_cast<StateInteger>(last - first));
+      assert(control_qubit1 != control_qubit2);
+      assert(
+        ::ket::utility::integer_exp2<StateInteger>(::ket::utility::integer_log2<BitInteger>(last - first))
+        == static_cast<StateInteger>(last - first));
+
+      auto const minmax_qubits = std::minmax(control_qubit1, control_qubit2);
+      auto const control_qubit1_mask = ::ket::utility::integer_exp2<StateInteger>(control_qubit1);
+      auto const control_qubit2_mask = ::ket::utility::integer_exp2<StateInteger>(control_qubit2);
+      auto const lower_bits_mask = ::ket::utility::integer_exp2<StateInteger>(minmax_qubits.first) - StateInteger{1u};
+      auto const middle_bits_mask
+        = (::ket::utility::integer_exp2<StateInteger>(minmax_qubits.second - BitInteger{1u}) - StateInteger{1u})
+          xor lower_bits_mask;
+      auto const upper_bits_mask = compl (lower_bits_mask bitor middle_bits_mask);
+
+      ::ket::utility::loop_n(
+        parallel_policy, static_cast<StateInteger>(last - first) >> 2u,
+        [first, control_qubit1_mask, control_qubit2_mask, lower_bits_mask, middle_bits_mask, upper_bits_mask](
+          StateInteger const value_wo_qubits, int const)
+        {
+          // xxx0_c1xxx0_c2xxx
+          auto const index00
+            = ((value_wo_qubits bitand upper_bits_mask) << 2u)
+              bitor ((value_wo_qubits bitand middle_bits_mask) << 1u)
+              bitor (value_wo_qubits bitand lower_bits_mask);
+          // xxx1_c1xxx1_c2xxx
+          auto const index11 = index00 bitor control_qubit1_mask bitor control_qubit2_mask;
+
+          using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+          using real_type = ::ket::utility::meta::real_t<complex_type>;
+          *(first + index11) *= static_cast<real_type>(-1);
+        });
+    }
+
+    // C...CZ_{c0,c...c'} or CnZ_{c0,c...c'}
+    template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger, typename... Qubits>
+    inline auto pauli_z(
+      ParallelPolicy const parallel_policy,
+      RandomAccessIterator const first, RandomAccessIterator const last,
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit3,
+      ::ket::control<Qubits> const... control_qubits)
+    -> void
+    {
+      static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+      static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
+      assert(
+        ::ket::utility::integer_exp2<StateInteger>(::ket::utility::integer_log2<BitInteger>(last - first))
+        == static_cast<StateInteger>(last - first));
+
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+      using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+      constexpr auto num_control_qubits = BitInteger{sizeof...(Qubits) + 3u};
+      constexpr auto num_operated_qubits = num_control_qubits;
+
+      ::ket::gate::nocache::gate(
+        parallel_policy, first, last,
+        [](
+          auto const first, StateInteger const index_wo_qubits,
+          std::array<qubit_type, num_operated_qubits> const& unsorted_qubits,
+          std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& sorted_qubits_with_sentinel,
+          int const)
+        {
+          // 0b11...11u
+          constexpr auto index = ((std::size_t{1u} << num_operated_qubits) - std::size_t{1u});
+
+          using std::begin;
+          using std::end;
+          auto const iter
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index,
+                  begin(unsorted_qubits), end(unsorted_qubits),
+                  begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));
+          using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+          using real_type = ::ket::utility::meta::real_t<complex_type>;
+          *iter *= real_type{-1};
+        },
+        control_qubit1, control_qubit2, control_qubit3, control_qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+      constexpr auto num_control_qubits = BitInteger{sizeof...(Qubits) + 3u};
+      constexpr auto num_operated_qubits = num_control_qubits;
+
+      ::ket::gate::nocache::gate(
+        parallel_policy, first, last,
+        [](
+          auto const first, StateInteger const index_wo_qubits,
+          std::array<StateInteger, num_operated_qubits> const& qubit_masks,
+          std::array<StateInteger, num_operated_qubits + 1u> const& index_masks,
+          int const)
+        {
+          // 0b11...11u
+          constexpr auto index = ((std::size_t{1u} << num_operated_qubits) - std::size_t{1u});
+
+          using std::begin;
+          using std::end;
+          auto const iter
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index,
+                  begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+          using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+          using real_type = ::ket::utility::meta::real_t<complex_type>;
+          *iter *= real_type{-1};
+        },
+        control_qubit1, control_qubit2, control_qubit3, control_qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+    }
+
+    template <typename RandomAccessIterator, typename... Qubits>
+    inline auto pauli_z(
+      RandomAccessIterator const first, RandomAccessIterator const last,
+      ::ket::control<Qubits> const... control_qubits)
+    -> void
+    { ::ket::gate::pauli_z(::ket::utility::policy::make_sequential(), first, last, control_qubits...); }
+
+    namespace ranges
+    {
+      template <typename ParallelPolicy, typename RandomAccessRange, typename... Qubits>
+      inline auto pauli_z(
+        ParallelPolicy const parallel_policy, RandomAccessRange& state,
+        ::ket::control<Qubits> const... control_qubits)
+      -> RandomAccessRange&
+      {
+        using std::begin;
+        using std::end;
+        ::ket::gate::pauli_z(parallel_policy, begin(state), end(state), control_qubits...);
+        return state;
+      }
+
+      template <typename RandomAccessRange, typename... Qubits>
+      inline auto pauli_z(RandomAccessRange& state, ::ket::control<Qubits> const... control_qubits) -> RandomAccessRange&
+      { return ::ket::gate::ranges::pauli_z(::ket::utility::policy::make_sequential(), state, control_qubits...); }
+    } // namespace ranges
+
+    template <typename ParallelPolicy, typename RandomAccessIterator, typename... Qubits>
+    inline auto adj_pauli_z(
+      ParallelPolicy const parallel_policy,
+      RandomAccessIterator const first, RandomAccessIterator const last,
+      ::ket::control<Qubits> const... control_qubits)
+    -> void
+    { ::ket::gate::pauli_z(parallel_policy, first, last, control_qubits...); }
+
+    template <typename RandomAccessIterator, typename... Qubits>
+    inline auto adj_pauli_z(
+      RandomAccessIterator const first, RandomAccessIterator const last,
+      ::ket::control<Qubits> const... control_qubits)
+    -> void
+    { ::ket::gate::pauli_z(first, last, control_qubits...); }
+
+    namespace ranges
+    {
+      template <typename ParallelPolicy, typename RandomAccessRange, typename... Qubits>
+      inline auto adj_pauli_z(
+        ParallelPolicy const parallel_policy, RandomAccessRange& state,
+        ::ket::control<Qubits> const... control_qubits)
+      -> RandomAccessRange&
+      { return ::ket::gate::ranges::pauli_z(parallel_policy, state, control_qubits...); }
+
+      template <typename RandomAccessRange, typename... Qubits>
+      inline auto adj_pauli_z(RandomAccessRange& state, ::ket::control<Qubits> const... control_qubits) -> RandomAccessRange&
+      { return ::ket::gate::ranges::pauli_z(state, control_qubits...); }
+    } // namespace ranges
+
+    // Case 2: the first argument of qubits is ket::qubit<S, B>
     // Z_i or Z1_i
     // Z_1 (a_0 |0> + a_1 |1>) = a_0 |0> - a_1 |1>
     template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger>
@@ -172,19 +412,24 @@ namespace ket
         ::ket::utility::integer_exp2<StateInteger>(::ket::utility::integer_log2<BitInteger>(last - first))
         == static_cast<StateInteger>(last - first));
 
-      constexpr auto num_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+      using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+      constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
       constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubit2, Qubit3, Qubits...>::value;
-      constexpr auto num_target_qubits = num_qubits - num_control_qubits;
-      constexpr auto num_indices = ::ket::utility::integer_exp2<std::size_t>(num_qubits);
+      constexpr auto num_target_qubits = num_operated_qubits - num_control_qubits;
       constexpr auto num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
 
-      // 0b1...10...0u
-      constexpr auto base_indices_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
-
-      ::ket::gate::gate(
+      ::ket::gate::nocache::gate(
         parallel_policy, first, last,
-        [](RandomAccessIterator const first, std::array<StateInteger, num_indices> const& indices, int const)
+        [](
+          auto const first, StateInteger const index_wo_qubits,
+          std::array<qubit_type, num_operated_qubits> const& unsorted_qubits,
+          std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& sorted_qubits_with_sentinel,
+          int const)
         {
+          // 0b1...10...0u
+          constexpr auto base_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
+
           for (auto i = std::size_t{0u}; i < num_target_indices; ++i)
           {
             auto num_ones_in_i = BitInteger{0u};
@@ -200,10 +445,66 @@ namespace ket
             using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
             using real_type = ::ket::utility::meta::real_t<complex_type>;
             if (num_ones_in_i % BitInteger{2u} == BitInteger{1u})
-              *(first + indices[base_indices_index + i]) *= real_type{-1.0};
+            {
+              using std::begin;
+              using std::end;
+              auto const iter
+                = first
+                  + ::ket::gate::utility::index_with_qubits(
+                      index_wo_qubits, base_index + i,
+                      begin(unsorted_qubits), end(unsorted_qubits),
+                      begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));
+              *iter *= real_type{-1.0};
+            }
           }
         },
         qubit1, qubit2, qubit3, qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+      constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+      constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubit2, Qubit3, Qubits...>::value;
+      constexpr auto num_target_qubits = num_operated_qubits - num_control_qubits;
+      constexpr auto num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
+
+      ::ket::gate::nocache::gate(
+        parallel_policy, first, last,
+        [](
+          auto const first, StateInteger const index_wo_qubits,
+          std::array<StateInteger, num_operated_qubits> const& qubit_masks,
+          std::array<StateInteger, num_operated_qubits + 1u> const& index_masks,
+          int const)
+        {
+          // 0b1...10...0u
+          constexpr auto base_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
+
+          for (auto i = std::size_t{0u}; i < num_target_indices; ++i)
+          {
+            auto num_ones_in_i = BitInteger{0u};
+            auto i_tmp = i;
+            for (auto count = BitInteger{0u}; count < num_target_qubits; ++count)
+            {
+              if ((i_tmp bitand StateInteger{1u}) == StateInteger{1u})
+                ++num_ones_in_i;
+
+              i_tmp >>= BitInteger{1u};
+            }
+
+            using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+            using real_type = ::ket::utility::meta::real_t<complex_type>;
+            if (num_ones_in_i % BitInteger{2u} == BitInteger{1u})
+            {
+              using std::begin;
+              using std::end;
+              auto const iter
+                = first
+                  + ::ket::gate::utility::index_with_qubits(
+                      index_wo_qubits, base_index + i,
+                      begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+              *iter *= real_type{-1.0};
+            }
+          }
+        },
+        qubit1, qubit2, qubit3, qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
     }
 
     template <typename RandomAccessIterator, typename StateInteger, typename BitInteger, typename... Qubits>

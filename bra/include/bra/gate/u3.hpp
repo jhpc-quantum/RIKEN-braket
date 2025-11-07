@@ -4,6 +4,8 @@
 # include <string>
 # include <iosfwd>
 
+# include <boost/variant/variant.hpp>
+
 # include <bra/gate/gate.hpp>
 # include <bra/state.hpp>
 
@@ -20,16 +22,16 @@ namespace bra
       using real_type = ::bra::state::real_type;
 
      private:
-      real_type phase1_;
-      real_type phase2_;
-      real_type phase3_;
+      boost::variant<real_type, std::string> phase1_;
+      boost::variant<real_type, std::string> phase2_;
+      boost::variant<real_type, std::string> phase3_;
       qubit_type qubit_;
 
       static std::string const name_;
 
      public:
       u3(
-        real_type const phase1, real_type const phase2, real_type const phase3,
+        boost::variant<real_type, std::string> const& phase1, boost::variant<real_type, std::string> const& phase2, boost::variant<real_type, std::string> const& phase3,
         qubit_type const qubit);
 
       ~u3() = default;

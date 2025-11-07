@@ -23,6 +23,94 @@ namespace ket
     {
       namespace page
       {
+        // Case 1: the first argument of qubits is ket::control<ket::qubit<S, B>>
+        // 1_p: the qubit of Z is on page
+        // Z_i
+        // Z_1 (a_0 |0> + a_1 |1>) = a_0 |0> - a_1 |1>
+        template <
+          typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger>
+        inline auto pauli_z1(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
+            parallel_policy, local_state, permutated_control_qubit,
+            [](auto const, auto const one_first, StateInteger const index, int const)
+            {
+              using complex_type = ::ket::utility::meta::range_value_t<RandomAccessRange>;
+              using real_type = ::ket::utility::meta::real_t<complex_type>;
+              *(one_first + index) *= static_cast<real_type>(-1);
+            });
+        }
+
+        // cz_2p: both of control qubits of CZ are on page
+        // CZ_{cc'}, CZ1_{cc'}, C1Z_{cc'}, or C1Z1_{cc'}
+        // CZ_{1,2} (a_{00} |00> + a_{01} |01> + a_{10} |10> + a{11} |11>)
+        //   = a_{00} |00> + a_{01} |01> + a_{10} |10> - a{11} |11>
+        template <
+          typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger>
+        inline auto pauli_cz_2p(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit1,
+          ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit2)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::page::detail::two_page_qubits_gate<0u>(
+            parallel_policy, local_state, permutated_control_qubit1, permutated_control_qubit2,
+            [](auto const, auto const, auto const, auto const first_11, StateInteger const index, int const)
+            {
+              using complex_type = ::ket::utility::meta::range_value_t<RandomAccessRange>;
+              using real_type = ::ket::utility::meta::real_t<complex_type>;
+              *(first_11 + index) *= real_type{-1.0};
+            });
+        }
+
+        // cz_p: only one control qubit is on page
+        // CZ_{cc'}, CZ1_{cc'}, C1Z_{cc'}, or C1Z1_{cc'}
+        // CZ_{1,2} (a_{00} |00> + a_{01} |01> + a_{10} |10> + a{11} |11>)
+        //   = a_{00} |00> + a_{01} |01> + a_{10} |10> - a{11} |11>
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger>
+        inline auto pauli_cz_p(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const page_permutated_control_qubit,
+          ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const nonpage_permutated_control_qubit,
+          yampi::rank const rank)
+        -> RandomAccessRange&
+        {
+          assert(::ket::mpi::page::is_on_page(page_permutated_control_qubit, local_state));
+          assert(not ::ket::mpi::page::is_on_page(nonpage_permutated_control_qubit, local_state));
+
+          auto const nonpage_permutated_qubit_mask
+            = ::ket::utility::integer_exp2<StateInteger>(nonpage_permutated_control_qubit);
+          auto const nonpage_lower_bits_mask = nonpage_permutated_qubit_mask - StateInteger{1u};
+          auto const nonpage_upper_bits_mask = compl nonpage_lower_bits_mask;
+
+          return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
+            parallel_policy, local_state, page_permutated_control_qubit,
+            [nonpage_permutated_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask](
+              auto const, auto const one_first, StateInteger const index_wo_nonpage_qubit, int const)
+            {
+              auto const zero_index
+                = ((index_wo_nonpage_qubit bitand nonpage_upper_bits_mask) << 1u)
+                  bitor (index_wo_nonpage_qubit bitand nonpage_lower_bits_mask);
+              auto const one_index = zero_index bitor nonpage_permutated_qubit_mask;
+              auto const iter11 = one_first + one_index;
+
+              using complex_type = ::ket::utility::meta::range_value_t<RandomAccessRange>;
+              using real_type = ::ket::utility::meta::real_t<complex_type>;
+              *iter11 *= real_type{-1.0};
+            });
+        }
+
+        // Case 2: the first argument of qubits is ket::qubit<S, B>
         // 1_p: the qubit of Z is on page
         // Z_i
         // Z_1 (a_0 |0> + a_1 |1>) = a_0 |0> - a_1 |1>
@@ -37,7 +125,7 @@ namespace ket
         {
           return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
             parallel_policy, local_state, permutated_qubit,
-            [](auto const zero_first, auto const one_first, StateInteger const index, int const)
+            [](auto const, auto const one_first, StateInteger const index, int const)
             {
               using complex_type = ::ket::utility::meta::range_value_t<RandomAccessRange>;
               using real_type = ::ket::utility::meta::real_t<complex_type>;

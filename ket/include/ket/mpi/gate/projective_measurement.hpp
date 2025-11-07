@@ -52,11 +52,9 @@ namespace ket
       {
         ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Measurement "}, qubit), environment};
 
-        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-        auto qubits = std::array<qubit_type, 1u>{qubit};
         ::ket::mpi::utility::maybe_interchange_qubits(
           mpi_policy, parallel_policy,
-          local_state, qubits, permutation, buffer, communicator, environment);
+          local_state, permutation, buffer, communicator, environment, qubit);
 
         auto const permutated_qubit = permutation[qubit];
         auto const is_qubit_on_page = ::ket::mpi::page::is_on_page(permutated_qubit, local_state);
@@ -128,11 +126,9 @@ namespace ket
       {
         ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Measurement "}, qubit), environment};
 
-        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-        auto qubits = std::array<qubit_type, 1u>{qubit};
         ::ket::mpi::utility::maybe_interchange_qubits(
           mpi_policy, parallel_policy,
-          local_state, qubits, permutation, buffer, communicator, environment);
+          local_state, permutation, buffer, communicator, environment, qubit);
 
         auto const permutated_qubit = permutation[qubit];
         auto const is_qubit_on_page = ::ket::mpi::page::is_on_page(permutated_qubit, local_state);
@@ -220,11 +216,9 @@ namespace ket
       {
         ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"Measurement "}, qubit), environment};
 
-        using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-        auto qubits = std::array<qubit_type, 1u>{qubit};
         ::ket::mpi::utility::maybe_interchange_qubits(
           mpi_policy, parallel_policy,
-          local_state, qubits, permutation, buffer, complex_datatype, communicator, environment);
+          local_state, permutation, buffer, complex_datatype, communicator, environment, qubit);
 
         auto const permutated_qubit = permutation[qubit];
         auto const is_qubit_on_page = ::ket::mpi::page::is_on_page(permutated_qubit, local_state);

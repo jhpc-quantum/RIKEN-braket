@@ -19,6 +19,13 @@ namespace bra
   {
     multi_controlled_hadamard::multi_controlled_hadamard(
       qubit_type const target_qubit,
+      std::vector<control_qubit_type> const& control_qubits)
+      : ::bra::gate::gate{}, target_qubit_{target_qubit}, control_qubits_{control_qubits},
+        name_{std::string(control_qubits_.size(), 'C').append("H")}
+    { }
+
+    multi_controlled_hadamard::multi_controlled_hadamard(
+      qubit_type const target_qubit,
       std::vector<control_qubit_type>&& control_qubits)
       : ::bra::gate::gate{}, target_qubit_{target_qubit}, control_qubits_{std::move(control_qubits)},
         name_{std::string(control_qubits_.size(), 'C').append("H")}

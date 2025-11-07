@@ -14,6 +14,7 @@
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
 # include <ket/gate/gate.hpp>
+# include <ket/gate/utility/index_with_qubits.hpp>
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/integer_exp2.hpp>
 # ifndef NDEBUG
@@ -114,35 +115,82 @@ namespace ket
       auto const one_plus_phase_coefficient = Complex{real_type{1}} + phase_coefficient;
       auto const one_minus_phase_coefficient = Complex{real_type{1}} - phase_coefficient;
 
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+      using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
       constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 2u);
-      constexpr auto num_qubits = num_control_qubits + BitInteger{1u};
-      constexpr auto num_indices = ::ket::utility::integer_exp2<std::size_t>(num_qubits);
+      constexpr auto num_operated_qubits = num_control_qubits + BitInteger{1u};
 
-      // 0b11...10u
-      constexpr auto indices_index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << std::size_t{1u};
-      // 0b11...11u
-      constexpr auto indices_index1 = indices_index0 bitor std::size_t{1u};
-
-      ::ket::gate::gate(
+      ::ket::gate::nocache::gate(
         parallel_policy, first, last,
         [&one_plus_phase_coefficient, &one_minus_phase_coefficient](
-          RandomAccessIterator const first, std::array<StateInteger, num_indices> const& indices, int const)
+          auto const first, StateInteger const index_wo_qubits,
+          std::array<qubit_type, num_operated_qubits> const& unsorted_qubits,
+          std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& sorted_qubits_with_sentinel,
+          int const)
         {
-          auto const control_on_iter = first + indices[indices_index0];
-          auto const target_control_on_iter = first + indices[indices_index1];
-          auto const control_on_iter_value = *control_on_iter;
+          // 0b11...10u
+          constexpr auto index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << std::size_t{1u};
+          // 0b11...11u
+          constexpr auto index1 = index0 bitor std::size_t{1u};
+
+          using std::begin;
+          using std::end;
+          auto const iter0
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index0,
+                  begin(unsorted_qubits), end(unsorted_qubits),
+                  begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));
+          auto const iter1
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index1,
+                  begin(unsorted_qubits), end(unsorted_qubits),
+                  begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));
+          auto const value0 = *iter0;
 
           using boost::math::constants::half;
-          *control_on_iter
-            = half<real_type>()
-              * (one_plus_phase_coefficient * control_on_iter_value
-                 + one_minus_phase_coefficient * (*target_control_on_iter));
-          *target_control_on_iter
-            = half<real_type>()
-              * (one_minus_phase_coefficient * control_on_iter_value
-                 + one_plus_phase_coefficient * (*target_control_on_iter));
+          *iter0 = half<real_type>() * (one_plus_phase_coefficient * value0 + one_minus_phase_coefficient * *iter1);
+          *iter1 = half<real_type>() * (one_minus_phase_coefficient * value0 + one_plus_phase_coefficient * *iter1);
         },
         target_qubit, control_qubit1, control_qubit2, control_qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+      constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 2u);
+      constexpr auto num_operated_qubits = num_control_qubits + BitInteger{1u};
+
+      ::ket::gate::nocache::gate(
+        parallel_policy, first, last,
+        [&one_plus_phase_coefficient, &one_minus_phase_coefficient](
+          auto const first, StateInteger const index_wo_qubits,
+          std::array<StateInteger, num_operated_qubits> const& qubit_masks,
+          std::array<StateInteger, num_operated_qubits + 1u> const& index_masks,
+          int const)
+        {
+          // 0b11...10u
+          constexpr auto index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << std::size_t{1u};
+          // 0b11...11u
+          constexpr auto index1 = index0 bitor std::size_t{1u};
+
+          using std::begin;
+          using std::end;
+          auto const iter0
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index0,
+                  begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+          auto const iter1
+            = first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index1,
+                  begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+          auto const value0 = *iter0;
+
+          using boost::math::constants::half;
+          *iter0 = half<real_type>() * (one_plus_phase_coefficient * value0 + one_minus_phase_coefficient * *iter1);
+          *iter1 = half<real_type>() * (one_minus_phase_coefficient * value0 + one_plus_phase_coefficient * *iter1);
+        },
+        target_qubit, control_qubit1, control_qubit2, control_qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
     }
 
     template <typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger, typename... ControlQubits>

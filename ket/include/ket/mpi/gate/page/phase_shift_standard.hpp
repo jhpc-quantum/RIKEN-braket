@@ -28,6 +28,79 @@ namespace ket
     {
       namespace page
       {
+        // Case 1: the first argument of qubits is ket::control<ket::qubit<S, B>>
+        template <
+          typename ParallelPolicy,
+          typename RandomAccessRange, typename Complex, typename StateInteger, typename BitInteger>
+        inline auto phase_shift_coeff(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          Complex const& phase_coefficient,
+          ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::page::detail::one_page_qubit_gate<0u>(
+            parallel_policy, local_state, permutated_control_qubit,
+            [phase_coefficient](auto const, auto const one_first, StateInteger const index, int const)
+            { *(one_first + index) *= phase_coefficient; });
+        }
+
+        // cphase_shift_coeff_2p: both of control qubits of CPhase(coeff) are on page
+        // CU1_{cc'}(theta) or C1U1_{cc'}(theta)
+        // CU1_{1,2}(theta) (a_{00} |00> + a_{01} |01> + a_{10} |10> + a{11} |11>)
+        //   = a_{00} |00> + a_{01} |01> + a_{10} |10> + e^{i theta} a_{11} |11>
+        template <
+          typename ParallelPolicy,
+          typename RandomAccessRange, typename Complex, typename StateInteger, typename BitInteger>
+        inline auto cphase_shift_coeff_2p(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state, Complex const& phase_coefficient,
+          ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit1,
+          ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit2)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::page::detail::two_page_qubits_gate<0u>(
+            parallel_policy, local_state, permutated_control_qubit1, permutated_control_qubit2,
+            [&phase_coefficient](auto const, auto const, auto const, auto const first_11, StateInteger const index, int const)
+            { *(first_11 + index) *= phase_coefficient; });
+        }
+
+        // cphase_shift_coeff_p: only one control qubit is on page
+        // CU1_{cc'}(theta) or C1U1_{cc'}(theta)
+        // CU1_{1,2}(theta) (a_{00} |00> + a_{01} |01> + a_{10} |10> + a{11} |11>)
+        //   = a_{00} |00> + a_{01} |01> + a_{10} |10> + e^{i theta} a_{11} |11>
+        template <
+          typename ParallelPolicy,
+          typename RandomAccessRange, typename Complex, typename StateInteger, typename BitInteger>
+        inline auto cphase_shift_coeff_p(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state, Complex const& phase_coefficient,
+          ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const page_permutated_control_qubit,
+          ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const nonpage_permutated_control_qubit)
+        -> RandomAccessRange&
+        {
+          assert(::ket::mpi::page::is_on_page(page_permutated_control_qubit, local_state));
+          assert(not ::ket::mpi::page::is_on_page(nonpage_permutated_control_qubit, local_state));
+
+          auto const nonpage_permutated_qubit_mask
+            = ::ket::utility::integer_exp2<StateInteger>(nonpage_permutated_control_qubit);
+          auto const nonpage_lower_bits_mask = nonpage_permutated_qubit_mask - StateInteger{1u};
+          auto const nonpage_upper_bits_mask = compl nonpage_lower_bits_mask;
+
+          return ::ket::mpi::gate::page::detail::one_page_qubit_gate<1u>(
+            parallel_policy, local_state, page_permutated_control_qubit,
+            [&phase_coefficient, nonpage_permutated_qubit_mask, nonpage_lower_bits_mask, nonpage_upper_bits_mask](
+              auto const, auto const one_first, StateInteger const index_wo_nonpage_qubit, int const)
+            {
+              auto const zero_index
+                = ((index_wo_nonpage_qubit bitand nonpage_upper_bits_mask) << 1u)
+                  bitor (index_wo_nonpage_qubit bitand nonpage_lower_bits_mask);
+              auto const one_index = zero_index bitor nonpage_permutated_qubit_mask;
+              *(one_first + one_index) *= phase_coefficient;
+            });
+        }
+
+        // Case 2: the first argument of qubits is ket::qubit<S, B>
         template <
           typename ParallelPolicy,
           typename RandomAccessRange, typename Complex, typename StateInteger, typename BitInteger>

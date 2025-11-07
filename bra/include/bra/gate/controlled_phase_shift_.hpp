@@ -4,6 +4,8 @@
 # include <string>
 # include <iosfwd>
 
+# include <boost/variant/variant.hpp>
+
 # include <bra/gate/gate.hpp>
 # include <bra/state.hpp>
 
@@ -16,24 +18,22 @@ namespace bra
       : public ::bra::gate::gate
     {
      public:
-      using qubit_type = ::bra::state::qubit_type;
       using control_qubit_type = ::bra::state::control_qubit_type;
       using complex_type = ::bra::state::complex_type;
+      using int_type = ::bra::state::int_type;
 
      private:
-      int phase_exponent_;
-      complex_type phase_coefficient_;
-      qubit_type target_qubit_;
-      control_qubit_type control_qubit_;
+      boost::variant<int_type, std::string> phase_exponent_;
+      control_qubit_type control_qubit1_;
+      control_qubit_type control_qubit2_;
 
       static std::string const name_;
 
      public:
       controlled_phase_shift_(
-        int const phase_exponent,
-        complex_type const& phase_coefficient,
-        qubit_type const target_qubit,
-        control_qubit_type const control_qubit);
+        boost::variant<int_type, std::string> const& phase_exponent,
+        control_qubit_type const control_qubit1,
+        control_qubit_type const control_qubit2);
 
       ~controlled_phase_shift_() = default;
       controlled_phase_shift_(controlled_phase_shift_ const&) = delete;

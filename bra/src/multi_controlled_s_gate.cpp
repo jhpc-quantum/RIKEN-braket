@@ -1,3 +1,4 @@
+#include <cstddef>
 #include <ios>
 #include <iomanip>
 #include <sstream>
@@ -17,18 +18,20 @@ namespace bra
 {
   namespace gate
   {
-    multi_controlled_s_gate::multi_controlled_s_gate(
-      complex_type const& phase_coefficient,
-      qubit_type const target_qubit, std::vector<control_qubit_type>&& control_qubits)
+    multi_controlled_s_gate::multi_controlled_s_gate(std::vector<control_qubit_type> const& control_qubits)
       : ::bra::gate::gate{},
-        phase_coefficient_{phase_coefficient},
-        target_qubit_{target_qubit},
+        control_qubits_{control_qubits},
+        name_{std::string(control_qubits_.size() - std::size_t{1u}, 'C').append("S")}
+    { }
+
+    multi_controlled_s_gate::multi_controlled_s_gate(std::vector<control_qubit_type>&& control_qubits)
+      : ::bra::gate::gate{},
         control_qubits_{std::move(control_qubits)},
-        name_{std::string(control_qubits_.size(), 'C').append("S")}
+        name_{std::string(control_qubits_.size() - std::size_t{1u}, 'C').append("S")}
     { }
 
     ::bra::state& multi_controlled_s_gate::do_apply(::bra::state& state) const
-    { return state.multi_controlled_phase_shift(phase_coefficient_, target_qubit_, control_qubits_); }
+    { return state.multi_controlled_sqrt_pauli_z(control_qubits_); }
 
     std::string const& multi_controlled_s_gate::do_name() const { return name_; }
     std::string multi_controlled_s_gate::do_representation(
@@ -36,7 +39,6 @@ namespace bra
     {
       for (auto&& control_qubit: control_qubits_)
         repr_stream << std::right << std::setw(parameter_width) << control_qubit;
-      repr_stream << std::right << std::setw(parameter_width) << target_qubit_;
       return repr_stream.str();
     }
   } // namespace gate

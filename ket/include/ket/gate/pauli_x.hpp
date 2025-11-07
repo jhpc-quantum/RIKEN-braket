@@ -11,6 +11,7 @@
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
 # include <ket/gate/gate.hpp>
+# include <ket/gate/utility/index_with_qubits.hpp>
 # include <ket/gate/meta/num_control_qubits.hpp>
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/integer_exp2.hpp>
@@ -173,28 +174,74 @@ namespace ket
         ::ket::utility::integer_exp2<StateInteger>(::ket::utility::integer_log2<BitInteger>(last - first))
         == static_cast<StateInteger>(last - first));
 
-      constexpr auto num_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+      using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+      constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
       constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubit2, Qubit3, Qubits...>::value;
-      constexpr auto num_target_qubits = num_qubits - num_control_qubits;
-      constexpr auto num_indices = ::ket::utility::integer_exp2<std::size_t>(num_qubits);
+      constexpr auto num_target_qubits = num_operated_qubits - num_control_qubits;
       constexpr auto num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
       constexpr auto half_num_target_indices = num_target_indices / std::size_t{2u};
 
-      // 0b1...10...0u
-      constexpr auto base_indices_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
-
-      ::ket::gate::gate(
+      ::ket::gate::nocache::gate(
         parallel_policy, first, last,
-        [](RandomAccessIterator const first, std::array<StateInteger, num_indices> const& indices, int const)
+        [](
+          auto const first, StateInteger const index_wo_qubits,
+          std::array<qubit_type, num_operated_qubits> const& unsorted_qubits,
+          std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& sorted_qubits_with_sentinel,
+          int const)
         {
+          // 0b1...10...0u
+          constexpr auto base_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
+
+          using std::begin;
+          using std::end;
           for (auto i = std::size_t{0u}; i < half_num_target_indices; ++i)
-          {
-            auto const iter1 = first + indices[base_indices_index + i];
-            auto const iter2 = first + indices[base_indices_index + (num_target_indices - std::size_t{1u} - i)];
-            std::iter_swap(iter1, iter2);
-          }
+            std::iter_swap(
+              first
+                + ::ket::gate::utility::index_with_qubits(
+                    index_wo_qubits, base_index + i,
+                    begin(unsorted_qubits), end(unsorted_qubits),
+                    begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel)),
+              first
+                + ::ket::gate::utility::index_with_qubits(
+                    index_wo_qubits, base_index + (num_target_indices - std::size_t{1u} - i),
+                    begin(unsorted_qubits), end(unsorted_qubits),
+                    begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel)));
         },
         qubit1, qubit2, qubit3, qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+      constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
+      constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubit2, Qubit3, Qubits...>::value;
+      constexpr auto num_target_qubits = num_operated_qubits - num_control_qubits;
+      constexpr auto num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
+      constexpr auto half_num_target_indices = num_target_indices / std::size_t{2u};
+
+      ::ket::gate::nocache::gate(
+        parallel_policy, first, last,
+        [](
+          auto const first, StateInteger const index_wo_qubits,
+          std::array<StateInteger, num_operated_qubits> const& qubit_masks,
+          std::array<StateInteger, num_operated_qubits + 1u> const& index_masks,
+          int const)
+        {
+          // 0b1...10...0u
+          constexpr auto base_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
+
+          using std::begin;
+          using std::end;
+          for (auto i = std::size_t{0u}; i < half_num_target_indices; ++i)
+            std::iter_swap(
+              first
+                + ::ket::gate::utility::index_with_qubits(
+                    index_wo_qubits, base_index + i,
+                    begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks)),
+              first
+                + ::ket::gate::utility::index_with_qubits(
+                    index_wo_qubits, base_index + (num_target_indices - std::size_t{1u} - i),
+                    begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks)));
+        },
+        qubit1, qubit2, qubit3, qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
     }
 
     template <typename RandomAccessIterator, typename StateInteger, typename BitInteger, typename... Qubits>

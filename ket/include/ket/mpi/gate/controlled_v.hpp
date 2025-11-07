@@ -83,6 +83,28 @@ namespace ket
         }
 
         // C...CV_{tc...c'}(theta) or CnV_{tc...c'}(theta)
+        namespace dispatch
+        {
+          template <typename LocalState>
+          struct transpage_controlled_v_coeff
+          {
+            template <
+              typename ParallelPolicy,
+              typename RandomAccessRange, typename Complex,
+              typename StateInteger, typename BitInteger, typename... ControlQubits>
+            [[noreturn]] static auto call(
+              ParallelPolicy const parallel_policy,
+              RandomAccessRange& local_state,
+              Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit1,
+              ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit2,
+              ::ket::mpi::permutated<ControlQubits> const... permutated_control_qubits)
+            -> RandomAccessRange&
+            { throw 1; }
+          }; // struct transpage_controlled_v_coeff<LocalState>
+        } // namespace dispatch
+
         template <
           typename MpiPolicy, typename ParallelPolicy,
           typename RandomAccessRange, typename StateInteger, typename BitInteger,
@@ -102,21 +124,24 @@ namespace ket
             mpi_policy, local_state, communicator, environment,
             permutation[target_qubit], permutation[control_qubit1], permutation[control_qubit2], permutation[control_qubits]...);
 
-          auto const data_block_size
-            = ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment);
-          auto const num_data_blocks
-            = ::ket::mpi::utility::policy::num_data_blocks(mpi_policy, communicator, environment);
+          if (::ket::mpi::page::any_on_page(local_state, permutation[target_qubit], permutation[control_qubit1], permutation[control_qubit2], permutation[control_qubits]...))
+          {
+            using local_state_type = std::remove_const_t<std::remove_reference_t<RandomAccessRange>>;
+            ::ket::mpi::gate::local::dispatch::transpage_controlled_v_coeff<local_state_type>::call(
+              parallel_policy, local_state, phase_coefficient,
+              permutation[target_qubit], permutation[control_qubit1],
+              permutation[control_qubit2], permutation[control_qubits]...);
+          }
 
-          using std::begin;
-          auto const first = begin(local_state);
-          for (auto data_block_index = decltype(num_data_blocks){0u}; data_block_index < num_data_blocks; ++data_block_index)
-            ::ket::gate::controlled_v_coeff(
-              parallel_policy,
-              first + data_block_index * data_block_size,
-              first + (data_block_index + 1u) * data_block_size,
-              phase_coefficient, permutation[target_qubit].qubit(), permutation[control_qubit1].qubit(), permutation[control_qubit2].qubit(), permutation[control_qubits].qubit()...);
-
-          return local_state;
+          return ::ket::mpi::utility::for_each_local_range(
+            mpi_policy, local_state, communicator, environment,
+            [parallel_policy, &permutation, target_qubit, control_qubit1, control_qubit2, control_qubits...](auto const first, auto const last)
+            {
+              ::ket::gate::controlled_v_coeff(
+                parallel_policy, first, last, phase_coefficient,
+                permutation[target_qubit].qubit(), permutation[control_qubit1].qubit(),
+                permutation[control_qubit2].qubit(), permutation[control_qubits].qubit()...);
+            });
         }
       } // namespace local
 
@@ -137,11 +162,9 @@ namespace ket
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ControlQubits const... control_qubits)
         -> RandomAccessRange&
         {
-          using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-          auto qubits = std::array<qubit_type, sizeof...(ControlQubits) + 2u>{target_qubit, control_qubit.qubit(), control_qubits.qubit()...};
           ::ket::mpi::utility::maybe_interchange_qubits(
             mpi_policy, parallel_policy,
-            local_state, qubits, permutation, buffer, communicator, environment);
+            local_state, permutation, buffer, communicator, environment, target_qubit, control_qubit, control_qubits...);
 
           return ::ket::mpi::gate::local::controlled_v_coeff(
             mpi_policy, parallel_policy,
@@ -165,11 +188,9 @@ namespace ket
           ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ControlQubits const... control_qubits)
         -> RandomAccessRange&
         {
-          using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-          auto qubits = std::array<qubit_type, sizeof...(ControlQubits) + 2u>{target_qubit, control_qubit.qubit(), control_qubits.qubit()...};
           ::ket::mpi::utility::maybe_interchange_qubits(
             mpi_policy, parallel_policy,
-            local_state, qubits, permutation, buffer, datatype, communicator, environment);
+            local_state, permutation, buffer, datatype, communicator, environment, target_qubit, control_qubit, control_qubits...);
 
           return ::ket::mpi::gate::local::controlled_v_coeff(
             mpi_policy, parallel_policy,

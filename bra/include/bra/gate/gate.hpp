@@ -2,7 +2,10 @@
 # define BRA_GATE_GATE_HPP
 
 # include <string>
+# include <sstream>
 # include <iosfwd>
+
+# include <boost/variant/static_visitor.hpp>
 
 # include <bra/state.hpp>
 
@@ -11,6 +14,19 @@ namespace bra
 {
   namespace gate
   {
+    namespace gate_detail
+    {
+      template <typename T>
+      struct output_visitor
+        : public boost::static_visitor<std::string>
+      {
+        std::string operator()(T const value) const
+        { std::ostringstream oss; oss << value; return oss.str(); }
+
+        std::string operator()(std::string const& string) const { return string; }
+      }; // struct output_visitor<T>
+    } // namespace gate_detail
+
     class gate
     {
      public:

@@ -12,6 +12,7 @@
 # include <ket/control.hpp>
 # include <ket/gate/pauli_x.hpp>
 # include <ket/gate/gate.hpp>
+# include <ket/gate/utility/index_with_qubits.hpp>
 # include <ket/utility/loop_n.hpp>
 # include <ket/utility/integer_exp2.hpp>
 # ifndef NDEBUG
@@ -55,19 +56,66 @@ namespace ket
       ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2, ControlQubits const... control_qubits)
     -> void
     {
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+      using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
       constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 2u);
-      constexpr auto num_indices = ::ket::utility::integer_exp2<std::size_t>(num_control_qubits + BitInteger{1u});
+      constexpr auto num_operated_qubits = num_control_qubits + BitInteger{1u};
 
-      // 0b11...10u
-      constexpr auto index0 = ((StateInteger{1u} << num_control_qubits) - StateInteger{1u}) << BitInteger{1u};
-      // 0b11...11u
-      constexpr auto index1 = index0 bitor StateInteger{1u};
-
-      ::ket::gate::gate(
+      ::ket::gate::nocache::gate(
         parallel_policy, first, last,
-        [](RandomAccessIterator const first, std::array<StateInteger, num_indices> const& indices, int const)
-        { std::iter_swap(first + indices[index0], first + indices[index1]); },
+        [](
+          auto const first, StateInteger const index_wo_qubits,
+          std::array<qubit_type, num_operated_qubits> const& unsorted_qubits,
+          std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& sorted_qubits_with_sentinel,
+          int const)
+        {
+          // 0b11...10u
+          constexpr auto index0 = ((StateInteger{1u} << num_control_qubits) - StateInteger{1u}) << BitInteger{1u};
+          // 0b11...11u
+          constexpr auto index1 = index0 bitor StateInteger{1u};
+
+          using std::begin;
+          using std::end;
+          std::iter_swap(
+            first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index0,
+                  begin(unsorted_qubits), end(unsorted_qubits),
+                  begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel)),
+            first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index1,
+                  begin(unsorted_qubits), end(unsorted_qubits),
+                  begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel)));
+        },
         target_qubit, control_qubit1, control_qubit2, control_qubits...);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+      constexpr auto num_control_qubits = static_cast<BitInteger>(sizeof...(ControlQubits) + 2u);
+      constexpr auto num_operated_qubits = num_control_qubits + BitInteger{1u};
+
+      ::ket::gate::nocache::gate(
+        parallel_policy, first, last,
+        [](auto const first, StateInteger const index_wo_qubits, std::array<StateInteger, num_operated_qubits> const& qubit_masks, std::array<StateInteger, num_operated_qubits + 1u> const& index_masks, int const)
+        {
+          // 0b11...10u
+          constexpr auto index0 = ((StateInteger{1u} << num_control_qubits) - StateInteger{1u}) << BitInteger{1u};
+          // 0b11...11u
+          constexpr auto index1 = index0 bitor StateInteger{1u};
+
+          using std::begin;
+          using std::end;
+          std::iter_swap(
+            first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index0,
+                  begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks)),
+            first
+              + ::ket::gate::utility::index_with_qubits(
+                  index_wo_qubits, index1,
+                  begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks)));
+        },
+        target_qubit, control_qubit1, control_qubit2, control_qubits...);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
     }
 
     template <typename RandomAccessIterator, typename StateInteger, typename BitInteger>
