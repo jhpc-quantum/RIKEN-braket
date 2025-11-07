@@ -68,6 +68,7 @@ namespace bra
 
   enum class begin_statement : int { measurement, fusion, circuit, learning_machine };
   enum class end_statement : int { fusion, circuit };
+  enum class do_statement : int { measurement };
   enum class bit_statement : int { assignment };
   enum class generate_statement : int { events };
   enum class depolarizing_statement : int { channel };
@@ -298,6 +299,7 @@ namespace bra
 
     ::bra::begin_statement read_begin_statement(columns_type const& columns) const;
     ::bra::end_statement read_end_statement(columns_type const& columns) const;
+    ::bra::do_statement read_do_statement(columns_type const& columns) const;
     ::bra::bit_statement read_bit_statement(columns_type const& columns) const;
     std::tuple< ::bra::bit_integer_type, ::bra::state_integer_type, ::bra::state_integer_type > read_shor_box(columns_type const& columns) const;
     std::tuple< ::bra::generate_statement, int, int > read_generate_statement(columns_type const& columns) const;

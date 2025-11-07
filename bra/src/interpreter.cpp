@@ -646,18 +646,30 @@ namespace bra
         }
         else if (statement == ::bra::begin_statement::learning_machine)
           throw unsupported_mnemonic_error{mnemonic};
+        else
+          throw unsupported_mnemonic_error{mnemonic};
       }
       else if (mnemonic == "DO") // DO MEASUREMENT
       {
-        /*
+        if (columns.size() <= 1u)
+          throw wrong_mnemonics_error{columns};
+
+        std::for_each(
+          std::next(begin(columns)), end(columns),
+          [](std::string& str) { boost::algorithm::to_upper(str); });
+
         auto const statement = read_do_statement(columns);
 
-        if (statement == do_statement::error)
-          throw wrong_mnemonics_error{columns};
-        else if (statement == do_statement::measurement)
+        if (statement == ::bra::do_statement::measurement)
+        {
+#ifndef BRA_NO_MPI
+          circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::measurement >(root_));
+#else // BRA_NO_MPI
+          circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::measurement >());
+#endif // BRA_NO_MPI
+        }
+        else
           throw unsupported_mnemonic_error{mnemonic};
-          */
-        throw unsupported_mnemonic_error{mnemonic};
       }
       else if (mnemonic == "END") // END MEASUREMENT/LEARNING MACHINE/FUSION/CIRCUIT
       {
@@ -1686,6 +1698,22 @@ namespace bra
       return ::bra::end_statement::fusion;
     if (*iter == "CIRCUIT" and column_size == 2u)
       return ::bra::end_statement::circuit;
+
+    throw wrong_mnemonics_error{columns};
+  }
+
+  ::bra::do_statement interpreter::read_do_statement(interpreter::columns_type const& columns) const
+  {
+    auto const column_size = boost::size(columns);
+
+    assert(column_size >= 2u);
+
+    using std::begin;
+    auto iter = begin(columns);
+    ++iter;
+
+    if (*iter == "MEASUREMENT" and column_size == 2u)
+      return ::bra::do_statement::measurement;
 
     throw wrong_mnemonics_error{columns};
   }
