@@ -156,6 +156,7 @@ namespace bra
 
     ket::gate::outcome do_projective_measurement(qubit_type const qubit) override;
     void do_expectation_values() override;
+    void do_amplitudes() override;
     void do_measure() override;
     void do_generate_events(int const num_events, int const seed) override;
     void do_shor_box(

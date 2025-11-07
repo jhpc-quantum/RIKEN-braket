@@ -1,4 +1,6 @@
 #ifdef BRA_NO_MPI
+# include <iostream>
+# include <sstream>
 # include <vector>
 # include <array>
 # include <iterator>
@@ -41,12 +43,14 @@
 #   include <ket/gate/utility/cache_aware_iterator.hpp>
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
 # include <ket/all_spin_expectation_values.hpp>
+# include <ket/print_amplitudes.hpp>
 # include <ket/measure.hpp>
 # include <ket/generate_events.hpp>
 # include <ket/shor_box.hpp>
 
 # include <bra/nompi_state.hpp>
 # include <bra/state.hpp>
+# include <bra/types.hpp>
 # include <bra/fused_gate.hpp>
 
 # ifndef BRA_MAX_NUM_OPERATED_QUBITS
@@ -1040,6 +1044,24 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
 
   void nompi_state::do_expectation_values()
   { maybe_expectation_values_ = ket::ranges::all_spin_expectation_values<qubit_type>(parallel_policy_, data_); }
+
+  void nompi_state::do_amplitudes()
+  {
+    std::ostringstream oss;
+
+    ket::println_amplitudes(
+      oss, data_,
+      [](::bra::state_integer_type const qubit_value, ::bra::complex_type const& amplitude)
+      {
+        std::ostringstream oss;
+        using std::real;
+        using std::imag;
+        oss << qubit_value << " => " << real(amplitude) << " + " << imag(amplitude) << " i";
+        return oss.str();
+      }, std::string{"\n"});
+
+    std::cout << oss.str() << std::flush;
+  }
 
   void nompi_state::do_measure()
   {

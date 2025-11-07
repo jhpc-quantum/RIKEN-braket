@@ -1,3 +1,5 @@
+#include <iostream>
+#include <sstream>
 #include <string>
 #include <vector>
 #include <random>
@@ -9,6 +11,9 @@
 # include <memory>
 #endif
 #include <stdexcept>
+
+#define FMT_HEADER_ONLY
+#include <fmt/core.h>
 
 #include <boost/variant/variant.hpp>
 #include <boost/variant/apply_visitor.hpp>
@@ -62,14 +67,14 @@ namespace bra
       buffer_{},
       communicator_{communicator},
       environment_{environment},
-      finish_times_and_processes_{},
+      start_time_{BRA_clock::now(environment_)},
+      last_processed_time_{start_time_},
       phase_coefficients_{},
       maybe_label_{},
       real_variables_{},
       int_variables_{}
   {
     found_qubits_.reserve(total_num_qubits_);
-    finish_times_and_processes_.reserve(2u);
     ket::utility::generate_phase_coefficients(phase_coefficients_, total_num_qubits_);
   }
 
@@ -92,14 +97,14 @@ namespace bra
       buffer_(num_elements_in_buffer),
       communicator_{communicator},
       environment_{environment},
-      finish_times_and_processes_{},
+      start_time_{BRA_clock::now(environment_)},
+      last_processed_time_{start_time_},
       phase_coefficients_{},
       maybe_label_{},
       real_variables_{},
       int_variables_{}
   {
     found_qubits_.reserve(total_num_qubits_);
-    finish_times_and_processes_.reserve(2u);
     ket::utility::generate_phase_coefficients(phase_coefficients_, total_num_qubits_);
   }
 
@@ -122,14 +127,14 @@ namespace bra
       buffer_{},
       communicator_{communicator},
       environment_{environment},
-      finish_times_and_processes_{},
+      start_time_{BRA_clock::now(environment_)},
+      last_processed_time_{start_time_},
       phase_coefficients_{},
       maybe_label_{},
       real_variables_{},
       int_variables_{}
   {
     found_qubits_.reserve(total_num_qubits_);
-    finish_times_and_processes_.reserve(2u);
     ket::utility::generate_phase_coefficients(phase_coefficients_, total_num_qubits_);
   }
 
@@ -153,14 +158,14 @@ namespace bra
       buffer_(num_elements_in_buffer),
       communicator_{communicator},
       environment_{environment},
-      finish_times_and_processes_{},
+      start_time_{BRA_clock::now(environment_)},
+      last_processed_time_{start_time_},
       phase_coefficients_{},
       maybe_label_{},
       real_variables_{},
       int_variables_{}
   {
     found_qubits_.reserve(total_num_qubits_);
-    finish_times_and_processes_.reserve(2u);
     ket::utility::generate_phase_coefficients(phase_coefficients_, total_num_qubits_);
   }
 #else // BRA_NO_MPI
@@ -174,14 +179,14 @@ namespace bra
       is_in_fusion_{false},
       found_qubits_{},
       random_number_generator_{seed},
-      finish_times_and_processes_{},
+      start_time_{BRA_clock::now()},
+      last_processed_time_{start_time_},
       phase_coefficients_{},
       maybe_label_{},
       real_variables_{},
       int_variables_{}
   {
     found_qubits_.reserve(total_num_qubits_);
-    finish_times_and_processes_.reserve(2u);
     ket::utility::generate_phase_coefficients(phase_coefficients_, total_num_qubits_);
   }
 #endif // BRA_NO_MPI
@@ -1071,14 +1076,70 @@ namespace bra
     if (is_in_fusion_)
       throw ::bra::unsupported_fused_gate_error{"MEASURE"};
 
-    finish_times_and_processes_.push_back(
-      std::make_pair(
-        BRA_clock::now(environment_), ::bra::finished_process::operations));
+    auto const operation_finish_time = BRA_clock::now(environment_);
+    std::ostringstream oss;
+    if (communicator_.rank(environment_) == root)
+    {
+      oss << "Operations finished: " << ::bra::state_detail::duration_to_second(start_time_, operation_finish_time)
+          << " (" << ::bra::state_detail::duration_to_second(last_processed_time_, operation_finish_time) << ")\n";
+      std::cout << oss.str() << std::flush;
+    }
+    last_processed_time_ = operation_finish_time;
 
     do_expectation_values(root);
-    finish_times_and_processes_.push_back(
-      std::make_pair(
-        BRA_clock::now(environment_), ::bra::finished_process::begin_measurement));
+
+    if (communicator_.rank(environment_) == root)
+    {
+      oss.str("");
+      oss << fmt::format("Expectation values of spins:\n{:^8s} {:^8s} {:^8s}\n", "<Qx>", "<Qy>", "<Qz>");
+      if (maybe_expectation_values_)
+        for (auto const& spin: *maybe_expectation_values_)
+          oss
+            << fmt::format(
+                 "{:^ 8.3f} {:^ 8.3f} {:^ 8.3f}\n",
+                 0.5 - static_cast<double>(spin[0u]), 0.5 - static_cast<double>(spin[1u]), 0.5 - static_cast<double>(spin[2u]));
+      std::cout << oss.str() << std::flush;
+    }
+
+    auto const expectation_values_finish_time = BRA_clock::now(environment_);
+    if (communicator_.rank(environment_) == root)
+    {
+      oss.str("");
+      oss << "Expectation values finished: " << ::bra::state_detail::duration_to_second(start_time_, expectation_values_finish_time)
+          << " (" << ::bra::state_detail::duration_to_second(last_processed_time_, expectation_values_finish_time) << ")\n";
+      std::cout << oss.str() << std::flush;
+    }
+    last_processed_time_ = expectation_values_finish_time;
+
+    return *this;
+  }
+
+  state& state::amplitudes(yampi::rank const root)
+  {
+    if (is_in_fusion_)
+      throw ::bra::unsupported_fused_gate_error{"AMPLITUDES"};
+
+    auto const operation_finish_time = BRA_clock::now(environment_);
+    std::ostringstream oss;
+    if (communicator_.rank(environment_) == root)
+    {
+      oss << "Operations finished: " << ::bra::state_detail::duration_to_second(start_time_, operation_finish_time)
+          << " (" << ::bra::state_detail::duration_to_second(last_processed_time_, operation_finish_time) << ")\n";
+      std::cout << oss.str() << std::flush;
+    }
+    last_processed_time_ = operation_finish_time;
+
+    do_amplitudes(root);
+
+    auto const amplitudes_finish_time = BRA_clock::now(environment_);
+    if (communicator_.rank(environment_) == root)
+    {
+      oss.str("");
+      oss << "Amplitudes finished: " << ::bra::state_detail::duration_to_second(start_time_, amplitudes_finish_time)
+          << " (" << ::bra::state_detail::duration_to_second(last_processed_time_, amplitudes_finish_time) << ")\n";
+      std::cout << oss.str() << std::flush;
+    }
+    last_processed_time_ = amplitudes_finish_time;
 
     return *this;
   }
@@ -1088,14 +1149,36 @@ namespace bra
     if (is_in_fusion_)
       throw ::bra::unsupported_fused_gate_error{"GENERATE EVENTS"};
 
-    finish_times_and_processes_.push_back(
-      std::make_pair(
-        BRA_clock::now(environment_), ::bra::finished_process::operations));
+    auto const operation_finish_time = BRA_clock::now(environment_);
+    std::ostringstream oss;
+    if (communicator_.rank(environment_) == root)
+    {
+      oss << "Operations finished: " << ::bra::state_detail::duration_to_second(start_time_, operation_finish_time)
+          << " (" << ::bra::state_detail::duration_to_second(last_processed_time_, operation_finish_time) << ")\n";
+      std::cout << oss.str() << std::flush;
+    }
+    last_processed_time_ = operation_finish_time;
 
     do_generate_events(root, num_events, seed);
-    finish_times_and_processes_.push_back(
-      std::make_pair(
-        BRA_clock::now(environment_), ::bra::finished_process::generate_events));
+
+    if (communicator_.rank(environment_) == root)
+    {
+      oss.str("");
+      oss << "Events:\n";
+      for (auto index = decltype(num_events){0u}; index < num_events; ++index)
+        oss << index << ' ' << ::bra::state_detail::integer_to_bits_string(generated_events_[index], total_num_qubits_) << '\n';
+      std::cout << oss.str() << std::flush;
+    }
+
+    auto const generate_events_finish_time = BRA_clock::now(environment_);
+    if (communicator_.rank(environment_) == root)
+    {
+      oss.str("");
+      oss << "Events finished: " << ::bra::state_detail::duration_to_second(start_time_, generate_events_finish_time)
+          << " (" << ::bra::state_detail::duration_to_second(last_processed_time_, generate_events_finish_time) << ")\n";
+      std::cout << oss.str() << std::flush;
+    }
+    last_processed_time_ = generate_events_finish_time;
 
     return *this;
   }
@@ -1105,14 +1188,34 @@ namespace bra
     if (is_in_fusion_)
       throw ::bra::unsupported_fused_gate_error{"EXIT"};
 
-    finish_times_and_processes_.push_back(
-      std::make_pair(
-        BRA_clock::now(environment_), ::bra::finished_process::operations));
+    auto const operation_finish_time = BRA_clock::now(environment_);
+    std::ostringstream oss;
+    if (communicator_.rank(environment_) == root)
+    {
+      oss << "Operations finished: " << ::bra::state_detail::duration_to_second(start_time_, operation_finish_time)
+          << " (" << ::bra::state_detail::duration_to_second(last_processed_time_, operation_finish_time) << ")\n";
+      std::cout << oss.str() << std::flush;
+    }
+    last_processed_time_ = operation_finish_time;
 
     do_measure(root);
-    finish_times_and_processes_.push_back(
-      std::make_pair(
-        BRA_clock::now(environment_), ::bra::finished_process::ket_measure));
+
+    if (communicator_.rank(environment_) == root)
+    {
+      oss.str("");
+      oss << "Measurement result: " << measured_value_ << '\n';
+      std::cout << oss.str() << std::flush;
+    }
+
+    auto const measure_finish_time = BRA_clock::now(environment_);
+    if (communicator_.rank(environment_) == root)
+    {
+      oss.str("");
+      oss << "Measurement finished: " << ::bra::state_detail::duration_to_second(start_time_, measure_finish_time)
+          << " (" << ::bra::state_detail::duration_to_second(last_processed_time_, measure_finish_time) << ")\n";
+      std::cout << oss.str() << std::flush;
+    }
+    last_processed_time_ = measure_finish_time;
 
     return *this;
   }
@@ -1133,14 +1236,54 @@ namespace bra
     if (is_in_fusion_)
       throw ::bra::unsupported_fused_gate_error{"MEASURE"};
 
-    finish_times_and_processes_.push_back(
-      std::make_pair(
-        BRA_clock::now(), ::bra::finished_process::operations));
+    auto const operation_finish_time = BRA_clock::now();
+    std::ostringstream oss;
+    oss << "Operations finished: " << ::bra::state_detail::duration_to_second(start_time_, operation_finish_time)
+        << " (" << ::bra::state_detail::duration_to_second(last_processed_time_, operation_finish_time) << ")\n";
+    std::cout << oss.str() << std::flush;
+    last_processed_time_ = operation_finish_time;
 
     do_expectation_values();
-    finish_times_and_processes_.push_back(
-      std::make_pair(
-        BRA_clock::now(), ::bra::finished_process::begin_measurement));
+
+    oss.str("");
+    oss << fmt::format("Expectation values of spins:\n{:^8s} {:^8s} {:^8s}\n", "<Qx>", "<Qy>", "<Qz>");
+    for (auto const& spin: *maybe_expectation_values_)
+      oss
+        << fmt::format(
+             "{:^ 8.3f} {:^ 8.3f} {:^ 8.3f}\n",
+             0.5 - static_cast<double>(spin[0u]), 0.5 - static_cast<double>(spin[1u]), 0.5 - static_cast<double>(spin[2u]));
+    std::cout << oss.str() << std::flush;
+
+    auto const expectation_values_finish_time = BRA_clock::now();
+    oss.str("");
+    oss << "Expectation values finished: " << ::bra::state_detail::duration_to_second(start_time_, expectation_values_finish_time)
+        << " (" << ::bra::state_detail::duration_to_second(last_processed_time_, expectation_values_finish_time) << ")\n";
+    std::cout << oss.str() << std::flush;
+    last_processed_time_ = expectation_values_finish_time;
+
+    return *this;
+  }
+
+  state& state::amplitudes()
+  {
+    if (is_in_fusion_)
+      throw ::bra::unsupported_fused_gate_error{"AMPLITUDES"};
+
+    auto const operation_finish_time = BRA_clock::now();
+    std::ostringstream oss;
+    oss << "Operations finished: " << ::bra::state_detail::duration_to_second(start_time_, operation_finish_time)
+        << " (" << ::bra::state_detail::duration_to_second(last_processed_time_, operation_finish_time) << ")\n";
+    std::cout << oss.str() << std::flush;
+    last_processed_time_ = operation_finish_time;
+
+    do_amplitudes();
+
+    auto const amplitudes_finish_time = BRA_clock::now();
+    oss.str("");
+    oss << "Amplitudes finished: " << ::bra::state_detail::duration_to_second(start_time_, amplitudes_finish_time)
+        << " (" << ::bra::state_detail::duration_to_second(last_processed_time_, amplitudes_finish_time) << ")\n";
+    std::cout << oss.str() << std::flush;
+    last_processed_time_ = amplitudes_finish_time;
 
     return *this;
   }
@@ -1150,14 +1293,27 @@ namespace bra
     if (is_in_fusion_)
       throw ::bra::unsupported_fused_gate_error{"GENERATE EVENTS"};
 
-    finish_times_and_processes_.push_back(
-      std::make_pair(
-        BRA_clock::now(), ::bra::finished_process::operations));
+    auto const operation_finish_time = BRA_clock::now();
+    std::ostringstream oss;
+    oss << "Operations finished: " << ::bra::state_detail::duration_to_second(start_time_, operation_finish_time)
+        << " (" << ::bra::state_detail::duration_to_second(last_processed_time_, operation_finish_time) << ")\n";
+    std::cout << oss.str() << std::flush;
+    last_processed_time_ = operation_finish_time;
 
     do_generate_events(num_events, seed);
-    finish_times_and_processes_.push_back(
-      std::make_pair(
-        BRA_clock::now(), ::bra::finished_process::generate_events));
+
+    oss.str("");
+    oss << "Events:\n";
+    for (auto index = decltype(num_events){0u}; index < num_events; ++index)
+      oss << index << ' ' << ::bra::state_detail::integer_to_bits_string(generated_events_[index], total_num_qubits_) << '\n';
+    std::cout << oss.str() << std::flush;
+
+    auto const generate_events_finish_time = BRA_clock::now();
+    oss.str("");
+    oss << "Events finished: " << ::bra::state_detail::duration_to_second(start_time_, generate_events_finish_time)
+        << " (" << ::bra::state_detail::duration_to_second(last_processed_time_, generate_events_finish_time) << ")\n";
+    std::cout << oss.str() << std::flush;
+    last_processed_time_ = generate_events_finish_time;
 
     return *this;
   }
@@ -1167,14 +1323,25 @@ namespace bra
     if (is_in_fusion_)
       throw ::bra::unsupported_fused_gate_error{"EXIT"};
 
-    finish_times_and_processes_.push_back(
-      std::make_pair(
-        BRA_clock::now(), ::bra::finished_process::operations));
+    auto const operation_finish_time = BRA_clock::now();
+    std::ostringstream oss;
+    oss << "Operations finished: " << ::bra::state_detail::duration_to_second(start_time_, operation_finish_time)
+        << " (" << ::bra::state_detail::duration_to_second(last_processed_time_, operation_finish_time) << ")\n";
+    std::cout << oss.str() << std::flush;
+    last_processed_time_ = operation_finish_time;
 
     do_measure();
-    finish_times_and_processes_.push_back(
-      std::make_pair(
-        BRA_clock::now(), ::bra::finished_process::ket_measure));
+
+    oss.str("");
+    oss << "Measurement result: " << measured_value_ << '\n';
+    std::cout << oss.str() << std::flush;
+
+    auto const measure_finish_time = BRA_clock::now();
+    oss.str("");
+    oss << "Measurement finished: " << ::bra::state_detail::duration_to_second(start_time_, measure_finish_time)
+        << " (" << ::bra::state_detail::duration_to_second(last_processed_time_, measure_finish_time) << ")\n";
+    std::cout << oss.str() << std::flush;
+    last_processed_time_ = measure_finish_time;
 
     return *this;
   }

@@ -1,5 +1,5 @@
-#ifndef BRA_GATE_MEASUREMENT_HPP
-# define BRA_GATE_MEASUREMENT_HPP
+#ifndef BRA_GATE_AMPLITUDES_HPP
+# define BRA_GATE_AMPLITUDES_HPP
 
 # include <string>
 # include <iosfwd>
@@ -16,7 +16,7 @@ namespace bra
 {
   namespace gate
   {
-    class measurement final
+    class amplitudes final
       : public ::bra::gate::gate
     {
 # ifndef BRA_NO_MPI
@@ -27,24 +27,24 @@ namespace bra
 
      public:
 # ifndef BRA_NO_MPI
-      explicit measurement(yampi::rank const root);
+      explicit amplitudes(yampi::rank const root);
 # else
-      measurement();
+      amplitudes();
 # endif
 
-      ~measurement() = default;
-      measurement(measurement const&) = delete;
-      measurement& operator=(measurement const&) = delete;
-      measurement(measurement&&) = delete;
-      measurement& operator=(measurement&&) = delete;
+      ~amplitudes() = default;
+      amplitudes(amplitudes const&) = delete;
+      amplitudes& operator=(amplitudes const&) = delete;
+      amplitudes(amplitudes&&) = delete;
+      amplitudes& operator=(amplitudes&&) = delete;
 
      private:
       ::bra::state& do_apply(::bra::state& state) const override;
       std::string const& do_name() const override;
       std::string do_representation(std::ostringstream& repr_stream, int const) const override;
-    }; // class measurement
+    }; // class amplitudes
   } // namespace gate
 } // namespace bra
 
 
-#endif // BRA_GATE_MEASUREMENT_HPP
+#endif // BRA_GATE_AMPLITUDES_HPP

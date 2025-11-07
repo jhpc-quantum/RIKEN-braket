@@ -64,7 +64,7 @@ def write_assignment(assignment_register_index: int, assignment_value: int, regi
             if gate_index >= len(gates):
                 gate_index = 0
 
-def main(register_size: int, num_registers: int, expression: str, adds_measurement: bool, bit_assignment: str, file) -> None:
+def main(register_size: int, num_registers: int, expression: str, adds_measurement: bool, adds_amplitudes: bool, bit_assignment: str, file) -> None:
     num_qubits: int = num_registers * register_size
     if bit_assignment and len(bit_assignment.split()) != num_qubits:
         sys.exit('wrong bit assignment')
@@ -119,7 +119,10 @@ def main(register_size: int, num_registers: int, expression: str, adds_measureme
                 write_subtraction(result_register_index, register_index, register_size, file)
 
     if adds_measurement:
-        print('BEGIN MEASUREMENT', file=file)
+        print('DO MEASUREMENT', file=file)
+
+    if adds_amplitudes:
+        print('DO AMPLITUDES', file=file)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Generate quantum circuit to perform additions and subtractions of integers')
@@ -127,13 +130,14 @@ if __name__ == '__main__':
     parser.add_argument('num_registers', type=int, help='the number of registers (>=2)')
     parser.add_argument('expression', type=str, help='expression (e.g. "@0=7; @1=4; @2=6; @0+=@1; @0-=@2")')
     parser.add_argument('-m', '--measure', action='store_true', help='add measurement operation after the other operations')
+    parser.add_argument('-a', '--amplitudes', action='store_true', help='add amplitudes operation after the other operations')
     parser.add_argument('-b', '--bitassign', type=str, help='add bit assignment operation')
     parser.add_argument('-o', '--output', type=str, help='output filename (default: stdout)')
     args = parser.parse_args()
 
     if args.output:
         with open(args.output, mode='w') as file:
-            main(args.register_size, args.num_registers, args.expression, args.measure, args.bitassign, file)
+            main(args.register_size, args.num_registers, args.expression, args.measure, args.amplitudes, args.bitassign, file)
     else:
-        main(args.register_size, args.num_registers, args.expression, args.measure, args.bitassign, sys.stdout)
+        main(args.register_size, args.num_registers, args.expression, args.measure, args.amplitudes, args.bitassign, sys.stdout)
 

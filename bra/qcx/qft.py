@@ -24,7 +24,7 @@ def write_inversed_swapped_fourier_transform(qubits: list[int], file) -> None:
 
         print('H', qubits[target_qubit_index], file=file)
 
-def main(num_qubits: int, is_swapped: bool, is_inversed: bool, adds_measurement: bool, bit_assignment: str, file) -> None:
+def main(num_qubits: int, is_swapped: bool, is_inversed: bool, adds_measurement: bool, adds_amplitudes: bool, bit_assignment: str, file) -> None:
     if bit_assignment and len(bit_assignment.split()) != num_qubits:
         sys.exit('wrong bit assignment')
 
@@ -42,7 +42,10 @@ def main(num_qubits: int, is_swapped: bool, is_inversed: bool, adds_measurement:
             print('SWAP', qubit, num_qubits - qubit -1, file=file)
 
     if adds_measurement:
-        print('BEGIN MEASUREMENT', file=file)
+        print('DO MEASUREMENT', file=file)
+
+    if adds_amplitudes:
+        print('DO AMPLITUDES', file=file)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Generate quantum circuit to perform quantum Fourier transform')
@@ -50,13 +53,14 @@ if __name__ == '__main__':
     parser.add_argument('-s', '--swapped', action='store_true', help='swapped QFT')
     parser.add_argument('-i', '--inversed', action='store_true', help='inversed QFT')
     parser.add_argument('-m', '--measure', action='store_true', help='add measurement operation after the other operations')
+    parser.add_argument('-a', '--amplitudes', action='store_true', help='add amplitudes operation after the other operations')
     parser.add_argument('-b', '--bitassign', type=str, help='add bit assignment operation')
     parser.add_argument('-o', '--output', type=str, help='output filename (default: stdout)')
     args = parser.parse_args()
 
     if args.output:
         with open(args.output, mode='w') as file:
-            main(args.num_qubits, args.swapped, args.inversed, args.measure, args.bitassign, file)
+            main(args.num_qubits, args.swapped, args.inversed, args.measure, args.amplitudes, args.bitassign, file)
     else:
-        main(args.num_qubits, args.swapped, args.inversed, args.measure, args.bitassign, sys.stdout)
+        main(args.num_qubits, args.swapped, args.inversed, args.measure, args.amplitudes, args.bitassign, sys.stdout)
 

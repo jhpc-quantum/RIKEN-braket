@@ -7,9 +7,6 @@
 #include <random>
 #include <chrono>
 
-#define FMT_HEADER_ONLY
-#include <fmt/core.h>
-
 #include <cxxopts.hpp>
 
 #ifndef BRA_NO_MPI
@@ -32,37 +29,6 @@
 # include <bra/nompi_state.hpp>
 #endif
 
-#ifndef BRA_NO_MPI
-# define BRA_clock yampi::wall_clock
-#else // BRA_NO_MPI
-# define BRA_clock std::chrono::system_clock
-#endif // BRA_NO_MPI
-
-
-template <typename StateInteger, typename BitInteger>
-std::string integer_to_bits_string(StateInteger const integer, BitInteger const total_num_qubits)
-{
-  auto result = std::string{};
-  result.reserve(total_num_qubits);
-
-  for (auto left_bit = total_num_qubits; left_bit > BitInteger{0u}; --left_bit)
-  {
-    auto const zero_or_one
-      = (integer bitand (StateInteger{1u} << (left_bit - BitInteger{1u})))
-        >> (left_bit - BitInteger{1u});
-    if (zero_or_one == StateInteger{0u})
-      result.push_back('0');
-    else
-      result.push_back('1');
-  }
-  return result;
-}
-
-template <typename Clock, typename Duration>
-double duration_to_second(
-  std::chrono::time_point<Clock, Duration> const& from,
-  std::chrono::time_point<Clock, Duration> const& to)
-{ return 0.000001 * std::chrono::duration_cast<std::chrono::microseconds>(to - from).count(); }
 
 int main(int argc, char* argv[])
 {
@@ -235,9 +201,6 @@ int main(int argc, char* argv[])
           num_threads_per_process, seed, num_elements_in_buffer, circuit_communicator, environment);
 # endif // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
 
-  auto const start_time = BRA_clock::now(environment);
-  auto last_processed_time = start_time;
-
   interpreter.apply_circuit(*state_ptr, circuit_index);
 
   if (not is_io_root_rank)
@@ -250,80 +213,8 @@ int main(int argc, char* argv[])
   for (auto& state_ptr: state_ptrs)
     state_ptr = bra::make_nompi_state(interpreter.initial_state_value(), interpreter.num_qubits(), num_threads_per_process, seed);
 
-  auto const start_time = BRA_clock::now();
-  auto last_processed_time = start_time;
-
   for (auto circuit_index = 0; circuit_index < static_cast<int>(num_circuits); ++circuit_index)
     interpreter.apply_circuit(*state_ptrs[circuit_index], circuit_index);
-
-  auto const& state_ptr = state_ptrs.front();
 #endif // BRA_NO_MPI
-
-  auto const num_finish_processes = state_ptr->num_finish_processes();
-  for (auto index = decltype(num_finish_processes){0u}; index < num_finish_processes; ++index)
-  {
-    auto finish_time_and_process = state_ptr->finish_time_and_process(index);
-
-    if (finish_time_and_process.second == ::bra::finished_process::operations)
-    {
-      std::cout
-        << "Operations finished: "
-        << duration_to_second(start_time, finish_time_and_process.first)
-        << " ("
-        << duration_to_second(last_processed_time, finish_time_and_process.first)
-        << ')'
-        << std::endl;
-      last_processed_time = finish_time_and_process.first;
-    }
-    else if (finish_time_and_process.second == ::bra::finished_process::begin_measurement)
-    {
-      std::cout
-        << fmt::format("Expectation values of spins:\n{:^8s} {:^8s} {:^8s}\n", "<Qx>", "<Qy>", "<Qz>");
-      for (auto const& spin: *(state_ptr->maybe_expectation_values()))
-        std::cout
-          << fmt::format(
-               "{:^ 8.3f} {:^ 8.3f} {:^ 8.3f}\n",
-               0.5 - static_cast<double>(spin[0u]), 0.5 - static_cast<double>(spin[1u]), 0.5 - static_cast<double>(spin[2u]));
-      std::cout << std::flush;
-
-      std::cout
-        << "Expectation values finished: "
-        << duration_to_second(start_time, finish_time_and_process.first)
-        << " ("
-        << duration_to_second(last_processed_time, finish_time_and_process.first)
-        << ')'
-        << std::endl;
-      last_processed_time = finish_time_and_process.first;
-    }
-    else if (finish_time_and_process.second == ::bra::finished_process::ket_measure)
-    {
-      std::cout
-        << "Measurement result: " << state_ptr->measured_value()
-        << "\nMeasurement finished: "
-        << duration_to_second(start_time, finish_time_and_process.first)
-        << " ("
-        << duration_to_second(last_processed_time, finish_time_and_process.first)
-        << ')'
-        << std::endl;
-      break;
-    }
-    else if (finish_time_and_process.second == ::bra::finished_process::generate_events)
-    {
-      std::cout << "Events:\n";
-      auto const num_events = state_ptr->generated_events().size();
-      for (auto index = decltype(num_events){0u}; index < num_events; ++index)
-        std::cout << index << ' ' << integer_to_bits_string(state_ptr->generated_events()[index], state_ptr->total_num_qubits()) << '\n';
-      std::cout
-        << "Events finished: "
-        << duration_to_second(start_time, finish_time_and_process.first)
-        << " ("
-        << duration_to_second(last_processed_time, finish_time_and_process.first)
-        << ')'
-        << std::endl;
-      break;
-    }
-  }
 }
 
-
-#undef BRA_clock

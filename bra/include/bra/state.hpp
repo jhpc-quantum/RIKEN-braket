@@ -51,8 +51,6 @@
 
 namespace bra
 {
-  enum class finished_process : int { operations, begin_measurement, generate_events, ket_measure };
-
   class too_many_operated_qubits_error
     : public std::runtime_error
   {
@@ -66,10 +64,35 @@ namespace bra
    public:
     unsupported_fused_gate_error(std::string const& mnemonic);
   }; // class unsupported_fused_gate_error
-} // namespace bra
 
-namespace bra
-{
+  namespace state_detail
+  {
+    template <typename StateInteger, typename BitInteger>
+    std::string integer_to_bits_string(StateInteger const integer, BitInteger const total_num_qubits)
+    {
+      auto result = std::string{};
+      result.reserve(total_num_qubits);
+
+      for (auto left_bit = total_num_qubits; left_bit > BitInteger{0u}; --left_bit)
+      {
+        auto const zero_or_one
+          = (integer bitand (StateInteger{1u} << (left_bit - BitInteger{1u})))
+            >> (left_bit - BitInteger{1u});
+        if (zero_or_one == StateInteger{0u})
+          result.push_back('0');
+        else
+          result.push_back('1');
+      }
+      return result;
+    }
+
+    template <typename Clock, typename Duration>
+    double duration_to_second(
+      std::chrono::time_point<Clock, Duration> const& from,
+      std::chrono::time_point<Clock, Duration> const& to)
+    { return 0.000001 * std::chrono::duration_cast<std::chrono::microseconds>(to - from).count(); }
+  }
+
   enum class variable_type : int
   { real = 0, integer = 1 };
 
@@ -154,9 +177,6 @@ namespace bra
       = ket::mpi::qubit_permutation<state_integer_type, bit_integer_type>;
 # endif // BRA_NO_MPI
 
-    using time_and_process_type
-      = std::pair<BRA_clock::time_point, ::bra::finished_process>;
-
    protected:
     bit_integer_type total_num_qubits_;
     std::vector<ket::gate::outcome> last_outcomes_; // return values of ket(::mpi)::gate::projective_measurement
@@ -175,7 +195,8 @@ namespace bra
     yampi::environment const& environment_;
 # endif // BRA_NO_MPI
 
-    std::vector<time_and_process_type> finish_times_and_processes_;
+    BRA_clock::time_point start_time_;
+    BRA_clock::time_point last_processed_time_;
 
     using phase_coefficients_type = std::vector< ::bra::complex_type >;
     phase_coefficients_type phase_coefficients_;
@@ -245,10 +266,6 @@ namespace bra
     yampi::communicator const& communicator() const { return communicator_; }
     yampi::environment const& environment() const { return environment_; }
 # endif // BRA_NO_MPI
-
-    std::size_t num_finish_processes() const { return finish_times_and_processes_.size(); }
-    time_and_process_type const& finish_time_and_process(std::size_t const n) const
-    { return finish_times_and_processes_[n]; }
 
     void generate_new_real_variable(std::string const& variable_name, int const num_elements);
     void generate_new_int_variable(std::string const& variable_name, int const num_elements);
@@ -427,11 +444,13 @@ namespace bra
 # ifndef BRA_NO_MPI
     state& projective_measurement(qubit_type const qubit, yampi::rank const root);
     state& measurement(yampi::rank const root);
+    state& amplitudes(yampi::rank const root);
     state& generate_events(yampi::rank const root, int const num_events, int const seed);
     state& exit(yampi::rank const root);
 # else // BRA_NO_MPI
     state& projective_measurement(qubit_type const qubit);
     state& measurement();
+    state& amplitudes();
     state& generate_events(int const num_events, int const seed);
     state& exit();
 # endif // BRA_NO_MPI
@@ -692,11 +711,13 @@ namespace bra
     virtual ket::gate::outcome do_projective_measurement(
       qubit_type const qubit, yampi::rank const root) = 0;
     virtual void do_expectation_values(yampi::rank const root) = 0;
+    virtual void do_amplitudes(yampi::rank const root) = 0;
     virtual void do_measure(yampi::rank const root) = 0;
     virtual void do_generate_events(yampi::rank const root, int const num_events, int const seed) = 0;
 # else // BRA_NO_MPI
     virtual ket::gate::outcome do_projective_measurement(qubit_type const qubit) = 0;
     virtual void do_expectation_values() = 0;
+    virtual void do_amplitudes() = 0;
     virtual void do_measure() = 0;
     virtual void do_generate_events(int const num_events, int const seed) = 0;
 # endif // BRA_NO_MPI
