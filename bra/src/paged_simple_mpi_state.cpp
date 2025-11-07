@@ -1575,12 +1575,12 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
 
     ket::mpi::println_amplitudes(
       mpi_policy_, oss, data_, permutation_, root, communicator_, environment_,
-      [](::bra::state_integer_type const qubit_value, ::bra::complex_type const& amplitude)
+      [this](::bra::state_integer_type const qubit_value, ::bra::complex_type const& amplitude)
       {
         std::ostringstream oss;
         using std::real;
         using std::imag;
-        oss << qubit_value << " => " << real(amplitude) << " + " << imag(amplitude) << " i";
+        oss << ::bra::state_detail::integer_to_bits_string(qubit_value, this->total_num_qubits_) << " => " << real(amplitude) << " + " << imag(amplitude) << " i";
         return oss.str();
       }, std::string{"\n"});
 

@@ -1056,7 +1056,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
         std::ostringstream oss;
         using std::real;
         using std::imag;
-        oss << qubit_value << " => " << real(amplitude) << " + " << imag(amplitude) << " i";
+        oss << ::bra::state_detail::integer_to_bits_string(qubit_value, this->total_num_qubits_) << " => " << real(amplitude) << " + " << imag(amplitude) << " i";
         return oss.str();
       }, std::string{"\n"});
 
