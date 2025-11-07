@@ -215,8 +215,6 @@ int main(int argc, char* argv[])
 
   for (auto circuit_index = 0; circuit_index < static_cast<int>(num_circuits); ++circuit_index)
     interpreter.apply_circuit(*state_ptrs[circuit_index], circuit_index);
-
-  auto const& state_ptr = state_ptrs.front();
 #endif // BRA_NO_MPI
 }
 

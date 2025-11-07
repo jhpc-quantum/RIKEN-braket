@@ -19,10 +19,6 @@ namespace bra
     class measurement final
       : public ::bra::gate::gate
     {
-     public:
-      using qubit_type = ::bra::state::qubit_type;
-
-     private:
 # ifndef BRA_NO_MPI
       yampi::rank root_;
 # endif

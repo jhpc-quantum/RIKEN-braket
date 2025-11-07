@@ -1078,8 +1078,7 @@ namespace bra
 
     auto const operation_finish_time = BRA_clock::now(environment_);
     std::ostringstream oss;
-    using namespace yampi::literals::rank_literals;
-    if (communicator_.rank(environment_) == 0_r)
+    if (communicator_.rank(environment_) == root)
     {
       oss << "Operations finished: " << ::bra::state_detail::duration_to_second(start_time_, operation_finish_time)
           << " (" << ::bra::state_detail::duration_to_second(last_processed_time_, operation_finish_time) << ")\n";
@@ -1089,7 +1088,7 @@ namespace bra
 
     do_expectation_values(root);
 
-    if (communicator_.rank(environment_) == 0_r)
+    if (communicator_.rank(environment_) == root)
     {
       oss.str("");
       oss << fmt::format("Expectation values of spins:\n{:^8s} {:^8s} {:^8s}\n", "<Qx>", "<Qy>", "<Qz>");
@@ -1103,7 +1102,7 @@ namespace bra
     }
 
     auto const expectation_values_finish_time = BRA_clock::now(environment_);
-    if (communicator_.rank(environment_) == 0_r)
+    if (communicator_.rank(environment_) == root)
     {
       oss.str("");
       oss << "Expectation values finished: " << ::bra::state_detail::duration_to_second(start_time_, expectation_values_finish_time)
@@ -1122,8 +1121,7 @@ namespace bra
 
     auto const operation_finish_time = BRA_clock::now(environment_);
     std::ostringstream oss;
-    using namespace yampi::literals::rank_literals;
-    if (communicator_.rank(environment_) == 0_r)
+    if (communicator_.rank(environment_) == root)
     {
       oss << "Operations finished: " << ::bra::state_detail::duration_to_second(start_time_, operation_finish_time)
           << " (" << ::bra::state_detail::duration_to_second(last_processed_time_, operation_finish_time) << ")\n";
@@ -1133,7 +1131,7 @@ namespace bra
 
     do_generate_events(root, num_events, seed);
 
-    if (communicator_.rank(environment_) == 0_r)
+    if (communicator_.rank(environment_) == root)
     {
       oss.str("");
       oss << "Events:\n";
@@ -1143,7 +1141,7 @@ namespace bra
     }
 
     auto const generate_events_finish_time = BRA_clock::now(environment_);
-    if (communicator_.rank(environment_) == 0_r)
+    if (communicator_.rank(environment_) == root)
     {
       oss.str("");
       oss << "Events finished: " << ::bra::state_detail::duration_to_second(start_time_, generate_events_finish_time)
@@ -1162,8 +1160,7 @@ namespace bra
 
     auto const operation_finish_time = BRA_clock::now(environment_);
     std::ostringstream oss;
-    using namespace yampi::literals::rank_literals;
-    if (communicator_.rank(environment_) == 0_r)
+    if (communicator_.rank(environment_) == root)
     {
       oss << "Operations finished: " << ::bra::state_detail::duration_to_second(start_time_, operation_finish_time)
           << " (" << ::bra::state_detail::duration_to_second(last_processed_time_, operation_finish_time) << ")\n";
@@ -1173,7 +1170,7 @@ namespace bra
 
     do_measure(root);
 
-    if (communicator_.rank(environment_) == 0_r)
+    if (communicator_.rank(environment_) == root)
     {
       oss.str("");
       oss << "Measurement result: " << measured_value_ << '\n';
@@ -1181,7 +1178,7 @@ namespace bra
     }
 
     auto const measure_finish_time = BRA_clock::now(environment_);
-    if (communicator_.rank(environment_) == 0_r)
+    if (communicator_.rank(environment_) == root)
     {
       oss.str("");
       oss << "Measurement finished: " << ::bra::state_detail::duration_to_second(start_time_, measure_finish_time)
