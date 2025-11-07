@@ -35,6 +35,7 @@
 #include <ket/mpi/gate/exponential_pauli_y.hpp>
 #include <ket/mpi/gate/exponential_pauli_z.hpp>
 #include <ket/mpi/all_spin_expectation_values.hpp>
+#include <ket/mpi/print_amplitudes.hpp>
 #include <yampi/allocator.hpp>
 #include <yampi/rank.hpp>
 #include <yampi/communicator.hpp>
@@ -125,8 +126,13 @@ void addU1Gate(gateInfoTy *ginfo);
 
 /// @brief Output spin expectation in json format
 /// @param [in] outputFile json output file
-/// @note Equivalent to “BEGIN MEASUREMENT” in bra.
+/// @note Equivalent to “DO MEASUREMENT” in bra.
 void outputSpinExpectation(std::string outputFile);
+
+/// @brief Output amplitudes in json format
+/// @param [in] outputFile json output file
+/// @note Equivalent to “DO AMPLITUDES” in bra.
+void outputAmplitudes(std::string outputFile);
 
 }
 #endif // _QIPKET_HPP_

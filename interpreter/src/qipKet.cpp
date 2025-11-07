@@ -5,6 +5,17 @@
 
 #include"qipKet.hpp"
 
+#include <cmath>
+#include <sstream>
+#include <string>
+#include <vector>
+#include <ket/mpi/print_amplitudes.hpp>
+#include <bra/state.hpp>
+#include <yampi/rank.hpp>
+#include <boost/algorithm/string/trim.hpp>
+#include <boost/algorithm/string/split.hpp>
+#include <boost/algorithm/string/classification.hpp>
+
 namespace qip {
 
 extern qipIrTy qasmir;  ///< Variable that holds information on the gate of a quantum circuit
@@ -340,4 +351,73 @@ void qip::outputSpinExpectation(std::string outputFile) {
   pt.add_child("Expectation values of spins", child);
   write_jsonEx(outputFile, pt);
 
+}
+
+/// @note Amplitudes is printed with reference to the bra process.
+/// @note The information to be output in json format is as follows.
+///       - "bits" : Bit string
+///       - "real", "imag" : Real and imaginary part of amplitude
+/// Example)
+/// ```
+/// {
+///     "Amplitudes": [
+///         {
+///             "bits": "000",
+///             "real": 1.0,
+///             "imag": 0.0
+///         },
+///         {
+///             "bits": "001",
+///             "real": 0.0,
+///             "imag": 1.0
+///         }
+///     ]
+/// }
+/// ```
+void qip::outputAmplitudes(std::string outputFile) {
+  const unsigned numQubits = qasmir.qubits;
+
+  std::ostringstream oss;
+  using namespace yampi::literals::rank_literals;
+  ket::mpi::println_amplitudes(
+    oss, *(ki.localState), *(qip::ki.permutation), 0_r, *(qip::ki.communicator), *(ki.environment),
+    [numQubits](auto const qubit_value, auto const& amplitude)
+    {
+      std::ostringstream oss;
+      using std::real;
+      using std::imag;
+      oss << ::bra::state_detail::integer_to_bits_string(qubit_value, numQubits) << ' ' << real(amplitude) << ' ' << imag(amplitude);
+      return oss.str();
+    }, std::string{"\n"});
+
+  std::istringstream iss{oss.str()};
+
+  auto line = std::string{};
+  auto columns = std::vector<std::string>{};
+  columns.reserve(3u);
+
+  JSON pt;
+  JSON child;
+  while (std::getline(iss, line))
+  {
+    if (line.empty())
+      continue;
+
+    boost::algorithm::trim(line);
+    if (line.empty())
+      continue;
+
+    boost::algorithm::split(columns, line, boost::algorithm::is_space(), boost::algorithm::token_compress_on);
+
+    if (columns.size() != 3u)
+      continue;
+
+    JSON info;
+    info.put("bits", columns[0]);
+    info.put("real", columns[1]);
+    info.put("imag", columns[2]);
+    child.push_back(std::make_pair("", info));
+  }
+  pt.add_child("Amplitudes", child);
+  write_jsonEx(outputFile, pt);
 }

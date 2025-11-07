@@ -151,8 +151,12 @@ int main(int argc, char *argv[]) {
   // Get the path of the output file
   std::string outputFile = getOutputFile(argc, argv);
 
+  // Output amplitudes
+  qip::outputAmplitudes(outputFile);
+  /*
   // Output spin expectation
   qip::outputSpinExpectation(outputFile);
+  */
 
   // Finalize
   qip::finalize();
