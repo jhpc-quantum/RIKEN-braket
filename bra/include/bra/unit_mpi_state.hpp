@@ -182,6 +182,7 @@ namespace bra
     void do_amplitudes(yampi::rank const root) override;
     void do_measure(yampi::rank const root) override;
     void do_generate_events(yampi::rank const root, int const num_events, int const seed) override;
+    void do_expectation_value(std::string const& operator_literal_or_variable_name, std::vector<qubit_type> const& operated_qubits) override;
     void do_shor_box(
       state_integer_type const divisor, state_integer_type const base,
       std::vector<qubit_type> const& exponent_qubits,

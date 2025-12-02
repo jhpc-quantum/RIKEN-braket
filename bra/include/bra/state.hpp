@@ -212,6 +212,7 @@ namespace bra
     boost::optional<spins_type> maybe_expectation_values_; // return value of ket(::mpi)::all_spin_expectation_values
     state_integer_type measured_value_; // return value of ket(::mpi)::measure
     std::vector<state_integer_type> generated_events_; // results of ket(::mpi)::generate_events
+    ::bra::complex_type result_; // return value of ket(::mpi)::expectation_value
     bool is_in_fusion_; // related to begin_fusion/end_fusion
     std::vector< ::bra::found_qubit > found_qubits_; // related to begin_fusion/end_fusion
     random_number_generator_type random_number_generator_;
@@ -501,6 +502,7 @@ namespace bra
     state& generate_events(int const num_events, int const seed);
     state& exit();
 # endif // BRA_NO_MPI
+    state& expectation_value(std::string const& pauli_string_space, std::vector<qubit_type> const& operated_qubits);
     state& shor_box(bit_integer_type const num_exponent_qubits, state_integer_type const divisor, state_integer_type const base);
 
     state& begin_fusion();
@@ -768,6 +770,7 @@ namespace bra
     virtual void do_measure() = 0;
     virtual void do_generate_events(int const num_events, int const seed) = 0;
 # endif // BRA_NO_MPI
+    virtual void do_expectation_value(std::string const& pauli_string_space, std::vector<qubit_type> const& operated_qubits) = 0;
     virtual void do_shor_box(
       state_integer_type const divisor, state_integer_type const base,
       std::vector<qubit_type> const& exponent_qubits,

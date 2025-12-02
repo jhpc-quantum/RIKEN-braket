@@ -113,6 +113,7 @@
 #include <bra/gate/amplitudes.hpp>
 #include <bra/gate/measurement.hpp>
 #include <bra/gate/generate_events.hpp>
+#include <bra/gate/expectation_value.hpp>
 #include <bra/gate/shor_box.hpp>
 #include <bra/gate/begin_fusion.hpp>
 #include <bra/gate/end_fusion.hpp>
@@ -722,6 +723,8 @@ namespace bra
           break;
         }
       }
+      else if (mnemonic == "EXPECTATION") // EXPECTATION VALUE
+        add_expectation_value(columns);
       else if (mnemonic == "CLEAR")
         add_clear(columns);
       else if (mnemonic == "SET")
@@ -2868,6 +2871,31 @@ namespace bra
     std::tie(num_exponent_qubits, divisor, base) = read_shor_box(columns);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::shor_box >(num_exponent_qubits, divisor, base));
+  }
+
+  // VAR H PAULISS
+  // EXPECTATION VALUE H 0 1 2 3 4 5
+  void interpreter::add_expectation_value(interpreter::columns_type const& columns)
+  {
+    if (boost::size(columns) < 4u)
+      throw wrong_mnemonics_error{columns};
+
+    using std::begin;
+    auto iter = begin(columns);
+    if (*++iter != "VALUE")
+      throw wrong_mnemonics_error{columns};
+
+    auto const& operator_literal_or_variable_name = *++iter;
+
+    using std::end;
+    auto const last = end(columns);
+    ++iter;
+    auto operated_qubits = std::vector< ::bra::qubit_type >{};
+    operated_qubits.reserve(last - iter);
+    for (; iter != last; ++iter)
+      operated_qubits.push_back(ket::make_qubit< ::bra::state_integer_type >(boost::lexical_cast< ::bra::bit_integer_type >(*iter)));
+
+    circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::expectation_value >(operator_literal_or_variable_name, operated_qubits));
   }
 
   void interpreter::add_clear(interpreter::columns_type const& columns)

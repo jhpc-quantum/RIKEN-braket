@@ -107,6 +107,8 @@ namespace bra
       maybe_expectation_values_{},
       measured_value_{},
       generated_events_{},
+      result_{},
+      fidelity_{},
       is_in_fusion_{false},
       found_qubits_{},
       random_number_generator_{seed},
@@ -139,6 +141,8 @@ namespace bra
       maybe_expectation_values_{},
       measured_value_{},
       generated_events_{},
+      result_{},
+      fidelity_{},
       is_in_fusion_{false},
       found_qubits_{},
       random_number_generator_{seed},
@@ -170,6 +174,8 @@ namespace bra
       maybe_expectation_values_{},
       measured_value_{},
       generated_events_{},
+      result_{},
+      fidelity_{},
       is_in_fusion_{false},
       found_qubits_{},
       random_number_generator_{seed},
@@ -203,6 +209,8 @@ namespace bra
       maybe_expectation_values_{},
       measured_value_{},
       generated_events_{},
+      result_{},
+      fidelity_{},
       is_in_fusion_{false},
       found_qubits_{},
       random_number_generator_{seed},
@@ -231,6 +239,8 @@ namespace bra
       maybe_expectation_values_{},
       measured_value_{},
       generated_events_{},
+      result_{},
+      fidelity_{},
       is_in_fusion_{false},
       found_qubits_{},
       random_number_generator_{seed},
@@ -1689,6 +1699,16 @@ namespace bra
     return *this;
   }
 #endif // BRA_NO_MPI
+
+  state& state::expectation_value(std::string const& operator_literal_or_variable_name, std::vector<qubit_type> const& operated_qubits)
+  {
+    if (is_in_fusion_)
+      throw ::bra::unsupported_fused_gate_error{"EXPECTATION VALUE"};
+
+    do_expectation_value(operator_literal_or_variable_name, operated_qubits);
+
+    return *this;
+  }
 
   state& state::shor_box(bit_integer_type const num_exponent_qubits, state_integer_type const divisor, state_integer_type const base)
   {
