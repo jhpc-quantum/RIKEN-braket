@@ -455,10 +455,9 @@ namespace bra
         add_ic(columns);
       else if (mnemonic == "II")
         add_ii(columns);
-      else if (mnemonic.size() >= 3u
-               and std::all_of(begin(mnemonic), end(mnemonic), [](char const character) { return character == 'I'; }))
+      else if (mnemonic.size() >= 3u and mnemonic.find_first_not_of('I') == std::string::npos)
         add_is(columns, mnemonic);
-      else if (mnemonic.size() >= 2u and mnemonic.front() == 'I')
+      else if (mnemonic.size() >= 2u and mnemonic.front() == 'I' and mnemonic.find_first_not_of("0123456789", 1u) == std::string::npos)
         add_in(columns, mnemonic);
       else if (mnemonic == "H")
         add_h(columns);
@@ -468,28 +467,25 @@ namespace bra
         add_x(columns);
       else if (mnemonic == "XX")
         add_xx(columns);
-      else if (mnemonic.size() >= 3u
-               and std::all_of(begin(mnemonic), end(mnemonic), [](char const character) { return character == 'X'; }))
+      else if (mnemonic.size() >= 3u and mnemonic.find_first_not_of('X') == std::string::npos)
         add_xs(columns, mnemonic);
-      else if (mnemonic.size() >= 2u and mnemonic.front() == 'X')
+      else if (mnemonic.size() >= 2u and mnemonic.front() == 'X' and mnemonic.find_first_not_of("0123456789", 1u) == std::string::npos)
         add_xn(columns, mnemonic);
       else if (mnemonic == "Y")
         add_y(columns);
       else if (mnemonic == "YY")
         add_yy(columns);
-      else if (mnemonic.size() >= 3u
-               and std::all_of(begin(mnemonic), end(mnemonic), [](char const character) { return character == 'Y'; }))
+      else if (mnemonic.size() >= 3u and mnemonic.find_first_not_of('Y') == std::string::npos)
         add_ys(columns, mnemonic);
-      else if (mnemonic.size() >= 2u and mnemonic.front() == 'Y')
+      else if (mnemonic.size() >= 2u and mnemonic.front() == 'Y' and mnemonic.find_first_not_of("0123456789", 1u) == std::string::npos)
         add_yn(columns, mnemonic);
       else if (mnemonic == "Z")
         add_z(columns);
       else if (mnemonic == "ZZ")
         add_zz(columns);
-      else if (mnemonic.size() >= 3u
-               and std::all_of(begin(mnemonic), end(mnemonic), [](char const character) { return character == 'Z'; }))
+      else if (mnemonic.size() >= 3u and mnemonic.find_first_not_of('Z') == std::string::npos)
         add_zs(columns, mnemonic);
-      else if (mnemonic.size() >= 2u and mnemonic.front() == 'Z')
+      else if (mnemonic.size() >= 2u and mnemonic.front() == 'Z' and mnemonic.find_first_not_of("0123456789", 1u) == std::string::npos)
         add_zn(columns, mnemonic);
       else if (mnemonic == "SWAP")
         add_swap(columns);
@@ -549,16 +545,13 @@ namespace bra
         add_exx(columns);
       else if (mnemonic == "EXX+")
         add_adj_exx(columns);
-      else if (mnemonic.size() >= 4u and mnemonic.front() == 'E'
-               and std::all_of(next(begin(mnemonic)), end(mnemonic), [](char const character) { return character == 'X'; }))
+      else if (mnemonic.size() >= 4u and mnemonic.front() == 'E' and mnemonic.find_first_not_of('X', 1u) == std::string::npos)
         add_exs(columns, mnemonic);
-      else if (mnemonic.size() >= 5u and mnemonic.front() == 'E'
-               and std::all_of(next(begin(mnemonic)), std::prev(end(mnemonic)), [](char const character) { return character == 'X'; })
-               and mnemonic.back() == '+')
+      else if (mnemonic.size() >= 5u and mnemonic.front() == 'E' and mnemonic.back() == '+' and mnemonic.find_first_not_of('X', 1u) == mnemonic.size() - 1u)
         add_adj_exs(columns, mnemonic);
-      else if (mnemonic.size() >= 4u and mnemonic[0] == 'E' and mnemonic[1] == 'X' and mnemonic.back() == '+')
+      else if (mnemonic.size() >= 4u and mnemonic.front() == 'E' and mnemonic[1] == 'X' and mnemonic.back() == '+' and mnemonic.find_first_not_of("0123456789", 2u) == mnemonic.size() - 1u)
         add_adj_exn(columns, mnemonic);
-      else if (mnemonic.size() >= 3u and mnemonic[0] == 'E' and mnemonic[1] == 'X')
+      else if (mnemonic.size() >= 3u and mnemonic.front() == 'E' and mnemonic[1] == 'X' and mnemonic.find_first_not_of("0123456789", 2u) == std::string::npos)
         add_exn(columns, mnemonic);
       else if (mnemonic == "EY")
         add_ey(columns);
@@ -568,16 +561,13 @@ namespace bra
         add_eyy(columns);
       else if (mnemonic == "EYY+")
         add_adj_eyy(columns);
-      else if (mnemonic.size() >= 4u and mnemonic.front() == 'E'
-               and std::all_of(std::next(begin(mnemonic)), end(mnemonic), [](char const character) { return character == 'Y'; }))
+      else if (mnemonic.size() >= 4u and mnemonic.front() == 'E' and mnemonic.find_first_not_of('Y', 1u) == std::string::npos)
         add_eys(columns, mnemonic);
-      else if (mnemonic.size() >= 5u and mnemonic.front() == 'E'
-               and std::all_of(std::next(begin(mnemonic)), std::prev(end(mnemonic)), [](char const character) { return character == 'Y'; })
-               and mnemonic.back() == '+')
+      else if (mnemonic.size() >= 5u and mnemonic.front() == 'E' and mnemonic.back() == '+' and mnemonic.find_first_not_of('Y', 1u) == mnemonic.size() - 1u)
         add_adj_eys(columns, mnemonic);
-      else if (mnemonic.size() >= 4u and mnemonic[0] == 'E' and mnemonic[1] == 'Y' and mnemonic.back() == '+')
+      else if (mnemonic.size() >= 4u and mnemonic.front() == 'E' and mnemonic[1] == 'Y' and mnemonic.back() == '+' and mnemonic.find_first_not_of("0123456789", 2u) == mnemonic.size() - 1u)
         add_adj_eyn(columns, mnemonic);
-      else if (mnemonic.size() >= 3u and mnemonic[0] == 'E' and mnemonic[1] == 'Y')
+      else if (mnemonic.size() >= 3u and mnemonic.front() == 'E' and mnemonic[1] == 'Y' and mnemonic.find_first_not_of("0123456789", 2u) == std::string::npos)
         add_eyn(columns, mnemonic);
       else if (mnemonic == "EZ")
         add_ez(columns);
@@ -587,16 +577,13 @@ namespace bra
         add_ezz(columns);
       else if (mnemonic == "EZZ+")
         add_adj_ezz(columns);
-      else if (mnemonic.size() >= 4u and mnemonic.front() == 'E'
-               and std::all_of(std::next(begin(mnemonic)), end(mnemonic), [](char const character) { return character == 'Z'; }))
+      else if (mnemonic.size() >= 4u and mnemonic.front() == 'E' and mnemonic.find_first_not_of('Z', 1u) == std::string::npos)
         add_ezs(columns, mnemonic);
-      else if (mnemonic.size() >= 5u and mnemonic.front() == 'E'
-               and std::all_of(std::next(begin(mnemonic)), std::prev(end(mnemonic)), [](char const character) { return character == 'Z'; })
-               and mnemonic.back() == '+')
+      else if (mnemonic.size() >= 5u and mnemonic.front() == 'E' and mnemonic.back() == '+' and mnemonic.find_first_not_of('Z', 1u) == mnemonic.size() - 1u)
         add_adj_ezs(columns, mnemonic);
-      else if (mnemonic.size() >= 4u and mnemonic[0] == 'E' and mnemonic[1] == 'Z' and mnemonic.back() == '+')
+      else if (mnemonic.size() >= 4u and mnemonic.front() == 'E' and mnemonic[1] == 'Z' and mnemonic.back() == '+' and mnemonic.find_first_not_of("0123456789", 2u) == mnemonic.size() - 1u)
         add_adj_ezn(columns, mnemonic);
-      else if (mnemonic.size() >= 3u and mnemonic[0] == 'E' and mnemonic[1] == 'Z')
+      else if (mnemonic.size() >= 3u and mnemonic.front() == 'E' and mnemonic[1] == 'Z' and mnemonic.find_first_not_of("0123456789", 2u) == std::string::npos)
         add_ezn(columns, mnemonic);
       else if (mnemonic == "ESWAP")
         add_eswap(columns);
@@ -764,16 +751,13 @@ namespace bra
         add_szz(columns);
       else if (mnemonic == "SZZ+")
         add_adj_szz(columns);
-      else if (mnemonic.size() >= 4u and mnemonic.front() == 'S'
-               and std::all_of(std::next(begin(mnemonic)), end(mnemonic), [](char const character) { return character == 'Z'; }))
+      else if (mnemonic.size() >= 4u and mnemonic.front() == 'S' and mnemonic.find_first_not_of('Z', 1u) == std::string::npos)
         add_szs(columns, mnemonic);
-      else if (mnemonic.size() >= 5u and mnemonic.front() == 'S'
-               and std::all_of(std::next(begin(mnemonic)), std::prev(end(mnemonic)), [](char const character) { return character == 'Z'; })
-               and mnemonic.back() == '+')
+      else if (mnemonic.size() >= 5u and mnemonic.front() == 'S' and mnemonic.back() == '+' and mnemonic.find_first_not_of('Z', 1u) == mnemonic.size() - 1u)
         add_adj_szs(columns, mnemonic);
-      else if (mnemonic.size() >= 4u and mnemonic[0] == 'S' and mnemonic[1] == 'Z' and mnemonic.back() == '+')
+      else if (mnemonic.size() >= 4u and mnemonic.front() == 'S' and mnemonic[1] == 'Z' and mnemonic.back() == '+' and mnemonic.find_first_not_of("0123456789", 2u) == mnemonic.size() - 1u)
         add_adj_szn(columns, mnemonic);
-      else if (mnemonic.size() >= 3u and mnemonic[0] == 'S' and mnemonic[1] == 'Z')
+      else if (mnemonic.size() >= 3u and mnemonic.front() == 'S' and mnemonic[1] == 'Z' and mnemonic.find_first_not_of("0123456789", 2u) == std::string::npos)
         add_szn(columns, mnemonic);
       else if (mnemonic.size() >= 2u and mnemonic.front() == 'C') // controlled gates
         interpret_controlled_gates(columns, mnemonic);
@@ -991,7 +975,7 @@ namespace bra
     auto iter = begin(columns);
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
     auto const phase_string = *++iter;
-    if (std::isdigit(static_cast<unsigned char>(phase_string.front())))
+    if (std::isdigit(static_cast<unsigned char>(phase_string.front())) or phase_string.front() == '+' or phase_string.front() == '-' or phase_string.front() == '.')
       phase = boost::lexical_cast< ::bra::real_type >(phase_string);
     else
       phase = phase_string;
@@ -1010,7 +994,7 @@ namespace bra
     auto iter = begin(columns);
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
     auto const phase_string = *++iter;
-    if (std::isdigit(static_cast<unsigned char>(phase_string.front())))
+    if (std::isdigit(static_cast<unsigned char>(phase_string.front())) or phase_string.front() == '+' or phase_string.front() == '-' or phase_string.front() == '.')
       phase = boost::lexical_cast< ::bra::real_type >(phase_string);
     else
       phase = phase_string;
@@ -1030,12 +1014,12 @@ namespace bra
     auto iter = begin(columns);
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
     auto const phase1_string = *++iter;
-    if (std::isdigit(static_cast<unsigned char>(phase1_string.front())))
+    if (std::isdigit(static_cast<unsigned char>(phase1_string.front())) or phase1_string.front() == '+' or phase1_string.front() == '-' or phase1_string.front() == '.')
       phase1 = boost::lexical_cast< ::bra::real_type >(phase1_string);
     else
       phase1 = phase1_string;
     auto const phase2_string = *++iter;
-    if (std::isdigit(static_cast<unsigned char>(phase2_string.front())))
+    if (std::isdigit(static_cast<unsigned char>(phase2_string.front())) or phase2_string.front() == '+' or phase2_string.front() == '-' or phase2_string.front() == '.')
       phase2 = boost::lexical_cast< ::bra::real_type >(phase2_string);
     else
       phase2 = phase2_string;
@@ -1056,17 +1040,17 @@ namespace bra
     auto iter = begin(columns);
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
     auto const phase1_string = *++iter;
-    if (std::isdigit(static_cast<unsigned char>(phase1_string.front())))
+    if (std::isdigit(static_cast<unsigned char>(phase1_string.front())) or phase1_string.front() == '+' or phase1_string.front() == '-' or phase1_string.front() == '.')
       phase1 = boost::lexical_cast< ::bra::real_type >(phase1_string);
     else
       phase1 = phase1_string;
     auto const phase2_string = *++iter;
-    if (std::isdigit(static_cast<unsigned char>(phase2_string.front())))
+    if (std::isdigit(static_cast<unsigned char>(phase2_string.front())) or phase2_string.front() == '+' or phase2_string.front() == '-' or phase2_string.front() == '.')
       phase2 = boost::lexical_cast< ::bra::real_type >(phase2_string);
     else
       phase2 = phase2_string;
     auto const phase3_string = *++iter;
-    if (std::isdigit(static_cast<unsigned char>(phase3_string.front())))
+    if (std::isdigit(static_cast<unsigned char>(phase3_string.front())) or phase3_string.front() == '+' or phase3_string.front() == '-' or phase3_string.front() == '.')
       phase3 = boost::lexical_cast< ::bra::real_type >(phase3_string);
     else
       phase3 = phase3_string;
@@ -1125,7 +1109,7 @@ namespace bra
     auto const target1 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
     auto const target2 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
     auto const phase_string = *++iter;
-    if (std::isdigit(static_cast<unsigned char>(phase_string.front())))
+    if (std::isdigit(static_cast<unsigned char>(phase_string.front())) or phase_string.front() == '+' or phase_string.front() == '-' or phase_string.front() == '.')
       phase = boost::lexical_cast< ::bra::real_type >(phase_string);
     else
       phase = phase_string;
@@ -1152,7 +1136,7 @@ namespace bra
       *targets_iter = ket::make_qubit< ::bra::state_integer_type >(target);
     }
     auto const phase_string = *iter;
-    if (std::isdigit(static_cast<unsigned char>(phase_string.front())))
+    if (std::isdigit(static_cast<unsigned char>(phase_string.front())) or phase_string.front() == '+' or phase_string.front() == '-' or phase_string.front() == '.')
       phase = boost::lexical_cast< ::bra::real_type >(phase_string);
     else
       phase = phase_string;
@@ -1257,7 +1241,7 @@ namespace bra
     }
 
     auto const phase_string = *iter;
-    if (std::isdigit(static_cast<unsigned char>(phase_string.front())))
+    if (std::isdigit(static_cast<unsigned char>(phase_string.front())) or phase_string.front() == '+' or phase_string.front() == '-' or phase_string.front() == '.')
       phase = boost::lexical_cast< ::bra::real_type >(phase_string);
     else
       phase = phase_string;
@@ -1347,7 +1331,7 @@ namespace bra
     auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
     auto const phase_string = *++iter;
-    if (std::isdigit(static_cast<unsigned char>(phase_string.front())))
+    if (std::isdigit(static_cast<unsigned char>(phase_string.front())) or phase_string.front() == '+' or phase_string.front() == '-' or phase_string.front() == '.')
       phase = boost::lexical_cast< ::bra::real_type >(phase_string);
     else
       phase = phase_string;
@@ -1370,7 +1354,7 @@ namespace bra
     auto const control1 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
     auto const control2 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
     auto const phase_string = *++iter;
-    if (std::isdigit(static_cast<unsigned char>(phase_string.front())))
+    if (std::isdigit(static_cast<unsigned char>(phase_string.front())) or phase_string.front() == '+' or phase_string.front() == '-' or phase_string.front() == '.')
       phase = boost::lexical_cast< ::bra::real_type >(phase_string);
     else
       phase = phase_string;
@@ -1401,7 +1385,7 @@ namespace bra
 
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*iter++);
     auto const phase_string = *iter;
-    if (std::isdigit(static_cast<unsigned char>(phase_string.front())))
+    if (std::isdigit(static_cast<unsigned char>(phase_string.front())) or phase_string.front() == '+' or phase_string.front() == '-' or phase_string.front() == '.')
       phase = boost::lexical_cast< ::bra::real_type >(phase_string);
     else
       phase = phase_string;
@@ -1423,12 +1407,12 @@ namespace bra
     auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
     auto const phase1_string = *++iter;
-    if (std::isdigit(static_cast<unsigned char>(phase1_string.front())))
+    if (std::isdigit(static_cast<unsigned char>(phase1_string.front())) or phase1_string.front() == '+' or phase1_string.front() == '-' or phase1_string.front() == '.')
       phase1 = boost::lexical_cast< ::bra::real_type >(phase1_string);
     else
       phase1 = phase1_string;
     auto const phase2_string = *++iter;
-    if (std::isdigit(static_cast<unsigned char>(phase2_string.front())))
+    if (std::isdigit(static_cast<unsigned char>(phase2_string.front())) or phase2_string.front() == '+' or phase2_string.front() == '-' or phase2_string.front() == '.')
       phase2 = boost::lexical_cast< ::bra::real_type >(phase2_string);
     else
       phase2 = phase2_string;
@@ -1460,12 +1444,12 @@ namespace bra
 
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*iter++);
     auto const phase1_string = *iter++;
-    if (std::isdigit(static_cast<unsigned char>(phase1_string.front())))
+    if (std::isdigit(static_cast<unsigned char>(phase1_string.front())) or phase1_string.front() == '+' or phase1_string.front() == '-' or phase1_string.front() == '.')
       phase1 = boost::lexical_cast< ::bra::real_type >(phase1_string);
     else
       phase1 = phase1_string;
     auto const phase2_string = *iter;
-    if (std::isdigit(static_cast<unsigned char>(phase2_string.front())))
+    if (std::isdigit(static_cast<unsigned char>(phase2_string.front())) or phase2_string.front() == '+' or phase2_string.front() == '-' or phase2_string.front() == '.')
       phase2 = boost::lexical_cast< ::bra::real_type >(phase2_string);
     else
       phase2 = phase2_string;
@@ -1488,17 +1472,17 @@ namespace bra
     auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
     auto const phase1_string = *++iter;
-    if (std::isdigit(static_cast<unsigned char>(phase1_string.front())))
+    if (std::isdigit(static_cast<unsigned char>(phase1_string.front())) or phase1_string.front() == '+' or phase1_string.front() == '-' or phase1_string.front() == '.')
       phase1 = boost::lexical_cast< ::bra::real_type >(phase1_string);
     else
       phase1 = phase1_string;
     auto const phase2_string = *++iter;
-    if (std::isdigit(static_cast<unsigned char>(phase2_string.front())))
+    if (std::isdigit(static_cast<unsigned char>(phase2_string.front())) or phase2_string.front() == '+' or phase2_string.front() == '-' or phase2_string.front() == '.')
       phase2 = boost::lexical_cast< ::bra::real_type >(phase2_string);
     else
       phase2 = phase1_string;
     auto const phase3_string = *++iter;
-    if (std::isdigit(static_cast<unsigned char>(phase3_string.front())))
+    if (std::isdigit(static_cast<unsigned char>(phase3_string.front())) or phase3_string.front() == '+' or phase3_string.front() == '-' or phase3_string.front() == '.')
       phase3 = boost::lexical_cast< ::bra::real_type >(phase3_string);
     else
       phase3 = phase3_string;
@@ -1531,17 +1515,17 @@ namespace bra
 
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*iter++);
     auto const phase1_string = *iter++;
-    if (std::isdigit(static_cast<unsigned char>(phase1_string.front())))
+    if (std::isdigit(static_cast<unsigned char>(phase1_string.front())) or phase1_string.front() == '+' or phase1_string.front() == '-' or phase1_string.front() == '.')
       phase1 = boost::lexical_cast< ::bra::real_type >(phase1_string);
     else
       phase1 = phase1_string;
     auto const phase2_string = *iter++;
-    if (std::isdigit(static_cast<unsigned char>(phase2_string.front())))
+    if (std::isdigit(static_cast<unsigned char>(phase2_string.front())) or phase2_string.front() == '+' or phase2_string.front() == '-' or phase2_string.front() == '.')
       phase2 = boost::lexical_cast< ::bra::real_type >(phase2_string);
     else
       phase2 = phase1_string;
     auto const phase3_string = *iter;
-    if (std::isdigit(static_cast<unsigned char>(phase3_string.front())))
+    if (std::isdigit(static_cast<unsigned char>(phase3_string.front())) or phase3_string.front() == '+' or phase3_string.front() == '-' or phase3_string.front() == '.')
       phase3 = boost::lexical_cast< ::bra::real_type >(phase3_string);
     else
       phase3 = phase3_string;
@@ -1632,7 +1616,7 @@ namespace bra
     }
 
     auto const phase_string = *iter;
-    if (std::isdigit(static_cast<unsigned char>(phase_string.front())))
+    if (std::isdigit(static_cast<unsigned char>(phase_string.front())) or phase_string.front() == '+' or phase_string.front() == '-' or phase_string.front() == '.')
       phase = boost::lexical_cast< ::bra::real_type >(phase_string);
     else
       phase = phase_string;
@@ -1661,7 +1645,7 @@ namespace bra
     auto const target1 = boost::lexical_cast< ::bra::bit_integer_type >(*iter++);
     auto const target2 = boost::lexical_cast< ::bra::bit_integer_type >(*iter++);
     auto const phase_string = *iter;
-    if (std::isdigit(static_cast<unsigned char>(phase_string.front())))
+    if (std::isdigit(static_cast<unsigned char>(phase_string.front())) or phase_string.front() == '+' or phase_string.front() == '-' or phase_string.front() == '.')
       phase = boost::lexical_cast< ::bra::real_type >(phase_string);
     else
       phase = phase_string;
@@ -2929,10 +2913,9 @@ namespace bra
       add_ci(columns, num_control_qubits);
     if (noncontrol_mnemonic == "IC")
       add_cic(columns, num_control_qubits);
-    else if (noncontrol_mnemonic.size() >= 2u
-             and std::all_of(begin(noncontrol_mnemonic), end(noncontrol_mnemonic), [](char const character) { return character == 'I'; }))
+    else if (noncontrol_mnemonic.size() >= 2u and noncontrol_mnemonic.find_first_not_of('I') == std::string::npos)
       add_cis(columns, num_control_qubits, noncontrol_mnemonic);
-    else if (noncontrol_mnemonic.size() >= 2u and noncontrol_mnemonic.front() == 'I')
+    else if (noncontrol_mnemonic.size() >= 2u and noncontrol_mnemonic.front() == 'I' and noncontrol_mnemonic.find_first_not_of("0123456789", 1u) == std::string::npos)
       add_cin(columns, num_control_qubits, noncontrol_mnemonic, mnemonic);
     else if (noncontrol_mnemonic == "H")
       add_ch(columns, num_control_qubits);
@@ -2940,24 +2923,21 @@ namespace bra
       add_cnot(columns, num_control_qubits);
     else if (noncontrol_mnemonic == "X")
       add_cx(columns, num_control_qubits);
-    else if (noncontrol_mnemonic.size() >= 2u
-             and std::all_of(begin(noncontrol_mnemonic), end(noncontrol_mnemonic), [](char const character) { return character == 'X'; }))
+    else if (noncontrol_mnemonic.size() >= 2u and noncontrol_mnemonic.find_first_not_of('X') == std::string::npos)
       add_cxs(columns, num_control_qubits, noncontrol_mnemonic);
-    else if (noncontrol_mnemonic.size() >= 2u and noncontrol_mnemonic.front() == 'X')
+    else if (noncontrol_mnemonic.size() >= 2u and noncontrol_mnemonic.front() == 'X' and noncontrol_mnemonic.find_first_not_of("0123456789", 1u) == std::string::npos)
       add_cxn(columns, num_control_qubits, noncontrol_mnemonic, mnemonic);
     else if (noncontrol_mnemonic == "Y")
       add_cy(columns, num_control_qubits);
-    else if (noncontrol_mnemonic.size() >= 2u
-             and std::all_of(begin(noncontrol_mnemonic), end(noncontrol_mnemonic), [](char const character) { return character == 'Y'; }))
+    else if (noncontrol_mnemonic.size() >= 2u and noncontrol_mnemonic.find_first_not_of('Y') == std::string::npos)
       add_cys(columns, num_control_qubits, noncontrol_mnemonic);
-    else if (noncontrol_mnemonic.size() >= 2u and noncontrol_mnemonic.front() == 'Y')
+    else if (noncontrol_mnemonic.size() >= 2u and noncontrol_mnemonic.front() == 'Y' and noncontrol_mnemonic.find_first_not_of("0123456789", 1u) == std::string::npos)
       add_cyn(columns, num_control_qubits, noncontrol_mnemonic, mnemonic);
     else if (noncontrol_mnemonic == "Z")
       add_cz(columns, num_control_qubits);
-    else if (noncontrol_mnemonic.size() >= 2u
-             and std::all_of(begin(noncontrol_mnemonic), end(noncontrol_mnemonic), [](char const character) { return character == 'Z'; }))
+    else if (noncontrol_mnemonic.size() >= 2u and noncontrol_mnemonic.find_first_not_of('Z') == std::string::npos)
       add_czs(columns, num_control_qubits, noncontrol_mnemonic);
-    else if (noncontrol_mnemonic.size() >= 2u and noncontrol_mnemonic.front() == 'Z')
+    else if (noncontrol_mnemonic.size() >= 2u and noncontrol_mnemonic.front() == 'Z' and noncontrol_mnemonic.find_first_not_of("0123456789", 1u) == std::string::npos)
       add_czn(columns, num_control_qubits, noncontrol_mnemonic, mnemonic);
     else if (noncontrol_mnemonic == "SWAP")
       add_cswap(columns, num_control_qubits);
@@ -2997,52 +2977,46 @@ namespace bra
       add_cex(columns, num_control_qubits);
     else if (noncontrol_mnemonic == "EX+")
       add_adj_cex(columns, num_control_qubits);
-    else if (noncontrol_mnemonic.size() >= 3u
-             and noncontrol_mnemonic.front() == 'E'
-             and std::all_of(std::next(begin(noncontrol_mnemonic)), end(noncontrol_mnemonic), [](char const character) { return character == 'X'; }))
+    else if (noncontrol_mnemonic.size() >= 3u and noncontrol_mnemonic.front() == 'E' and noncontrol_mnemonic.find_first_not_of('X', 1u) == std::string::npos)
       add_cexs(columns, num_control_qubits, noncontrol_mnemonic);
-    else if (noncontrol_mnemonic.size() >= 4u
-             and noncontrol_mnemonic.front() == 'E'
-             and std::all_of(std::next(begin(noncontrol_mnemonic)), std::prev(end(noncontrol_mnemonic)), [](char const character) { return character == 'X'; })
-             and noncontrol_mnemonic.back() == '+')
+    else if (noncontrol_mnemonic.size() >= 4u and noncontrol_mnemonic.front() == 'E' and noncontrol_mnemonic.back() == '+'
+             and noncontrol_mnemonic.find_first_not_of('X', 1u) == noncontrol_mnemonic.size() - 1u)
       add_adj_cexs(columns, num_control_qubits, noncontrol_mnemonic);
-    else if (noncontrol_mnemonic.size() >= 4u and noncontrol_mnemonic[0u] == 'E' and noncontrol_mnemonic[1u] == 'X' and noncontrol_mnemonic.back() == '+')
+    else if (noncontrol_mnemonic.size() >= 4u and noncontrol_mnemonic.front() == 'E' and noncontrol_mnemonic[1u] == 'X' and noncontrol_mnemonic.back() == '+'
+             and noncontrol_mnemonic.find_first_not_of("0123456789", 2u) == noncontrol_mnemonic.size() - 1u)
       add_adj_cexn(columns, num_control_qubits, noncontrol_mnemonic, mnemonic);
-    else if (noncontrol_mnemonic.size() >= 3u and noncontrol_mnemonic[0u] == 'E' and noncontrol_mnemonic[1u] == 'X')
+    else if (noncontrol_mnemonic.size() >= 3u and noncontrol_mnemonic.front() == 'E' and noncontrol_mnemonic[1u] == 'X'
+             and noncontrol_mnemonic.find_first_not_of("0123456789", 2u) == std::string::npos)
       add_cexn(columns, num_control_qubits, noncontrol_mnemonic, mnemonic);
     else if (noncontrol_mnemonic == "EY")
       add_cey(columns, num_control_qubits);
     else if (noncontrol_mnemonic == "EY+")
       add_adj_cey(columns, num_control_qubits);
-    else if (noncontrol_mnemonic.size() >= 3u
-             and noncontrol_mnemonic.front() == 'E'
-             and std::all_of(std::next(begin(noncontrol_mnemonic)), end(noncontrol_mnemonic), [](char const character) { return character == 'Y'; }))
+    else if (noncontrol_mnemonic.size() >= 3u and noncontrol_mnemonic.front() == 'E' and noncontrol_mnemonic.find_first_not_of('Y', 1u) == std::string::npos)
       add_ceys(columns, num_control_qubits, noncontrol_mnemonic);
-    else if (noncontrol_mnemonic.size() >= 4u
-             and noncontrol_mnemonic.front() == 'E'
-             and std::all_of(std::next(begin(noncontrol_mnemonic)), std::prev(end(noncontrol_mnemonic)), [](char const character) { return character == 'Y'; })
-             and noncontrol_mnemonic.back() == '+')
+    else if (noncontrol_mnemonic.size() >= 4u and noncontrol_mnemonic.front() == 'E' and noncontrol_mnemonic.back() == '+'
+             and noncontrol_mnemonic.find_first_not_of('Y', 1u) == noncontrol_mnemonic.size() - 1u)
       add_adj_ceys(columns, num_control_qubits, noncontrol_mnemonic);
-    else if (noncontrol_mnemonic.size() >= 4u and noncontrol_mnemonic[0u] == 'E' and noncontrol_mnemonic[1u] == 'Y' and noncontrol_mnemonic.back() == '+')
+    else if (noncontrol_mnemonic.size() >= 4u and noncontrol_mnemonic.front() == 'E' and noncontrol_mnemonic[1u] == 'Y' and noncontrol_mnemonic.back() == '+'
+             and noncontrol_mnemonic.find_first_not_of("0123456789", 2u) == noncontrol_mnemonic.size() - 1u)
       add_adj_ceyn(columns, num_control_qubits, noncontrol_mnemonic, mnemonic);
-    else if (noncontrol_mnemonic.size() >= 3u and noncontrol_mnemonic[0u] == 'E' and noncontrol_mnemonic[1u] == 'Y')
+    else if (noncontrol_mnemonic.size() >= 3u and noncontrol_mnemonic.front() == 'E' and noncontrol_mnemonic[1u] == 'Y'
+             and noncontrol_mnemonic.find_first_not_of("0123456789", 2u) == std::string::npos)
       add_ceyn(columns, num_control_qubits, noncontrol_mnemonic, mnemonic);
     else if (noncontrol_mnemonic == "EZ")
       add_cez(columns, num_control_qubits);
     else if (noncontrol_mnemonic == "EZ+")
       add_adj_cez(columns, num_control_qubits);
-    else if (noncontrol_mnemonic.size() >= 3u
-             and noncontrol_mnemonic.front() == 'E'
-             and std::all_of(std::next(begin(noncontrol_mnemonic)), end(noncontrol_mnemonic), [](char const character) { return character == 'Z'; }))
+    else if (noncontrol_mnemonic.size() >= 3u and noncontrol_mnemonic.front() == 'E' and noncontrol_mnemonic.find_first_not_of('Z', 1u) == std::string::npos)
       add_cezs(columns, num_control_qubits, noncontrol_mnemonic);
-    else if (noncontrol_mnemonic.size() >= 4u
-             and noncontrol_mnemonic.front() == 'E'
-             and std::all_of(std::next(begin(noncontrol_mnemonic)), std::prev(end(noncontrol_mnemonic)), [](char const character) { return character == 'Z'; })
-             and noncontrol_mnemonic.back() == '+')
+    else if (noncontrol_mnemonic.size() >= 4u and noncontrol_mnemonic.front() == 'E' and noncontrol_mnemonic.back() == '+'
+             and noncontrol_mnemonic.find_first_not_of('Z', 1u) == noncontrol_mnemonic.size() - 1u)
       add_adj_cezs(columns, num_control_qubits, noncontrol_mnemonic);
-    else if (noncontrol_mnemonic.size() >= 4u and noncontrol_mnemonic[0u] == 'E' and noncontrol_mnemonic[1u] == 'Z' and noncontrol_mnemonic.back() == '+')
+    else if (noncontrol_mnemonic.size() >= 4u and noncontrol_mnemonic[0u] == 'E' and noncontrol_mnemonic[1u] == 'Z' and noncontrol_mnemonic.back() == '+'
+             and noncontrol_mnemonic.find_first_not_of("0123456789", 2u) == noncontrol_mnemonic.size() - 1u)
       add_adj_cezn(columns, num_control_qubits, noncontrol_mnemonic, mnemonic);
-    else if (noncontrol_mnemonic.size() >= 3u and noncontrol_mnemonic[0u] == 'E' and noncontrol_mnemonic[1u] == 'Z')
+    else if (noncontrol_mnemonic.size() >= 3u and noncontrol_mnemonic[0u] == 'E' and noncontrol_mnemonic[1u] == 'Z'
+             and noncontrol_mnemonic.find_first_not_of("0123456789", 2u) == std::string::npos)
       add_cezn(columns, num_control_qubits, noncontrol_mnemonic, mnemonic);
     else if (noncontrol_mnemonic == "ESWAP")
       add_ceswap(columns, num_control_qubits);
@@ -3060,18 +3034,16 @@ namespace bra
       add_csz(columns, num_control_qubits);
     else if (noncontrol_mnemonic == "SZ+")
       add_adj_csz(columns, num_control_qubits);
-    else if (noncontrol_mnemonic.size() >= 3u
-             and noncontrol_mnemonic.front() == 'S'
-             and std::all_of(std::next(begin(noncontrol_mnemonic)), end(noncontrol_mnemonic), [](char const character) { return character == 'Z'; }))
+    else if (noncontrol_mnemonic.size() >= 3u and noncontrol_mnemonic.front() == 'S' and noncontrol_mnemonic.find_first_not_of('Z', 1u) == std::string::npos)
       add_cszs(columns, num_control_qubits, noncontrol_mnemonic);
-    else if (noncontrol_mnemonic.size() >= 4u
-             and noncontrol_mnemonic.front() == 'S'
-             and std::all_of(std::next(begin(noncontrol_mnemonic)), std::prev(end(noncontrol_mnemonic)), [](char const character) { return character == 'Z'; })
-             and noncontrol_mnemonic.back() == '+')
+    else if (noncontrol_mnemonic.size() >= 4u and noncontrol_mnemonic.front() == 'S' and noncontrol_mnemonic.back() == '+'
+             and noncontrol_mnemonic.find_first_not_of('Z', 1u) == noncontrol_mnemonic.size() - 1u)
       add_adj_cszs(columns, num_control_qubits, noncontrol_mnemonic);
-    else if (noncontrol_mnemonic.size() >= 4u and noncontrol_mnemonic[0u] == 'S' and noncontrol_mnemonic[1u] == 'Z' and noncontrol_mnemonic.back() == '+')
+    else if (noncontrol_mnemonic.size() >= 4u and noncontrol_mnemonic[0u] == 'S' and noncontrol_mnemonic[1u] == 'Z' and noncontrol_mnemonic.back() == '+'
+             and noncontrol_mnemonic.find_first_not_of("0123456789", 2u) == noncontrol_mnemonic.size() - 1u)
       add_adj_cszn(columns, num_control_qubits, noncontrol_mnemonic, mnemonic);
-    else if (noncontrol_mnemonic.size() >= 3u and noncontrol_mnemonic[0u] == 'S' and noncontrol_mnemonic[1u] == 'Z')
+    else if (noncontrol_mnemonic.size() >= 3u and noncontrol_mnemonic[0u] == 'S' and noncontrol_mnemonic[1u] == 'Z'
+             and noncontrol_mnemonic.find_first_not_of("0123456789", 2u) == std::string::npos)
       add_cszn(columns, num_control_qubits, noncontrol_mnemonic, mnemonic);
     else
       throw unsupported_mnemonic_error{mnemonic};

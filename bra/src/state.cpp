@@ -48,6 +48,48 @@ namespace bra
     : std::runtime_error{(mnemonic + " is not supported in gate fusion").c_str()}
   { }
 
+  wrong_assignment_argument_error::wrong_assignment_argument_error(std::string const& lhs_variable_name, ::bra::assign_operation_type const op, std::string const& rhs_literal_or_variable_name)
+    : std::runtime_error{(std::string{"\""} + lhs_variable_name + " " + to_string(op) + " " + rhs_literal_or_variable_name + "\" is a wrong argument").c_str()}
+  { }
+
+  std::string wrong_assignment_argument_error::to_string(::bra::assign_operation_type const op)
+  {
+    return
+      op == ::bra::assign_operation_type::assign
+      ? ":="
+      : op == ::bra::assign_operation_type::plus_assign
+        ? "+="
+        : op == ::bra::assign_operation_type::minus_assign
+          ? "-="
+          : op == ::bra::assign_operation_type::multiplies_assign
+            ? "*="
+            : op == ::bra::assign_operation_type::divides_assign
+              ? "/="
+              : "";
+  }
+
+  wrong_comparison_argument_error::wrong_comparison_argument_error(std::string const& lhs_variable_name, ::bra::compare_operation_type const op, std::string const& rhs_literal_or_variable_name)
+    : std::runtime_error{(std::string{"\""} + lhs_variable_name + " " + to_string(op) + " " + rhs_literal_or_variable_name + "\" is a wrong argument").c_str()}
+  { }
+
+  std::string wrong_comparison_argument_error::to_string(::bra::compare_operation_type const op)
+  {
+    return
+      op == ::bra::compare_operation_type::equal_to
+      ? "=="
+      : op == ::bra::compare_operation_type::not_equal_to
+        ? "\\="
+        : op == ::bra::compare_operation_type::greater
+          ? ">"
+          : op == ::bra::compare_operation_type::less
+            ? "<"
+            : op == ::bra::compare_operation_type::greater_equal
+              ? ">="
+              : op == ::bra::compare_operation_type::less_equal
+                ? "<="
+                : "";
+  }
+
 #ifndef BRA_NO_MPI
   state::state(
     bit_integer_type const total_num_qubits,
@@ -221,15 +263,12 @@ namespace bra
     std::string const& lhs_variable_name, ::bra::assign_operation_type const op, std::string const& rhs_literal_or_variable_name)
   {
     if (not std::isalpha(static_cast<unsigned char>(lhs_variable_name.front())))
-      return;
+      throw ::bra::wrong_assignment_argument_error{lhs_variable_name, op, rhs_literal_or_variable_name};
 
-    using std::begin;
-    using std::end;
-    auto const first = begin(lhs_variable_name);
-    auto const last = end(lhs_variable_name);
-    auto const found = std::find(first, last, ':');
-    auto const variable_name = std::string{first, found};
-    auto const index = found == last ? 0 : to_int(std::string{std::next(found), last});
+    using size_type = std::string::size_type;
+    auto const found_index = lhs_variable_name.find(':');
+    auto const variable_name = lhs_variable_name.substr(size_type{0u}, found_index);
+    auto const index = found_index == std::string::npos ? 0 : to_int(lhs_variable_name.substr(found_index + size_type{1u}));
 
     if (real_variables_.find(variable_name) != end(real_variables_))
     {
@@ -245,7 +284,7 @@ namespace bra
       else if (op == ::bra::assign_operation_type::divides_assign)
         real_variables_.at(variable_name)[index] /= rhs_value;
     }
-    else if (int_variables_.find(lhs_variable_name) != end(int_variables_))
+    else if (int_variables_.find(variable_name) != end(int_variables_))
     {
       auto const rhs_value = to_int(rhs_literal_or_variable_name);
       if (op == ::bra::assign_operation_type::assign)
@@ -259,6 +298,8 @@ namespace bra
       else if (op == ::bra::assign_operation_type::divides_assign)
         int_variables_.at(variable_name)[index] /= rhs_value;
     }
+    else
+      throw ::bra::wrong_assignment_argument_error{lhs_variable_name, op, rhs_literal_or_variable_name};
   }
 
   void state::invoke_jump_operation(std::string const& label)
@@ -271,13 +312,10 @@ namespace bra
     if (not std::isalpha(static_cast<unsigned char>(lhs_variable_name.front())))
       return;
 
-    using std::begin;
-    using std::end;
-    auto const first = begin(lhs_variable_name);
-    auto const last = end(lhs_variable_name);
-    auto const found = std::find(first, last, ':');
-    auto const variable_name = std::string{first, found};
-    auto const index = found == last ? 0 : to_int(std::string{std::next(found), last});
+    using size_type = std::string::size_type;
+    auto const found_index = lhs_variable_name.find(':');
+    auto const variable_name = lhs_variable_name.substr(size_type{0u}, found_index);
+    auto const index = found_index == std::string::npos ? 0 : to_int(lhs_variable_name.substr(found_index + size_type{1u}));
 
     if (real_variables_.find(variable_name) != end(real_variables_))
     {
@@ -323,6 +361,8 @@ namespace bra
                and int_variables_.at(variable_name)[index] <= rhs_value)
           maybe_label_ = label;
     }
+    else
+      throw ::bra::wrong_comparison_argument_error{lhs_variable_name, op, rhs_literal_or_variable_name};
   }
 
   auto state::to_int(std::string const& colon_separated_string) const -> int_type
@@ -333,32 +373,24 @@ namespace bra
     if (colon_separated_string.front() == ':')
     {
       using std::begin;
-      auto const first = begin(colon_separated_string);
-      if (std::string{first, end(colon_separated_string)} == ":OUTCOME")
+      if (colon_separated_string == ":OUTCOME")
         return static_cast<int_type>(static_cast<int>(last_outcomes_[static_cast<bit_integer_type>(last_measured_qubit_)]));
-      if (std::string{first, first + 9} == ":OUTCOMES")
-      {
-        using std::end;
-        auto const last = end(colon_separated_string);
-        auto const found = std::find(std::next(first), last, ':');
-        if (found == last)
-          return static_cast<int_type>(static_cast<int>(last_outcomes_.front()));
 
-        return static_cast<int_type>(static_cast<int>(last_outcomes_[boost::lexical_cast<int>(std::string{std::next(found), last})]));
-      }
+      using size_type = std::string::size_type;
+      if (colon_separated_string.size() == size_type{9u} and colon_separated_string == ":OUTCOMES")
+        return static_cast<int_type>(static_cast<int>(last_outcomes_.front()));
+      else if (colon_separated_string.size() > size_type{10u} and colon_separated_string.substr(size_type{0u}, size_type{10u}) == ":OUTCOMES:")
+        return static_cast<int_type>(static_cast<int>(last_outcomes_[boost::lexical_cast<int>(colon_separated_string.substr(size_type{10u}))]));
 
       throw 1;
     }
 
-    using std::begin;
-    using std::end;
-    auto const first = begin(colon_separated_string);
-    auto const last = end(colon_separated_string);
-    auto const found = std::find(first, last, ':');
-    if (found == last)
+    auto const found_index = colon_separated_string.find(':');
+    if (found_index == std::string::npos)
       return int_variables_.at(colon_separated_string).front();
 
-    return int_variables_.at(std::string{first, found})[to_int(std::string{std::next(found), last})];
+    using size_type = std::string::size_type;
+    return int_variables_.at(colon_separated_string.substr(size_type{0u}, found_index))[to_int(colon_separated_string.substr(found_index + size_type{1u}))];
   }
 
   auto state::to_real(std::string const& colon_separated_string) const -> real_type
@@ -374,19 +406,20 @@ namespace bra
         return boost::math::constants::half_pi<real_type>();
       else if (colon_separated_string == ":TWO_PI")
         return boost::math::constants::two_pi<real_type>();
+      else if (colon_separated_string == ":ROOT_TWO")
+        return boost::math::constants::root_two<real_type>();
+      else if (colon_separated_string == ":HALF_ROOT_TWO")
+        return boost::math::constants::half_root_two<real_type>();
 
       throw 1;
     }
 
-    using std::begin;
-    using std::end;
-    auto const first = begin(colon_separated_string);
-    auto const last = end(colon_separated_string);
-    auto const found = std::find(first, last, ':');
-    if (found == last)
+    auto const found_index = colon_separated_string.find(':');
+    if (found_index == std::string::npos)
       return real_variables_.at(colon_separated_string).front();
 
-    return real_variables_.at(std::string{first, found})[to_int(std::string{std::next(found), last})];
+    using size_type = std::string::size_type;
+    return real_variables_.at(colon_separated_string.substr(size_type{0u}, found_index))[to_int(colon_separated_string.substr(found_index + size_type{1u}))];
   }
 
   state& state::i_gate(qubit_type const qubit)

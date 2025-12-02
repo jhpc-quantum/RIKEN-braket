@@ -65,6 +65,26 @@ namespace bra
     unsupported_fused_gate_error(std::string const& mnemonic);
   }; // class unsupported_fused_gate_error
 
+  class wrong_assignment_argument_error
+    : public std::runtime_error
+  {
+   public:
+    wrong_assignment_argument_error(std::string const& lhs_variable_name, ::bra::assign_operation_type const op, std::string const& rhs_literal_or_variable_name);
+
+   private:
+    std::string to_string(::bra::assign_operation_type const op);
+  }; // class wrong_assignment_argument_error
+
+  class wrong_comparison_argument_error
+    : public std::runtime_error
+  {
+   public:
+    wrong_comparison_argument_error(std::string const& lhs_variable_name, ::bra::compare_operation_type const op, std::string const& rhs_literal_or_variable_name);
+
+   private:
+    std::string to_string(::bra::compare_operation_type const op);
+  }; // class wrong_comparison_argument_error
+
   namespace state_detail
   {
     template <typename StateInteger, typename BitInteger>
