@@ -1051,7 +1051,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
 
     ket::println_amplitudes(
       oss, data_,
-      [](::bra::state_integer_type const qubit_value, ::bra::complex_type const& amplitude)
+      [this](::bra::state_integer_type const qubit_value, ::bra::complex_type const& amplitude)
       {
         std::ostringstream oss;
         using std::real;
