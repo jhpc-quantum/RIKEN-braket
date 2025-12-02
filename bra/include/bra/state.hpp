@@ -33,6 +33,7 @@
 # endif // BRA_NO_MPI
 
 # include <bra/types.hpp>
+# include <bra/pauli_string_space.hpp>
 
 # ifndef BRA_NO_MPI
 #   define BRA_clock yampi::wall_clock
@@ -51,6 +52,15 @@
 
 namespace bra
 {
+  enum class variable_type : int
+  { real = 0, complex_ = 1, integer = 2, pauli_string_space = 3 };
+
+  enum class assign_operation_type : int
+  { assign = 0, plus_assign = 1, minus_assign = 2, multiplies_assign = 3, divides_assign = 4 };
+
+  enum class compare_operation_type : int
+  { equal_to = 0, not_equal_to = 1, greater = 2, less = 3, greater_equal = 4, less_equal = 5 };
+
   class too_many_operated_qubits_error
     : public std::runtime_error
   {
@@ -85,6 +95,13 @@ namespace bra
     std::string to_string(::bra::compare_operation_type const op);
   }; // class wrong_comparison_argument_error
 
+  class wrong_pauli_string_length_error
+    : public std::runtime_error
+  {
+   public:
+    wrong_pauli_string_length_error(std::size_t const num_operated_qubits, std::size_t const pauli_string_length);
+  }; // class wrong_pauli_string_length_error
+
   namespace state_detail
   {
     template <typename StateInteger, typename BitInteger>
@@ -112,15 +129,6 @@ namespace bra
       std::chrono::time_point<Clock, Duration> const& to)
     { return 0.000001 * std::chrono::duration_cast<std::chrono::microseconds>(to - from).count(); }
   }
-
-  enum class variable_type : int
-  { real = 0, integer = 1 };
-
-  enum class assign_operation_type : int
-  { assign = 0, plus_assign = 1, minus_assign = 2, multiplies_assign = 3, divides_assign = 4 };
-
-  enum class compare_operation_type : int
-  { equal_to = 0, not_equal_to = 1, greater = 2, less = 3, greater_equal = 4, less_equal = 5 };
 
   enum class found_qubit : int
   { not_found = 0, control_qubit = 1, ez_qubit = 2, cez_qubit = 3, qubit = 4 };
@@ -221,14 +229,19 @@ namespace bra
     using phase_coefficients_type = std::vector< ::bra::complex_type >;
     phase_coefficients_type phase_coefficients_;
 
-   private:
     boost::optional<std::string> maybe_label_;
 
     using real_variables_type = std::unordered_map<std::string, std::vector<real_type>>;
     real_variables_type real_variables_;
 
+    using complex_variables_type = std::unordered_map<std::string, std::vector<complex_type>>;
+    complex_variables_type complex_variables_;
+
     using int_variables_type = std::unordered_map<std::string, std::vector<int_type>>;
     int_variables_type int_variables_;
+
+    using pauli_string_space_variables_type = std::unordered_map<std::string, std::vector< ::bra::pauli_string_space >>;
+    pauli_string_space_variables_type pauli_string_space_variables_;
 
    public:
 # ifndef BRA_NO_MPI
@@ -287,8 +300,15 @@ namespace bra
     yampi::environment const& environment() const { return environment_; }
 # endif // BRA_NO_MPI
 
+    void generate_new_variable(std::string const& variable_name, ::bra::variable_type const type, int const num_elements);
+
+   private:
     void generate_new_real_variable(std::string const& variable_name, int const num_elements);
+    void generate_new_complex_variable(std::string const& variable_name, int const num_elements);
     void generate_new_int_variable(std::string const& variable_name, int const num_elements);
+    void generate_new_pauli_string_space_variable(std::string const& variable_name, int const num_elements);
+
+   public:
     void invoke_assign_operation(std::string const& lhs_variable_name, ::bra::assign_operation_type const op, std::string const& rhs_literal_or_variable_name);
 
     void invoke_jump_operation(std::string const& label);
@@ -301,10 +321,17 @@ namespace bra
     unsigned int num_pages() const { return do_num_pages(); }
 # endif // BRA_NO_MPI
 
-   private:
+   protected:
+    auto is_int_symbol(std::string const& symbol_name) const -> bool;
     auto to_int(std::string const& colon_separated_string) const -> int_type;
+    auto is_real_symbol(std::string const& symbol_name) const -> bool;
     auto to_real(std::string const& colon_separated_string) const -> real_type;
+    auto is_complex_symbol(std::string const& symbol_name) const -> bool;
+    auto to_complex(std::string const& colon_separated_string) const -> complex_type;
+    auto is_pauli_string_space_symbol(std::string const& symbol_name) const -> bool;
+    auto to_pauli_string_space(std::string const& colon_separated_string) const -> ::bra::pauli_string_space;
 
+   private:
     friend class real_visitor;
     friend class int_visitor;
 

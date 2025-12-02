@@ -27,6 +27,7 @@
 
 #include <ket/qubit.hpp>
 #include <ket/control.hpp>
+#include <ket/utility/imaginary_unit.hpp>
 
 #include <bra/state.hpp>
 #include <bra/utility/closest_floating_point_of.hpp>
@@ -90,6 +91,10 @@ namespace bra
                 : "";
   }
 
+  wrong_pauli_string_length_error::wrong_pauli_string_length_error(std::size_t const num_operated_qubits, std::size_t const pauli_string_length)
+    : std::runtime_error{std::string{"the number of operated qubits ("}.append(std::to_string(num_operated_qubits)).append(") is not equal to the length of Pauli string (").append(std::to_string(pauli_string_length)).append(")").c_str()}
+  { }
+
 #ifndef BRA_NO_MPI
   state::state(
     bit_integer_type const total_num_qubits,
@@ -114,7 +119,9 @@ namespace bra
       phase_coefficients_{},
       maybe_label_{},
       real_variables_{},
-      int_variables_{}
+      complex_variables_{},
+      int_variables_{},
+      pauli_string_space_variables_{}
   {
     found_qubits_.reserve(total_num_qubits_);
     ket::utility::generate_phase_coefficients(phase_coefficients_, total_num_qubits_);
@@ -144,7 +151,9 @@ namespace bra
       phase_coefficients_{},
       maybe_label_{},
       real_variables_{},
-      int_variables_{}
+      complex_variables_{},
+      int_variables_{},
+      pauli_string_space_variables_{}
   {
     found_qubits_.reserve(total_num_qubits_);
     ket::utility::generate_phase_coefficients(phase_coefficients_, total_num_qubits_);
@@ -174,7 +183,9 @@ namespace bra
       phase_coefficients_{},
       maybe_label_{},
       real_variables_{},
-      int_variables_{}
+      complex_variables_{},
+      int_variables_{},
+      pauli_string_space_variables_{}
   {
     found_qubits_.reserve(total_num_qubits_);
     ket::utility::generate_phase_coefficients(phase_coefficients_, total_num_qubits_);
@@ -205,7 +216,9 @@ namespace bra
       phase_coefficients_{},
       maybe_label_{},
       real_variables_{},
-      int_variables_{}
+      complex_variables_{},
+      int_variables_{},
+      pauli_string_space_variables_{}
   {
     found_qubits_.reserve(total_num_qubits_);
     ket::utility::generate_phase_coefficients(phase_coefficients_, total_num_qubits_);
@@ -226,12 +239,26 @@ namespace bra
       phase_coefficients_{},
       maybe_label_{},
       real_variables_{},
-      int_variables_{}
+      complex_variables_{},
+      int_variables_{},
+      pauli_string_space_variables_{}
   {
     found_qubits_.reserve(total_num_qubits_);
     ket::utility::generate_phase_coefficients(phase_coefficients_, total_num_qubits_);
   }
 #endif // BRA_NO_MPI
+
+  void state::generate_new_variable(std::string const& variable_name, ::bra::variable_type const type, int const num_elements)
+  {
+    if (type == ::bra::variable_type::real)
+      generate_new_real_variable(variable_name, num_elements);
+    else if (type == ::bra::variable_type::complex_)
+      generate_new_complex_variable(variable_name, num_elements);
+    else if (type == ::bra::variable_type::integer)
+      generate_new_int_variable(variable_name, num_elements);
+    else if (type == ::bra::variable_type::pauli_string_space)
+      generate_new_pauli_string_space_variable(variable_name, num_elements);
+  }
 
   void state::generate_new_real_variable(std::string const& variable_name, int const num_elements)
   {
@@ -246,6 +273,19 @@ namespace bra
     real_variables_[variable_name] = std::vector<real_type>(static_cast<size_type>(num_elements));
   }
 
+  void state::generate_new_complex_variable(std::string const& variable_name, int const num_elements)
+  {
+    using std::end;
+    if (complex_variables_.find(variable_name) != end(complex_variables_))
+      throw 1;
+
+    if (num_elements <= 0)
+      throw 1;
+
+    using size_type = std::vector<complex_type>::size_type;
+    complex_variables_[variable_name] = std::vector<complex_type>(static_cast<size_type>(num_elements));
+  }
+
   void state::generate_new_int_variable(std::string const& variable_name, int const num_elements)
   {
     using std::end;
@@ -257,6 +297,19 @@ namespace bra
 
     using size_type = std::vector<int_type>::size_type;
     int_variables_[variable_name] = std::vector<int_type>(static_cast<size_type>(num_elements));
+  }
+
+  void state::generate_new_pauli_string_space_variable(std::string const& variable_name, int const num_elements)
+  {
+    using std::end;
+    if (pauli_string_space_variables_.find(variable_name) != end(pauli_string_space_variables_))
+      throw 1;
+
+    if (num_elements <= 0)
+      throw 1;
+
+    using size_type = std::vector<std::unordered_map<std::string, complex_type>>::size_type;
+    pauli_string_space_variables_[variable_name] = std::vector< ::bra::pauli_string_space >(static_cast<size_type>(num_elements));
   }
 
   void state::invoke_assign_operation(
@@ -284,6 +337,20 @@ namespace bra
       else if (op == ::bra::assign_operation_type::divides_assign)
         real_variables_.at(variable_name)[index] /= rhs_value;
     }
+    else if (complex_variables_.find(variable_name) != end(complex_variables_))
+    {
+      auto const rhs_value = to_complex(rhs_literal_or_variable_name);
+      if (op == ::bra::assign_operation_type::assign)
+        complex_variables_.at(variable_name)[index] = rhs_value;
+      else if (op == ::bra::assign_operation_type::plus_assign)
+        complex_variables_.at(variable_name)[index] += rhs_value;
+      else if (op == ::bra::assign_operation_type::minus_assign)
+        complex_variables_.at(variable_name)[index] -= rhs_value;
+      else if (op == ::bra::assign_operation_type::multiplies_assign)
+        complex_variables_.at(variable_name)[index] *= rhs_value;
+      else if (op == ::bra::assign_operation_type::divides_assign)
+        complex_variables_.at(variable_name)[index] /= rhs_value;
+    }
     else if (int_variables_.find(variable_name) != end(int_variables_))
     {
       auto const rhs_value = to_int(rhs_literal_or_variable_name);
@@ -297,6 +364,31 @@ namespace bra
         int_variables_.at(variable_name)[index] *= rhs_value;
       else if (op == ::bra::assign_operation_type::divides_assign)
         int_variables_.at(variable_name)[index] /= rhs_value;
+    }
+    else if (pauli_string_space_variables_.find(variable_name) != end(pauli_string_space_variables_))
+    {
+      auto& lhs_pauli_string_space = pauli_string_space_variables_.at(variable_name)[index];
+
+      if (op == ::bra::assign_operation_type::assign)
+        lhs_pauli_string_space = to_pauli_string_space(rhs_literal_or_variable_name);
+      else if (op == ::bra::assign_operation_type::plus_assign)
+        for (auto const& rhs_basis_scalar: to_pauli_string_space(rhs_literal_or_variable_name))
+          lhs_pauli_string_space[rhs_basis_scalar.first] += rhs_basis_scalar.second;
+      else if (op == ::bra::assign_operation_type::minus_assign)
+        for (auto const& rhs_basis_scalar: to_pauli_string_space(rhs_literal_or_variable_name))
+          lhs_pauli_string_space[rhs_basis_scalar.first] -= rhs_basis_scalar.second;
+      else if (op == ::bra::assign_operation_type::multiplies_assign)
+      {
+        auto const rhs_value = to_complex(rhs_literal_or_variable_name);
+        for (auto& pauli_string_scalar: lhs_pauli_string_space)
+          pauli_string_scalar.second *= rhs_value;
+      }
+      else if (op == ::bra::assign_operation_type::divides_assign)
+      {
+        auto const rhs_value = to_complex(rhs_literal_or_variable_name);
+        for (auto& pauli_string_scalar: lhs_pauli_string_space)
+          pauli_string_scalar.second /= rhs_value;
+      }
     }
     else
       throw ::bra::wrong_assignment_argument_error{lhs_variable_name, op, rhs_literal_or_variable_name};
@@ -365,6 +457,9 @@ namespace bra
       throw ::bra::wrong_comparison_argument_error{lhs_variable_name, op, rhs_literal_or_variable_name};
   }
 
+  auto state::is_int_symbol(std::string const& symbol_name) const -> bool
+  { return symbol_name == ":INT" or symbol_name == ":OUTCOME" or symbol_name == ":OUTCOMES"; }
+
   auto state::to_int(std::string const& colon_separated_string) const -> int_type
   {
     if (std::isdigit(static_cast<unsigned char>(colon_separated_string.front())) or colon_separated_string.front() == '+' or colon_separated_string.front() == '-')
@@ -373,7 +468,9 @@ namespace bra
     if (colon_separated_string.front() == ':')
     {
       using std::begin;
-      if (colon_separated_string == ":OUTCOME")
+      if (colon_separated_string == ":INT")
+        return int_type{0};
+      else if (colon_separated_string == ":OUTCOME")
         return static_cast<int_type>(static_cast<int>(last_outcomes_[static_cast<bit_integer_type>(last_measured_qubit_)]));
 
       using size_type = std::string::size_type;
@@ -381,6 +478,46 @@ namespace bra
         return static_cast<int_type>(static_cast<int>(last_outcomes_.front()));
       else if (colon_separated_string.size() > size_type{10u} and colon_separated_string.substr(size_type{0u}, size_type{10u}) == ":OUTCOMES:")
         return static_cast<int_type>(static_cast<int>(last_outcomes_[boost::lexical_cast<int>(colon_separated_string.substr(size_type{10u}))]));
+
+      constexpr auto int_cast_symbol_length = size_type{5u};
+      if (colon_separated_string.size() > int_cast_symbol_length and colon_separated_string.substr(size_type{0u}, int_cast_symbol_length) == ":INT:")
+      {
+        auto const new_colon_separated_string = colon_separated_string.substr(int_cast_symbol_length);
+        if (new_colon_separated_string.empty())
+          throw 1;
+
+        if (std::isdigit(static_cast<unsigned char>(new_colon_separated_string.front()))
+            or new_colon_separated_string.front() == '+' or new_colon_separated_string.front() == '-'
+            or new_colon_separated_string.front() == '.')
+          return static_cast<int_type>(boost::lexical_cast<real_type>(new_colon_separated_string));
+
+        auto const variable_name
+          = new_colon_separated_string.substr(
+              size_type{0u},
+              new_colon_separated_string.find(
+                ':', new_colon_separated_string.front() == ':' ? size_type{1u} : size_type{0u}));
+
+        if (is_int_symbol(variable_name))
+          return to_int(new_colon_separated_string);
+        else if (is_real_symbol(variable_name))
+          return static_cast<int_type>(to_real(new_colon_separated_string));
+        else if (is_complex_symbol(variable_name))
+        {
+          using std::real;
+          return static_cast<int>(real(to_complex(new_colon_separated_string)));
+        }
+
+        using std::end;
+        if (int_variables_.find(variable_name) != end(int_variables_))
+          return to_int(new_colon_separated_string);
+        else if (real_variables_.find(variable_name) != end(real_variables_))
+          return static_cast<int>(to_real(new_colon_separated_string));
+        else if (complex_variables_.find(variable_name) != end(complex_variables_))
+        {
+          using std::real;
+          return static_cast<int>(real(to_complex(new_colon_separated_string)));
+        }
+      }
 
       throw 1;
     }
@@ -393,6 +530,9 @@ namespace bra
     return int_variables_.at(colon_separated_string.substr(size_type{0u}, found_index))[to_int(colon_separated_string.substr(found_index + size_type{1u}))];
   }
 
+  auto state::is_real_symbol(std::string const& symbol_name) const -> bool
+  { return symbol_name == ":REAL" or symbol_name == ":IMAG" or symbol_name == ":PI" or symbol_name == ":HALF_PI" or symbol_name == ":TWO_PI" or symbol_name == ":ROOT_TWO" or symbol_name == ":HALF_ROOT_TWO"; }
+
   auto state::to_real(std::string const& colon_separated_string) const -> real_type
   {
     if (std::isdigit(static_cast<unsigned char>(colon_separated_string.front())) or colon_separated_string.front() == '+' or colon_separated_string.front() == '-' or colon_separated_string.front() == '.')
@@ -400,7 +540,11 @@ namespace bra
 
     if (colon_separated_string.front() == ':')
     {
-      if (colon_separated_string == ":PI")
+      if (colon_separated_string == ":REAL")
+        return real_type{0};
+      else if (colon_separated_string == ":IMAG")
+        return real_type{0};
+      else if (colon_separated_string == ":PI")
         return boost::math::constants::pi<real_type>();
       else if (colon_separated_string == ":HALF_PI")
         return boost::math::constants::half_pi<real_type>();
@@ -411,6 +555,87 @@ namespace bra
       else if (colon_separated_string == ":HALF_ROOT_TWO")
         return boost::math::constants::half_root_two<real_type>();
 
+      using size_type = std::string::size_type;
+      constexpr auto real_cast_symbol_length = size_type{6u};
+      if (colon_separated_string.size() > real_cast_symbol_length and colon_separated_string.substr(size_type{0u}, real_cast_symbol_length) == ":REAL:")
+      {
+        auto const new_colon_separated_string = colon_separated_string.substr(real_cast_symbol_length);
+        if (new_colon_separated_string.empty())
+          throw 1;
+
+        if (std::isdigit(static_cast<unsigned char>(new_colon_separated_string.front()))
+            or new_colon_separated_string.front() == '+' or new_colon_separated_string.front() == '-'
+            or new_colon_separated_string.front() == '.')
+          return boost::lexical_cast<real_type>(new_colon_separated_string);
+
+        auto const variable_name
+          = new_colon_separated_string.substr(
+              size_type{0u},
+              new_colon_separated_string.find(
+                ':', new_colon_separated_string.front() == ':' ? size_type{1u} : size_type{0u}));
+
+        if (is_int_symbol(variable_name))
+          return static_cast<real_type>(to_int(new_colon_separated_string));
+        else if (is_real_symbol(variable_name))
+          return to_real(new_colon_separated_string);
+        else if (is_complex_symbol(variable_name))
+        {
+          using std::real;
+          return real(to_complex(new_colon_separated_string));
+        }
+
+        using std::end;
+        if (int_variables_.find(variable_name) != end(int_variables_))
+          return static_cast<real_type>(to_int(new_colon_separated_string));
+        else if (real_variables_.find(variable_name) != end(real_variables_))
+          return to_real(new_colon_separated_string);
+        else if (complex_variables_.find(variable_name) != end(complex_variables_))
+        {
+          using std::real;
+          return real(to_complex(new_colon_separated_string));
+        }
+      }
+
+      constexpr auto imag_cast_symbol_length = size_type{6u};
+      if (colon_separated_string.size() > imag_cast_symbol_length and colon_separated_string.substr(size_type{0u}, imag_cast_symbol_length) == ":IMAG:")
+      {
+        auto const new_colon_separated_string = colon_separated_string.substr(imag_cast_symbol_length);
+        if (new_colon_separated_string.empty())
+          throw 1;
+
+        if (std::isdigit(static_cast<unsigned char>(new_colon_separated_string.front()))
+            or new_colon_separated_string.front() == '+' or new_colon_separated_string.front() == '-'
+            or new_colon_separated_string.front() == '.')
+          return real_type{0};
+
+        auto const variable_name
+          = new_colon_separated_string.substr(
+              size_type{0u},
+              new_colon_separated_string.find(
+                ':', new_colon_separated_string.front() == ':' ? size_type{1u} : size_type{0u}));
+
+        if (is_int_symbol(variable_name))
+          return real_type{0};
+        else if (is_real_symbol(variable_name))
+          return real_type{0};
+        else if (is_complex_symbol(variable_name))
+        {
+          using std::imag;
+          return imag(to_complex(new_colon_separated_string));
+        }
+
+        using std::end;
+        if (int_variables_.find(variable_name) != end(int_variables_))
+          return real_type{0};
+        else if (real_variables_.find(variable_name) != end(real_variables_))
+          return real_type{0};
+        else if (complex_variables_.find(variable_name) != end(complex_variables_))
+        {
+          using std::imag;
+          return imag(to_complex(new_colon_separated_string));
+        }
+      }
+
       throw 1;
     }
 
@@ -420,6 +645,91 @@ namespace bra
 
     using size_type = std::string::size_type;
     return real_variables_.at(colon_separated_string.substr(size_type{0u}, found_index))[to_int(colon_separated_string.substr(found_index + size_type{1u}))];
+  }
+
+  auto state::is_complex_symbol(std::string const& symbol_name) const -> bool
+  { return symbol_name == ":COMPLEX" or symbol_name == ":I" or symbol_name == ":MINUS_I" or symbol_name == ":RESULT"; }
+
+  auto state::to_complex(std::string const& colon_separated_string) const -> complex_type
+  {
+    if (colon_separated_string.front() == ':')
+    {
+      if (colon_separated_string == ":COMPLEX")
+        return complex_type{real_type{0}};
+      else if (colon_separated_string == ":I")
+        return ::ket::utility::imaginary_unit<complex_type>();
+      else if (colon_separated_string == ":MINUS_I")
+        return ::ket::utility::minus_imaginary_unit<complex_type>();
+      else if (colon_separated_string == ":RESULT")
+        return result_;
+
+      using size_type = std::string::size_type;
+      constexpr auto complex_cast_symbol_length = size_type{9u};
+      if (colon_separated_string.size() > complex_cast_symbol_length and colon_separated_string.substr(size_type{0u}, complex_cast_symbol_length) == ":COMPLEX:")
+      {
+        auto const new_colon_separated_string = colon_separated_string.substr(complex_cast_symbol_length);
+        if (new_colon_separated_string.empty())
+          throw 1;
+
+        if (std::isdigit(static_cast<unsigned char>(new_colon_separated_string.front()))
+            or new_colon_separated_string.front() == '+' or new_colon_separated_string.front() == '-'
+            or new_colon_separated_string.front() == '.')
+          return static_cast<complex_type>(boost::lexical_cast<real_type>(new_colon_separated_string));
+
+        auto const variable_name
+          = new_colon_separated_string.substr(
+              size_type{0u},
+              new_colon_separated_string.find(
+                ':', new_colon_separated_string.front() == ':' ? size_type{1u} : size_type{0u}));
+
+        if (is_int_symbol(variable_name))
+          return static_cast<complex_type>(to_int(new_colon_separated_string));
+        else if (is_real_symbol(variable_name))
+          return static_cast<complex_type>(to_real(new_colon_separated_string));
+        else if (is_complex_symbol(variable_name))
+          return static_cast<complex_type>(to_complex(new_colon_separated_string));
+
+        using std::end;
+        if (int_variables_.find(variable_name) != end(int_variables_))
+          return static_cast<complex_type>(to_int(new_colon_separated_string));
+        else if (real_variables_.find(variable_name) != end(real_variables_))
+          return static_cast<complex_type>(to_real(new_colon_separated_string));
+        else if (complex_variables_.find(variable_name) != end(complex_variables_))
+          return static_cast<complex_type>(to_complex(new_colon_separated_string));
+      }
+
+      throw 1;
+    }
+
+    auto const found_index = colon_separated_string.find(':');
+    if (found_index == std::string::npos)
+      return complex_variables_.at(colon_separated_string).front();
+
+    using size_type = std::string::size_type;
+    return complex_variables_.at(colon_separated_string.substr(size_type{0u}, found_index))[to_int(colon_separated_string.substr(found_index + size_type{1u}))];
+  }
+
+  auto state::is_pauli_string_space_symbol(std::string const& symbol_name) const -> bool
+  { return symbol_name == ":PAULIS"; }
+
+  auto state::to_pauli_string_space(std::string const& colon_separated_string) const -> ::bra::pauli_string_space
+  {
+    if (colon_separated_string.front() == ':')
+    {
+      using size_type = std::string::size_type;
+      constexpr auto pauli_string_cast_symbol_length = size_type{8u};
+      if (colon_separated_string.size() > pauli_string_cast_symbol_length and colon_separated_string.substr(size_type{0u}, pauli_string_cast_symbol_length) == ":PAULIS:")
+        return {colon_separated_string.substr(pauli_string_cast_symbol_length), complex_type{real_type{1}}};
+
+      throw 1;
+    }
+
+    auto const found_index = colon_separated_string.find(':');
+    if (found_index == std::string::npos)
+      return pauli_string_space_variables_.at(colon_separated_string).front();
+
+    using size_type = std::string::size_type;
+    return pauli_string_space_variables_.at(colon_separated_string.substr(size_type{0u}, found_index))[to_int(colon_separated_string.substr(found_index + size_type{1u}))];
   }
 
   state& state::i_gate(qubit_type const qubit)

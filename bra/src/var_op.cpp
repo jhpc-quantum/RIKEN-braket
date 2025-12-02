@@ -22,11 +22,7 @@ namespace bra
 
     ::bra::state& var_op::do_apply(::bra::state& state) const
     {
-      if (type_ == ::bra::variable_type::real)
-        state.generate_new_real_variable(variable_name_, num_elements_);
-      else if (type_ == ::bra::variable_type::integer)
-        state.generate_new_int_variable(variable_name_, num_elements_);
-
+      state.generate_new_variable(variable_name_, type_, num_elements_);
       return state;
     }
 
