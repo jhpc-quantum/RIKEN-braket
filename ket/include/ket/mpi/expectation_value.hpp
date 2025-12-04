@@ -21,7 +21,6 @@
 
 # include <ket/qubit.hpp>
 # include <ket/utility/loop_n.hpp>
-# include <ket/utility/meta/real_of.hpp>
 # include <ket/utility/meta/ranges.hpp>
 # include <ket/mpi/permutated.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
@@ -50,15 +49,15 @@ namespace ket
         Observable&& observable,
         ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_qubit,
         ::ket::mpi::permutated<Qubits> const... permutated_qubits)
-      -> ::ket::utility::meta::real_t< ::ket::utility::meta::range_value_t<LocalState> >
+      -> ::ket::utility::meta::range_value_t<LocalState>
       {
         ::ket::mpi::gate::detail::assert_all_qubits_are_local(
           mpi_policy, local_state, communicator, environment, permutated_qubit, permutated_qubits...);
 
         constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 1u);
-        using real_type = ::ket::utility::meta::real_t< ::ket::utility::meta::range_value_t<LocalState> >;
+        using complex_type = ::ket::utility::meta::range_value_t<LocalState>;
 
-        auto partial_sums = std::vector<real_type>(::ket::utility::num_threads(parallel_policy));
+        auto partial_sums = std::vector<complex_type>(::ket::utility::num_threads(parallel_policy));
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
         ::ket::mpi::gate::local::gate(
@@ -86,7 +85,7 @@ namespace ket
 
         using std::begin;
         using std::end;
-        return std::accumulate(begin(partial_sums), end(partial_sums), real_type{0});
+        return std::accumulate(begin(partial_sums), end(partial_sums), complex_type{0});
       }
     } // namespace local
 
@@ -97,7 +96,7 @@ namespace ket
       typename Allocator, typename BufferAllocator, typename Observable, typename... Qubits>
     inline std::enable_if_t<
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
-      ::ket::utility::meta::real_t< ::ket::utility::meta::range_value_t<LocalState> > >
+      ::ket::utility::meta::range_value_t<LocalState> >
     expectation_value(
       MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       LocalState& local_state,
@@ -130,18 +129,17 @@ namespace ket
     template <
       typename MpiPolicy, typename ParallelPolicy,
       typename LocalState, typename StateInteger, typename BitInteger,
-      typename Allocator, typename BufferAllocator, typename DerivedDatatype1, typename DerivedDatatype2,
+      typename Allocator, typename BufferAllocator, typename DerivedDatatype,
       typename Observable, typename... Qubits>
     inline std::enable_if_t<
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
-      ::ket::utility::meta::real_t< ::ket::utility::meta::range_value_t<LocalState> > >
+      ::ket::utility::meta::range_value_t<LocalState> >
     expectation_value(
       MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       LocalState& local_state,
       ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
       std::vector< ::ket::utility::meta::range_value_t<LocalState>, BufferAllocator >& buffer,
-      yampi::datatype_base<DerivedDatatype1> const& real_datatype,
-      yampi::datatype_base<DerivedDatatype2> const& complex_datatype,
+      yampi::datatype_base<DerivedDatatype> const& datatype,
       yampi::communicator const& communicator, yampi::environment const& environment,
       Observable&& observable, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
     {
@@ -151,7 +149,7 @@ namespace ket
 
       ::ket::mpi::utility::maybe_interchange_qubits(
         mpi_policy, parallel_policy,
-        local_state, permutation, buffer, complex_datatype, communicator, environment, qubit, qubits...);
+        local_state, permutation, buffer, datatype, communicator, environment, qubit, qubits...);
 
       auto result
         = ::ket::mpi::local::expectation_value(
@@ -160,7 +158,7 @@ namespace ket
             std::forward<Observable>(observable), permutation[qubit], permutation[qubits]...);
 
       yampi::all_reduce(
-        yampi::in_place, yampi::make_buffer(result, real_datatype), yampi::binary_operation{::yampi::tags::plus},
+        yampi::in_place, yampi::make_buffer(result, datatype), yampi::binary_operation{::yampi::tags::plus},
         communicator, environment);
 
       return result;
@@ -172,7 +170,7 @@ namespace ket
     inline std::enable_if_t<
       (not ::ket::mpi::utility::policy::meta::is_mpi_policy<LocalState>::value)
         and (not ::ket::utility::policy::meta::is_loop_n_policy<LocalState>::value),
-      ::ket::utility::meta::real_t< ::ket::utility::meta::range_value_t<LocalState> > >
+      ::ket::utility::meta::range_value_t<LocalState> >
     expectation_value(
       LocalState& local_state,
       ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -189,26 +187,24 @@ namespace ket
 
     template <
       typename LocalState, typename StateInteger, typename BitInteger,
-      typename Allocator, typename BufferAllocator, typename DerivedDatatype1, typename DerivedDatatype2,
+      typename Allocator, typename BufferAllocator, typename DerivedDatatype,
       typename Observable, typename... Qubits>
     inline std::enable_if_t<
       (not ::ket::mpi::utility::policy::meta::is_mpi_policy<LocalState>::value)
         and (not ::ket::utility::policy::meta::is_loop_n_policy<LocalState>::value),
-      ::ket::utility::meta::real_t< ::ket::utility::meta::range_value_t<LocalState> > >
+      ::ket::utility::meta::range_value_t<LocalState> >
     expectation_value(
       LocalState& local_state,
       ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
       std::vector< ::ket::utility::meta::range_value_t<LocalState>, BufferAllocator >& buffer,
-      yampi::datatype_base<DerivedDatatype1> const& real_datatype,
-      yampi::datatype_base<DerivedDatatype2> const& complex_datatype,
+      yampi::datatype_base<DerivedDatatype> const& datatype,
       yampi::communicator const& communicator, yampi::environment const& environment,
       Observable&& observable, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
     {
       return ::ket::mpi::expectation_value(
         ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
-        local_state, permutation, buffer,
-        real_datatype, complex_datatype, communicator, environment,
+        local_state, permutation, buffer, datatype, communicator, environment,
         std::forward<Observable>(observable), qubit, qubits...);
     }
 
@@ -218,7 +214,7 @@ namespace ket
       typename Allocator, typename BufferAllocator, typename Observable, typename... Qubits>
     inline std::enable_if_t<
       ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
-      ::ket::utility::meta::real_t< ::ket::utility::meta::range_value_t<LocalState> > >
+      ::ket::utility::meta::range_value_t<LocalState> >
     expectation_value(
       ParallelPolicy const parallel_policy,
       LocalState& local_state,
@@ -236,25 +232,23 @@ namespace ket
     template <
       typename ParallelPolicy,
       typename LocalState, typename StateInteger, typename BitInteger,
-      typename Allocator, typename BufferAllocator, typename DerivedDatatype1, typename DerivedDatatype2,
+      typename Allocator, typename BufferAllocator, typename DerivedDatatype,
       typename Observable, typename... Qubits>
     inline std::enable_if_t<
       ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value,
-      ::ket::utility::meta::real_t< ::ket::utility::meta::range_value_t<LocalState> > >
+      ::ket::utility::meta::range_value_t<LocalState> >
     expectation_value(
       ParallelPolicy const parallel_policy,
       LocalState& local_state,
       ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
       std::vector< ::ket::utility::meta::range_value_t<LocalState>, BufferAllocator >& buffer,
-      yampi::datatype_base<DerivedDatatype1> const& real_datatype,
-      yampi::datatype_base<DerivedDatatype2> const& complex_datatype,
+      yampi::datatype_base<DerivedDatatype> const& datatype,
       yampi::communicator const& communicator, yampi::environment const& environment,
       Observable&& observable, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
     {
       return ::ket::mpi::expectation_value(
         ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
-        local_state, permutation, buffer,
-        real_datatype, complex_datatype, communicator, environment,
+        local_state, permutation, buffer, datatype, communicator, environment,
         std::forward<Observable>(observable), qubit, qubits...);
     }
 
@@ -266,7 +260,7 @@ namespace ket
       typename Allocator, typename BufferAllocator, typename Observable, typename... Qubits>
     inline std::enable_if_t<
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
-      boost::optional< ::ket::utility::meta::real_t< ::ket::utility::meta::range_value_t<LocalState> > > >
+      boost::optional< ::ket::utility::meta::range_value_t<LocalState> > >
     expectation_value(
       MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       LocalState& local_state,
@@ -302,18 +296,17 @@ namespace ket
     template <
       typename MpiPolicy, typename ParallelPolicy,
       typename LocalState, typename StateInteger, typename BitInteger,
-      typename Allocator, typename BufferAllocator, typename DerivedDatatype1, typename DerivedDatatype2,
+      typename Allocator, typename BufferAllocator, typename DerivedDatatype,
       typename Observable, typename... Qubits>
     inline std::enable_if_t<
       ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
-      boost::optional< ::ket::utility::meta::real_t< ::ket::utility::meta::range_value_t<LocalState> > > >
+      boost::optional< ::ket::utility::meta::range_value_t<LocalState> > >
     expectation_value(
       MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
       LocalState& local_state,
       ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
       std::vector< ::ket::utility::meta::range_value_t<LocalState>, BufferAllocator >& buffer,
-      yampi::datatype_base<DerivedDatatype1> const& real_datatype,
-      yampi::datatype_base<DerivedDatatype2> const& complex_datatype,
+      yampi::datatype_base<DerivedDatatype> const& datatype,
       yampi::rank const root, yampi::communicator const& communicator, yampi::environment const& environment,
       Observable&& observable, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
     {
@@ -323,7 +316,7 @@ namespace ket
 
       ::ket::mpi::utility::maybe_interchange_qubits(
         mpi_policy, parallel_policy,
-        local_state, permutation, buffer, complex_datatype, communicator, environment, qubit, qubits...);
+        local_state, permutation, buffer, datatype, communicator, environment, qubit, qubits...);
 
       auto result
         = ::ket::mpi::local::expectation_value(
@@ -332,7 +325,7 @@ namespace ket
             std::forward<Observable>(observable), permutation[qubit], permutation[qubits]...);
 
       yampi::reduce(
-        yampi::in_place, yampi::make_buffer(result, real_datatype), yampi::binary_operation{::yampi::tags::plus},
+        yampi::in_place, yampi::make_buffer(result, datatype), yampi::binary_operation{::yampi::tags::plus},
         root, communicator, environment);
 
       if (communicator.rank(environment) != root)
@@ -347,7 +340,7 @@ namespace ket
     inline std::enable_if_t<
       (not ::ket::mpi::utility::policy::meta::is_mpi_policy<LocalState>::value)
         and (not ::ket::utility::policy::meta::is_loop_n_policy<LocalState>::value),
-      boost::optional< ::ket::utility::meta::real_t< ::ket::utility::meta::range_value_t<LocalState> > > >
+      boost::optional< ::ket::utility::meta::range_value_t<LocalState> > >
     expectation_value(
       LocalState& local_state,
       ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -364,25 +357,24 @@ namespace ket
 
     template <
       typename LocalState, typename StateInteger, typename BitInteger,
-      typename Allocator, typename BufferAllocator, typename DerivedDatatype1, typename DerivedDatatype2,
+      typename Allocator, typename BufferAllocator, typename DerivedDatatype,
       typename Observable, typename... Qubits>
     inline std::enable_if_t<
       (not ::ket::mpi::utility::policy::meta::is_mpi_policy<LocalState>::value)
         and (not ::ket::utility::policy::meta::is_loop_n_policy<LocalState>::value),
-      boost::optional< ::ket::utility::meta::real_t< ::ket::utility::meta::range_value_t<LocalState> > > >
+      boost::optional< ::ket::utility::meta::range_value_t<LocalState> > >
     expectation_value(
       LocalState& local_state,
       ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
       std::vector< ::ket::utility::meta::range_value_t<LocalState>, BufferAllocator >& buffer,
-      yampi::datatype_base<DerivedDatatype1> const& real_datatype,
-      yampi::datatype_base<DerivedDatatype2> const& complex_datatype,
+      yampi::datatype_base<DerivedDatatype> const& datatype,
       yampi::rank const root, yampi::communicator const& communicator, yampi::environment const& environment,
       Observable&& observable, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
     {
       return ::ket::mpi::expectation_value(
         ::ket::mpi::utility::policy::make_simple_mpi(),
         ::ket::utility::policy::make_sequential(),
-        local_state, permutation, buffer, real_datatype, complex_datatype, root, communicator, environment,
+        local_state, permutation, buffer, datatype, root, communicator, environment,
         std::forward<Observable>(observable), qubit, qubits...);
     }
 
@@ -392,7 +384,7 @@ namespace ket
       typename Allocator, typename BufferAllocator, typename Observable, typename... Qubits>
     inline std::enable_if_t<
       ::ket::utility::policy::meta::is_loop_n_policy<LocalState>::value,
-      boost::optional< ::ket::utility::meta::real_t< ::ket::utility::meta::range_value_t<LocalState> > > >
+      boost::optional< ::ket::utility::meta::range_value_t<LocalState> > >
     expectation_value(
       ParallelPolicy const parallel_policy,
       LocalState& local_state,
@@ -410,24 +402,23 @@ namespace ket
     template <
       typename ParallelPolicy,
       typename LocalState, typename StateInteger, typename BitInteger,
-      typename Allocator, typename BufferAllocator, typename DerivedDatatype1, typename DerivedDatatype2,
+      typename Allocator, typename BufferAllocator, typename DerivedDatatype,
       typename Observable, typename... Qubits>
     inline std::enable_if_t<
       ::ket::utility::policy::meta::is_loop_n_policy<LocalState>::value,
-      boost::optional< ::ket::utility::meta::real_t< ::ket::utility::meta::range_value_t<LocalState> > > >
+      boost::optional< ::ket::utility::meta::range_value_t<LocalState> > >
     expectation_value(
       ParallelPolicy const parallel_policy,
       LocalState& local_state,
       ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
       std::vector< ::ket::utility::meta::range_value_t<LocalState>, BufferAllocator >& buffer,
-      yampi::datatype_base<DerivedDatatype1> const& real_datatype,
-      yampi::datatype_base<DerivedDatatype2> const& complex_datatype,
+      yampi::datatype_base<DerivedDatatype> const& datatype,
       yampi::rank const root, yampi::communicator const& communicator, yampi::environment const& environment,
       Observable&& observable, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
     {
       return ::ket::mpi::expectation_value(
         ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
-        local_state, permutation, buffer, real_datatype, complex_datatype, root, communicator, environment,
+        local_state, permutation, buffer, datatype, root, communicator, environment,
         std::forward<Observable>(observable), qubit, qubits...);
     }
   } // namespace mpi
