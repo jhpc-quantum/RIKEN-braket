@@ -723,7 +723,7 @@ namespace bra
           break;
         }
       }
-      else if (mnemonic == "EXPECTATION") // EXPECTATION VALUE
+      else if (mnemonic == "EXPECTATION")
         add_expectation_value(columns);
       else if (mnemonic == "CLEAR")
         add_clear(columns);
@@ -2874,7 +2874,7 @@ namespace bra
   }
 
   // VAR H PAULISS
-  // EXPECTATION VALUE H 0 1 2 3 4 5
+  // EXPECTATION H 0 1 2 3 4 5
   void interpreter::add_expectation_value(interpreter::columns_type const& columns)
   {
     if (boost::size(columns) < 4u)
