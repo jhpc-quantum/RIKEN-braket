@@ -1043,7 +1043,9 @@ namespace ket
           Function&& function)
         -> LocalState&&
         {
+# ifndef NDEBUG
           auto const rank_in_unit = ::ket::mpi::utility::policy::rank_in_unit(mpi_policy, communicator, environment);
+# endif // NDEBUG
           auto const num_data_blocks = local_state.num_data_blocks();
           assert(num_data_blocks == static_cast<decltype(num_data_blocks)>(::ket::mpi::utility::policy::num_data_blocks(mpi_policy, rank_in_unit)));
           auto const num_pages = local_state.num_pages();
