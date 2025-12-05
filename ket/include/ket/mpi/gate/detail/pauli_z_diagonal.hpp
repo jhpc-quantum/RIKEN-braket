@@ -28,6 +28,7 @@
 # include <ket/mpi/gate/detail/assert_all_qubits_are_local.hpp>
 # include <ket/mpi/gate/page/pauli_z_diagonal.hpp>
 # include <ket/mpi/page/is_on_page.hpp>
+# include <ket/mpi/page/any_on_page.hpp>
 
 
 namespace ket
