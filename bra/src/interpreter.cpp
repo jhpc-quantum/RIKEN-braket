@@ -42,6 +42,8 @@
 #include <bra/gate/gate.hpp>
 #include <bra/gate/var_op.hpp>
 #include <bra/gate/let_op.hpp>
+#include <bra/gate/print_op.hpp>
+#include <bra/gate/println_op.hpp>
 #include <bra/gate/jump_op.hpp>
 #include <bra/gate/jumpif_op.hpp>
 #include <bra/gate/i_gate.hpp>
@@ -444,6 +446,10 @@ namespace bra
         add_var(columns);
       else if (mnemonic == "LET")
         add_let(columns);
+      else if (mnemonic == "PRINT")
+        add_print(columns);
+      else if (mnemonic == "PRINTLN")
+        add_println(columns);
       else if (mnemonic.front() == '@')
         add_label(columns, mnemonic);
       else if (mnemonic == "JUMP")
@@ -1896,6 +1902,40 @@ namespace bra
                 : throw 1;
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::let_op >(lhs_variable_name, op, rhs_literal_or_variable_name));
+  }
+
+  // PRINT X Y Z ! prints like "<value of X> <value of Y> <value of Z>"
+  void interpreter::add_print(interpreter::columns_type const& columns)
+  {
+    using std::begin;
+    using std::end;
+    auto iter = begin(columns);
+    ++iter;
+    auto const last = end(columns);
+
+    auto arguments = std::vector<std::string>{};
+    arguments.reserve(last - iter);
+    for (; iter != last; ++iter)
+      arguments.push_back(boost::algorithm::to_upper_copy(*iter));
+
+    circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::print_op >(std::move(arguments)));
+  }
+
+  // PRINTLN X Y Z ! prints like "<value of X> <value of Y> <value of Z>\n"
+  void interpreter::add_println(interpreter::columns_type const& columns)
+  {
+    using std::begin;
+    using std::end;
+    auto iter = begin(columns);
+    ++iter;
+    auto const last = end(columns);
+
+    auto arguments = std::vector<std::string>{};
+    arguments.reserve(last - iter);
+    for (; iter != last; ++iter)
+      arguments.push_back(boost::algorithm::to_upper_copy(*iter));
+
+    circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::println_op >(std::move(arguments)));
   }
 
   // @LABEL

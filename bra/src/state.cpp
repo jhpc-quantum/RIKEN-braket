@@ -399,6 +399,74 @@ namespace bra
       throw ::bra::wrong_assignment_argument_error{lhs_variable_name, op, rhs_literal_or_variable_name};
   }
 
+  void state::generate_print_string(std::ostringstream& oss, std::vector<std::string> const& variables_or_literals)
+  {
+    bool is_first_argument = true;
+
+    for (auto const& variable_or_literal: variables_or_literals)
+    {
+      if (is_first_argument)
+        is_first_argument = false;
+      else
+        oss << ' ';
+
+      if (std::isdigit(static_cast<unsigned char>(variable_or_literal.front())) or variable_or_literal.front() == '+' or variable_or_literal.front() == '-' or variable_or_literal.front() == '.')
+      {
+        oss << variable_or_literal;
+        continue;
+      }
+
+      if (variable_or_literal.front() == ':')
+      {
+        using size_type = std::string::size_type;
+        auto const variable_name
+          = variable_or_literal.substr(size_type{0u}, variable_or_literal.find(':', size_type{1u}));
+
+        if (is_int_symbol(variable_name))
+          oss << to_int(variable_or_literal);
+        else if (is_real_symbol(variable_name))
+          oss << to_real(variable_or_literal);
+        else if (is_complex_symbol(variable_name))
+          oss << to_complex(variable_or_literal);
+
+        continue;
+      }
+
+      using size_type = std::string::size_type;
+      auto const variable_name = variable_or_literal.substr(size_type{0u}, variable_or_literal.find(':'));
+      using std::end;
+      if (int_variables_.find(variable_name) != end(int_variables_))
+        oss << to_int(variable_or_literal);
+      else if (real_variables_.find(variable_name) != end(real_variables_))
+        oss << to_real(variable_or_literal);
+      else if (complex_variables_.find(variable_name) != end(complex_variables_))
+        oss << to_complex(variable_or_literal);
+    }
+  }
+
+  void state::invoke_print_operation(std::vector<std::string> const& variables_or_literals)
+  {
+    constexpr auto root = yampi::rank{0};
+    if (communicator_.rank(environment_) != root)
+      return;
+
+    std::ostringstream oss;
+    generate_print_string(oss, variables_or_literals);
+    std::cout << oss.str() << std::flush;
+  }
+
+  void state::invoke_println_operation(std::vector<std::string> const& variables_or_literals)
+  {
+    constexpr auto root = yampi::rank{0};
+    if (communicator_.rank(environment_) != root)
+      return;
+
+    std::ostringstream oss;
+    generate_print_string(oss, variables_or_literals);
+    oss << '\n';
+    std::cout << oss.str() << std::flush;
+  }
+
   void state::invoke_jump_operation(std::string const& label)
   { maybe_label_ = label; }
 

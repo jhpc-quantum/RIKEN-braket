@@ -307,6 +307,8 @@ namespace bra
 
     void add_var(columns_type const& columns);
     void add_let(columns_type const& columns);
+    void add_print(columns_type const& columns);
+    void add_println(columns_type const& columns);
     void add_label(columns_type const& columns, std::string const& mnemonic);
     void add_jump(columns_type const& columns);
     void add_jumpif(columns_type const& columns);
