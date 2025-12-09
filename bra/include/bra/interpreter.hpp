@@ -307,6 +307,8 @@ namespace bra
 
     void add_var(columns_type const& columns);
     void add_let(columns_type const& columns);
+    void add_print(columns_type const& columns);
+    void add_println(columns_type const& columns);
     void add_label(columns_type const& columns, std::string const& mnemonic);
     void add_jump(columns_type const& columns);
     void add_jumpif(columns_type const& columns);
@@ -390,6 +392,7 @@ namespace bra
     void add_toffoli(columns_type const& columns);
     void add_m(columns_type const& columns);
     void add_shor_box(columns_type const& columns);
+    void add_expectation_value(columns_type const& columns);
     void add_clear(columns_type const& columns);
     void add_set(columns_type const& columns);
     void add_depolarizing(columns_type const& columns, std::string const& mnemonic);

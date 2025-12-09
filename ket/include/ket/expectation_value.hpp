@@ -19,7 +19,6 @@
 #   include <ket/utility/all_in_state_vector.hpp>
 # endif
 # include <ket/utility/variadic/all_of.hpp>
-# include <ket/utility/meta/real_of.hpp>
 # include <ket/utility/meta/ranges.hpp>
 
 
@@ -55,7 +54,7 @@ namespace ket
     ParallelPolicy const parallel_policy,
     RandomAccessIterator const first, RandomAccessIterator const last,
     Observable&& observable, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
-  -> ::ket::utility::meta::real_t<typename std::iterator_traits<RandomAccessIterator>::value_type>
+  -> typename std::iterator_traits<RandomAccessIterator>::value_type
   {
     static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
 # if __cpp_constexpr >= 201603L
@@ -98,8 +97,8 @@ namespace ket
     assert(::ket::utility::integer_exp2<StateInteger>(num_qubits) == state_size);
     assert(::ket::utility::all_in_state_vector(num_qubits, qubit, qubits...));
 
-    using real_type = ::ket::utility::meta::real_t<typename std::iterator_traits<RandomAccessIterator>::value_type>;
-    auto partial_sums = std::vector<real_type>(::ket::utility::num_threads(parallel_policy));
+    using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+    auto partial_sums = std::vector<complex_type>(::ket::utility::num_threads(parallel_policy));
 
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
     using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
@@ -126,14 +125,14 @@ namespace ket
 
     using std::begin;
     using std::end;
-    return std::accumulate(begin(partial_sums), end(partial_sums), real_type{0});
+    return std::accumulate(begin(partial_sums), end(partial_sums), complex_type{0});
   }
 
   template <typename RandomAccessIterator, typename Observable, typename StateInteger, typename BitInteger, typename... Qubits>
   inline auto expectation_value(
     RandomAccessIterator const first, RandomAccessIterator const last,
     Observable&& observable, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
-  -> ::ket::utility::meta::real_t<typename std::iterator_traits<RandomAccessIterator>::value_type>
+  -> typename std::iterator_traits<RandomAccessIterator>::value_type
   { return ::ket::expectation_value(::ket::utility::policy::make_sequential(), first, last, std::forward<Observable>(observable), qubit, qubits...); }
 
   namespace ranges
@@ -142,13 +141,13 @@ namespace ket
     inline auto expectation_value(
       ParallelPolicy const parallel_policy,
       RandomAccessRange const& state, Observable&& observable, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
-    -> ::ket::utility::meta::real_t< ::ket::utility::meta::range_value_t<RandomAccessRange> >
+    -> ::ket::utility::meta::range_value_t<RandomAccessRange>
     { using std::begin; using std::end; return ::ket::expectation_value(parallel_policy, begin(state), end(state), std::forward<Observable>(observable), qubit, qubits...); }
 
     template <typename RandomAccessRange, typename Observable, typename StateInteger, typename BitInteger, typename... Qubits>
     inline auto expectation_value(
       RandomAccessRange const& state, Observable&& observable, ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
-    -> ::ket::utility::meta::real_t< ::ket::utility::meta::range_value_t<RandomAccessRange> >
+    -> ::ket::utility::meta::range_value_t<RandomAccessRange>
     { using std::begin; using std::end; return ::ket::expectation_value(begin(state), end(state), std::forward<Observable>(observable), qubit, qubits...); }
   } // namespace ranges
 } // namespace ket

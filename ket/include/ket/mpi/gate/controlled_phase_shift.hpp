@@ -847,7 +847,7 @@ namespace ket
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment,
         Real const phase,
-        ::Ket::control<Qubits> const... control_qubits)
+        ::ket::control<Qubits> const... control_qubits)
       -> RandomAccessRange&
       {
         return ::ket::mpi::gate::adj_controlled_phase_shift(
