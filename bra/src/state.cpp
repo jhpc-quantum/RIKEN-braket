@@ -482,7 +482,7 @@ namespace bra
       if (colon_separated_string.size() == size_type{9u} and colon_separated_string == ":OUTCOMES")
         return static_cast<int_type>(static_cast<int>(last_outcomes_.front()));
       else if (colon_separated_string.size() > size_type{10u} and colon_separated_string.substr(size_type{0u}, size_type{10u}) == ":OUTCOMES:")
-        return static_cast<int_type>(static_cast<int>(last_outcomes_[boost::lexical_cast<int>(colon_separated_string.substr(size_type{10u}))]));
+        return static_cast<int_type>(static_cast<int>(last_outcomes_[to_int(colon_separated_string.substr(size_type{10u}))]));
 
       constexpr auto int_cast_symbol_length = size_type{5u};
       if (colon_separated_string.size() > int_cast_symbol_length and colon_separated_string.substr(size_type{0u}, int_cast_symbol_length) == ":INT:")

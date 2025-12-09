@@ -2882,8 +2882,6 @@ namespace bra
 
     using std::begin;
     auto iter = begin(columns);
-    if (*++iter != "VALUE")
-      throw wrong_mnemonics_error{columns};
 
     auto const& operator_literal_or_variable_name = *++iter;
 
