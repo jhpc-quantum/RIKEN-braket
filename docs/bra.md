@@ -181,6 +181,7 @@ The instruction set supported by *bra* is as follows[^1].
 * `@label`: declares label `label`. Do not insert any spaces between `@` and `label`.
 * `JUMP label`/`JUMPIF label lhs op rhs`: jumps to the label `label`. In the case of `JUMPIF`, one can specify a condition to jump by `lhs op rhs`, where possible `op`'s are `==`, `\=`, `>`, `<`, `<=`, and `>=`.
 * `EXPECTATION operator q1 q2 q3 q4`: calculates expectation value of `operator` for the present circuit[^3]. This `operator` should be a classical variable of type `PAULISS`, and its length of Pauli string should be equal to the number of qubits specified in this instruction (`q1 q2 q3 q4` in this example). The result of this instruction is assigned to `:RESULT` whose type is `COMPLEX`.
+* `PRINT var [...]`/`PRINTLN var [...]`: prints classical variables `var`, `...` with single-space separators.
 
 [^2]: The number of qubits which can be specified in `BEGIN FUSION` instruction is determined by the macro `BRA_MAX_NUM_FUSED_QUBITS`, which can be set when building *bra*. Its default value is 10.
 [^3]: To be more precise, `EXPECTATION H ...` calculates $\bra{\Psi} (H \ket{\Psi})$ for given operator $H$ and state $\ket{\Psi}$. It becomes the expectation value of $H$ if $H$ is Hermitian.
