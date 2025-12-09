@@ -312,6 +312,13 @@ namespace bra
    public:
     void invoke_assign_operation(std::string const& lhs_variable_name, ::bra::assign_operation_type const op, std::string const& rhs_literal_or_variable_name);
 
+   private:
+    void generate_print_string(std::ostringstream& oss, std::vector<std::string> const& variables_or_literals);
+
+   public:
+    void invoke_print_operation(std::vector<std::string> const& variables_or_literals);
+    void invoke_println_operation(std::vector<std::string> const& variables_or_literals);
+
     void invoke_jump_operation(std::string const& label);
     void invoke_jump_operation(std::string const& label, std::string const& lhs_variable_name, ::bra::compare_operation_type const op, std::string const& rhs_literal_or_variable_name);
     boost::optional<std::string> const& maybe_label() const { return maybe_label_; }
