@@ -19,19 +19,19 @@ namespace bra
     std::string const measurement::name_ = "MEASURE";
 
 #ifndef BRA_NO_MPI
-    measurement::measurement(yampi::rank const root)
-      : ::bra::gate::gate{}, root_{root}
+    measurement::measurement(yampi::rank const root, int const precision)
+      : ::bra::gate::gate{}, root_{root}, precision_{precision}
     { }
 
     ::bra::state& measurement::do_apply(::bra::state& state) const
-    { return state.measurement(root_); }
+    { return state.measurement(root_, precision_); }
 #else // BRA_NO_MPI
-    measurement::measurement()
-      : ::bra::gate::gate{}
+    measurement::measurement(int const precision)
+      : ::bra::gate::gate{}, precision_{precision}
     { }
 
     ::bra::state& measurement::do_apply(::bra::state& state) const
-    { return state.measurement(); }
+    { return state.measurement(precision_); }
 #endif // BRA_NO_MPI
 
     std::string const& measurement::do_name() const { return name_; }

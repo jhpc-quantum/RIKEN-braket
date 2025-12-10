@@ -616,9 +616,9 @@ namespace bra
         if (statement == ::bra::begin_statement::measurement)
         {
 #ifndef BRA_NO_MPI
-          circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::measurement >(root_));
+          circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::measurement >(root_, 3));
 #else // BRA_NO_MPI
-          circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::measurement >());
+          circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::measurement >(3));
 #endif // BRA_NO_MPI
         }
         else if (statement == ::bra::begin_statement::fusion)
@@ -657,10 +657,11 @@ namespace bra
 
         if (statement == ::bra::do_statement::measurement)
         {
+          auto const precision = columns.size() == 3u ? boost::lexical_cast<int>(columns[2u]) : 3;
 #ifndef BRA_NO_MPI
-          circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::measurement >(root_));
+          circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::measurement >(root_, precision));
 #else // BRA_NO_MPI
-          circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::measurement >());
+          circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::measurement >(precision));
 #endif // BRA_NO_MPI
         }
         else if (statement == ::bra::do_statement::amplitudes)
@@ -1714,7 +1715,7 @@ namespace bra
     auto iter = begin(columns);
     ++iter;
 
-    if (*iter == "MEASUREMENT" and column_size == 2u)
+    if (*iter == "MEASUREMENT" and (column_size == 2u or column_size == 3u))
       return ::bra::do_statement::measurement;
     else if (*iter == "AMPLITUDES" and column_size == 2u)
       return ::bra::do_statement::amplitudes;
