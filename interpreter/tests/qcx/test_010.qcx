@@ -1,0 +1,3 @@
+QUBITS         2
+U1             0 -5
+BEGIN MEASUREMENT
