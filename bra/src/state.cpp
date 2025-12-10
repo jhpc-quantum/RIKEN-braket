@@ -446,9 +446,11 @@ namespace bra
 
   void state::invoke_print_operation(std::vector<std::string> const& variables_or_literals)
   {
+#ifndef BRA_NO_MPI
     constexpr auto root = yampi::rank{0};
     if (communicator_.rank(environment_) != root)
       return;
+#endif // BRA_NO_MPI
 
     std::ostringstream oss;
     generate_print_string(oss, variables_or_literals);
@@ -457,9 +459,11 @@ namespace bra
 
   void state::invoke_println_operation(std::vector<std::string> const& variables_or_literals)
   {
+#ifndef BRA_NO_MPI
     constexpr auto root = yampi::rank{0};
     if (communicator_.rank(environment_) != root)
       return;
+#endif // BRA_NO_MPI
 
     std::ostringstream oss;
     generate_print_string(oss, variables_or_literals);
