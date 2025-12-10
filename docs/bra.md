@@ -161,7 +161,7 @@ The instruction set supported by *bra* is as follows[^1].
 * `CCCEXXX c1 c2 c3 t1 t2 t3 theta` or `C3EX3 c1 c2 c3 t1 t2 t3 theta`: the controlled exponential Pauli $X$ gates. Qubits $c_1$, $c_2$, $c_3$ are control qubits, and qubits $t_1$, $t_2$, and $t_3$ are target qubits. If you use two target qubits and two control qubits, use `CCEXX c1 c2 t1 t2 theta` or `C2EX2 c1 c2 t1 t2 theta` instead. The Pauli $Y$ and $Z$ versions are also supported.
 * `ESWAP t1 t2 theta`: the exponential SWAP gate $\exp(\mathrm{i} \theta P) = I \cos \theta + \mathrm{i} P \sin \theta$ operated on qubits $t_1$ and $t_2$.
 * `CCCCESWAP c1 c2 c3 c4 t1 t2 theta` or `C4ESWAP c1 c2 c3 c4 t1 t2 theta`: the controlled exponential SWAP gate. Qubits $c_1$, ..., $c_4$ are control qubits, and qubits $t_1$ and $t_2$ are target qubits. If you use two control qubits, use `CCESWAP c1 c2 t1 t2 theta` or `C2ESWAP c1 c2 t1 t2 theta` instead.
-* `DO MEASUREMENT`: computes and prints the expectation values of all qubits. `BEGIN MEASUREMENT` can be used but it is deprecated.
+* `DO MEASUREMENT [prec]`: computes and prints the expectation values of all qubits. The integer value `prec` specifies precision of outputs. If `prec` is not specified, the precision is assumed to be 3. If `prec` is less than 1, the values are outputted in a usual way. `BEGIN MEASUREMENT` can be used but it is deprecated.
 * `DO AMPLITUDES`: prints the amplitudes of the state vector.
 * `GENERATE EVENTS n seed`: computes the probabilities of each of the basis states and exits. It generates $n$ events by using random number generator with the initial seed `seed` and prints out the states according to these probabilites.
 * `M i`: projective measurement on qubit $i$. Its result is assigned to `:OUTCOME` AND `:OUTCOME:i`.

@@ -498,13 +498,13 @@ namespace bra
 
 # ifndef BRA_NO_MPI
     state& projective_measurement(qubit_type const qubit, yampi::rank const root);
-    state& measurement(yampi::rank const root);
+    state& measurement(yampi::rank const root, int const precision);
     state& amplitudes(yampi::rank const root);
     state& generate_events(yampi::rank const root, int const num_events, int const seed);
     state& exit(yampi::rank const root);
 # else // BRA_NO_MPI
     state& projective_measurement(qubit_type const qubit);
-    state& measurement();
+    state& measurement(int const precision);
     state& amplitudes();
     state& generate_events(int const num_events, int const seed);
     state& exit();

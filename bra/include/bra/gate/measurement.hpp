@@ -22,14 +22,15 @@ namespace bra
 # ifndef BRA_NO_MPI
       yampi::rank root_;
 # endif
+      int const precision_;
 
       static std::string const name_;
 
      public:
 # ifndef BRA_NO_MPI
-      explicit measurement(yampi::rank const root);
+      explicit measurement(yampi::rank const root, int const precision);
 # else
-      measurement();
+      measurement(int const precision);
 # endif
 
       ~measurement() = default;

@@ -446,9 +446,11 @@ namespace bra
 
   void state::invoke_print_operation(std::vector<std::string> const& variables_or_literals)
   {
+#ifndef BRA_NO_MPI
     constexpr auto root = yampi::rank{0};
     if (communicator_.rank(environment_) != root)
       return;
+#endif // BRA_NO_MPI
 
     std::ostringstream oss;
     generate_print_string(oss, variables_or_literals);
@@ -457,9 +459,11 @@ namespace bra
 
   void state::invoke_println_operation(std::vector<std::string> const& variables_or_literals)
   {
+#ifndef BRA_NO_MPI
     constexpr auto root = yampi::rank{0};
     if (communicator_.rank(environment_) != root)
       return;
+#endif // BRA_NO_MPI
 
     std::ostringstream oss;
     generate_print_string(oss, variables_or_literals);
@@ -1487,10 +1491,12 @@ namespace bra
     return *this;
   }
 
-  state& state::measurement(yampi::rank const root)
+  state& state::measurement(yampi::rank const root, int const precision)
   {
     if (is_in_fusion_)
       throw ::bra::unsupported_fused_gate_error{"MEASURE"};
+
+    assert(precision >= 0);
 
     auto const operation_finish_time = BRA_clock::now(environment_);
     std::ostringstream oss;
@@ -1506,15 +1512,29 @@ namespace bra
 
     if (communicator_.rank(environment_) == root)
     {
-      oss.str("");
-      oss << fmt::format("Expectation values of spins:\n{:^8s} {:^8s} {:^8s}\n", "<Qx>", "<Qy>", "<Qz>");
-      if (maybe_expectation_values_)
-        for (auto const& spin: *maybe_expectation_values_)
-          oss
-            << fmt::format(
-                 "{:^ 8.3f} {:^ 8.3f} {:^ 8.3f}\n",
-                 0.5 - static_cast<double>(spin[0u]), 0.5 - static_cast<double>(spin[1u]), 0.5 - static_cast<double>(spin[2u]));
-      std::cout << oss.str() << std::flush;
+      if (precision > 0)
+      {
+        auto const precision_string = std::to_string(precision);
+        auto const width_string = std::to_string(std::max(precision + 3, 8));
+        oss.str("");
+        oss << fmt::format(std::string{"Expectation values of spins:\n{:^"} + width_string + "s} {:^" + width_string + "s} {:^" + width_string + "s}\n", "<Qx>", "<Qy>", "<Qz>");
+        if (maybe_expectation_values_)
+          for (auto const& spin: *maybe_expectation_values_)
+            oss
+              << fmt::format(
+                   "{:^ " + width_string + "." + precision_string + "f} {:^ " + width_string + "." + precision_string + "f} {:^ " + width_string + "." + precision_string + "f}\n",
+                   0.5 - static_cast<double>(spin[0u]), 0.5 - static_cast<double>(spin[1u]), 0.5 - static_cast<double>(spin[2u]));
+        std::cout << oss.str() << std::flush;
+      }
+      else
+      {
+        oss.str("");
+        oss << "Expectation values of spins:\n<Qx> <Qy> <Qz>\n";
+        if (maybe_expectation_values_)
+          for (auto const& spin: *maybe_expectation_values_)
+            oss << (0.5 - static_cast<double>(spin[0u])) << ' ' << (0.5 - static_cast<double>(spin[1u])) << ' ' << (0.5 - static_cast<double>(spin[1u])) << '\n';
+        std::cout << oss.str() << std::flush;
+      }
     }
 
     auto const expectation_values_finish_time = BRA_clock::now(environment_);
@@ -1647,7 +1667,7 @@ namespace bra
     return *this;
   }
 
-  state& state::measurement()
+  state& state::measurement(int const precision)
   {
     if (is_in_fusion_)
       throw ::bra::unsupported_fused_gate_error{"MEASURE"};
@@ -1661,14 +1681,29 @@ namespace bra
 
     do_expectation_values();
 
-    oss.str("");
-    oss << fmt::format("Expectation values of spins:\n{:^8s} {:^8s} {:^8s}\n", "<Qx>", "<Qy>", "<Qz>");
-    for (auto const& spin: *maybe_expectation_values_)
-      oss
-        << fmt::format(
-             "{:^ 8.3f} {:^ 8.3f} {:^ 8.3f}\n",
-             0.5 - static_cast<double>(spin[0u]), 0.5 - static_cast<double>(spin[1u]), 0.5 - static_cast<double>(spin[2u]));
-    std::cout << oss.str() << std::flush;
+    if (precision > 0)
+    {
+      auto const precision_string = std::to_string(precision);
+      auto const width_string = std::to_string(std::max(precision + 3, 8));
+      oss.str("");
+      oss << fmt::format(std::string{"Expectation values of spins:\n{:^"} + width_string + "s} {:^" + width_string + "s} {:^" + width_string + "s}\n", "<Qx>", "<Qy>", "<Qz>");
+      if (maybe_expectation_values_)
+        for (auto const& spin: *maybe_expectation_values_)
+          oss
+            << fmt::format(
+                 "{:^ " + width_string + "." + precision_string + "f} {:^ " + width_string + "." + precision_string + "f} {:^ " + width_string + "." + precision_string + "f}\n",
+                 0.5 - static_cast<double>(spin[0u]), 0.5 - static_cast<double>(spin[1u]), 0.5 - static_cast<double>(spin[2u]));
+      std::cout << oss.str() << std::flush;
+    }
+    else
+    {
+      oss.str("");
+      oss << "Expectation values of spins:\n<Qx> <Qy> <Qz>\n";
+      if (maybe_expectation_values_)
+        for (auto const& spin: *maybe_expectation_values_)
+          oss << (0.5 - static_cast<double>(spin[0u])) << ' ' << (0.5 - static_cast<double>(spin[1u])) << ' ' << (0.5 - static_cast<double>(spin[1u])) << '\n';
+      std::cout << oss.str() << std::flush;
+    }
 
     auto const expectation_values_finish_time = BRA_clock::now();
     oss.str("");
