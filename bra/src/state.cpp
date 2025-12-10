@@ -1532,7 +1532,7 @@ namespace bra
         oss << "Expectation values of spins:\n<Qx> <Qy> <Qz>\n";
         if (maybe_expectation_values_)
           for (auto const& spin: *maybe_expectation_values_)
-            oss << (0.5 - static_cast<double>(spin[0u])) << ' ' << (0.5 - static_cast<double>(spin[1u])) << ' ' << (0.5 - static_cast<double>(spin[1u])) << '\n';
+            oss << (0.5 - static_cast<double>(spin[0u])) << ' ' << (0.5 - static_cast<double>(spin[1u])) << ' ' << (0.5 - static_cast<double>(spin[2u])) << '\n';
         std::cout << oss.str() << std::flush;
       }
     }
@@ -1701,7 +1701,7 @@ namespace bra
       oss << "Expectation values of spins:\n<Qx> <Qy> <Qz>\n";
       if (maybe_expectation_values_)
         for (auto const& spin: *maybe_expectation_values_)
-          oss << (0.5 - static_cast<double>(spin[0u])) << ' ' << (0.5 - static_cast<double>(spin[1u])) << ' ' << (0.5 - static_cast<double>(spin[1u])) << '\n';
+          oss << (0.5 - static_cast<double>(spin[0u])) << ' ' << (0.5 - static_cast<double>(spin[1u])) << ' ' << (0.5 - static_cast<double>(spin[2u])) << '\n';
       std::cout << oss.str() << std::flush;
     }
 
