@@ -1,4 +1,5 @@
 #include <iostream>
+#include <iomanip>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -1526,13 +1527,21 @@ namespace bra
                    0.5 - static_cast<double>(spin[0u]), 0.5 - static_cast<double>(spin[1u]), 0.5 - static_cast<double>(spin[2u]));
         std::cout << oss.str() << std::flush;
       }
+      else if (precision < 0)
+      {
+        oss << "Expectation values of spins:\n<Qx> <Qy> <Qz>\n";
+        if (maybe_expectation_values_)
+          for (auto const& spin: *maybe_expectation_values_)
+            oss << std::setprecision(-precision) << (0.5 - static_cast<double>(spin[0u])) << ' ' << (0.5 - static_cast<double>(spin[1u])) << ' ' << (0.5 - static_cast<double>(spin[2u])) << '\n';
+        std::cout << oss.str() << std::flush;
+      }
       else
       {
         oss.str("");
         oss << "Expectation values of spins:\n<Qx> <Qy> <Qz>\n";
         if (maybe_expectation_values_)
           for (auto const& spin: *maybe_expectation_values_)
-            oss << (0.5 - static_cast<double>(spin[0u])) << ' ' << (0.5 - static_cast<double>(spin[1u])) << ' ' << (0.5 - static_cast<double>(spin[1u])) << '\n';
+            oss << (0.5 - static_cast<double>(spin[0u])) << ' ' << (0.5 - static_cast<double>(spin[1u])) << ' ' << (0.5 - static_cast<double>(spin[2u])) << '\n';
         std::cout << oss.str() << std::flush;
       }
     }
@@ -1695,13 +1704,21 @@ namespace bra
                  0.5 - static_cast<double>(spin[0u]), 0.5 - static_cast<double>(spin[1u]), 0.5 - static_cast<double>(spin[2u]));
       std::cout << oss.str() << std::flush;
     }
+    else if (precision < 0)
+    {
+      oss << "Expectation values of spins:\n<Qx> <Qy> <Qz>\n";
+      if (maybe_expectation_values_)
+        for (auto const& spin: *maybe_expectation_values_)
+          oss << std::setprecision(-precision) << (0.5 - static_cast<double>(spin[0u])) << ' ' << (0.5 - static_cast<double>(spin[1u])) << ' ' << (0.5 - static_cast<double>(spin[2u])) << '\n';
+      std::cout << oss.str() << std::flush;
+    }
     else
     {
       oss.str("");
       oss << "Expectation values of spins:\n<Qx> <Qy> <Qz>\n";
       if (maybe_expectation_values_)
         for (auto const& spin: *maybe_expectation_values_)
-          oss << (0.5 - static_cast<double>(spin[0u])) << ' ' << (0.5 - static_cast<double>(spin[1u])) << ' ' << (0.5 - static_cast<double>(spin[1u])) << '\n';
+          oss << (0.5 - static_cast<double>(spin[0u])) << ' ' << (0.5 - static_cast<double>(spin[1u])) << ' ' << (0.5 - static_cast<double>(spin[2u])) << '\n';
       std::cout << oss.str() << std::flush;
     }
 
