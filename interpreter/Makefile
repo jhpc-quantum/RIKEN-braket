@@ -1,7 +1,9 @@
-CC = mpicxx
+#CC = mpicxx
+CC = mpiFCCpx
 
-CFLAGS = -fopenmp -DKET_USE_OPENMP -DKET_PRINT_LOG -I../ket/include/ -I../yampi/include/ -I../../qe-qasm/include -O3 -std=c++17
-LIBS = -fopenmp -lm -L../../qe-qasm/build/lib -lqasmAST -lqasmDIAG -lqasmFrontend -lqasmParser -lmpfr
+#CFLAGS = -fopenmp -DNDEBUG -DKET_USE_OPENMP -DKET_PRINT_LOG -DKET_USE_DIAGONAL_LOOP -DKET_USE_BARRIER -DKET_USE_BIT_MASKS_EXPLICITLY -I../ket/include/ -I../yampi/include/ -I../../qe-qasm/include -Ofast -std=c++17
+CFLAGS = -fopenmp -DNDEBUG -DKET_USE_OPENMP -DKET_PRINT_LOG -DKET_USE_DIAGONAL_LOOP -DKET_USE_BARRIER -DKET_USE_BIT_MASKS_EXPLICITLY -I../ket/include/ -I../yampi/include/ -I../../qe-qasm/include -Ofast -Nclang -std=c++17
+LIBS = -fopenmp -Nclang -lm -L../../qe-qasm/build/lib -lqasmAST -lqasmDIAG -lqasmFrontend -lqasmParser -lmpfr
 LIBFLAGS = -Wl,--rpath=../../qe-qasm/build/lib
 
 .PHONY : all clean
