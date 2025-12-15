@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <filesystem>
 #include <regex>
+#include <cstdint>
 
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
@@ -132,7 +133,8 @@ void outputSpinExpectation(std::string outputFile);
 /// @brief Output amplitudes in json format
 /// @param [in] outputFile json output file
 /// @note Equivalent to “DO AMPLITUDES” in bra.
-void outputAmplitudes(std::string outputFile);
+void outputAmplitudes(std::string const& outputFile);
+void outputAmplitudes(std::string const& outputFile, std::uint64_t const print_index);
 
 }
 #endif // _QIPKET_HPP_

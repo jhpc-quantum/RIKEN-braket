@@ -12,9 +12,10 @@
 #include <ket/mpi/print_amplitudes.hpp>
 #include <bra/state.hpp>
 #include <yampi/rank.hpp>
-#include <boost/algorithm/string/trim.hpp>
-#include <boost/algorithm/string/split.hpp>
-#include <boost/algorithm/string/classification.hpp>
+//#include <boost/algorithm/string/trim.hpp>
+//#include <boost/algorithm/string/split.hpp>
+//#include <boost/algorithm/string/classification.hpp>
+#include <cstdint>
 
 namespace qip {
 
@@ -374,9 +375,34 @@ void qip::outputSpinExpectation(std::string outputFile) {
 ///     ]
 /// }
 /// ```
-void qip::outputAmplitudes(std::string outputFile) {
+void qip::outputAmplitudes(std::string const& outputFile) {
   const unsigned numQubits = qasmir.qubits;
 
+  using std::begin;
+  auto const present_rank = (qip::ki.communicator)->rank(*(ki.environment));
+
+  std::ofstream ofs;
+  using namespace yampi::literals::rank_literals;
+  if (present_rank == 0_r)
+  {
+    ofs.open(outputFile);
+    ofs << "{\n    \"Amplitudes\": [\n" << std::flush;
+  }
+
+  ket::mpi::println_amplitudes(
+    ofs, *(ki.localState), *(qip::ki.permutation), 0_r, *(qip::ki.communicator), *(ki.environment),
+    [numQubits](auto const qubit_value, auto const& amplitude)
+    {
+      std::ostringstream oss;
+      using std::real;
+      using std::imag;
+      oss << "        {\n            \"bits\": " << ::bra::state_detail::integer_to_bits_string(qubit_value, numQubits) << ",\n            \"real\": " << real(amplitude) << ",\n            \"imag\": " << imag(amplitude) << "\n        }";
+      return oss.str();
+    }, std::string{",\n"});
+
+  if (present_rank == 0_r)
+    ofs << "\n    ]\n}" << std::flush;
+  /*
   std::ostringstream oss;
   using namespace yampi::literals::rank_literals;
   ket::mpi::println_amplitudes(
@@ -389,6 +415,9 @@ void qip::outputAmplitudes(std::string outputFile) {
       oss << ::bra::state_detail::integer_to_bits_string(qubit_value, numQubits) << ' ' << real(amplitude) << ' ' << imag(amplitude);
       return oss.str();
     }, std::string{"\n"});
+
+  if (present_rank != 0_r)
+    return;
 
   std::istringstream iss{oss.str()};
 
@@ -420,4 +449,46 @@ void qip::outputAmplitudes(std::string outputFile) {
   }
   pt.add_child("Amplitudes", child);
   write_jsonEx(outputFile, pt);
+  */
+}
+
+void qip::outputAmplitudes(std::string const& outputFile, std::uint64_t const print_index) {
+  const unsigned numQubits = qasmir.qubits;
+
+  using std::begin;
+  auto const first = begin(*(ki.localState));
+  auto const present_rank = (qip::ki.communicator)->rank(*(ki.environment));
+
+  std::ofstream ofs;
+  using namespace yampi::literals::rank_literals;
+  if (present_rank == 0_r)
+  {
+    ofs.open(outputFile);
+    ofs << "{\n    \"Amplitudes\": [\n" << std::flush;
+  }
+
+  auto const rank_index
+    = ::ket::mpi::utility::qubit_value_to_rank_index(
+        ket::mpi::utility::policy::make_simple_mpi(), *(ki.localState),
+        ket::mpi::permutate_bits(*(qip::ki.permutation), print_index),
+        *(qip::ki.communicator), *(ki.environment));
+
+  if (present_rank == 0_r)
+  {
+    auto amplitude = complexTy{};
+
+    if (present_rank == rank_index.first)
+      amplitude = *(first + rank_index.second);
+    else
+      yampi::receive(yampi::ignore_status, yampi::make_buffer(amplitude), rank_index.first, yampi::tag{static_cast<int>(rank_index.second)}, *(qip::ki.communicator), *(ki.environment));
+
+    using std::real;
+    using std::imag;
+    ofs << "        {\n            \"bits\": " << ::bra::state_detail::integer_to_bits_string(print_index, numQubits) << ",\n            \"real\": " << real(amplitude) << ",\n            \"imag\": " << imag(amplitude) << "\n        }" << std::flush;
+  }
+  else if (present_rank == rank_index.first)
+    yampi::send(yampi::make_buffer(*(first + rank_index.second)), 0_r, yampi::tag{static_cast<int>(rank_index.second)}, *(qip::ki.communicator), *(ki.environment));
+
+  if (present_rank == 0_r)
+    ofs << "\n    ]\n}" << std::flush;
 }

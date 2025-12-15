@@ -12,6 +12,10 @@
 #include <qasm/Frontend/QasmParser.h>
 
 #include <iostream>
+#include <utility>
+#include <cstdint>
+#include <cstdlib>
+#include <string>
 
 
 /// @brief Usage
@@ -66,6 +70,28 @@ std::string getOutputFile(int argc, char *const argv[]) {
   std::string outputFile = "./" + pInput.filename().string<char>();
 
   return outputFile;
+}
+
+std::pair<bool, std::uint64_t> get_print_only(int argc, char const* argv[])
+{
+  auto exists = false;
+  auto is_value_next = false;
+  auto print_index = std::uint64_t{};
+  for (int I = 1; I < argc; ++I) {
+    if (std::string{argv[I]} == "--print-only")
+      is_value_next = true;
+    else
+    {
+      if (not is_value_next)
+        continue;
+
+      print_index = static_cast<std::uint64_t>(std::atoll(argv[I]));
+      exists = true;
+      is_value_next = false;
+    }
+  }
+
+  return {exists, print_index};
 }
 
 /// @brief Dumping a quantum circuit IR
@@ -151,8 +177,16 @@ int main(int argc, char *argv[]) {
   // Get the path of the output file
   std::string outputFile = getOutputFile(argc, argv);
 
+  // Get print_index if required
+  auto const exists_and_print_index = get_print_only(argc, argv);
+  auto const exists_print_index = exists.first;
+  auto const print_index = exists.second;
+
   // Output amplitudes
-  qip::outputAmplitudes(outputFile);
+  if (exists_print_index)
+    qip::outputAmplitudes(outputFile, print_index);
+  else
+    qip::outputAmplitudes(outputFile);
   /*
   // Output spin expectation
   qip::outputSpinExpectation(outputFile);
