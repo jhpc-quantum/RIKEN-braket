@@ -22,6 +22,7 @@
 static void Usage() {
   std::cerr << "Usage: qasminterpreter ";
   std::cerr << "[-I<include-dir> [ -I<include-dir> ...]] ";
+  std::cerr << "[--print-only n] ";
   std::cerr << "\n                  <translation-unit>" << std::endl;
 }
 namespace qip {
