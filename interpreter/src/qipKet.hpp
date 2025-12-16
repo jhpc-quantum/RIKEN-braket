@@ -28,9 +28,9 @@
 #include <ket/utility/parallel/loop_n.hpp>
 #include <ket/mpi/state.hpp>
 #include <ket/mpi/qubit_permutation.hpp>
-#include <ket/mpi/gate/controlled_not.hpp>
+#include <ket/mpi/gate/pauli_x.hpp>
+#include <ket/mpi/gate/pauli_z.hpp>
 #include <ket/mpi/gate/hadamard.hpp>
-#include <ket/mpi/gate/controlled_phase_shift.hpp>
 #include <ket/mpi/gate/phase_shift.hpp>
 #include <ket/mpi/gate/exponential_pauli_x.hpp>
 #include <ket/mpi/gate/exponential_pauli_y.hpp>

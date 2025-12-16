@@ -120,7 +120,7 @@ void qip::addCXGate(gateInfoTy *ginfo) {
                           *(ki.permutation),
                           buffer,
                           *(ki.communicator),
-                          *(ki.environment)
+                          *(ki.environment),
                           target_qubit,
                           control_qubit);
 }
