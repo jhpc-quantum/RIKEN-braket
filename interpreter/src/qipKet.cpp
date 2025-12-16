@@ -100,11 +100,11 @@ void qip::addHGate(gateInfoTy *ginfo) {
 
   // hadamard
   ket::mpi::gate::hadamard(*(ki.localState),
-                           qubitTy{bitIntegerTye{(unsigned int) (ginfo->iarg[0])}},
                            *(ki.permutation),
                            buffer,
                            *(ki.communicator),
-                           *(ki.environment));
+                           *(ki.environment),
+                           qubitTy{bitIntegerTye{(unsigned int) (ginfo->iarg[0])}});
 }
 
 void qip::addCXGate(gateInfoTy *ginfo) {
@@ -116,171 +116,136 @@ void qip::addCXGate(gateInfoTy *ginfo) {
   ket::control <qubitTy> control_qubit{qubitTy{bitIntegerTye{(unsigned int) (ginfo->iarg[0])}}};
 
   // CNOT
-  ket::mpi::gate::controlled_not(*(ki.localState),
-                                 target_qubit,
-                                 control_qubit,
-                                 *(ki.permutation),
-                                 buffer,
-                                 *(ki.communicator),
-                                 *(ki.environment));
+  ket::mpi::gate::pauli_x(*(ki.localState),
+                          *(ki.permutation),
+                          buffer,
+                          *(ki.communicator),
+                          *(ki.environment)
+                          target_qubit,
+                          control_qubit);
 }
 
 void qip::addCZGate(gateInfoTy *ginfo) {
   auto buffer = std::vector < complexTy > {};
 
   // target bit
-  qubitTy target_qubit{bitIntegerTye{(unsigned int) (ginfo->iarg[1])}};
+  ket::control <qubitTy> control_qubit1{qubitTy{bitIntegerTye{(unsigned int) (ginfo->iarg[1])}}};
   // control bit
-  ket::control <qubitTy> control_qubit{qubitTy{bitIntegerTye{(unsigned int) (ginfo->iarg[0])}}};
+  ket::control <qubitTy> control_qubit2{qubitTy{bitIntegerTye{(unsigned int) (ginfo->iarg[0])}}};
 
   // cz
-  ket::mpi::gate::controlled_phase_shift(*(ki.localState),
-                                         M_PI, target_qubit,
-                                         control_qubit,
-                                         *(ki.permutation),
-                                         buffer,
-                                         *(ki.communicator),
-                                         *(ki.environment));
+  ket::mpi::gate::pauli_z(*(ki.localState),
+                          *(ki.permutation),
+                          buffer,
+                          *(ki.communicator),
+                          *(ki.environment),
+                          control_qubit1,
+                          control_qubit2);
 
 }
 
 void qip::addSGate(gateInfoTy *ginfo) {
   auto buffer = std::vector < complexTy > {};
 
-  // target bit
-  qubitTy target_qubit{bitIntegerTye{(unsigned int) (ginfo->iarg[1])}};
-  // control bit
-  ket::control <qubitTy> control_qubit{qubitTy{bitIntegerTye{(unsigned int) (ginfo->iarg[0])}}};
-
   // s
   ket::mpi::gate::phase_shift(*(ki.localState),
-                              (M_PI*0.5),
-                              qubitTy{bitIntegerTye{(unsigned int)(ginfo->iarg[0])}},
                               *(ki.permutation),
                               buffer,
                               *(ki.communicator),
-                              *(ki.environment));
+                              *(ki.environment),
+                              (M_PI*0.5),
+                              ket::control<qubitTy>{bitIntegerTye{(unsigned int)(ginfo->iarg[0])}});
 
 }
 
 void qip::addSdgGate(gateInfoTy *ginfo) {
   auto buffer = std::vector < complexTy > {};
 
-  // target bit
-  qubitTy target_qubit{bitIntegerTye{(unsigned int) (ginfo->iarg[1])}};
-  // control bit
-  ket::control <qubitTy> control_qubit{qubitTy{bitIntegerTye{(unsigned int) (ginfo->iarg[0])}}};
-
   // sdg
   ket::mpi::gate::phase_shift(*(ki.localState),
-                             (-M_PI*0.5),
-                              qubitTy{bitIntegerTye{(unsigned int)(ginfo->iarg[0])}},
                               *(ki.permutation),
                               buffer,
                               *(ki.communicator),
-                              *(ki.environment));
+                              *(ki.environment),
+                              (-M_PI*0.5),
+                              ket::control<qubitTy>{bitIntegerTye{(unsigned int)(ginfo->iarg[0])}});
 
 }
 
 void qip::addRXGate(gateInfoTy *ginfo) {
   auto buffer = std::vector < complexTy > {};
 
-  // target bit
-  qubitTy target_qubit{bitIntegerTye{(unsigned int) (ginfo->iarg[1])}};
-  // control bit
-  ket::control <qubitTy> control_qubit{qubitTy{bitIntegerTye{(unsigned int) (ginfo->iarg[0])}}};
-
   double theta = ginfo->rarg[0];
 
   // rx
   ket::mpi::gate::exponential_pauli_x(*(ki.localState),
-                              theta/2.0,
-                              target_qubit,
-                              *(ki.permutation),
-                              buffer,
-                              *(ki.communicator),
-                              *(ki.environment));
+                                      *(ki.permutation),
+                                      buffer,
+                                      *(ki.communicator),
+                                      *(ki.environment),
+                                      -theta/2.0,
+                                      qubitTy{bitIntegerTye{(unsigned int)(ginfo->iarg[0])}});
 
 }
 
 void qip::addRYGate(gateInfoTy *ginfo) {
   auto buffer = std::vector < complexTy > {};
 
-  // target bit
-  qubitTy target_qubit{bitIntegerTye{(unsigned int) (ginfo->iarg[1])}};
-  // control bit
-  ket::control <qubitTy> control_qubit{qubitTy{bitIntegerTye{(unsigned int) (ginfo->iarg[0])}}};
-
   double theta = ginfo->rarg[0];
 
   // ry
   ket::mpi::gate::exponential_pauli_y(*(ki.localState),
-                              theta/2.0,
-                              target_qubit,
-                              *(ki.permutation),
-                              buffer,
-                              *(ki.communicator),
-                              *(ki.environment));
+                                      *(ki.permutation),
+                                      buffer,
+                                      *(ki.communicator),
+                                      *(ki.environment),
+                                      -theta/2.0,
+                                      qubitTy{bitIntegerTye{(unsigned int)(ginfo->iarg[0])}});
 
 }
 
 void qip::addRZGate(gateInfoTy *ginfo) {
   auto buffer = std::vector < complexTy > {};
 
-  // target bit
-  qubitTy target_qubit{bitIntegerTye{(unsigned int) (ginfo->iarg[1])}};
-  // control bit
-  ket::control <qubitTy> control_qubit{qubitTy{bitIntegerTye{(unsigned int) (ginfo->iarg[0])}}};
-
   double theta = ginfo->rarg[0];
 
   // rz
   ket::mpi::gate::exponential_pauli_z(*(ki.localState),
-                              theta/2.0,
-                              target_qubit,
-                              *(ki.permutation),
-                              buffer,
-                              *(ki.communicator),
-                              *(ki.environment));
+                                      *(ki.permutation),
+                                      buffer,
+                                      *(ki.communicator),
+                                      *(ki.environment),
+                                      -theta/2.0,
+                                      qubitTy{bitIntegerTye{(unsigned int)(ginfo->iarg[0])}});
 
 }
 
 void qip::addXGate(gateInfoTy *ginfo) {
   auto buffer = std::vector < complexTy > {};
 
-  // target bit
-  qubitTy target_qubit{bitIntegerTye{(unsigned int) (ginfo->iarg[1])}};
-  // control bit
-  ket::control <qubitTy> control_qubit{qubitTy{bitIntegerTye{(unsigned int) (ginfo->iarg[0])}}};
-
   // x
   ket::mpi::gate::pauli_x(*(ki.localState),
-                          qubitTy{bitIntegerTye{(unsigned int)(ginfo->iarg[0])}},
                           *(ki.permutation),
                           buffer,
                           *(ki.communicator),
-                          *(ki.environment));
+                          *(ki.environment),
+                          qubitTy{bitIntegerTye{(unsigned int)(ginfo->iarg[0])}});
 
 }
 
 void qip::addU1Gate(gateInfoTy *ginfo) {
   auto buffer = std::vector < complexTy > {};
 
-  // target bit
-  qubitTy target_qubit{bitIntegerTye{(unsigned int) (ginfo->iarg[1])}};
-  // control bit
-  ket::control <qubitTy> control_qubit{qubitTy{bitIntegerTye{(unsigned int) (ginfo->iarg[0])}}};
-
   double theta = ginfo->rarg[0];
 
   // u1
   ket::mpi::gate::phase_shift(*(ki.localState),
-                              theta, target_qubit,
                               *(ki.permutation),
                               buffer,
                               *(ki.communicator),
-                              *(ki.environment));
-
+                              *(ki.environment),
+                              theta,
+                              ket::control<qubitTy>{bitIntegerTye{(unsigned int)(ginfo->iarg[0])}});
 }
 
 namespace bpt = boost::property_tree;
