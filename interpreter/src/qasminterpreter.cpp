@@ -73,7 +73,7 @@ std::string getOutputFile(int argc, char *const argv[]) {
   return outputFile;
 }
 
-std::pair<bool, std::uint64_t> get_print_only(int argc, char const* argv[])
+std::pair<bool, std::uint64_t> get_print_only(int argc, char* const argv[])
 {
   auto exists = false;
   auto is_value_next = false;
@@ -179,9 +179,7 @@ int main(int argc, char *argv[]) {
   std::string outputFile = getOutputFile(argc, argv);
 
   // Get print_index if required
-  auto const exists_and_print_index = get_print_only(argc, argv);
-  auto const exists_print_index = exists.first;
-  auto const print_index = exists.second;
+  auto const [exists_print_index, print_index] = get_print_only(argc, argv);
 
   // Output amplitudes
   if (exists_print_index)
