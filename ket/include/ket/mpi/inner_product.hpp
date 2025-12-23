@@ -2487,10 +2487,8 @@ namespace ket
               least_permutated_nonbuffer_qubit, num_operated_nonbuffer_qubits);
         auto const mapped_permutated_buffer_qubit_first = begin(mapped_permutated_buffer_qubits);
         auto const mapped_permutated_buffer_qubit_last = end(mapped_permutated_buffer_qubits);
-        // num_lower_buffer_indices, num_upper_buffer_indices_wo_mapped_qubits
-        auto const num_lower_buffer_indices = StateInteger{1u} << *mapped_permutated_buffer_qubit_first;
-        auto const num_upper_buffer_indices_wo_mapped_qubits
-          = StateInteger{1u} << ((least_permutated_nonbuffer_qubit - *mapped_permutated_buffer_qubit_first) - num_operated_nonbuffer_qubits);
+        // num_lower_buffer_indices
+        auto const num_lower_buffer_indices = mapped_permutated_buffer_qubits.empty() ? buffer_size : StateInteger{1u} << *mapped_permutated_buffer_qubit_first;
 
         // main loop
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
@@ -2539,7 +2537,7 @@ namespace ket
            permutated_operated_nonbuffer_qubit_first, permutated_operated_nonbuffer_qubit_last,
            num_nonbuffer_indices_wo_operated_qubits, num_operated_nonbuffer_qubit_values,
            mapped_permutated_buffer_qubit_first, mapped_permutated_buffer_qubit_last,
-           num_lower_buffer_indices, num_upper_buffer_indices_wo_mapped_qubits,
+           num_lower_buffer_indices,
            &modified_unsorted_qubits, &modified_sorted_qubits_with_sentinel, &partial_sums](
             auto const first, auto const last)
           {
@@ -2620,7 +2618,7 @@ namespace ket
            permutated_operated_nonbuffer_qubit_first, permutated_operated_nonbuffer_qubit_last,
            num_nonbuffer_indices_wo_operated_qubits, num_operated_nonbuffer_qubit_values,
            mapped_permutated_buffer_qubit_first, mapped_permutated_buffer_qubit_last,
-           num_lower_buffer_indices, num_upper_buffer_indices_wo_mapped_qubits,
+           num_lower_buffer_indices,
            &qubit_masks, &index_masks, &partial_sums](
             auto const first, auto const last)
           {
@@ -2777,10 +2775,8 @@ namespace ket
               least_permutated_nonbuffer_qubit, num_operated_nonbuffer_qubits);
         auto const mapped_permutated_buffer_qubit_first = begin(mapped_permutated_buffer_qubits);
         auto const mapped_permutated_buffer_qubit_last = end(mapped_permutated_buffer_qubits);
-        // num_lower_buffer_indices, num_upper_buffer_indices_wo_mapped_qubits
-        auto const num_lower_buffer_indices = StateInteger{1u} << *mapped_permutated_buffer_qubit_first;
-        auto const num_upper_buffer_indices_wo_mapped_qubits
-          = StateInteger{1u} << ((least_permutated_nonbuffer_qubit - *mapped_permutated_buffer_qubit_first) - num_operated_nonbuffer_qubits);
+        // num_lower_buffer_indices
+        auto const num_lower_buffer_indices = mapped_permutated_buffer_qubits.empty() ? buffer_size : StateInteger{1u} << *mapped_permutated_buffer_qubit_first;
 
         // main loop
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
@@ -2829,7 +2825,7 @@ namespace ket
            permutated_operated_nonbuffer_qubit_first, permutated_operated_nonbuffer_qubit_last,
            num_nonbuffer_indices_wo_operated_qubits, num_operated_nonbuffer_qubit_values,
            mapped_permutated_buffer_qubit_first, mapped_permutated_buffer_qubit_last,
-           num_lower_buffer_indices, num_upper_buffer_indices_wo_mapped_qubits,
+           num_lower_buffer_indices,
            &modified_unsorted_qubits, &modified_sorted_qubits_with_sentinel, &partial_sums](
             auto const first, auto const last)
           {
@@ -2910,7 +2906,7 @@ namespace ket
            permutated_operated_nonbuffer_qubit_first, permutated_operated_nonbuffer_qubit_last,
            num_nonbuffer_indices_wo_operated_qubits, num_operated_nonbuffer_qubit_values,
            mapped_permutated_buffer_qubit_first, mapped_permutated_buffer_qubit_last,
-           num_lower_buffer_indices, num_upper_buffer_indices_wo_mapped_qubits,
+           num_lower_buffer_indices,
            &qubit_masks, &index_masks, &partial_sums](
             auto const first, auto const last)
           {
@@ -3576,10 +3572,8 @@ namespace ket
               least_permutated_nonbuffer_qubit, num_operated_nonbuffer_qubits);
         auto const mapped_permutated_buffer_qubit_first = begin(mapped_permutated_buffer_qubits);
         auto const mapped_permutated_buffer_qubit_last = end(mapped_permutated_buffer_qubits);
-        // num_lower_buffer_indices, num_upper_buffer_indices_wo_mapped_qubits
-        auto const num_lower_buffer_indices = StateInteger{1u} << *mapped_permutated_buffer_qubit_first;
-        auto const num_upper_buffer_indices_wo_mapped_qubits
-          = StateInteger{1u} << ((least_permutated_nonbuffer_qubit - *mapped_permutated_buffer_qubit_first) - num_operated_nonbuffer_qubits);
+        // num_lower_buffer_indices
+        auto const num_lower_buffer_indices = mapped_permutated_buffer_qubits.empty() ? buffer_size : StateInteger{1u} << *mapped_permutated_buffer_qubit_first;
 
         // main loop
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
@@ -3631,7 +3625,7 @@ namespace ket
              permutated_operated_nonbuffer_qubit_first, permutated_operated_nonbuffer_qubit_last,
              num_nonbuffer_indices_wo_operated_qubits, num_operated_nonbuffer_qubit_values,
              mapped_permutated_buffer_qubit_first, mapped_permutated_buffer_qubit_last,
-             num_lower_buffer_indices, num_upper_buffer_indices_wo_mapped_qubits,
+             num_lower_buffer_indices,
              &modified_unsorted_qubits, &modified_sorted_qubits_with_sentinel, &partial_sums](
               auto const first, auto const last)
             {
@@ -3706,7 +3700,7 @@ namespace ket
              permutated_operated_nonbuffer_qubit_first, permutated_operated_nonbuffer_qubit_last,
              num_nonbuffer_indices_wo_operated_qubits, num_operated_nonbuffer_qubit_values,
              mapped_permutated_buffer_qubit_first, mapped_permutated_buffer_qubit_last,
-             num_lower_buffer_indices, num_upper_buffer_indices_wo_mapped_qubits,
+             num_lower_buffer_indices,
              &modified_unsorted_qubits, &modified_sorted_qubits_with_sentinel, &partial_sums](
               auto const first, auto const last)
             {
@@ -3757,7 +3751,7 @@ namespace ket
              permutated_operated_nonbuffer_qubit_first, permutated_operated_nonbuffer_qubit_last,
              num_nonbuffer_indices_wo_operated_qubits, num_operated_nonbuffer_qubit_values,
              mapped_permutated_buffer_qubit_first, mapped_permutated_buffer_qubit_last,
-             num_lower_buffer_indices, num_upper_buffer_indices_wo_mapped_qubits,
+             num_lower_buffer_indices,
              &qubit_masks, &index_masks, &partial_sums](
               auto const first, auto const last)
             {
@@ -3832,7 +3826,7 @@ namespace ket
              permutated_operated_nonbuffer_qubit_first, permutated_operated_nonbuffer_qubit_last,
              num_nonbuffer_indices_wo_operated_qubits, num_operated_nonbuffer_qubit_values,
              mapped_permutated_buffer_qubit_first, mapped_permutated_buffer_qubit_last,
-             num_lower_buffer_indices, num_upper_buffer_indices_wo_mapped_qubits,
+             num_lower_buffer_indices,
              &qubit_masks, &index_masks, &partial_sums](
               auto const first, auto const last)
             {
@@ -3952,10 +3946,8 @@ namespace ket
               least_permutated_nonbuffer_qubit, num_operated_nonbuffer_qubits);
         auto const mapped_permutated_buffer_qubit_first = begin(mapped_permutated_buffer_qubits);
         auto const mapped_permutated_buffer_qubit_last = end(mapped_permutated_buffer_qubits);
-        // num_lower_buffer_indices, num_upper_buffer_indices_wo_mapped_qubits
-        auto const num_lower_buffer_indices = StateInteger{1u} << *mapped_permutated_buffer_qubit_first;
-        auto const num_upper_buffer_indices_wo_mapped_qubits
-          = StateInteger{1u} << ((least_permutated_nonbuffer_qubit - *mapped_permutated_buffer_qubit_first) - num_operated_nonbuffer_qubits);
+        // num_lower_buffer_indices
+        auto const num_lower_buffer_indices = mapped_permutated_buffer_qubits.empty() ? buffer_size : StateInteger{1u} << *mapped_permutated_buffer_qubit_first;
 
         // main loop
         using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
@@ -4007,7 +3999,7 @@ namespace ket
              permutated_operated_nonbuffer_qubit_first, permutated_operated_nonbuffer_qubit_last,
              num_nonbuffer_indices_wo_operated_qubits, num_operated_nonbuffer_qubit_values,
              mapped_permutated_buffer_qubit_first, mapped_permutated_buffer_qubit_last,
-             num_lower_buffer_indices, num_upper_buffer_indices_wo_mapped_qubits,
+             num_lower_buffer_indices,
              &modified_unsorted_qubits, &modified_sorted_qubits_with_sentinel, &partial_sums](
               auto const first, auto const last)
             {
@@ -4082,7 +4074,7 @@ namespace ket
              permutated_operated_nonbuffer_qubit_first, permutated_operated_nonbuffer_qubit_last,
              num_nonbuffer_indices_wo_operated_qubits, num_operated_nonbuffer_qubit_values,
              mapped_permutated_buffer_qubit_first, mapped_permutated_buffer_qubit_last,
-             num_lower_buffer_indices, num_upper_buffer_indices_wo_mapped_qubits,
+             num_lower_buffer_indices,
              &modified_unsorted_qubits, &modified_sorted_qubits_with_sentinel, &partial_sums](
               auto const first, auto const last)
             {
@@ -4133,7 +4125,7 @@ namespace ket
              permutated_operated_nonbuffer_qubit_first, permutated_operated_nonbuffer_qubit_last,
              num_nonbuffer_indices_wo_operated_qubits, num_operated_nonbuffer_qubit_values,
              mapped_permutated_buffer_qubit_first, mapped_permutated_buffer_qubit_last,
-             num_lower_buffer_indices, num_upper_buffer_indices_wo_mapped_qubits,
+             num_lower_buffer_indices,
              &qubit_masks, &index_masks, &partial_sums](
               auto const first, auto const last)
             {
@@ -4208,7 +4200,7 @@ namespace ket
              permutated_operated_nonbuffer_qubit_first, permutated_operated_nonbuffer_qubit_last,
              num_nonbuffer_indices_wo_operated_qubits, num_operated_nonbuffer_qubit_values,
              mapped_permutated_buffer_qubit_first, mapped_permutated_buffer_qubit_last,
-             num_lower_buffer_indices, num_upper_buffer_indices_wo_mapped_qubits,
+             num_lower_buffer_indices,
              &qubit_masks, &index_masks, &partial_sums](
               auto const first, auto const last)
             {
