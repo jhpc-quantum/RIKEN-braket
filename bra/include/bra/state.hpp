@@ -28,6 +28,7 @@
 
 #   include <yampi/rank.hpp>
 #   include <yampi/communicator.hpp>
+#   include <yampi/intercommunicator.hpp>
 #   include <yampi/environment.hpp>
 #   include <yampi/wall_clock.hpp>
 # endif // BRA_NO_MPI
@@ -212,7 +213,7 @@ namespace bra
     boost::optional<spins_type> maybe_expectation_values_; // return value of ket(::mpi)::all_spin_expectation_values
     state_integer_type measured_value_; // return value of ket(::mpi)::measure
     std::vector<state_integer_type> generated_events_; // results of ket(::mpi)::generate_events
-    ::bra::complex_type result_; // return value of ket(::mpi)::expectation_value
+    ::bra::complex_type result_; // return value of ket(::mpi)::expectation_value, ket(::mpi)::inner_product, or ket(::mpi)::fidelity
     bool is_in_fusion_; // related to begin_fusion/end_fusion
     std::vector< ::bra::found_qubit > found_qubits_; // related to begin_fusion/end_fusion
     random_number_generator_type random_number_generator_;
@@ -220,7 +221,10 @@ namespace bra
 
     permutation_type permutation_;
     ::bra::data_type buffer_;
-    yampi::communicator const& communicator_;
+    yampi::communicator const& circuit_communicator_;
+    yampi::communicator const& intercircuit_communicator_;
+    int circuit_index_;
+    std::vector<yampi::intercommunicator> const& intercommunicators_;
     yampi::environment const& environment_;
 # endif // BRA_NO_MPI
 
@@ -249,27 +253,39 @@ namespace bra
     state(
       bit_integer_type const total_num_qubits,
       seed_type const seed,
-      yampi::communicator const& communicator,
+      yampi::communicator const& circuit_communicator,
+      yampi::communicator const& intercircuit_communicator,
+      int const circuit_index,
+      std::vector<yampi::intercommunicator> const& intercommunicators,
       yampi::environment const& environment);
 
     state(
       bit_integer_type const total_num_qubits,
       seed_type const seed,
       unsigned int const num_elements_in_buffer,
-      yampi::communicator const& communicator,
+      yampi::communicator const& circuit_communicator,
+      yampi::communicator const& intercircuit_communicator,
+      int const circuit_index,
+      std::vector<yampi::intercommunicator> const& intercommunicators,
       yampi::environment const& environment);
 
     state(
       std::vector<permutated_qubit_type> const& initial_permutation,
       seed_type const seed,
-      yampi::communicator const& communicator,
+      yampi::communicator const& circuit_communicator,
+      yampi::communicator const& intercircuit_communicator,
+      int const circuit_index,
+      std::vector<yampi::intercommunicator> const& intercommunicators,
       yampi::environment const& environment);
 
     state(
       std::vector<permutated_qubit_type> const& initial_permutation,
       seed_type const seed,
       unsigned int const num_elements_in_buffer,
-      yampi::communicator const& communicator,
+      yampi::communicator const& circuit_communicator,
+      yampi::communicator const& intercircuit_communicator,
+      int const circuit_index,
+      std::vector<yampi::intercommunicator> const& intercommunicators,
       yampi::environment const& environment);
 # else // BRA_NO_MPI
     state(bit_integer_type const total_num_qubits, seed_type const seed);
@@ -297,7 +313,9 @@ namespace bra
 # ifndef BRA_NO_MPI
     permutation_type const& permutation() const { return permutation_; }
 
-    yampi::communicator const& communicator() const { return communicator_; }
+    yampi::communicator const& communicator() const { return circuit_communicator_; }
+    yampi::communicator const& intercircuit_communicator() const { return intercircuit_communicator_; }
+    std::vector<yampi::intercommunicator> const& intercommunicators() const { return intercommunicators_; }
     yampi::environment const& environment() const { return environment_; }
 # endif // BRA_NO_MPI
 
@@ -510,6 +528,8 @@ namespace bra
     state& exit();
 # endif // BRA_NO_MPI
     state& expectation_value(std::string const& pauli_string_space, std::vector<qubit_type> const& operated_qubits);
+    state& inner_product(std::string const& remote_circuit_index_or_all);
+    state& inner_product(std::string const& remote_circuit_index_or_all, std::string const& pauli_string_space, std::vector<qubit_type> const& operated_qubits);
     state& shor_box(bit_integer_type const num_exponent_qubits, state_integer_type const divisor, state_integer_type const base);
 
     state& begin_fusion();
@@ -778,6 +798,8 @@ namespace bra
     virtual void do_generate_events(int const num_events, int const seed) = 0;
 # endif // BRA_NO_MPI
     virtual void do_expectation_value(std::string const& pauli_string_space, std::vector<qubit_type> const& operated_qubits) = 0;
+    virtual void do_inner_product(std::string const& remote_circuit_index_or_all) = 0;
+    virtual void do_inner_product(std::string const& remote_circuit_index_or_all, std::string const& pauli_string_space, std::vector<qubit_type> const& operated_qubits) = 0;
     virtual void do_shor_box(
       state_integer_type const divisor, state_integer_type const base,
       std::vector<qubit_type> const& exponent_qubits,

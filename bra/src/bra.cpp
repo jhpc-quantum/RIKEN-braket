@@ -39,7 +39,7 @@ int main(int argc, char* argv[])
 
 #ifndef BRA_NO_MPI
   yampi::environment environment{argc, argv, yampi::thread_support::funneled};
-  auto world_communicator = yampi::communicator{yampi::tags::world_communicator};
+  auto const world_communicator = yampi::communicator{yampi::tags::world_communicator};
   auto const world_rank = world_communicator.rank(environment);
   auto const num_processes = world_communicator.size(environment);
   using namespace yampi::literals::rank_literals;
@@ -163,6 +163,13 @@ int main(int argc, char* argv[])
 
 #ifndef BRA_NO_MPI
   auto interpreter = bra::interpreter{parse_result.count("file") ? possible_input_stream : std::cin, num_unit_qubits, num_processes_per_unit, environment, 0_r, world_communicator};
+  if (interpreter.largest_num_operated_qubits() > interpreter.num_lqubits() - num_page_qubits)
+  {
+    if (is_io_root_rank)
+      std::cerr << "Error: the largest number of operated qubits " << interpreter.largest_num_operated_qubits() << " should be less than the number of non-page qubits " << (interpreter.num_lqubits() - num_page_qubits) << '\n' << options.help() << std::flush;
+    return EXIT_FAILURE;
+  }
+
   auto const num_circuits = interpreter.num_circuits();
   if (num_processes % num_circuits != 0u)
   {
@@ -176,29 +183,42 @@ int main(int argc, char* argv[])
   auto const intercircuit_index = static_cast<int>(world_rank) % static_cast<int>(num_processes_per_circuit);
   auto const circuit_communicator
     = yampi::communicator{world_communicator, yampi::color{circuit_index}, intercircuit_index, environment};
-  auto const circuit_rank = circuit_communicator.rank(environment);
-  using namespace yampi::literals::color_literals;
   auto const intercircuit_communicator
     = yampi::communicator{world_communicator, yampi::color{intercircuit_index}, circuit_index, environment};
+
+  auto intercommunicators = std::vector<yampi::intercommunicator>{};
+  intercommunicators.reserve(num_circuits - decltype(num_circuits){1});
+  for (auto remote_circuit_index = 0; remote_circuit_index < static_cast<int>(num_circuits); ++remote_circuit_index)
+  {
+    if (remote_circuit_index == circuit_index)
+      continue;
+
+    auto const remote_leader = yampi::rank{static_cast<int>(num_processes_per_circuit) * remote_circuit_index};
+    auto const tag
+      = circuit_index > remote_circuit_index
+        ? yampi::tag{circuit_index * static_cast<int>(num_circuits) + remote_circuit_index}
+        : yampi::tag{remote_circuit_index * static_cast<int>(num_circuits) + circuit_index};
+    intercommunicators.emplace_back(circuit_communicator, 0_r, world_communicator, remote_leader, tag, environment);
+  }
 
 # ifndef BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
   auto state_ptr
     = is_unit
       ? bra::make_unit_mpi_state(
           num_page_qubits, interpreter.initial_state_value(), interpreter.num_lqubits(), num_unit_qubits, interpreter.initial_permutation(),
-          num_threads_per_process, num_processes_per_unit, seed, circuit_communicator, environment)
+          num_threads_per_process, num_processes_per_unit, seed, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment)
       : bra::make_simple_mpi_state(
           num_page_qubits, interpreter.initial_state_value(), interpreter.num_lqubits(), interpreter.initial_permutation(),
-          num_threads_per_process, seed, circuit_communicator, environment);
+          num_threads_per_process, seed, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment);
 # else // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
   auto state_ptr
     = is_unit
       ? bra::make_unit_mpi_state(
           num_page_qubits, interpreter.initial_state_value(), interpreter.num_lqubits(), num_unit_qubits, interpreter.initial_permutation(),
-          num_threads_per_process, num_processes_per_unit, seed, num_elements_in_buffer, circuit_communicator, environment)
+          num_threads_per_process, num_processes_per_unit, seed, num_elements_in_buffer, circuit_communicator, circuit_index, intercircuit_communicator, intercommunicators, environment)
       : bra::make_simple_mpi_state(
           num_page_qubits, interpreter.initial_state_value(), interpreter.num_lqubits(), interpreter.initial_permutation(),
-          num_threads_per_process, seed, num_elements_in_buffer, circuit_communicator, environment);
+          num_threads_per_process, seed, num_elements_in_buffer, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment);
 # endif // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
 
   interpreter.apply_circuit(*state_ptr, circuit_index);
@@ -207,6 +227,13 @@ int main(int argc, char* argv[])
     return EXIT_SUCCESS;
 #else // BRA_NO_MPI
   auto interpreter = bra::interpreter{parse_result.count("file") ? possible_input_stream : std::cin};
+  if (interpreter.largest_num_operated_qubits() > interpreter.num_qubits())
+  {
+    if (is_io_root_rank)
+      std::cerr << "Error: the largest number of operated qubits " << interpreter.largest_num_operated_qubits() << " should be less than the number of qubits " << interpreter.num_qubits() << '\n' << options.help() << std::flush;
+    return EXIT_FAILURE;
+  }
+
   auto const num_circuits = interpreter.num_circuits();
 
   auto state_ptrs = std::vector<std::unique_ptr< ::bra::state >>(num_circuits);

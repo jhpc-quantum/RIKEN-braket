@@ -6,6 +6,7 @@
 #   include <memory>
 
 #   include <yampi/communicator.hpp>
+#   include <yampi/intercommunicator.hpp>
 #   include <yampi/environment.hpp>
 
 #   include <bra/state.hpp>
@@ -23,7 +24,10 @@ namespace bra
 #   ifdef BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
     unsigned int const num_elements_in_buffer,
 #   endif // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
-    yampi::communicator const& communicator,
+    yampi::communicator const& circuit_communicator,
+    yampi::communicator const& intercircuit_communicator,
+    int const circuit_index,
+    std::vector<yampi::intercommunicator> const& intercommunicators,
     yampi::environment const& environment);
 
   std::unique_ptr< ::bra::state > make_simple_mpi_state(
@@ -36,7 +40,10 @@ namespace bra
 #   ifdef BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
     unsigned int const num_elements_in_buffer,
 #   endif // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
-    yampi::communicator const& communicator,
+    yampi::communicator const& circuit_communicator,
+    yampi::communicator const& intercircuit_communicator,
+    int const circuit_index,
+    std::vector<yampi::intercommunicator> const& intercommunicators,
     yampi::environment const& environment);
 } // namespace bra
 

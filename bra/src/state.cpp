@@ -22,6 +22,7 @@
 
 #ifndef BRA_NO_MPI
 # include <yampi/communicator.hpp>
+# include <yampi/intercommunicator.hpp>
 # include <yampi/environment.hpp>
 # include <yampi/wall_clock.hpp>
 #endif // BRA_NO_MPI
@@ -100,7 +101,10 @@ namespace bra
   state::state(
     bit_integer_type const total_num_qubits,
     seed_type const seed,
-    yampi::communicator const& communicator,
+    yampi::communicator const& circuit_communicator,
+    yampi::communicator const& intercircuit_communicator,
+    int const circuit_index,
+    std::vector<yampi::intercommunicator> const& intercommunicators,
     yampi::environment const& environment)
     : total_num_qubits_{total_num_qubits},
       last_outcomes_{total_num_qubits, ket::gate::outcome::unspecified},
@@ -114,7 +118,10 @@ namespace bra
       random_number_generator_{seed},
       permutation_{static_cast<permutation_type::size_type>(total_num_qubits)},
       buffer_{},
-      communicator_{communicator},
+      circuit_communicator_{circuit_communicator},
+      intercircuit_communicator_{intercircuit_communicator},
+      circuit_index_{circuit_index},
+      intercommunicators_{intercommunicators},
       environment_{environment},
       start_time_{BRA_clock::now(environment_)},
       last_processed_time_{start_time_},
@@ -133,7 +140,10 @@ namespace bra
     bit_integer_type const total_num_qubits,
     seed_type const seed,
     unsigned int const num_elements_in_buffer,
-    yampi::communicator const& communicator,
+    yampi::communicator const& circuit_communicator,
+    yampi::communicator const& intercircuit_communicator,
+    int const circuit_index,
+    std::vector<yampi::intercommunicator> const& intercommunicators,
     yampi::environment const& environment)
     : total_num_qubits_{total_num_qubits},
       last_outcomes_{total_num_qubits, ket::gate::outcome::unspecified},
@@ -147,7 +157,10 @@ namespace bra
       random_number_generator_{seed},
       permutation_{static_cast<permutation_type::size_type>(total_num_qubits)},
       buffer_(num_elements_in_buffer),
-      communicator_{communicator},
+      circuit_communicator_{circuit_communicator},
+      intercircuit_communicator_{intercircuit_communicator},
+      circuit_index_{circuit_index},
+      intercommunicators_{intercommunicators},
       environment_{environment},
       start_time_{BRA_clock::now(environment_)},
       last_processed_time_{start_time_},
@@ -165,7 +178,10 @@ namespace bra
   state::state(
     std::vector<permutated_qubit_type> const& initial_permutation,
     seed_type const seed,
-    yampi::communicator const& communicator,
+    yampi::communicator const& circuit_communicator,
+    yampi::communicator const& intercircuit_communicator,
+    int const circuit_index,
+    std::vector<yampi::intercommunicator> const& intercommunicators,
     yampi::environment const& environment)
     : total_num_qubits_{static_cast<bit_integer_type>(initial_permutation.size())},
       last_outcomes_{total_num_qubits_, ket::gate::outcome::unspecified},
@@ -180,7 +196,10 @@ namespace bra
       permutation_{
         std::begin(initial_permutation), std::end(initial_permutation)},
       buffer_{},
-      communicator_{communicator},
+      circuit_communicator_{circuit_communicator},
+      intercircuit_communicator_{intercircuit_communicator},
+      circuit_index_{circuit_index},
+      intercommunicators_{intercommunicators},
       environment_{environment},
       start_time_{BRA_clock::now(environment_)},
       last_processed_time_{start_time_},
@@ -199,7 +218,10 @@ namespace bra
     std::vector<permutated_qubit_type> const& initial_permutation,
     seed_type const seed,
     unsigned int const num_elements_in_buffer,
-    yampi::communicator const& communicator,
+    yampi::communicator const& circuit_communicator,
+    yampi::communicator const& intercircuit_communicator,
+    int const circuit_index,
+    std::vector<yampi::intercommunicator> const& intercommunicators,
     yampi::environment const& environment)
     : total_num_qubits_{static_cast<bit_integer_type>(initial_permutation.size())},
       last_outcomes_{total_num_qubits_, ket::gate::outcome::unspecified},
@@ -214,7 +236,10 @@ namespace bra
       permutation_{
         std::begin(initial_permutation), std::end(initial_permutation)},
       buffer_(num_elements_in_buffer),
-      communicator_{communicator},
+      circuit_communicator_{circuit_communicator},
+      intercircuit_communicator_{intercircuit_communicator},
+      circuit_index_{circuit_index},
+      intercommunicators_{intercommunicators},
       environment_{environment},
       start_time_{BRA_clock::now(environment_)},
       last_processed_time_{start_time_},
@@ -449,7 +474,7 @@ namespace bra
   {
 #ifndef BRA_NO_MPI
     constexpr auto root = yampi::rank{0};
-    if (communicator_.rank(environment_) != root)
+    if (circuit_communicator_.rank(environment_) != root)
       return;
 #endif // BRA_NO_MPI
 
@@ -462,7 +487,7 @@ namespace bra
   {
 #ifndef BRA_NO_MPI
     constexpr auto root = yampi::rank{0};
-    if (communicator_.rank(environment_) != root)
+    if (circuit_communicator_.rank(environment_) != root)
       return;
 #endif // BRA_NO_MPI
 
@@ -1501,7 +1526,7 @@ namespace bra
 
     auto const operation_finish_time = BRA_clock::now(environment_);
     std::ostringstream oss;
-    if (communicator_.rank(environment_) == root)
+    if (circuit_communicator_.rank(environment_) == root)
     {
       oss << "Operations finished: " << ::bra::state_detail::duration_to_second(start_time_, operation_finish_time)
           << " (" << ::bra::state_detail::duration_to_second(last_processed_time_, operation_finish_time) << ")\n";
@@ -1511,7 +1536,7 @@ namespace bra
 
     do_expectation_values(root);
 
-    if (communicator_.rank(environment_) == root)
+    if (circuit_communicator_.rank(environment_) == root)
     {
       if (precision > 0)
       {
@@ -1547,7 +1572,7 @@ namespace bra
     }
 
     auto const expectation_values_finish_time = BRA_clock::now(environment_);
-    if (communicator_.rank(environment_) == root)
+    if (circuit_communicator_.rank(environment_) == root)
     {
       oss.str("");
       oss << "Expectation values finished: " << ::bra::state_detail::duration_to_second(start_time_, expectation_values_finish_time)
@@ -1566,7 +1591,7 @@ namespace bra
 
     auto const operation_finish_time = BRA_clock::now(environment_);
     std::ostringstream oss;
-    if (communicator_.rank(environment_) == root)
+    if (circuit_communicator_.rank(environment_) == root)
     {
       oss << "Operations finished: " << ::bra::state_detail::duration_to_second(start_time_, operation_finish_time)
           << " (" << ::bra::state_detail::duration_to_second(last_processed_time_, operation_finish_time) << ")\n";
@@ -1577,7 +1602,7 @@ namespace bra
     do_amplitudes(root);
 
     auto const amplitudes_finish_time = BRA_clock::now(environment_);
-    if (communicator_.rank(environment_) == root)
+    if (circuit_communicator_.rank(environment_) == root)
     {
       oss.str("");
       oss << "Amplitudes finished: " << ::bra::state_detail::duration_to_second(start_time_, amplitudes_finish_time)
@@ -1596,7 +1621,7 @@ namespace bra
 
     auto const operation_finish_time = BRA_clock::now(environment_);
     std::ostringstream oss;
-    if (communicator_.rank(environment_) == root)
+    if (circuit_communicator_.rank(environment_) == root)
     {
       oss << "Operations finished: " << ::bra::state_detail::duration_to_second(start_time_, operation_finish_time)
           << " (" << ::bra::state_detail::duration_to_second(last_processed_time_, operation_finish_time) << ")\n";
@@ -1606,7 +1631,7 @@ namespace bra
 
     do_generate_events(root, num_events, seed);
 
-    if (communicator_.rank(environment_) == root)
+    if (circuit_communicator_.rank(environment_) == root)
     {
       oss.str("");
       oss << "Events:\n";
@@ -1616,7 +1641,7 @@ namespace bra
     }
 
     auto const generate_events_finish_time = BRA_clock::now(environment_);
-    if (communicator_.rank(environment_) == root)
+    if (circuit_communicator_.rank(environment_) == root)
     {
       oss.str("");
       oss << "Events finished: " << ::bra::state_detail::duration_to_second(start_time_, generate_events_finish_time)
@@ -1635,7 +1660,7 @@ namespace bra
 
     auto const operation_finish_time = BRA_clock::now(environment_);
     std::ostringstream oss;
-    if (communicator_.rank(environment_) == root)
+    if (circuit_communicator_.rank(environment_) == root)
     {
       oss << "Operations finished: " << ::bra::state_detail::duration_to_second(start_time_, operation_finish_time)
           << " (" << ::bra::state_detail::duration_to_second(last_processed_time_, operation_finish_time) << ")\n";
@@ -1645,7 +1670,7 @@ namespace bra
 
     do_measure(root);
 
-    if (communicator_.rank(environment_) == root)
+    if (circuit_communicator_.rank(environment_) == root)
     {
       oss.str("");
       oss << "Measurement result: " << measured_value_ << '\n';
@@ -1653,7 +1678,7 @@ namespace bra
     }
 
     auto const measure_finish_time = BRA_clock::now(environment_);
-    if (communicator_.rank(environment_) == root)
+    if (circuit_communicator_.rank(environment_) == root)
     {
       oss.str("");
       oss << "Measurement finished: " << ::bra::state_detail::duration_to_second(start_time_, measure_finish_time)
@@ -1821,6 +1846,26 @@ namespace bra
       throw ::bra::unsupported_fused_gate_error{"EXPECTATION VALUE"};
 
     do_expectation_value(operator_literal_or_variable_name, operated_qubits);
+
+    return *this;
+  }
+
+  state& state::inner_product(std::string const& remote_circuit_index_or_all)
+  {
+    if (is_in_fusion_)
+      throw ::bra::unsupported_fused_gate_error{"INNER PRODUCT"};
+
+    do_inner_product(remote_circuit_index_or_all);
+
+    return *this;
+  }
+
+  state& state::inner_product(std::string const& remote_circuit_index_or_all, std::string const& operator_literal_or_variable_name, std::vector<qubit_type> const& operated_qubits)
+  {
+    if (is_in_fusion_)
+      throw ::bra::unsupported_fused_gate_error{"INNER PRODUCT"};
+
+    do_inner_product(remote_circuit_index_or_all, operator_literal_or_variable_name, operated_qubits);
 
     return *this;
   }
