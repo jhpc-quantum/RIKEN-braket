@@ -677,10 +677,19 @@ namespace bra
         }
         else if (statement == ::bra::do_statement::amplitudes)
         {
+          auto iter = begin(columns);
+          ++iter;
+          ++iter;
+          auto const last = end(columns);
+          auto amplitude_indices = std::vector< ::bra::state_integer_type >{};
+          amplitude_indices.reserve(last - iter);
+          for (; iter != last; ++iter)
+            amplitude_indices.push_back(boost::lexical_cast< ::bra::state_integer_type >(*iter));
+
 #ifndef BRA_NO_MPI
-          circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::amplitudes >(root_));
+          circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::amplitudes >(root_, std::move(amplitude_indices)));
 #else // BRA_NO_MPI
-          circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::amplitudes >());
+          circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::amplitudes >(std::move(amplitude_indices)));
 #endif // BRA_NO_MPI
         }
         else
@@ -1806,7 +1815,7 @@ namespace bra
 
     if (*iter == "MEASUREMENT" and (column_size == 2u or column_size == 3u))
       return ::bra::do_statement::measurement;
-    else if (*iter == "AMPLITUDES" and column_size == 2u)
+    else if (*iter == "AMPLITUDES")
       return ::bra::do_statement::amplitudes;
 
     throw wrong_mnemonics_error{columns};

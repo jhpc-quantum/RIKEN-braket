@@ -1061,20 +1061,29 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
   void nompi_state::do_expectation_values()
   { maybe_expectation_values_ = ket::ranges::all_spin_expectation_values<qubit_type>(parallel_policy_, data_); }
 
-  void nompi_state::do_amplitudes()
+  void nompi_state::do_amplitudes(std::vector< ::bra::state_integer_type > const& amplitude_indices)
   {
     std::ostringstream oss;
 
-    ket::println_amplitudes(
-      oss, data_,
-      [this](::bra::state_integer_type const qubit_value, ::bra::complex_type const& amplitude)
+    if (amplitude_indices.empty())
+      ket::println_amplitudes(
+        oss, data_,
+        [this](::bra::state_integer_type const qubit_value, ::bra::complex_type const& amplitude)
+        {
+          std::ostringstream oss;
+          using std::real;
+          using std::imag;
+          oss << ::bra::state_detail::integer_to_bits_string(qubit_value, this->total_num_qubits_) << " => " << real(amplitude) << " + " << imag(amplitude) << " i";
+          return oss.str();
+        }, std::string{"\n"});
+    else
+      for (auto const amplitude_index: amplitude_indices)
       {
-        std::ostringstream oss;
+        auto const& amplitude = data_[amplitude_index];
         using std::real;
         using std::imag;
-        oss << ::bra::state_detail::integer_to_bits_string(qubit_value, this->total_num_qubits_) << " => " << real(amplitude) << " + " << imag(amplitude) << " i";
-        return oss.str();
-      }, std::string{"\n"});
+        oss << ::bra::state_detail::integer_to_bits_string(amplitude_index, total_num_qubits_) << " => " << real(amplitude) << " + " << imag(amplitude) << " i\n";
+      }
 
     std::cout << oss.str() << std::flush;
   }

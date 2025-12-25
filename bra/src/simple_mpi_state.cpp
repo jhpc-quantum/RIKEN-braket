@@ -1,4 +1,5 @@
 #ifndef BRA_NO_MPI
+# include <cmath>
 # include <iostream>
 # include <sstream>
 # include <vector>
@@ -17,6 +18,10 @@
 # include <boost/preprocessor/repetition/repeat.hpp>
 # include <boost/preprocessor/repetition/repeat_from_to.hpp>
 
+# include <yampi/buffer.hpp>
+# include <yampi/tag.hpp>
+# include <yampi/send.hpp>
+# include <yampi/receive.hpp>
 # include <yampi/communicator.hpp>
 # include <yampi/intercommunicator.hpp>
 # include <yampi/environment.hpp>
@@ -1412,20 +1417,48 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
           data_, permutation_, total_num_qubits_, buffer_, root, circuit_communicator_, environment_);
   }
 
-  void simple_mpi_state::do_amplitudes(yampi::rank const root)
+  void simple_mpi_state::do_amplitudes(yampi::rank const root, std::vector< ::bra::state_integer_type > const& amplitude_indices)
   {
     std::ostringstream oss;
 
-    ket::mpi::println_amplitudes(
-      mpi_policy_, oss, data_, permutation_, root, circuit_communicator_, environment_,
-      [this](::bra::state_integer_type const qubit_value, ::bra::complex_type const& amplitude)
+    if (amplitude_indices.empty())
+      ket::mpi::println_amplitudes(
+        mpi_policy_, oss, data_, permutation_, root, circuit_communicator_, environment_,
+        [this](::bra::state_integer_type const qubit_value, ::bra::complex_type const& amplitude)
+        {
+          std::ostringstream oss;
+          using std::real;
+          using std::imag;
+          oss << ::bra::state_detail::integer_to_bits_string(qubit_value, this->total_num_qubits_) << " => " << real(amplitude) << " + " << imag(amplitude) << " i";
+          return oss.str();
+        }, std::string{"\n"});
+    else
+    {
+      auto const present_rank = circuit_communicator_.rank(environment_);
+
+      for (auto const amplitude_index: amplitude_indices)
       {
-        std::ostringstream oss;
-        using std::real;
-        using std::imag;
-        oss << ::bra::state_detail::integer_to_bits_string(qubit_value, this->total_num_qubits_) << " => " << real(amplitude) << " + " << imag(amplitude) << " i";
-        return oss.str();
-      }, std::string{"\n"});
+        auto const rank_index
+          = ::ket::mpi::utility::qubit_value_to_rank_index(
+              mpi_policy_, data_, ::ket::mpi::permutate_bits(permutation_, amplitude_index), circuit_communicator_, environment_);
+
+        if (present_rank == root)
+        {
+          auto amplitude = ::bra::complex_type{};
+
+          if (present_rank == rank_index.first)
+            amplitude = data_[rank_index.second];
+          else
+            yampi::receive(yampi::ignore_status, yampi::make_buffer(amplitude), rank_index.first, yampi::tag{static_cast<int>(rank_index.second)}, circuit_communicator_, environment_);
+
+          using std::real;
+          using std::imag;
+          oss << ::bra::state_detail::integer_to_bits_string(amplitude_index, total_num_qubits_) << " => " << real(amplitude) << " + " << imag(amplitude) << " i\n";
+        }
+        else if (present_rank == rank_index.first)
+          yampi::send(yampi::make_buffer(data_[rank_index.second]), root, yampi::tag{static_cast<int>(rank_index.second)}, circuit_communicator_, environment_);
+      }
+    }
 
     if (circuit_communicator_.rank(environment_) == root)
       std::cout << oss.str() << std::flush;
