@@ -8,6 +8,8 @@
 # include <numeric>
 # include <utility>
 
+# include <boost/algorithm/string/case_conv.hpp>
+
 # include <boost/preprocessor/arithmetic/dec.hpp>
 # include <boost/preprocessor/arithmetic/inc.hpp>
 # include <boost/preprocessor/comparison/equal.hpp>
@@ -16,6 +18,7 @@
 # include <boost/preprocessor/repetition/repeat_from_to.hpp>
 
 # include <yampi/communicator.hpp>
+# include <yampi/intercommunicator.hpp>
 # include <yampi/environment.hpp>
 
 # ifdef KET_PRINT_LOG
@@ -55,6 +58,8 @@
 # include <ket/mpi/measure.hpp>
 # include <ket/mpi/generate_events.hpp>
 # include <ket/mpi/expectation_value.hpp>
+# include <ket/mpi/inner_product.hpp>
+# include <ket/mpi/fidelity.hpp>
 # include <ket/mpi/shor_box.hpp>
 # include <ket/mpi/utility/unit_mpi.hpp>
 # include <ket/mpi/utility/apply_local_gate.hpp>
@@ -88,14 +93,17 @@ namespace bra
     unsigned int const num_threads_per_process,
     unsigned int const num_processes_per_unit,
     ::bra::state::seed_type const seed,
-    yampi::communicator const& communicator,
+    yampi::communicator const& circuit_communicator,
+    yampi::communicator const& intercircuit_communicator,
+    int const circuit_index,
+    std::vector<yampi::intercommunicator> const& intercommunicators,
     yampi::environment const& environment)
-    : ::bra::state{total_num_qubits, seed, communicator, environment},
+    : ::bra::state{total_num_qubits, seed, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment},
       parallel_policy_{num_threads_per_process},
       mpi_policy_{num_unit_qubits, num_processes_per_unit},
       data_{
         mpi_policy_, num_local_qubits, num_page_qubits, initial_integer,
-        permutation_, communicator, environment},
+        permutation_, circuit_communicator, environment},
       fused_gates_{},
       paged_fused_gates_{},
       cache_aware_fused_gates_{},
@@ -111,14 +119,17 @@ namespace bra
     unsigned int const num_threads_per_process,
     unsigned int const num_processes_per_unit,
     ::bra::state::seed_type const seed,
-    yampi::communicator const& communicator,
+    yampi::communicator const& circuit_communicator,
+    yampi::communicator const& intercircuit_communicator,
+    int const circuit_index,
+    std::vector<yampi::intercommunicator> const& intercommunicators,
     yampi::environment const& environment)
-    : ::bra::state{initial_permutation, seed, communicator, environment},
+    : ::bra::state{initial_permutation, seed, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment},
       parallel_policy_{num_threads_per_process},
       mpi_policy_{num_unit_qubits, num_processes_per_unit},
       data_{
         mpi_policy_, num_local_qubits, num_page_qubits, initial_integer,
-        permutation_, communicator, environment},
+        permutation_, circuit_communicator, environment},
       fused_gates_{},
       paged_fused_gates_{},
       cache_aware_fused_gates_{},
@@ -134,14 +145,17 @@ namespace bra
     unsigned int const num_threads_per_process,
     unsigned int const num_processes_per_unit,
     ::bra::state::seed_type const seed,
-    yampi::communicator const& communicator,
+    yampi::communicator const& circuit_communicator,
+    yampi::communicator const& intercircuit_communicator,
+    int const circuit_index,
+    std::vector<yampi::intercommunicator> const& intercommunicators,
     yampi::environment const& environment)
-    : ::bra::state{total_num_qubits, seed, communicator, environment},
+    : ::bra::state{total_num_qubits, seed, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment},
       parallel_policy_{num_threads_per_process},
       mpi_policy_{num_unit_qubits, num_processes_per_unit},
       data_{
         mpi_policy_, num_local_qubits, num_page_qubits, initial_integer,
-        permutation_, communicator, environment},
+        permutation_, circuit_communicator, environment},
       fused_gates_{},
       paged_fused_gates_{}
   { }
@@ -155,14 +169,17 @@ namespace bra
     unsigned int const num_threads_per_process,
     unsigned int const num_processes_per_unit,
     ::bra::state::seed_type const seed,
-    yampi::communicator const& communicator,
+    yampi::communicator const& circuit_communicator,
+    yampi::communicator const& intercircuit_communicator,
+    int const circuit_index,
+    std::vector<yampi::intercommunicator> const& intercommunicators,
     yampi::environment const& environment)
-    : ::bra::state{initial_permutation, seed, communicator, environment},
+    : ::bra::state{initial_permutation, seed, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment},
       parallel_policy_{num_threads_per_process},
       mpi_policy_{num_unit_qubits, num_processes_per_unit},
       data_{
         mpi_policy_, num_local_qubits, num_page_qubits, initial_integer,
-        permutation_, communicator, environment},
+        permutation_, circuit_communicator, environment},
       fused_gates_{},
       paged_fused_gates_{}
   { }
@@ -176,14 +193,17 @@ namespace bra
     unsigned int const num_threads_per_process,
     unsigned int const num_processes_per_unit,
     ::bra::state::seed_type const seed,
-    yampi::communicator const& communicator,
+    yampi::communicator const& circuit_communicator,
+    yampi::communicator const& intercircuit_communicator,
+    int const circuit_index,
+    std::vector<yampi::intercommunicator> const& intercommunicators,
     yampi::environment const& environment)
-    : ::bra::state{total_num_qubits, seed, communicator, environment},
+    : ::bra::state{total_num_qubits, seed, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment},
       parallel_policy_{num_threads_per_process},
       mpi_policy_{num_unit_qubits, num_processes_per_unit},
       data_{
         mpi_policy_, num_local_qubits, num_page_qubits, initial_integer,
-        permutation_, communicator, environment},
+        permutation_, circuit_communicator, environment},
       fused_gates_{}
   { }
 
@@ -196,14 +216,17 @@ namespace bra
     unsigned int const num_threads_per_process,
     unsigned int const num_processes_per_unit,
     ::bra::state::seed_type const seed,
-    yampi::communicator const& communicator,
+    yampi::communicator const& circuit_communicator,
+    yampi::communicator const& intercircuit_communicator,
+    int const circuit_index,
+    std::vector<yampi::intercommunicator> const& intercommunicators,
     yampi::environment const& environment)
-    : ::bra::state{initial_permutation, seed, communicator, environment},
+    : ::bra::state{initial_permutation, seed, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment},
       parallel_policy_{num_threads_per_process},
       mpi_policy_{num_unit_qubits, num_processes_per_unit},
       data_{
         mpi_policy_, num_local_qubits, num_page_qubits, initial_integer,
-        permutation_, communicator, environment},
+        permutation_, circuit_communicator, environment},
       fused_gates_{}
   { }
 # endif
@@ -215,7 +238,7 @@ namespace bra
 
     ket::mpi::gate::identity(
       mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, qubit);
+      data_, permutation_, buffer_, circuit_communicator_, environment_, qubit);
   }
 
   void paged_unit_mpi_state::do_ic_gate(control_qubit_type const control_qubit)
@@ -225,7 +248,7 @@ namespace bra
 
     ket::mpi::gate::identity(
       mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, control_qubit);
+      data_, permutation_, buffer_, circuit_communicator_, environment_, control_qubit);
   }
 
   void paged_unit_mpi_state::do_ii_gate(qubit_type const qubit1, qubit_type const qubit2)
@@ -235,7 +258,7 @@ namespace bra
 
     ket::mpi::gate::identity(
       mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, qubit1, qubit2);
+      data_, permutation_, buffer_, circuit_communicator_, environment_, qubit1, qubit2);
   }
 
   void paged_unit_mpi_state::do_in_gate(std::vector<qubit_type> const& qubits)
@@ -246,8 +269,8 @@ namespace bra
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_operated_qubits)
     {
@@ -256,7 +279,7 @@ namespace bra
      case num_operated_qubits:\
       ket::mpi::gate::identity(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_ BOOST_PP_REPEAT_ ## z(num_operated_qubits, QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_ BOOST_PP_REPEAT_ ## z(num_operated_qubits, QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
@@ -283,7 +306,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::hadamard(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, qubit);
   }
 
   void paged_unit_mpi_state::do_not_(qubit_type const qubit)
@@ -302,7 +325,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::not_(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, qubit);
   }
 
   void paged_unit_mpi_state::do_pauli_x(qubit_type const qubit)
@@ -321,7 +344,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::pauli_x(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, qubit);
   }
 
   void paged_unit_mpi_state::do_pauli_xx(qubit_type const qubit1, qubit_type const qubit2)
@@ -340,7 +363,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::pauli_x(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, qubit1, qubit2);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, qubit1, qubit2);
   }
 
   void paged_unit_mpi_state::do_pauli_xn(std::vector<qubit_type> const& qubits)
@@ -361,8 +384,8 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_operated_qubits)
     {
@@ -371,7 +394,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
      case num_operated_qubits:\
       ket::mpi::gate::pauli_x(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_ BOOST_PP_REPEAT_ ## z(num_operated_qubits, QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_ BOOST_PP_REPEAT_ ## z(num_operated_qubits, QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
@@ -398,7 +421,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::pauli_y(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, qubit);
   }
 
   void paged_unit_mpi_state::do_pauli_yy(qubit_type const qubit1, qubit_type const qubit2)
@@ -417,7 +440,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::pauli_y(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, qubit1, qubit2);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, qubit1, qubit2);
   }
 
   void paged_unit_mpi_state::do_pauli_yn(std::vector<qubit_type> const& qubits)
@@ -438,8 +461,8 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_operated_qubits)
     {
@@ -448,7 +471,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
      case num_operated_qubits:\
       ket::mpi::gate::pauli_y(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_ BOOST_PP_REPEAT_ ## z(num_operated_qubits, QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_ BOOST_PP_REPEAT_ ## z(num_operated_qubits, QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
@@ -475,7 +498,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::pauli_z(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, control_qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, control_qubit);
   }
 
   void paged_unit_mpi_state::do_pauli_zz(qubit_type const qubit1, qubit_type const qubit2)
@@ -494,7 +517,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::pauli_z(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, qubit1, qubit2);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, qubit1, qubit2);
   }
 
   void paged_unit_mpi_state::do_pauli_zn(std::vector<qubit_type> const& qubits)
@@ -515,8 +538,8 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_operated_qubits)
     {
@@ -525,7 +548,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
      case num_operated_qubits:\
       ket::mpi::gate::pauli_z(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_ BOOST_PP_REPEAT_ ## z(num_operated_qubits, QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_ BOOST_PP_REPEAT_ ## z(num_operated_qubits, QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
@@ -552,7 +575,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::swap(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, qubit1, qubit2);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, qubit1, qubit2);
   }
 
   void paged_unit_mpi_state::do_sqrt_pauli_x(qubit_type const qubit)
@@ -571,7 +594,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::sqrt_pauli_x(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, qubit);
   }
 
   void paged_unit_mpi_state::do_adj_sqrt_pauli_x(qubit_type const qubit)
@@ -590,7 +613,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::adj_sqrt_pauli_x(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, qubit);
   }
 
   void paged_unit_mpi_state::do_sqrt_pauli_y(qubit_type const qubit)
@@ -609,7 +632,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::sqrt_pauli_y(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, qubit);
   }
 
   void paged_unit_mpi_state::do_adj_sqrt_pauli_y(qubit_type const qubit)
@@ -628,7 +651,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::adj_sqrt_pauli_y(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, qubit);
   }
 
   void paged_unit_mpi_state::do_sqrt_pauli_z(control_qubit_type const control_qubit)
@@ -647,7 +670,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::sqrt_pauli_z(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, control_qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, control_qubit);
   }
 
   void paged_unit_mpi_state::do_adj_sqrt_pauli_z(control_qubit_type const control_qubit)
@@ -666,7 +689,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::adj_sqrt_pauli_z(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, control_qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, control_qubit);
   }
 
   void paged_unit_mpi_state::do_sqrt_pauli_zz(qubit_type const qubit1, qubit_type const qubit2)
@@ -685,7 +708,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::sqrt_pauli_z(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, qubit1, qubit2);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, qubit1, qubit2);
   }
 
   void paged_unit_mpi_state::do_adj_sqrt_pauli_zz(qubit_type const qubit1, qubit_type const qubit2)
@@ -704,7 +727,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::adj_sqrt_pauli_z(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, qubit1, qubit2);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, qubit1, qubit2);
   }
 
   void paged_unit_mpi_state::do_sqrt_pauli_zn(std::vector<qubit_type> const& qubits)
@@ -726,8 +749,8 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_operated_qubits)
     {
@@ -736,7 +759,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
      case num_operated_qubits:\
       ket::mpi::gate::sqrt_pauli_z(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_ BOOST_PP_REPEAT_ ## z(num_operated_qubits, QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_ BOOST_PP_REPEAT_ ## z(num_operated_qubits, QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
@@ -766,8 +789,8 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_operated_qubits)
     {
@@ -776,7 +799,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
      case num_operated_qubits:\
       ket::mpi::gate::adj_sqrt_pauli_z(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_ BOOST_PP_REPEAT_ ## z(num_operated_qubits, QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_ BOOST_PP_REPEAT_ ## z(num_operated_qubits, QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
@@ -803,7 +826,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::phase_shift(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase, control_qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase, control_qubit);
   }
 
   void paged_unit_mpi_state::do_adj_u1(real_type const phase, control_qubit_type const control_qubit)
@@ -822,7 +845,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::adj_phase_shift(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase, control_qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase, control_qubit);
   }
 
   void paged_unit_mpi_state::do_u2(
@@ -842,7 +865,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::phase_shift2(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase1, phase2, qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase1, phase2, qubit);
   }
 
   void paged_unit_mpi_state::do_adj_u2(
@@ -862,7 +885,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::adj_phase_shift2(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase1, phase2, qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase1, phase2, qubit);
   }
 
   void paged_unit_mpi_state::do_u3(
@@ -883,7 +906,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::phase_shift3(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase1, phase2, phase3, qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase1, phase2, phase3, qubit);
   }
 
   void paged_unit_mpi_state::do_adj_u3(
@@ -904,7 +927,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::adj_phase_shift3(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase1, phase2, phase3, qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase1, phase2, phase3, qubit);
   }
 
   void paged_unit_mpi_state::do_phase_shift(
@@ -924,7 +947,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::phase_shift_coeff(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase_coefficient, control_qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase_coefficient, control_qubit);
   }
 
   void paged_unit_mpi_state::do_adj_phase_shift(
@@ -944,7 +967,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::adj_phase_shift_coeff(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase_coefficient, control_qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase_coefficient, control_qubit);
   }
 
   void paged_unit_mpi_state::do_x_rotation_half_pi(qubit_type const qubit)
@@ -963,7 +986,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::x_rotation_half_pi(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, qubit);
   }
 
   void paged_unit_mpi_state::do_adj_x_rotation_half_pi(qubit_type const qubit)
@@ -982,7 +1005,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::adj_x_rotation_half_pi(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, qubit);
   }
 
   void paged_unit_mpi_state::do_y_rotation_half_pi(qubit_type const qubit)
@@ -1001,7 +1024,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::y_rotation_half_pi(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, qubit);
   }
 
   void paged_unit_mpi_state::do_adj_y_rotation_half_pi(qubit_type const qubit)
@@ -1020,7 +1043,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::adj_y_rotation_half_pi(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, qubit);
   }
 
   void paged_unit_mpi_state::do_exponential_pauli_x(real_type const phase, qubit_type const qubit)
@@ -1039,7 +1062,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::exponential_pauli_x(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase, qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase, qubit);
   }
 
   void paged_unit_mpi_state::do_adj_exponential_pauli_x(real_type const phase, qubit_type const qubit)
@@ -1058,7 +1081,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::adj_exponential_pauli_x(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase, qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase, qubit);
   }
 
   void paged_unit_mpi_state::do_exponential_pauli_xx(
@@ -1078,7 +1101,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::exponential_pauli_x(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase, qubit1, qubit2);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase, qubit1, qubit2);
   }
 
   void paged_unit_mpi_state::do_adj_exponential_pauli_xx(
@@ -1098,7 +1121,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::adj_exponential_pauli_x(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase, qubit1, qubit2);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase, qubit1, qubit2);
   }
 
   void paged_unit_mpi_state::do_exponential_pauli_xn(
@@ -1120,8 +1143,8 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_operated_qubits)
     {
@@ -1130,7 +1153,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
      case num_operated_qubits:\
       ket::mpi::gate::exponential_pauli_x(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_, phase BOOST_PP_REPEAT_ ## z(num_operated_qubits, QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase BOOST_PP_REPEAT_ ## z(num_operated_qubits, QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
@@ -1160,8 +1183,8 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_operated_qubits)
     {
@@ -1170,7 +1193,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
      case num_operated_qubits:\
       ket::mpi::gate::adj_exponential_pauli_x(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_, phase BOOST_PP_REPEAT_ ## z(num_operated_qubits, QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase BOOST_PP_REPEAT_ ## z(num_operated_qubits, QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
@@ -1197,7 +1220,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::exponential_pauli_y(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase, qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase, qubit);
   }
 
   void paged_unit_mpi_state::do_adj_exponential_pauli_y(real_type const phase, qubit_type const qubit)
@@ -1216,7 +1239,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::adj_exponential_pauli_y(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase, qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase, qubit);
   }
 
   void paged_unit_mpi_state::do_exponential_pauli_yy(
@@ -1236,7 +1259,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::exponential_pauli_y(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase, qubit1, qubit2);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase, qubit1, qubit2);
   }
 
   void paged_unit_mpi_state::do_adj_exponential_pauli_yy(
@@ -1256,7 +1279,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::adj_exponential_pauli_y(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase, qubit1, qubit2);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase, qubit1, qubit2);
   }
 
   void paged_unit_mpi_state::do_exponential_pauli_yn(
@@ -1278,8 +1301,8 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_operated_qubits)
     {
@@ -1288,7 +1311,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
      case num_operated_qubits:\
       ket::mpi::gate::exponential_pauli_y(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_, phase BOOST_PP_REPEAT_ ## z(num_operated_qubits, QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase BOOST_PP_REPEAT_ ## z(num_operated_qubits, QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
@@ -1318,8 +1341,8 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_operated_qubits)
     {
@@ -1328,7 +1351,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
      case num_operated_qubits:\
       ket::mpi::gate::adj_exponential_pauli_y(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_, phase BOOST_PP_REPEAT_ ## z(num_operated_qubits, QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase BOOST_PP_REPEAT_ ## z(num_operated_qubits, QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
@@ -1355,7 +1378,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::exponential_pauli_z(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase, qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase, qubit);
   }
 
   void paged_unit_mpi_state::do_adj_exponential_pauli_z(real_type const phase, qubit_type const qubit)
@@ -1374,7 +1397,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::adj_exponential_pauli_z(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase, qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase, qubit);
   }
 
   void paged_unit_mpi_state::do_exponential_pauli_zz(
@@ -1394,7 +1417,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::exponential_pauli_z(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase, qubit1, qubit2);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase, qubit1, qubit2);
   }
 
   void paged_unit_mpi_state::do_adj_exponential_pauli_zz(
@@ -1414,7 +1437,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::adj_exponential_pauli_z(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase, qubit1, qubit2);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase, qubit1, qubit2);
   }
 
   void paged_unit_mpi_state::do_exponential_pauli_zn(
@@ -1436,8 +1459,8 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_operated_qubits)
     {
@@ -1446,7 +1469,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
      case num_operated_qubits:\
       ket::mpi::gate::exponential_pauli_z(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_, phase BOOST_PP_REPEAT_ ## z(num_operated_qubits, QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase BOOST_PP_REPEAT_ ## z(num_operated_qubits, QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
@@ -1476,8 +1499,8 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     auto const num_operated_qubits = qubits.size();
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_operated_qubits)
     {
@@ -1486,7 +1509,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
      case num_operated_qubits:\
       ket::mpi::gate::adj_exponential_pauli_z(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_, phase BOOST_PP_REPEAT_ ## z(num_operated_qubits, QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase BOOST_PP_REPEAT_ ## z(num_operated_qubits, QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
@@ -1514,7 +1537,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::exponential_swap(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase, qubit1, qubit2);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase, qubit1, qubit2);
   }
 
   void paged_unit_mpi_state::do_adj_exponential_swap(
@@ -1534,7 +1557,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::adj_exponential_swap(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase, qubit1, qubit2);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase, qubit1, qubit2);
   }
 
   void paged_unit_mpi_state::do_toffoli(
@@ -1563,7 +1586,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::toffoli(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit1, control_qubit2);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, target_qubit, control_qubit1, control_qubit2);
   }
 
   ::ket::gate::outcome paged_unit_mpi_state::do_projective_measurement(
@@ -1571,7 +1594,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
   {
     return ket::mpi::gate::projective_measurement(
       mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, root, communicator_, environment_, random_number_generator_, qubit);
+      data_, permutation_, buffer_, root, circuit_communicator_, environment_, random_number_generator_, qubit);
   }
 
   void paged_unit_mpi_state::do_expectation_values(yampi::rank const root)
@@ -1579,7 +1602,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     maybe_expectation_values_
       = ket::mpi::all_spin_expectation_values<typename spins_type::allocator_type>(
           mpi_policy_, parallel_policy_,
-          data_, permutation_, total_num_qubits_, buffer_, root, communicator_, environment_);
+          data_, permutation_, total_num_qubits_, buffer_, root, circuit_communicator_, environment_);
   }
 
   void paged_unit_mpi_state::do_amplitudes(yampi::rank const root)
@@ -1587,7 +1610,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     std::ostringstream oss;
 
     ket::mpi::println_amplitudes(
-      mpi_policy_, oss, data_, permutation_, root, communicator_, environment_,
+      mpi_policy_, oss, data_, permutation_, root, circuit_communicator_, environment_,
       [this](::bra::state_integer_type const qubit_value, ::bra::complex_type const& amplitude)
       {
         std::ostringstream oss;
@@ -1597,7 +1620,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
         return oss.str();
       }, std::string{"\n"});
 
-    if (communicator_.rank(environment_) == root)
+    if (circuit_communicator_.rank(environment_) == root)
       std::cout << oss.str() << std::flush;
   }
 
@@ -1606,7 +1629,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     measured_value_
       = ket::mpi::measure(
           mpi_policy_, ket::utility::policy::make_sequential(), // parallel_policy_,
-          data_, random_number_generator_, permutation_, communicator_, environment_);
+          data_, random_number_generator_, permutation_, circuit_communicator_, environment_);
   }
 
   void paged_unit_mpi_state::do_generate_events(yampi::rank const root, int const num_events, int const seed)
@@ -1615,19 +1638,19 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
       ket::mpi::generate_events(
         mpi_policy_, ket::utility::policy::make_sequential(), // parallel_policy_,
         generated_events_, data_, num_events, random_number_generator_, permutation_,
-        communicator_, environment_);
+        circuit_communicator_, environment_);
     else
       ket::mpi::generate_events(
         mpi_policy_, ket::utility::policy::make_sequential(), // parallel_policy_,
         generated_events_, data_, num_events, random_number_generator_, static_cast<seed_type>(seed), permutation_,
-        communicator_, environment_);
+        circuit_communicator_, environment_);
   }
 
   void paged_unit_mpi_state::do_expectation_value(std::string const& operator_literal_or_variable_name, std::vector<qubit_type> const& operated_qubits)
   {
     auto const num_operated_qubits = operated_qubits.size();
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     auto const pauli_string_space_element = to_pauli_string_space(operator_literal_or_variable_name);
 
@@ -1643,7 +1666,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
       result_\
         = ket::mpi::expectation_value(\
             mpi_policy_, parallel_policy_,\
-            data_, permutation_, buffer_, communicator_, environment_,\
+            data_, permutation_, buffer_, circuit_communicator_, environment_,\
             [&pauli_string_space_element](\
               auto const first, state_integer_type const index_wo_qubits,\
               std::array< ::bra::qubit_type, num_operated_qubits_ > const& unsorted_qubits,\
@@ -1686,7 +1709,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
       result_\
         = ket::mpi::expectation_value(\
             mpi_policy_, parallel_policy_,\
-            data_, permutation_, buffer_, communicator_, environment_,\
+            data_, permutation_, buffer_, circuit_communicator_, environment_,\
             [&pauli_string_space_element](\
               auto const first, state_integer_type const index_wo_qubits,\
               std::array< ::bra::state_integer_type, num_operated_qubits_ > const& qubit_masks,\
@@ -1733,6 +1756,532 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     }
   }
 
+  void paged_unit_mpi_state::do_inner_product(std::string const& remote_circuit_index_or_all)
+  {
+    auto remote_circuit_index = -1;
+    auto is_all = false;
+
+    if (std::isdigit(static_cast<unsigned char>(remote_circuit_index_or_all.front())))
+    {
+      remote_circuit_index = boost::lexical_cast<int>(remote_circuit_index_or_all);
+      if (remote_circuit_index < 0 or remote_circuit_index == circuit_index_)
+        return;
+    }
+    else if (boost::algorithm::to_upper_copy(remote_circuit_index_or_all) == "ALL")
+      is_all = true;
+    else
+      return;
+
+    if (is_all)
+    {
+      using namespace yampi::literals::rank_literals;
+      result_
+        = ket::mpi::inner_product(
+            mpi_policy_, parallel_policy_,
+            data_, buffer_, circuit_communicator_, 0_r, intercircuit_communicator_, environment_);
+    }
+    else
+    {
+      auto const index = remote_circuit_index < circuit_index_ ? remote_circuit_index : remote_circuit_index - 1;
+      result_
+        = ket::mpi::inner_product(
+            mpi_policy_, parallel_policy_,
+            data_, buffer_, circuit_communicator_, intercommunicators_[index], environment_);
+    }
+  }
+
+  void paged_unit_mpi_state::do_inner_product(std::string const& remote_circuit_index_or_all, std::string const& operator_literal_or_variable_name, std::vector<qubit_type> const& operated_qubits)
+  {
+    auto remote_circuit_index = -1;
+    auto is_all = false;
+
+    auto const num_operated_qubits = operated_qubits.size();
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
+
+    auto const pauli_string_space_element = to_pauli_string_space(operator_literal_or_variable_name);
+
+    if (num_operated_qubits != pauli_string_space_element.num_qubits())
+      throw ::bra::wrong_pauli_string_length_error{num_operated_qubits, pauli_string_space_element.num_qubits()};
+
+    if (std::isdigit(static_cast<unsigned char>(remote_circuit_index_or_all.front())))
+    {
+      remote_circuit_index = boost::lexical_cast<int>(remote_circuit_index_or_all);
+      if (remote_circuit_index < 0 or remote_circuit_index == circuit_index_)
+        return;
+    }
+    else if (boost::algorithm::to_upper_copy(remote_circuit_index_or_all) == "ALL")
+      is_all = true;
+    else
+      return;
+
+    if (is_all)
+    {
+      using namespace yampi::literals::rank_literals;
+      switch (num_operated_qubits)
+      {
+# define OPERATED_QUBITS(z, n, _) , operated_qubits[n]
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+#   define CASE_N(z, num_operated_qubits_, _) \
+       case num_operated_qubits_:\
+        result_\
+          = ket::mpi::inner_product(\
+              mpi_policy_, parallel_policy_,\
+              data_, permutation_, buffer_, circuit_communicator_, 0_r, intercircuit_communicator_, environment_,\
+              [&pauli_string_space_element](\
+                auto const ket_first, auto const bra_first, state_integer_type const index_wo_qubits,\
+                std::array< ::bra::qubit_type, num_operated_qubits_ > const& unsorted_qubits,\
+                std::array< ::bra::qubit_type, BOOST_PP_INC(num_operated_qubits_) > const& sorted_qubits_with_sentinel)\
+              {\
+                auto result = ::bra::complex_type{};\
+\
+                auto const last_index = (::bra::state_integer_type{1u} << num_operated_qubits_);\
+                for (auto bra_index = ::bra::state_integer_type{0u}; bra_index < last_index; ++bra_index)\
+                {\
+                  using std::begin;\
+                  using std::end;\
+                  auto const bra_iter\
+                    = bra_first\
+                      + ket::gate::utility::index_with_qubits(\
+                          index_wo_qubits, bra_index,\
+                          begin(unsorted_qubits), end(unsorted_qubits), begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));\
+\
+                  for (auto const& basis_scalar: pauli_string_space_element)\
+                  {\
+                    auto const ket_index_coeff = ket::gate::utility::pauli_index_coeff< ::bra::complex_type >(basis_scalar.first, bra_index);\
+                    auto const ket_iter\
+                      = ket_first\
+                        + ket::gate::utility::index_with_qubits(\
+                            index_wo_qubits, ket_index_coeff.first,\
+                            begin(unsorted_qubits), end(unsorted_qubits), begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));\
+\
+                    using std::conj;\
+                    result += basis_scalar.second * (conj(*bra_iter) * (ket_index_coeff.second * *ket_iter));\
+                  }\
+                }\
+\
+                return result;\
+              } BOOST_PP_REPEAT_ ## z(num_operated_qubits_, OPERATED_QUBITS, nil));\
+        break;\
+
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+#   define CASE_N(z, num_operated_qubits_, _) \
+       case num_operated_qubits_:\
+        result_\
+          = ket::mpi::inner_product(\
+              mpi_policy_, parallel_policy_,\
+              data_, permutation_, buffer_, circuit_communicator_, 0_r, intercircuit_communicator_, environment_,\
+              [&pauli_string_space_element](\
+                auto const ket_first, auto const bra_first, state_integer_type const index_wo_qubits,\
+                std::array< ::bra::state_integer_type, num_operated_qubits_ > const& qubit_masks,\
+                std::array< ::bra::state_integer_type, BOOST_PP_INC(num_operated_qubits_) > const& index_masks)\
+              {\
+                auto result = ::bra::complex_type{};\
+\
+                auto const last_index = (::bra::state_integer_type{1u} << num_operated_qubits_);\
+                for (auto bra_index = ::bra::state_integer_type{0u}; bra_index < last_index; ++bra_index)\
+                {\
+                  using std::begin;\
+                  using std::end;\
+                  auto const bra_iter\
+                    = bra_first\
+                      + ket::gate::utility::index_with_qubits(\
+                          index_wo_qubits, bra_index,\
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));\
+\
+                  for (auto const& basis_scalar: pauli_string_space_element)\
+                  {\
+                    auto const ket_index_coeff = ket::gate::utility::pauli_index_coeff< ::bra::complex_type >(basis_scalar.first, bra_index);\
+                    auto const ket_iter\
+                      = ket_first\
+                        + ket::gate::utility::index_with_qubits(\
+                            index_wo_qubits, ket_index_coeff.first,\
+                            begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));\
+\
+                    using std::conj;\
+                    result += basis_scalar.second * (conj(*bra_iter) * (ket_index_coeff.second * *ket_iter));\
+                  }\
+                }\
+\
+                return result;\
+              } BOOST_PP_REPEAT_ ## z(num_operated_qubits_, OPERATED_QUBITS, nil));\
+        break;\
+
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+
+  BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
+       default:
+        throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
+# undef CASE_N
+# undef OPERATED_QUBITS
+      }
+    }
+    else
+    {
+      auto const index = remote_circuit_index < circuit_index_ ? remote_circuit_index : remote_circuit_index - 1;
+      switch (num_operated_qubits)
+      {
+# define OPERATED_QUBITS(z, n, _) , operated_qubits[n]
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+#   define CASE_N(z, num_operated_qubits_, _) \
+       case num_operated_qubits_:\
+        result_\
+          = ket::mpi::inner_product(\
+              mpi_policy_, parallel_policy_,\
+              data_, permutation_, buffer_, circuit_communicator_, intercommunicators_[index], environment_,\
+              [&pauli_string_space_element](\
+                auto const ket_first, auto const bra_first, state_integer_type const index_wo_qubits,\
+                std::array< ::bra::qubit_type, num_operated_qubits_ > const& unsorted_qubits,\
+                std::array< ::bra::qubit_type, BOOST_PP_INC(num_operated_qubits_) > const& sorted_qubits_with_sentinel)\
+              {\
+                auto result = ::bra::complex_type{};\
+\
+                auto const last_index = (::bra::state_integer_type{1u} << num_operated_qubits_);\
+                for (auto bra_index = ::bra::state_integer_type{0u}; bra_index < last_index; ++bra_index)\
+                {\
+                  using std::begin;\
+                  using std::end;\
+                  auto const bra_iter\
+                    = bra_first\
+                      + ket::gate::utility::index_with_qubits(\
+                          index_wo_qubits, bra_index,\
+                          begin(unsorted_qubits), end(unsorted_qubits), begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));\
+\
+                  for (auto const& basis_scalar: pauli_string_space_element)\
+                  {\
+                    auto const ket_index_coeff = ket::gate::utility::pauli_index_coeff< ::bra::complex_type >(basis_scalar.first, bra_index);\
+                    auto const ket_iter\
+                      = ket_first\
+                        + ket::gate::utility::index_with_qubits(\
+                            index_wo_qubits, ket_index_coeff.first,\
+                            begin(unsorted_qubits), end(unsorted_qubits), begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));\
+\
+                    using std::conj;\
+                    result += basis_scalar.second * (conj(*bra_iter) * (ket_index_coeff.second * *ket_iter));\
+                  }\
+                }\
+\
+                return result;\
+              } BOOST_PP_REPEAT_ ## z(num_operated_qubits_, OPERATED_QUBITS, nil));\
+        break;\
+
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+#   define CASE_N(z, num_operated_qubits_, _) \
+       case num_operated_qubits_:\
+        result_\
+          = ket::mpi::inner_product(\
+              mpi_policy_, parallel_policy_,\
+              data_, permutation_, buffer_, circuit_communicator_, intercommunicators_[index], environment_,\
+              [&pauli_string_space_element](\
+                auto const ket_first, auto const bra_first, state_integer_type const index_wo_qubits,\
+                std::array< ::bra::state_integer_type, num_operated_qubits_ > const& qubit_masks,\
+                std::array< ::bra::state_integer_type, BOOST_PP_INC(num_operated_qubits_) > const& index_masks)\
+              {\
+                auto result = ::bra::complex_type{};\
+\
+                auto const last_index = (::bra::state_integer_type{1u} << num_operated_qubits_);\
+                for (auto bra_index = ::bra::state_integer_type{0u}; bra_index < last_index; ++bra_index)\
+                {\
+                  using std::begin;\
+                  using std::end;\
+                  auto const bra_iter\
+                    = bra_first\
+                      + ket::gate::utility::index_with_qubits(\
+                          index_wo_qubits, bra_index,\
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));\
+\
+                  for (auto const& basis_scalar: pauli_string_space_element)\
+                  {\
+                    auto const ket_index_coeff = ket::gate::utility::pauli_index_coeff< ::bra::complex_type >(basis_scalar.first, bra_index);\
+                    auto const ket_iter\
+                      = ket_first\
+                        + ket::gate::utility::index_with_qubits(\
+                            index_wo_qubits, ket_index_coeff.first,\
+                            begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));\
+\
+                    using std::conj;\
+                    result += basis_scalar.second * (conj(*bra_iter) * (ket_index_coeff.second * *ket_iter));\
+                  }\
+                }\
+\
+                return result;\
+              } BOOST_PP_REPEAT_ ## z(num_operated_qubits_, OPERATED_QUBITS, nil));\
+        break;\
+
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+
+  BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
+       default:
+        throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
+# undef CASE_N
+# undef OPERATED_QUBITS
+      }
+    }
+  }
+
+  void paged_unit_mpi_state::do_fidelity(std::string const& remote_circuit_index_or_all)
+  {
+    auto remote_circuit_index = -1;
+    auto is_all = false;
+
+    if (std::isdigit(static_cast<unsigned char>(remote_circuit_index_or_all.front())))
+    {
+      remote_circuit_index = boost::lexical_cast<int>(remote_circuit_index_or_all);
+      if (remote_circuit_index < 0 or remote_circuit_index == circuit_index_)
+        return;
+    }
+    else if (boost::algorithm::to_upper_copy(remote_circuit_index_or_all) == "ALL")
+      is_all = true;
+    else
+      return;
+
+    if (is_all)
+    {
+      using namespace yampi::literals::rank_literals;
+      result_
+        = ket::mpi::fidelity(
+            mpi_policy_, parallel_policy_,
+            data_, buffer_, circuit_communicator_, 0_r, intercircuit_communicator_, environment_);
+    }
+    else
+    {
+      auto const index = remote_circuit_index < circuit_index_ ? remote_circuit_index : remote_circuit_index - 1;
+      result_
+        = ket::mpi::fidelity(
+            mpi_policy_, parallel_policy_,
+            data_, buffer_, circuit_communicator_, intercommunicators_[index], environment_);
+    }
+  }
+
+  void paged_unit_mpi_state::do_fidelity(std::string const& remote_circuit_index_or_all, std::string const& operator_literal_or_variable_name, std::vector<qubit_type> const& operated_qubits)
+  {
+    auto remote_circuit_index = -1;
+    auto is_all = false;
+
+    auto const num_operated_qubits = operated_qubits.size();
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
+
+    auto const pauli_string_space_element = to_pauli_string_space(operator_literal_or_variable_name);
+
+    if (num_operated_qubits != pauli_string_space_element.num_qubits())
+      throw ::bra::wrong_pauli_string_length_error{num_operated_qubits, pauli_string_space_element.num_qubits()};
+
+    if (std::isdigit(static_cast<unsigned char>(remote_circuit_index_or_all.front())))
+    {
+      remote_circuit_index = boost::lexical_cast<int>(remote_circuit_index_or_all);
+      if (remote_circuit_index < 0 or remote_circuit_index == circuit_index_)
+        return;
+    }
+    else if (boost::algorithm::to_upper_copy(remote_circuit_index_or_all) == "ALL")
+      is_all = true;
+    else
+      return;
+
+    if (is_all)
+    {
+      using namespace yampi::literals::rank_literals;
+      switch (num_operated_qubits)
+      {
+# define OPERATED_QUBITS(z, n, _) , operated_qubits[n]
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+#   define CASE_N(z, num_operated_qubits_, _) \
+       case num_operated_qubits_:\
+        result_\
+          = ket::mpi::fidelity(\
+              mpi_policy_, parallel_policy_,\
+              data_, permutation_, buffer_, circuit_communicator_, 0_r, intercircuit_communicator_, environment_,\
+              [&pauli_string_space_element](\
+                auto const ket_first, auto const bra_first, state_integer_type const index_wo_qubits,\
+                std::array< ::bra::qubit_type, num_operated_qubits_ > const& unsorted_qubits,\
+                std::array< ::bra::qubit_type, BOOST_PP_INC(num_operated_qubits_) > const& sorted_qubits_with_sentinel)\
+              {\
+                auto result = ::bra::complex_type{};\
+\
+                auto const last_index = (::bra::state_integer_type{1u} << num_operated_qubits_);\
+                for (auto bra_index = ::bra::state_integer_type{0u}; bra_index < last_index; ++bra_index)\
+                {\
+                  using std::begin;\
+                  using std::end;\
+                  auto const bra_iter\
+                    = bra_first\
+                      + ket::gate::utility::index_with_qubits(\
+                          index_wo_qubits, bra_index,\
+                          begin(unsorted_qubits), end(unsorted_qubits), begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));\
+\
+                  for (auto const& basis_scalar: pauli_string_space_element)\
+                  {\
+                    auto const ket_index_coeff = ket::gate::utility::pauli_index_coeff< ::bra::complex_type >(basis_scalar.first, bra_index);\
+                    auto const ket_iter\
+                      = ket_first\
+                        + ket::gate::utility::index_with_qubits(\
+                            index_wo_qubits, ket_index_coeff.first,\
+                            begin(unsorted_qubits), end(unsorted_qubits), begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));\
+\
+                    using std::conj;\
+                    result += basis_scalar.second * (conj(*bra_iter) * (ket_index_coeff.second * *ket_iter));\
+                  }\
+                }\
+\
+                return result;\
+              } BOOST_PP_REPEAT_ ## z(num_operated_qubits_, OPERATED_QUBITS, nil));\
+        break;\
+
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+#   define CASE_N(z, num_operated_qubits_, _) \
+       case num_operated_qubits_:\
+        result_\
+          = ket::mpi::fidelity(\
+              mpi_policy_, parallel_policy_,\
+              data_, permutation_, buffer_, circuit_communicator_, 0_r, intercircuit_communicator_, environment_,\
+              [&pauli_string_space_element](\
+                auto const ket_first, auto const bra_first, state_integer_type const index_wo_qubits,\
+                std::array< ::bra::state_integer_type, num_operated_qubits_ > const& qubit_masks,\
+                std::array< ::bra::state_integer_type, BOOST_PP_INC(num_operated_qubits_) > const& index_masks)\
+              {\
+                auto result = ::bra::complex_type{};\
+\
+                auto const last_index = (::bra::state_integer_type{1u} << num_operated_qubits_);\
+                for (auto bra_index = ::bra::state_integer_type{0u}; bra_index < last_index; ++bra_index)\
+                {\
+                  using std::begin;\
+                  using std::end;\
+                  auto const bra_iter\
+                    = bra_first\
+                      + ket::gate::utility::index_with_qubits(\
+                          index_wo_qubits, bra_index,\
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));\
+\
+                  for (auto const& basis_scalar: pauli_string_space_element)\
+                  {\
+                    auto const ket_index_coeff = ket::gate::utility::pauli_index_coeff< ::bra::complex_type >(basis_scalar.first, bra_index);\
+                    auto const ket_iter\
+                      = ket_first\
+                        + ket::gate::utility::index_with_qubits(\
+                            index_wo_qubits, ket_index_coeff.first,\
+                            begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));\
+\
+                    using std::conj;\
+                    result += basis_scalar.second * (conj(*bra_iter) * (ket_index_coeff.second * *ket_iter));\
+                  }\
+                }\
+\
+                return result;\
+              } BOOST_PP_REPEAT_ ## z(num_operated_qubits_, OPERATED_QUBITS, nil));\
+        break;\
+
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+
+  BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
+       default:
+        throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
+# undef CASE_N
+# undef OPERATED_QUBITS
+      }
+    }
+    else
+    {
+      auto const index = remote_circuit_index < circuit_index_ ? remote_circuit_index : remote_circuit_index - 1;
+      switch (num_operated_qubits)
+      {
+# define OPERATED_QUBITS(z, n, _) , operated_qubits[n]
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+#   define CASE_N(z, num_operated_qubits_, _) \
+       case num_operated_qubits_:\
+        result_\
+          = ket::mpi::fidelity(\
+              mpi_policy_, parallel_policy_,\
+              data_, permutation_, buffer_, circuit_communicator_, intercommunicators_[index], environment_,\
+              [&pauli_string_space_element](\
+                auto const ket_first, auto const bra_first, state_integer_type const index_wo_qubits,\
+                std::array< ::bra::qubit_type, num_operated_qubits_ > const& unsorted_qubits,\
+                std::array< ::bra::qubit_type, BOOST_PP_INC(num_operated_qubits_) > const& sorted_qubits_with_sentinel)\
+              {\
+                auto result = ::bra::complex_type{};\
+\
+                auto const last_index = (::bra::state_integer_type{1u} << num_operated_qubits_);\
+                for (auto bra_index = ::bra::state_integer_type{0u}; bra_index < last_index; ++bra_index)\
+                {\
+                  using std::begin;\
+                  using std::end;\
+                  auto const bra_iter\
+                    = bra_first\
+                      + ket::gate::utility::index_with_qubits(\
+                          index_wo_qubits, bra_index,\
+                          begin(unsorted_qubits), end(unsorted_qubits), begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));\
+\
+                  for (auto const& basis_scalar: pauli_string_space_element)\
+                  {\
+                    auto const ket_index_coeff = ket::gate::utility::pauli_index_coeff< ::bra::complex_type >(basis_scalar.first, bra_index);\
+                    auto const ket_iter\
+                      = ket_first\
+                        + ket::gate::utility::index_with_qubits(\
+                            index_wo_qubits, ket_index_coeff.first,\
+                            begin(unsorted_qubits), end(unsorted_qubits), begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));\
+\
+                    using std::conj;\
+                    result += basis_scalar.second * (conj(*bra_iter) * (ket_index_coeff.second * *ket_iter));\
+                  }\
+                }\
+\
+                return result;\
+              } BOOST_PP_REPEAT_ ## z(num_operated_qubits_, OPERATED_QUBITS, nil));\
+        break;\
+
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+#   define CASE_N(z, num_operated_qubits_, _) \
+       case num_operated_qubits_:\
+        result_\
+          = ket::mpi::fidelity(\
+              mpi_policy_, parallel_policy_,\
+              data_, permutation_, buffer_, circuit_communicator_, intercommunicators_[index], environment_,\
+              [&pauli_string_space_element](\
+                auto const ket_first, auto const bra_first, state_integer_type const index_wo_qubits,\
+                std::array< ::bra::state_integer_type, num_operated_qubits_ > const& qubit_masks,\
+                std::array< ::bra::state_integer_type, BOOST_PP_INC(num_operated_qubits_) > const& index_masks)\
+              {\
+                auto result = ::bra::complex_type{};\
+\
+                auto const last_index = (::bra::state_integer_type{1u} << num_operated_qubits_);\
+                for (auto bra_index = ::bra::state_integer_type{0u}; bra_index < last_index; ++bra_index)\
+                {\
+                  using std::begin;\
+                  using std::end;\
+                  auto const bra_iter\
+                    = bra_first\
+                      + ket::gate::utility::index_with_qubits(\
+                          index_wo_qubits, bra_index,\
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));\
+\
+                  for (auto const& basis_scalar: pauli_string_space_element)\
+                  {\
+                    auto const ket_index_coeff = ket::gate::utility::pauli_index_coeff< ::bra::complex_type >(basis_scalar.first, bra_index);\
+                    auto const ket_iter\
+                      = ket_first\
+                        + ket::gate::utility::index_with_qubits(\
+                            index_wo_qubits, ket_index_coeff.first,\
+                            begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));\
+\
+                    using std::conj;\
+                    result += basis_scalar.second * (conj(*bra_iter) * (ket_index_coeff.second * *ket_iter));\
+                  }\
+                }\
+\
+                return result;\
+              } BOOST_PP_REPEAT_ ## z(num_operated_qubits_, OPERATED_QUBITS, nil));\
+        break;\
+
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+
+  BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
+       default:
+        throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
+# undef CASE_N
+# undef OPERATED_QUBITS
+      }
+    }
+  }
+
   void paged_unit_mpi_state::do_shor_box(
     state_integer_type const divisor, state_integer_type const base,
     std::vector<qubit_type> const& exponent_qubits,
@@ -1741,7 +2290,7 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     ket::mpi::shor_box(
       mpi_policy_, parallel_policy_,
       data_, base, divisor, exponent_qubits, modular_exponentiation_qubits,
-      permutation_, communicator_, environment_);
+      permutation_, circuit_communicator_, environment_);
   }
 
   void paged_unit_mpi_state::do_begin_fusion()
@@ -1789,7 +2338,7 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
         break;
       }
 
-    auto const data_block_size = ket::mpi::utility::policy::data_block_size(mpi_policy_, data_, communicator_, environment_);
+    auto const data_block_size = ket::mpi::utility::policy::data_block_size(mpi_policy_, data_, circuit_communicator_, environment_);
     auto const least_permutated_unit_qubit
       = ket::mpi::make_permutated(ket::make_qubit< ::bra::state_integer_type >(
           static_cast< ::bra::bit_integer_type >(ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_block_size))));
@@ -1838,7 +2387,7 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     auto const global_fused_cez_qubit_first = nonglobal_fused_cez_qubit_last;
 
     // generate ez_qubit_states and cez_qubit_states
-    auto const global_qubit_value = static_cast< ::bra::state_integer_type >(::ket::mpi::utility::policy::global_qubit_value(mpi_policy_, communicator_, environment_));
+    auto const global_qubit_value = static_cast< ::bra::state_integer_type >(::ket::mpi::utility::policy::global_qubit_value(mpi_policy_, circuit_communicator_, environment_));
     auto ez_qubit_states = std::vector< ::bra::fused_gate::cez_qubit_state >(global_fused_ez_qubit_last - global_fused_ez_qubit_first, ::bra::fused_gate::cez_qubit_state::not_global);
     auto cez_qubit_states = std::vector< ::bra::fused_gate::cez_qubit_state >(global_fused_cez_qubit_last - global_fused_cez_qubit_first, ::bra::fused_gate::cez_qubit_state::not_global);
     for (auto iter = global_fused_ez_qubit_first; iter != global_fused_ez_qubit_last; ++iter)
@@ -1940,7 +2489,7 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     ::ket::mpi::utility::logger logger{environment_};
 
     if (exists_global_phase)
-      ::ket::mpi::gate::phase_shift(mpi_policy_, parallel_policy_, data_, permutation_, buffer_, communicator_, environment_, global_phase);
+      ::ket::mpi::gate::phase_shift(mpi_policy_, parallel_policy_, data_, permutation_, buffer_, circuit_communicator_, environment_, global_phase);
 
     switch (fused_qubits.size())
     {
@@ -2417,7 +2966,7 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
 \
         ket::mpi::utility::apply_local_gate(\
           mpi_policy_, parallel_policy_,\
-          data_, permutation_, buffer_, communicator_, environment_,\
+          data_, permutation_, buffer_, circuit_communicator_, environment_,\
 LOCAL_GATE BOOST_PP_REPEAT_ ## z(num_target_qubits, FUSED_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, FUSED_CONTROL_QUBITS, nil));\
 \
         logger.print_with_time(\
@@ -2470,14 +3019,14 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_FUSED_QUBITS), CASE_N, nil)
   {
     ket::mpi::gate::clear(
       mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, qubit);
+      data_, permutation_, buffer_, circuit_communicator_, environment_, qubit);
   }
 
   void paged_unit_mpi_state::do_set(qubit_type const qubit)
   {
     ket::mpi::gate::set(
       mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, qubit);
+      data_, permutation_, buffer_, circuit_communicator_, environment_, qubit);
   }
 
   void paged_unit_mpi_state::do_controlled_i_gate(
@@ -2488,7 +3037,7 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_FUSED_QUBITS), CASE_N, nil)
 
     ket::mpi::gate::identity(
       mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
+      data_, permutation_, buffer_, circuit_communicator_, environment_, target_qubit, control_qubit);
   }
 
   void paged_unit_mpi_state::do_controlled_ic_gate(
@@ -2499,7 +3048,7 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_FUSED_QUBITS), CASE_N, nil)
 
     ket::mpi::gate::identity(
       mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, communicator_, environment_, control_qubit1, control_qubit2);
+      data_, permutation_, buffer_, circuit_communicator_, environment_, control_qubit1, control_qubit2);
   }
 
   void paged_unit_mpi_state::do_multi_controlled_in_gate(
@@ -2515,8 +3064,8 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_FUSED_QUBITS), CASE_N, nil)
     assert(num_control_qubits > 0u);
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_target_qubits)
     {
@@ -2526,7 +3075,7 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_FUSED_QUBITS), CASE_N, nil)
        case num_control_qubits:\
         ket::mpi::gate::identity(\
           mpi_policy_, parallel_policy_,\
-          data_, permutation_, buffer_, communicator_, environment_ BOOST_PP_REPEAT_ ## z(num_target_qubits, TARGET_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
+          data_, permutation_, buffer_, circuit_communicator_, environment_ BOOST_PP_REPEAT_ ## z(num_target_qubits, TARGET_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
         break;\
 
 # define CASE_N(z, num_target_qubits, _) \
@@ -2557,8 +3106,8 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_operated_qubits = control_qubits.size();
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_operated_qubits)
     {
@@ -2567,7 +3116,7 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
      case num_operated_qubits:\
       ket::mpi::gate::identity(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_ BOOST_PP_REPEAT_ ## z(num_operated_qubits, CONTROL_QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_ BOOST_PP_REPEAT_ ## z(num_operated_qubits, CONTROL_QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
@@ -2603,7 +3152,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     else
       ket::mpi::gate::hadamard(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, target_qubit, control_qubit);
   }
 
   void paged_unit_mpi_state::do_multi_controlled_hadamard(
@@ -2625,8 +3174,8 @@ BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
-    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_control_qubits)
     {
@@ -2635,7 +3184,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
      case num_control_qubits:\
       ket::mpi::gate::hadamard(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
@@ -2671,7 +3220,7 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     else
       ket::mpi::gate::not_(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, target_qubit, control_qubit);
   }
 
   void paged_unit_mpi_state::do_multi_controlled_not(
@@ -2693,8 +3242,8 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
-    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_control_qubits)
     {
@@ -2703,7 +3252,7 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
      case num_control_qubits:\
       ket::mpi::gate::not_(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
@@ -2739,7 +3288,7 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     else
       ket::mpi::gate::pauli_x(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, target_qubit, control_qubit);
   }
 
   void paged_unit_mpi_state::do_multi_controlled_pauli_xn(
@@ -2765,8 +3314,8 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     assert(num_control_qubits > 0u);
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_target_qubits)
     {
@@ -2776,7 +3325,7 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
        case num_control_qubits:\
         ket::mpi::gate::pauli_x(\
           mpi_policy_, parallel_policy_,\
-          data_, permutation_, buffer_, communicator_, environment_ BOOST_PP_REPEAT_ ## z(num_target_qubits, TARGET_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
+          data_, permutation_, buffer_, circuit_communicator_, environment_ BOOST_PP_REPEAT_ ## z(num_target_qubits, TARGET_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
         break;\
 
 # define CASE_N(z, num_target_qubits, _) \
@@ -2824,7 +3373,7 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     else
       ket::mpi::gate::pauli_y(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, target_qubit, control_qubit);
   }
 
   void paged_unit_mpi_state::do_multi_controlled_pauli_yn(
@@ -2850,8 +3399,8 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     assert(num_control_qubits > 0u);
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_target_qubits)
     {
@@ -2861,7 +3410,7 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
        case num_control_qubits:\
         ket::mpi::gate::pauli_y(\
           mpi_policy_, parallel_policy_,\
-          data_, permutation_, buffer_, communicator_, environment_ BOOST_PP_REPEAT_ ## z(num_target_qubits, TARGET_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
+          data_, permutation_, buffer_, circuit_communicator_, environment_ BOOST_PP_REPEAT_ ## z(num_target_qubits, TARGET_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
         break;\
 
 # define CASE_N(z, num_target_qubits, _) \
@@ -2909,7 +3458,7 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     else
       ket::mpi::gate::pauli_z(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, control_qubit1, control_qubit2);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, control_qubit1, control_qubit2);
   }
 
   void paged_unit_mpi_state::do_multi_controlled_pauli_z(std::vector<control_qubit_type> const& control_qubits)
@@ -2930,8 +3479,8 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_operated_qubits = control_qubits.size();
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_operated_qubits)
     {
@@ -2940,7 +3489,7 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
        case num_operated_qubits:\
         ket::mpi::gate::pauli_z(\
           mpi_policy_, parallel_policy_,\
-          data_, permutation_, buffer_, communicator_, environment_ BOOST_PP_REPEAT_ ## z(num_operated_qubits, CONTROL_QUBITS, nil));\
+          data_, permutation_, buffer_, circuit_communicator_, environment_ BOOST_PP_REPEAT_ ## z(num_operated_qubits, CONTROL_QUBITS, nil));\
         break;\
 
 BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
@@ -2974,8 +3523,8 @@ BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     assert(num_control_qubits > 0u);
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_target_qubits)
     {
@@ -2985,7 +3534,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
        case num_control_qubits:\
         ket::mpi::gate::pauli_z(\
           mpi_policy_, parallel_policy_,\
-          data_, permutation_, buffer_, communicator_, environment_ BOOST_PP_REPEAT_ ## z(num_target_qubits, TARGET_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
+          data_, permutation_, buffer_, circuit_communicator_, environment_ BOOST_PP_REPEAT_ ## z(num_target_qubits, TARGET_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
         break;\
 
 # define CASE_N(z, num_target_qubits, _) \
@@ -3028,8 +3577,8 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 0u);
 
-    if (num_control_qubits + 2u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 2u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_control_qubits + 2u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 2u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_control_qubits)
     {
@@ -3038,7 +3587,7 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
      case num_control_qubits:\
       ket::mpi::gate::swap(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_, target_qubit1, target_qubit2 BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_, target_qubit1, target_qubit2 BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_DEC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
@@ -3074,7 +3623,7 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_DEC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::sqrt_pauli_x(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, target_qubit, control_qubit);
   }
 
   void paged_unit_mpi_state::do_adj_controlled_sqrt_pauli_x(
@@ -3102,7 +3651,7 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_DEC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     else
       ket::mpi::gate::adj_sqrt_pauli_x(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, target_qubit, control_qubit);
   }
 
   void paged_unit_mpi_state::do_multi_controlled_sqrt_pauli_x(
@@ -3133,8 +3682,8 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_DEC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
-    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_control_qubits)
     {
@@ -3143,7 +3692,7 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_DEC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
      case num_control_qubits:\
       ket::mpi::gate::sqrt_pauli_x(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
@@ -3182,8 +3731,8 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
-    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_control_qubits)
     {
@@ -3192,7 +3741,7 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
      case num_control_qubits:\
       ket::mpi::gate::adj_sqrt_pauli_x(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
@@ -3228,7 +3777,7 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     else
       ket::mpi::gate::sqrt_pauli_y(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, target_qubit, control_qubit);
   }
 
   void paged_unit_mpi_state::do_adj_controlled_sqrt_pauli_y(
@@ -3256,7 +3805,7 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     else
       ket::mpi::gate::adj_sqrt_pauli_y(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, target_qubit, control_qubit);
   }
 
   void paged_unit_mpi_state::do_multi_controlled_sqrt_pauli_y(
@@ -3287,8 +3836,8 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
-    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_control_qubits)
     {
@@ -3297,7 +3846,7 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
      case num_control_qubits:\
       ket::mpi::gate::sqrt_pauli_y(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
@@ -3336,8 +3885,8 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
-    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_control_qubits)
     {
@@ -3346,7 +3895,7 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
      case num_control_qubits:\
       ket::mpi::gate::adj_sqrt_pauli_y(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
@@ -3382,7 +3931,7 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     else
       ket::mpi::gate::sqrt_pauli_z(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, control_qubit1, control_qubit2);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, control_qubit1, control_qubit2);
   }
 
   void paged_unit_mpi_state::do_adj_controlled_sqrt_pauli_z(
@@ -3410,7 +3959,7 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     else
       ket::mpi::gate::adj_sqrt_pauli_z(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, control_qubit1, control_qubit2);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, control_qubit1, control_qubit2);
   }
 
   void paged_unit_mpi_state::do_multi_controlled_sqrt_pauli_z(std::vector<control_qubit_type> const& control_qubits)
@@ -3436,8 +3985,8 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_operated_qubits = control_qubits.size();
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_operated_qubits)
     {
@@ -3446,7 +3995,7 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
      case num_operated_qubits:\
       ket::mpi::gate::sqrt_pauli_z(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_ BOOST_PP_REPEAT_ ## z(num_operated_qubits, CONTROL_QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_ BOOST_PP_REPEAT_ ## z(num_operated_qubits, CONTROL_QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
@@ -3480,8 +4029,8 @@ BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_operated_qubits = control_qubits.size();
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_operated_qubits)
     {
@@ -3490,7 +4039,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
      case num_operated_qubits:\
       ket::mpi::gate::adj_sqrt_pauli_z(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_ BOOST_PP_REPEAT_ ## z(num_operated_qubits, CONTROL_QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_ BOOST_PP_REPEAT_ ## z(num_operated_qubits, CONTROL_QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
@@ -3533,8 +4082,8 @@ BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     assert(num_control_qubits > 0u);
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_target_qubits)
     {
@@ -3544,7 +4093,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
        case num_control_qubits:\
         ket::mpi::gate::sqrt_pauli_z(\
           mpi_policy_, parallel_policy_,\
-          data_, permutation_, buffer_, communicator_, environment_ BOOST_PP_REPEAT_ ## z(num_target_qubits, TARGET_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
+          data_, permutation_, buffer_, circuit_communicator_, environment_ BOOST_PP_REPEAT_ ## z(num_target_qubits, TARGET_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
         break;\
 
 # define CASE_N(z, num_target_qubits, _) \
@@ -3599,8 +4148,8 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     assert(num_control_qubits > 0u);
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_target_qubits)
     {
@@ -3610,7 +4159,7 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
        case num_control_qubits:\
         ket::mpi::gate::adj_sqrt_pauli_z(\
           mpi_policy_, parallel_policy_,\
-          data_, permutation_, buffer_, communicator_, environment_ BOOST_PP_REPEAT_ ## z(num_target_qubits, TARGET_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
+          data_, permutation_, buffer_, circuit_communicator_, environment_ BOOST_PP_REPEAT_ ## z(num_target_qubits, TARGET_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
         break;\
 
 # define CASE_N(z, num_target_qubits, _) \
@@ -3659,7 +4208,7 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     else
       ket::mpi::gate::phase_shift_coeff(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase_coefficient, control_qubit1, control_qubit2);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase_coefficient, control_qubit1, control_qubit2);
   }
 
   void paged_unit_mpi_state::do_adj_controlled_phase_shift(
@@ -3688,7 +4237,7 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     else
       ket::mpi::gate::adj_phase_shift_coeff(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase_coefficient, control_qubit1, control_qubit2);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase_coefficient, control_qubit1, control_qubit2);
   }
 
   void paged_unit_mpi_state::do_multi_controlled_phase_shift(
@@ -3711,8 +4260,8 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_operated_qubits = control_qubits.size();
     assert(num_operated_qubits > 1u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_operated_qubits)
     {
@@ -3721,7 +4270,7 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
      case num_operated_qubits:\
       ket::mpi::gate::phase_shift_coeff(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_, phase_coefficient BOOST_PP_REPEAT_ ## z(num_operated_qubits, CONTROL_QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase_coefficient BOOST_PP_REPEAT_ ## z(num_operated_qubits, CONTROL_QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
@@ -3752,8 +4301,8 @@ BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_operated_qubits = control_qubits.size();
     assert(num_operated_qubits > 1u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_operated_qubits)
     {
@@ -3762,7 +4311,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
      case num_operated_qubits:\
       ket::mpi::gate::adj_phase_shift_coeff(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_, phase_coefficient BOOST_PP_REPEAT_ ## z(num_operated_qubits, CONTROL_QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase_coefficient BOOST_PP_REPEAT_ ## z(num_operated_qubits, CONTROL_QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
@@ -3798,7 +4347,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     else
       ket::mpi::gate::phase_shift(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase, control_qubit1, control_qubit2);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase, control_qubit1, control_qubit2);
   }
 
   void paged_unit_mpi_state::do_adj_controlled_u1(
@@ -3826,7 +4375,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     else
       ket::mpi::gate::adj_phase_shift(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase, control_qubit1, control_qubit2);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase, control_qubit1, control_qubit2);
   }
 
   void paged_unit_mpi_state::do_multi_controlled_u1(
@@ -3848,8 +4397,8 @@ BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_operated_qubits = control_qubits.size();
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_operated_qubits)
     {
@@ -3858,7 +4407,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
      case num_operated_qubits:\
       ket::mpi::gate::phase_shift(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_, phase BOOST_PP_REPEAT_ ## z(num_operated_qubits, CONTROL_QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase BOOST_PP_REPEAT_ ## z(num_operated_qubits, CONTROL_QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
@@ -3888,8 +4437,8 @@ BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_operated_qubits = control_qubits.size();
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_operated_qubits)
     {
@@ -3898,7 +4447,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
      case num_operated_qubits:\
       ket::mpi::gate::adj_phase_shift(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_, phase BOOST_PP_REPEAT_ ## z(num_operated_qubits, CONTROL_QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase BOOST_PP_REPEAT_ ## z(num_operated_qubits, CONTROL_QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
@@ -3934,7 +4483,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     else
       ket::mpi::gate::phase_shift2(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase1, phase2, target_qubit, control_qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase1, phase2, target_qubit, control_qubit);
   }
 
   void paged_unit_mpi_state::do_adj_controlled_u2(
@@ -3962,7 +4511,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     else
       ket::mpi::gate::adj_phase_shift2(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase1, phase2, target_qubit, control_qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase1, phase2, target_qubit, control_qubit);
   }
 
   void paged_unit_mpi_state::do_multi_controlled_u2(
@@ -3984,8 +4533,8 @@ BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
-    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_control_qubits)
     {
@@ -3994,7 +4543,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
      case num_control_qubits:\
       ket::mpi::gate::phase_shift2(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_, phase1, phase2, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase1, phase2, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
@@ -4024,8 +4573,8 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
-    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_control_qubits)
     {
@@ -4034,7 +4583,7 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
      case num_control_qubits:\
       ket::mpi::gate::adj_phase_shift2(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_, phase1, phase2, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase1, phase2, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
@@ -4071,7 +4620,7 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     else
       ket::mpi::gate::phase_shift3(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase1, phase2, phase3, target_qubit, control_qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase1, phase2, phase3, target_qubit, control_qubit);
   }
 
   void paged_unit_mpi_state::do_adj_controlled_u3(
@@ -4100,7 +4649,7 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     else
       ket::mpi::gate::adj_phase_shift3(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase1, phase2, phase3, target_qubit, control_qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase1, phase2, phase3, target_qubit, control_qubit);
   }
 
   void paged_unit_mpi_state::do_multi_controlled_u3(
@@ -4123,8 +4672,8 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
-    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_control_qubits)
     {
@@ -4133,7 +4682,7 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
      case num_control_qubits:\
       ket::mpi::gate::phase_shift3(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_, phase1, phase2, phase3, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase1, phase2, phase3, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
@@ -4164,8 +4713,8 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
-    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_control_qubits)
     {
@@ -4174,7 +4723,7 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
      case num_control_qubits:\
       ket::mpi::gate::adj_phase_shift3(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_, phase1, phase2, phase3, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase1, phase2, phase3, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
@@ -4210,7 +4759,7 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     else
       ket::mpi::gate::x_rotation_half_pi(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, target_qubit, control_qubit);
   }
 
   void paged_unit_mpi_state::do_adj_controlled_x_rotation_half_pi(
@@ -4238,7 +4787,7 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     else
       ket::mpi::gate::adj_x_rotation_half_pi(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, target_qubit, control_qubit);
   }
 
   void paged_unit_mpi_state::do_multi_controlled_x_rotation_half_pi(
@@ -4260,8 +4809,8 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
-    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_control_qubits)
     {
@@ -4270,7 +4819,7 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
      case num_control_qubits:\
       ket::mpi::gate::x_rotation_half_pi(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
@@ -4300,8 +4849,8 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
-    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_control_qubits)
     {
@@ -4310,7 +4859,7 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
      case num_control_qubits:\
       ket::mpi::gate::adj_x_rotation_half_pi(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
@@ -4346,7 +4895,7 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     else
       ket::mpi::gate::y_rotation_half_pi(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, target_qubit, control_qubit);
   }
 
   void paged_unit_mpi_state::do_adj_controlled_y_rotation_half_pi(
@@ -4374,7 +4923,7 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     else
       ket::mpi::gate::adj_y_rotation_half_pi(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, target_qubit, control_qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, target_qubit, control_qubit);
   }
 
   void paged_unit_mpi_state::do_multi_controlled_y_rotation_half_pi(
@@ -4396,8 +4945,8 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
-    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_control_qubits)
     {
@@ -4406,7 +4955,7 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
      case num_control_qubits:\
       ket::mpi::gate::y_rotation_half_pi(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
@@ -4436,8 +4985,8 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 1u);
 
-    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_control_qubits + 1u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 1u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_control_qubits)
     {
@@ -4446,7 +4995,7 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
      case num_control_qubits:\
       ket::mpi::gate::adj_y_rotation_half_pi(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
@@ -4482,7 +5031,7 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     else
       ket::mpi::gate::exponential_pauli_x(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase, target_qubit, control_qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase, target_qubit, control_qubit);
   }
 
   void paged_unit_mpi_state::do_adj_controlled_exponential_pauli_x(
@@ -4510,7 +5059,7 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     else
       ket::mpi::gate::adj_exponential_pauli_x(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase, target_qubit, control_qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase, target_qubit, control_qubit);
   }
 
   void paged_unit_mpi_state::do_multi_controlled_exponential_pauli_xn(
@@ -4536,8 +5085,8 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     assert(num_control_qubits > 0u);
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_target_qubits)
     {
@@ -4547,7 +5096,7 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
        case num_control_qubits:\
         ket::mpi::gate::exponential_pauli_x(\
           mpi_policy_, parallel_policy_,\
-          data_, permutation_, buffer_, communicator_, environment_, phase BOOST_PP_REPEAT_ ## z(num_target_qubits, TARGET_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
+          data_, permutation_, buffer_, circuit_communicator_, environment_, phase BOOST_PP_REPEAT_ ## z(num_target_qubits, TARGET_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
         break;\
 
 # define CASE_N(z, num_target_qubits, _) \
@@ -4593,8 +5142,8 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     assert(num_control_qubits > 0u);
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_target_qubits)
     {
@@ -4604,7 +5153,7 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
        case num_control_qubits:\
         ket::mpi::gate::adj_exponential_pauli_x(\
           mpi_policy_, parallel_policy_,\
-          data_, permutation_, buffer_, communicator_, environment_, phase BOOST_PP_REPEAT_ ## z(num_target_qubits, TARGET_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
+          data_, permutation_, buffer_, circuit_communicator_, environment_, phase BOOST_PP_REPEAT_ ## z(num_target_qubits, TARGET_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
         break;\
 
 # define CASE_N(z, num_target_qubits, _) \
@@ -4652,7 +5201,7 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     else
       ket::mpi::gate::exponential_pauli_y(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase, target_qubit, control_qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase, target_qubit, control_qubit);
   }
 
   void paged_unit_mpi_state::do_adj_controlled_exponential_pauli_y(
@@ -4680,7 +5229,7 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     else
       ket::mpi::gate::adj_exponential_pauli_y(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase, target_qubit, control_qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase, target_qubit, control_qubit);
   }
 
   void paged_unit_mpi_state::do_multi_controlled_exponential_pauli_yn(
@@ -4706,8 +5255,8 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     assert(num_control_qubits > 0u);
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_target_qubits)
     {
@@ -4717,7 +5266,7 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
        case num_control_qubits:\
         ket::mpi::gate::exponential_pauli_y(\
           mpi_policy_, parallel_policy_,\
-          data_, permutation_, buffer_, communicator_, environment_, phase BOOST_PP_REPEAT_ ## z(num_target_qubits, TARGET_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
+          data_, permutation_, buffer_, circuit_communicator_, environment_, phase BOOST_PP_REPEAT_ ## z(num_target_qubits, TARGET_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
         break;\
 
 # define CASE_N(z, num_target_qubits, _) \
@@ -4763,8 +5312,8 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     assert(num_control_qubits > 0u);
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_target_qubits)
     {
@@ -4774,7 +5323,7 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
        case num_control_qubits:\
         ket::mpi::gate::adj_exponential_pauli_y(\
           mpi_policy_, parallel_policy_,\
-          data_, permutation_, buffer_, communicator_, environment_, phase BOOST_PP_REPEAT_ ## z(num_target_qubits, TARGET_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
+          data_, permutation_, buffer_, circuit_communicator_, environment_, phase BOOST_PP_REPEAT_ ## z(num_target_qubits, TARGET_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
         break;\
 
 # define CASE_N(z, num_target_qubits, _) \
@@ -4822,7 +5371,7 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     else
       ket::mpi::gate::exponential_pauli_z(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase, target_qubit, control_qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase, target_qubit, control_qubit);
   }
 
   void paged_unit_mpi_state::do_adj_controlled_exponential_pauli_z(
@@ -4850,7 +5399,7 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     else
       ket::mpi::gate::adj_exponential_pauli_z(
         mpi_policy_, parallel_policy_,
-        data_, permutation_, buffer_, communicator_, environment_, phase, target_qubit, control_qubit);
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase, target_qubit, control_qubit);
   }
 
   void paged_unit_mpi_state::do_multi_controlled_exponential_pauli_z(
@@ -4874,8 +5423,8 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_operated_qubits = num_target_qubits + num_control_qubits;
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_control_qubits)
     {
@@ -4884,7 +5433,7 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
        case num_control_qubits:\
         ket::mpi::gate::exponential_pauli_z(\
           mpi_policy_, parallel_policy_,\
-          data_, permutation_, buffer_, communicator_, environment_, phase, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
+          data_, permutation_, buffer_, circuit_communicator_, environment_, phase, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
         break;\
 
 BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
@@ -4916,8 +5465,8 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_operated_qubits = num_target_qubits + num_control_qubits;
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_control_qubits)
     {
@@ -4926,7 +5475,7 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
        case num_control_qubits:\
         ket::mpi::gate::adj_exponential_pauli_z(\
           mpi_policy_, parallel_policy_,\
-          data_, permutation_, buffer_, communicator_, environment_, phase, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
+          data_, permutation_, buffer_, circuit_communicator_, environment_, phase, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
         break;\
 
 BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
@@ -4960,8 +5509,8 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     assert(num_control_qubits > 0u);
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_target_qubits)
     {
@@ -4971,7 +5520,7 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
        case num_control_qubits:\
         ket::mpi::gate::exponential_pauli_z(\
           mpi_policy_, parallel_policy_,\
-          data_, permutation_, buffer_, communicator_, environment_, phase BOOST_PP_REPEAT_ ## z(num_target_qubits, TARGET_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
+          data_, permutation_, buffer_, circuit_communicator_, environment_, phase BOOST_PP_REPEAT_ ## z(num_target_qubits, TARGET_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
         break;\
 
 # define CASE_N(z, num_target_qubits, _) \
@@ -5017,8 +5566,8 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     assert(num_control_qubits > 0u);
     assert(num_operated_qubits > 2u);
 
-    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_operated_qubits > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_target_qubits)
     {
@@ -5028,7 +5577,7 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
        case num_control_qubits:\
         ket::mpi::gate::adj_exponential_pauli_z(\
           mpi_policy_, parallel_policy_,\
-          data_, permutation_, buffer_, communicator_, environment_, phase BOOST_PP_REPEAT_ ## z(num_target_qubits, TARGET_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
+          data_, permutation_, buffer_, circuit_communicator_, environment_, phase BOOST_PP_REPEAT_ ## z(num_target_qubits, TARGET_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
         break;\
 
 # define CASE_N(z, num_target_qubits, _) \
@@ -5071,8 +5620,8 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 0u);
 
-    if (num_control_qubits + 2u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 2u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_control_qubits + 2u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 2u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_control_qubits)
     {
@@ -5081,7 +5630,7 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
      case num_control_qubits:\
       ket::mpi::gate::exponential_swap(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_, phase, target_qubit1, target_qubit2 BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase, target_qubit1, target_qubit2 BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_DEC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
@@ -5112,8 +5661,8 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_DEC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     auto const num_control_qubits = control_qubits.size();
     assert(num_control_qubits > 0u);
 
-    if (num_control_qubits + 2u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_))
-      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 2u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, communicator_, environment_)};
+    if (num_control_qubits + 2u > ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_))
+      throw ::bra::too_many_operated_qubits_error{num_control_qubits + 2u, ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_, circuit_communicator_, environment_)};
 
     switch (num_control_qubits)
     {
@@ -5122,7 +5671,7 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_DEC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
      case num_control_qubits:\
       ket::mpi::gate::adj_exponential_swap(\
         mpi_policy_, parallel_policy_,\
-        data_, permutation_, buffer_, communicator_, environment_, phase, target_qubit1, target_qubit2 BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
+        data_, permutation_, buffer_, circuit_communicator_, environment_, phase, target_qubit1, target_qubit2 BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
       break;\
 
 BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_DEC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)

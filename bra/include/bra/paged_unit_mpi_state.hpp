@@ -66,7 +66,10 @@ namespace bra
       unsigned int const num_threads_per_process,
       unsigned int const num_processes_per_unit,
       ::bra::state::seed_type const seed,
-      yampi::communicator const& communicator,
+      yampi::communicator const& circuit_communicator,
+      yampi::communicator const& intercircuit_communicator,
+      int const circuit_index,
+      std::vector<yampi::intercommunicator> const& intercommunicators,
       yampi::environment const& environment);
 
     paged_unit_mpi_state(
@@ -78,14 +81,17 @@ namespace bra
       unsigned int const num_threads_per_process,
       unsigned int const num_processes_per_unit,
       ::bra::state::seed_type const seed,
-      yampi::communicator const& communicator,
+      yampi::communicator const& circuit_communicator,
+      yampi::communicator const& intercircuit_communicator,
+      int const circuit_index,
+      std::vector<yampi::intercommunicator> const& intercommunicators,
       yampi::environment const& environment);
 
     ~paged_unit_mpi_state() = default;
-    paged_unit_mpi_state(paged_unit_mpi_state const&) = delete;
-    paged_unit_mpi_state& operator=(paged_unit_mpi_state const&) = delete;
-    paged_unit_mpi_state(paged_unit_mpi_state&&) = delete;
-    paged_unit_mpi_state& operator=(paged_unit_mpi_state&&) = delete;
+    paged_unit_mpi_state(paged_unit_mpi_state const&) = default;
+    paged_unit_mpi_state& operator=(paged_unit_mpi_state const&) = default;
+    paged_unit_mpi_state(paged_unit_mpi_state&&) = default;
+    paged_unit_mpi_state& operator=(paged_unit_mpi_state&&) = default;
 
    private:
     unsigned int do_num_page_qubits() const override;
@@ -185,6 +191,10 @@ namespace bra
     void do_measure(yampi::rank const root) override;
     void do_generate_events(yampi::rank const root, int const num_events, int const seed) override;
     void do_expectation_value(std::string const& operator_literal_or_variable_name, std::vector<qubit_type> const& operated_qubits) override;
+    void do_inner_product(std::string const& remote_circuit_index_or_all) override;
+    void do_inner_product(std::string const& remote_circuit_index_or_all, std::string const& operator_literal_or_variable_name, std::vector<qubit_type> const& operated_qubits) override;
+    void do_fidelity(std::string const& remote_circuit_index_or_all) override;
+    void do_fidelity(std::string const& remote_circuit_index_or_all, std::string const& operator_literal_or_variable_name, std::vector<qubit_type> const& operated_qubits) override;
     void do_shor_box(
       state_integer_type const divisor, state_integer_type const base,
       std::vector<qubit_type> const& exponent_qubits,

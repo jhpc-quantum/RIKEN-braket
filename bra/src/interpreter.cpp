@@ -116,6 +116,10 @@
 #include <bra/gate/measurement.hpp>
 #include <bra/gate/generate_events.hpp>
 #include <bra/gate/expectation_value.hpp>
+#include <bra/gate/inner_product.hpp>
+#include <bra/gate/inner_product_with_op.hpp>
+#include <bra/gate/fidelity.hpp>
+#include <bra/gate/fidelity_with_op.hpp>
 #include <bra/gate/shor_box.hpp>
 #include <bra/gate/begin_fusion.hpp>
 #include <bra/gate/end_fusion.hpp>
@@ -241,12 +245,12 @@ namespace bra
 
 #ifndef BRA_NO_MPI
   interpreter::interpreter()
-    : circuits_(1u), label_maps_(1u), num_qubits_{}, num_lqubits_{}, num_uqubits_{}, num_processes_per_unit_{1u},
+    : circuits_(1u), label_maps_(1u), first_indices_(1u, 0), num_qubits_{}, num_lqubits_{}, num_uqubits_{}, num_processes_per_unit_{1u},
       initial_state_value_{}, initial_permutation_{}, root_{}, circuit_index_{0}, is_in_circuit_{false}
   { }
 #else // BRA_NO_MPI
   interpreter::interpreter()
-    : circuits_(1u), label_maps_(1u), num_qubits_{},
+    : circuits_(1u), label_maps_(1u), first_indices_(1u, 0), num_qubits_{},
       initial_state_value_{}, circuit_index_{0}, is_in_circuit_{false}
   { }
 #endif // BRA_NO_MPI
@@ -258,8 +262,9 @@ namespace bra
     yampi::environment const& environment,
     yampi::rank const root, yampi::communicator const& total_communicator,
     size_type const num_reserved_gates)
-    : circuits_(1u), label_maps_(1u), num_qubits_{}, num_lqubits_{},
+    : circuits_(1u), label_maps_(1u), first_indices_(1u, 0), num_qubits_{}, num_lqubits_{},
       num_uqubits_{num_uqubits}, num_processes_per_unit_{num_processes_per_unit},
+      largest_num_operated_qubits_{::bra::bit_integer_type{0u}},
       initial_state_value_{}, initial_permutation_{}, root_{root}, circuit_index_{0}, is_in_circuit_{false}
   {
     assert(num_processes_per_unit >= 1u);
@@ -267,12 +272,14 @@ namespace bra
   }
 #else // BRA_NO_MPI
   interpreter::interpreter(std::istream& input_stream)
-    : circuits_(1u), label_maps_(1u), num_qubits_{},
+    : circuits_(1u), label_maps_(1u), first_indices_(1u, 0), num_qubits_{},
+      largest_num_operated_qubits_{::bra::bit_integer_type{0u}},
       initial_state_value_{}, circuit_index_{0}, is_in_circuit_{false}
   { invoke(input_stream, size_type{0u}); }
 
   interpreter::interpreter(std::istream& input_stream, size_type const num_reserved_gates)
-    : circuits_(1u), label_maps_(1u), num_qubits_{},
+    : circuits_(1u), label_maps_(1u), first_indices_(1u, 0), num_qubits_{},
+      largest_num_operated_qubits_{::bra::bit_integer_type{0u}},
       initial_state_value_{}, circuit_index_{0}, is_in_circuit_{false}
   { invoke(input_stream, num_reserved_gates); }
 #endif // BRA_NO_MPI
@@ -286,6 +293,7 @@ namespace bra
       and num_lqubits_ == other.num_lqubits_
       and num_uqubits_ == other.num_uqubits_
       and num_processes_per_unit_ == other.num_processes_per_unit_
+      and largest_num_operated_qubits_ == other.largest_num_operated_qubits_
       and initial_state_value_ == other.initial_state_value_
       and initial_permutation_ == other.initial_permutation_
       and root_ == other.root_
@@ -295,6 +303,7 @@ namespace bra
     return circuits_ == other.circuits_
       and label_maps_ == other.label_maps_
       and num_qubits_ == other.num_qubits_
+      and largest_num_operated_qubits_ == other.largest_num_operated_qubits_
       and initial_state_value_ == other.initial_state_value_
       and circuit_index_ == other.circuit_index_
       and is_in_circuit_ == other.is_in_circuit_;
@@ -394,8 +403,10 @@ namespace bra
       using std::end;
       if (mnemonic == "CIRCUITS")
       {
-        circuits_.resize(read_num_circuits(columns));
-        label_maps_.resize(read_num_circuits(columns));
+        auto const num_circuits = read_num_circuits(columns);
+        circuits_.resize(num_circuits);
+        label_maps_.resize(num_circuits);
+        first_indices_.resize(num_circuits, 0);
         for (auto& circuit: circuits_)
           circuit.reserve(num_reserved_gates);
       }
@@ -732,6 +743,10 @@ namespace bra
       }
       else if (mnemonic == "EXPECTATION")
         add_expectation_value(columns);
+      else if (mnemonic == "INNERPROD")
+        add_inner_product(columns);
+      else if (mnemonic == "FIDELITY")
+        add_fidelity(columns);
       else if (mnemonic == "CLEAR")
         add_clear(columns);
       else if (mnemonic == "SET")
@@ -800,12 +815,18 @@ namespace bra
 #endif // BRA_NO_MPI
   }
 
-  void interpreter::apply_circuit(::bra::state& state, int const circuit_index) const
+  void interpreter::apply_circuit(::bra::state& state, int const circuit_index)
   {
     auto const count = static_cast<int>(circuits_[circuit_index].size());
-    for (auto index = 0; index < count; ++index)
+    for (auto index = first_indices_[circuit_index]; index < count; ++index)
     {
       state << *(circuits_[circuit_index][index]);
+
+      if (state.is_waiting())
+      {
+        first_indices_[circuit_index] = index + 1;
+        break;
+      }
 
       if (!state.maybe_label())
         continue;
@@ -890,7 +911,7 @@ namespace bra
   }
 #endif
 
-  ::bra::qubit_type interpreter::read_target(interpreter::columns_type const& columns) const
+  ::bra::qubit_type interpreter::read_target(interpreter::columns_type const& columns)
   {
     if (boost::size(columns) != 2u)
       throw wrong_mnemonics_error{columns};
@@ -898,11 +919,13 @@ namespace bra
     using std::begin;
     auto iter = begin(columns);
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
+
+    largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{1u}, largest_num_operated_qubits_);
 
     return ket::make_qubit< ::bra::state_integer_type >(target);
   }
 
-  ::bra::control_qubit_type interpreter::read_control(interpreter::columns_type const& columns) const
+  ::bra::control_qubit_type interpreter::read_control(interpreter::columns_type const& columns)
   {
     if (boost::size(columns) != 2u)
       throw wrong_mnemonics_error{columns};
@@ -911,10 +934,12 @@ namespace bra
     auto iter = begin(columns);
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
 
+    largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{1u}, largest_num_operated_qubits_);
+
     return ket::make_control(ket::make_qubit< ::bra::state_integer_type >(target));
   }
 
-  std::tuple< ::bra::qubit_type, ::bra::qubit_type > interpreter::read_2targets(interpreter::columns_type const& columns) const
+  std::tuple< ::bra::qubit_type, ::bra::qubit_type > interpreter::read_2targets(interpreter::columns_type const& columns)
   {
     if (boost::size(columns) != 3u)
       throw wrong_mnemonics_error{columns};
@@ -923,11 +948,13 @@ namespace bra
     auto iter = begin(columns);
     auto const target1 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
     auto const target2 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
+
+    largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{2u}, largest_num_operated_qubits_);
 
     return std::make_tuple(ket::make_qubit< ::bra::state_integer_type >(target1), ket::make_qubit< ::bra::state_integer_type >(target2));
   }
 
-  std::tuple< ::bra::control_qubit_type, ::bra::control_qubit_type > interpreter::read_2controls(interpreter::columns_type const& columns) const
+  std::tuple< ::bra::control_qubit_type, ::bra::control_qubit_type > interpreter::read_2controls(interpreter::columns_type const& columns)
   {
     if (boost::size(columns) != 3u)
       throw wrong_mnemonics_error{columns};
@@ -937,10 +964,12 @@ namespace bra
     auto const target1 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
     auto const target2 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
 
+    largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{2u}, largest_num_operated_qubits_);
+
     return std::make_tuple(ket::make_control(ket::make_qubit< ::bra::state_integer_type >(target1)), ket::make_control(ket::make_qubit< ::bra::state_integer_type >(target2)));
   }
 
-  void interpreter::read_multi_targets(interpreter::columns_type const& columns, std::vector< ::bra::qubit_type >& targets) const
+  void interpreter::read_multi_targets(interpreter::columns_type const& columns, std::vector< ::bra::qubit_type >& targets)
   {
     if (boost::size(columns) < 4u or targets.size() != boost::size(columns) - 1u)
       throw wrong_mnemonics_error{columns};
@@ -955,9 +984,11 @@ namespace bra
       auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
       *targets_iter = ket::make_qubit< ::bra::state_integer_type >(target);
     }
+
+    largest_num_operated_qubits_ = std::max(static_cast< ::bra::bit_integer_type >(targets.size()), largest_num_operated_qubits_);
   }
 
-  void interpreter::read_multi_controls(interpreter::columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const
+  void interpreter::read_multi_controls(interpreter::columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls)
   {
     if (boost::size(columns) < 4u or controls.size() != boost::size(columns) - 1u)
       throw wrong_mnemonics_error{columns};
@@ -972,11 +1003,13 @@ namespace bra
       auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
       *controls_iter = ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control));
     }
+
+    largest_num_operated_qubits_ = std::max(static_cast< ::bra::bit_integer_type >(controls.size()), largest_num_operated_qubits_);
   }
 
   ::bra::qubit_type interpreter::read_target_phase(
     interpreter::columns_type const& columns,
-    boost::variant< ::bra::real_type, std::string >& phase) const
+    boost::variant< ::bra::real_type, std::string >& phase)
   {
     if (boost::size(columns) != 3u)
       throw wrong_mnemonics_error{columns};
@@ -989,13 +1022,15 @@ namespace bra
       phase = boost::lexical_cast< ::bra::real_type >(phase_string);
     else
       phase = phase_string;
+
+    largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{1u}, largest_num_operated_qubits_);
 
     return ket::make_qubit< ::bra::state_integer_type >(target);
   }
 
   ::bra::control_qubit_type interpreter::read_control_phase(
     interpreter::columns_type const& columns,
-    boost::variant< ::bra::real_type, std::string >& phase) const
+    boost::variant< ::bra::real_type, std::string >& phase)
   {
     if (boost::size(columns) != 3u)
       throw wrong_mnemonics_error{columns};
@@ -1008,6 +1043,8 @@ namespace bra
       phase = boost::lexical_cast< ::bra::real_type >(phase_string);
     else
       phase = phase_string;
+
+    largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{1u}, largest_num_operated_qubits_);
 
     return ket::make_control(ket::make_qubit< ::bra::state_integer_type >(target));
   }
@@ -1015,7 +1052,7 @@ namespace bra
   ::bra::qubit_type interpreter::read_target_2phases(
     interpreter::columns_type const& columns,
     boost::variant< ::bra::real_type, std::string >& phase1,
-    boost::variant< ::bra::real_type, std::string >& phase2) const
+    boost::variant< ::bra::real_type, std::string >& phase2)
   {
     if (boost::size(columns) != 4u)
       throw wrong_mnemonics_error{columns};
@@ -1034,6 +1071,8 @@ namespace bra
     else
       phase2 = phase2_string;
 
+    largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{1u}, largest_num_operated_qubits_);
+
     return ket::make_qubit< ::bra::state_integer_type >(target);
   }
 
@@ -1041,7 +1080,7 @@ namespace bra
     interpreter::columns_type const& columns,
     boost::variant< ::bra::real_type, std::string >& phase1,
     boost::variant< ::bra::real_type, std::string >& phase2,
-    boost::variant< ::bra::real_type, std::string >& phase3) const
+    boost::variant< ::bra::real_type, std::string >& phase3)
   {
     if (boost::size(columns) != 5u)
       throw wrong_mnemonics_error{columns};
@@ -1065,12 +1104,14 @@ namespace bra
     else
       phase3 = phase3_string;
 
+    largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{1u}, largest_num_operated_qubits_);
+
     return ket::make_qubit< ::bra::state_integer_type >(target);
   }
 
   ::bra::qubit_type interpreter::read_target_phaseexp(
     interpreter::columns_type const& columns,
-    boost::variant< ::bra::int_type, std::string >& phase_exponent) const
+    boost::variant< ::bra::int_type, std::string >& phase_exponent)
   {
     if (boost::size(columns) != 3u)
       throw wrong_mnemonics_error{columns};
@@ -1083,13 +1124,15 @@ namespace bra
       phase_exponent = boost::lexical_cast< ::bra::int_type >(phase_exponent_string);
     else
       phase_exponent = phase_exponent_string;
+
+    largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{1u}, largest_num_operated_qubits_);
 
     return ket::make_qubit< ::bra::state_integer_type >(target);
   }
 
   ::bra::control_qubit_type interpreter::read_control_phaseexp(
     interpreter::columns_type const& columns,
-    boost::variant< ::bra::int_type, std::string >& phase_exponent) const
+    boost::variant< ::bra::int_type, std::string >& phase_exponent)
   {
     if (boost::size(columns) != 3u)
       throw wrong_mnemonics_error{columns};
@@ -1102,6 +1145,8 @@ namespace bra
       phase_exponent = boost::lexical_cast< ::bra::int_type >(phase_exponent_string);
     else
       phase_exponent = phase_exponent_string;
+
+    largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{1u}, largest_num_operated_qubits_);
 
     return ket::make_control(ket::make_qubit< ::bra::state_integer_type >(target));
   }
@@ -1109,7 +1154,7 @@ namespace bra
   std::tuple< ::bra::qubit_type, ::bra::qubit_type >
   interpreter::read_2targets_phase(
     interpreter::columns_type const& columns,
-    boost::variant< ::bra::real_type, std::string >& phase) const
+    boost::variant< ::bra::real_type, std::string >& phase)
   {
     if (boost::size(columns) != 4u)
       throw wrong_mnemonics_error{columns};
@@ -1124,13 +1169,15 @@ namespace bra
     else
       phase = phase_string;
 
+    largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{2u}, largest_num_operated_qubits_);
+
     return std::make_tuple(ket::make_qubit< ::bra::state_integer_type >(target1), ket::make_qubit< ::bra::state_integer_type >(target2));
   }
 
   void interpreter::read_multi_targets_phase(
     interpreter::columns_type const& columns,
     std::vector< ::bra::qubit_type >& targets,
-    boost::variant< ::bra::real_type, std::string >& phase) const
+    boost::variant< ::bra::real_type, std::string >& phase)
   {
     if (boost::size(columns) < 5u or targets.size() == boost::size(columns) - 2u)
       throw wrong_mnemonics_error{columns};
@@ -1150,9 +1197,11 @@ namespace bra
       phase = boost::lexical_cast< ::bra::real_type >(phase_string);
     else
       phase = phase_string;
+
+    largest_num_operated_qubits_ = std::max(static_cast< ::bra::bit_integer_type >(targets.size()), largest_num_operated_qubits_);
   }
 
-  std::tuple< ::bra::control_qubit_type, ::bra::qubit_type > interpreter::read_control_target(interpreter::columns_type const& columns) const
+  std::tuple< ::bra::control_qubit_type, ::bra::qubit_type > interpreter::read_control_target(interpreter::columns_type const& columns)
   {
     if (boost::size(columns) != 3u)
       throw wrong_mnemonics_error{columns};
@@ -1162,6 +1211,8 @@ namespace bra
     auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
 
+    largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{2u}, largest_num_operated_qubits_);
+
     return std::make_tuple(
       ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control)),
       ket::make_qubit< ::bra::state_integer_type >(target));
@@ -1170,7 +1221,7 @@ namespace bra
   std::tuple< ::bra::control_qubit_type, ::bra::qubit_type >
   interpreter::read_control_target_phaseexp(
     interpreter::columns_type const& columns,
-    boost::variant< ::bra::int_type, std::string >& phase_exponent) const
+    boost::variant< ::bra::int_type, std::string >& phase_exponent)
   {
     if (boost::size(columns) != 4u)
       throw wrong_mnemonics_error{columns};
@@ -1185,6 +1236,8 @@ namespace bra
     else
       phase_exponent = phase_exponent_string;
 
+    largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{2u}, largest_num_operated_qubits_);
+
     return std::make_tuple(
       ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control)),
       ket::make_qubit< ::bra::state_integer_type >(target));
@@ -1193,7 +1246,7 @@ namespace bra
   std::tuple< ::bra::control_qubit_type, ::bra::control_qubit_type >
   interpreter::read_2controls_phaseexp(
     interpreter::columns_type const& columns,
-    boost::variant< ::bra::int_type, std::string >& phase_exponent) const
+    boost::variant< ::bra::int_type, std::string >& phase_exponent)
   {
     if (boost::size(columns) != 4u)
       throw wrong_mnemonics_error{columns};
@@ -1208,13 +1261,15 @@ namespace bra
     else
       phase_exponent = phase_exponent_string;
 
+    largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{2u}, largest_num_operated_qubits_);
+
     return std::make_tuple(
       ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control1)),
       ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control2)));
   }
 
   std::tuple< ::bra::control_qubit_type, ::bra::control_qubit_type, ::bra::qubit_type >
-  interpreter::read_2controls_target(interpreter::columns_type const& columns) const
+  interpreter::read_2controls_target(interpreter::columns_type const& columns)
   {
     if (boost::size(columns) != 4u)
       throw wrong_mnemonics_error{columns};
@@ -1224,6 +1279,8 @@ namespace bra
     auto const control1 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
     auto const control2 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
+
+    largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{3u}, largest_num_operated_qubits_);
 
     return std::make_tuple(
       ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control1)),
@@ -1234,7 +1291,7 @@ namespace bra
   void interpreter::read_multi_controls_phase(
     interpreter::columns_type const& columns,
     std::vector< ::bra::control_qubit_type >& controls,
-    boost::variant< ::bra::real_type, std::string >& phase) const
+    boost::variant< ::bra::real_type, std::string >& phase)
   {
     if (boost::size(columns) < 4u or controls.size() != boost::size(columns) - 2u)
       throw wrong_mnemonics_error{columns};
@@ -1255,10 +1312,12 @@ namespace bra
       phase = boost::lexical_cast< ::bra::real_type >(phase_string);
     else
       phase = phase_string;
+
+    largest_num_operated_qubits_ = std::max(static_cast< ::bra::bit_integer_type >(controls.size()), largest_num_operated_qubits_);
   }
 
   ::bra::qubit_type interpreter::read_multi_controls_target(
-    interpreter::columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const
+    interpreter::columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls)
   {
     if (boost::size(columns) < 4u or controls.size() != boost::size(columns) - 2u)
       throw wrong_mnemonics_error{columns};
@@ -1275,12 +1334,15 @@ namespace bra
     }
 
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
+
+    largest_num_operated_qubits_ = std::max(static_cast< ::bra::bit_integer_type >(controls.size()) + ::bra::bit_integer_type{1u}, largest_num_operated_qubits_);
+
     return ket::make_qubit< ::bra::state_integer_type >(target);
   }
 
   std::tuple< ::bra::qubit_type, ::bra::qubit_type >
   interpreter::read_multi_controls_2targets(
-    interpreter::columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls) const
+    interpreter::columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls)
   {
     if (boost::size(columns) < 5u or controls.size() != boost::size(columns) - 3u)
       throw wrong_mnemonics_error{columns};
@@ -1298,13 +1360,16 @@ namespace bra
 
     auto const target1 = boost::lexical_cast< ::bra::bit_integer_type >(*iter++);
     auto const target2 = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
+
+    largest_num_operated_qubits_ = std::max(static_cast< ::bra::bit_integer_type >(controls.size()) + ::bra::bit_integer_type{2u}, largest_num_operated_qubits_);
+
     return std::make_tuple(
        ket::make_qubit< ::bra::state_integer_type >(target1),
        ket::make_qubit< ::bra::state_integer_type >(target2));
   }
 
   void interpreter::read_multi_controls_multi_targets(
-    interpreter::columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls, std::vector< ::bra::qubit_type >& targets) const
+    interpreter::columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls, std::vector< ::bra::qubit_type >& targets)
   {
     if (boost::size(columns) < 4u or controls.size() + targets.size() != boost::size(columns) - 1u)
       throw wrong_mnemonics_error{columns};
@@ -1326,12 +1391,14 @@ namespace bra
       auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
       *targets_iter = ket::make_qubit< ::bra::state_integer_type >(target);
     }
+
+    largest_num_operated_qubits_ = std::max(static_cast< ::bra::bit_integer_type >(controls.size()) + static_cast< ::bra::bit_integer_type >(targets.size()), largest_num_operated_qubits_);
   }
 
   std::tuple< ::bra::control_qubit_type, ::bra::qubit_type >
   interpreter::read_control_target_phase(
     interpreter::columns_type const& columns,
-    boost::variant< ::bra::real_type, std::string >& phase) const
+    boost::variant< ::bra::real_type, std::string >& phase)
   {
     if (boost::size(columns) != 4u)
       throw wrong_mnemonics_error{columns};
@@ -1346,6 +1413,8 @@ namespace bra
     else
       phase = phase_string;
 
+    largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{2u}, largest_num_operated_qubits_);
+
     return std::make_tuple(
       ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control)),
       ket::make_qubit< ::bra::state_integer_type >(target));
@@ -1354,7 +1423,7 @@ namespace bra
   std::tuple< ::bra::control_qubit_type, ::bra::control_qubit_type >
   interpreter::read_2controls_phase(
     interpreter::columns_type const& columns,
-    boost::variant< ::bra::real_type, std::string >& phase) const
+    boost::variant< ::bra::real_type, std::string >& phase)
   {
     if (boost::size(columns) != 4u)
       throw wrong_mnemonics_error{columns};
@@ -1369,6 +1438,8 @@ namespace bra
     else
       phase = phase_string;
 
+    largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{2u}, largest_num_operated_qubits_);
+
     return std::make_tuple(
       ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control1)),
       ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control2)));
@@ -1377,7 +1448,7 @@ namespace bra
   ::bra::qubit_type interpreter::read_multi_controls_target_phase(
     interpreter::columns_type const& columns,
     std::vector< ::bra::control_qubit_type >& controls,
-    boost::variant< ::bra::real_type, std::string >& phase) const
+    boost::variant< ::bra::real_type, std::string >& phase)
   {
     if (boost::size(columns) < 5u or controls.size() != boost::size(columns) - 3u)
       throw wrong_mnemonics_error{columns};
@@ -1400,6 +1471,8 @@ namespace bra
     else
       phase = phase_string;
 
+    largest_num_operated_qubits_ = std::max(static_cast< ::bra::bit_integer_type >(controls.size()) + ::bra::bit_integer_type{1u}, largest_num_operated_qubits_);
+
     return ket::make_qubit< ::bra::state_integer_type >(target);
   }
 
@@ -1407,7 +1480,7 @@ namespace bra
   interpreter::read_control_target_2phases(
     interpreter::columns_type const& columns,
     boost::variant< ::bra::real_type, std::string >& phase1,
-    boost::variant< ::bra::real_type, std::string >& phase2) const
+    boost::variant< ::bra::real_type, std::string >& phase2)
   {
     if (boost::size(columns) != 5u)
       throw wrong_mnemonics_error{columns};
@@ -1427,6 +1500,8 @@ namespace bra
     else
       phase2 = phase2_string;
 
+    largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{2u}, largest_num_operated_qubits_);
+
     return std::make_tuple(
       ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control)),
       ket::make_qubit< ::bra::state_integer_type >(target));
@@ -1436,7 +1511,7 @@ namespace bra
     interpreter::columns_type const& columns,
     std::vector< ::bra::control_qubit_type >& controls,
     boost::variant< ::bra::real_type, std::string >& phase1,
-    boost::variant< ::bra::real_type, std::string >& phase2) const
+    boost::variant< ::bra::real_type, std::string >& phase2)
   {
     if (boost::size(columns) < 6u or controls.size() != boost::size(columns) - 4u)
       throw wrong_mnemonics_error{columns};
@@ -1464,6 +1539,8 @@ namespace bra
     else
       phase2 = phase2_string;
 
+    largest_num_operated_qubits_ = std::max(static_cast< ::bra::bit_integer_type >(controls.size()) + ::bra::bit_integer_type{1u}, largest_num_operated_qubits_);
+
     return ket::make_qubit< ::bra::state_integer_type >(target);
   }
 
@@ -1472,7 +1549,7 @@ namespace bra
     interpreter::columns_type const& columns,
     boost::variant< ::bra::real_type, std::string >& phase1,
     boost::variant< ::bra::real_type, std::string >& phase2,
-    boost::variant< ::bra::real_type, std::string >& phase3) const
+    boost::variant< ::bra::real_type, std::string >& phase3)
   {
     if (boost::size(columns) != 6u)
       throw wrong_mnemonics_error{columns};
@@ -1497,6 +1574,8 @@ namespace bra
     else
       phase3 = phase3_string;
 
+    largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{2u}, largest_num_operated_qubits_);
+
     return std::make_tuple(
       ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control)),
       ket::make_qubit< ::bra::state_integer_type >(target));
@@ -1507,7 +1586,7 @@ namespace bra
     std::vector< ::bra::control_qubit_type >& controls,
     boost::variant< ::bra::real_type, std::string >& phase1,
     boost::variant< ::bra::real_type, std::string >& phase2,
-    boost::variant< ::bra::real_type, std::string >& phase3) const
+    boost::variant< ::bra::real_type, std::string >& phase3)
   {
     if (boost::size(columns) < 7u or controls.size() != boost::size(columns) - 5u)
       throw wrong_mnemonics_error{columns};
@@ -1540,13 +1619,15 @@ namespace bra
     else
       phase3 = phase3_string;
 
+    largest_num_operated_qubits_ = std::max(static_cast< ::bra::bit_integer_type >(controls.size()) + ::bra::bit_integer_type{1u}, largest_num_operated_qubits_);
+
     return ket::make_qubit< ::bra::state_integer_type >(target);
   }
 
   void interpreter::read_multi_controls_phaseexp(
     interpreter::columns_type const& columns,
     std::vector< ::bra::control_qubit_type >& controls,
-    boost::variant< ::bra::int_type, std::string >& phase_exponent) const
+    boost::variant< ::bra::int_type, std::string >& phase_exponent)
   {
     if (boost::size(columns) < 4u or controls.size() != boost::size(columns) - 2u)
       throw wrong_mnemonics_error{columns};
@@ -1567,12 +1648,14 @@ namespace bra
       phase_exponent = boost::lexical_cast< ::bra::real_type >(phase_exponent_string);
     else
       phase_exponent = phase_exponent_string;
+
+    largest_num_operated_qubits_ = std::max(static_cast< ::bra::bit_integer_type >(controls.size()), largest_num_operated_qubits_);
   }
 
   ::bra::qubit_type interpreter::read_multi_controls_target_phaseexp(
     interpreter::columns_type const& columns,
     std::vector< ::bra::control_qubit_type >& controls,
-    boost::variant< ::bra::int_type, std::string >& phase_exponent) const
+    boost::variant< ::bra::int_type, std::string >& phase_exponent)
   {
     if (boost::size(columns) < 5u or controls.size() != boost::size(columns) - 3u)
       throw wrong_mnemonics_error{columns};
@@ -1595,6 +1678,8 @@ namespace bra
     else
       phase_exponent = phase_exponent_string;
 
+    largest_num_operated_qubits_ = std::max(static_cast< ::bra::bit_integer_type >(controls.size()) + ::bra::bit_integer_type{1u}, largest_num_operated_qubits_);
+
     return ket::make_qubit< ::bra::state_integer_type >(target);
   }
 
@@ -1602,7 +1687,7 @@ namespace bra
     interpreter::columns_type const& columns,
     std::vector< ::bra::control_qubit_type >& controls,
     std::vector< ::bra::qubit_type >& targets,
-    boost::variant< ::bra::real_type, std::string >& phase) const
+    boost::variant< ::bra::real_type, std::string >& phase)
   {
     if (boost::size(columns) < 5u or controls.size() + targets.size() != boost::size(columns) - 2u)
       throw wrong_mnemonics_error{columns};
@@ -1630,13 +1715,15 @@ namespace bra
       phase = boost::lexical_cast< ::bra::real_type >(phase_string);
     else
       phase = phase_string;
+
+    largest_num_operated_qubits_ = std::max(static_cast< ::bra::bit_integer_type >(controls.size()) + static_cast< ::bra::bit_integer_type >(targets.size()), largest_num_operated_qubits_);
   }
 
   std::tuple< ::bra::qubit_type, ::bra::qubit_type >
   interpreter::read_multi_controls_2targets_phase(
     interpreter::columns_type const& columns,
     std::vector< ::bra::control_qubit_type >& controls,
-    boost::variant< ::bra::real_type, std::string >& phase) const
+    boost::variant< ::bra::real_type, std::string >& phase)
   {
     if (boost::size(columns) < 6u or controls.size() != boost::size(columns) - 4u)
       throw wrong_mnemonics_error{columns};
@@ -1659,6 +1746,8 @@ namespace bra
       phase = boost::lexical_cast< ::bra::real_type >(phase_string);
     else
       phase = phase_string;
+
+    largest_num_operated_qubits_ = std::max(static_cast< ::bra::bit_integer_type >(controls.size()) + ::bra::bit_integer_type{2u}, largest_num_operated_qubits_);
 
     return std::make_tuple(
        ket::make_qubit< ::bra::state_integer_type >(target1),
@@ -2918,7 +3007,7 @@ namespace bra
   // EXPECTATION H 0 1 2 3 4 5
   void interpreter::add_expectation_value(interpreter::columns_type const& columns)
   {
-    if (boost::size(columns) < 4u)
+    if (boost::size(columns) < 3u)
       throw wrong_mnemonics_error{columns};
 
     using std::begin;
@@ -2934,7 +3023,101 @@ namespace bra
     for (; iter != last; ++iter)
       operated_qubits.push_back(ket::make_qubit< ::bra::state_integer_type >(boost::lexical_cast< ::bra::bit_integer_type >(*iter)));
 
+    largest_num_operated_qubits_ = std::max(static_cast< ::bra::bit_integer_type >(operated_qubits.size()), largest_num_operated_qubits_);
+
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::expectation_value >(operator_literal_or_variable_name, operated_qubits));
+  }
+
+  // INNERPROD 1 ! calculate inner product between the present circuit #k and the circuit #1
+  //             !   (<Psi_1|Psi_k> for the circuit #k and <Psi_k|Psi_1> for the circuit #1)
+  // INNERPROD ALL ! calculate inner product between all pairs of the circuit #0 and the circuit #k
+  //               !   (<Psi_k|Psi_0> for the circuit #k, which implies <Psi_0|Psi_0> for the circuit #0)
+  //
+  // VAR H PAULISS
+  // INNERPROD 1 H 0 1 2 3 4 5 ! calculate inner product between the present circuit #k and the circuit #1
+  //                           !   (<Psi_1| [H |Psi_k>] for the circuit #k and [<Psi_k| H+] |Psi_1> for the circuit #1)
+  // INNERPROD ALL H 0 1 2 3 4 5 ! calculate inner product between all pairs of the circuit #0 and the circuit #k
+  //                             !   (<Psi_k| [H |Psi_0>] for the circuit #k, which implies [<Psi_0| H+] |Psi_0> for the circuit #0)
+  void interpreter::add_inner_product(interpreter::columns_type const& columns)
+  {
+    if (boost::size(columns) == 2u)
+    {
+      using std::begin;
+      auto iter = begin(columns);
+
+      auto const& remote_circuit_index_or_all = *++iter;
+
+      circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::inner_product >(remote_circuit_index_or_all));
+    }
+    else if (boost::size(columns) >= 4u)
+    {
+      using std::begin;
+      auto iter = begin(columns);
+
+      auto const& remote_circuit_index_or_all = *++iter;
+
+      auto const& operator_literal_or_variable_name = *++iter;
+
+      using std::end;
+      auto const last = end(columns);
+      ++iter;
+      auto operated_qubits = std::vector< ::bra::qubit_type >{};
+      operated_qubits.reserve(last - iter);
+      for (; iter != last; ++iter)
+        operated_qubits.push_back(ket::make_qubit< ::bra::state_integer_type >(boost::lexical_cast< ::bra::bit_integer_type >(*iter)));
+
+      largest_num_operated_qubits_ = std::max(static_cast< ::bra::bit_integer_type >(operated_qubits.size()), largest_num_operated_qubits_);
+
+      circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::inner_product_with_op >(remote_circuit_index_or_all, operator_literal_or_variable_name, operated_qubits));
+    }
+    else
+      throw wrong_mnemonics_error{columns};
+  }
+
+  // FIDELITY 1 ! calculate fidelity between the present circuit #k and the circuit #1
+  //            !   (|<Psi_1|Psi_k>|^2 for the circuit #k and |<Psi_k|Psi_1>|^2 for the circuit #1)
+  // FIDELITY ALL ! calculate fidelity between all pairs of the circuit #0 and the circuit #k
+  //              !   (|<Psi_k|Psi_0>|^2 for the circuit #k, which implies |<Psi_0|Psi_0>|^2 for the circuit #0)
+  //
+  // VAR H PAULISS
+  // FIDELITY 1 H 0 1 2 3 4 5 ! calculate fidelity between the present circuit #k and the circuit #1
+  //                          !   (|<Psi_1| [H |Psi_k>]|^2 for the circuit #k and |[<Psi_k| H+] |Psi_1>|^2 for the circuit #1)
+  // FIDELITY ALL H 0 1 2 3 4 5 ! calculate fidelity between all pairs of the circuit #0 and the circuit #k
+  //                            !   (|<Psi_k| [H |Psi_0>]|^2 for the circuit #k, which implies |[<Psi_0| H+] |Psi_0>|^2 for the circuit #0)
+  void interpreter::add_fidelity(interpreter::columns_type const& columns)
+  {
+    if (boost::size(columns) == 2u)
+    {
+      using std::begin;
+      auto iter = begin(columns);
+
+      auto const& remote_circuit_index_or_all = *++iter;
+
+      circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::fidelity >(remote_circuit_index_or_all));
+    }
+    else if (boost::size(columns) >= 4u)
+    {
+      using std::begin;
+      auto iter = begin(columns);
+
+      auto const& remote_circuit_index_or_all = *++iter;
+
+      auto const& operator_literal_or_variable_name = *++iter;
+
+      using std::end;
+      auto const last = end(columns);
+      ++iter;
+      auto operated_qubits = std::vector< ::bra::qubit_type >{};
+      operated_qubits.reserve(last - iter);
+      for (; iter != last; ++iter)
+        operated_qubits.push_back(ket::make_qubit< ::bra::state_integer_type >(boost::lexical_cast< ::bra::bit_integer_type >(*iter)));
+
+      largest_num_operated_qubits_ = std::max(static_cast< ::bra::bit_integer_type >(operated_qubits.size()), largest_num_operated_qubits_);
+
+      circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::fidelity_with_op >(remote_circuit_index_or_all, operator_literal_or_variable_name, operated_qubits));
+    }
+    else
+      throw wrong_mnemonics_error{columns};
   }
 
   void interpreter::add_clear(interpreter::columns_type const& columns)

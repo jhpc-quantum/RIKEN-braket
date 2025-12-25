@@ -14,6 +14,7 @@
 
 #   include <yampi/rank.hpp>
 #   include <yampi/communicator.hpp>
+#   include <yampi/intercommunicator.hpp>
 #   include <yampi/environment.hpp>
 
 #   include <bra/types.hpp>
@@ -53,7 +54,10 @@ namespace bra
 #   ifdef BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
       unsigned int const num_elements_in_buffer,
 #   endif // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
-      yampi::communicator const& communicator,
+      yampi::communicator const& circuit_communicator,
+      yampi::communicator const& intercircuit_communicator,
+      int const circuit_index,
+      std::vector<yampi::intercommunicator> const& intercommunicators,
       yampi::environment const& environment);
 
     simple_mpi_state(
@@ -65,20 +69,23 @@ namespace bra
 #   ifdef BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
       unsigned int const num_elements_in_buffer,
 #   endif // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
-      yampi::communicator const& communicator,
+      yampi::communicator const& circuit_communicator,
+      yampi::communicator const& intercircuit_communicator,
+      int const circuit_index,
+      std::vector<yampi::intercommunicator> const& intercommunicators,
       yampi::environment const& environment);
 
     ~simple_mpi_state() = default;
-    simple_mpi_state(simple_mpi_state const&) = delete;
-    simple_mpi_state& operator=(simple_mpi_state const&) = delete;
-    simple_mpi_state(simple_mpi_state&&) = delete;
-    simple_mpi_state& operator=(simple_mpi_state&&) = delete;
+    simple_mpi_state(simple_mpi_state const&) = default;
+    simple_mpi_state& operator=(simple_mpi_state const&) = default;
+    simple_mpi_state(simple_mpi_state&&) = default;
+    simple_mpi_state& operator=(simple_mpi_state&&) = default;
 
    private:
     data_type generate_initial_data(
       unsigned int const num_local_qubits,
       ::bra::state::state_integer_type const initial_integer,
-      yampi::communicator const& communicator, yampi::environment const& environment) const;
+      yampi::communicator const& circuit_communicator, yampi::environment const& environment) const;
 
     unsigned int do_num_page_qubits() const override;
     unsigned int do_num_pages() const override;
@@ -177,6 +184,10 @@ namespace bra
     void do_measure(yampi::rank const root) override;
     void do_generate_events(yampi::rank const root, int const num_events, int const seed) override;
     void do_expectation_value(std::string const& operator_literal_or_variable_name, std::vector<qubit_type> const& operated_qubits) override;
+    void do_inner_product(std::string const& remote_circuit_index_or_all) override;
+    void do_inner_product(std::string const& remote_circuit_index_or_all, std::string const& operator_literal_or_variable_name, std::vector<qubit_type> const& operated_qubits) override;
+    void do_fidelity(std::string const& remote_circuit_index_or_all) override;
+    void do_fidelity(std::string const& remote_circuit_index_or_all, std::string const& operator_literal_or_variable_name, std::vector<qubit_type> const& operated_qubits) override;
     void do_shor_box(
       state_integer_type const divisor, state_integer_type const base,
       std::vector<qubit_type> const& exponent_qubits,

@@ -2,10 +2,14 @@
 #include <cstdlib>
 #include <iostream>
 #include <fstream>
+#include <vector>
 #include <string>
+#include <iterator>
+#include <algorithm>
 #include <utility>
 #include <random>
 #include <chrono>
+#include <memory>
 
 #include <cxxopts.hpp>
 
@@ -39,7 +43,7 @@ int main(int argc, char* argv[])
 
 #ifndef BRA_NO_MPI
   yampi::environment environment{argc, argv, yampi::thread_support::funneled};
-  auto world_communicator = yampi::communicator{yampi::tags::world_communicator};
+  auto const world_communicator = yampi::communicator{yampi::tags::world_communicator};
   auto const world_rank = world_communicator.rank(environment);
   auto const num_processes = world_communicator.size(environment);
   using namespace yampi::literals::rank_literals;
@@ -163,6 +167,13 @@ int main(int argc, char* argv[])
 
 #ifndef BRA_NO_MPI
   auto interpreter = bra::interpreter{parse_result.count("file") ? possible_input_stream : std::cin, num_unit_qubits, num_processes_per_unit, environment, 0_r, world_communicator};
+  if (interpreter.largest_num_operated_qubits() > interpreter.num_lqubits() - num_page_qubits)
+  {
+    if (is_io_root_rank)
+      std::cerr << "Error: the largest number of operated qubits " << interpreter.largest_num_operated_qubits() << " should be less than the number of non-page qubits " << (interpreter.num_lqubits() - num_page_qubits) << '\n' << options.help() << std::flush;
+    return EXIT_FAILURE;
+  }
+
   auto const num_circuits = interpreter.num_circuits();
   if (num_processes % num_circuits != 0u)
   {
@@ -176,29 +187,42 @@ int main(int argc, char* argv[])
   auto const intercircuit_index = static_cast<int>(world_rank) % static_cast<int>(num_processes_per_circuit);
   auto const circuit_communicator
     = yampi::communicator{world_communicator, yampi::color{circuit_index}, intercircuit_index, environment};
-  auto const circuit_rank = circuit_communicator.rank(environment);
-  using namespace yampi::literals::color_literals;
   auto const intercircuit_communicator
     = yampi::communicator{world_communicator, yampi::color{intercircuit_index}, circuit_index, environment};
+
+  auto intercommunicators = std::vector<yampi::intercommunicator>{};
+  intercommunicators.reserve(num_circuits - decltype(num_circuits){1});
+  for (auto remote_circuit_index = 0; remote_circuit_index < static_cast<int>(num_circuits); ++remote_circuit_index)
+  {
+    if (remote_circuit_index == circuit_index)
+      continue;
+
+    auto const remote_leader = yampi::rank{static_cast<int>(num_processes_per_circuit) * remote_circuit_index};
+    auto const tag
+      = circuit_index > remote_circuit_index
+        ? yampi::tag{circuit_index * static_cast<int>(num_circuits) + remote_circuit_index}
+        : yampi::tag{remote_circuit_index * static_cast<int>(num_circuits) + circuit_index};
+    intercommunicators.emplace_back(circuit_communicator, 0_r, world_communicator, remote_leader, tag, environment);
+  }
 
 # ifndef BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
   auto state_ptr
     = is_unit
       ? bra::make_unit_mpi_state(
           num_page_qubits, interpreter.initial_state_value(), interpreter.num_lqubits(), num_unit_qubits, interpreter.initial_permutation(),
-          num_threads_per_process, num_processes_per_unit, seed, circuit_communicator, environment)
+          num_threads_per_process, num_processes_per_unit, seed, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment)
       : bra::make_simple_mpi_state(
           num_page_qubits, interpreter.initial_state_value(), interpreter.num_lqubits(), interpreter.initial_permutation(),
-          num_threads_per_process, seed, circuit_communicator, environment);
+          num_threads_per_process, seed, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment);
 # else // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
   auto state_ptr
     = is_unit
       ? bra::make_unit_mpi_state(
           num_page_qubits, interpreter.initial_state_value(), interpreter.num_lqubits(), num_unit_qubits, interpreter.initial_permutation(),
-          num_threads_per_process, num_processes_per_unit, seed, num_elements_in_buffer, circuit_communicator, environment)
+          num_threads_per_process, num_processes_per_unit, seed, num_elements_in_buffer, circuit_communicator, circuit_index, intercircuit_communicator, intercommunicators, environment)
       : bra::make_simple_mpi_state(
           num_page_qubits, interpreter.initial_state_value(), interpreter.num_lqubits(), interpreter.initial_permutation(),
-          num_threads_per_process, seed, num_elements_in_buffer, circuit_communicator, environment);
+          num_threads_per_process, seed, num_elements_in_buffer, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment);
 # endif // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
 
   interpreter.apply_circuit(*state_ptr, circuit_index);
@@ -207,14 +231,194 @@ int main(int argc, char* argv[])
     return EXIT_SUCCESS;
 #else // BRA_NO_MPI
   auto interpreter = bra::interpreter{parse_result.count("file") ? possible_input_stream : std::cin};
+  if (interpreter.largest_num_operated_qubits() > interpreter.num_qubits())
+  {
+    std::cerr << "Error: the largest number of operated qubits " << interpreter.largest_num_operated_qubits() << " should be less than the number of qubits " << interpreter.num_qubits() << '\n' << options.help() << std::flush;
+    return EXIT_FAILURE;
+  }
+
   auto const num_circuits = interpreter.num_circuits();
 
-  auto state_ptrs = std::vector<std::unique_ptr< ::bra::state >>(num_circuits);
-  for (auto& state_ptr: state_ptrs)
-    state_ptr = bra::make_nompi_state(interpreter.initial_state_value(), interpreter.num_qubits(), num_threads_per_process, seed);
-
+  auto nompi_states = std::vector< ::bra::nompi_state >{};
+  nompi_states.reserve(num_circuits);
   for (auto circuit_index = 0; circuit_index < static_cast<int>(num_circuits); ++circuit_index)
-    interpreter.apply_circuit(*state_ptrs[circuit_index], circuit_index);
+    nompi_states.emplace_back(interpreter.initial_state_value(), interpreter.num_qubits(), num_threads_per_process, seed, circuit_index);
+
+  while (true)
+  {
+    for (auto circuit_index = 0; circuit_index < static_cast<int>(num_circuits); ++circuit_index)
+      if (not nompi_states[circuit_index].is_waiting())
+        interpreter.apply_circuit(nompi_states[circuit_index], circuit_index);
+
+    using std::begin;
+    using std::end;
+    if (std::none_of(begin(nompi_states), end(nompi_states), [](::bra::nompi_state const& state) { return state.is_waiting(); }))
+      break;
+
+    auto is_inner_product_all = true;
+    auto is_inner_product_all_op = true;
+    auto is_fidelity_all = true;
+    auto is_fidelity_all_op = true;
+    for (auto circuit_index = 0; circuit_index < static_cast<int>(num_circuits); ++circuit_index)
+    {
+      if (not nompi_states[circuit_index].is_waiting())
+      {
+        is_inner_product_all = false;
+        is_inner_product_all_op = false;
+        is_fidelity_all = false;
+        is_fidelity_all_op = false;
+        continue;
+      }
+
+      if (nompi_states[circuit_index].wait_reason().is_inner_product_all())
+      {
+        is_inner_product_all_op = false;
+        is_fidelity_all = false;
+        is_fidelity_all_op = false;
+        continue;
+      }
+      else if (nompi_states[circuit_index].wait_reason().is_inner_product_all_op())
+      {
+        is_inner_product_all = false;
+        is_fidelity_all = false;
+        is_fidelity_all_op = false;
+        continue;
+      }
+      else if (nompi_states[circuit_index].wait_reason().is_fidelity_all())
+      {
+        is_inner_product_all = false;
+        is_inner_product_all_op = false;
+        is_fidelity_all_op = false;
+        continue;
+      }
+      else if (nompi_states[circuit_index].wait_reason().is_fidelity_all_op())
+      {
+        is_inner_product_all = false;
+        is_inner_product_all_op = false;
+        is_fidelity_all = false;
+        continue;
+      }
+
+      is_inner_product_all = false;
+      is_inner_product_all_op = false;
+      is_fidelity_all = false;
+      is_fidelity_all_op = false;
+
+      if (nompi_states[circuit_index].wait_reason().is_inner_product())
+      {
+        auto const other_circuit_index = nompi_states[circuit_index].wait_reason().other_circuit_index();
+        if (not nompi_states[other_circuit_index].is_waiting())
+          continue;
+
+        if (nompi_states[other_circuit_index].wait_reason().is_inner_product() and nompi_states[other_circuit_index].wait_reason().other_circuit_index() == circuit_index)
+        {
+          ::bra::inner_product(nompi_states[circuit_index], nompi_states[other_circuit_index]);
+
+          nompi_states[circuit_index].cancel_waiting();
+          nompi_states[other_circuit_index].cancel_waiting();
+
+          continue;
+        }
+      }
+      else if (nompi_states[circuit_index].wait_reason().is_inner_product_op())
+      {
+        auto const other_circuit_index = nompi_states[circuit_index].wait_reason().other_circuit_index();
+        if (not nompi_states[other_circuit_index].is_waiting())
+          continue;
+
+        if (nompi_states[other_circuit_index].wait_reason().is_inner_product_op() and nompi_states[other_circuit_index].wait_reason().other_circuit_index() == circuit_index)
+        {
+          ::bra::inner_product_op(
+            nompi_states[circuit_index], nompi_states[other_circuit_index],
+            nompi_states[circuit_index].wait_reason().operator_literal_or_variable_name(),
+            nompi_states[circuit_index].wait_reason().operated_qubits());
+
+          nompi_states[circuit_index].cancel_waiting();
+          nompi_states[other_circuit_index].cancel_waiting();
+
+          continue;
+        }
+      }
+      else if (nompi_states[circuit_index].wait_reason().is_fidelity())
+      {
+        auto const other_circuit_index = nompi_states[circuit_index].wait_reason().other_circuit_index();
+        if (not nompi_states[other_circuit_index].is_waiting())
+          continue;
+
+        if (nompi_states[other_circuit_index].wait_reason().is_fidelity() and nompi_states[other_circuit_index].wait_reason().other_circuit_index() == circuit_index)
+        {
+          ::bra::fidelity(nompi_states[circuit_index], nompi_states[other_circuit_index]);
+
+          nompi_states[circuit_index].cancel_waiting();
+          nompi_states[other_circuit_index].cancel_waiting();
+
+          continue;
+        }
+      }
+      else if (nompi_states[circuit_index].wait_reason().is_fidelity_op())
+      {
+        auto const other_circuit_index = nompi_states[circuit_index].wait_reason().other_circuit_index();
+        if (not nompi_states[other_circuit_index].is_waiting())
+          continue;
+
+        if (nompi_states[other_circuit_index].wait_reason().is_fidelity_op() and nompi_states[other_circuit_index].wait_reason().other_circuit_index() == circuit_index)
+        {
+          ::bra::fidelity_op(
+            nompi_states[circuit_index], nompi_states[other_circuit_index],
+            nompi_states[circuit_index].wait_reason().operator_literal_or_variable_name(),
+            nompi_states[circuit_index].wait_reason().operated_qubits());
+
+          nompi_states[circuit_index].cancel_waiting();
+          nompi_states[other_circuit_index].cancel_waiting();
+
+          continue;
+        }
+      }
+    }
+
+    if (is_inner_product_all)
+    {
+      ::bra::inner_product_all(nompi_states);
+
+      for (auto& state: nompi_states)
+        state.cancel_waiting();
+
+      continue;
+    }
+    else if (is_inner_product_all_op)
+    {
+      ::bra::inner_product_all_op(
+        nompi_states,
+        nompi_states.front().wait_reason().operator_literal_or_variable_name(),
+        nompi_states.front().wait_reason().operated_qubits());
+
+      for (auto& state: nompi_states)
+        state.cancel_waiting();
+
+      continue;
+    }
+    else if (is_fidelity_all)
+    {
+      ::bra::fidelity_all(nompi_states);
+
+      for (auto& state: nompi_states)
+        state.cancel_waiting();
+
+      continue;
+    }
+    else if (is_fidelity_all_op)
+    {
+      ::bra::fidelity_all_op(
+        nompi_states,
+        nompi_states.front().wait_reason().operator_literal_or_variable_name(),
+        nompi_states.front().wait_reason().operated_qubits());
+
+      for (auto& state: nompi_states)
+        state.cancel_waiting();
+
+      continue;
+    }
+  }
 #endif // BRA_NO_MPI
 }
 
