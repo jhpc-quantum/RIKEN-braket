@@ -162,7 +162,7 @@ The instruction set supported by *bra* is as follows[^1].
 * `ESWAP t1 t2 theta`: the exponential SWAP gate $\exp(\mathrm{i} \theta P) = I \cos \theta + \mathrm{i} P \sin \theta$ operated on qubits $t_1$ and $t_2$.
 * `CCCCESWAP c1 c2 c3 c4 t1 t2 theta` or `C4ESWAP c1 c2 c3 c4 t1 t2 theta`: the controlled exponential SWAP gate. Qubits $c_1$, ..., $c_4$ are control qubits, and qubits $t_1$ and $t_2$ are target qubits. If you use two control qubits, use `CCESWAP c1 c2 t1 t2 theta` or `C2ESWAP c1 c2 t1 t2 theta` instead.
 * `DO MEASUREMENT [p]`: computes and prints the expectation values of all qubits. The integer value $p$ specifies precision of outputs. If $p$ is not specified, the precision is assumed to be 3. If $p$ is negative, the precision is assume to be $-p$, and the floating values are outputted in a general form. System default is used if $p=0$. `BEGIN MEASUREMENT` can be used but it is deprecated.
-* `DO AMPLITUDES`: prints the amplitudes of the state vector.
+* `DO AMPLITUDES [n1 n2 ...]`: prints the amplitudes of the state vector. Indices can be specified by `n1`, `n2`, ..., while all amplitudes are outputed if no indices are specified.
 * `GENERATE EVENTS n seed`: computes the probabilities of each of the basis states and exits. It generates $n$ events by using random number generator with the initial seed `seed` and prints out the states according to these probabilites.
 * `M i`: projective measurement on qubit $i$. Its result is assigned to `:OUTCOME` AND `:OUTCOME:i`.
 * `CIRCUITS n`: specifies the number of quantum circuits. This should be placed before the `QUBITS` instruction. If this `CIRCUITS` instruction is omitted, the number of circuits is assumed to be 1.
