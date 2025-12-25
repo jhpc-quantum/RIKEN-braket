@@ -186,6 +186,8 @@ namespace bra
     void do_expectation_value(std::string const& operator_literal_or_variable_name, std::vector<qubit_type> const& operated_qubits) override;
     void do_inner_product(std::string const& remote_circuit_index_or_all) override;
     void do_inner_product(std::string const& remote_circuit_index_or_all, std::string const& operator_literal_or_variable_name, std::vector<qubit_type> const& operated_qubits) override;
+    void do_fidelity(std::string const& remote_circuit_index_or_all) override;
+    void do_fidelity(std::string const& remote_circuit_index_or_all, std::string const& operator_literal_or_variable_name, std::vector<qubit_type> const& operated_qubits) override;
     void do_shor_box(
       state_integer_type const divisor, state_integer_type const base,
       std::vector<qubit_type> const& exponent_qubits,

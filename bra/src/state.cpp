@@ -1876,6 +1876,26 @@ namespace bra
     return *this;
   }
 
+  state& state::fidelity(std::string const& remote_circuit_index_or_all)
+  {
+    if (is_in_fusion_)
+      throw ::bra::unsupported_fused_gate_error{"INNER PRODUCT"};
+
+    do_fidelity(remote_circuit_index_or_all);
+
+    return *this;
+  }
+
+  state& state::fidelity(std::string const& remote_circuit_index_or_all, std::string const& operator_literal_or_variable_name, std::vector<qubit_type> const& operated_qubits)
+  {
+    if (is_in_fusion_)
+      throw ::bra::unsupported_fused_gate_error{"INNER PRODUCT"};
+
+    do_fidelity(remote_circuit_index_or_all, operator_literal_or_variable_name, operated_qubits);
+
+    return *this;
+  }
+
   state& state::shor_box(bit_integer_type const num_exponent_qubits, state_integer_type const divisor, state_integer_type const base)
   {
     if (is_in_fusion_)

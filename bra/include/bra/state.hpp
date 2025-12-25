@@ -182,7 +182,14 @@ namespace bra
 
   class wait_reason
   {
-    int status_; // 0: no_wait, 1: inner_product, 2: inner_product_all, 3: inner_product_op, 4: inner_product_all_op
+    enum class status_t : int
+    {
+      no_wait = 0,
+      inner_product, inner_product_all, inner_product_op, inner_product_all_op,
+      fidelity, fidelity_all, fidelity_op, fidelity_all_op
+    };
+
+    status_t status_;
     int other_circuit_index_;
     std::string operator_literal_or_variable_name_;
     std::vector< ::bra::qubit_type > operated_qubits_;
@@ -193,19 +200,23 @@ namespace bra
     struct inner_product_all_t { };
     struct inner_product_op_t { };
     struct inner_product_all_op_t { };
+    struct fidelity_t { };
+    struct fidelity_all_t { };
+    struct fidelity_op_t { };
+    struct fidelity_all_op_t { };
 
     wait_reason(no_wait_t const)
-      : status_{0}, other_circuit_index_{},
+      : status_{status_t::no_wait}, other_circuit_index_{},
         operator_literal_or_variable_name_{}, operated_qubits_{}
     { }
 
     wait_reason(inner_product_t const, int const other_circuit_index)
-      : status_{1}, other_circuit_index_{other_circuit_index},
+      : status_{status_t::inner_product}, other_circuit_index_{other_circuit_index},
         operator_literal_or_variable_name_{}, operated_qubits_{}
     { }
 
     wait_reason(inner_product_all_t const)
-      : status_{2}, other_circuit_index_{},
+      : status_{status_t::inner_product_all}, other_circuit_index_{},
         operator_literal_or_variable_name_{}, operated_qubits_{}
     { }
 
@@ -213,7 +224,7 @@ namespace bra
       inner_product_op_t const, int const other_circuit_index,
       std::string const& operator_literal_or_variable_name,
       std::vector<qubit_type> const& operated_qubits)
-      : status_{3}, other_circuit_index_{other_circuit_index},
+      : status_{status_t::inner_product_op}, other_circuit_index_{other_circuit_index},
         operator_literal_or_variable_name_{operator_literal_or_variable_name},
         operated_qubits_{operated_qubits}
     { }
@@ -222,15 +233,47 @@ namespace bra
       inner_product_all_op_t const,
       std::string const& operator_literal_or_variable_name,
       std::vector<qubit_type> const& operated_qubits)
-      : status_{4}, other_circuit_index_{},
+      : status_{status_t::inner_product_all_op}, other_circuit_index_{},
         operator_literal_or_variable_name_{operator_literal_or_variable_name},
         operated_qubits_{operated_qubits}
     { }
 
-    auto is_inner_product() const -> bool { return status_ == 1; };
-    auto is_inner_product_all() const -> bool { return status_ == 2; };
-    auto is_inner_product_op() const -> bool { return status_ == 3; };
-    auto is_inner_product_all_op() const -> bool { return status_ == 4; };
+    wait_reason(fidelity_t const, int const other_circuit_index)
+      : status_{status_t::fidelity}, other_circuit_index_{other_circuit_index},
+        operator_literal_or_variable_name_{}, operated_qubits_{}
+    { }
+
+    wait_reason(fidelity_all_t const)
+      : status_{status_t::fidelity_all}, other_circuit_index_{},
+        operator_literal_or_variable_name_{}, operated_qubits_{}
+    { }
+
+    wait_reason(
+      fidelity_op_t const, int const other_circuit_index,
+      std::string const& operator_literal_or_variable_name,
+      std::vector<qubit_type> const& operated_qubits)
+      : status_{status_t::fidelity_op}, other_circuit_index_{other_circuit_index},
+        operator_literal_or_variable_name_{operator_literal_or_variable_name},
+        operated_qubits_{operated_qubits}
+    { }
+
+    wait_reason(
+      fidelity_all_op_t const,
+      std::string const& operator_literal_or_variable_name,
+      std::vector<qubit_type> const& operated_qubits)
+      : status_{status_t::fidelity_all_op}, other_circuit_index_{},
+        operator_literal_or_variable_name_{operator_literal_or_variable_name},
+        operated_qubits_{operated_qubits}
+    { }
+
+    auto is_inner_product() const -> bool { return status_ == status_t::inner_product; };
+    auto is_inner_product_all() const -> bool { return status_ == status_t::inner_product_all; };
+    auto is_inner_product_op() const -> bool { return status_ == status_t::inner_product_op; };
+    auto is_inner_product_all_op() const -> bool { return status_ == status_t::inner_product_all_op; };
+    auto is_fidelity() const -> bool { return status_ == status_t::fidelity; };
+    auto is_fidelity_all() const -> bool { return status_ == status_t::fidelity_all; };
+    auto is_fidelity_op() const -> bool { return status_ == status_t::fidelity_op; };
+    auto is_fidelity_all_op() const -> bool { return status_ == status_t::fidelity_all_op; };
 
     auto other_circuit_index() const -> int { return other_circuit_index_; }
     auto operator_literal_or_variable_name() const -> std::string const& { return operator_literal_or_variable_name_; }
@@ -591,6 +634,8 @@ namespace bra
     state& expectation_value(std::string const& pauli_string_space, std::vector<qubit_type> const& operated_qubits);
     state& inner_product(std::string const& remote_circuit_index_or_all);
     state& inner_product(std::string const& remote_circuit_index_or_all, std::string const& pauli_string_space, std::vector<qubit_type> const& operated_qubits);
+    state& fidelity(std::string const& remote_circuit_index_or_all);
+    state& fidelity(std::string const& remote_circuit_index_or_all, std::string const& pauli_string_space, std::vector<qubit_type> const& operated_qubits);
     state& shor_box(bit_integer_type const num_exponent_qubits, state_integer_type const divisor, state_integer_type const base);
 
     state& begin_fusion();
@@ -864,6 +909,8 @@ namespace bra
     virtual void do_expectation_value(std::string const& pauli_string_space, std::vector<qubit_type> const& operated_qubits) = 0;
     virtual void do_inner_product(std::string const& remote_circuit_index_or_all) = 0;
     virtual void do_inner_product(std::string const& remote_circuit_index_or_all, std::string const& pauli_string_space, std::vector<qubit_type> const& operated_qubits) = 0;
+    virtual void do_fidelity(std::string const& remote_circuit_index_or_all) = 0;
+    virtual void do_fidelity(std::string const& remote_circuit_index_or_all, std::string const& pauli_string_space, std::vector<qubit_type> const& operated_qubits) = 0;
     virtual void do_shor_box(
       state_integer_type const divisor, state_integer_type const base,
       std::vector<qubit_type> const& exponent_qubits,

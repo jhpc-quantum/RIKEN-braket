@@ -397,6 +397,7 @@ namespace bra
     void add_shor_box(columns_type const& columns);
     void add_expectation_value(columns_type const& columns);
     void add_inner_product(columns_type const& columns);
+    void add_fidelity(columns_type const& columns);
     void add_clear(columns_type const& columns);
     void add_set(columns_type const& columns);
     void add_depolarizing(columns_type const& columns, std::string const& mnemonic);

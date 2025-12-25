@@ -118,6 +118,8 @@
 #include <bra/gate/expectation_value.hpp>
 #include <bra/gate/inner_product.hpp>
 #include <bra/gate/inner_product_with_op.hpp>
+#include <bra/gate/fidelity.hpp>
+#include <bra/gate/fidelity_with_op.hpp>
 #include <bra/gate/shor_box.hpp>
 #include <bra/gate/begin_fusion.hpp>
 #include <bra/gate/end_fusion.hpp>
@@ -743,6 +745,8 @@ namespace bra
         add_expectation_value(columns);
       else if (mnemonic == "INNERPROD")
         add_inner_product(columns);
+      else if (mnemonic == "FIDELITY")
+        add_fidelity(columns);
       else if (mnemonic == "CLEAR")
         add_clear(columns);
       else if (mnemonic == "SET")
@@ -3031,9 +3035,9 @@ namespace bra
   //
   // VAR H PAULISS
   // INNERPROD 1 H 0 1 2 3 4 5 ! calculate inner product between the present circuit #k and the circuit #1
-  //                           !   (<Psi_1|Psi_k> for the circuit #k and <Psi_k|Psi_1> for the circuit #1)
+  //                           !   (<Psi_1| [H |Psi_k>] for the circuit #k and [<Psi_k| H+] |Psi_1> for the circuit #1)
   // INNERPROD ALL H 0 1 2 3 4 5 ! calculate inner product between all pairs of the circuit #0 and the circuit #k
-  //                             !   (<Psi_k|Psi_0> for the circuit #k, which implies <Psi_0|Psi_0> for the circuit #0)
+  //                             !   (<Psi_k| [H |Psi_0>] for the circuit #k, which implies [<Psi_0| H+] |Psi_0> for the circuit #0)
   void interpreter::add_inner_product(interpreter::columns_type const& columns)
   {
     if (boost::size(columns) == 2u)
@@ -3065,6 +3069,52 @@ namespace bra
       largest_num_operated_qubits_ = std::max(static_cast< ::bra::bit_integer_type >(operated_qubits.size()), largest_num_operated_qubits_);
 
       circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::inner_product_with_op >(remote_circuit_index_or_all, operator_literal_or_variable_name, operated_qubits));
+    }
+    else
+      throw wrong_mnemonics_error{columns};
+  }
+
+  // FIDELITY 1 ! calculate fidelity between the present circuit #k and the circuit #1
+  //            !   (|<Psi_1|Psi_k>|^2 for the circuit #k and |<Psi_k|Psi_1>|^2 for the circuit #1)
+  // FIDELITY ALL ! calculate fidelity between all pairs of the circuit #0 and the circuit #k
+  //              !   (|<Psi_k|Psi_0>|^2 for the circuit #k, which implies |<Psi_0|Psi_0>|^2 for the circuit #0)
+  //
+  // VAR H PAULISS
+  // FIDELITY 1 H 0 1 2 3 4 5 ! calculate fidelity between the present circuit #k and the circuit #1
+  //                          !   (|<Psi_1| [H |Psi_k>]|^2 for the circuit #k and |[<Psi_k| H+] |Psi_1>|^2 for the circuit #1)
+  // FIDELITY ALL H 0 1 2 3 4 5 ! calculate fidelity between all pairs of the circuit #0 and the circuit #k
+  //                            !   (|<Psi_k| [H |Psi_0>]|^2 for the circuit #k, which implies |[<Psi_0| H+] |Psi_0>|^2 for the circuit #0)
+  void interpreter::add_fidelity(interpreter::columns_type const& columns)
+  {
+    if (boost::size(columns) == 2u)
+    {
+      using std::begin;
+      auto iter = begin(columns);
+
+      auto const& remote_circuit_index_or_all = *++iter;
+
+      circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::fidelity >(remote_circuit_index_or_all));
+    }
+    else if (boost::size(columns) >= 4u)
+    {
+      using std::begin;
+      auto iter = begin(columns);
+
+      auto const& remote_circuit_index_or_all = *++iter;
+
+      auto const& operator_literal_or_variable_name = *++iter;
+
+      using std::end;
+      auto const last = end(columns);
+      ++iter;
+      auto operated_qubits = std::vector< ::bra::qubit_type >{};
+      operated_qubits.reserve(last - iter);
+      for (; iter != last; ++iter)
+        operated_qubits.push_back(ket::make_qubit< ::bra::state_integer_type >(boost::lexical_cast< ::bra::bit_integer_type >(*iter)));
+
+      largest_num_operated_qubits_ = std::max(static_cast< ::bra::bit_integer_type >(operated_qubits.size()), largest_num_operated_qubits_);
+
+      circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::fidelity_with_op >(remote_circuit_index_or_all, operator_literal_or_variable_name, operated_qubits));
     }
     else
       throw wrong_mnemonics_error{columns};

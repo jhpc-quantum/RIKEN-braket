@@ -37,6 +37,20 @@ namespace bra
       std::string const& operator_literal_or_variable_name,
       std::vector< ::bra::qubit_type > const& operated_qubits);
 
+    friend void fidelity(nompi_state& state1, nompi_state& state2);
+
+    friend void fidelity_all(std::vector<nompi_state>& states);
+
+    friend void fidelity_op(
+      nompi_state& state1, nompi_state& state2,
+      std::string const& operator_literal_or_variable_name,
+      std::vector< ::bra::qubit_type > const& operated_qubits);
+
+    friend void fidelity_all_op(
+      std::vector<nompi_state>& states,
+      std::string const& operator_literal_or_variable_name,
+      std::vector< ::bra::qubit_type > const& operated_qubits);
+
     ket::utility::policy::parallel<unsigned int> parallel_policy_;
 
     using data_type = ::bra::data_type;
@@ -183,6 +197,8 @@ namespace bra
     void do_expectation_value(std::string const& operator_literal_or_variable_name, std::vector<qubit_type> const& operated_qubits) override;
     void do_inner_product(std::string const& circuit_index_or_all) override;
     void do_inner_product(std::string const& remote_circuit_index_or_all, std::string const& operator_literal_or_variable_name, std::vector<qubit_type> const& operated_qubits) override;
+    void do_fidelity(std::string const& remote_circuit_index_or_all) override;
+    void do_fidelity(std::string const& remote_circuit_index_or_all, std::string const& operator_literal_or_variable_name, std::vector<qubit_type> const& operated_qubits) override;
     void do_shor_box(
       state_integer_type const divisor, state_integer_type const base,
       std::vector<qubit_type> const& exponent_qubits,
@@ -358,6 +374,20 @@ namespace bra
     std::vector< ::bra::qubit_type > const& operated_qubits);
 
   void inner_product_all_op(
+    std::vector< ::bra::nompi_state >& states,
+    std::string const& operator_literal_or_variable_name,
+    std::vector< ::bra::qubit_type > const& operated_qubits);
+
+  void fidelity(nompi_state& state1, nompi_state& state2);
+
+  void fidelity_all(std::vector< ::bra::nompi_state >& states);
+
+  void fidelity_op(
+    nompi_state& state1, nompi_state& state2,
+    std::string const& operator_literal_or_variable_name,
+    std::vector< ::bra::qubit_type > const& operated_qubits);
+
+  void fidelity_all_op(
     std::vector< ::bra::nompi_state >& states,
     std::string const& operator_literal_or_variable_name,
     std::vector< ::bra::qubit_type > const& operated_qubits);

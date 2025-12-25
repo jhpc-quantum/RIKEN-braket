@@ -257,29 +257,52 @@ int main(int argc, char* argv[])
 
     auto is_inner_product_all = true;
     auto is_inner_product_all_op = true;
+    auto is_fidelity_all = true;
+    auto is_fidelity_all_op = true;
     for (auto circuit_index = 0; circuit_index < static_cast<int>(num_circuits); ++circuit_index)
     {
       if (not nompi_states[circuit_index].is_waiting())
       {
         is_inner_product_all = false;
         is_inner_product_all_op = false;
+        is_fidelity_all = false;
+        is_fidelity_all_op = false;
         continue;
       }
 
       if (nompi_states[circuit_index].wait_reason().is_inner_product_all())
       {
         is_inner_product_all_op = false;
+        is_fidelity_all = false;
+        is_fidelity_all_op = false;
         continue;
       }
-
-      if (nompi_states[circuit_index].wait_reason().is_inner_product_all_op())
+      else if (nompi_states[circuit_index].wait_reason().is_inner_product_all_op())
       {
         is_inner_product_all = false;
+        is_fidelity_all = false;
+        is_fidelity_all_op = false;
+        continue;
+      }
+      else if (nompi_states[circuit_index].wait_reason().is_fidelity_all())
+      {
+        is_inner_product_all = false;
+        is_inner_product_all_op = false;
+        is_fidelity_all_op = false;
+        continue;
+      }
+      else if (nompi_states[circuit_index].wait_reason().is_fidelity_all_op())
+      {
+        is_inner_product_all = false;
+        is_inner_product_all_op = false;
+        is_fidelity_all = false;
         continue;
       }
 
       is_inner_product_all = false;
       is_inner_product_all_op = false;
+      is_fidelity_all = false;
+      is_fidelity_all_op = false;
 
       if (nompi_states[circuit_index].wait_reason().is_inner_product())
       {
@@ -316,6 +339,41 @@ int main(int argc, char* argv[])
           continue;
         }
       }
+      else if (nompi_states[circuit_index].wait_reason().is_fidelity())
+      {
+        auto const other_circuit_index = nompi_states[circuit_index].wait_reason().other_circuit_index();
+        if (not nompi_states[other_circuit_index].is_waiting())
+          continue;
+
+        if (nompi_states[other_circuit_index].wait_reason().is_fidelity() and nompi_states[other_circuit_index].wait_reason().other_circuit_index() == circuit_index)
+        {
+          ::bra::fidelity(nompi_states[circuit_index], nompi_states[other_circuit_index]);
+
+          nompi_states[circuit_index].cancel_waiting();
+          nompi_states[other_circuit_index].cancel_waiting();
+
+          continue;
+        }
+      }
+      else if (nompi_states[circuit_index].wait_reason().is_fidelity_op())
+      {
+        auto const other_circuit_index = nompi_states[circuit_index].wait_reason().other_circuit_index();
+        if (not nompi_states[other_circuit_index].is_waiting())
+          continue;
+
+        if (nompi_states[other_circuit_index].wait_reason().is_fidelity_op() and nompi_states[other_circuit_index].wait_reason().other_circuit_index() == circuit_index)
+        {
+          ::bra::fidelity_op(
+            nompi_states[circuit_index], nompi_states[other_circuit_index],
+            nompi_states[circuit_index].wait_reason().operator_literal_or_variable_name(),
+            nompi_states[circuit_index].wait_reason().operated_qubits());
+
+          nompi_states[circuit_index].cancel_waiting();
+          nompi_states[other_circuit_index].cancel_waiting();
+
+          continue;
+        }
+      }
     }
 
     if (is_inner_product_all)
@@ -330,6 +388,27 @@ int main(int argc, char* argv[])
     else if (is_inner_product_all_op)
     {
       ::bra::inner_product_all_op(
+        nompi_states,
+        nompi_states.front().wait_reason().operator_literal_or_variable_name(),
+        nompi_states.front().wait_reason().operated_qubits());
+
+      for (auto& state: nompi_states)
+        state.cancel_waiting();
+
+      continue;
+    }
+    else if (is_fidelity_all)
+    {
+      ::bra::fidelity_all(nompi_states);
+
+      for (auto& state: nompi_states)
+        state.cancel_waiting();
+
+      continue;
+    }
+    else if (is_fidelity_all_op)
+    {
+      ::bra::fidelity_all_op(
         nompi_states,
         nompi_states.front().wait_reason().operator_literal_or_variable_name(),
         nompi_states.front().wait_reason().operated_qubits());
