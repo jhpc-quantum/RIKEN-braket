@@ -1,4 +1,5 @@
 #include <string>
+#include <vector>
 #include <ios>
 #include <iomanip>
 #include <sstream>
@@ -9,6 +10,7 @@
 
 #include <bra/gate/gate.hpp>
 #include <bra/gate/amplitudes.hpp>
+#include <bra/types.hpp>
 #include <bra/state.hpp>
 
 
@@ -19,19 +21,27 @@ namespace bra
     std::string const amplitudes::name_ = "AMPLITUDES";
 
 #ifndef BRA_NO_MPI
-    amplitudes::amplitudes(yampi::rank const root)
-      : ::bra::gate::gate{}, root_{root}
+    amplitudes::amplitudes(yampi::rank const root, std::vector< ::bra::state_integer_type > const& amplitude_indices)
+      : ::bra::gate::gate{}, root_{root}, amplitude_indices_{amplitude_indices}
+    { }
+
+    amplitudes::amplitudes(yampi::rank const root, std::vector< ::bra::state_integer_type >&& amplitude_indices)
+      : ::bra::gate::gate{}, root_{root}, amplitude_indices_{std::move(amplitude_indices)}
     { }
 
     ::bra::state& amplitudes::do_apply(::bra::state& state) const
-    { return state.amplitudes(root_); }
+    { return state.amplitudes(root_, amplitude_indices_); }
 #else // BRA_NO_MPI
-    amplitudes::amplitudes()
-      : ::bra::gate::gate{}
+    amplitudes::amplitudes(std::vector< ::bra::state_integer_type > const& amplitude_indices)
+      : ::bra::gate::gate{}, amplitude_indices_{amplitude_indices}
+    { }
+
+    amplitudes::amplitudes(std::vector< ::bra::state_integer_type >&& amplitude_indices)
+      : ::bra::gate::gate{}, amplitude_indices_{std::move(amplitude_indices)}
     { }
 
     ::bra::state& amplitudes::do_apply(::bra::state& state) const
-    { return state.amplitudes(); }
+    { return state.amplitudes(amplitude_indices_); }
 #endif // BRA_NO_MPI
 
     std::string const& amplitudes::do_name() const { return name_; }

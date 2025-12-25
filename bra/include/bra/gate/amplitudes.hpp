@@ -2,6 +2,7 @@
 # define BRA_GATE_AMPLITUDES_HPP
 
 # include <string>
+# include <vector>
 # include <iosfwd>
 
 # ifndef BRA_NO_MPI
@@ -9,6 +10,7 @@
 # endif
 
 # include <bra/gate/gate.hpp>
+# include <bra/types.hpp>
 # include <bra/state.hpp>
 
 
@@ -22,14 +24,17 @@ namespace bra
 # ifndef BRA_NO_MPI
       yampi::rank root_;
 # endif
+      std::vector< ::bra::state_integer_type > amplitude_indices_;
 
       static std::string const name_;
 
      public:
 # ifndef BRA_NO_MPI
-      explicit amplitudes(yampi::rank const root);
+      explicit amplitudes(yampi::rank const root, std::vector< ::bra::state_integer_type > const& amplitude_indices);
+      explicit amplitudes(yampi::rank const root, std::vector< ::bra::state_integer_type >&& amplitude_indices);
 # else
-      amplitudes();
+      amplitudes(std::vector< ::bra::state_integer_type > const& amplitude_indices);
+      amplitudes(std::vector< ::bra::state_integer_type >&& amplitude_indices);
 # endif
 
       ~amplitudes() = default;

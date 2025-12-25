@@ -185,7 +185,7 @@ namespace bra
     ket::gate::outcome do_projective_measurement(
       qubit_type const qubit, yampi::rank const root) override;
     void do_expectation_values(yampi::rank const root) override;
-    void do_amplitudes(yampi::rank const root) override;
+    void do_amplitudes(yampi::rank const root, std::vector< ::bra::state_integer_type > const& amplitude_indices) override;
     void do_measure(yampi::rank const root) override;
     void do_generate_events(yampi::rank const root, int const num_events, int const seed) override;
     void do_expectation_value(std::string const& operator_literal_or_variable_name, std::vector<qubit_type> const& operated_qubits) override;

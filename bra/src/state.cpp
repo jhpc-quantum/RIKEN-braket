@@ -1590,7 +1590,7 @@ namespace bra
     return *this;
   }
 
-  state& state::amplitudes(yampi::rank const root)
+  state& state::amplitudes(yampi::rank const root, std::vector< ::bra::state_integer_type > const& amplitude_indices)
   {
     if (is_in_fusion_)
       throw ::bra::unsupported_fused_gate_error{"AMPLITUDES"};
@@ -1605,7 +1605,7 @@ namespace bra
     }
     last_processed_time_ = operation_finish_time;
 
-    do_amplitudes(root);
+    do_amplitudes(root, amplitude_indices);
 
     auto const amplitudes_finish_time = BRA_clock::now(environment_);
     if (circuit_communicator_.rank(environment_) == root)
@@ -1763,7 +1763,7 @@ namespace bra
     return *this;
   }
 
-  state& state::amplitudes()
+  state& state::amplitudes(std::vector< ::bra::state_integer_type > const& amplitude_indices)
   {
     if (is_in_fusion_)
       throw ::bra::unsupported_fused_gate_error{"AMPLITUDES"};
@@ -1775,7 +1775,7 @@ namespace bra
     std::cout << oss.str() << std::flush;
     last_processed_time_ = operation_finish_time;
 
-    do_amplitudes();
+    do_amplitudes(amplitude_indices);
 
     auto const amplitudes_finish_time = BRA_clock::now();
     oss.str("");
