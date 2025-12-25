@@ -3,6 +3,7 @@
 
 # ifdef BRA_NO_MPI
 #   include <vector>
+#   include <string>
 #   include <memory>
 
 #   include <ket/gate/projective_measurement.hpp>
@@ -12,6 +13,7 @@
 #   include <ket/utility/integer_exp2.hpp>
 #   include <ket/utility/parallel/loop_n.hpp>
 
+#   include <bra/types.hpp>
 #   include <bra/state.hpp>
 #   include <bra/fused_gate/fused_gate.hpp>
 
@@ -21,6 +23,20 @@ namespace bra
   class nompi_state final
     : public ::bra::state
   {
+    friend void inner_product(nompi_state& state1, nompi_state& state2);
+
+    friend void inner_product_all(std::vector<nompi_state>& states);
+
+    friend void inner_product_op(
+      nompi_state& state1, nompi_state& state2,
+      std::string const& operator_literal_or_variable_name,
+      std::vector< ::bra::qubit_type > const& operated_qubits);
+
+    friend void inner_product_all_op(
+      std::vector<nompi_state>& states,
+      std::string const& operator_literal_or_variable_name,
+      std::vector< ::bra::qubit_type > const& operated_qubits);
+
     ket::utility::policy::parallel<unsigned int> parallel_policy_;
 
     using data_type = ::bra::data_type;
@@ -40,11 +56,13 @@ namespace bra
     std::vector<std::unique_ptr< ::bra::fused_gate::fused_gate<cache_aware_fused_gate_iterator> >> cache_aware_fused_gates_; // related to begin_fusion/end_fusion
 #   endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
 
+    bool is_waiting_;
+
    public:
     nompi_state(
       ::bra::state::state_integer_type const initial_integer,
       unsigned int const total_num_qubits,
-      unsigned int const num_threads, ::bra::state::seed_type const seed);
+      unsigned int const num_threads, ::bra::state::seed_type const seed, int const circuit_index);
 
    private:
     data_type make_initial_data(
@@ -61,12 +79,15 @@ namespace bra
 
    public:
     ~nompi_state() = default;
-    nompi_state(nompi_state const&) = delete;
-    nompi_state& operator=(nompi_state const&) = delete;
-    nompi_state(nompi_state&&) = delete;
-    nompi_state& operator=(nompi_state&&) = delete;
+    nompi_state(nompi_state const&) = default;
+    nompi_state& operator=(nompi_state const&) = default;
+    nompi_state(nompi_state&&) = default;
+    nompi_state& operator=(nompi_state&&) = default;
 
    private:
+    auto do_is_waiting() const -> bool override;
+    auto do_cancel_waiting() -> void override;
+
     void do_i_gate(qubit_type const qubit) override;
     void do_ic_gate(control_qubit_type const control_qubit) override;
     void do_ii_gate(qubit_type const qubit1, qubit_type const qubit2) override;
@@ -160,6 +181,8 @@ namespace bra
     void do_measure() override;
     void do_generate_events(int const num_events, int const seed) override;
     void do_expectation_value(std::string const& operator_literal_or_variable_name, std::vector<qubit_type> const& operated_qubits) override;
+    void do_inner_product(std::string const& circuit_index_or_all) override;
+    void do_inner_product(std::string const& remote_circuit_index_or_all, std::string const& operator_literal_or_variable_name, std::vector<qubit_type> const& operated_qubits) override;
     void do_shor_box(
       state_integer_type const divisor, state_integer_type const base,
       std::vector<qubit_type> const& exponent_qubits,
@@ -325,15 +348,19 @@ namespace bra
       std::vector<control_qubit_type> const& control_qubits) override;
   }; // class nompi_state
 
-  inline std::unique_ptr< ::bra::state > make_nompi_state(
-    ::bra::state::state_integer_type const initial_integer,
-    ::bra::state::bit_integer_type const total_num_qubits,
-    unsigned int const num_threads,
-    ::bra::state::seed_type const seed)
-  {
-    return std::unique_ptr< ::bra::state >{
-      new ::bra::nompi_state{initial_integer, total_num_qubits, num_threads, seed}};
-  }
+  void inner_product(nompi_state& state1, nompi_state& state2);
+
+  void inner_product_all(std::vector< ::bra::nompi_state >& states);
+
+  void inner_product_op(
+    nompi_state& state1, nompi_state& state2,
+    std::string const& operator_literal_or_variable_name,
+    std::vector< ::bra::qubit_type > const& operated_qubits);
+
+  void inner_product_all_op(
+    std::vector< ::bra::nompi_state >& states,
+    std::string const& operator_literal_or_variable_name,
+    std::vector< ::bra::qubit_type > const& operated_qubits);
 } // namespace bra
 
 

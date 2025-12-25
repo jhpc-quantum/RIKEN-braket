@@ -1,4 +1,5 @@
 #ifdef BRA_NO_MPI
+# include <cmath>
 # include <iostream>
 # include <sstream>
 # include <vector>
@@ -8,6 +9,8 @@
 # include <numeric>
 # include <utility>
 
+# include <boost/algorithm/string/case_conv.hpp>
+
 # include <boost/preprocessor/arithmetic/dec.hpp>
 # include <boost/preprocessor/arithmetic/inc.hpp>
 # include <boost/preprocessor/comparison/equal.hpp>
@@ -15,6 +18,7 @@
 # include <boost/preprocessor/repetition/repeat.hpp>
 # include <boost/preprocessor/repetition/repeat_from_to.hpp>
 
+# include <ket/inner_product.hpp>
 # include <ket/gate/gate.hpp>
 # include <ket/gate/hadamard.hpp>
 # include <ket/gate/not_.hpp>
@@ -66,22 +70,24 @@ namespace bra
   nompi_state::nompi_state(
     ::bra::state::state_integer_type const initial_integer,
     unsigned int const total_num_qubits,
-    unsigned int num_threads, ::bra::state::seed_type const seed)
-    : ::bra::state{total_num_qubits, seed},
+    unsigned int num_threads, ::bra::state::seed_type const seed, int const circuit_index)
+    : ::bra::state{total_num_qubits, seed, circuit_index},
       parallel_policy_{num_threads},
       data_{make_initial_data(initial_integer, total_num_qubits)},
-      fused_gates_{}
+      fused_gates_{},
+      is_waiting_{false}
   { }
 # elif !defined(KET_USE_ON_CACHE_STATE_VECTOR)
   nompi_state::nompi_state(
     ::bra::state::state_integer_type const initial_integer,
     unsigned int const total_num_qubits,
-    unsigned int num_threads, ::bra::state::seed_type const seed)
-    : ::bra::state{total_num_qubits, seed},
+    unsigned int num_threads, ::bra::state::seed_type const seed, int const circuit_index)
+    : ::bra::state{total_num_qubits, seed, circuit_index},
       parallel_policy_{num_threads},
       data_{make_initial_data(initial_integer, total_num_qubits)},
       fused_gates_{},
-      cache_aware_fused_gates_{}
+      cache_aware_fused_gates_{},
+      is_waiting_{false}
   { }
 # else
 #   ifndef KET_DEFAULT_NUM_ON_CACHE_QUBITS
@@ -90,14 +96,21 @@ namespace bra
   nompi_state::nompi_state(
     ::bra::state::state_integer_type const initial_integer,
     unsigned int const total_num_qubits,
-    unsigned int num_threads, ::bra::state::seed_type const seed)
-    : ::bra::state{total_num_qubits, seed},
+    unsigned int num_threads, ::bra::state::seed_type const seed, int const circuit_index)
+    : ::bra::state{total_num_qubits, seed, circuit_index},
       parallel_policy_{num_threads},
       data_{make_initial_data(initial_integer, total_num_qubits)},
       on_cache_data_{::ket::utility::integer_exp2< ::bra::state_integer_type >(KET_DEFAULT_NUM_ON_CACHE_QUBITS)},
-      fused_gates_{}
+      fused_gates_{},
+      is_waiting_{false}
   { }
 # endif
+
+  auto nompi_state::do_is_waiting() const -> bool
+  { return is_waiting_; }
+
+  auto nompi_state::do_cancel_waiting() -> void
+  { is_waiting_ = false; }
 
   void nompi_state::do_i_gate(qubit_type const qubit)
   { }
@@ -1187,6 +1200,42 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
       throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
 # undef CASE_N
 # undef OPERATED_QUBITS
+    }
+  }
+
+  void nompi_state::do_inner_product(std::string const& remote_circuit_index_or_all)
+  {
+    if (std::isdigit(static_cast<unsigned char>(remote_circuit_index_or_all.front())))
+    {
+      auto const remote_circuit_index = boost::lexical_cast<int>(remote_circuit_index_or_all);
+      if (remote_circuit_index < 0 or remote_circuit_index == circuit_index_)
+        return;
+
+      is_waiting_ = true;
+      wait_reason_ = ::bra::wait_reason{::bra::wait_reason::inner_product_t{}, remote_circuit_index};
+    }
+    else if (boost::algorithm::to_upper_copy(remote_circuit_index_or_all) == "ALL")
+    {
+      is_waiting_ = true;
+      wait_reason_ = ::bra::wait_reason{::bra::wait_reason::inner_product_all_t{}};
+    }
+  }
+
+  void nompi_state::do_inner_product(std::string const& remote_circuit_index_or_all, std::string const& operator_literal_or_variable_name, std::vector<qubit_type> const& operated_qubits)
+  {
+    if (std::isdigit(static_cast<unsigned char>(remote_circuit_index_or_all.front())))
+    {
+      auto const remote_circuit_index = boost::lexical_cast<int>(remote_circuit_index_or_all);
+      if (remote_circuit_index < 0 or remote_circuit_index == circuit_index_)
+        return;
+
+      is_waiting_ = true;
+      wait_reason_ = ::bra::wait_reason{::bra::wait_reason::inner_product_op_t{}, remote_circuit_index, operator_literal_or_variable_name, operated_qubits};
+    }
+    else if (boost::algorithm::to_upper_copy(remote_circuit_index_or_all) == "ALL")
+    {
+      is_waiting_ = true;
+      wait_reason_ = ::bra::wait_reason{::bra::wait_reason::inner_product_all_op_t{}, operator_literal_or_variable_name, operated_qubits};
     }
   }
 
@@ -3461,6 +3510,261 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_DEC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
 # undef CASE_N
 # undef CONTROL_QUBITS
     }
+  }
+
+  void inner_product(::bra::nompi_state& state1, ::bra::nompi_state& state2)
+  {
+    auto const result
+      = ket::ranges::inner_product(state1.parallel_policy_, state1.data_, state2.data_);
+    state1.result_ = result;
+    using std::conj;
+    state2.result_ = conj(result);
+  }
+
+  void inner_product_all(std::vector< ::bra::nompi_state >& states)
+  {
+    using std::begin;
+    using std::end;
+    auto const state_first = begin(states);
+    auto const state_last = end(states);
+    for (auto iter = state_first; iter != state_last; ++iter)
+      iter->result_
+        = ket::ranges::inner_product(state_first->parallel_policy_, state_first->data_, iter->data_);
+  }
+
+  void inner_product_op(
+    ::bra::nompi_state& state1, ::bra::nompi_state& state2,
+    std::string const& operator_literal_or_variable_name,
+    std::vector< ::bra::qubit_type > const& operated_qubits)
+  {
+    auto const num_operated_qubits = operated_qubits.size();
+    if (num_operated_qubits > state1.total_num_qubits_)
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, state1.total_num_qubits_};
+
+    auto const pauli_string_space_element = state1.to_pauli_string_space(operator_literal_or_variable_name);
+
+    if (num_operated_qubits != pauli_string_space_element.num_qubits())
+      throw ::bra::wrong_pauli_string_length_error{num_operated_qubits, pauli_string_space_element.num_qubits()};
+
+    auto result = ::bra::complex_type{};
+    switch (num_operated_qubits)
+    {
+# define OPERATED_QUBITS(z, n, _) , operated_qubits[n]
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+#   define CASE_N(z, num_operated_qubits_, _) \
+     case num_operated_qubits_:\
+      result\
+        = ket::ranges::inner_product(\
+            state1.parallel_policy_, state1.data_, state2.data_,\
+            [&pauli_string_space_element](\
+              auto const ket_first, auto const bra_first, state_integer_type const index_wo_qubits,\
+              std::array< ::bra::qubit_type, num_operated_qubits_ > const& unsorted_qubits,\
+              std::array< ::bra::qubit_type, BOOST_PP_INC(num_operated_qubits_) > const& sorted_qubits_with_sentinel)\
+            {\
+              auto result = ::bra::complex_type{};\
+\
+              auto const last_index = (::bra::state_integer_type{1u} << num_operated_qubits_);\
+              for (auto bra_index = ::bra::state_integer_type{0u}; bra_index < last_index; ++bra_index)\
+              {\
+                using std::begin;\
+                using std::end;\
+                auto const bra_iter\
+                  = bra_first\
+                    + ket::gate::utility::index_with_qubits(\
+                        index_wo_qubits, bra_index,\
+                        begin(unsorted_qubits), end(unsorted_qubits), begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));\
+\
+                for (auto const& basis_scalar: pauli_string_space_element)\
+                {\
+                  auto const ket_index_coeff = ket::gate::utility::pauli_index_coeff< ::bra::complex_type >(basis_scalar.first, bra_index);\
+                  auto const ket_iter\
+                    = ket_first\
+                      + ket::gate::utility::index_with_qubits(\
+                          index_wo_qubits, ket_index_coeff.first,\
+                          begin(unsorted_qubits), end(unsorted_qubits), begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));\
+\
+                  using std::conj;\
+                  result += basis_scalar.second * (conj(*bra_iter) * (ket_index_coeff.second * *ket_iter));\
+                }\
+              }\
+\
+              return result;\
+            } BOOST_PP_REPEAT_ ## z(num_operated_qubits_, OPERATED_QUBITS, nil));\
+      state1.result_ = result;\
+      using std::conj;\
+      state2.result_ = conj(result);\
+      break;\
+
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+#   define CASE_N(z, num_operated_qubits_, _) \
+     case num_operated_qubits_:\
+      result\
+        = ket::ranges::inner_product(\
+            state1.parallel_policy_, state1.data_, state2.data_,\
+            [&pauli_string_space_element](\
+              auto const ket_first, auto const bra_first, state_integer_type const index_wo_qubits,\
+              std::array< ::bra::state_integer_type, num_operated_qubits_ > const& qubit_masks,\
+              std::array< ::bra::state_integer_type, BOOST_PP_INC(num_operated_qubits_) > const& index_masks)\
+            {\
+              auto result = ::bra::complex_type{};\
+\
+              auto const last_index = (::bra::state_integer_type{1u} << num_operated_qubits_);\
+              for (auto bra_index = ::bra::state_integer_type{0u}; bra_index < last_index; ++bra_index)\
+              {\
+                using std::begin;\
+                using std::end;\
+                auto const bra_iter\
+                  = bra_first\
+                    + ket::gate::utility::index_with_qubits(\
+                        index_wo_qubits, bra_index,\
+                        begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));\
+\
+                for (auto const& basis_scalar: pauli_string_space_element)\
+                {\
+                  auto const ket_index_coeff = ket::gate::utility::pauli_index_coeff< ::bra::complex_type >(basis_scalar.first, bra_index);\
+                  auto const ket_iter\
+                    = ket_first\
+                      + ket::gate::utility::index_with_qubits(\
+                          index_wo_qubits, ket_index_coeff.first,\
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));\
+\
+                  using std::conj;\
+                  result += basis_scalar.second * (conj(*bra_iter) * (ket_index_coeff.second * *ket_iter));\
+                }\
+              }\
+\
+              return result;\
+            } BOOST_PP_REPEAT_ ## z(num_operated_qubits_, OPERATED_QUBITS, nil));\
+      state1.result_ = result;\
+      using std::conj;\
+      state2.result_ = conj(result);\
+      break;\
+
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+
+BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
+     default:
+      throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
+# undef CASE_N
+# undef OPERATED_QUBITS
+    }
+  }
+
+  void inner_product_all_op(
+    std::vector< ::bra::nompi_state >& states,
+    std::string const& operator_literal_or_variable_name,
+    std::vector< ::bra::qubit_type > const& operated_qubits)
+  {
+    using std::begin;
+    using std::end;
+    auto const state_first = begin(states);
+    auto const state_last = end(states);
+
+    auto const num_operated_qubits = operated_qubits.size();
+    if (num_operated_qubits > state_first->total_num_qubits_)
+      throw ::bra::too_many_operated_qubits_error{num_operated_qubits, state_first->total_num_qubits_};
+
+    auto const pauli_string_space_element = state_first->to_pauli_string_space(operator_literal_or_variable_name);
+
+    if (num_operated_qubits != pauli_string_space_element.num_qubits())
+      throw ::bra::wrong_pauli_string_length_error{num_operated_qubits, pauli_string_space_element.num_qubits()};
+
+    for (auto iter = state_first; iter != state_last; ++iter)
+      switch (num_operated_qubits)
+      {
+# define OPERATED_QUBITS(z, n, _) , operated_qubits[n]
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+#   define CASE_N(z, num_operated_qubits_, _) \
+       case num_operated_qubits_:\
+        iter->result_\
+          = ket::ranges::inner_product(\
+              state_first->parallel_policy_, state_first->data_, iter->data_,\
+              [&pauli_string_space_element](\
+                auto const ket_first, auto const bra_first, state_integer_type const index_wo_qubits,\
+                std::array< ::bra::qubit_type, num_operated_qubits_ > const& unsorted_qubits,\
+                std::array< ::bra::qubit_type, BOOST_PP_INC(num_operated_qubits_) > const& sorted_qubits_with_sentinel)\
+              {\
+                auto result = ::bra::complex_type{};\
+\
+                auto const last_index = (::bra::state_integer_type{1u} << num_operated_qubits_);\
+                for (auto bra_index = ::bra::state_integer_type{0u}; bra_index < last_index; ++bra_index)\
+                {\
+                  using std::begin;\
+                  using std::end;\
+                  auto const bra_iter\
+                    = bra_first\
+                      + ket::gate::utility::index_with_qubits(\
+                          index_wo_qubits, bra_index,\
+                          begin(unsorted_qubits), end(unsorted_qubits), begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));\
+\
+                  for (auto const& basis_scalar: pauli_string_space_element)\
+                  {\
+                    auto const ket_index_coeff = ket::gate::utility::pauli_index_coeff< ::bra::complex_type >(basis_scalar.first, bra_index);\
+                    auto const ket_iter\
+                      = ket_first\
+                        + ket::gate::utility::index_with_qubits(\
+                            index_wo_qubits, ket_index_coeff.first,\
+                            begin(unsorted_qubits), end(unsorted_qubits), begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));\
+\
+                    using std::conj;\
+                    result += basis_scalar.second * (conj(*bra_iter) * (ket_index_coeff.second * *ket_iter));\
+                  }\
+                }\
+\
+                return result;\
+              } BOOST_PP_REPEAT_ ## z(num_operated_qubits_, OPERATED_QUBITS, nil));\
+        break;\
+
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+#   define CASE_N(z, num_operated_qubits_, _) \
+       case num_operated_qubits_:\
+        iter->result_\
+          = ket::ranges::inner_product(\
+              state_first->parallel_policy_, state_first->data_, iter->data_,\
+              [&pauli_string_space_element](\
+                auto const ket_first, auto const bra_first, state_integer_type const index_wo_qubits,\
+                std::array< ::bra::state_integer_type, num_operated_qubits_ > const& qubit_masks,\
+                std::array< ::bra::state_integer_type, BOOST_PP_INC(num_operated_qubits_) > const& index_masks)\
+              {\
+                auto result = ::bra::complex_type{};\
+\
+                auto const last_index = (::bra::state_integer_type{1u} << num_operated_qubits_);\
+                for (auto bra_index = ::bra::state_integer_type{0u}; bra_index < last_index; ++bra_index)\
+                {\
+                  using std::begin;\
+                  using std::end;\
+                  auto const bra_iter\
+                    = bra_first\
+                      + ket::gate::utility::index_with_qubits(\
+                          index_wo_qubits, bra_index,\
+                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));\
+\
+                  for (auto const& basis_scalar: pauli_string_space_element)\
+                  {\
+                    auto const ket_index_coeff = ket::gate::utility::pauli_index_coeff< ::bra::complex_type >(basis_scalar.first, bra_index);\
+                    auto const ket_iter\
+                      = ket_first\
+                        + ket::gate::utility::index_with_qubits(\
+                            index_wo_qubits, ket_index_coeff.first,\
+                            begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));\
+\
+                    using std::conj;\
+                    result += basis_scalar.second * (conj(*bra_iter) * (ket_index_coeff.second * *ket_iter));\
+                  }\
+                }\
+\
+                return result;\
+              } BOOST_PP_REPEAT_ ## z(num_operated_qubits_, OPERATED_QUBITS, nil));\
+        break;\
+
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+
+  BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
+       default:
+        throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
+# undef CASE_N
+# undef OPERATED_QUBITS
+      }
   }
 } // namespace bra
 

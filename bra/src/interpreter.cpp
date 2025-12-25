@@ -243,12 +243,12 @@ namespace bra
 
 #ifndef BRA_NO_MPI
   interpreter::interpreter()
-    : circuits_(1u), label_maps_(1u), num_qubits_{}, num_lqubits_{}, num_uqubits_{}, num_processes_per_unit_{1u},
+    : circuits_(1u), label_maps_(1u), first_indices_(1u, 0), num_qubits_{}, num_lqubits_{}, num_uqubits_{}, num_processes_per_unit_{1u},
       initial_state_value_{}, initial_permutation_{}, root_{}, circuit_index_{0}, is_in_circuit_{false}
   { }
 #else // BRA_NO_MPI
   interpreter::interpreter()
-    : circuits_(1u), label_maps_(1u), num_qubits_{},
+    : circuits_(1u), label_maps_(1u), first_indices_(1u, 0), num_qubits_{},
       initial_state_value_{}, circuit_index_{0}, is_in_circuit_{false}
   { }
 #endif // BRA_NO_MPI
@@ -260,7 +260,7 @@ namespace bra
     yampi::environment const& environment,
     yampi::rank const root, yampi::communicator const& total_communicator,
     size_type const num_reserved_gates)
-    : circuits_(1u), label_maps_(1u), num_qubits_{}, num_lqubits_{},
+    : circuits_(1u), label_maps_(1u), first_indices_(1u, 0), num_qubits_{}, num_lqubits_{},
       num_uqubits_{num_uqubits}, num_processes_per_unit_{num_processes_per_unit},
       largest_num_operated_qubits_{::bra::bit_integer_type{0u}},
       initial_state_value_{}, initial_permutation_{}, root_{root}, circuit_index_{0}, is_in_circuit_{false}
@@ -270,13 +270,13 @@ namespace bra
   }
 #else // BRA_NO_MPI
   interpreter::interpreter(std::istream& input_stream)
-    : circuits_(1u), label_maps_(1u), num_qubits_{},
+    : circuits_(1u), label_maps_(1u), first_indices_(1u, 0), num_qubits_{},
       largest_num_operated_qubits_{::bra::bit_integer_type{0u}},
       initial_state_value_{}, circuit_index_{0}, is_in_circuit_{false}
   { invoke(input_stream, size_type{0u}); }
 
   interpreter::interpreter(std::istream& input_stream, size_type const num_reserved_gates)
-    : circuits_(1u), label_maps_(1u), num_qubits_{},
+    : circuits_(1u), label_maps_(1u), first_indices_(1u, 0), num_qubits_{},
       largest_num_operated_qubits_{::bra::bit_integer_type{0u}},
       initial_state_value_{}, circuit_index_{0}, is_in_circuit_{false}
   { invoke(input_stream, num_reserved_gates); }
@@ -401,8 +401,10 @@ namespace bra
       using std::end;
       if (mnemonic == "CIRCUITS")
       {
-        circuits_.resize(read_num_circuits(columns));
-        label_maps_.resize(read_num_circuits(columns));
+        auto const num_circuits = read_num_circuits(columns);
+        circuits_.resize(num_circuits);
+        label_maps_.resize(num_circuits);
+        first_indices_.resize(num_circuits, 0);
         for (auto& circuit: circuits_)
           circuit.reserve(num_reserved_gates);
       }
@@ -809,12 +811,18 @@ namespace bra
 #endif // BRA_NO_MPI
   }
 
-  void interpreter::apply_circuit(::bra::state& state, int const circuit_index) const
+  void interpreter::apply_circuit(::bra::state& state, int const circuit_index)
   {
     auto const count = static_cast<int>(circuits_[circuit_index].size());
-    for (auto index = 0; index < count; ++index)
+    for (auto index = first_indices_[circuit_index]; index < count; ++index)
     {
       state << *(circuits_[circuit_index][index]);
+
+      if (state.is_waiting())
+      {
+        first_indices_[circuit_index] = index + 1;
+        break;
+      }
 
       if (!state.maybe_label())
         continue;

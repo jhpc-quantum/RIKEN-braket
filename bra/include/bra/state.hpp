@@ -180,6 +180,63 @@ namespace bra
       set_found_qubits(found_qubits, control_qubit);
   }
 
+  class wait_reason
+  {
+    int status_; // 0: no_wait, 1: inner_product, 2: inner_product_all, 3: inner_product_op, 4: inner_product_all_op
+    int other_circuit_index_;
+    std::string operator_literal_or_variable_name_;
+    std::vector< ::bra::qubit_type > operated_qubits_;
+
+   public:
+    struct no_wait_t { };
+    struct inner_product_t { };
+    struct inner_product_all_t { };
+    struct inner_product_op_t { };
+    struct inner_product_all_op_t { };
+
+    wait_reason(no_wait_t const)
+      : status_{0}, other_circuit_index_{},
+        operator_literal_or_variable_name_{}, operated_qubits_{}
+    { }
+
+    wait_reason(inner_product_t const, int const other_circuit_index)
+      : status_{1}, other_circuit_index_{other_circuit_index},
+        operator_literal_or_variable_name_{}, operated_qubits_{}
+    { }
+
+    wait_reason(inner_product_all_t const)
+      : status_{2}, other_circuit_index_{},
+        operator_literal_or_variable_name_{}, operated_qubits_{}
+    { }
+
+    wait_reason(
+      inner_product_op_t const, int const other_circuit_index,
+      std::string const& operator_literal_or_variable_name,
+      std::vector<qubit_type> const& operated_qubits)
+      : status_{3}, other_circuit_index_{other_circuit_index},
+        operator_literal_or_variable_name_{operator_literal_or_variable_name},
+        operated_qubits_{operated_qubits}
+    { }
+
+    wait_reason(
+      inner_product_all_op_t const,
+      std::string const& operator_literal_or_variable_name,
+      std::vector<qubit_type> const& operated_qubits)
+      : status_{4}, other_circuit_index_{},
+        operator_literal_or_variable_name_{operator_literal_or_variable_name},
+        operated_qubits_{operated_qubits}
+    { }
+
+    auto is_inner_product() const -> bool { return status_ == 1; };
+    auto is_inner_product_all() const -> bool { return status_ == 2; };
+    auto is_inner_product_op() const -> bool { return status_ == 3; };
+    auto is_inner_product_all_op() const -> bool { return status_ == 4; };
+
+    auto other_circuit_index() const -> int { return other_circuit_index_; }
+    auto operator_literal_or_variable_name() const -> std::string const& { return operator_literal_or_variable_name_; }
+    auto operated_qubits() const -> std::vector< ::bra::qubit_type > const& { return operated_qubits_; }
+  }; // class wait_reason
+
   class state
   {
    public:
@@ -216,6 +273,8 @@ namespace bra
     ::bra::complex_type result_; // return value of ket(::mpi)::expectation_value, ket(::mpi)::inner_product, or ket(::mpi)::fidelity
     bool is_in_fusion_; // related to begin_fusion/end_fusion
     std::vector< ::bra::found_qubit > found_qubits_; // related to begin_fusion/end_fusion
+    int circuit_index_;
+    ::bra::wait_reason wait_reason_;
     random_number_generator_type random_number_generator_;
 # ifndef BRA_NO_MPI
 
@@ -223,7 +282,6 @@ namespace bra
     ::bra::data_type buffer_;
     yampi::communicator const& circuit_communicator_;
     yampi::communicator const& intercircuit_communicator_;
-    int circuit_index_;
     std::vector<yampi::intercommunicator> const& intercommunicators_;
     yampi::environment const& environment_;
 # endif // BRA_NO_MPI
@@ -288,14 +346,14 @@ namespace bra
       std::vector<yampi::intercommunicator> const& intercommunicators,
       yampi::environment const& environment);
 # else // BRA_NO_MPI
-    state(bit_integer_type const total_num_qubits, seed_type const seed);
+    state(bit_integer_type const total_num_qubits, seed_type const seed, int const circuit_index);
 # endif // BRA_NO_MPI
 
     virtual ~state() = default;
-    state(state const&) = delete;
-    state& operator=(state const&) = delete;
-    state(state&&) = delete;
-    state& operator=(state&&) = delete;
+    state(state const&) = default;
+    state& operator=(state const&) = default;
+    state(state&&) = default;
+    state& operator=(state&&) = default;
 
     bit_integer_type const& total_num_qubits() const { return total_num_qubits_; }
 
@@ -341,6 +399,9 @@ namespace bra
     void invoke_jump_operation(std::string const& label, std::string const& lhs_variable_name, ::bra::compare_operation_type const op, std::string const& rhs_literal_or_variable_name);
     boost::optional<std::string> const& maybe_label() const { return maybe_label_; }
     void delete_label() { maybe_label_ = boost::none; }
+    auto is_waiting() const -> bool { return do_is_waiting(); }
+    ::bra::wait_reason const& wait_reason() const { return wait_reason_; }
+    void cancel_waiting() { do_cancel_waiting(); wait_reason_ = ::bra::wait_reason{::bra::wait_reason::no_wait_t{}}; }
 
 # ifndef BRA_NO_MPI
     unsigned int num_page_qubits() const { return do_num_page_qubits(); }
@@ -690,6 +751,9 @@ namespace bra
       qubit_type const target_qubit1, qubit_type const target_qubit2, std::vector<control_qubit_type> const& control_qubits);
 
    private:
+    virtual auto do_is_waiting() const -> bool { return false; }
+    virtual auto do_cancel_waiting() -> void { }
+
 # ifndef BRA_NO_MPI
     virtual unsigned int do_num_page_qubits() const = 0;
     virtual unsigned int do_num_pages() const = 0;

@@ -82,10 +82,10 @@ namespace bra
       yampi::environment const& environment);
 
     ~paged_simple_mpi_state() = default;
-    paged_simple_mpi_state(paged_simple_mpi_state const&) = delete;
-    paged_simple_mpi_state& operator=(paged_simple_mpi_state const&) = delete;
-    paged_simple_mpi_state(paged_simple_mpi_state&&) = delete;
-    paged_simple_mpi_state& operator=(paged_simple_mpi_state&&) = delete;
+    paged_simple_mpi_state(paged_simple_mpi_state const&) = default;
+    paged_simple_mpi_state& operator=(paged_simple_mpi_state const&) = default;
+    paged_simple_mpi_state(paged_simple_mpi_state&&) = default;
+    paged_simple_mpi_state& operator=(paged_simple_mpi_state&&) = default;
 
    private:
     unsigned int do_num_page_qubits() const override;

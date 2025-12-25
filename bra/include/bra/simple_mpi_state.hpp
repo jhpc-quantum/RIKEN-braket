@@ -76,10 +76,10 @@ namespace bra
       yampi::environment const& environment);
 
     ~simple_mpi_state() = default;
-    simple_mpi_state(simple_mpi_state const&) = delete;
-    simple_mpi_state& operator=(simple_mpi_state const&) = delete;
-    simple_mpi_state(simple_mpi_state&&) = delete;
-    simple_mpi_state& operator=(simple_mpi_state&&) = delete;
+    simple_mpi_state(simple_mpi_state const&) = default;
+    simple_mpi_state& operator=(simple_mpi_state const&) = default;
+    simple_mpi_state(simple_mpi_state&&) = default;
+    simple_mpi_state& operator=(simple_mpi_state&&) = default;
 
    private:
     data_type generate_initial_data(

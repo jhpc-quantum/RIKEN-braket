@@ -2,10 +2,14 @@
 #include <cstdlib>
 #include <iostream>
 #include <fstream>
+#include <vector>
 #include <string>
+#include <iterator>
+#include <algorithm>
 #include <utility>
 #include <random>
 #include <chrono>
+#include <memory>
 
 #include <cxxopts.hpp>
 
@@ -229,19 +233,113 @@ int main(int argc, char* argv[])
   auto interpreter = bra::interpreter{parse_result.count("file") ? possible_input_stream : std::cin};
   if (interpreter.largest_num_operated_qubits() > interpreter.num_qubits())
   {
-    if (is_io_root_rank)
-      std::cerr << "Error: the largest number of operated qubits " << interpreter.largest_num_operated_qubits() << " should be less than the number of qubits " << interpreter.num_qubits() << '\n' << options.help() << std::flush;
+    std::cerr << "Error: the largest number of operated qubits " << interpreter.largest_num_operated_qubits() << " should be less than the number of qubits " << interpreter.num_qubits() << '\n' << options.help() << std::flush;
     return EXIT_FAILURE;
   }
 
   auto const num_circuits = interpreter.num_circuits();
 
-  auto state_ptrs = std::vector<std::unique_ptr< ::bra::state >>(num_circuits);
-  for (auto& state_ptr: state_ptrs)
-    state_ptr = bra::make_nompi_state(interpreter.initial_state_value(), interpreter.num_qubits(), num_threads_per_process, seed);
-
+  auto nompi_states = std::vector< ::bra::nompi_state >{};
+  nompi_states.reserve(num_circuits);
   for (auto circuit_index = 0; circuit_index < static_cast<int>(num_circuits); ++circuit_index)
-    interpreter.apply_circuit(*state_ptrs[circuit_index], circuit_index);
+    nompi_states.emplace_back(interpreter.initial_state_value(), interpreter.num_qubits(), num_threads_per_process, seed, circuit_index);
+
+  while (true)
+  {
+    for (auto circuit_index = 0; circuit_index < static_cast<int>(num_circuits); ++circuit_index)
+      if (not nompi_states[circuit_index].is_waiting())
+        interpreter.apply_circuit(nompi_states[circuit_index], circuit_index);
+
+    using std::begin;
+    using std::end;
+    if (std::none_of(begin(nompi_states), end(nompi_states), [](::bra::nompi_state const& state) { return state.is_waiting(); }))
+      break;
+
+    auto is_inner_product_all = true;
+    auto is_inner_product_all_op = true;
+    for (auto circuit_index = 0; circuit_index < static_cast<int>(num_circuits); ++circuit_index)
+    {
+      if (not nompi_states[circuit_index].is_waiting())
+      {
+        is_inner_product_all = false;
+        is_inner_product_all_op = false;
+        continue;
+      }
+
+      if (nompi_states[circuit_index].wait_reason().is_inner_product_all())
+      {
+        is_inner_product_all_op = false;
+        continue;
+      }
+
+      if (nompi_states[circuit_index].wait_reason().is_inner_product_all_op())
+      {
+        is_inner_product_all = false;
+        continue;
+      }
+
+      is_inner_product_all = false;
+      is_inner_product_all_op = false;
+
+      if (nompi_states[circuit_index].wait_reason().is_inner_product())
+      {
+        auto const other_circuit_index = nompi_states[circuit_index].wait_reason().other_circuit_index();
+        if (not nompi_states[other_circuit_index].is_waiting())
+          continue;
+
+        if (nompi_states[other_circuit_index].wait_reason().is_inner_product() and nompi_states[other_circuit_index].wait_reason().other_circuit_index() == circuit_index)
+        {
+          ::bra::inner_product(nompi_states[circuit_index], nompi_states[other_circuit_index]);
+
+          nompi_states[circuit_index].cancel_waiting();
+          nompi_states[other_circuit_index].cancel_waiting();
+
+          continue;
+        }
+      }
+      else if (nompi_states[circuit_index].wait_reason().is_inner_product_op())
+      {
+        auto const other_circuit_index = nompi_states[circuit_index].wait_reason().other_circuit_index();
+        if (not nompi_states[other_circuit_index].is_waiting())
+          continue;
+
+        if (nompi_states[other_circuit_index].wait_reason().is_inner_product_op() and nompi_states[other_circuit_index].wait_reason().other_circuit_index() == circuit_index)
+        {
+          ::bra::inner_product_op(
+            nompi_states[circuit_index], nompi_states[other_circuit_index],
+            nompi_states[circuit_index].wait_reason().operator_literal_or_variable_name(),
+            nompi_states[circuit_index].wait_reason().operated_qubits());
+
+          nompi_states[circuit_index].cancel_waiting();
+          nompi_states[other_circuit_index].cancel_waiting();
+
+          continue;
+        }
+      }
+    }
+
+    if (is_inner_product_all)
+    {
+      ::bra::inner_product_all(nompi_states);
+
+      for (auto& state: nompi_states)
+        state.cancel_waiting();
+
+      continue;
+    }
+    else if (is_inner_product_all_op)
+    {
+      ::bra::inner_product_all_op(
+        nompi_states,
+        nompi_states.front().wait_reason().operator_literal_or_variable_name(),
+        nompi_states.front().wait_reason().operated_qubits());
+
+      for (auto& state: nompi_states)
+        state.cancel_waiting();
+
+      continue;
+    }
+  }
 #endif // BRA_NO_MPI
 }
 
