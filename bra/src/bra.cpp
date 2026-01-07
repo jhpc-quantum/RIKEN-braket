@@ -374,6 +374,72 @@ int main(int argc, char* argv[])
           continue;
         }
       }
+      else if (nompi_states[circuit_index].wait_reason().is_send_real_variable())
+      {
+        auto const other_circuit_index = nompi_states[circuit_index].wait_reason().other_circuit_index();
+        if (not nompi_states[other_circuit_index].is_waiting())
+          continue;
+
+        auto const num_elements = nompi_states[circuit_index].wait_reason().num_elements();
+        if (nompi_states[other_circuit_index].wait_reason().is_receive_real_variable()
+            and nompi_states[other_circuit_index].wait_reason().other_circuit_index() == circuit_index
+            and nompi_states[other_circuit_index].wait_reason().num_elements() == num_elements)
+        {
+          ::bra::send_real_variable(
+            nompi_states[circuit_index], nompi_states[circuit_index].wait_reason().variable_name(),
+            nompi_states[other_circuit_index], nompi_states[other_circuit_index].wait_reason().variable_name(),
+            num_elements);
+
+          nompi_states[circuit_index].cancel_waiting();
+          nompi_states[other_circuit_index].cancel_waiting();
+
+          continue;
+        }
+      }
+      else if (nompi_states[circuit_index].wait_reason().is_send_complex_variable())
+      {
+        auto const other_circuit_index = nompi_states[circuit_index].wait_reason().other_circuit_index();
+        if (not nompi_states[other_circuit_index].is_waiting())
+          continue;
+
+        auto const num_elements = nompi_states[circuit_index].wait_reason().num_elements();
+        if (nompi_states[other_circuit_index].wait_reason().is_receive_complex_variable()
+            and nompi_states[other_circuit_index].wait_reason().other_circuit_index() == circuit_index
+            and nompi_states[other_circuit_index].wait_reason().num_elements() == num_elements)
+        {
+          ::bra::send_complex_variable(
+            nompi_states[circuit_index], nompi_states[circuit_index].wait_reason().variable_name(),
+            nompi_states[other_circuit_index], nompi_states[other_circuit_index].wait_reason().variable_name(),
+            num_elements);
+
+          nompi_states[circuit_index].cancel_waiting();
+          nompi_states[other_circuit_index].cancel_waiting();
+
+          continue;
+        }
+      }
+      else if (nompi_states[circuit_index].wait_reason().is_send_int_variable())
+      {
+        auto const other_circuit_index = nompi_states[circuit_index].wait_reason().other_circuit_index();
+        if (not nompi_states[other_circuit_index].is_waiting())
+          continue;
+
+        auto const num_elements = nompi_states[circuit_index].wait_reason().num_elements();
+        if (nompi_states[other_circuit_index].wait_reason().is_receive_int_variable()
+            and nompi_states[other_circuit_index].wait_reason().other_circuit_index() == circuit_index
+            and nompi_states[other_circuit_index].wait_reason().num_elements() == num_elements)
+        {
+          ::bra::send_int_variable(
+            nompi_states[circuit_index], nompi_states[circuit_index].wait_reason().variable_name(),
+            nompi_states[other_circuit_index], nompi_states[other_circuit_index].wait_reason().variable_name(),
+            num_elements);
+
+          nompi_states[circuit_index].cancel_waiting();
+          nompi_states[other_circuit_index].cancel_waiting();
+
+          continue;
+        }
+      }
     }
 
     if (is_inner_product_all)

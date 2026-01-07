@@ -51,6 +51,21 @@ namespace bra
       std::string const& operator_literal_or_variable_name,
       std::vector< ::bra::qubit_type > const& operated_qubits);
 
+    friend void send_real_variable(
+      nompi_state const& source_state, std::string const& source_variable_name,
+      nompi_state& destination_state, std::string const& destination_variable_name,
+      int const num_elements);
+
+    friend void send_complex_variable(
+      nompi_state const& source_state, std::string const& source_variable_name,
+      nompi_state& destination_state, std::string const& destination_variable_name,
+      int const num_elements);
+
+    friend void send_int_variable(
+      nompi_state const& source_state, std::string const& source_variable_name,
+      nompi_state& destination_state, std::string const& destination_variable_name,
+      int const num_elements);
+
     ket::utility::policy::parallel<unsigned int> parallel_policy_;
 
     using data_type = ::bra::data_type;
@@ -70,7 +85,7 @@ namespace bra
     std::vector<std::unique_ptr< ::bra::fused_gate::fused_gate<cache_aware_fused_gate_iterator> >> cache_aware_fused_gates_; // related to begin_fusion/end_fusion
 #   endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
 
-    bool is_waiting_;
+    mutable bool is_waiting_;
 
    public:
     nompi_state(
@@ -101,6 +116,13 @@ namespace bra
    private:
     auto do_is_waiting() const -> bool override;
     auto do_cancel_waiting() -> void override;
+
+    auto do_send_real_variable(int const circuit_index, std::string const& variable_name, int const num_elements) const -> void override;
+    auto do_send_complex_variable(int const circuit_index, std::string const& variable_name, int const num_elements) const -> void override;
+    auto do_send_int_variable(int const circuit_index, std::string const& variable_name, int const num_elements) const -> void override;
+    auto do_receive_real_variable(int const circuit_index, std::string const& variable_name, int const num_elements) -> void override;
+    auto do_receive_complex_variable(int const circuit_index, std::string const& variable_name, int const num_elements) -> void override;
+    auto do_receive_int_variable(int const circuit_index, std::string const& variable_name, int const num_elements) -> void override;
 
     void do_i_gate(qubit_type const qubit) override;
     void do_ic_gate(control_qubit_type const control_qubit) override;
@@ -391,6 +413,21 @@ namespace bra
     std::vector< ::bra::nompi_state >& states,
     std::string const& operator_literal_or_variable_name,
     std::vector< ::bra::qubit_type > const& operated_qubits);
+
+  void send_real_variable(
+    nompi_state const& source_state, std::string const& source_variable_name,
+    nompi_state& destination_state, std::string const& destination_variable_name,
+    int const num_elements);
+
+  void send_complex_variable(
+    nompi_state const& source_state, std::string const& source_variable_name,
+    nompi_state& destination_state, std::string const& destination_variable_name,
+    int const num_elements);
+
+  void send_int_variable(
+    nompi_state const& source_state, std::string const& source_variable_name,
+    nompi_state& destination_state, std::string const& destination_variable_name,
+    int const num_elements);
 } // namespace bra
 
 

@@ -42,6 +42,8 @@
 #include <bra/gate/gate.hpp>
 #include <bra/gate/var_op.hpp>
 #include <bra/gate/let_op.hpp>
+#include <bra/gate/send_op.hpp>
+#include <bra/gate/receive_op.hpp>
 #include <bra/gate/print_op.hpp>
 #include <bra/gate/println_op.hpp>
 #include <bra/gate/jump_op.hpp>
@@ -457,6 +459,10 @@ namespace bra
         add_var(columns);
       else if (mnemonic == "LET")
         add_let(columns);
+      else if (mnemonic == "SEND")
+        add_send(columns);
+      else if (mnemonic == "RECEIVE")
+        add_receive(columns);
       else if (mnemonic == "PRINT")
         add_print(columns);
       else if (mnemonic == "PRINTLN")
@@ -2001,6 +2007,66 @@ namespace bra
                 : throw 1;
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::let_op >(lhs_variable_name, op, rhs_literal_or_variable_name));
+  }
+
+  // SEND 1 X REAL ! send value of a real variable X (X:0) to circuit #1
+  // SEND 2 NS:3 INT ! send value of a integer variable NS:3 to circuit #2
+  // SEND 3 ZS COMPLEX 4 ! send values of complex variables from ZS:0 to ZS:3 (half-open range [ZS:0, ZS:4)) to circuit #3
+  // SEND 4 XS:3 REAL 3 ! send values of real variables from ZS:3 to ZS:5 (half-open range [ZS:3, ZS:6)) to circuit #4
+  //   * PAULISS variables cannot be sent
+  void interpreter::add_send(interpreter::columns_type const& columns)
+  {
+    auto const column_size = boost::size(columns);
+    if (not (column_size == 4u or column_size == 5u))
+      throw wrong_mnemonics_error{columns};
+
+    using std::begin;
+    auto iter = begin(columns);
+    auto const destination_circuit_index = boost::lexical_cast<int>(*++iter);
+    auto const variable_name = boost::algorithm::to_upper_copy(*++iter);
+    auto const type_name = boost::algorithm::to_upper_copy(*++iter);
+    auto const num_elements = column_size == 4u ? 1 : boost::lexical_cast<int>(*++iter);
+
+    auto const type
+      = type_name == "REAL"
+        ? ::bra::variable_type::real
+        : type_name == "COMPLEX"
+          ? ::bra::variable_type::complex_
+          : type_name == "INT"
+            ? ::bra::variable_type::integer
+            : throw 1;
+
+    circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::send_op >(destination_circuit_index, variable_name, type, num_elements));
+  }
+
+  // RECEIVE 1 X REAL ! receive value of a real variable X (X:0) from circuit #1
+  // RECEIVE 2 NS:3 INT ! receive value of a integer variable NS:3 from circuit #2
+  // RECEIVE 3 ZS COMPLEX 4 ! receive values of complex variables from ZS:0 to ZS:3 (half-open range [ZS:0, ZS:4)) from circuit #3
+  // RECEIVE 4 XS:3 REAL 3 ! receive values of real variables from ZS:3 to ZS:5 (half-open range [ZS:3, ZS:6)) from circuit #4
+  //   * PAULISS variables cannot be received
+  void interpreter::add_receive(interpreter::columns_type const& columns)
+  {
+    auto const column_size = boost::size(columns);
+    if (not (column_size == 4u or column_size == 5u))
+      throw wrong_mnemonics_error{columns};
+
+    using std::begin;
+    auto iter = begin(columns);
+    auto const source_circuit_index = boost::lexical_cast<int>(*++iter);
+    auto const variable_name = boost::algorithm::to_upper_copy(*++iter);
+    auto const type_name = boost::algorithm::to_upper_copy(*++iter);
+    auto const num_elements = column_size == 4u ? 1 : boost::lexical_cast<int>(*++iter);
+
+    auto const type
+      = type_name == "REAL"
+        ? ::bra::variable_type::real
+        : type_name == "COMPLEX"
+          ? ::bra::variable_type::complex_
+          : type_name == "INT"
+            ? ::bra::variable_type::integer
+            : throw 1;
+
+    circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::receive_op >(source_circuit_index, variable_name, type, num_elements));
   }
 
   // PRINT X Y Z ! prints like "<value of X> <value of Y> <value of Z>"
