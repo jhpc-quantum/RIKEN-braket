@@ -92,6 +92,13 @@ namespace bra
       ::bra::state::state_integer_type const initial_integer,
       yampi::communicator const& circuit_communicator, yampi::environment const& environment) const;
 
+    auto do_send_real_variable(int const circuit_index, std::string const& variable_name, int const num_elements) const -> void override;
+    auto do_send_complex_variable(int const circuit_index, std::string const& variable_name, int const num_elements) const -> void override;
+    auto do_send_int_variable(int const circuit_index, std::string const& variable_name, int const num_elements) const -> void override;
+    auto do_receive_real_variable(int const circuit_index, std::string const& variable_name, int const num_elements) -> void override;
+    auto do_receive_complex_variable(int const circuit_index, std::string const& variable_name, int const num_elements) -> void override;
+    auto do_receive_int_variable(int const circuit_index, std::string const& variable_name, int const num_elements) -> void override;
+
     unsigned int do_num_page_qubits() const override;
     unsigned int do_num_pages() const override;
 

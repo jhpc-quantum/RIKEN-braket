@@ -442,9 +442,13 @@ namespace bra
     void invoke_jump_operation(std::string const& label, std::string const& lhs_variable_name, ::bra::compare_operation_type const op, std::string const& rhs_literal_or_variable_name);
     boost::optional<std::string> const& maybe_label() const { return maybe_label_; }
     void delete_label() { maybe_label_ = boost::none; }
+
     auto is_waiting() const -> bool { return do_is_waiting(); }
     ::bra::wait_reason const& wait_reason() const { return wait_reason_; }
     void cancel_waiting() { do_cancel_waiting(); wait_reason_ = ::bra::wait_reason{::bra::wait_reason::no_wait_t{}}; }
+
+    auto send_variable(int const destination_circuit_index, std::string const& variable_name, ::bra::variable_type const type, int const num_elements) const -> void;
+    auto receive_variable(int const source_circuit_index, std::string const& variable_name, ::bra::variable_type const type, int const num_elements) -> void;
 
 # ifndef BRA_NO_MPI
     unsigned int num_page_qubits() const { return do_num_page_qubits(); }
@@ -454,12 +458,20 @@ namespace bra
    protected:
     auto is_int_symbol(std::string const& symbol_name) const -> bool;
     auto to_int(std::string const& colon_separated_string) const -> int_type;
+    auto to_int_variable(std::string const& colon_separated_string) const -> int_type const&;
+    auto to_int_variable(std::string const& colon_separated_string) -> int_type&;
     auto is_real_symbol(std::string const& symbol_name) const -> bool;
     auto to_real(std::string const& colon_separated_string) const -> real_type;
+    auto to_real_variable(std::string const& colon_separated_string) const -> real_type const&;
+    auto to_real_variable(std::string const& colon_separated_string) -> real_type&;
     auto is_complex_symbol(std::string const& symbol_name) const -> bool;
     auto to_complex(std::string const& colon_separated_string) const -> complex_type;
+    auto to_complex_variable(std::string const& colon_separated_string) const -> complex_type const&;
+    auto to_complex_variable(std::string const& colon_separated_string) -> complex_type&;
     auto is_pauli_string_space_symbol(std::string const& symbol_name) const -> bool;
     auto to_pauli_string_space(std::string const& colon_separated_string) const -> ::bra::pauli_string_space;
+    auto to_pauli_string_space_variable(std::string const& colon_separated_string) const -> ::bra::pauli_string_space const&;
+    auto to_pauli_string_space_variable(std::string const& colon_separated_string) -> ::bra::pauli_string_space&;
 
    private:
     friend class real_visitor;
@@ -798,6 +810,13 @@ namespace bra
    private:
     virtual auto do_is_waiting() const -> bool { return false; }
     virtual auto do_cancel_waiting() -> void { }
+
+    virtual auto do_send_real_variable(int const destination_circuit_index, std::string const& variable_name, int const num_elements) const -> void = 0;
+    virtual auto do_send_complex_variable(int const destination_circuit_index, std::string const& variable_name, int const num_elements) const -> void = 0;
+    virtual auto do_send_int_variable(int const destination_circuit_index, std::string const& variable_name, int const num_elements) const -> void = 0;
+    virtual auto do_receive_real_variable(int const source_circuit_index, std::string const& variable_name, int const num_elements) -> void = 0;
+    virtual auto do_receive_complex_variable(int const source_circuit_index, std::string const& variable_name, int const num_elements) -> void = 0;
+    virtual auto do_receive_int_variable(int const source_circuit_index, std::string const& variable_name, int const num_elements) -> void = 0;
 
 # ifndef BRA_NO_MPI
     virtual unsigned int do_num_page_qubits() const = 0;

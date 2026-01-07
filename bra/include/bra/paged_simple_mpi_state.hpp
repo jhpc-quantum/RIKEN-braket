@@ -88,6 +88,13 @@ namespace bra
     paged_simple_mpi_state& operator=(paged_simple_mpi_state&&) = default;
 
    private:
+    auto do_send_real_variable(int const circuit_index, std::string const& variable_name, int const num_elements) const -> void override;
+    auto do_send_complex_variable(int const circuit_index, std::string const& variable_name, int const num_elements) const -> void override;
+    auto do_send_int_variable(int const circuit_index, std::string const& variable_name, int const num_elements) const -> void override;
+    auto do_receive_real_variable(int const circuit_index, std::string const& variable_name, int const num_elements) -> void override;
+    auto do_receive_complex_variable(int const circuit_index, std::string const& variable_name, int const num_elements) -> void override;
+    auto do_receive_int_variable(int const circuit_index, std::string const& variable_name, int const num_elements) -> void override;
+
     unsigned int do_num_page_qubits() const override;
     unsigned int do_num_pages() const override;
 

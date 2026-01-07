@@ -566,6 +566,26 @@ namespace bra
       throw ::bra::wrong_comparison_argument_error{lhs_variable_name, op, rhs_literal_or_variable_name};
   }
 
+  auto state::send_variable(int const destination_circuit_index, std::string const& variable_name, ::bra::variable_type const type, int const num_elements) const -> void
+  {
+    if (type == ::bra::variable_type::real)
+      do_send_real_variable(destination_circuit_index, variable_name, num_elements);
+    else if (type == ::bra::variable_type::complex_)
+      do_send_complex_variable(destination_circuit_index, variable_name, num_elements);
+    else if (type == ::bra::variable_type::integer)
+      do_send_int_variable(destination_circuit_index, variable_name, num_elements);
+  }
+
+  auto state::receive_variable(int const source_circuit_index, std::string const& variable_name, ::bra::variable_type const type, int const num_elements) -> void
+  {
+    if (type == ::bra::variable_type::real)
+      do_receive_real_variable(source_circuit_index, variable_name, num_elements);
+    else if (type == ::bra::variable_type::complex_)
+      do_receive_complex_variable(source_circuit_index, variable_name, num_elements);
+    else if (type == ::bra::variable_type::integer)
+      do_receive_int_variable(source_circuit_index, variable_name, num_elements);
+  }
+
   auto state::is_int_symbol(std::string const& symbol_name) const -> bool
   { return symbol_name == ":INT" or symbol_name == ":OUTCOME" or symbol_name == ":OUTCOMES"; }
 
@@ -631,6 +651,21 @@ namespace bra
       throw 1;
     }
 
+    return to_int_variable(colon_separated_string);
+  }
+
+  auto state::to_int_variable(std::string const& colon_separated_string) const -> int_type const&
+  {
+    auto const found_index = colon_separated_string.find(':');
+    if (found_index == std::string::npos)
+      return int_variables_.at(colon_separated_string).front();
+
+    using size_type = std::string::size_type;
+    return int_variables_.at(colon_separated_string.substr(size_type{0u}, found_index))[to_int(colon_separated_string.substr(found_index + size_type{1u}))];
+  }
+
+  auto state::to_int_variable(std::string const& colon_separated_string) -> int_type&
+  {
     auto const found_index = colon_separated_string.find(':');
     if (found_index == std::string::npos)
       return int_variables_.at(colon_separated_string).front();
@@ -748,6 +783,21 @@ namespace bra
       throw 1;
     }
 
+    return to_real_variable(colon_separated_string);
+  }
+
+  auto state::to_real_variable(std::string const& colon_separated_string) const -> real_type const&
+  {
+    auto const found_index = colon_separated_string.find(':');
+    if (found_index == std::string::npos)
+      return real_variables_.at(colon_separated_string).front();
+
+    using size_type = std::string::size_type;
+    return real_variables_.at(colon_separated_string.substr(size_type{0u}, found_index))[to_int(colon_separated_string.substr(found_index + size_type{1u}))];
+  }
+
+  auto state::to_real_variable(std::string const& colon_separated_string) -> real_type&
+  {
     auto const found_index = colon_separated_string.find(':');
     if (found_index == std::string::npos)
       return real_variables_.at(colon_separated_string).front();
@@ -810,6 +860,21 @@ namespace bra
       throw 1;
     }
 
+    return to_complex_variable(colon_separated_string);
+  }
+
+  auto state::to_complex_variable(std::string const& colon_separated_string) const -> complex_type const&
+  {
+    auto const found_index = colon_separated_string.find(':');
+    if (found_index == std::string::npos)
+      return complex_variables_.at(colon_separated_string).front();
+
+    using size_type = std::string::size_type;
+    return complex_variables_.at(colon_separated_string.substr(size_type{0u}, found_index))[to_int(colon_separated_string.substr(found_index + size_type{1u}))];
+  }
+
+  auto state::to_complex_variable(std::string const& colon_separated_string) -> complex_type&
+  {
     auto const found_index = colon_separated_string.find(':');
     if (found_index == std::string::npos)
       return complex_variables_.at(colon_separated_string).front();
