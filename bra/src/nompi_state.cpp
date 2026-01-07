@@ -113,6 +113,60 @@ namespace bra
   auto nompi_state::do_cancel_waiting() -> void
   { is_waiting_ = false; }
 
+  auto nompi_state::do_send_real_variable(int const destination_circuit_index, std::string const& variable_name, int const num_elements) const -> void
+  {
+    if (destination_circuit_index < 0 or destination_circuit_index == circuit_index_)
+      return;
+
+    is_waiting_ = true;
+    wait_reason_ = ::bra::wait_reason{::bra::wait_reason::send_real_variable_t{}, destination_circuit_index, variable_name, num_elements};
+  }
+
+  auto nompi_state::do_send_complex_variable(int const destination_circuit_index, std::string const& variable_name, int const num_elements) const -> void
+  {
+    if (destination_circuit_index < 0 or destination_circuit_index == circuit_index_)
+      return;
+
+    is_waiting_ = true;
+    wait_reason_ = ::bra::wait_reason{::bra::wait_reason::send_complex_variable_t{}, destination_circuit_index, variable_name, num_elements};
+  }
+
+  auto nompi_state::do_send_int_variable(int const destination_circuit_index, std::string const& variable_name, int const num_elements) const -> void
+  {
+    if (destination_circuit_index < 0 or destination_circuit_index == circuit_index_)
+      return;
+
+    is_waiting_ = true;
+    wait_reason_ = ::bra::wait_reason{::bra::wait_reason::send_int_variable_t{}, destination_circuit_index, variable_name, num_elements};
+  }
+
+  auto nompi_state::do_receive_real_variable(int const destination_circuit_index, std::string const& variable_name, int const num_elements) -> void
+  {
+    if (destination_circuit_index < 0 or destination_circuit_index == circuit_index_)
+      return;
+
+    is_waiting_ = true;
+    wait_reason_ = ::bra::wait_reason{::bra::wait_reason::receive_real_variable_t{}, destination_circuit_index, variable_name, num_elements};
+  }
+
+  auto nompi_state::do_receive_complex_variable(int const destination_circuit_index, std::string const& variable_name, int const num_elements) -> void
+  {
+    if (destination_circuit_index < 0 or destination_circuit_index == circuit_index_)
+      return;
+
+    is_waiting_ = true;
+    wait_reason_ = ::bra::wait_reason{::bra::wait_reason::receive_complex_variable_t{}, destination_circuit_index, variable_name, num_elements};
+  }
+
+  auto nompi_state::do_receive_int_variable(int const destination_circuit_index, std::string const& variable_name, int const num_elements) -> void
+  {
+    if (destination_circuit_index < 0 or destination_circuit_index == circuit_index_)
+      return;
+
+    is_waiting_ = true;
+    wait_reason_ = ::bra::wait_reason{::bra::wait_reason::receive_int_variable_t{}, destination_circuit_index, variable_name, num_elements};
+  }
+
   void nompi_state::do_i_gate(qubit_type const qubit)
   { }
 
@@ -4066,6 +4120,45 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
 # undef CASE_N
 # undef OPERATED_QUBITS
       }
+  }
+
+  void send_real_variable(
+    nompi_state const& source_state, std::string const& source_variable_name,
+    nompi_state& destination_state, std::string const& destination_variable_name,
+    int const num_elements)
+  {
+    auto const& source_real_variable = source_state.to_real_variable(source_variable_name);
+    auto& destination_real_variable = destination_state.to_real_variable(destination_variable_name);
+
+    std::copy(
+      std::addressof(source_real_variable), std::addressof(source_real_variable) + num_elements,
+      std::addressof(destination_real_variable));
+  }
+
+  void send_complex_variable(
+    nompi_state const& source_state, std::string const& source_variable_name,
+    nompi_state& destination_state, std::string const& destination_variable_name,
+    int const num_elements)
+  {
+    auto const& source_complex_variable = source_state.to_complex_variable(source_variable_name);
+    auto& destination_complex_variable = destination_state.to_complex_variable(destination_variable_name);
+
+    std::copy(
+      std::addressof(source_complex_variable), std::addressof(source_complex_variable) + num_elements,
+      std::addressof(destination_complex_variable));
+  }
+
+  void send_int_variable(
+    nompi_state const& source_state, std::string const& source_variable_name,
+    nompi_state& destination_state, std::string const& destination_variable_name,
+    int const num_elements)
+  {
+    auto const& source_int_variable = source_state.to_int_variable(source_variable_name);
+    auto& destination_int_variable = destination_state.to_int_variable(destination_variable_name);
+
+    std::copy(
+      std::addressof(source_int_variable), std::addressof(source_int_variable) + num_elements,
+      std::addressof(destination_int_variable));
   }
 } // namespace bra
 

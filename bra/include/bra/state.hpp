@@ -186,13 +186,19 @@ namespace bra
     {
       no_wait = 0,
       inner_product, inner_product_all, inner_product_op, inner_product_all_op,
-      fidelity, fidelity_all, fidelity_op, fidelity_all_op
+      fidelity, fidelity_all, fidelity_op, fidelity_all_op,
+      send_real_variable, send_complex_variable, send_int_variable,
+      receive_real_variable, receive_complex_variable, receive_int_variable
     };
 
     status_t status_;
     int other_circuit_index_;
+
     std::string operator_literal_or_variable_name_;
     std::vector< ::bra::qubit_type > operated_qubits_;
+
+    std::string variable_name_;
+    int num_elements_;
 
    public:
     struct no_wait_t { };
@@ -204,20 +210,26 @@ namespace bra
     struct fidelity_all_t { };
     struct fidelity_op_t { };
     struct fidelity_all_op_t { };
+    struct send_real_variable_t { };
+    struct send_complex_variable_t { };
+    struct send_int_variable_t { };
+    struct receive_real_variable_t { };
+    struct receive_complex_variable_t { };
+    struct receive_int_variable_t { };
 
     wait_reason(no_wait_t const)
       : status_{status_t::no_wait}, other_circuit_index_{},
-        operator_literal_or_variable_name_{}, operated_qubits_{}
+        operator_literal_or_variable_name_{}, operated_qubits_{}, variable_name_{}, num_elements_{}
     { }
 
     wait_reason(inner_product_t const, int const other_circuit_index)
       : status_{status_t::inner_product}, other_circuit_index_{other_circuit_index},
-        operator_literal_or_variable_name_{}, operated_qubits_{}
+        operator_literal_or_variable_name_{}, operated_qubits_{}, variable_name_{}, num_elements_{}
     { }
 
     wait_reason(inner_product_all_t const)
       : status_{status_t::inner_product_all}, other_circuit_index_{},
-        operator_literal_or_variable_name_{}, operated_qubits_{}
+        operator_literal_or_variable_name_{}, operated_qubits_{}, variable_name_{}, num_elements_{}
     { }
 
     wait_reason(
@@ -226,7 +238,7 @@ namespace bra
       std::vector<qubit_type> const& operated_qubits)
       : status_{status_t::inner_product_op}, other_circuit_index_{other_circuit_index},
         operator_literal_or_variable_name_{operator_literal_or_variable_name},
-        operated_qubits_{operated_qubits}
+        operated_qubits_{operated_qubits}, variable_name_{}, num_elements_{}
     { }
 
     wait_reason(
@@ -235,17 +247,17 @@ namespace bra
       std::vector<qubit_type> const& operated_qubits)
       : status_{status_t::inner_product_all_op}, other_circuit_index_{},
         operator_literal_or_variable_name_{operator_literal_or_variable_name},
-        operated_qubits_{operated_qubits}
+        operated_qubits_{operated_qubits}, variable_name_{}, num_elements_{}
     { }
 
     wait_reason(fidelity_t const, int const other_circuit_index)
       : status_{status_t::fidelity}, other_circuit_index_{other_circuit_index},
-        operator_literal_or_variable_name_{}, operated_qubits_{}
+        operator_literal_or_variable_name_{}, operated_qubits_{}, variable_name_{}, num_elements_{}
     { }
 
     wait_reason(fidelity_all_t const)
       : status_{status_t::fidelity_all}, other_circuit_index_{},
-        operator_literal_or_variable_name_{}, operated_qubits_{}
+        operator_literal_or_variable_name_{}, operated_qubits_{}, variable_name_{}, num_elements_{}
     { }
 
     wait_reason(
@@ -254,7 +266,7 @@ namespace bra
       std::vector<qubit_type> const& operated_qubits)
       : status_{status_t::fidelity_op}, other_circuit_index_{other_circuit_index},
         operator_literal_or_variable_name_{operator_literal_or_variable_name},
-        operated_qubits_{operated_qubits}
+        operated_qubits_{operated_qubits}, variable_name_{}, num_elements_{}
     { }
 
     wait_reason(
@@ -263,21 +275,78 @@ namespace bra
       std::vector<qubit_type> const& operated_qubits)
       : status_{status_t::fidelity_all_op}, other_circuit_index_{},
         operator_literal_or_variable_name_{operator_literal_or_variable_name},
-        operated_qubits_{operated_qubits}
+        operated_qubits_{operated_qubits}, variable_name_{}, num_elements_{}
     { }
 
-    auto is_inner_product() const -> bool { return status_ == status_t::inner_product; };
-    auto is_inner_product_all() const -> bool { return status_ == status_t::inner_product_all; };
-    auto is_inner_product_op() const -> bool { return status_ == status_t::inner_product_op; };
-    auto is_inner_product_all_op() const -> bool { return status_ == status_t::inner_product_all_op; };
-    auto is_fidelity() const -> bool { return status_ == status_t::fidelity; };
-    auto is_fidelity_all() const -> bool { return status_ == status_t::fidelity_all; };
-    auto is_fidelity_op() const -> bool { return status_ == status_t::fidelity_op; };
-    auto is_fidelity_all_op() const -> bool { return status_ == status_t::fidelity_all_op; };
+    wait_reason(
+      send_real_variable_t const, int const other_circuit_index,
+      std::string const& variable_name, int const num_elements)
+      : status_{status_t::send_real_variable}, other_circuit_index_{other_circuit_index},
+        operator_literal_or_variable_name_{}, operated_qubits_{},
+        variable_name_{variable_name}, num_elements_{num_elements}
+    { }
+
+    wait_reason(
+      send_complex_variable_t const, int const other_circuit_index,
+      std::string const& variable_name, int const num_elements)
+      : status_{status_t::send_complex_variable}, other_circuit_index_{other_circuit_index},
+        operator_literal_or_variable_name_{}, operated_qubits_{},
+        variable_name_{variable_name}, num_elements_{num_elements}
+    { }
+
+    wait_reason(
+      send_int_variable_t const, int const other_circuit_index,
+      std::string const& variable_name, int const num_elements)
+      : status_{status_t::send_int_variable}, other_circuit_index_{other_circuit_index},
+        operator_literal_or_variable_name_{}, operated_qubits_{},
+        variable_name_{variable_name}, num_elements_{num_elements}
+    { }
+
+    wait_reason(
+      receive_real_variable_t const, int const other_circuit_index,
+      std::string const& variable_name, int const num_elements)
+      : status_{status_t::receive_real_variable}, other_circuit_index_{other_circuit_index},
+        operator_literal_or_variable_name_{}, operated_qubits_{},
+        variable_name_{variable_name}, num_elements_{num_elements}
+    { }
+
+    wait_reason(
+      receive_complex_variable_t const, int const other_circuit_index,
+      std::string const& variable_name, int const num_elements)
+      : status_{status_t::receive_complex_variable}, other_circuit_index_{other_circuit_index},
+        operator_literal_or_variable_name_{}, operated_qubits_{},
+        variable_name_{variable_name}, num_elements_{num_elements}
+    { }
+
+    wait_reason(
+      receive_int_variable_t const, int const other_circuit_index,
+      std::string const& variable_name, int const num_elements)
+      : status_{status_t::receive_int_variable}, other_circuit_index_{other_circuit_index},
+        operator_literal_or_variable_name_{}, operated_qubits_{},
+        variable_name_{variable_name}, num_elements_{num_elements}
+    { }
+
+    auto is_inner_product() const -> bool { return status_ == status_t::inner_product; }
+    auto is_inner_product_all() const -> bool { return status_ == status_t::inner_product_all; }
+    auto is_inner_product_op() const -> bool { return status_ == status_t::inner_product_op; }
+    auto is_inner_product_all_op() const -> bool { return status_ == status_t::inner_product_all_op; }
+    auto is_fidelity() const -> bool { return status_ == status_t::fidelity; }
+    auto is_fidelity_all() const -> bool { return status_ == status_t::fidelity_all; }
+    auto is_fidelity_op() const -> bool { return status_ == status_t::fidelity_op; }
+    auto is_fidelity_all_op() const -> bool { return status_ == status_t::fidelity_all_op; }
+    auto is_send_real_variable() const -> bool { return status_ == status_t::send_real_variable; }
+    auto is_send_complex_variable() const -> bool { return status_ == status_t::send_complex_variable; }
+    auto is_send_int_variable() const -> bool { return status_ == status_t::send_int_variable; }
+    auto is_receive_real_variable() const -> bool { return status_ == status_t::receive_real_variable; }
+    auto is_receive_complex_variable() const -> bool { return status_ == status_t::receive_complex_variable; }
+    auto is_receive_int_variable() const -> bool { return status_ == status_t::receive_int_variable; }
 
     auto other_circuit_index() const -> int { return other_circuit_index_; }
     auto operator_literal_or_variable_name() const -> std::string const& { return operator_literal_or_variable_name_; }
     auto operated_qubits() const -> std::vector< ::bra::qubit_type > const& { return operated_qubits_; }
+
+    auto variable_name() const -> std::string const& { return variable_name_; }
+    auto num_elements() const -> int { return num_elements_; }
   }; // class wait_reason
 
   class state
@@ -317,7 +386,7 @@ namespace bra
     bool is_in_fusion_; // related to begin_fusion/end_fusion
     std::vector< ::bra::found_qubit > found_qubits_; // related to begin_fusion/end_fusion
     int circuit_index_;
-    ::bra::wait_reason wait_reason_;
+    mutable ::bra::wait_reason wait_reason_;
     random_number_generator_type random_number_generator_;
 # ifndef BRA_NO_MPI
 
