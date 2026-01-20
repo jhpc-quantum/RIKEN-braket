@@ -94,6 +94,9 @@ namespace bra
     auto do_receive_real_variable(int const circuit_index, std::string const& variable_name, int const num_elements) -> void override;
     auto do_receive_complex_variable(int const circuit_index, std::string const& variable_name, int const num_elements) -> void override;
     auto do_receive_int_variable(int const circuit_index, std::string const& variable_name, int const num_elements) -> void override;
+    auto do_broadcast_real_variable(int const circuit_index, std::string const& variable_name, int const num_elements) -> void override;
+    auto do_broadcast_complex_variable(int const circuit_index, std::string const& variable_name, int const num_elements) -> void override;
+    auto do_broadcast_int_variable(int const circuit_index, std::string const& variable_name, int const num_elements) -> void override;
 
     unsigned int do_num_page_qubits() const override;
     unsigned int do_num_pages() const override;

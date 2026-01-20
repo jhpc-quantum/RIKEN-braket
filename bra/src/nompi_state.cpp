@@ -167,6 +167,33 @@ namespace bra
     wait_reason_ = ::bra::wait_reason{::bra::wait_reason::receive_int_variable_t{}, destination_circuit_index, variable_name, num_elements};
   }
 
+  auto nompi_state::do_broadcast_real_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements) -> void
+  {
+    if (root_circuit_index < 0)
+      return;
+
+    is_waiting_ = true;
+    wait_reason_ = ::bra::wait_reason{::bra::wait_reason::broadcast_real_variable_t{}, root_circuit_index, variable_name, num_elements};
+  }
+
+  auto nompi_state::do_broadcast_complex_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements) -> void
+  {
+    if (root_circuit_index < 0)
+      return;
+
+    is_waiting_ = true;
+    wait_reason_ = ::bra::wait_reason{::bra::wait_reason::broadcast_complex_variable_t{}, root_circuit_index, variable_name, num_elements};
+  }
+
+  auto nompi_state::do_broadcast_int_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements) -> void
+  {
+    if (root_circuit_index < 0)
+      return;
+
+    is_waiting_ = true;
+    wait_reason_ = ::bra::wait_reason{::bra::wait_reason::broadcast_int_variable_t{}, root_circuit_index, variable_name, num_elements};
+  }
+
   void nompi_state::do_i_gate(qubit_type const qubit)
   { }
 
@@ -4159,6 +4186,66 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     std::copy(
       std::addressof(source_int_variable), std::addressof(source_int_variable) + num_elements,
       std::addressof(destination_int_variable));
+  }
+
+  void broadcast_real_variable(
+    std::vector< ::bra::nompi_state >& states,
+    std::vector<std::string> const& variable_names,
+    int const root_circuit_index, int const num_elements)
+  {
+    auto const& root_real_variable = states[root_circuit_index].to_real_variable(variable_names[root_circuit_index]);
+
+    auto const num_circuits = static_cast<int>(states.size());
+    for (auto circuit_index = 0; circuit_index < num_circuits; ++circuit_index)
+    {
+      if (circuit_index == root_circuit_index)
+        continue;
+
+      auto& destination_real_variable = states[circuit_index].to_real_variable(variable_names[circuit_index]);
+      std::copy(
+        std::addressof(root_real_variable), std::addressof(root_real_variable) + num_elements,
+        std::addressof(destination_real_variable));
+    }
+  }
+
+  void broadcast_complex_variable(
+    std::vector< ::bra::nompi_state >& states,
+    std::vector<std::string> const& variable_names,
+    int const root_circuit_index, int const num_elements)
+  {
+    auto const& root_complex_variable = states[root_circuit_index].to_complex_variable(variable_names[root_circuit_index]);
+
+    auto const num_circuits = static_cast<int>(states.size());
+    for (auto circuit_index = 0; circuit_index < num_circuits; ++circuit_index)
+    {
+      if (circuit_index == root_circuit_index)
+        continue;
+
+      auto& destination_complex_variable = states[circuit_index].to_complex_variable(variable_names[circuit_index]);
+      std::copy(
+        std::addressof(root_complex_variable), std::addressof(root_complex_variable) + num_elements,
+        std::addressof(destination_complex_variable));
+    }
+  }
+
+  void broadcast_int_variable(
+    std::vector< ::bra::nompi_state >& states,
+    std::vector<std::string> const& variable_names,
+    int const root_circuit_index, int const num_elements)
+  {
+    auto const& root_int_variable = states[root_circuit_index].to_int_variable(variable_names[root_circuit_index]);
+
+    auto const num_circuits = static_cast<int>(states.size());
+    for (auto circuit_index = 0; circuit_index < num_circuits; ++circuit_index)
+    {
+      if (circuit_index == root_circuit_index)
+        continue;
+
+      auto& destination_int_variable = states[circuit_index].to_int_variable(variable_names[circuit_index]);
+      std::copy(
+        std::addressof(root_int_variable), std::addressof(root_int_variable) + num_elements,
+        std::addressof(destination_int_variable));
+    }
   }
 } // namespace bra
 

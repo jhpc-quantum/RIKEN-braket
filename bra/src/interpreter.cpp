@@ -44,6 +44,7 @@
 #include <bra/gate/let_op.hpp>
 #include <bra/gate/send_op.hpp>
 #include <bra/gate/receive_op.hpp>
+#include <bra/gate/broadcast_op.hpp>
 #include <bra/gate/print_op.hpp>
 #include <bra/gate/println_op.hpp>
 #include <bra/gate/jump_op.hpp>
@@ -463,6 +464,8 @@ namespace bra
         add_send(columns);
       else if (mnemonic == "RECEIVE")
         add_receive(columns);
+      else if (mnemonic == "BROADCAST")
+        add_broadcast(columns);
       else if (mnemonic == "PRINT")
         add_print(columns);
       else if (mnemonic == "PRINTLN")
@@ -2067,6 +2070,33 @@ namespace bra
             : throw 1;
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::receive_op >(source_circuit_index, variable_name, type, num_elements));
+  }
+
+  // BROADCAST 0 X REAL ! send value of a real variable X (X:0) in circuit #0 to all circuits
+  // BROADCAST 3 ZS:2 COMPLEX 3 ! send value of complex variables from ZS:3 to ZS:5 (half-open range [ZS:3, ZS:6)) in circuit #3 to all circuits
+  void interpreter::add_broadcast(interpreter::columns_type const& columns)
+  {
+    auto const column_size = boost::size(columns);
+    if (not (column_size == 4u or column_size == 5u))
+      throw wrong_mnemonics_error{columns};
+
+    using std::begin;
+    auto iter = begin(columns);
+    auto const root_circuit_index = boost::lexical_cast<int>(*++iter);
+    auto const variable_name = boost::algorithm::to_upper_copy(*++iter);
+    auto const type_name = boost::algorithm::to_upper_copy(*++iter);
+    auto const num_elements = column_size == 4u ? 1 : boost::lexical_cast<int>(*++iter);
+
+    auto const type
+      = type_name == "REAL"
+        ? ::bra::variable_type::real
+        : type_name == "COMPLEX"
+          ? ::bra::variable_type::complex_
+          : type_name == "INT"
+            ? ::bra::variable_type::integer
+            : throw 1;
+
+    circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::broadcast_op >(root_circuit_index, variable_name, type, num_elements));
   }
 
   // PRINT X Y Z ! prints like "<value of X> <value of Y> <value of Z>"

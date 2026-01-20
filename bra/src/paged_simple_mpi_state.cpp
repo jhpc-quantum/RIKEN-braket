@@ -22,6 +22,7 @@
 # include <yampi/tag.hpp>
 # include <yampi/send.hpp>
 # include <yampi/receive.hpp>
+# include <yampi/broadcast.hpp>
 # include <yampi/communicator.hpp>
 # include <yampi/intercommunicator.hpp>
 # include <yampi/environment.hpp>
@@ -332,6 +333,42 @@ namespace bra
     yampi::receive(
       yampi::make_buffer(std::addressof(int_variable), std::addressof(int_variable) + num_elements),
       yampi::rank{source_circuit_index}, tag, intercircuit_communicator_, environment_);
+  }
+
+  auto paged_simple_mpi_state::do_broadcast_real_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements) -> void
+  {
+    if (is_real_symbol(variable_name))
+      return;
+
+    auto& real_variable = to_real_variable(variable_name);
+
+    yampi::broadcast(
+      yampi::make_buffer(std::addressof(real_variable), std::addressof(real_variable) + num_elements),
+      yampi::rank{root_circuit_index}, intercircuit_communicator_, environment_);
+  }
+
+  auto paged_simple_mpi_state::do_broadcast_complex_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements) -> void
+  {
+    if (is_complex_symbol(variable_name))
+      return;
+
+    auto& complex_variable = to_complex_variable(variable_name);
+
+    yampi::broadcast(
+      yampi::make_buffer(std::addressof(complex_variable), std::addressof(complex_variable) + num_elements),
+      yampi::rank{root_circuit_index}, intercircuit_communicator_, environment_);
+  }
+
+  auto paged_simple_mpi_state::do_broadcast_int_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements) -> void
+  {
+    if (is_int_symbol(variable_name))
+      return;
+
+    auto& int_variable = to_int_variable(variable_name);
+
+    yampi::broadcast(
+      yampi::make_buffer(std::addressof(int_variable), std::addressof(int_variable) + num_elements),
+      yampi::rank{root_circuit_index}, intercircuit_communicator_, environment_);
   }
 
   void paged_simple_mpi_state::do_i_gate(qubit_type const qubit)

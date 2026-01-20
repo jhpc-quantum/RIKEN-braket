@@ -586,6 +586,16 @@ namespace bra
       do_receive_int_variable(source_circuit_index, variable_name, num_elements);
   }
 
+  auto state::broadcast_variable(int const root_circuit_index, std::string const& variable_name, ::bra::variable_type const type, int const num_elements) -> void
+  {
+    if (type == ::bra::variable_type::real)
+      do_broadcast_real_variable(root_circuit_index, variable_name, num_elements);
+    else if (type == ::bra::variable_type::complex_)
+      do_broadcast_complex_variable(root_circuit_index, variable_name, num_elements);
+    else if (type == ::bra::variable_type::integer)
+      do_broadcast_int_variable(root_circuit_index, variable_name, num_elements);
+  }
+
   auto state::is_int_symbol(std::string const& symbol_name) const -> bool
   { return symbol_name == ":INT" or symbol_name == ":OUTCOME" or symbol_name == ":OUTCOMES"; }
 
