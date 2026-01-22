@@ -44,6 +44,9 @@
 #include <bra/gate/let_op.hpp>
 #include <bra/gate/send_op.hpp>
 #include <bra/gate/receive_op.hpp>
+#include <bra/gate/broadcast_op.hpp>
+#include <bra/gate/gather_op.hpp>
+#include <bra/gate/scatter_op.hpp>
 #include <bra/gate/print_op.hpp>
 #include <bra/gate/println_op.hpp>
 #include <bra/gate/jump_op.hpp>
@@ -463,6 +466,12 @@ namespace bra
         add_send(columns);
       else if (mnemonic == "RECEIVE")
         add_receive(columns);
+      else if (mnemonic == "BROADCAST")
+        add_broadcast(columns);
+      else if (mnemonic == "GATHER")
+        add_gather(columns);
+      else if (mnemonic == "SCATTER")
+        add_scatter(columns);
       else if (mnemonic == "PRINT")
         add_print(columns);
       else if (mnemonic == "PRINTLN")
@@ -2067,6 +2076,125 @@ namespace bra
             : throw 1;
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::receive_op >(source_circuit_index, variable_name, type, num_elements));
+  }
+
+  // BROADCAST 0 X REAL ! send value of a real variable X (X:0) in circuit #0 to all circuits
+  // BROADCAST 3 ZS:2 COMPLEX 3 ! send value of complex variables from ZS:2 to ZS:4 (half-open range [ZS:2, ZS:5)) in circuit #3 to all circuits
+  void interpreter::add_broadcast(interpreter::columns_type const& columns)
+  {
+    auto const column_size = boost::size(columns);
+    if (not (column_size == 4u or column_size == 5u))
+      throw wrong_mnemonics_error{columns};
+
+    using std::begin;
+    auto iter = begin(columns);
+    auto const root_circuit_index = boost::lexical_cast<int>(*++iter);
+    auto const variable_name = boost::algorithm::to_upper_copy(*++iter);
+    auto const type_name = boost::algorithm::to_upper_copy(*++iter);
+    auto const num_elements = column_size == 4u ? 1 : boost::lexical_cast<int>(*++iter);
+
+    auto const type
+      = type_name == "REAL"
+        ? ::bra::variable_type::real
+        : type_name == "COMPLEX"
+          ? ::bra::variable_type::complex_
+          : type_name == "INT"
+            ? ::bra::variable_type::integer
+            : throw 1;
+
+    circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::broadcast_op >(root_circuit_index, variable_name, type, num_elements));
+  }
+
+  // GATHER 0 X REAL TO XXS ! gather value of a real variable X (X:0) in each circuit to array of real variables XXS in the circuit #0, whose size should be more than or equal to N_c (the number of circuits). Note that "TO XXS" is ignored unless the present circuit is #0.
+  // GATHER 1 XS REAL ! gather value of a real variable XS:0 in each circuit execpt for circuit #1 to array of real variables XS in the circuit #1. Note that in the circuit #1 the value XS:1 is kept as its original value.
+  // GATHER 2 ZS:2 COMPLEX 3 TO ZZS:5 ! gather value of complex variables from ZS:2 to ZS:4 (half-open range [ZS:2, ZS:5)) in each circuit to array of complex variables ZZS starting from index 5 in the circuit #2, whose size should be more than or equal to 3*N_c+5. Note that "TO ZZS:5" is ignored unless the present circuit is #2.
+  // GATHER 3 ZS:1 COMPLEX 4 ! gather value of complex variables from ZS:1 to ZS:4 (half-open range [ZS:1, ZS:5)) in each circuit except for circuit #3 to array of complex variables ZS starting from index 1 in the circuit #3. Note that in the circuit #3 the value ZS:4 (4 = 1+3) is kept as its original value.
+  void interpreter::add_gather(interpreter::columns_type const& columns)
+  {
+    auto const column_size = boost::size(columns);
+    if (column_size < 4u or column_size > 7u)
+      throw wrong_mnemonics_error{columns};
+
+    using std::begin;
+    auto iter = begin(columns);
+    auto const root_circuit_index = boost::lexical_cast<int>(*++iter);
+    auto const variable_name = boost::algorithm::to_upper_copy(*++iter);
+    auto const type_name = boost::algorithm::to_upper_copy(*++iter);
+
+    auto num_elements = 1;
+    auto destination_variable_name = std::string{};
+    if (column_size == 5u)
+      num_elements = boost::lexical_cast<int>(*++iter);
+    else if (column_size == 6u)
+    {
+      if (*++iter != "TO")
+        throw wrong_mnemonics_error{columns};
+      destination_variable_name = boost::algorithm::to_upper_copy(*++iter);
+    }
+    else if (column_size == 7u)
+    {
+      num_elements = boost::lexical_cast<int>(*++iter);
+      if (*++iter != "TO")
+        throw wrong_mnemonics_error{columns};
+      destination_variable_name = boost::algorithm::to_upper_copy(*++iter);
+    }
+
+    auto const type
+      = type_name == "REAL"
+        ? ::bra::variable_type::real
+        : type_name == "COMPLEX"
+          ? ::bra::variable_type::complex_
+          : type_name == "INT"
+            ? ::bra::variable_type::integer
+            : throw 1;
+
+    circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::gather_op >(root_circuit_index, variable_name, type, num_elements, destination_variable_name));
+  }
+
+  // SCATTER 0 X REAL FROM XXS ! scatter array of real variables XXS in the circuit #0, whose size should be more than or equal to N_c (the number of circuits), to a real variable X (X:0) in each circuit. Note that "FROM XXS" is ignored unless the present circuti is #0.
+  // SCATTER 1 XS REAL ! scatter array of real variables XS in the circuit #1 to a real variable XS:0 in each circuit. Note that in the circuit #1 the value XS:1 is kept as its original value.
+  // SCATTER 2 ZS:2 COMPLEX 3 FROM ZZS:5 ! scatter array of real variables ZZS starting from index 5 in the circuit #2, whose size should be more than or equal to 3*N_c+5, to complex variables from ZS:2 to ZS:4 (half-open range [ZS:2, ZS:5)) in each circuit. Note that "FROM ZZS:5" is ignored unless the present circuit is #2.
+  // SCATTER 3 ZS:1 COMPLEX 4 ! scatter array of complex variables ZS starting from index 1 in the circuit #3 to complex variables from ZS:1 to ZS:4 (half-open range [ZS:1, ZS:5)) in each circuit except for circuit #3. Note that in the circuit #3 the value ZS:4 (4 = 1+3) is kept as its original value.
+  void interpreter::add_scatter(interpreter::columns_type const& columns)
+  {
+    auto const column_size = boost::size(columns);
+    if (column_size < 4u or column_size > 7u)
+      throw wrong_mnemonics_error{columns};
+
+    using std::begin;
+    auto iter = begin(columns);
+    auto const root_circuit_index = boost::lexical_cast<int>(*++iter);
+    auto const variable_name = boost::algorithm::to_upper_copy(*++iter);
+    auto const type_name = boost::algorithm::to_upper_copy(*++iter);
+
+    auto num_elements = 1;
+    auto source_variable_name = std::string{};
+    if (column_size == 5u)
+      num_elements = boost::lexical_cast<int>(*++iter);
+    else if (column_size == 6u)
+    {
+      if (*++iter != "FROM")
+        throw wrong_mnemonics_error{columns};
+      source_variable_name = boost::algorithm::to_upper_copy(*++iter);
+    }
+    else if (column_size == 7u)
+    {
+      num_elements = boost::lexical_cast<int>(*++iter);
+      if (*++iter != "FROM")
+        throw wrong_mnemonics_error{columns};
+      source_variable_name = boost::algorithm::to_upper_copy(*++iter);
+    }
+
+    auto const type
+      = type_name == "REAL"
+        ? ::bra::variable_type::real
+        : type_name == "COMPLEX"
+          ? ::bra::variable_type::complex_
+          : type_name == "INT"
+            ? ::bra::variable_type::integer
+            : throw 1;
+
+    circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::scatter_op >(root_circuit_index, variable_name, type, num_elements, source_variable_name));
   }
 
   // PRINT X Y Z ! prints like "<value of X> <value of Y> <value of Z>"

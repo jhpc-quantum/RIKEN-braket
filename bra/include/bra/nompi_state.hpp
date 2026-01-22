@@ -66,6 +66,57 @@ namespace bra
       nompi_state& destination_state, std::string const& destination_variable_name,
       int const num_elements);
 
+    friend void broadcast_real_variable(
+      std::vector< ::bra::nompi_state >& states,
+      std::vector<std::string> const& variable_names,
+      int const root_circuit_index, int const num_elements);
+
+    friend void broadcast_complex_variable(
+      std::vector< ::bra::nompi_state >& states,
+      std::vector<std::string> const& variable_names,
+      int const root_circuit_index, int const num_elements);
+
+    friend void broadcast_int_variable(
+      std::vector< ::bra::nompi_state >& states,
+      std::vector<std::string> const& variable_names,
+      int const root_circuit_index, int const num_elements);
+
+    friend void gather_real_variable(
+      std::vector< ::bra::nompi_state >& states,
+      std::vector<std::string> const& variable_names,
+      std::string const& destination_variable_name,
+      int const root_circuit_index, int const num_elements);
+
+    friend void gather_complex_variable(
+      std::vector< ::bra::nompi_state >& states,
+      std::vector<std::string> const& variable_names,
+      std::string const& destination_variable_name,
+      int const root_circuit_index, int const num_elements);
+
+    friend void gather_int_variable(
+      std::vector< ::bra::nompi_state >& states,
+      std::vector<std::string> const& variable_names,
+      std::string const& destination_variable_name,
+      int const root_circuit_index, int const num_elements);
+
+    friend void scatter_real_variable(
+      std::vector< ::bra::nompi_state >& states,
+      std::vector<std::string> const& variable_names,
+      std::string const& source_variable_name,
+      int const root_circuit_index, int const num_elements);
+
+    friend void scatter_complex_variable(
+      std::vector< ::bra::nompi_state >& states,
+      std::vector<std::string> const& variable_names,
+      std::string const& source_variable_name,
+      int const root_circuit_index, int const num_elements);
+
+    friend void scatter_int_variable(
+      std::vector< ::bra::nompi_state >& states,
+      std::vector<std::string> const& variable_names,
+      std::string const& source_variable_name,
+      int const root_circuit_index, int const num_elements);
+
     ket::utility::policy::parallel<unsigned int> parallel_policy_;
 
     using data_type = ::bra::data_type;
@@ -123,6 +174,15 @@ namespace bra
     auto do_receive_real_variable(int const circuit_index, std::string const& variable_name, int const num_elements) -> void override;
     auto do_receive_complex_variable(int const circuit_index, std::string const& variable_name, int const num_elements) -> void override;
     auto do_receive_int_variable(int const circuit_index, std::string const& variable_name, int const num_elements) -> void override;
+    auto do_broadcast_real_variable(int const circuit_index, std::string const& variable_name, int const num_elements) -> void override;
+    auto do_broadcast_complex_variable(int const circuit_index, std::string const& variable_name, int const num_elements) -> void override;
+    auto do_broadcast_int_variable(int const circuit_index, std::string const& variable_name, int const num_elements) -> void override;
+    auto do_gather_real_variable(int const circuit_index, std::string const& variable_name, int const num_elements, std::string const& destination_variable_name) -> void override;
+    auto do_gather_complex_variable(int const circuit_index, std::string const& variable_name, int const num_elements, std::string const& destination_variable_name) -> void override;
+    auto do_gather_int_variable(int const circuit_index, std::string const& variable_name, int const num_elements, std::string const& destination_variable_name) -> void override;
+    auto do_scatter_real_variable(int const circuit_index, std::string const& variable_name, int const num_elements, std::string const& source_variable_name) -> void override;
+    auto do_scatter_complex_variable(int const circuit_index, std::string const& variable_name, int const num_elements, std::string const& source_variable_name) -> void override;
+    auto do_scatter_int_variable(int const circuit_index, std::string const& variable_name, int const num_elements, std::string const& source_variable_name) -> void override;
 
     void do_i_gate(qubit_type const qubit) override;
     void do_ic_gate(control_qubit_type const control_qubit) override;
@@ -428,6 +488,57 @@ namespace bra
     nompi_state const& source_state, std::string const& source_variable_name,
     nompi_state& destination_state, std::string const& destination_variable_name,
     int const num_elements);
+
+  void broadcast_real_variable(
+    std::vector< ::bra::nompi_state >& states,
+    std::vector<std::string> const& variable_names,
+    int const root_circuit_index, int const num_elements);
+
+  void broadcast_complex_variable(
+    std::vector< ::bra::nompi_state >& states,
+    std::vector<std::string> const& variable_names,
+    int const root_circuit_index, int const num_elements);
+
+  void broadcast_int_variable(
+    std::vector< ::bra::nompi_state >& states,
+    std::vector<std::string> const& variable_names,
+    int const root_circuit_index, int const num_elements);
+
+  void gather_real_variable(
+    std::vector< ::bra::nompi_state >& states,
+    std::vector<std::string> const& variable_names,
+    std::string const& destination_variable_name,
+    int const root_circuit_index, int const num_elements);
+
+  void gather_complex_variable(
+    std::vector< ::bra::nompi_state >& states,
+    std::vector<std::string> const& variable_names,
+    std::string const& destination_variable_name,
+    int const root_circuit_index, int const num_elements);
+
+  void gather_int_variable(
+    std::vector< ::bra::nompi_state >& states,
+    std::vector<std::string> const& variable_names,
+    std::string const& destination_variable_name,
+    int const root_circuit_index, int const num_elements);
+
+  void scatter_real_variable(
+    std::vector< ::bra::nompi_state >& states,
+    std::vector<std::string> const& variable_names,
+    std::string const& source_variable_name,
+    int const root_circuit_index, int const num_elements);
+
+  void scatter_complex_variable(
+    std::vector< ::bra::nompi_state >& states,
+    std::vector<std::string> const& variable_names,
+    std::string const& source_variable_name,
+    int const root_circuit_index, int const num_elements);
+
+  void scatter_int_variable(
+    std::vector< ::bra::nompi_state >& states,
+    std::vector<std::string> const& variable_names,
+    std::string const& source_variable_name,
+    int const root_circuit_index, int const num_elements);
 } // namespace bra
 
 

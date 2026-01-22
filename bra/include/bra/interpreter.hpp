@@ -312,6 +312,9 @@ namespace bra
     void add_let(columns_type const& columns);
     void add_send(columns_type const& columns);
     void add_receive(columns_type const& columns);
+    void add_broadcast(columns_type const& columns);
+    void add_gather(columns_type const& columns);
+    void add_scatter(columns_type const& columns);
     void add_print(columns_type const& columns);
     void add_println(columns_type const& columns);
     void add_label(columns_type const& columns, std::string const& mnemonic);

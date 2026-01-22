@@ -259,6 +259,15 @@ int main(int argc, char* argv[])
     auto is_inner_product_all_op = true;
     auto is_fidelity_all = true;
     auto is_fidelity_all_op = true;
+    auto is_broadcast_real_variable = true;
+    auto is_broadcast_complex_variable = true;
+    auto is_broadcast_int_variable = true;
+    auto is_gather_real_variable = true;
+    auto is_gather_complex_variable = true;
+    auto is_gather_int_variable = true;
+    auto is_scatter_real_variable = true;
+    auto is_scatter_complex_variable = true;
+    auto is_scatter_int_variable = true;
     for (auto circuit_index = 0; circuit_index < static_cast<int>(num_circuits); ++circuit_index)
     {
       if (not nompi_states[circuit_index].is_waiting())
@@ -267,6 +276,15 @@ int main(int argc, char* argv[])
         is_inner_product_all_op = false;
         is_fidelity_all = false;
         is_fidelity_all_op = false;
+        is_broadcast_real_variable = false;
+        is_broadcast_complex_variable = false;
+        is_broadcast_int_variable = false;
+        is_gather_real_variable = false;
+        is_gather_complex_variable = false;
+        is_gather_int_variable = false;
+        is_scatter_real_variable = false;
+        is_scatter_complex_variable = false;
+        is_scatter_int_variable = false;
         continue;
       }
 
@@ -275,6 +293,15 @@ int main(int argc, char* argv[])
         is_inner_product_all_op = false;
         is_fidelity_all = false;
         is_fidelity_all_op = false;
+        is_broadcast_real_variable = false;
+        is_broadcast_complex_variable = false;
+        is_broadcast_int_variable = false;
+        is_gather_real_variable = false;
+        is_gather_complex_variable = false;
+        is_gather_int_variable = false;
+        is_scatter_real_variable = false;
+        is_scatter_complex_variable = false;
+        is_scatter_int_variable = false;
         continue;
       }
       else if (nompi_states[circuit_index].wait_reason().is_inner_product_all_op())
@@ -282,6 +309,15 @@ int main(int argc, char* argv[])
         is_inner_product_all = false;
         is_fidelity_all = false;
         is_fidelity_all_op = false;
+        is_broadcast_real_variable = false;
+        is_broadcast_complex_variable = false;
+        is_broadcast_int_variable = false;
+        is_gather_real_variable = false;
+        is_gather_complex_variable = false;
+        is_gather_int_variable = false;
+        is_scatter_real_variable = false;
+        is_scatter_complex_variable = false;
+        is_scatter_int_variable = false;
         continue;
       }
       else if (nompi_states[circuit_index].wait_reason().is_fidelity_all())
@@ -289,6 +325,15 @@ int main(int argc, char* argv[])
         is_inner_product_all = false;
         is_inner_product_all_op = false;
         is_fidelity_all_op = false;
+        is_broadcast_real_variable = false;
+        is_broadcast_complex_variable = false;
+        is_broadcast_int_variable = false;
+        is_gather_real_variable = false;
+        is_gather_complex_variable = false;
+        is_gather_int_variable = false;
+        is_scatter_real_variable = false;
+        is_scatter_complex_variable = false;
+        is_scatter_int_variable = false;
         continue;
       }
       else if (nompi_states[circuit_index].wait_reason().is_fidelity_all_op())
@@ -296,6 +341,159 @@ int main(int argc, char* argv[])
         is_inner_product_all = false;
         is_inner_product_all_op = false;
         is_fidelity_all = false;
+        is_broadcast_real_variable = false;
+        is_broadcast_complex_variable = false;
+        is_broadcast_int_variable = false;
+        is_gather_real_variable = false;
+        is_gather_complex_variable = false;
+        is_gather_int_variable = false;
+        is_scatter_real_variable = false;
+        is_scatter_complex_variable = false;
+        is_scatter_int_variable = false;
+        continue;
+      }
+      else if (nompi_states[circuit_index].wait_reason().is_broadcast_real_variable())
+      {
+        is_inner_product_all = false;
+        is_inner_product_all_op = false;
+        is_fidelity_all = false;
+        is_fidelity_all_op = false;
+        is_broadcast_complex_variable = false;
+        is_broadcast_int_variable = false;
+        is_gather_real_variable = false;
+        is_gather_complex_variable = false;
+        is_gather_int_variable = false;
+        is_scatter_real_variable = false;
+        is_scatter_complex_variable = false;
+        is_scatter_int_variable = false;
+        continue;
+      }
+      else if (nompi_states[circuit_index].wait_reason().is_broadcast_complex_variable())
+      {
+        is_inner_product_all = false;
+        is_inner_product_all_op = false;
+        is_fidelity_all = false;
+        is_fidelity_all_op = false;
+        is_broadcast_real_variable = false;
+        is_broadcast_int_variable = false;
+        is_gather_real_variable = false;
+        is_gather_complex_variable = false;
+        is_gather_int_variable = false;
+        is_scatter_real_variable = false;
+        is_scatter_complex_variable = false;
+        is_scatter_int_variable = false;
+        continue;
+      }
+      else if (nompi_states[circuit_index].wait_reason().is_broadcast_int_variable())
+      {
+        is_inner_product_all = false;
+        is_inner_product_all_op = false;
+        is_fidelity_all = false;
+        is_fidelity_all_op = false;
+        is_broadcast_real_variable = false;
+        is_broadcast_complex_variable = false;
+        is_gather_real_variable = false;
+        is_gather_complex_variable = false;
+        is_gather_int_variable = false;
+        is_scatter_real_variable = false;
+        is_scatter_complex_variable = false;
+        is_scatter_int_variable = false;
+        continue;
+      }
+      else if (nompi_states[circuit_index].wait_reason().is_gather_real_variable())
+      {
+        is_inner_product_all = false;
+        is_inner_product_all_op = false;
+        is_fidelity_all = false;
+        is_fidelity_all_op = false;
+        is_broadcast_real_variable = false;
+        is_broadcast_complex_variable = false;
+        is_broadcast_int_variable = false;
+        is_gather_complex_variable = false;
+        is_gather_int_variable = false;
+        is_scatter_real_variable = false;
+        is_scatter_complex_variable = false;
+        is_scatter_int_variable = false;
+        continue;
+      }
+      else if (nompi_states[circuit_index].wait_reason().is_gather_complex_variable())
+      {
+        is_inner_product_all = false;
+        is_inner_product_all_op = false;
+        is_fidelity_all = false;
+        is_fidelity_all_op = false;
+        is_broadcast_real_variable = false;
+        is_broadcast_complex_variable = false;
+        is_broadcast_int_variable = false;
+        is_gather_real_variable = false;
+        is_gather_int_variable = false;
+        is_scatter_real_variable = false;
+        is_scatter_complex_variable = false;
+        is_scatter_int_variable = false;
+        continue;
+      }
+      else if (nompi_states[circuit_index].wait_reason().is_gather_int_variable())
+      {
+        is_inner_product_all = false;
+        is_inner_product_all_op = false;
+        is_fidelity_all = false;
+        is_fidelity_all_op = false;
+        is_broadcast_real_variable = false;
+        is_broadcast_complex_variable = false;
+        is_broadcast_int_variable = false;
+        is_gather_real_variable = false;
+        is_gather_complex_variable = false;
+        is_scatter_real_variable = false;
+        is_scatter_complex_variable = false;
+        is_scatter_int_variable = false;
+        continue;
+      }
+      else if (nompi_states[circuit_index].wait_reason().is_scatter_real_variable())
+      {
+        is_inner_product_all = false;
+        is_inner_product_all_op = false;
+        is_fidelity_all = false;
+        is_fidelity_all_op = false;
+        is_broadcast_real_variable = false;
+        is_broadcast_complex_variable = false;
+        is_broadcast_int_variable = false;
+        is_gather_real_variable = false;
+        is_gather_complex_variable = false;
+        is_gather_int_variable = false;
+        is_scatter_complex_variable = false;
+        is_scatter_int_variable = false;
+        continue;
+      }
+      else if (nompi_states[circuit_index].wait_reason().is_scatter_complex_variable())
+      {
+        is_inner_product_all = false;
+        is_inner_product_all_op = false;
+        is_fidelity_all = false;
+        is_fidelity_all_op = false;
+        is_broadcast_real_variable = false;
+        is_broadcast_complex_variable = false;
+        is_broadcast_int_variable = false;
+        is_gather_real_variable = false;
+        is_gather_complex_variable = false;
+        is_gather_int_variable = false;
+        is_scatter_real_variable = false;
+        is_scatter_int_variable = false;
+        continue;
+      }
+      else if (nompi_states[circuit_index].wait_reason().is_scatter_int_variable())
+      {
+        is_inner_product_all = false;
+        is_inner_product_all_op = false;
+        is_fidelity_all = false;
+        is_fidelity_all_op = false;
+        is_broadcast_real_variable = false;
+        is_broadcast_complex_variable = false;
+        is_broadcast_int_variable = false;
+        is_gather_real_variable = false;
+        is_gather_complex_variable = false;
+        is_gather_int_variable = false;
+        is_scatter_real_variable = false;
+        is_scatter_complex_variable = false;
         continue;
       }
 
@@ -303,6 +501,15 @@ int main(int argc, char* argv[])
       is_inner_product_all_op = false;
       is_fidelity_all = false;
       is_fidelity_all_op = false;
+      is_broadcast_real_variable = false;
+      is_broadcast_complex_variable = false;
+      is_broadcast_int_variable = false;
+      is_gather_real_variable = false;
+      is_gather_complex_variable = false;
+      is_gather_int_variable = false;
+      is_scatter_real_variable = false;
+      is_scatter_complex_variable = false;
+      is_scatter_int_variable = false;
 
       if (nompi_states[circuit_index].wait_reason().is_inner_product())
       {
@@ -478,6 +685,186 @@ int main(int argc, char* argv[])
         nompi_states,
         nompi_states.front().wait_reason().operator_literal_or_variable_name(),
         nompi_states.front().wait_reason().operated_qubits());
+
+      for (auto& state: nompi_states)
+        state.cancel_waiting();
+
+      continue;
+    }
+    else if (is_broadcast_real_variable)
+    {
+      auto variable_names = std::vector<std::string>{};
+      variable_names.reserve(num_circuits);
+      std::transform(
+        begin(nompi_states), end(nompi_states), std::back_inserter(variable_names),
+        [](::bra::nompi_state const& state) { return state.wait_reason().variable_name(); });
+
+      ::bra::broadcast_real_variable(
+        nompi_states, variable_names,
+        nompi_states.front().wait_reason().root_circuit_index(),
+        nompi_states.front().wait_reason().num_elements());
+
+      for (auto& state: nompi_states)
+        state.cancel_waiting();
+
+      continue;
+    }
+    else if (is_broadcast_complex_variable)
+    {
+      auto variable_names = std::vector<std::string>{};
+      variable_names.reserve(num_circuits);
+      std::transform(
+        begin(nompi_states), end(nompi_states), std::back_inserter(variable_names),
+        [](::bra::nompi_state const& state) { return state.wait_reason().variable_name(); });
+
+      ::bra::broadcast_complex_variable(
+        nompi_states, variable_names,
+        nompi_states.front().wait_reason().root_circuit_index(),
+        nompi_states.front().wait_reason().num_elements());
+
+      for (auto& state: nompi_states)
+        state.cancel_waiting();
+
+      continue;
+    }
+    else if (is_broadcast_int_variable)
+    {
+      auto variable_names = std::vector<std::string>{};
+      variable_names.reserve(num_circuits);
+      std::transform(
+        begin(nompi_states), end(nompi_states), std::back_inserter(variable_names),
+        [](::bra::nompi_state const& state) { return state.wait_reason().variable_name(); });
+
+      ::bra::broadcast_int_variable(
+        nompi_states, variable_names,
+        nompi_states.front().wait_reason().root_circuit_index(),
+        nompi_states.front().wait_reason().num_elements());
+
+      for (auto& state: nompi_states)
+        state.cancel_waiting();
+
+      continue;
+    }
+    else if (is_gather_real_variable)
+    {
+      auto variable_names = std::vector<std::string>{};
+      variable_names.reserve(num_circuits);
+      std::transform(
+        begin(nompi_states), end(nompi_states), std::back_inserter(variable_names),
+        [](::bra::nompi_state const& state) { return state.wait_reason().variable_name(); });
+
+      auto const root_circuit_index = nompi_states.front().wait_reason().root_circuit_index();
+      auto const num_elements = nompi_states[root_circuit_index].wait_reason().num_elements();
+      auto const destination_variable_name = nompi_states[root_circuit_index].wait_reason().other_variable_name();
+
+      ::bra::gather_real_variable(
+        nompi_states, variable_names,
+        destination_variable_name, root_circuit_index, num_elements);
+
+      for (auto& state: nompi_states)
+        state.cancel_waiting();
+
+      continue;
+    }
+    else if (is_gather_complex_variable)
+    {
+      auto variable_names = std::vector<std::string>{};
+      variable_names.reserve(num_circuits);
+      std::transform(
+        begin(nompi_states), end(nompi_states), std::back_inserter(variable_names),
+        [](::bra::nompi_state const& state) { return state.wait_reason().variable_name(); });
+
+      auto const root_circuit_index = nompi_states.front().wait_reason().root_circuit_index();
+      auto const num_elements = nompi_states[root_circuit_index].wait_reason().num_elements();
+      auto const destination_variable_name = nompi_states[root_circuit_index].wait_reason().other_variable_name();
+
+      ::bra::gather_complex_variable(
+        nompi_states, variable_names,
+        destination_variable_name, root_circuit_index, num_elements);
+
+      for (auto& state: nompi_states)
+        state.cancel_waiting();
+
+      continue;
+    }
+    else if (is_gather_int_variable)
+    {
+      auto variable_names = std::vector<std::string>{};
+      variable_names.reserve(num_circuits);
+      std::transform(
+        begin(nompi_states), end(nompi_states), std::back_inserter(variable_names),
+        [](::bra::nompi_state const& state) { return state.wait_reason().variable_name(); });
+
+      auto const root_circuit_index = nompi_states.front().wait_reason().root_circuit_index();
+      auto const num_elements = nompi_states[root_circuit_index].wait_reason().num_elements();
+      auto const destination_variable_name = nompi_states[root_circuit_index].wait_reason().other_variable_name();
+
+      ::bra::gather_int_variable(
+        nompi_states, variable_names,
+        destination_variable_name, root_circuit_index, num_elements);
+
+      for (auto& state: nompi_states)
+        state.cancel_waiting();
+
+      continue;
+    }
+    else if (is_scatter_real_variable)
+    {
+      auto variable_names = std::vector<std::string>{};
+      variable_names.reserve(num_circuits);
+      std::transform(
+        begin(nompi_states), end(nompi_states), std::back_inserter(variable_names),
+        [](::bra::nompi_state const& state) { return state.wait_reason().variable_name(); });
+
+      auto const root_circuit_index = nompi_states.front().wait_reason().root_circuit_index();
+      auto const num_elements = nompi_states[root_circuit_index].wait_reason().num_elements();
+      auto const source_variable_name = nompi_states[root_circuit_index].wait_reason().other_variable_name();
+
+      ::bra::scatter_real_variable(
+        nompi_states, variable_names,
+        source_variable_name, root_circuit_index, num_elements);
+
+      for (auto& state: nompi_states)
+        state.cancel_waiting();
+
+      continue;
+    }
+    else if (is_scatter_complex_variable)
+    {
+      auto variable_names = std::vector<std::string>{};
+      variable_names.reserve(num_circuits);
+      std::transform(
+        begin(nompi_states), end(nompi_states), std::back_inserter(variable_names),
+        [](::bra::nompi_state const& state) { return state.wait_reason().variable_name(); });
+
+      auto const root_circuit_index = nompi_states.front().wait_reason().root_circuit_index();
+      auto const num_elements = nompi_states[root_circuit_index].wait_reason().num_elements();
+      auto const source_variable_name = nompi_states[root_circuit_index].wait_reason().other_variable_name();
+
+      ::bra::scatter_complex_variable(
+        nompi_states, variable_names,
+        source_variable_name, root_circuit_index, num_elements);
+
+      for (auto& state: nompi_states)
+        state.cancel_waiting();
+
+      continue;
+    }
+    else if (is_scatter_int_variable)
+    {
+      auto variable_names = std::vector<std::string>{};
+      variable_names.reserve(num_circuits);
+      std::transform(
+        begin(nompi_states), end(nompi_states), std::back_inserter(variable_names),
+        [](::bra::nompi_state const& state) { return state.wait_reason().variable_name(); });
+
+      auto const root_circuit_index = nompi_states.front().wait_reason().root_circuit_index();
+      auto const num_elements = nompi_states[root_circuit_index].wait_reason().num_elements();
+      auto const source_variable_name = nompi_states[root_circuit_index].wait_reason().other_variable_name();
+
+      ::bra::scatter_int_variable(
+        nompi_states, variable_names,
+        source_variable_name, root_circuit_index, num_elements);
 
       for (auto& state: nompi_states)
         state.cancel_waiting();
