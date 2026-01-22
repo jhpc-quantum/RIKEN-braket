@@ -596,6 +596,26 @@ namespace bra
       do_broadcast_int_variable(root_circuit_index, variable_name, num_elements);
   }
 
+  auto state::gather_variable(int const root_circuit_index, std::string const& variable_name, ::bra::variable_type const type, int const num_elements, std::string const& destination_variable_name) -> void
+  {
+    if (type == ::bra::variable_type::real)
+      do_gather_real_variable(root_circuit_index, variable_name, num_elements, destination_variable_name);
+    else if (type == ::bra::variable_type::complex_)
+      do_gather_complex_variable(root_circuit_index, variable_name, num_elements, destination_variable_name);
+    else if (type == ::bra::variable_type::integer)
+      do_gather_int_variable(root_circuit_index, variable_name, num_elements, destination_variable_name);
+  }
+
+  auto state::scatter_variable(int const root_circuit_index, std::string const& variable_name, ::bra::variable_type const type, int const num_elements, std::string const& source_variable_name) -> void
+  {
+    if (type == ::bra::variable_type::real)
+      do_scatter_real_variable(root_circuit_index, variable_name, num_elements, source_variable_name);
+    else if (type == ::bra::variable_type::complex_)
+      do_scatter_complex_variable(root_circuit_index, variable_name, num_elements, source_variable_name);
+    else if (type == ::bra::variable_type::integer)
+      do_scatter_int_variable(root_circuit_index, variable_name, num_elements, source_variable_name);
+  }
+
   auto state::is_int_symbol(std::string const& symbol_name) const -> bool
   { return symbol_name == ":INT" or symbol_name == ":OUTCOME" or symbol_name == ":OUTCOMES"; }
 

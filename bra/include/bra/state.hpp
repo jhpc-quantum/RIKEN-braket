@@ -189,7 +189,9 @@ namespace bra
       fidelity, fidelity_all, fidelity_op, fidelity_all_op,
       send_real_variable, send_complex_variable, send_int_variable,
       receive_real_variable, receive_complex_variable, receive_int_variable,
-      broadcast_real_variable, broadcast_complex_variable, broadcast_int_variable
+      broadcast_real_variable, broadcast_complex_variable, broadcast_int_variable,
+      gather_real_variable, gather_complex_variable, gather_int_variable,
+      scatter_real_variable, scatter_complex_variable, scatter_int_variable
     };
 
     status_t status_;
@@ -201,6 +203,7 @@ namespace bra
 
     std::string variable_name_;
     int num_elements_;
+    std::string other_variable_name_;
 
    public:
     struct no_wait_t { };
@@ -221,20 +224,26 @@ namespace bra
     struct broadcast_real_variable_t { };
     struct broadcast_complex_variable_t { };
     struct broadcast_int_variable_t { };
+    struct gather_real_variable_t { };
+    struct gather_complex_variable_t { };
+    struct gather_int_variable_t { };
+    struct scatter_real_variable_t { };
+    struct scatter_complex_variable_t { };
+    struct scatter_int_variable_t { };
 
     wait_reason(no_wait_t const)
       : status_{status_t::no_wait}, other_circuit_index_{}, root_circuit_index_{},
-        operator_literal_or_variable_name_{}, operated_qubits_{}, variable_name_{}, num_elements_{}
+        operator_literal_or_variable_name_{}, operated_qubits_{}, variable_name_{}, num_elements_{}, other_variable_name_{}
     { }
 
     wait_reason(inner_product_t const, int const other_circuit_index)
       : status_{status_t::inner_product}, other_circuit_index_{other_circuit_index}, root_circuit_index_{},
-        operator_literal_or_variable_name_{}, operated_qubits_{}, variable_name_{}, num_elements_{}
+        operator_literal_or_variable_name_{}, operated_qubits_{}, variable_name_{}, num_elements_{}, other_variable_name_{}
     { }
 
     wait_reason(inner_product_all_t const)
       : status_{status_t::inner_product_all}, other_circuit_index_{}, root_circuit_index_{},
-        operator_literal_or_variable_name_{}, operated_qubits_{}, variable_name_{}, num_elements_{}
+        operator_literal_or_variable_name_{}, operated_qubits_{}, variable_name_{}, num_elements_{}, other_variable_name_{}
     { }
 
     wait_reason(
@@ -243,7 +252,7 @@ namespace bra
       std::vector<qubit_type> const& operated_qubits)
       : status_{status_t::inner_product_op}, other_circuit_index_{other_circuit_index}, root_circuit_index_{},
         operator_literal_or_variable_name_{operator_literal_or_variable_name},
-        operated_qubits_{operated_qubits}, variable_name_{}, num_elements_{}
+        operated_qubits_{operated_qubits}, variable_name_{}, num_elements_{}, other_variable_name_{}
     { }
 
     wait_reason(
@@ -252,17 +261,17 @@ namespace bra
       std::vector<qubit_type> const& operated_qubits)
       : status_{status_t::inner_product_all_op}, other_circuit_index_{}, root_circuit_index_{},
         operator_literal_or_variable_name_{operator_literal_or_variable_name},
-        operated_qubits_{operated_qubits}, variable_name_{}, num_elements_{}
+        operated_qubits_{operated_qubits}, variable_name_{}, num_elements_{}, other_variable_name_{}
     { }
 
     wait_reason(fidelity_t const, int const other_circuit_index)
       : status_{status_t::fidelity}, other_circuit_index_{other_circuit_index}, root_circuit_index_{},
-        operator_literal_or_variable_name_{}, operated_qubits_{}, variable_name_{}, num_elements_{}
+        operator_literal_or_variable_name_{}, operated_qubits_{}, variable_name_{}, num_elements_{}, other_variable_name_{}
     { }
 
     wait_reason(fidelity_all_t const)
       : status_{status_t::fidelity_all}, other_circuit_index_{}, root_circuit_index_{},
-        operator_literal_or_variable_name_{}, operated_qubits_{}, variable_name_{}, num_elements_{}
+        operator_literal_or_variable_name_{}, operated_qubits_{}, variable_name_{}, num_elements_{}, other_variable_name_{}
     { }
 
     wait_reason(
@@ -271,7 +280,7 @@ namespace bra
       std::vector<qubit_type> const& operated_qubits)
       : status_{status_t::fidelity_op}, other_circuit_index_{other_circuit_index}, root_circuit_index_{},
         operator_literal_or_variable_name_{operator_literal_or_variable_name},
-        operated_qubits_{operated_qubits}, variable_name_{}, num_elements_{}
+        operated_qubits_{operated_qubits}, variable_name_{}, num_elements_{}, other_variable_name_{}
     { }
 
     wait_reason(
@@ -280,7 +289,7 @@ namespace bra
       std::vector<qubit_type> const& operated_qubits)
       : status_{status_t::fidelity_all_op}, other_circuit_index_{}, root_circuit_index_{},
         operator_literal_or_variable_name_{operator_literal_or_variable_name},
-        operated_qubits_{operated_qubits}, variable_name_{}, num_elements_{}
+        operated_qubits_{operated_qubits}, variable_name_{}, num_elements_{}, other_variable_name_{}
     { }
 
     wait_reason(
@@ -288,7 +297,7 @@ namespace bra
       std::string const& variable_name, int const num_elements)
       : status_{status_t::send_real_variable}, other_circuit_index_{other_circuit_index}, root_circuit_index_{},
         operator_literal_or_variable_name_{}, operated_qubits_{},
-        variable_name_{variable_name}, num_elements_{num_elements}
+        variable_name_{variable_name}, num_elements_{num_elements}, other_variable_name_{}
     { }
 
     wait_reason(
@@ -296,7 +305,7 @@ namespace bra
       std::string const& variable_name, int const num_elements)
       : status_{status_t::send_complex_variable}, other_circuit_index_{other_circuit_index}, root_circuit_index_{},
         operator_literal_or_variable_name_{}, operated_qubits_{},
-        variable_name_{variable_name}, num_elements_{num_elements}
+        variable_name_{variable_name}, num_elements_{num_elements}, other_variable_name_{}
     { }
 
     wait_reason(
@@ -304,7 +313,7 @@ namespace bra
       std::string const& variable_name, int const num_elements)
       : status_{status_t::send_int_variable}, other_circuit_index_{other_circuit_index}, root_circuit_index_{},
         operator_literal_or_variable_name_{}, operated_qubits_{},
-        variable_name_{variable_name}, num_elements_{num_elements}
+        variable_name_{variable_name}, num_elements_{num_elements}, other_variable_name_{}
     { }
 
     wait_reason(
@@ -312,7 +321,7 @@ namespace bra
       std::string const& variable_name, int const num_elements)
       : status_{status_t::receive_real_variable}, other_circuit_index_{other_circuit_index}, root_circuit_index_{},
         operator_literal_or_variable_name_{}, operated_qubits_{},
-        variable_name_{variable_name}, num_elements_{num_elements}
+        variable_name_{variable_name}, num_elements_{num_elements}, other_variable_name_{}
     { }
 
     wait_reason(
@@ -320,7 +329,7 @@ namespace bra
       std::string const& variable_name, int const num_elements)
       : status_{status_t::receive_complex_variable}, other_circuit_index_{other_circuit_index}, root_circuit_index_{},
         operator_literal_or_variable_name_{}, operated_qubits_{},
-        variable_name_{variable_name}, num_elements_{num_elements}
+        variable_name_{variable_name}, num_elements_{num_elements}, other_variable_name_{}
     { }
 
     wait_reason(
@@ -328,7 +337,7 @@ namespace bra
       std::string const& variable_name, int const num_elements)
       : status_{status_t::receive_int_variable}, other_circuit_index_{other_circuit_index}, root_circuit_index_{},
         operator_literal_or_variable_name_{}, operated_qubits_{},
-        variable_name_{variable_name}, num_elements_{num_elements}
+        variable_name_{variable_name}, num_elements_{num_elements}, other_variable_name_{}
     { }
 
     wait_reason(
@@ -336,7 +345,7 @@ namespace bra
       std::string const& variable_name, int const num_elements)
       : status_{status_t::broadcast_real_variable}, other_circuit_index_{}, root_circuit_index_{root_circuit_index},
         operator_literal_or_variable_name_{}, operated_qubits_{},
-        variable_name_{variable_name}, num_elements_{num_elements}
+        variable_name_{variable_name}, num_elements_{num_elements}, other_variable_name_{}
     { }
 
     wait_reason(
@@ -344,7 +353,7 @@ namespace bra
       std::string const& variable_name, int const num_elements)
       : status_{status_t::broadcast_complex_variable}, other_circuit_index_{}, root_circuit_index_{root_circuit_index},
         operator_literal_or_variable_name_{}, operated_qubits_{},
-        variable_name_{variable_name}, num_elements_{num_elements}
+        variable_name_{variable_name}, num_elements_{num_elements}, other_variable_name_{}
     { }
 
     wait_reason(
@@ -352,7 +361,55 @@ namespace bra
       std::string const& variable_name, int const num_elements)
       : status_{status_t::broadcast_int_variable}, other_circuit_index_{}, root_circuit_index_{root_circuit_index},
         operator_literal_or_variable_name_{}, operated_qubits_{},
-        variable_name_{variable_name}, num_elements_{num_elements}
+        variable_name_{variable_name}, num_elements_{num_elements}, other_variable_name_{}
+    { }
+
+    wait_reason(
+      gather_real_variable_t const, int const root_circuit_index,
+      std::string const& variable_name, int const num_elements, std::string const& destination_variable_name)
+      : status_{status_t::gather_real_variable}, other_circuit_index_{}, root_circuit_index_{root_circuit_index},
+        operator_literal_or_variable_name_{}, operated_qubits_{},
+        variable_name_{variable_name}, num_elements_{num_elements}, other_variable_name_{destination_variable_name}
+    { }
+
+    wait_reason(
+      gather_complex_variable_t const, int const root_circuit_index,
+      std::string const& variable_name, int const num_elements, std::string const& destination_variable_name)
+      : status_{status_t::gather_complex_variable}, other_circuit_index_{}, root_circuit_index_{root_circuit_index},
+        operator_literal_or_variable_name_{}, operated_qubits_{},
+        variable_name_{variable_name}, num_elements_{num_elements}, other_variable_name_{destination_variable_name}
+    { }
+
+    wait_reason(
+      gather_int_variable_t const, int const root_circuit_index,
+      std::string const& variable_name, int const num_elements, std::string const& destination_variable_name)
+      : status_{status_t::gather_int_variable}, other_circuit_index_{}, root_circuit_index_{root_circuit_index},
+        operator_literal_or_variable_name_{}, operated_qubits_{},
+        variable_name_{variable_name}, num_elements_{num_elements}, other_variable_name_{destination_variable_name}
+    { }
+
+    wait_reason(
+      scatter_real_variable_t const, int const root_circuit_index,
+      std::string const& variable_name, int const num_elements, std::string const& source_variable_name)
+      : status_{status_t::scatter_real_variable}, other_circuit_index_{}, root_circuit_index_{root_circuit_index},
+        operator_literal_or_variable_name_{}, operated_qubits_{},
+        variable_name_{variable_name}, num_elements_{num_elements}, other_variable_name_{source_variable_name}
+    { }
+
+    wait_reason(
+      scatter_complex_variable_t const, int const root_circuit_index,
+      std::string const& variable_name, int const num_elements, std::string const& source_variable_name)
+      : status_{status_t::scatter_complex_variable}, other_circuit_index_{}, root_circuit_index_{root_circuit_index},
+        operator_literal_or_variable_name_{}, operated_qubits_{},
+        variable_name_{variable_name}, num_elements_{num_elements}, other_variable_name_{source_variable_name}
+    { }
+
+    wait_reason(
+      scatter_int_variable_t const, int const root_circuit_index,
+      std::string const& variable_name, int const num_elements, std::string const& source_variable_name)
+      : status_{status_t::scatter_int_variable}, other_circuit_index_{}, root_circuit_index_{root_circuit_index},
+        operator_literal_or_variable_name_{}, operated_qubits_{},
+        variable_name_{variable_name}, num_elements_{num_elements}, other_variable_name_{source_variable_name}
     { }
 
     auto is_inner_product() const -> bool { return status_ == status_t::inner_product; }
@@ -372,6 +429,12 @@ namespace bra
     auto is_broadcast_real_variable() const -> bool { return status_ == status_t::broadcast_real_variable; }
     auto is_broadcast_complex_variable() const -> bool { return status_ == status_t::broadcast_complex_variable; }
     auto is_broadcast_int_variable() const -> bool { return status_ == status_t::broadcast_int_variable; }
+    auto is_gather_real_variable() const -> bool { return status_ == status_t::gather_real_variable; }
+    auto is_gather_complex_variable() const -> bool { return status_ == status_t::gather_complex_variable; }
+    auto is_gather_int_variable() const -> bool { return status_ == status_t::gather_int_variable; }
+    auto is_scatter_real_variable() const -> bool { return status_ == status_t::scatter_real_variable; }
+    auto is_scatter_complex_variable() const -> bool { return status_ == status_t::scatter_complex_variable; }
+    auto is_scatter_int_variable() const -> bool { return status_ == status_t::scatter_int_variable; }
 
     auto other_circuit_index() const -> int { return other_circuit_index_; }
     auto root_circuit_index() const -> int { return root_circuit_index_; }
@@ -380,6 +443,7 @@ namespace bra
 
     auto variable_name() const -> std::string const& { return variable_name_; }
     auto num_elements() const -> int { return num_elements_; }
+    auto other_variable_name() const -> std::string const& { return other_variable_name_; }
   }; // class wait_reason
 
   class state
@@ -552,6 +616,8 @@ namespace bra
     auto send_variable(int const destination_circuit_index, std::string const& variable_name, ::bra::variable_type const type, int const num_elements) const -> void;
     auto receive_variable(int const source_circuit_index, std::string const& variable_name, ::bra::variable_type const type, int const num_elements) -> void;
     auto broadcast_variable(int const root_circuit_index, std::string const& variable_name, ::bra::variable_type const type, int const num_elements) -> void;
+    auto gather_variable(int const root_circuit_index, std::string const& variable_name, ::bra::variable_type const type, int const num_elements, std::string const& destination_variable_name) -> void;
+    auto scatter_variable(int const root_circuit_index, std::string const& variable_name, ::bra::variable_type const type, int const num_elements, std::string const& source_variable_name) -> void;
 
 # ifndef BRA_NO_MPI
     unsigned int num_page_qubits() const { return do_num_page_qubits(); }
@@ -923,6 +989,12 @@ namespace bra
     virtual auto do_broadcast_real_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements) -> void = 0;
     virtual auto do_broadcast_complex_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements) -> void = 0;
     virtual auto do_broadcast_int_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements) -> void = 0;
+    virtual auto do_gather_real_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements, std::string const& destination_variable_name) -> void = 0;
+    virtual auto do_gather_complex_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements, std::string const& destination_variable_name) -> void = 0;
+    virtual auto do_gather_int_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements, std::string const& destination_variable_name) -> void = 0;
+    virtual auto do_scatter_real_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements, std::string const& source_variable_name) -> void = 0;
+    virtual auto do_scatter_complex_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements, std::string const& source_variable_name) -> void = 0;
+    virtual auto do_scatter_int_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements, std::string const& source_variable_name) -> void = 0;
 
 # ifndef BRA_NO_MPI
     virtual unsigned int do_num_page_qubits() const = 0;

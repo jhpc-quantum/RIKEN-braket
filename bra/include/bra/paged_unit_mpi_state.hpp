@@ -103,6 +103,12 @@ namespace bra
     auto do_broadcast_real_variable(int const circuit_index, std::string const& variable_name, int const num_elements) -> void override;
     auto do_broadcast_complex_variable(int const circuit_index, std::string const& variable_name, int const num_elements) -> void override;
     auto do_broadcast_int_variable(int const circuit_index, std::string const& variable_name, int const num_elements) -> void override;
+    auto do_gather_real_variable(int const circuit_index, std::string const& variable_name, int const num_elements, std::string const& destination_variable_name) -> void override;
+    auto do_gather_complex_variable(int const circuit_index, std::string const& variable_name, int const num_elements, std::string const& destination_variable_name) -> void override;
+    auto do_gather_int_variable(int const circuit_index, std::string const& variable_name, int const num_elements, std::string const& destination_variable_name) -> void override;
+    auto do_scatter_real_variable(int const circuit_index, std::string const& variable_name, int const num_elements, std::string const& source_variable_name) -> void override;
+    auto do_scatter_complex_variable(int const circuit_index, std::string const& variable_name, int const num_elements, std::string const& source_variable_name) -> void override;
+    auto do_scatter_int_variable(int const circuit_index, std::string const& variable_name, int const num_elements, std::string const& source_variable_name) -> void override;
 
     unsigned int do_num_page_qubits() const override;
     unsigned int do_num_pages() const override;
