@@ -18,6 +18,7 @@
 # include <yampi/thread_support.hpp>
 # include <yampi/communicator.hpp>
 # include <yampi/rank.hpp>
+# include <yampi/scatter.hpp>
 # include <yampi/wall_clock.hpp>
 #endif
 
@@ -142,7 +143,7 @@ int main(int argc, char* argv[])
 #endif // BRA_NO_MPI
 
   auto const num_threads_per_process = parse_result["threads"].as<unsigned int>();
-  auto const seed = parse_result["seed"].as<seed_type>();
+  auto const given_seed = parse_result["seed"].as<seed_type>();
 
   std::ifstream possible_input_stream;
   if (parse_result.count("file"))
@@ -205,24 +206,82 @@ int main(int argc, char* argv[])
     intercommunicators.emplace_back(circuit_communicator, 0_r, world_communicator, remote_leader, tag, environment);
   }
 
+  auto seed = seed_type{};
+  using namespace yampi::literals::rank_literals;
+  if (intercircuit_communicator.rank(environment) == 0_r)
+  {
+    auto seeds = std::vector<seed_type>{};
+    seeds.reserve(num_circuits);
+    seeds.push_back(given_seed);
+
+    auto seed_generator = rng_type{given_seed};
+
+    std::generate_n(std::back_inserter(seeds), num_circuits - 1u, [&seed_generator]() { return seed_generator(); });
+    yampi::scatter(yampi::in_place, yampi::range_to_buffer(seeds), 0_r, intercircuit_communicator, environment);
+
+    seed = seeds.front();
+  }
+  else
+    yampi::scatter(yampi::make_buffer(seed), 0_r, intercircuit_communicator, environment);
+
+  auto depolarizing_seed = seed_type{};
+  if (interpreter.is_depolarizing_channel())
+  {
+    if (intercircuit_communicator.rank(environment) == 0_r)
+    {
+      auto seeds = std::vector<seed_type>{};
+      seeds.reserve(num_circuits);
+      seeds.push_back(static_cast<seed_type>(interpreter.depolarizing_seed()));
+
+      auto rng = rng_type{static_cast<seed_type>(interpreter.depolarizing_seed())};
+      auto depolarizing_seed_generator
+        = [&interpreter, &rng]()
+          {
+            if (interpreter.depolarizing_seed() <= 0)
+              return static_cast<seed_type>(interpreter.depolarizing_seed());
+
+            auto result = rng();
+            while (result == seed_type{0})
+              result = rng();
+
+            return result;
+          };
+
+      std::generate_n(std::back_inserter(seeds), num_circuits - 1u, [&depolarizing_seed_generator]() { return depolarizing_seed_generator(); });
+      yampi::scatter(yampi::in_place, yampi::range_to_buffer(seeds), 0_r, intercircuit_communicator, environment);
+
+      depolarizing_seed = seeds.front();
+    }
+    else
+      yampi::scatter(yampi::make_buffer(depolarizing_seed), 0_r, intercircuit_communicator, environment);
+  }
+
 # ifndef BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
   auto state_ptr
     = is_unit
       ? bra::make_unit_mpi_state(
           num_page_qubits, interpreter.initial_state_value(), interpreter.num_lqubits(), num_unit_qubits, interpreter.initial_permutation(),
-          num_threads_per_process, num_processes_per_unit, seed, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment)
+          num_threads_per_process, num_processes_per_unit, seed,
+          interpreter.is_depolarizing_channel(), interpreter.depolarizing_px(), interpreter.depolarizing_py(), interpreter.depolarizing_pz(), interpreter.depolarizing_seed() > 0, depolarizing_seed,
+          circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment)
       : bra::make_simple_mpi_state(
           num_page_qubits, interpreter.initial_state_value(), interpreter.num_lqubits(), interpreter.initial_permutation(),
-          num_threads_per_process, seed, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment);
+          num_threads_per_process, seed,
+          interpreter.is_depolarizing_channel(), interpreter.depolarizing_px(), interpreter.depolarizing_py(), interpreter.depolarizing_pz(), interpreter.depolarizing_seed() > 0, depolarizing_seed,
+          circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment);
 # else // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
   auto state_ptr
     = is_unit
       ? bra::make_unit_mpi_state(
           num_page_qubits, interpreter.initial_state_value(), interpreter.num_lqubits(), num_unit_qubits, interpreter.initial_permutation(),
-          num_threads_per_process, num_processes_per_unit, seed, num_elements_in_buffer, circuit_communicator, circuit_index, intercircuit_communicator, intercommunicators, environment)
+          num_threads_per_process, num_processes_per_unit, seed,
+          interpreter.is_depolarizing_channel(), interpreter.depolarizing_px(), interpreter.depolarizing_py(), interpreter.depolarizing_pz(), interpreter.depolarizing_seed() > 0, depolarizing_seed,
+          num_elements_in_buffer, circuit_communicator, circuit_index, intercircuit_communicator, intercommunicators, environment)
       : bra::make_simple_mpi_state(
           num_page_qubits, interpreter.initial_state_value(), interpreter.num_lqubits(), interpreter.initial_permutation(),
-          num_threads_per_process, seed, num_elements_in_buffer, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment);
+          num_threads_per_process, seed,
+          interpreter.is_depolarizing_channel(), interpreter.depolarizing_px(), interpreter.depolarizing_py(), interpreter.depolarizing_pz(), interpreter.depolarizing_seed() > 0, depolarizing_seed,
+          num_elements_in_buffer, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment);
 # endif // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
 
   interpreter.apply_circuit(*state_ptr, circuit_index);
@@ -238,11 +297,32 @@ int main(int argc, char* argv[])
   }
 
   auto const num_circuits = interpreter.num_circuits();
+  auto seed_generator = rng_type{given_seed};
+  auto rng = rng_type{static_cast<seed_type>(interpreter.depolarizing_seed())};
+  auto depolarizing_seed_generator
+    = [&interpreter, &rng]()
+      {
+        if (interpreter.depolarizing_seed() <= 0)
+          return static_cast<seed_type>(interpreter.depolarizing_seed());
+
+        auto result = rng();
+        while (result == seed_type{0})
+          result = rng();
+
+        return result;
+      };
 
   auto nompi_states = std::vector< ::bra::nompi_state >{};
   nompi_states.reserve(num_circuits);
-  for (auto circuit_index = 0; circuit_index < static_cast<int>(num_circuits); ++circuit_index)
-    nompi_states.emplace_back(interpreter.initial_state_value(), interpreter.num_qubits(), num_threads_per_process, seed, circuit_index);
+  nompi_states.emplace_back(
+    interpreter.initial_state_value(), interpreter.num_qubits(), num_threads_per_process, given_seed,
+    interpreter.is_depolarizing_channel(), interpreter.depolarizing_px(), interpreter.depolarizing_py(), interpreter.depolarizing_pz(), interpreter.depolarizing_seed() > 0, static_cast<seed_type>(interpreter.depolarizing_seed()),
+    0);
+  for (auto circuit_index = 1; circuit_index < static_cast<int>(num_circuits); ++circuit_index)
+    nompi_states.emplace_back(
+      interpreter.initial_state_value(), interpreter.num_qubits(), num_threads_per_process, seed_generator(),
+      interpreter.is_depolarizing_channel(), interpreter.depolarizing_px(), interpreter.depolarizing_py(), interpreter.depolarizing_pz(), interpreter.depolarizing_seed() > 0, depolarizing_seed_generator(),
+      circuit_index);
 
   while (true)
   {

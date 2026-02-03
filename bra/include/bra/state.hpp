@@ -485,6 +485,12 @@ namespace bra
     int circuit_index_;
     mutable ::bra::wait_reason wait_reason_;
     random_number_generator_type random_number_generator_;
+    bool is_depolarizing_channel_;
+    real_type depolarizing_px_;
+    real_type depolarizing_py_;
+    real_type depolarizing_pz_;
+    bool uses_depolarizing_seed_;
+    random_number_generator_type depolarizing_random_number_generator_;
 # ifndef BRA_NO_MPI
 
     permutation_type permutation_;
@@ -520,6 +526,12 @@ namespace bra
     state(
       bit_integer_type const total_num_qubits,
       seed_type const seed,
+      bool const is_depolarizing_channel,
+      ::bra::real_type const depolarizing_px,
+      ::bra::real_type const depolarizing_py,
+      ::bra::real_type const depolarizing_pz,
+      bool const uses_depolarizing_seed,
+      seed_type const depolarizing_seed,
       yampi::communicator const& circuit_communicator,
       yampi::communicator const& intercircuit_communicator,
       int const circuit_index,
@@ -529,6 +541,12 @@ namespace bra
     state(
       bit_integer_type const total_num_qubits,
       seed_type const seed,
+      bool const is_depolarizing_channel,
+      ::bra::real_type const depolarizing_px,
+      ::bra::real_type const depolarizing_py,
+      ::bra::real_type const depolarizing_pz,
+      bool const uses_depolarizing_seed,
+      seed_type const depolarizing_seed,
       unsigned int const num_elements_in_buffer,
       yampi::communicator const& circuit_communicator,
       yampi::communicator const& intercircuit_communicator,
@@ -539,6 +557,12 @@ namespace bra
     state(
       std::vector<permutated_qubit_type> const& initial_permutation,
       seed_type const seed,
+      bool const is_depolarizing_channel,
+      ::bra::real_type const depolarizing_px,
+      ::bra::real_type const depolarizing_py,
+      ::bra::real_type const depolarizing_pz,
+      bool const uses_depolarizing_seed,
+      seed_type const depolarizing_seed,
       yampi::communicator const& circuit_communicator,
       yampi::communicator const& intercircuit_communicator,
       int const circuit_index,
@@ -548,6 +572,12 @@ namespace bra
     state(
       std::vector<permutated_qubit_type> const& initial_permutation,
       seed_type const seed,
+      bool const is_depolarizing_channel,
+      ::bra::real_type const depolarizing_px,
+      ::bra::real_type const depolarizing_py,
+      ::bra::real_type const depolarizing_pz,
+      bool const uses_depolarizing_seed,
+      seed_type const depolarizing_seed,
       unsigned int const num_elements_in_buffer,
       yampi::communicator const& circuit_communicator,
       yampi::communicator const& intercircuit_communicator,
@@ -555,7 +585,15 @@ namespace bra
       std::vector<yampi::intercommunicator> const& intercommunicators,
       yampi::environment const& environment);
 # else // BRA_NO_MPI
-    state(bit_integer_type const total_num_qubits, seed_type const seed, int const circuit_index);
+    state(
+      bit_integer_type const total_num_qubits, seed_type const seed,
+      bool const is_depolarizing_channel,
+      ::bra::real_type const depolarizing_px,
+      ::bra::real_type const depolarizing_py,
+      ::bra::real_type const depolarizing_pz,
+      bool const uses_depolarizing_seed,
+      seed_type const depolarizing_seed,
+      int const circuit_index);
 # endif // BRA_NO_MPI
 
     virtual ~state() = default;
@@ -825,10 +863,6 @@ namespace bra
     state& clear(qubit_type const qubit);
     state& set(qubit_type const qubit);
 
-    state& depolarizing_channel(
-      real_type const px, real_type const py, real_type const pz,
-      int const seed);
-
     state& controlled_i_gate(qubit_type const target_qubit, control_qubit_type const control_qubit);
     state& controlled_ic_gate(control_qubit_type const control_qubit1, control_qubit_type const control_qubit2);
     state& multi_controlled_in_gate(std::vector<qubit_type> const& target_qubits, std::vector<control_qubit_type> const& control_qubits);
@@ -976,7 +1010,25 @@ namespace bra
       boost::variant<real_type, std::string> const& phase,
       qubit_type const target_qubit1, qubit_type const target_qubit2, std::vector<control_qubit_type> const& control_qubits);
 
+   protected:
+    auto apply_noise(qubit_type const qubit) -> void;
+    auto apply_noise(control_qubit_type const control_qubit) -> void { apply_noise(control_qubit.qubit()); }
+
+    auto apply_noises() -> void { }
+    template <typename Qubit, typename... Qubits>
+    auto apply_noises(Qubit const qubit, Qubits const... qubits) -> void
+    { apply_noise(qubit); apply_noises(qubits...); }
+    template <typename Qubit, typename Allocator, typename... Qubits>
+    auto apply_noises(std::vector<Qubit, Allocator> const& qubit_sequence, Qubits const... qubits) -> void
+    {
+      for (auto const qubit: qubit_sequence)
+        apply_noise(qubit);
+      apply_noises(qubits...);
+    }
+
    private:
+    virtual auto generate_probability() -> real_type = 0;
+
     virtual auto do_is_waiting() const -> bool { return false; }
     virtual auto do_cancel_waiting() -> void { }
 

@@ -7,6 +7,7 @@
 # include <iterator>
 # include <algorithm>
 # include <numeric>
+# include <random>
 # include <utility>
 
 # include <boost/algorithm/string/case_conv.hpp>
@@ -20,6 +21,7 @@
 
 # include <yampi/buffer.hpp>
 # include <yampi/tag.hpp>
+# include <yampi/rank.hpp>
 # include <yampi/send.hpp>
 # include <yampi/receive.hpp>
 # include <yampi/broadcast.hpp>
@@ -79,6 +81,7 @@
 # include <bra/state.hpp>
 # include <bra/types.hpp>
 # include <bra/fused_gate.hpp>
+# include <bra/utility/closest_floating_point_of.hpp>
 
 # ifndef BRA_MAX_NUM_OPERATED_QUBITS
 #   define BRA_MAX_NUM_OPERATED_QUBITS 6
@@ -103,12 +106,18 @@ namespace bra
     unsigned int const num_threads_per_process,
     unsigned int const num_processes_per_unit,
     ::bra::state::seed_type const seed,
+    bool const is_depolarizing_channel,
+    ::bra::real_type const depolarizing_px,
+    ::bra::real_type const depolarizing_py,
+    ::bra::real_type const depolarizing_pz,
+    bool const uses_depolarizing_seed,
+    ::bra::state::seed_type const depolarizing_seed,
     yampi::communicator const& circuit_communicator,
     yampi::communicator const& intercircuit_communicator,
     int const circuit_index,
     std::vector<yampi::intercommunicator> const& intercommunicators,
     yampi::environment const& environment)
-    : ::bra::state{total_num_qubits, seed, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment},
+    : ::bra::state{total_num_qubits, seed, is_depolarizing_channel, depolarizing_px, depolarizing_py, depolarizing_pz, uses_depolarizing_seed, depolarizing_seed, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment},
       parallel_policy_{num_threads_per_process},
       mpi_policy_{num_unit_qubits, num_processes_per_unit},
       data_{generate_initial_data(num_local_qubits, initial_integer, circuit_communicator, environment)},
@@ -124,12 +133,18 @@ namespace bra
     unsigned int const num_threads_per_process,
     unsigned int const num_processes_per_unit,
     ::bra::state::seed_type const seed,
+    bool const is_depolarizing_channel,
+    ::bra::real_type const depolarizing_px,
+    ::bra::real_type const depolarizing_py,
+    ::bra::real_type const depolarizing_pz,
+    bool const uses_depolarizing_seed,
+    ::bra::state::seed_type const depolarizing_seed,
     yampi::communicator const& circuit_communicator,
     yampi::communicator const& intercircuit_communicator,
     int const circuit_index,
     std::vector<yampi::intercommunicator> const& intercommunicators,
     yampi::environment const& environment)
-    : ::bra::state{initial_permutation, seed, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment},
+    : ::bra::state{initial_permutation, seed, is_depolarizing_channel, depolarizing_px, depolarizing_py, depolarizing_pz, uses_depolarizing_seed, depolarizing_seed, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment},
       parallel_policy_{num_threads_per_process},
       mpi_policy_{num_unit_qubits, num_processes_per_unit},
       data_{generate_initial_data(num_local_qubits, initial_integer, circuit_communicator, environment)},
@@ -145,13 +160,19 @@ namespace bra
     unsigned int const num_threads_per_process,
     unsigned int const num_processes_per_unit,
     ::bra::state::seed_type const seed,
+    bool const is_depolarizing_channel,
+    ::bra::real_type const depolarizing_px,
+    ::bra::real_type const depolarizing_py,
+    ::bra::real_type const depolarizing_pz,
+    bool const uses_depolarizing_seed,
+    ::bra::state::seed_type const depolarizing_seed,
     unsigned int const num_elements_in_buffer,
     yampi::communicator const& circuit_communicator,
     yampi::communicator const& intercircuit_communicator,
     int const circuit_index,
     std::vector<yampi::intercommunicator> const& intercommunicators,
     yampi::environment const& environment)
-    : ::bra::state{total_num_qubits, seed, num_elements_in_buffer, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment},
+    : ::bra::state{total_num_qubits, seed, is_depolarizing_channel, depolarizing_px, depolarizing_py, depolarizing_pz, uses_depolarizing_seed, depolarizing_seed, num_elements_in_buffer, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment},
       parallel_policy_{num_threads_per_process},
       mpi_policy_{num_unit_qubits, num_processes_per_unit},
       data_{generate_initial_data(num_local_qubits, initial_integer, circuit_communicator, environment)},
@@ -167,13 +188,19 @@ namespace bra
     unsigned int const num_threads_per_process,
     unsigned int const num_processes_per_unit,
     ::bra::state::seed_type const seed,
+    bool const is_depolarizing_channel,
+    ::bra::real_type const depolarizing_px,
+    ::bra::real_type const depolarizing_py,
+    ::bra::real_type const depolarizing_pz,
+    bool const uses_depolarizing_seed,
+    ::bra::state::seed_type const depolarizing_seed,
     unsigned int const num_elements_in_buffer,
     yampi::communicator const& circuit_communicator,
     yampi::communicator const& intercircuit_communicator,
     int const circuit_index,
     std::vector<yampi::intercommunicator> const& intercommunicators,
     yampi::environment const& environment)
-    : ::bra::state{initial_permutation, seed, num_elements_in_buffer, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment},
+    : ::bra::state{initial_permutation, seed, is_depolarizing_channel, depolarizing_px, depolarizing_py, depolarizing_pz, uses_depolarizing_seed, depolarizing_seed, num_elements_in_buffer, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment},
       parallel_policy_{num_threads_per_process},
       mpi_policy_{num_unit_qubits, num_processes_per_unit},
       data_{generate_initial_data(num_local_qubits, initial_integer, circuit_communicator, environment)},
@@ -191,12 +218,18 @@ namespace bra
     unsigned int const num_threads_per_process,
     unsigned int const num_processes_per_unit,
     ::bra::state::seed_type const seed,
+    bool const is_depolarizing_channel,
+    ::bra::real_type const depolarizing_px,
+    ::bra::real_type const depolarizing_py,
+    ::bra::real_type const depolarizing_pz,
+    bool const uses_depolarizing_seed,
+    ::bra::state::seed_type const depolarizing_seed,
     yampi::communicator const& circuit_communicator,
     yampi::communicator const& intercircuit_communicator,
     int const circuit_index,
     std::vector<yampi::intercommunicator> const& intercommunicators,
     yampi::environment const& environment)
-    : ::bra::state{total_num_qubits, seed, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment},
+    : ::bra::state{total_num_qubits, seed, is_depolarizing_channel, depolarizing_px, depolarizing_py, depolarizing_pz, uses_depolarizing_seed, depolarizing_seed, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment},
       parallel_policy_{num_threads_per_process},
       mpi_policy_{num_unit_qubits, num_processes_per_unit},
       data_{generate_initial_data(num_local_qubits, initial_integer, circuit_communicator, environment)},
@@ -211,12 +244,18 @@ namespace bra
     unsigned int const num_threads_per_process,
     unsigned int const num_processes_per_unit,
     ::bra::state::seed_type const seed,
+    bool const is_depolarizing_channel,
+    ::bra::real_type const depolarizing_px,
+    ::bra::real_type const depolarizing_py,
+    ::bra::real_type const depolarizing_pz,
+    bool const uses_depolarizing_seed,
+    ::bra::state::seed_type const depolarizing_seed,
     yampi::communicator const& circuit_communicator,
     yampi::communicator const& intercircuit_communicator,
     int const circuit_index,
     std::vector<yampi::intercommunicator> const& intercommunicators,
     yampi::environment const& environment)
-    : ::bra::state{initial_permutation, seed, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment},
+    : ::bra::state{initial_permutation, seed, is_depolarizing_channel, depolarizing_px, depolarizing_py, depolarizing_pz, uses_depolarizing_seed, depolarizing_seed, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment},
       parallel_policy_{num_threads_per_process},
       mpi_policy_{num_unit_qubits, num_processes_per_unit},
       data_{generate_initial_data(num_local_qubits, initial_integer, circuit_communicator, environment)},
@@ -231,13 +270,19 @@ namespace bra
     unsigned int const num_threads_per_process,
     unsigned int const num_processes_per_unit,
     ::bra::state::seed_type const seed,
+    bool const is_depolarizing_channel,
+    ::bra::real_type const depolarizing_px,
+    ::bra::real_type const depolarizing_py,
+    ::bra::real_type const depolarizing_pz,
+    bool const uses_depolarizing_seed,
+    ::bra::state::seed_type const depolarizing_seed,
     unsigned int const num_elements_in_buffer,
     yampi::communicator const& circuit_communicator,
     yampi::communicator const& intercircuit_communicator,
     int const circuit_index,
     std::vector<yampi::intercommunicator> const& intercommunicators,
     yampi::environment const& environment)
-    : ::bra::state{total_num_qubits, seed, num_elements_in_buffer, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment},
+    : ::bra::state{total_num_qubits, seed, is_depolarizing_channel, depolarizing_px, depolarizing_py, depolarizing_pz, uses_depolarizing_seed, depolarizing_seed, num_elements_in_buffer, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment},
       parallel_policy_{num_threads_per_process},
       mpi_policy_{num_unit_qubits, num_processes_per_unit},
       data_{generate_initial_data(num_local_qubits, initial_integer, circuit_communicator, environment)},
@@ -252,13 +297,19 @@ namespace bra
     unsigned int const num_threads_per_process,
     unsigned int const num_processes_per_unit,
     ::bra::state::seed_type const seed,
+    bool const is_depolarizing_channel,
+    ::bra::real_type const depolarizing_px,
+    ::bra::real_type const depolarizing_py,
+    ::bra::real_type const depolarizing_pz,
+    bool const uses_depolarizing_seed,
+    ::bra::state::seed_type const depolarizing_seed,
     unsigned int const num_elements_in_buffer,
     yampi::communicator const& circuit_communicator,
     yampi::communicator const& intercircuit_communicator,
     int const circuit_index,
     std::vector<yampi::intercommunicator> const& intercommunicators,
     yampi::environment const& environment)
-    : ::bra::state{initial_permutation, seed, num_elements_in_buffer, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment},
+    : ::bra::state{initial_permutation, seed, is_depolarizing_channel, depolarizing_px, depolarizing_py, depolarizing_pz, uses_depolarizing_seed, depolarizing_seed, num_elements_in_buffer, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment},
       parallel_policy_{num_threads_per_process},
       mpi_policy_{num_unit_qubits, num_processes_per_unit},
       data_{generate_initial_data(num_local_qubits, initial_integer, circuit_communicator, environment)},
@@ -284,6 +335,27 @@ namespace bra
           circuit_communicator, environment);
     if (circuit_communicator.rank(environment) == rank_index.first)
       result[rank_index.second] = complex_type{1};
+
+    return result;
+  }
+
+  auto unit_mpi_state::generate_probability() -> real_type
+  {
+    auto result = real_type{0};
+
+    using namespace yampi::literals::rank_literals;
+    if (circuit_communicator_.rank(environment_) == 0_r)
+    {
+      using floating_point_type = typename ::bra::utility::closest_floating_point_of<real_type>::type;
+      auto distribution = std::uniform_real_distribution<floating_point_type>{0.0, 1.0};
+
+      result
+        = uses_depolarizing_seed_
+          ? static_cast<real_type>(distribution(depolarizing_random_number_generator_))
+          : static_cast<real_type>(distribution(random_number_generator_));
+    }
+
+    yampi::broadcast(yampi::make_buffer(result), 0_r, circuit_communicator_, environment_);
 
     return result;
   }

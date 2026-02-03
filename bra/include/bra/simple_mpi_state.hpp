@@ -51,6 +51,12 @@ namespace bra
       unsigned int const total_num_qubits,
       unsigned int const num_threads_per_process,
       ::bra::state::seed_type const seed,
+      bool const is_depolarizing_channel,
+      ::bra::real_type const depolarizing_px,
+      ::bra::real_type const depolarizing_py,
+      ::bra::real_type const depolarizing_pz,
+      bool const uses_depolarizing_seed,
+      ::bra::state::seed_type const depolarizing_seed,
 #   ifdef BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
       unsigned int const num_elements_in_buffer,
 #   endif // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
@@ -66,6 +72,12 @@ namespace bra
       std::vector<permutated_qubit_type> const& initial_permutation,
       unsigned int const num_threads_per_process,
       ::bra::state::seed_type const seed,
+      bool const is_depolarizing_channel,
+      ::bra::real_type const depolarizing_px,
+      ::bra::real_type const depolarizing_py,
+      ::bra::real_type const depolarizing_pz,
+      bool const uses_depolarizing_seed,
+      ::bra::state::seed_type const depolarizing_seed,
 #   ifdef BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
       unsigned int const num_elements_in_buffer,
 #   endif // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
@@ -86,6 +98,8 @@ namespace bra
       unsigned int const num_local_qubits,
       ::bra::state::state_integer_type const initial_integer,
       yampi::communicator const& circuit_communicator, yampi::environment const& environment) const;
+
+    auto generate_probability() -> real_type override;
 
     auto do_send_real_variable(int const circuit_index, std::string const& variable_name, int const num_elements) const -> void override;
     auto do_send_complex_variable(int const circuit_index, std::string const& variable_name, int const num_elements) const -> void override;
