@@ -3,7 +3,6 @@
 #include <sstream>
 #include <string>
 #include <vector>
-#include <random>
 #include <algorithm>
 #include <iterator>
 #include <utility>
@@ -21,6 +20,7 @@
 #include <boost/preprocessor/arithmetic/dec.hpp>
 
 #ifndef BRA_NO_MPI
+# include <yampi/rank.hpp>
 # include <yampi/communicator.hpp>
 # include <yampi/intercommunicator.hpp>
 # include <yampi/environment.hpp>
@@ -31,8 +31,8 @@
 #include <ket/control.hpp>
 #include <ket/utility/imaginary_unit.hpp>
 
+#include <bra/types.hpp>
 #include <bra/state.hpp>
-#include <bra/utility/closest_floating_point_of.hpp>
 
 #ifndef BRA_NO_MPI
 # define BRA_clock yampi::wall_clock
@@ -101,6 +101,12 @@ namespace bra
   state::state(
     bit_integer_type const total_num_qubits,
     seed_type const seed,
+    bool const is_depolarizing_channel,
+    ::bra::real_type const depolarizing_px,
+    ::bra::real_type const depolarizing_py,
+    ::bra::real_type const depolarizing_pz,
+    bool const uses_depolarizing_seed,
+    seed_type const depolarizing_seed,
     yampi::communicator const& circuit_communicator,
     yampi::communicator const& intercircuit_communicator,
     int const circuit_index,
@@ -118,6 +124,12 @@ namespace bra
       circuit_index_{circuit_index},
       wait_reason_{::bra::wait_reason::no_wait_t{}},
       random_number_generator_{seed},
+      is_depolarizing_channel_{is_depolarizing_channel},
+      depolarizing_px_{is_depolarizing_channel ? depolarizing_px : ::bra::real_type{}},
+      depolarizing_py_{is_depolarizing_channel ? depolarizing_py : ::bra::real_type{}},
+      depolarizing_pz_{is_depolarizing_channel ? depolarizing_pz : ::bra::real_type{}},
+      uses_depolarizing_seed_{uses_depolarizing_seed},
+      depolarizing_random_number_generator_{is_depolarizing_channel_ and uses_depolarizing_seed ? depolarizing_seed : seed_type{}},
       permutation_{static_cast<permutation_type::size_type>(total_num_qubits)},
       buffer_{},
       circuit_communicator_{circuit_communicator},
@@ -140,6 +152,12 @@ namespace bra
   state::state(
     bit_integer_type const total_num_qubits,
     seed_type const seed,
+    bool const is_depolarizing_channel,
+    ::bra::real_type const depolarizing_px,
+    ::bra::real_type const depolarizing_py,
+    ::bra::real_type const depolarizing_pz,
+    bool const uses_depolarizing_seed,
+    seed_type const depolarizing_seed,
     unsigned int const num_elements_in_buffer,
     yampi::communicator const& circuit_communicator,
     yampi::communicator const& intercircuit_communicator,
@@ -158,6 +176,12 @@ namespace bra
       circuit_index_{circuit_index},
       wait_reason_{::bra::wait_reason::no_wait_t{}},
       random_number_generator_{seed},
+      is_depolarizing_channel_{is_depolarizing_channel},
+      depolarizing_px_{is_depolarizing_channel ? depolarizing_px : ::bra::real_type{}},
+      depolarizing_py_{is_depolarizing_channel ? depolarizing_py : ::bra::real_type{}},
+      depolarizing_pz_{is_depolarizing_channel ? depolarizing_pz : ::bra::real_type{}},
+      uses_depolarizing_seed_{uses_depolarizing_seed},
+      depolarizing_random_number_generator_{is_depolarizing_channel_ and uses_depolarizing_seed ? depolarizing_seed : seed_type{}},
       permutation_{static_cast<permutation_type::size_type>(total_num_qubits)},
       buffer_(num_elements_in_buffer),
       circuit_communicator_{circuit_communicator},
@@ -180,6 +204,12 @@ namespace bra
   state::state(
     std::vector<permutated_qubit_type> const& initial_permutation,
     seed_type const seed,
+    bool const is_depolarizing_channel,
+    ::bra::real_type const depolarizing_px,
+    ::bra::real_type const depolarizing_py,
+    ::bra::real_type const depolarizing_pz,
+    bool const uses_depolarizing_seed,
+    seed_type const depolarizing_seed,
     yampi::communicator const& circuit_communicator,
     yampi::communicator const& intercircuit_communicator,
     int const circuit_index,
@@ -197,6 +227,12 @@ namespace bra
       circuit_index_{circuit_index},
       wait_reason_{::bra::wait_reason::no_wait_t{}},
       random_number_generator_{seed},
+      is_depolarizing_channel_{is_depolarizing_channel},
+      depolarizing_px_{is_depolarizing_channel ? depolarizing_px : ::bra::real_type{}},
+      depolarizing_py_{is_depolarizing_channel ? depolarizing_py : ::bra::real_type{}},
+      depolarizing_pz_{is_depolarizing_channel ? depolarizing_pz : ::bra::real_type{}},
+      uses_depolarizing_seed_{uses_depolarizing_seed},
+      depolarizing_random_number_generator_{is_depolarizing_channel_ and uses_depolarizing_seed ? depolarizing_seed : seed_type{}},
       permutation_{
         std::begin(initial_permutation), std::end(initial_permutation)},
       buffer_{},
@@ -220,6 +256,12 @@ namespace bra
   state::state(
     std::vector<permutated_qubit_type> const& initial_permutation,
     seed_type const seed,
+    bool const is_depolarizing_channel,
+    ::bra::real_type const depolarizing_px,
+    ::bra::real_type const depolarizing_py,
+    ::bra::real_type const depolarizing_pz,
+    bool const uses_depolarizing_seed,
+    seed_type const depolarizing_seed,
     unsigned int const num_elements_in_buffer,
     yampi::communicator const& circuit_communicator,
     yampi::communicator const& intercircuit_communicator,
@@ -238,6 +280,12 @@ namespace bra
       circuit_index_{circuit_index},
       wait_reason_{::bra::wait_reason::no_wait_t{}},
       random_number_generator_{seed},
+      is_depolarizing_channel_{is_depolarizing_channel},
+      depolarizing_px_{is_depolarizing_channel ? depolarizing_px : ::bra::real_type{}},
+      depolarizing_py_{is_depolarizing_channel ? depolarizing_py : ::bra::real_type{}},
+      depolarizing_pz_{is_depolarizing_channel ? depolarizing_pz : ::bra::real_type{}},
+      uses_depolarizing_seed_{uses_depolarizing_seed},
+      depolarizing_random_number_generator_{is_depolarizing_channel_ and uses_depolarizing_seed ? depolarizing_seed : seed_type{}},
       permutation_{
         std::begin(initial_permutation), std::end(initial_permutation)},
       buffer_(num_elements_in_buffer),
@@ -258,7 +306,15 @@ namespace bra
     ket::utility::generate_phase_coefficients(phase_coefficients_, total_num_qubits_);
   }
 #else // BRA_NO_MPI
-  state::state(bit_integer_type const total_num_qubits, seed_type const seed, int const circuit_index)
+  state::state(
+    bit_integer_type const total_num_qubits, seed_type const seed,
+    bool const is_depolarizing_channel,
+    ::bra::real_type const depolarizing_px,
+    ::bra::real_type const depolarizing_py,
+    ::bra::real_type const depolarizing_pz,
+    bool const uses_depolarizing_seed,
+    seed_type const depolarizing_seed,
+    int const circuit_index)
     : total_num_qubits_{total_num_qubits},
       last_outcomes_{total_num_qubits, ket::gate::outcome::unspecified},
       last_measured_qubit_{qubit_type{total_num_qubits_}},
@@ -271,6 +327,12 @@ namespace bra
       circuit_index_{circuit_index},
       wait_reason_{::bra::wait_reason::no_wait_t{}},
       random_number_generator_{seed},
+      is_depolarizing_channel_{is_depolarizing_channel},
+      depolarizing_px_{is_depolarizing_channel ? depolarizing_px : ::bra::real_type{}},
+      depolarizing_py_{is_depolarizing_channel ? depolarizing_py : ::bra::real_type{}},
+      depolarizing_pz_{is_depolarizing_channel ? depolarizing_pz : ::bra::real_type{}},
+      uses_depolarizing_seed_{uses_depolarizing_seed},
+      depolarizing_random_number_generator_{is_depolarizing_channel_ and uses_depolarizing_seed ? depolarizing_seed : seed_type{}},
       start_time_{BRA_clock::now()},
       last_processed_time_{start_time_},
       phase_coefficients_{},
@@ -942,6 +1004,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit);
 
     do_i_gate(qubit);
+    apply_noise(qubit);
+
     return *this;
   }
 
@@ -951,6 +1015,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubit);
 
     do_ic_gate(control_qubit);
+    apply_noise(control_qubit);
+
     return *this;
   }
 
@@ -963,6 +1029,8 @@ namespace bra
     }
 
     do_ii_gate(qubit1, qubit2);
+    apply_noises(qubit1, qubit2);
+
     return *this;
   }
 
@@ -972,6 +1040,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubits);
 
     do_in_gate(qubits);
+    apply_noises(qubits);
+
     return *this;
   }
 
@@ -981,6 +1051,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit);
 
     do_hadamard(qubit);
+    apply_noise(qubit);
+
     return *this;
   }
 
@@ -990,6 +1062,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit);
 
     do_not_(qubit);
+    apply_noise(qubit);
+
     return *this;
   }
 
@@ -999,6 +1073,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit);
 
     do_pauli_x(qubit);
+    apply_noise(qubit);
+
     return *this;
   }
 
@@ -1011,6 +1087,8 @@ namespace bra
     }
 
     do_pauli_xx(qubit1, qubit2);
+    apply_noises(qubit1, qubit2);
+
     return *this;
   }
 
@@ -1020,6 +1098,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubits);
 
     do_pauli_xn(qubits);
+    apply_noises(qubits);
+
     return *this;
   }
 
@@ -1029,6 +1109,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit);
 
     do_pauli_y(qubit);
+    apply_noise(qubit);
+
     return *this;
   }
 
@@ -1041,6 +1123,8 @@ namespace bra
     }
 
     do_pauli_yy(qubit1, qubit2);
+    apply_noises(qubit1, qubit2);
+
     return *this;
   }
 
@@ -1050,6 +1134,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubits);
 
     do_pauli_yn(qubits);
+    apply_noises(qubits);
+
     return *this;
   }
 
@@ -1059,6 +1145,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubit);
 
     do_pauli_z(control_qubit);
+    apply_noise(control_qubit);
+
     return *this;
   }
 
@@ -1071,6 +1159,8 @@ namespace bra
     }
 
     do_pauli_zz(qubit1, qubit2);
+    apply_noises(qubit1, qubit2);
+
     return *this;
   }
 
@@ -1080,6 +1170,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubits);
 
     do_pauli_zn(qubits);
+    apply_noises(qubits);
+
     return *this;
   }
 
@@ -1092,6 +1184,8 @@ namespace bra
     }
 
     do_swap(qubit1, qubit2);
+    apply_noises(qubit1, qubit2);
+
     return *this;
   }
 
@@ -1101,6 +1195,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit);
 
     do_sqrt_pauli_x(qubit);
+    apply_noise(qubit);
+
     return *this;
   }
 
@@ -1110,6 +1206,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit);
 
     do_adj_sqrt_pauli_x(qubit);
+    apply_noise(qubit);
+
     return *this;
   }
 
@@ -1119,6 +1217,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit);
 
     do_sqrt_pauli_y(qubit);
+    apply_noise(qubit);
+
     return *this;
   }
 
@@ -1128,6 +1228,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit);
 
     do_adj_sqrt_pauli_y(qubit);
+    apply_noise(qubit);
+
     return *this;
   }
 
@@ -1137,6 +1239,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubit);
 
     do_sqrt_pauli_z(control_qubit);
+    apply_noise(control_qubit);
+
     return *this;
   }
 
@@ -1146,6 +1250,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubit);
 
     do_adj_sqrt_pauli_z(control_qubit);
+    apply_noise(control_qubit);
+
     return *this;
   }
 
@@ -1158,6 +1264,8 @@ namespace bra
     }
 
     do_sqrt_pauli_zz(qubit1, qubit2);
+    apply_noises(qubit1, qubit2);
+
     return *this;
   }
 
@@ -1170,6 +1278,8 @@ namespace bra
     }
 
     do_adj_sqrt_pauli_zz(qubit1, qubit2);
+    apply_noises(qubit1, qubit2);
+
     return *this;
   }
 
@@ -1179,6 +1289,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubits);
 
     do_sqrt_pauli_zn(qubits);
+    apply_noises(qubits);
+
     return *this;
   }
 
@@ -1188,6 +1300,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubits);
 
     do_adj_sqrt_pauli_zn(qubits);
+    apply_noises(qubits);
+
     return *this;
   }
 
@@ -1199,6 +1313,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubit);
 
     do_u1(boost::apply_visitor(real_visitor{*this}, phase), control_qubit);
+    apply_noise(control_qubit);
+
     return *this;
   }
 
@@ -1210,6 +1326,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubit);
 
     do_adj_u1(boost::apply_visitor(real_visitor{*this}, phase), control_qubit);
+    apply_noise(control_qubit);
+
     return *this;
   }
 
@@ -1225,6 +1343,8 @@ namespace bra
       boost::apply_visitor(real_visitor{*this}, phase1),
       boost::apply_visitor(real_visitor{*this}, phase2),
       qubit);
+    apply_noise(qubit);
+
     return *this;
   }
 
@@ -1240,6 +1360,8 @@ namespace bra
       boost::apply_visitor(real_visitor{*this}, phase1),
       boost::apply_visitor(real_visitor{*this}, phase2),
       qubit);
+    apply_noise(qubit);
+
     return *this;
   }
 
@@ -1257,6 +1379,8 @@ namespace bra
       boost::apply_visitor(real_visitor{*this}, phase2),
       boost::apply_visitor(real_visitor{*this}, phase3),
       qubit);
+    apply_noise(qubit);
+
     return *this;
   }
 
@@ -1274,6 +1398,8 @@ namespace bra
       boost::apply_visitor(real_visitor{*this}, phase2),
       boost::apply_visitor(real_visitor{*this}, phase3),
       qubit);
+    apply_noise(qubit);
+
     return *this;
   }
 
@@ -1290,6 +1416,8 @@ namespace bra
       do_phase_shift(phase_coefficients_[phase_exponent_value], control_qubit);
     else
       do_adj_phase_shift(phase_coefficients_[-phase_exponent_value], control_qubit);
+    apply_noise(control_qubit);
+
     return *this;
   }
 
@@ -1306,6 +1434,8 @@ namespace bra
       do_adj_phase_shift(phase_coefficients_[phase_exponent_value], control_qubit);
     else
       do_phase_shift(phase_coefficients_[-phase_exponent_value], control_qubit);
+    apply_noise(control_qubit);
+
     return *this;
   }
 
@@ -1315,6 +1445,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit);
 
     do_x_rotation_half_pi(qubit);
+    apply_noise(qubit);
+
     return *this;
   }
 
@@ -1324,6 +1456,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit);
 
     do_adj_x_rotation_half_pi(qubit);
+    apply_noise(qubit);
+
     return *this;
   }
 
@@ -1333,6 +1467,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit);
 
     do_y_rotation_half_pi(qubit);
+    apply_noise(qubit);
+
     return *this;
   }
 
@@ -1342,6 +1478,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit);
 
     do_adj_y_rotation_half_pi(qubit);
+    apply_noise(qubit);
+
     return *this;
   }
 
@@ -1353,6 +1491,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit);
 
     do_exponential_pauli_x(boost::apply_visitor(real_visitor{*this}, phase), qubit);
+    apply_noise(qubit);
+
     return *this;
   }
 
@@ -1364,6 +1504,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit);
 
     do_adj_exponential_pauli_x(boost::apply_visitor(real_visitor{*this}, phase), qubit);
+    apply_noise(qubit);
+
     return *this;
   }
 
@@ -1378,6 +1520,8 @@ namespace bra
     }
 
     do_exponential_pauli_xx(boost::apply_visitor(real_visitor{*this}, phase), qubit1, qubit2);
+    apply_noises(qubit1, qubit2);
+
     return *this;
   }
 
@@ -1392,6 +1536,8 @@ namespace bra
     }
 
     do_adj_exponential_pauli_xx(boost::apply_visitor(real_visitor{*this}, phase), qubit1, qubit2);
+    apply_noises(qubit1, qubit2);
+
     return *this;
   }
 
@@ -1403,6 +1549,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubits);
 
     do_exponential_pauli_xn(boost::apply_visitor(real_visitor{*this}, phase), qubits);
+    apply_noises(qubits);
+
     return *this;
   }
 
@@ -1414,6 +1562,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubits);
 
     do_adj_exponential_pauli_xn(boost::apply_visitor(real_visitor{*this}, phase), qubits);
+    apply_noises(qubits);
+
     return *this;
   }
 
@@ -1425,6 +1575,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit);
 
     do_exponential_pauli_y(boost::apply_visitor(real_visitor{*this}, phase), qubit);
+    apply_noise(qubit);
+
     return *this;
   }
 
@@ -1436,6 +1588,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubit);
 
     do_adj_exponential_pauli_y(boost::apply_visitor(real_visitor{*this}, phase), qubit);
+    apply_noise(qubit);
+
     return *this;
   }
 
@@ -1450,6 +1604,8 @@ namespace bra
     }
 
     do_exponential_pauli_yy(boost::apply_visitor(real_visitor{*this}, phase), qubit1, qubit2);
+    apply_noises(qubit1, qubit2);
+
     return *this;
   }
 
@@ -1464,6 +1620,8 @@ namespace bra
     }
 
     do_adj_exponential_pauli_yy(boost::apply_visitor(real_visitor{*this}, phase), qubit1, qubit2);
+    apply_noises(qubit1, qubit2);
+
     return *this;
   }
 
@@ -1475,6 +1633,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubits);
 
     do_exponential_pauli_yn(boost::apply_visitor(real_visitor{*this}, phase), qubits);
+    apply_noises(qubits);
+
     return *this;
   }
 
@@ -1486,6 +1646,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubits);
 
     do_adj_exponential_pauli_yn(boost::apply_visitor(real_visitor{*this}, phase), qubits);
+    apply_noises(qubits);
+
     return *this;
   }
 
@@ -1498,6 +1660,8 @@ namespace bra
         found_qubits_[static_cast< ::bra::bit_integer_type >(qubit)] = ::bra::found_qubit::ez_qubit;
 
     do_exponential_pauli_z(boost::apply_visitor(real_visitor{*this}, phase), qubit);
+    apply_noise(qubit);
+
     return *this;
   }
 
@@ -1510,6 +1674,8 @@ namespace bra
         found_qubits_[static_cast< ::bra::bit_integer_type >(qubit)] = ::bra::found_qubit::ez_qubit;
 
     do_adj_exponential_pauli_z(boost::apply_visitor(real_visitor{*this}, phase), qubit);
+    apply_noise(qubit);
+
     return *this;
   }
 
@@ -1524,6 +1690,8 @@ namespace bra
     }
 
     do_exponential_pauli_zz(boost::apply_visitor(real_visitor{*this}, phase), qubit1, qubit2);
+    apply_noises(qubit1, qubit2);
+
     return *this;
   }
 
@@ -1538,6 +1706,8 @@ namespace bra
     }
 
     do_adj_exponential_pauli_zz(boost::apply_visitor(real_visitor{*this}, phase), qubit1, qubit2);
+    apply_noises(qubit1, qubit2);
+
     return *this;
   }
 
@@ -1549,6 +1719,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubits);
 
     do_exponential_pauli_zn(boost::apply_visitor(real_visitor{*this}, phase), qubits);
+    apply_noises(qubits);
+
     return *this;
   }
 
@@ -1560,6 +1732,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, qubits);
 
     do_adj_exponential_pauli_zn(boost::apply_visitor(real_visitor{*this}, phase), qubits);
+    apply_noises(qubits);
+
     return *this;
   }
 
@@ -1574,6 +1748,8 @@ namespace bra
     }
 
     do_exponential_swap(boost::apply_visitor(real_visitor{*this}, phase), qubit1, qubit2);
+    apply_noises(qubit1, qubit2);
+
     return *this;
   }
 
@@ -1588,6 +1764,8 @@ namespace bra
     }
 
     do_adj_exponential_swap(boost::apply_visitor(real_visitor{*this}, phase), qubit1, qubit2);
+    apply_noises(qubit1, qubit2);
+
     return *this;
   }
 
@@ -1603,6 +1781,8 @@ namespace bra
     }
 
     do_toffoli(target_qubit, control_qubit1, control_qubit2);
+    apply_noises(target_qubit, control_qubit1, control_qubit2);
+
     return *this;
   }
 
@@ -2043,6 +2223,8 @@ namespace bra
       throw ::bra::unsupported_fused_gate_error{"CLEAR"};
 
     do_clear(qubit);
+    apply_noise(qubit);
+
     return *this;
   }
 
@@ -2052,44 +2234,7 @@ namespace bra
       throw ::bra::unsupported_fused_gate_error{"SET"};
 
     do_set(qubit);
-    return *this;
-  }
-
-  state& state::depolarizing_channel(
-    real_type const px, real_type const py, real_type const pz,
-    int const seed)
-  {
-    if (is_in_fusion_)
-      throw ::bra::unsupported_fused_gate_error{"DEPOLARIZING CHANNEL"};
-
-    using floating_point_type = typename ::bra::utility::closest_floating_point_of<real_type>::type;
-    auto distribution = std::uniform_real_distribution<floating_point_type>{0.0, 1.0};
-    auto const last_qubit = ket::make_qubit<state_integer_type>(total_num_qubits_);
-    if (seed < 0)
-      for (auto qubit = ket::make_qubit<state_integer_type>(bit_integer_type{0u}); qubit < last_qubit; ++qubit)
-      {
-        auto const probability = static_cast<real_type>(distribution(random_number_generator_));
-        if (probability < px)
-          pauli_x(qubit);
-        else if (probability < px + py)
-          pauli_y(qubit);
-        else if (probability < px + py + pz)
-          pauli_z(ket::make_control(qubit));
-      }
-    else
-    {
-      auto temporal_random_number_generator = random_number_generator_type{static_cast<seed_type>(seed)};
-      for (auto qubit = ket::make_qubit<state_integer_type>(static_cast<bit_integer_type>(0u)); qubit < last_qubit; ++qubit)
-      {
-        auto const probability = static_cast<real_type>(distribution(temporal_random_number_generator));
-        if (probability < px)
-          pauli_x(qubit);
-        else if (probability < px + py)
-          pauli_y(qubit);
-        else if (probability < px + py + pz)
-          pauli_z(ket::make_control(qubit));
-      }
-    }
+    apply_noise(qubit);
 
     return *this;
   }
@@ -2103,6 +2248,8 @@ namespace bra
     }
 
     do_controlled_i_gate(target_qubit, control_qubit);
+    apply_noises(target_qubit, control_qubit);
+
     return *this;
   }
 
@@ -2115,6 +2262,8 @@ namespace bra
     }
 
     do_controlled_ic_gate(control_qubit1, control_qubit2);
+    apply_noises(control_qubit1, control_qubit2);
+
     return *this;
   }
 
@@ -2127,6 +2276,8 @@ namespace bra
     }
 
     do_multi_controlled_in_gate(target_qubits, control_qubits);
+    apply_noises(target_qubits, control_qubits);
+
     return *this;
   }
 
@@ -2136,6 +2287,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubits);
 
     do_multi_controlled_ic_gate(control_qubits);
+    apply_noises(control_qubits);
+
     return *this;
   }
 
@@ -2148,6 +2301,8 @@ namespace bra
     }
 
     do_controlled_hadamard(target_qubit, control_qubit);
+    apply_noises(target_qubit, control_qubit);
+
     return *this;
   }
 
@@ -2160,6 +2315,8 @@ namespace bra
     }
 
     do_multi_controlled_hadamard(target_qubit, control_qubits);
+    apply_noises(target_qubit, control_qubits);
+
     return *this;
   }
 
@@ -2172,6 +2329,8 @@ namespace bra
     }
 
     do_controlled_not(target_qubit, control_qubit);
+    apply_noises(target_qubit, control_qubit);
+
     return *this;
   }
 
@@ -2184,6 +2343,8 @@ namespace bra
     }
 
     do_multi_controlled_not(target_qubit, control_qubits);
+    apply_noises(target_qubit, control_qubits);
+
     return *this;
   }
 
@@ -2196,6 +2357,8 @@ namespace bra
     }
 
     do_controlled_pauli_x(target_qubit, control_qubit);
+    apply_noises(target_qubit, control_qubit);
+
     return *this;
   }
 
@@ -2208,6 +2371,8 @@ namespace bra
     }
 
     do_multi_controlled_pauli_xn(target_qubits, control_qubits);
+    apply_noises(target_qubits, control_qubits);
+
     return *this;
   }
 
@@ -2220,6 +2385,8 @@ namespace bra
     }
 
     do_controlled_pauli_y(target_qubit, control_qubit);
+    apply_noises(target_qubit, control_qubit);
+
     return *this;
   }
 
@@ -2232,6 +2399,8 @@ namespace bra
     }
 
     do_multi_controlled_pauli_yn(target_qubits, control_qubits);
+    apply_noises(target_qubits, control_qubits);
+
     return *this;
   }
 
@@ -2244,6 +2413,8 @@ namespace bra
     }
 
     do_controlled_pauli_z(control_qubit1, control_qubit2);
+    apply_noises(control_qubit1, control_qubit2);
+
     return *this;
   }
 
@@ -2253,6 +2424,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubits);
 
     do_multi_controlled_pauli_z(control_qubits);
+    apply_noises(control_qubits);
+
     return *this;
   }
 
@@ -2265,6 +2438,8 @@ namespace bra
     }
 
     do_multi_controlled_pauli_zn(target_qubits, control_qubits);
+    apply_noises(target_qubits, control_qubits);
+
     return *this;
   }
 
@@ -2278,6 +2453,8 @@ namespace bra
     }
 
     do_multi_controlled_swap(target_qubit1, target_qubit2, control_qubits);
+    apply_noises(target_qubit1, target_qubit2, control_qubits);
+
     return *this;
   }
 
@@ -2290,6 +2467,8 @@ namespace bra
     }
 
     do_controlled_sqrt_pauli_x(target_qubit, control_qubit);
+    apply_noises(target_qubit, control_qubit);
+
     return *this;
   }
 
@@ -2302,6 +2481,8 @@ namespace bra
     }
 
     do_adj_controlled_sqrt_pauli_x(target_qubit, control_qubit);
+    apply_noises(target_qubit, control_qubit);
+
     return *this;
   }
 
@@ -2314,6 +2495,8 @@ namespace bra
     }
 
     do_multi_controlled_sqrt_pauli_x(target_qubit, control_qubits);
+    apply_noises(target_qubit, control_qubits);
+
     return *this;
   }
 
@@ -2326,6 +2509,8 @@ namespace bra
     }
 
     do_adj_multi_controlled_sqrt_pauli_x(target_qubit, control_qubits);
+    apply_noises(target_qubit, control_qubits);
+
     return *this;
   }
 
@@ -2338,6 +2523,8 @@ namespace bra
     }
 
     do_controlled_sqrt_pauli_y(target_qubit, control_qubit);
+    apply_noises(target_qubit, control_qubit);
+
     return *this;
   }
 
@@ -2350,6 +2537,8 @@ namespace bra
     }
 
     do_adj_controlled_sqrt_pauli_y(target_qubit, control_qubit);
+    apply_noises(target_qubit, control_qubit);
+
     return *this;
   }
 
@@ -2362,6 +2551,8 @@ namespace bra
     }
 
     do_multi_controlled_sqrt_pauli_y(target_qubit, control_qubits);
+    apply_noises(target_qubit, control_qubits);
+
     return *this;
   }
 
@@ -2374,6 +2565,8 @@ namespace bra
     }
 
     do_adj_multi_controlled_sqrt_pauli_y(target_qubit, control_qubits);
+    apply_noises(target_qubit, control_qubits);
+
     return *this;
   }
 
@@ -2386,6 +2579,8 @@ namespace bra
     }
 
     do_controlled_sqrt_pauli_z(control_qubit1, control_qubit2);
+    apply_noises(control_qubit1, control_qubit2);
+
     return *this;
   }
 
@@ -2398,6 +2593,8 @@ namespace bra
     }
 
     do_adj_controlled_sqrt_pauli_z(control_qubit1, control_qubit2);
+    apply_noises(control_qubit1, control_qubit2);
+
     return *this;
   }
 
@@ -2407,6 +2604,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubits);
 
     do_multi_controlled_sqrt_pauli_z(control_qubits);
+    apply_noises(control_qubits);
+
     return *this;
   }
 
@@ -2416,6 +2615,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubits);
 
     do_adj_multi_controlled_sqrt_pauli_z(control_qubits);
+    apply_noises(control_qubits);
+
     return *this;
   }
 
@@ -2428,6 +2629,8 @@ namespace bra
     }
 
     do_multi_controlled_sqrt_pauli_zn(target_qubits, control_qubits);
+    apply_noises(target_qubits, control_qubits);
+
     return *this;
   }
 
@@ -2440,6 +2643,8 @@ namespace bra
     }
 
     do_adj_multi_controlled_sqrt_pauli_zn(target_qubits, control_qubits);
+    apply_noises(target_qubits, control_qubits);
+
     return *this;
   }
 
@@ -2459,6 +2664,8 @@ namespace bra
       do_controlled_phase_shift(phase_coefficients_[phase_exponent_value], control_qubit1, control_qubit2);
     else
       do_adj_controlled_phase_shift(phase_coefficients_[-phase_exponent_value], control_qubit1, control_qubit2);
+    apply_noises(control_qubit1, control_qubit2);
+
     return *this;
   }
 
@@ -2478,6 +2685,8 @@ namespace bra
       do_adj_controlled_phase_shift(phase_coefficients_[phase_exponent_value], control_qubit1, control_qubit2);
     else
       do_controlled_phase_shift(phase_coefficients_[-phase_exponent_value], control_qubit1, control_qubit2);
+    apply_noises(control_qubit1, control_qubit2);
+
     return *this;
   }
 
@@ -2494,6 +2703,8 @@ namespace bra
       do_multi_controlled_phase_shift(phase_coefficients_[phase_exponent_value], control_qubits);
     else
       do_adj_multi_controlled_phase_shift(phase_coefficients_[-phase_exponent_value], control_qubits);
+    apply_noises(control_qubits);
+
     return *this;
   }
 
@@ -2510,6 +2721,8 @@ namespace bra
       do_adj_multi_controlled_phase_shift(phase_coefficients_[phase_exponent_value], control_qubits);
     else
       do_multi_controlled_phase_shift(phase_coefficients_[-phase_exponent_value], control_qubits);
+    apply_noises(control_qubits);
+
     return *this;
   }
 
@@ -2524,6 +2737,8 @@ namespace bra
     }
 
     do_controlled_u1(boost::apply_visitor(real_visitor{*this}, phase), control_qubit1, control_qubit2);
+    apply_noises(control_qubit1, control_qubit2);
+
     return *this;
   }
 
@@ -2538,6 +2753,8 @@ namespace bra
     }
 
     do_adj_controlled_u1(boost::apply_visitor(real_visitor{*this}, phase), control_qubit1, control_qubit2);
+    apply_noises(control_qubit1, control_qubit2);
+
     return *this;
   }
 
@@ -2549,6 +2766,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubits);
 
     do_multi_controlled_u1(boost::apply_visitor(real_visitor{*this}, phase), control_qubits);
+    apply_noises(control_qubits);
+
     return *this;
   }
 
@@ -2560,6 +2779,8 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubits);
 
     do_adj_multi_controlled_u1(boost::apply_visitor(real_visitor{*this}, phase), control_qubits);
+    apply_noises(control_qubits);
+
     return *this;
   }
 
@@ -2578,6 +2799,8 @@ namespace bra
       boost::apply_visitor(real_visitor{*this}, phase1),
       boost::apply_visitor(real_visitor{*this}, phase2),
       target_qubit, control_qubit);
+    apply_noises(target_qubit, control_qubit);
+
     return *this;
   }
 
@@ -2596,6 +2819,8 @@ namespace bra
       boost::apply_visitor(real_visitor{*this}, phase1),
       boost::apply_visitor(real_visitor{*this}, phase2),
       target_qubit, control_qubit);
+    apply_noises(target_qubit, control_qubit);
+
     return *this;
   }
 
@@ -2614,6 +2839,8 @@ namespace bra
       boost::apply_visitor(real_visitor{*this}, phase1),
       boost::apply_visitor(real_visitor{*this}, phase2),
       target_qubit, control_qubits);
+    apply_noises(target_qubit, control_qubits);
+
     return *this;
   }
 
@@ -2632,6 +2859,8 @@ namespace bra
       boost::apply_visitor(real_visitor{*this}, phase1),
       boost::apply_visitor(real_visitor{*this}, phase2),
       target_qubit, control_qubits);
+    apply_noises(target_qubit, control_qubits);
+
     return *this;
   }
 
@@ -2652,6 +2881,8 @@ namespace bra
       boost::apply_visitor(real_visitor{*this}, phase2),
       boost::apply_visitor(real_visitor{*this}, phase3),
       target_qubit, control_qubit);
+    apply_noises(target_qubit, control_qubit);
+
     return *this;
   }
 
@@ -2672,6 +2903,8 @@ namespace bra
       boost::apply_visitor(real_visitor{*this}, phase2),
       boost::apply_visitor(real_visitor{*this}, phase3),
       target_qubit, control_qubit);
+    apply_noises(target_qubit, control_qubit);
+
     return *this;
   }
 
@@ -2692,6 +2925,8 @@ namespace bra
       boost::apply_visitor(real_visitor{*this}, phase2),
       boost::apply_visitor(real_visitor{*this}, phase3),
       target_qubit, control_qubits);
+    apply_noises(target_qubit, control_qubits);
+
     return *this;
   }
 
@@ -2712,6 +2947,8 @@ namespace bra
       boost::apply_visitor(real_visitor{*this}, phase2),
       boost::apply_visitor(real_visitor{*this}, phase3),
       target_qubit, control_qubits);
+    apply_noises(target_qubit, control_qubits);
+
     return *this;
   }
 
@@ -2724,6 +2961,8 @@ namespace bra
     }
 
     do_controlled_x_rotation_half_pi(target_qubit, control_qubit);
+    apply_noises(target_qubit, control_qubit);
+
     return *this;
   }
 
@@ -2736,6 +2975,8 @@ namespace bra
     }
 
     do_adj_controlled_x_rotation_half_pi(target_qubit, control_qubit);
+    apply_noises(target_qubit, control_qubit);
+
     return *this;
   }
 
@@ -2748,6 +2989,8 @@ namespace bra
     }
 
     do_multi_controlled_x_rotation_half_pi(target_qubit, control_qubits);
+    apply_noises(target_qubit, control_qubits);
+
     return *this;
   }
 
@@ -2760,6 +3003,8 @@ namespace bra
     }
 
     do_adj_multi_controlled_x_rotation_half_pi(target_qubit, control_qubits);
+    apply_noises(target_qubit, control_qubits);
+
     return *this;
   }
 
@@ -2772,6 +3017,8 @@ namespace bra
     }
 
     do_controlled_y_rotation_half_pi(target_qubit, control_qubit);
+    apply_noises(target_qubit, control_qubit);
+
     return *this;
   }
 
@@ -2784,6 +3031,8 @@ namespace bra
     }
 
     do_adj_controlled_y_rotation_half_pi(target_qubit, control_qubit);
+    apply_noises(target_qubit, control_qubit);
+
     return *this;
   }
 
@@ -2796,6 +3045,8 @@ namespace bra
     }
 
     do_multi_controlled_y_rotation_half_pi(target_qubit, control_qubits);
+    apply_noises(target_qubit, control_qubits);
+
     return *this;
   }
 
@@ -2808,6 +3059,8 @@ namespace bra
     }
 
     do_adj_multi_controlled_y_rotation_half_pi(target_qubit, control_qubits);
+    apply_noises(target_qubit, control_qubits);
+
     return *this;
   }
 
@@ -2822,6 +3075,8 @@ namespace bra
     }
 
     do_controlled_exponential_pauli_x(boost::apply_visitor(real_visitor{*this}, phase), target_qubit, control_qubit);
+    apply_noises(target_qubit, control_qubit);
+
     return *this;
   }
 
@@ -2836,6 +3091,8 @@ namespace bra
     }
 
     do_adj_controlled_exponential_pauli_x(boost::apply_visitor(real_visitor{*this}, phase), target_qubit, control_qubit);
+    apply_noises(target_qubit, control_qubit);
+
     return *this;
   }
 
@@ -2850,6 +3107,8 @@ namespace bra
     }
 
     do_multi_controlled_exponential_pauli_xn(boost::apply_visitor(real_visitor{*this}, phase), target_qubits, control_qubits);
+    apply_noises(target_qubits, control_qubits);
+
     return *this;
   }
 
@@ -2864,6 +3123,8 @@ namespace bra
     }
 
     do_adj_multi_controlled_exponential_pauli_xn(boost::apply_visitor(real_visitor{*this}, phase), target_qubits, control_qubits);
+    apply_noises(target_qubits, control_qubits);
+
     return *this;
   }
 
@@ -2878,6 +3139,8 @@ namespace bra
     }
 
     do_controlled_exponential_pauli_y(boost::apply_visitor(real_visitor{*this}, phase), target_qubit, control_qubit);
+    apply_noises(target_qubit, control_qubit);
+
     return *this;
   }
 
@@ -2892,6 +3155,8 @@ namespace bra
     }
 
     do_adj_controlled_exponential_pauli_y(boost::apply_visitor(real_visitor{*this}, phase), target_qubit, control_qubit);
+    apply_noises(target_qubit, control_qubit);
+
     return *this;
   }
 
@@ -2906,6 +3171,8 @@ namespace bra
     }
 
     do_multi_controlled_exponential_pauli_yn(boost::apply_visitor(real_visitor{*this}, phase), target_qubits, control_qubits);
+    apply_noises(target_qubits, control_qubits);
+
     return *this;
   }
 
@@ -2920,6 +3187,8 @@ namespace bra
     }
 
     do_adj_multi_controlled_exponential_pauli_yn(boost::apply_visitor(real_visitor{*this}, phase), target_qubits, control_qubits);
+    apply_noises(target_qubits, control_qubits);
+
     return *this;
   }
 
@@ -2936,6 +3205,8 @@ namespace bra
     }
 
     do_controlled_exponential_pauli_z(boost::apply_visitor(real_visitor{*this}, phase), target_qubit, control_qubit);
+    apply_noises(target_qubit, control_qubit);
+
     return *this;
   }
 
@@ -2952,6 +3223,8 @@ namespace bra
     }
 
     do_adj_controlled_exponential_pauli_z(boost::apply_visitor(real_visitor{*this}, phase), target_qubit, control_qubit);
+    apply_noises(target_qubit, control_qubit);
+
     return *this;
   }
 
@@ -2968,6 +3241,8 @@ namespace bra
     }
 
     do_multi_controlled_exponential_pauli_z(boost::apply_visitor(real_visitor{*this}, phase), target_qubit, control_qubits);
+    apply_noises(target_qubit, control_qubits);
+
     return *this;
   }
 
@@ -2984,6 +3259,8 @@ namespace bra
     }
 
     do_adj_multi_controlled_exponential_pauli_z(boost::apply_visitor(real_visitor{*this}, phase), target_qubit, control_qubits);
+    apply_noises(target_qubit, control_qubits);
+
     return *this;
   }
 
@@ -2998,6 +3275,8 @@ namespace bra
     }
 
     do_multi_controlled_exponential_pauli_zn(boost::apply_visitor(real_visitor{*this}, phase), target_qubits, control_qubits);
+    apply_noises(target_qubits, control_qubits);
+
     return *this;
   }
 
@@ -3012,6 +3291,8 @@ namespace bra
     }
 
     do_adj_multi_controlled_exponential_pauli_zn(boost::apply_visitor(real_visitor{*this}, phase), target_qubits, control_qubits);
+    apply_noises(target_qubits, control_qubits);
+
     return *this;
   }
 
@@ -3027,6 +3308,8 @@ namespace bra
     }
 
     do_multi_controlled_exponential_swap(boost::apply_visitor(real_visitor{*this}, phase), target_qubit1, target_qubit2, control_qubits);
+    apply_noises(target_qubit1, target_qubit2, control_qubits);
+
     return *this;
   }
 
@@ -3042,7 +3325,42 @@ namespace bra
     }
 
     do_adj_multi_controlled_exponential_swap(boost::apply_visitor(real_visitor{*this}, phase), target_qubit1, target_qubit2, control_qubits);
+    apply_noises(target_qubit1, target_qubit2, control_qubits);
+
     return *this;
+  }
+
+  auto state::apply_noise(qubit_type const qubit) -> void
+  {
+    if (not is_depolarizing_channel_)
+      return;
+
+    auto const probability = generate_probability();
+
+    if (probability < depolarizing_px_)
+    {
+      if (is_in_fusion_)
+        ::bra::set_found_qubits(found_qubits_, qubit);
+
+      do_pauli_x(qubit);
+      return;
+    }
+
+    auto const px_py = depolarizing_px_ + depolarizing_py_;
+    if (probability < px_py)
+    {
+      if (is_in_fusion_)
+        ::bra::set_found_qubits(found_qubits_, qubit);
+
+      do_pauli_y(qubit);
+    }
+    else if (probability < px_py + depolarizing_pz_)
+    {
+      if (is_in_fusion_)
+        ::bra::set_found_qubits(found_qubits_, ket::make_control(qubit));
+
+      do_pauli_z(ket::make_control(qubit));
+    }
   }
 } // namespace bra
 

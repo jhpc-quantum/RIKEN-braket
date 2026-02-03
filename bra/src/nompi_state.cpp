@@ -59,6 +59,7 @@
 # include <bra/state.hpp>
 # include <bra/types.hpp>
 # include <bra/fused_gate.hpp>
+# include <bra/utility/closest_floating_point_of.hpp>
 
 # ifndef BRA_MAX_NUM_OPERATED_QUBITS
 #   define BRA_MAX_NUM_OPERATED_QUBITS 6
@@ -71,8 +72,15 @@ namespace bra
   nompi_state::nompi_state(
     ::bra::state::state_integer_type const initial_integer,
     unsigned int const total_num_qubits,
-    unsigned int num_threads, ::bra::state::seed_type const seed, int const circuit_index)
-    : ::bra::state{total_num_qubits, seed, circuit_index},
+    unsigned int num_threads, ::bra::state::seed_type const seed,
+    bool const is_depolarizing_channel,
+    ::bra::real_type const depolarizing_px,
+    ::bra::real_type const depolarizing_py,
+    ::bra::real_type const depolarizing_pz,
+    bool const uses_depolarizing_seed,
+    ::bra::state::seed_type const depolarizing_seed,
+    int const circuit_index)
+    : ::bra::state{total_num_qubits, seed, is_depolarizing_channel, depolarizing_px, depolarizing_py, depolarizing_pz, uses_depolarizing_seed, depolarizing_seed, circuit_index},
       parallel_policy_{num_threads},
       data_{make_initial_data(initial_integer, total_num_qubits)},
       fused_gates_{},
@@ -82,8 +90,15 @@ namespace bra
   nompi_state::nompi_state(
     ::bra::state::state_integer_type const initial_integer,
     unsigned int const total_num_qubits,
-    unsigned int num_threads, ::bra::state::seed_type const seed, int const circuit_index)
-    : ::bra::state{total_num_qubits, seed, circuit_index},
+    unsigned int num_threads, ::bra::state::seed_type const seed,
+    bool const is_depolarizing_channel,
+    ::bra::real_type const depolarizing_px,
+    ::bra::real_type const depolarizing_py,
+    ::bra::real_type const depolarizing_pz,
+    bool const uses_depolarizing_seed,
+    ::bra::state::seed_type const depolarizing_seed,
+    int const circuit_index)
+    : ::bra::state{total_num_qubits, seed, is_depolarizing_channel, depolarizing_px, depolarizing_py, depolarizing_pz, uses_depolarizing_seed, depolarizing_seed, circuit_index},
       parallel_policy_{num_threads},
       data_{make_initial_data(initial_integer, total_num_qubits)},
       fused_gates_{},
@@ -97,8 +112,15 @@ namespace bra
   nompi_state::nompi_state(
     ::bra::state::state_integer_type const initial_integer,
     unsigned int const total_num_qubits,
-    unsigned int num_threads, ::bra::state::seed_type const seed, int const circuit_index)
-    : ::bra::state{total_num_qubits, seed, circuit_index},
+    unsigned int num_threads, ::bra::state::seed_type const seed,
+    bool const is_depolarizing_channel,
+    ::bra::real_type const depolarizing_px,
+    ::bra::real_type const depolarizing_py,
+    ::bra::real_type const depolarizing_pz,
+    bool const uses_depolarizing_seed,
+    ::bra::state::seed_type const depolarizing_seed,
+    int const circuit_index)
+    : ::bra::state{total_num_qubits, seed, is_depolarizing_channel, depolarizing_px, depolarizing_py, depolarizing_pz, uses_depolarizing_seed, depolarizing_seed, circuit_index},
       parallel_policy_{num_threads},
       data_{make_initial_data(initial_integer, total_num_qubits)},
       on_cache_data_{::ket::utility::integer_exp2< ::bra::state_integer_type >(KET_DEFAULT_NUM_ON_CACHE_QUBITS)},
@@ -112,6 +134,17 @@ namespace bra
 
   auto nompi_state::do_cancel_waiting() -> void
   { is_waiting_ = false; }
+
+  auto nompi_state::generate_probability() -> real_type
+  {
+    using floating_point_type = typename ::bra::utility::closest_floating_point_of<real_type>::type;
+    auto distribution = std::uniform_real_distribution<floating_point_type>{0.0, 1.0};
+
+    return
+      uses_depolarizing_seed_
+      ? static_cast<real_type>(distribution(depolarizing_random_number_generator_))
+      : static_cast<real_type>(distribution(random_number_generator_));
+  }
 
   auto nompi_state::do_send_real_variable(int const destination_circuit_index, std::string const& variable_name, int const num_elements) const -> void
   {

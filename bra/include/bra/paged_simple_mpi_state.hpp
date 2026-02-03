@@ -62,6 +62,12 @@ namespace bra
       unsigned int const num_page_qubits,
       unsigned int const num_threads_per_process,
       ::bra::state::seed_type const seed,
+      bool const is_depolarizing_channel,
+      ::bra::real_type const depolarizing_px,
+      ::bra::real_type const depolarizing_py,
+      ::bra::real_type const depolarizing_pz,
+      bool const uses_depolarizing_seed,
+      ::bra::state::seed_type const depolarizing_seed,
       yampi::communicator const& circuit_communicator,
       yampi::communicator const& intercircuit_communicator,
       int const circuit_index,
@@ -75,6 +81,12 @@ namespace bra
       unsigned int const num_page_qubits,
       unsigned int const num_threads_per_process,
       ::bra::state::seed_type const seed,
+      bool const is_depolarizing_channel,
+      ::bra::real_type const depolarizing_px,
+      ::bra::real_type const depolarizing_py,
+      ::bra::real_type const depolarizing_pz,
+      bool const uses_depolarizing_seed,
+      ::bra::state::seed_type const depolarizing_seed,
       yampi::communicator const& circuit_communicator,
       yampi::communicator const& intercircuit_communicator,
       int const circuit_index,
@@ -88,6 +100,8 @@ namespace bra
     paged_simple_mpi_state& operator=(paged_simple_mpi_state&&) = default;
 
    private:
+    auto generate_probability() -> real_type override;
+
     auto do_send_real_variable(int const circuit_index, std::string const& variable_name, int const num_elements) const -> void override;
     auto do_send_complex_variable(int const circuit_index, std::string const& variable_name, int const num_elements) const -> void override;
     auto do_send_int_variable(int const circuit_index, std::string const& variable_name, int const num_elements) const -> void override;

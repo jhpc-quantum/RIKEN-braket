@@ -107,6 +107,12 @@ namespace bra
     int circuit_index_;
     bool is_in_circuit_;
 
+    bool is_depolarizing_channel_;
+    ::bra::real_type depolarizing_px_;
+    ::bra::real_type depolarizing_py_;
+    ::bra::real_type depolarizing_pz_;
+    int depolarizing_seed_;
+
    public:
     using size_type = circuit_type::size_type;
     using const_circuit_iterator = circuit_type::const_iterator;
@@ -141,6 +147,12 @@ namespace bra
 # ifndef BRA_NO_MPI
     auto initial_permutation() const -> std::vector< ::bra::permutated_qubit_type > const& { return initial_permutation_; }
 # endif
+
+    auto is_depolarizing_channel() const -> bool { return is_depolarizing_channel_; }
+    auto depolarizing_px() const -> ::bra::real_type { return depolarizing_px_; }
+    auto depolarizing_py() const -> ::bra::real_type { return depolarizing_py_; }
+    auto depolarizing_pz() const -> ::bra::real_type { return depolarizing_pz_; }
+    auto depolarizing_seed() const -> int { return depolarizing_seed_; }
 
 # ifndef BRA_NO_MPI
     auto num_qubits(
@@ -405,7 +417,6 @@ namespace bra
     void add_fidelity(columns_type const& columns);
     void add_clear(columns_type const& columns);
     void add_set(columns_type const& columns);
-    void add_depolarizing(columns_type const& columns, std::string const& mnemonic);
 
     void interpret_controlled_gates(columns_type const& columns, std::string const& mnemonic);
     void add_ci(columns_type const& columns, int const num_control_qubits);

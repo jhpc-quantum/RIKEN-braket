@@ -142,7 +142,14 @@ namespace bra
     nompi_state(
       ::bra::state::state_integer_type const initial_integer,
       unsigned int const total_num_qubits,
-      unsigned int const num_threads, ::bra::state::seed_type const seed, int const circuit_index);
+      unsigned int const num_threads, ::bra::state::seed_type const seed,
+      bool const is_depolarizing_channel,
+      ::bra::real_type const depolarizing_px,
+      ::bra::real_type const depolarizing_py,
+      ::bra::real_type const depolarizing_pz,
+      bool const uses_depolarizing_seed,
+      ::bra::state::seed_type const depolarizing_seed,
+      int const circuit_index);
 
    private:
     data_type make_initial_data(
@@ -167,6 +174,8 @@ namespace bra
    private:
     auto do_is_waiting() const -> bool override;
     auto do_cancel_waiting() -> void override;
+
+    auto generate_probability() -> real_type override;
 
     auto do_send_real_variable(int const circuit_index, std::string const& variable_name, int const num_elements) const -> void override;
     auto do_send_complex_variable(int const circuit_index, std::string const& variable_name, int const num_elements) const -> void override;

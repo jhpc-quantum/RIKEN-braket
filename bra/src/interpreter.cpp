@@ -130,7 +130,6 @@
 #include <bra/gate/end_fusion.hpp>
 #include <bra/gate/clear.hpp>
 #include <bra/gate/set.hpp>
-#include <bra/gate/depolarizing_channel.hpp>
 #include <bra/gate/exit.hpp>
 #include <bra/gate/controlled_i_gate.hpp>
 #include <bra/gate/controlled_ic_gate.hpp>
@@ -251,12 +250,14 @@ namespace bra
 #ifndef BRA_NO_MPI
   interpreter::interpreter()
     : circuits_(1u), label_maps_(1u), first_indices_(1u, 0), num_qubits_{}, num_lqubits_{}, num_uqubits_{}, num_processes_per_unit_{1u},
-      initial_state_value_{}, initial_permutation_{}, root_{}, circuit_index_{0}, is_in_circuit_{false}
+      initial_state_value_{}, initial_permutation_{}, root_{}, circuit_index_{0}, is_in_circuit_{false},
+      is_depolarizing_channel_{false}, depolarizing_px_{}, depolarizing_py_{}, depolarizing_pz_{}, depolarizing_seed_{}
   { }
 #else // BRA_NO_MPI
   interpreter::interpreter()
     : circuits_(1u), label_maps_(1u), first_indices_(1u, 0), num_qubits_{},
-      initial_state_value_{}, circuit_index_{0}, is_in_circuit_{false}
+      initial_state_value_{}, circuit_index_{0}, is_in_circuit_{false},
+      is_depolarizing_channel_{false}, depolarizing_px_{}, depolarizing_py_{}, depolarizing_pz_{}, depolarizing_seed_{}
   { }
 #endif // BRA_NO_MPI
 
@@ -270,7 +271,8 @@ namespace bra
     : circuits_(1u), label_maps_(1u), first_indices_(1u, 0), num_qubits_{}, num_lqubits_{},
       num_uqubits_{num_uqubits}, num_processes_per_unit_{num_processes_per_unit},
       largest_num_operated_qubits_{::bra::bit_integer_type{0u}},
-      initial_state_value_{}, initial_permutation_{}, root_{root}, circuit_index_{0}, is_in_circuit_{false}
+      initial_state_value_{}, initial_permutation_{}, root_{root}, circuit_index_{0}, is_in_circuit_{false},
+      is_depolarizing_channel_{false}, depolarizing_px_{}, depolarizing_py_{}, depolarizing_pz_{}, depolarizing_seed_{}
   {
     assert(num_processes_per_unit >= 1u);
     invoke(input_stream, environment, total_communicator, num_reserved_gates);
@@ -279,13 +281,15 @@ namespace bra
   interpreter::interpreter(std::istream& input_stream)
     : circuits_(1u), label_maps_(1u), first_indices_(1u, 0), num_qubits_{},
       largest_num_operated_qubits_{::bra::bit_integer_type{0u}},
-      initial_state_value_{}, circuit_index_{0}, is_in_circuit_{false}
+      initial_state_value_{}, circuit_index_{0}, is_in_circuit_{false},
+      is_depolarizing_channel_{false}, depolarizing_px_{}, depolarizing_py_{}, depolarizing_pz_{}, depolarizing_seed_{}
   { invoke(input_stream, size_type{0u}); }
 
   interpreter::interpreter(std::istream& input_stream, size_type const num_reserved_gates)
     : circuits_(1u), label_maps_(1u), first_indices_(1u, 0), num_qubits_{},
       largest_num_operated_qubits_{::bra::bit_integer_type{0u}},
-      initial_state_value_{}, circuit_index_{0}, is_in_circuit_{false}
+      initial_state_value_{}, circuit_index_{0}, is_in_circuit_{false},
+      is_depolarizing_channel_{false}, depolarizing_px_{}, depolarizing_py_{}, depolarizing_pz_{}, depolarizing_seed_{}
   { invoke(input_stream, num_reserved_gates); }
 #endif // BRA_NO_MPI
 
@@ -425,6 +429,22 @@ namespace bra
         num_qubits(
           static_cast< ::bra::bit_integer_type >(read_num_qubits(columns)));
 #endif // BRA_NO_MPI
+      }
+      else if (mnemonic == "DEPOLARIZING")
+      {
+        if (boost::size(columns) <= 2u)
+          throw wrong_mnemonics_error{columns};
+
+        boost::algorithm::to_upper(columns[1u]);
+
+        auto statement = ::bra::depolarizing_statement{};
+        std::tie(statement, depolarizing_px_, depolarizing_py_, depolarizing_pz_, depolarizing_seed_)
+          = read_depolarizing_statement(columns);
+
+        if (statement != ::bra::depolarizing_statement::channel)
+          throw unsupported_mnemonic_error{mnemonic};
+
+        is_depolarizing_channel_ = true;
       }
       else if (mnemonic == "INITIAL") // INITIAL STATE
         initial_state_value_
@@ -775,15 +795,6 @@ namespace bra
         add_clear(columns);
       else if (mnemonic == "SET")
         add_set(columns);
-      else if (mnemonic == "DEPOLARIZING")
-      {
-        if (boost::size(columns) <= 2u)
-          throw wrong_mnemonics_error{columns};
-
-        boost::algorithm::to_upper(columns[1u]);
-
-        add_depolarizing(columns, mnemonic);
-      }
       else if (mnemonic == "SX")
         add_sx(columns);
       else if (mnemonic == "SX+")
@@ -3328,21 +3339,6 @@ namespace bra
 
   void interpreter::add_set(interpreter::columns_type const& columns)
   { circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::set >(read_target(columns))); }
-
-  void interpreter::add_depolarizing(interpreter::columns_type const& columns, std::string const& mnemonic)
-  {
-    auto statement = ::bra::depolarizing_statement{};
-    auto px = real_type{};
-    auto py = real_type{};
-    auto pz = real_type{};
-    auto seed = int{};
-    std::tie(statement, px, py, pz, seed) = read_depolarizing_statement(columns);
-
-    if (statement == ::bra::depolarizing_statement::channel)
-      circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::depolarizing_channel >(px, py, pz, seed));
-    else
-      throw unsupported_mnemonic_error{mnemonic};
-  }
 
   void interpreter::interpret_controlled_gates(interpreter::columns_type const& columns, std::string const& mnemonic)
   {
