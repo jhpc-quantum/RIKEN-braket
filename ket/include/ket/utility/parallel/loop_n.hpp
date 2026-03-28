@@ -1468,13 +1468,12 @@ namespace ket
         -> Value
         {
           auto const num_threads = ::ket::utility::num_threads(parallel_policy);
-          auto is_calleds = std::vector<int>(num_threads, static_cast<int>(false));
           auto partial_sums = std::vector<Value>(num_threads);
 
           using difference_type = typename std::iterator_traits<RandomAccessIterator>::difference_type;
           ::ket::utility::loop_n(
             parallel_policy, last - first,
-            [first, binary_reduction_operation, unary_transform_operation, &is_calleds, &partial_sums](
+            [first, binary_reduction_operation, unary_transform_operation, &partial_sums](
               difference_type const n, int const thread_index)
             { partial_sums[thread_index] = binary_reduction_operation(partial_sums[thread_index], unary_transform_operation(first[n])); });
 
