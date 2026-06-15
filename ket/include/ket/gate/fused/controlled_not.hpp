@@ -1,6 +1,7 @@
 #ifndef KET_GATE_FUSED_CONTROLLED_NOT_HPP
 # define KET_GATE_FUSED_CONTROLLED_NOT_HPP
 
+# include <cassert>
 # include <cstddef>
 # include <array>
 
@@ -52,6 +53,7 @@ namespace ket
           ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
         -> void
         {
+          assert(control_qubit_first != control_qubit_last);
           ::ket::gate::fused::runtime::not_(
             first, fused_index_wo_qubits,
             unsorted_fused_qubit_first, unsorted_fused_qubit_last,
@@ -68,6 +70,7 @@ namespace ket
           ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
         -> void
         {
+          assert(control_qubit_first != control_qubit_last);
           ::ket::gate::fused::runtime::adj_not_(
             first, fused_index_wo_qubits,
             unsorted_fused_qubit_first, unsorted_fused_qubit_last,
@@ -85,6 +88,9 @@ namespace ket
             ControlQubitsRange const& control_qubits)
           -> void
           {
+            using std::begin;
+            using std::end;
+            assert(begin(control_qubits) != end(control_qubits));
             ::ket::gate::fused::runtime::ranges::not_(
               first, fused_index_wo_qubits,
               unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
@@ -99,6 +105,9 @@ namespace ket
             ControlQubitsRange const& control_qubits)
           -> void
           {
+            using std::begin;
+            using std::end;
+            assert(begin(control_qubits) != end(control_qubits));
             ::ket::gate::fused::runtime::ranges::adj_not_(
               first, fused_index_wo_qubits,
               unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
@@ -141,6 +150,7 @@ namespace ket
           ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
         -> void
         {
+          assert(control_qubit_first != control_qubit_last);
           ::ket::gate::fused::runtime::not_(
             first, fused_index_wo_qubits,
             fused_qubit_mask_first, fused_qubit_mask_last,
@@ -157,6 +167,7 @@ namespace ket
           ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
         -> void
         {
+          assert(control_qubit_first != control_qubit_last);
           ::ket::gate::fused::runtime::adj_not_(
             first, fused_index_wo_qubits,
             fused_qubit_mask_first, fused_qubit_mask_last,
@@ -174,6 +185,9 @@ namespace ket
             ControlQubitsRange const& control_qubits)
           -> void
           {
+            using std::begin;
+            using std::end;
+            assert(begin(control_qubits) != end(control_qubits));
             ::ket::gate::fused::runtime::ranges::not_(
               first, fused_index_wo_qubits,
               fused_qubit_masks, fused_index_masks,
@@ -188,6 +202,9 @@ namespace ket
             ControlQubitsRange const& control_qubits)
           -> void
           {
+            using std::begin;
+            using std::end;
+            assert(begin(control_qubits) != end(control_qubits));
             ::ket::gate::fused::runtime::ranges::adj_not_(
               first, fused_index_wo_qubits,
               fused_qubit_masks, fused_index_masks,

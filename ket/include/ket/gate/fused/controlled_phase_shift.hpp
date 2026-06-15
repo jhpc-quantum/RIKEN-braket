@@ -179,7 +179,7 @@ namespace ket
           ::ket::gate::fused::runtime::phase_shift_coeff(
             first, fused_index_wo_qubits,
             unsorted_fused_qubit_first, unsorted_fused_qubit_last,
-            sorted_fused_qubit_with_sentinel, sorted_fused_qubit_with_sentinel_last,
+            sorted_fused_qubit_with_sentinel_first, sorted_fused_qubit_with_sentinel_last,
             phase_coefficient, control_qubit_first, control_qubit_last);
         }
 
@@ -195,7 +195,7 @@ namespace ket
           ::ket::gate::fused::runtime::adj_phase_shift_coeff(
             first, fused_index_wo_qubits,
             unsorted_fused_qubit_first, unsorted_fused_qubit_last,
-            sorted_fused_qubit_with_sentinel, sorted_fused_qubit_with_sentinel_last,
+            sorted_fused_qubit_with_sentinel_first, sorted_fused_qubit_with_sentinel_last,
             phase_coefficient, control_qubit_first, control_qubit_last);
         }
 
@@ -214,7 +214,7 @@ namespace ket
           ::ket::gate::fused::runtime::phase_shift_coeff(
             first, fused_index_wo_qubits,
             unsorted_fused_qubit_first, unsorted_fused_qubit_last,
-            sorted_fused_qubit_with_sentinel, sorted_fused_qubit_with_sentinel_last,
+            sorted_fused_qubit_with_sentinel_first, sorted_fused_qubit_with_sentinel_last,
             phase_coefficient, target_qubit, control_qubit_first, control_qubit_last);
         }
 
@@ -231,7 +231,7 @@ namespace ket
           ::ket::gate::fused::runtime::adj_phase_shift_coeff(
             first, fused_index_wo_qubits,
             unsorted_fused_qubit_first, unsorted_fused_qubit_last,
-            sorted_fused_qubit_with_sentinel, sorted_fused_qubit_with_sentinel_last,
+            sorted_fused_qubit_with_sentinel_first, sorted_fused_qubit_with_sentinel_last,
             phase_coefficient, target_qubit, control_qubit_first, control_qubit_last);
         }
 
@@ -248,7 +248,7 @@ namespace ket
           ::ket::gate::fused::runtime::phase_shift(
             first, fused_index_wo_qubits,
             unsorted_fused_qubit_first, unsorted_fused_qubit_last,
-            sorted_fused_qubit_with_sentinel, sorted_fused_qubit_with_sentinel_last,
+            sorted_fused_qubit_with_sentinel_first, sorted_fused_qubit_with_sentinel_last,
             phase, control_qubit_first, control_qubit_last);
         }
 
@@ -263,7 +263,7 @@ namespace ket
           ::ket::gate::fused::runtime::adj_phase_shift(
             first, fused_index_wo_qubits,
             unsorted_fused_qubit_first, unsorted_fused_qubit_last,
-            sorted_fused_qubit_with_sentinel, sorted_fused_qubit_with_sentinel_last,
+            sorted_fused_qubit_with_sentinel_first, sorted_fused_qubit_with_sentinel_last,
             phase, control_qubit_first, control_qubit_last);
         }
 
@@ -280,7 +280,7 @@ namespace ket
           ::ket::gate::fused::runtime::phase_shift(
             first, fused_index_wo_qubits,
             unsorted_fused_qubit_first, unsorted_fused_qubit_last,
-            sorted_fused_qubit_with_sentinel, sorted_fused_qubit_with_sentinel_last,
+            sorted_fused_qubit_with_sentinel_first, sorted_fused_qubit_with_sentinel_last,
             phase, target_qubit, control_qubit_first, control_qubit_last);
         }
 
@@ -296,7 +296,7 @@ namespace ket
           ::ket::gate::fused::runtime::adj_phase_shift(
             first, fused_index_wo_qubits,
             unsorted_fused_qubit_first, unsorted_fused_qubit_last,
-            sorted_fused_qubit_with_sentinel, sorted_fused_qubit_with_sentinel_last,
+            sorted_fused_qubit_with_sentinel_first, sorted_fused_qubit_with_sentinel_last,
             phase, target_qubit, control_qubit_first, control_qubit_last);
         }
 
@@ -353,7 +353,7 @@ namespace ket
           template <typename RandomAccessIterator, typename StateInteger, typename QubitsRange1, typename QubitsRange2, typename Complex, typename BitInteger, typename ControlQubitsRange>
           inline auto adj_controlled_phase_shift_coeff(
             RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
-            QubitsRange1 const& unsorted_fused_qubits, QubitsRange1 const& sorted_fused_qubits_with_sentinel,
+            QubitsRange1 const& unsorted_fused_qubits, QubitsRange2 const& sorted_fused_qubits_with_sentinel,
             Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
             ::ket::qubit<StateInteger, BitInteger> const target_qubit,
             ControlQubitsRange const& control_qubits)
@@ -374,7 +374,7 @@ namespace ket
             Real const phase, ControlQubitsRange const& control_qubits)
           -> void
           {
-            ::ket::gate::fused::runtime::ranges::phase_shift(
+            ::ket::gate::fused::runtime::ranges::phase_shift_coeff(
               first, fused_index_wo_qubits,
               unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
               phase, control_qubits);
@@ -387,7 +387,7 @@ namespace ket
             Real const phase, ControlQubitsRange const& control_qubits)
           -> void
           {
-            ::ket::gate::fused::runtime::ranges::adj_phase_shift(
+            ::ket::gate::fused::runtime::ranges::adj_phase_shift_coeff(
               first, fused_index_wo_qubits,
               unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
               phase, control_qubits);
@@ -402,7 +402,7 @@ namespace ket
             ControlQubitsRange const& control_qubits)
           -> void
           {
-            ::ket::gate::fused::runtime::ranges::phase_shift(
+            ::ket::gate::fused::runtime::ranges::phase_shift_coeff(
               first, fused_index_wo_qubits,
               unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
               phase, target_qubit, control_qubits);
@@ -416,7 +416,7 @@ namespace ket
             ControlQubitsRange const& control_qubits)
           -> void
           {
-            ::ket::gate::fused::runtime::ranges::adj_phase_shift(
+            ::ket::gate::fused::runtime::ranges::adj_phase_shift_coeff(
               first, fused_index_wo_qubits,
               unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
               phase, target_qubit, control_qubits);
@@ -731,7 +731,7 @@ namespace ket
           template <typename RandomAccessIterator, typename StateInteger, typename StateIntegersRange1, typename StateIntegersRange2, typename Complex, typename BitInteger, typename ControlQubitsRange>
           inline auto controlled_phase_shift_coeff(
             RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
-            StateIntegersRange1 const& fused_qubit_masks, StateIntegersRange1 const& fused_index_masks,
+            StateIntegersRange1 const& fused_qubit_masks, StateIntegersRange2 const& fused_index_masks,
             Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
             ::ket::qubit<StateInteger, BitInteger> const target_qubit,
             ControlQubitsRange const& control_qubits)
@@ -767,7 +767,7 @@ namespace ket
             Real const phase, ControlQubitsRange const& control_qubits)
           -> void
           {
-            ::ket::gate::fused::runtime::ranges::phase_shift(
+            ::ket::gate::fused::runtime::ranges::phase_shift_coeff(
               first, fused_index_wo_qubits,
               fused_qubit_masks, fused_index_masks,
               phase, control_qubits);
@@ -780,7 +780,7 @@ namespace ket
             Real const phase, ControlQubitsRange const& control_qubits)
           -> void
           {
-            ::ket::gate::fused::runtime::ranges::adj_phase_shift(
+            ::ket::gate::fused::runtime::ranges::adj_phase_shift_coeff(
               first, fused_index_wo_qubits,
               fused_qubit_masks, fused_index_masks,
               phase, control_qubits);
@@ -795,7 +795,7 @@ namespace ket
             ControlQubitsRange const& control_qubits)
           -> void
           {
-            ::ket::gate::fused::runtime::ranges::phase_shift(
+            ::ket::gate::fused::runtime::ranges::phase_shift_coeff(
               first, fused_index_wo_qubits,
               fused_qubit_masks, fused_index_masks,
               phase, target_qubit, control_qubits);
@@ -809,7 +809,7 @@ namespace ket
             ControlQubitsRange const& control_qubits)
           -> void
           {
-            ::ket::gate::fused::runtime::ranges::adj_phase_shift(
+            ::ket::gate::fused::runtime::ranges::adj_phase_shift_coeff(
               first, fused_index_wo_qubits,
               fused_qubit_masks, fused_index_masks,
               phase, target_qubit, control_qubits);
