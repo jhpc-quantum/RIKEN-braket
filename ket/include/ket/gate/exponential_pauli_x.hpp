@@ -10,6 +10,10 @@
 # include <utility>
 # include <type_traits>
 
+# include <boost/range/iterator_range.hpp>
+# include <boost/range/join.hpp>
+# include <boost/range/adaptor/transformed.hpp>
+
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
 # include <ket/gate/gate.hpp>
@@ -261,16 +265,11 @@ namespace ket
             using std::end;
             auto iter1
               = first
-                + ::ket::gate::utility::index_with_qubits(
-                    index_wo_qubits, base_index + i,
-                    begin(unsorted_qubits), end(unsorted_qubits),
-                    begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));
+                + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, base_index + i, unsorted_qubits, sorted_qubits_with_sentinel);
             auto iter2
               = first
-                + ::ket::gate::utility::index_with_qubits(
-                    index_wo_qubits, base_index + (num_target_indices - std::size_t{1u} - i),
-                    begin(unsorted_qubits), end(unsorted_qubits),
-                    begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));
+                + ::ket::gate::utility::ranges::index_with_qubits(
+                    index_wo_qubits, base_index + (num_target_indices - std::size_t{1u} - i), unsorted_qubits, sorted_qubits_with_sentinel);
             auto const value1 = *iter1;
 
             *iter1 *= cos_theta;
@@ -309,14 +308,11 @@ namespace ket
             using std::end;
             auto iter1
               = first
-                + ::ket::gate::utility::index_with_qubits(
-                    index_wo_qubits, base_index + i,
-                    begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, base_index + i, qubit_masks, index_masks);
             auto iter2
               = first
-                + ::ket::gate::utility::index_with_qubits(
-                    index_wo_qubits, base_index + (num_target_indices - std::size_t{1u} - i),
-                    begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
+                + ::ket::gate::utility::ranges::index_with_qubits(
+                    index_wo_qubits, base_index + (num_target_indices - std::size_t{1u} - i), qubit_masks, index_masks);
             auto const value1 = *iter1;
 
             *iter1 *= cos_theta;
@@ -344,7 +340,7 @@ namespace ket
         ParallelPolicy const parallel_policy, RandomAccessRange& state,
         Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
         ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
-      -> RandomAccessRange&
+      -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
       {
         using std::begin;
         using std::end;
@@ -385,7 +381,7 @@ namespace ket
         ParallelPolicy const parallel_policy, RandomAccessRange& state,
         Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
         ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
-      -> RandomAccessRange&
+      -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
       { using std::conj; return ::ket::gate::ranges::exponential_pauli_x_coeff(parallel_policy, state, conj(phase_coefficient), qubit, qubits...); }
 
       template <typename RandomAccessRange, typename Complex, typename StateInteger, typename BitInteger, typename... Qubits>
@@ -426,10 +422,10 @@ namespace ket
         ParallelPolicy const parallel_policy,
         RandomAccessRange& state, Real const phase, // theta
         ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
-      -> RandomAccessRange&
+      -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
       {
         using complex_type = ::ket::utility::meta::range_value_t<RandomAccessRange>;
-        return ::ket::gate::ranges::exponential_pauli_x_coeff(parallel_policy, state, ::ket::utility::exp_i<complex_type>(phase), qubit);
+        return ::ket::gate::ranges::exponential_pauli_x_coeff(parallel_policy, state, ::ket::utility::exp_i<complex_type>(phase), qubit, qubits...);
       }
 
       template <typename RandomAccessRange, typename Real, typename StateInteger, typename BitInteger, typename... Qubits>
@@ -465,7 +461,7 @@ namespace ket
         ParallelPolicy const parallel_policy,
         RandomAccessRange& state, Real const phase, // theta
         ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
-      -> RandomAccessRange&
+      -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
       { return ::ket::gate::ranges::exponential_pauli_x(parallel_policy, state, -phase, qubit, qubits...); }
 
       template <typename RandomAccessRange, typename Real, typename StateInteger, typename BitInteger, typename... Qubits>
@@ -475,6 +471,679 @@ namespace ket
       -> RandomAccessRange&
       { return ::ket::gate::ranges::exponential_pauli_x(state, -phase, qubit, qubits...); }
     } // namespace ranges
+
+
+    namespace runtime
+    {
+      // exponential_pauli_x_coeff
+      // C...CeX...X_{t...t'c...c'}(theta) = C...C[exp(i theta X_t ... X_t')]_{c...c'} = C...C[I cos(theta) + i X_t ... X_t' sin(theta)]_{c...c'}, CneX...X_{...}, C...CeXm_{...}, or CneXm_{...}
+      namespace qubit_ranges
+      {
+        template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename QubitsRange, typename ControlQubitsRange>
+        inline auto exponential_pauli_x_coeff(
+          ParallelPolicy const parallel_policy,
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+          QubitsRange const& target_qubits, ControlQubitsRange const& control_qubits)
+        -> void
+        {
+          using qubit_type = ::ket::utility::meta::range_value_t<QubitsRange>;
+          using control_qubit_type = ::ket::control<qubit_type>;
+          using state_integer_type = ::ket::meta::state_integer_t<qubit_type>;
+          using bit_integer_type = ::ket::meta::bit_integer_t<qubit_type>;
+          static_assert(std::is_unsigned<state_integer_type>::value, "The state_integer_type of the value_type of QubitsRange should be unsigned");
+          static_assert(std::is_unsigned<bit_integer_type>::value, "The bit_integer_type of the value_type of QubitsRange should be unsigned");
+          static_assert(std::is_same< ::ket::utility::meta::range_value_t<ControlQubitsRange>, control_qubit_type >::value, "The value_type of ControlQubitsRange should be the same as the value_type of QubitsRange");
+
+          assert(
+            ::ket::utility::integer_exp2<state_integer_type>(::ket::utility::integer_log2<bit_integer_type>(last - first))
+            == static_cast<state_integer_type>(last - first));
+          using std::begin;
+          using std::end;
+          auto const num_target_qubits = static_cast<bit_integer_type>(end(target_qubits) - begin(target_qubits));
+          auto const num_control_qubits = static_cast<bit_integer_type>(end(control_qubits) - begin(control_qubits));
+          auto const num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
+          auto const half_num_target_indices = num_target_indices / std::size_t{2u};
+
+          using std::real;
+          using std::imag;
+          auto const cos_theta = real(phase_coefficient);
+          auto const i_sin_theta = ::ket::utility::imaginary_unit<Complex>() * imag(phase_coefficient);
+
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+          ::ket::gate::runtime::nocache::qubit_ranges::gate(
+            parallel_policy, first, last,
+            [num_target_qubits, num_control_qubits, num_target_indices, half_num_target_indices, cos_theta, &i_sin_theta](
+              auto const first, state_integer_type const index_wo_qubits,
+              auto const& unsorted_qubits, auto const& sorted_qubits_with_sentinel,
+              int const)
+            {
+              // 0b1...10...0u
+              auto const base_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
+
+              for (auto i = std::size_t{0u}; i < half_num_target_indices; ++i)
+              {
+                auto iter1
+                  = first
+                    + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, base_index + i, unsorted_qubits, sorted_qubits_with_sentinel);
+                auto iter2
+                  = first
+                    + ::ket::gate::utility::ranges::index_with_qubits(
+                        index_wo_qubits, base_index + (num_target_indices - std::size_t{1u} - i), unsorted_qubits, sorted_qubits_with_sentinel);
+                auto const value1 = *iter1;
+
+                *iter1 *= cos_theta;
+                *iter1 += *iter2 * i_sin_theta;
+                *iter2 *= cos_theta;
+                *iter2 += value1 * i_sin_theta;
+              }
+            },
+            boost::join(
+              target_qubits,
+              control_qubits | boost::adaptors::transformed(
+                [](control_qubit_type const control_qubit) { return control_qubit.qubit(); })));
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+          ::ket::gate::runtime::nocache::qubit_ranges::gate(
+            parallel_policy, first, last,
+            [num_target_qubits, num_control_qubits, num_target_indices, half_num_target_indices, cos_theta, &i_sin_theta](
+              auto const first, state_integer_type const index_wo_qubits,
+              auto const& qubit_masks, auto const& index_masks,
+              int const)
+            {
+              // 0b1...10...0u
+              auto const base_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
+
+              for (auto i = std::size_t{0u}; i < half_num_target_indices; ++i)
+              {
+                auto iter1
+                  = first
+                    + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, base_index + i, qubit_masks, index_masks);
+                auto iter2
+                  = first
+                    + ::ket::gate::utility::ranges::index_with_qubits(
+                        index_wo_qubits, base_index + (num_target_indices - std::size_t{1u} - i), qubit_masks, index_masks);
+                auto const value1 = *iter1;
+
+                *iter1 *= cos_theta;
+                *iter1 += *iter2 * i_sin_theta;
+                *iter2 *= cos_theta;
+                *iter2 += value1 * i_sin_theta;
+              }
+            },
+            boost::join(
+              target_qubits,
+              control_qubits | boost::adaptors::transformed(
+                [](control_qubit_type const control_qubit) { return control_qubit.qubit(); })));
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+        }
+
+        template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename QubitsRange>
+        inline auto exponential_pauli_x_coeff(
+          ParallelPolicy const parallel_policy,
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+          QubitsRange const& target_qubits)
+        -> void
+        {
+          using qubit_type = ::ket::utility::meta::range_value_t<QubitsRange>;
+          using control_qubit_type = ::ket::control<qubit_type>;
+          std::array<control_qubit_type, 0u> const control_qubits{};
+          ::ket::gate::runtime::qubit_ranges::exponential_pauli_x_coeff(
+            parallel_policy, first, last, phase_coefficient, target_qubits, control_qubits);
+        }
+
+        template <typename RandomAccessIterator, typename Complex, typename QubitsRange, typename ControlQubitsRange>
+        inline auto exponential_pauli_x_coeff(
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+          QubitsRange const& target_qubits, ControlQubitsRange const& control_qubits)
+        -> void
+        { ::ket::gate::runtime::qubit_ranges::exponential_pauli_x_coeff(::ket::utility::policy::make_sequential(), first, last, phase_coefficient, target_qubits, control_qubits); }
+
+        template <typename RandomAccessIterator, typename Complex, typename QubitsRange>
+        inline auto exponential_pauli_x_coeff(
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+          QubitsRange const& target_qubits)
+        -> void
+        { ::ket::gate::runtime::qubit_ranges::exponential_pauli_x_coeff(::ket::utility::policy::make_sequential(), first, last, phase_coefficient, target_qubits); }
+      } // namespace qubit_ranges
+
+      template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename QubitIterator, typename ControlQubitIterator>
+      inline auto exponential_pauli_x_coeff(
+        ParallelPolicy const parallel_policy,
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+        QubitIterator const target_qubit_first, QubitIterator const target_qubit_last,
+        ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+      -> void
+      {
+        ::ket::gate::runtime::qubit_ranges::exponential_pauli_x_coeff(
+          parallel_policy, first, last, phase_coefficient,
+          boost::make_iterator_range(target_qubit_first, target_qubit_last),
+          boost::make_iterator_range(control_qubit_first, control_qubit_last));
+      }
+
+      template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename QubitIterator>
+      inline auto exponential_pauli_x_coeff(
+        ParallelPolicy const parallel_policy,
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+        QubitIterator const target_qubit_first, QubitIterator const target_qubit_last)
+      -> void
+      {
+        ::ket::gate::runtime::qubit_ranges::exponential_pauli_x_coeff(
+          parallel_policy, first, last, phase_coefficient,
+          boost::make_iterator_range(target_qubit_first, target_qubit_last));
+      }
+
+      template <typename RandomAccessIterator, typename Complex, typename QubitIterator, typename ControlQubitIterator>
+      inline auto exponential_pauli_x_coeff(
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+        QubitIterator const target_qubit_first, QubitIterator const target_qubit_last,
+        ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+      -> void
+      {
+        ::ket::gate::runtime::qubit_ranges::exponential_pauli_x_coeff(
+          first, last, phase_coefficient,
+          boost::make_iterator_range(target_qubit_first, target_qubit_last),
+          boost::make_iterator_range(control_qubit_first, control_qubit_last));
+      }
+
+      template <typename RandomAccessIterator, typename Complex, typename QubitIterator>
+      inline auto exponential_pauli_x_coeff(
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+        QubitIterator const target_qubit_first, QubitIterator const target_qubit_last)
+      -> void
+      {
+        ::ket::gate::runtime::qubit_ranges::exponential_pauli_x_coeff(
+          first, last, phase_coefficient,
+          boost::make_iterator_range(target_qubit_first, target_qubit_last));
+      }
+
+      namespace ranges
+      {
+        template <typename ParallelPolicy, typename RandomAccessRange, typename Complex, typename QubitsRange, typename ControlQubitsRange>
+        inline auto exponential_pauli_x_coeff(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& state,
+          Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+          QubitsRange const& target_qubits, ControlQubitsRange const& control_qubits)
+        -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
+        {
+          using std::begin;
+          using std::end;
+          ::ket::gate::runtime::qubit_ranges::exponential_pauli_x_coeff(
+            parallel_policy, begin(state), end(state), phase_coefficient, target_qubits, control_qubits);
+          return state;
+        }
+
+        template <typename ParallelPolicy, typename RandomAccessRange, typename Complex, typename QubitsRange>
+        inline auto exponential_pauli_x_coeff(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& state,
+          Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+          QubitsRange const& target_qubits)
+        -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
+        {
+          using std::begin;
+          using std::end;
+          ::ket::gate::runtime::qubit_ranges::exponential_pauli_x_coeff(
+            parallel_policy, begin(state), end(state), phase_coefficient, target_qubits);
+          return state;
+        }
+
+        template <typename RandomAccessRange, typename Complex, typename QubitsRange, typename ControlQubitsRange>
+        inline auto exponential_pauli_x_coeff(
+          RandomAccessRange& state,
+          Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+          QubitsRange const& target_qubits, ControlQubitsRange const& control_qubits)
+        -> std::enable_if_t< not ::ket::utility::policy::meta::is_loop_n_policy<std::remove_cv_t<std::remove_reference_t<RandomAccessRange>>>::value, RandomAccessRange& >
+        {
+          using std::begin;
+          using std::end;
+          ::ket::gate::runtime::qubit_ranges::exponential_pauli_x_coeff(
+            begin(state), end(state), phase_coefficient, target_qubits, control_qubits);
+          return state;
+        }
+
+        template <typename RandomAccessRange, typename Complex, typename QubitsRange>
+        inline auto exponential_pauli_x_coeff(
+          RandomAccessRange& state,
+          Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+          QubitsRange const& target_qubits)
+        -> RandomAccessRange&
+        {
+          using std::begin;
+          using std::end;
+          ::ket::gate::runtime::qubit_ranges::exponential_pauli_x_coeff(
+            begin(state), end(state), phase_coefficient, target_qubits);
+          return state;
+        }
+      } // namespace ranges
+
+      namespace qubit_ranges
+      {
+        template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename QubitsRange, typename ControlQubitsRange>
+        inline auto adj_exponential_pauli_x_coeff(
+          ParallelPolicy const parallel_policy,
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+          QubitsRange const& target_qubits, ControlQubitsRange const& control_qubits)
+        -> void
+        {
+          using std::conj;
+          ::ket::gate::runtime::qubit_ranges::exponential_pauli_x_coeff(
+            parallel_policy, first, last, conj(phase_coefficient), target_qubits, control_qubits);
+        }
+
+        template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename QubitsRange>
+        inline auto adj_exponential_pauli_x_coeff(
+          ParallelPolicy const parallel_policy,
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+          QubitsRange const& target_qubits)
+        -> void
+        {
+          using std::conj;
+          ::ket::gate::runtime::qubit_ranges::exponential_pauli_x_coeff(
+            parallel_policy, first, last, conj(phase_coefficient), target_qubits);
+        }
+
+        template <typename RandomAccessIterator, typename Complex, typename QubitsRange, typename ControlQubitsRange>
+        inline auto adj_exponential_pauli_x_coeff(
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+          QubitsRange const& target_qubits, ControlQubitsRange const& control_qubits)
+        -> void
+        {
+          using std::conj;
+          ::ket::gate::runtime::qubit_ranges::exponential_pauli_x_coeff(
+            first, last, conj(phase_coefficient), target_qubits, control_qubits);
+        }
+
+        template <typename RandomAccessIterator, typename Complex, typename QubitsRange>
+        inline auto adj_exponential_pauli_x_coeff(
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+          QubitsRange const& target_qubits)
+        -> void
+        {
+          using std::conj;
+          ::ket::gate::runtime::qubit_ranges::exponential_pauli_x_coeff(first, last, conj(phase_coefficient), target_qubits);
+        }
+      } // namespace qubit_ranges
+
+      template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename QubitIterator, typename ControlQubitIterator>
+      inline auto adj_exponential_pauli_x_coeff(
+        ParallelPolicy const parallel_policy,
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+        QubitIterator const target_qubit_first, QubitIterator const target_qubit_last,
+        ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+      -> void
+      {
+        using std::conj;
+        ::ket::gate::runtime::exponential_pauli_x_coeff(
+          parallel_policy, first, last, conj(phase_coefficient),
+          target_qubit_first, target_qubit_last, control_qubit_first, control_qubit_last);
+      }
+
+      template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename QubitIterator>
+      inline auto adj_exponential_pauli_x_coeff(
+        ParallelPolicy const parallel_policy,
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+        QubitIterator const target_qubit_first, QubitIterator const target_qubit_last)
+      -> void
+      {
+        using std::conj;
+        ::ket::gate::runtime::exponential_pauli_x_coeff(
+          parallel_policy, first, last, conj(phase_coefficient), target_qubit_first, target_qubit_last);
+      }
+
+      template <typename RandomAccessIterator, typename Complex, typename QubitIterator, typename ControlQubitIterator>
+      inline auto adj_exponential_pauli_x_coeff(
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+        QubitIterator const target_qubit_first, QubitIterator const target_qubit_last,
+        ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+      -> void
+      {
+        using std::conj;
+        ::ket::gate::runtime::exponential_pauli_x_coeff(
+          first, last, conj(phase_coefficient),
+          target_qubit_first, target_qubit_last, control_qubit_first, control_qubit_last);
+      }
+
+      template <typename RandomAccessIterator, typename Complex, typename QubitIterator>
+      inline auto adj_exponential_pauli_x_coeff(
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+        QubitIterator const target_qubit_first, QubitIterator const target_qubit_last)
+      -> void
+      {
+        using std::conj;
+        ::ket::gate::runtime::exponential_pauli_x_coeff(
+          first, last, conj(phase_coefficient), target_qubit_first, target_qubit_last);
+      }
+
+      namespace ranges
+      {
+        template <typename ParallelPolicy, typename RandomAccessRange, typename Complex, typename QubitsRange, typename ControlQubitsRange>
+        inline auto adj_exponential_pauli_x_coeff(
+          ParallelPolicy const parallel_policy, RandomAccessRange& state,
+          Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+          QubitsRange const& target_qubits, ControlQubitsRange const& control_qubits)
+        -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
+        {
+          using std::conj;
+          return ::ket::gate::runtime::ranges::exponential_pauli_x_coeff(
+            parallel_policy, state, conj(phase_coefficient), target_qubits, control_qubits);
+        }
+
+        template <typename ParallelPolicy, typename RandomAccessRange, typename Complex, typename QubitsRange>
+        inline auto adj_exponential_pauli_x_coeff(
+          ParallelPolicy const parallel_policy, RandomAccessRange& state,
+          Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+          QubitsRange const& target_qubits)
+        -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
+        {
+          using std::conj;
+          return ::ket::gate::runtime::ranges::exponential_pauli_x_coeff(
+            parallel_policy, state, conj(phase_coefficient), target_qubits);
+        }
+
+        template <typename RandomAccessRange, typename Complex, typename QubitsRange, typename ControlQubitsRange>
+        inline auto adj_exponential_pauli_x_coeff(
+          RandomAccessRange& state,
+          Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+          QubitsRange const& target_qubits, ControlQubitsRange const& control_qubits)
+        -> std::enable_if_t< not ::ket::utility::policy::meta::is_loop_n_policy<std::remove_cv_t<std::remove_reference_t<RandomAccessRange>>>::value, RandomAccessRange& >
+        {
+          using std::conj;
+          return ::ket::gate::runtime::ranges::exponential_pauli_x_coeff(state, conj(phase_coefficient), target_qubits, control_qubits);
+        }
+
+        template <typename RandomAccessRange, typename Complex, typename QubitsRange>
+        inline auto adj_exponential_pauli_x_coeff(
+          RandomAccessRange& state,
+          Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+          QubitsRange const& target_qubits)
+        -> RandomAccessRange&
+        {
+          using std::conj;
+          return ::ket::gate::runtime::ranges::exponential_pauli_x_coeff(state, conj(phase_coefficient), target_qubits);
+        }
+      } // namespace ranges
+
+      // exponential_pauli_x
+      namespace qubit_ranges
+      {
+        template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename QubitsRange, typename ControlQubitsRange>
+        inline auto exponential_pauli_x(
+          ParallelPolicy const parallel_policy,
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          Real const phase, // theta
+          QubitsRange const& target_qubits, ControlQubitsRange const& control_qubits)
+        -> void
+        {
+          using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+          ::ket::gate::runtime::qubit_ranges::exponential_pauli_x_coeff(
+            parallel_policy, first, last, ::ket::utility::exp_i<complex_type>(phase), target_qubits, control_qubits);
+        }
+
+        template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename QubitsRange>
+        inline auto exponential_pauli_x(
+          ParallelPolicy const parallel_policy,
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          Real const phase, // theta
+          QubitsRange const& target_qubits)
+        -> void
+        {
+          using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+          ::ket::gate::runtime::qubit_ranges::exponential_pauli_x_coeff(
+            parallel_policy, first, last, ::ket::utility::exp_i<complex_type>(phase), target_qubits);
+        }
+
+        template <typename RandomAccessIterator, typename Real, typename QubitsRange, typename ControlQubitsRange>
+        inline auto exponential_pauli_x(
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          Real const phase, // theta
+          QubitsRange const& target_qubits, ControlQubitsRange const& control_qubits)
+        -> void
+        {
+          using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+          ::ket::gate::runtime::qubit_ranges::exponential_pauli_x_coeff(
+            first, last, ::ket::utility::exp_i<complex_type>(phase), target_qubits, control_qubits);
+        }
+
+        template <typename RandomAccessIterator, typename Real, typename QubitsRange>
+        inline auto exponential_pauli_x(
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          Real const phase, // theta
+          QubitsRange const& target_qubits)
+        -> void
+        {
+          using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+          ::ket::gate::runtime::qubit_ranges::exponential_pauli_x_coeff(
+            first, last, ::ket::utility::exp_i<complex_type>(phase), target_qubits);
+        }
+      } // namespace qubit_ranges
+
+      template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename QubitIterator, typename ControlQubitIterator>
+      inline auto exponential_pauli_x(
+        ParallelPolicy const parallel_policy,
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Real const phase, // theta
+        QubitIterator const qubit_first, QubitIterator const qubit_last,
+        ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+      -> void
+      {
+        using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+        ::ket::gate::runtime::exponential_pauli_x_coeff(
+          parallel_policy, first, last, ::ket::utility::exp_i<complex_type>(phase),
+          qubit_first, qubit_last, control_qubit_first, control_qubit_last);
+      }
+
+      template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename QubitIterator>
+      inline auto exponential_pauli_x(
+        ParallelPolicy const parallel_policy,
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Real const phase, // theta
+        QubitIterator const qubit_first, QubitIterator const qubit_last)
+      -> void
+      {
+        using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+        ::ket::gate::runtime::exponential_pauli_x_coeff(
+          parallel_policy, first, last, ::ket::utility::exp_i<complex_type>(phase),
+          qubit_first, qubit_last);
+      }
+
+      template <typename RandomAccessIterator, typename Real, typename QubitIterator, typename ControlQubitIterator>
+      inline auto exponential_pauli_x(
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Real const phase, // theta
+        QubitIterator const qubit_first, QubitIterator const qubit_last,
+        ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+      -> void
+      {
+        using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+        ::ket::gate::runtime::exponential_pauli_x_coeff(
+          first, last, ::ket::utility::exp_i<complex_type>(phase),
+          qubit_first, qubit_last, control_qubit_first, control_qubit_last);
+      }
+
+      template <typename RandomAccessIterator, typename Real, typename QubitIterator>
+      inline auto exponential_pauli_x(
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Real const phase, // theta
+        QubitIterator const qubit_first, QubitIterator const qubit_last)
+      -> void
+      {
+        using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+        ::ket::gate::runtime::exponential_pauli_x_coeff(
+          first, last, ::ket::utility::exp_i<complex_type>(phase),
+          qubit_first, qubit_last);
+      }
+
+      namespace ranges
+      {
+        template <typename ParallelPolicy, typename RandomAccessRange, typename Real, typename QubitsRange, typename ControlQubitsRange>
+        inline auto exponential_pauli_x(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& state, Real const phase, // theta
+          QubitsRange const& qubits, ControlQubitsRange const& control_qubits)
+        -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
+        {
+          using complex_type = ::ket::utility::meta::range_value_t<RandomAccessRange>;
+          return ::ket::gate::runtime::ranges::exponential_pauli_x_coeff(
+            parallel_policy, state, ::ket::utility::exp_i<complex_type>(phase), qubits, control_qubits);
+        }
+
+        template <typename ParallelPolicy, typename RandomAccessRange, typename Real, typename QubitsRange>
+        inline auto exponential_pauli_x(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& state, Real const phase, // theta
+          QubitsRange const& qubits)
+        -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
+        {
+          using complex_type = ::ket::utility::meta::range_value_t<RandomAccessRange>;
+          return ::ket::gate::runtime::ranges::exponential_pauli_x_coeff(
+            parallel_policy, state, ::ket::utility::exp_i<complex_type>(phase), qubits);
+        }
+
+        template <typename RandomAccessRange, typename Real, typename QubitsRange, typename ControlQubitsRange>
+        inline auto exponential_pauli_x(
+          RandomAccessRange& state, Real const phase, // theta
+          QubitsRange const& qubits, ControlQubitsRange const& control_qubits)
+        -> std::enable_if_t< not ::ket::utility::policy::meta::is_loop_n_policy<std::remove_cv_t<std::remove_reference_t<RandomAccessRange>>>::value, RandomAccessRange& >
+        {
+          using complex_type = ::ket::utility::meta::range_value_t<RandomAccessRange>;
+          return ::ket::gate::runtime::ranges::exponential_pauli_x_coeff(
+            state, ::ket::utility::exp_i<complex_type>(phase), qubits, control_qubits);
+        }
+
+        template <typename RandomAccessRange, typename Real, typename QubitsRange>
+        inline auto exponential_pauli_x(
+          RandomAccessRange& state, Real const phase, // theta
+          QubitsRange const& qubits)
+        -> RandomAccessRange&
+        {
+          using complex_type = ::ket::utility::meta::range_value_t<RandomAccessRange>;
+          return ::ket::gate::runtime::ranges::exponential_pauli_x_coeff(
+            state, ::ket::utility::exp_i<complex_type>(phase), qubits);
+        }
+      } // namespace ranges
+
+      namespace qubit_ranges
+      {
+        template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename QubitsRange, typename ControlQubitsRange>
+        inline auto adj_exponential_pauli_x(
+          ParallelPolicy const parallel_policy,
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          Real const phase, // theta
+          QubitsRange const& target_qubits, ControlQubitsRange const& control_qubits)
+        -> void
+        { ::ket::gate::runtime::qubit_ranges::exponential_pauli_x(parallel_policy, first, last, -phase, target_qubits, control_qubits); }
+
+        template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename QubitsRange>
+        inline auto adj_exponential_pauli_x(
+          ParallelPolicy const parallel_policy,
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          Real const phase, // theta
+          QubitsRange const& target_qubits)
+        -> void
+        { ::ket::gate::runtime::qubit_ranges::exponential_pauli_x(parallel_policy, first, last, -phase, target_qubits); }
+
+        template <typename RandomAccessIterator, typename Real, typename QubitsRange, typename ControlQubitsRange>
+        inline auto adj_exponential_pauli_x(
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          Real const phase, // theta
+          QubitsRange const& target_qubits, ControlQubitsRange const& control_qubits)
+        -> void
+        { ::ket::gate::runtime::qubit_ranges::exponential_pauli_x(first, last, -phase, target_qubits, control_qubits); }
+
+        template <typename RandomAccessIterator, typename Real, typename QubitsRange>
+        inline auto adj_exponential_pauli_x(
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          Real const phase, // theta
+          QubitsRange const& target_qubits)
+        -> void
+        { ::ket::gate::runtime::qubit_ranges::exponential_pauli_x(first, last, -phase, target_qubits); }
+      } // namespace qubit_ranges
+
+      template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename QubitIterator, typename ControlQubitIterator>
+      inline auto adj_exponential_pauli_x(
+        ParallelPolicy const parallel_policy,
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Real const phase, // theta
+        QubitIterator const qubit_first, QubitIterator const qubit_last,
+        ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+      -> void
+      { ::ket::gate::runtime::exponential_pauli_x(parallel_policy, first, last, -phase, qubit_first, qubit_last, control_qubit_first, control_qubit_last); }
+
+      template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename QubitIterator>
+      inline auto adj_exponential_pauli_x(
+        ParallelPolicy const parallel_policy,
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Real const phase, // theta
+        QubitIterator const qubit_first, QubitIterator const qubit_last)
+      -> void
+      { ::ket::gate::runtime::exponential_pauli_x(parallel_policy, first, last, -phase, qubit_first, qubit_last); }
+
+      template <typename RandomAccessIterator, typename Real, typename QubitIterator, typename ControlQubitIterator>
+      inline auto adj_exponential_pauli_x(
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Real const phase, // theta
+        QubitIterator const qubit_first, QubitIterator const qubit_last,
+        ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+      -> void
+      { ::ket::gate::runtime::exponential_pauli_x(first, last, -phase, qubit_first, qubit_last, control_qubit_first, control_qubit_last); }
+
+      template <typename RandomAccessIterator, typename Real, typename QubitIterator>
+      inline auto adj_exponential_pauli_x(
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Real const phase, // theta
+        QubitIterator const qubit_first, QubitIterator const qubit_last)
+      -> void
+      { ::ket::gate::runtime::exponential_pauli_x(first, last, -phase, qubit_first, qubit_last); }
+
+      namespace ranges
+      {
+        template <typename ParallelPolicy, typename RandomAccessRange, typename Real, typename QubitsRange, typename ControlQubitsRange>
+        inline auto adj_exponential_pauli_x(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& state, Real const phase, // theta
+          QubitsRange const& qubits, ControlQubitsRange const& control_qubits)
+        -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
+        { return ::ket::gate::runtime::ranges::exponential_pauli_x(parallel_policy, state, -phase, qubits, control_qubits); }
+
+        template <typename ParallelPolicy, typename RandomAccessRange, typename Real, typename QubitsRange>
+        inline auto adj_exponential_pauli_x(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& state, Real const phase, // theta
+          QubitsRange const& qubits)
+        -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
+        { return ::ket::gate::runtime::ranges::exponential_pauli_x(parallel_policy, state, -phase, qubits); }
+
+        template <typename RandomAccessRange, typename Real, typename QubitsRange, typename ControlQubitsRange>
+        inline auto adj_exponential_pauli_x(
+          RandomAccessRange& state, Real const phase, // theta
+          QubitsRange const& qubits, ControlQubitsRange const& control_qubits)
+        -> std::enable_if_t< not ::ket::utility::policy::meta::is_loop_n_policy<std::remove_cv_t<std::remove_reference_t<RandomAccessRange>>>::value, RandomAccessRange& >
+        { return ::ket::gate::runtime::ranges::exponential_pauli_x(state, -phase, qubits, control_qubits); }
+
+        template <typename RandomAccessRange, typename Real, typename QubitsRange>
+        inline auto adj_exponential_pauli_x(
+          RandomAccessRange& state, Real const phase, // theta
+          QubitsRange const& qubits)
+        -> RandomAccessRange&
+        { return ::ket::gate::runtime::ranges::exponential_pauli_x(state, -phase, qubits); }
+      } // namespace ranges
+    } // namespace runtime
   } // namespace gate
 } // namespace ket
 

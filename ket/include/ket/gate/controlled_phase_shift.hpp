@@ -89,7 +89,7 @@ namespace ket
         ParallelPolicy const parallel_policy,
         RandomAccessRange& state, Complex const& phase_coefficient,
         ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+      -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
       {
         using std::begin;
         using std::end;
@@ -129,7 +129,7 @@ namespace ket
         ParallelPolicy const parallel_policy,
         RandomAccessRange& state, Complex const& phase_coefficient,
         ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+      -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
       { using std::conj; return ::ket::gate::ranges::controlled_phase_shift_coeff(parallel_policy, state, conj(phase_coefficient), control_qubits...); }
 
       template <typename RandomAccessRange, typename Complex, typename... Qubits>
@@ -183,7 +183,7 @@ namespace ket
         RandomAccessRange& state, Complex const& phase_coefficient,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ControlQubits const... control_qubits)
-      -> RandomAccessRange&
+      -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
       {
         using std::begin;
         using std::end;
@@ -227,7 +227,7 @@ namespace ket
         RandomAccessRange& state, Complex const& phase_coefficient,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ControlQubits const... control_qubits)
-      -> RandomAccessRange&
+      -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
       { using std::conj; return ::ket::gate::ranges::controlled_phase_shift_coeff(parallel_policy, state, conj(phase_coefficient), target_qubit, control_qubit, control_qubits...); }
 
       template <typename RandomAccessRange, typename Complex, typename StateInteger, typename BitInteger, typename... ControlQubits>
@@ -271,7 +271,7 @@ namespace ket
         ParallelPolicy const parallel_policy,
         RandomAccessRange& state, Real const phase,
         ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+      -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
       {
         using complex_type = ::ket::utility::meta::range_value_t<RandomAccessRange>;
         return ::ket::gate::ranges::controlled_phase_shift_coeff(parallel_policy, state, ::ket::utility::exp_i<complex_type>(phase), control_qubits...);
@@ -312,7 +312,7 @@ namespace ket
         ParallelPolicy const parallel_policy,
         RandomAccessRange& state, Real const phase,
         ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+      -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
       { return ::ket::gate::ranges::controlled_phase_shift(parallel_policy, state, -phase, control_qubits...); }
 
       template <typename RandomAccessRange, typename Real, typename... Qubits>
@@ -357,7 +357,7 @@ namespace ket
         RandomAccessRange& state, Real const phase,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ControlQubits const... control_qubits)
-      -> RandomAccessRange&
+      -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
       {
         using complex_type = ::ket::utility::meta::range_value_t<RandomAccessRange>;
         return ::ket::gate::ranges::controlled_phase_shift_coeff(parallel_policy, state, ::ket::utility::exp_i<complex_type>(phase), target_qubit, control_qubit, control_qubits...);
@@ -402,7 +402,7 @@ namespace ket
         RandomAccessRange& state, Real const phase,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
         ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ControlQubits const... control_qubits)
-      -> RandomAccessRange&
+      -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
       { return ::ket::gate::ranges::controlled_phase_shift(parallel_policy, state, -phase, target_qubit, control_qubit, control_qubits...); }
 
       template <typename RandomAccessRange, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
@@ -413,6 +413,474 @@ namespace ket
       -> RandomAccessRange&
       { return ::ket::gate::ranges::controlled_phase_shift(state, -phase, target_qubit, control_qubit, control_qubits...); }
     } // namespace ranges
+
+
+    namespace runtime
+    {
+      // controlled_phase_shift_coeff
+      // Case 1: the first argument of qubits is ket::control<ket::qubit<S, B>>
+      // C...CU_{c0,c...c'}(theta) or CnU_{c0,c...c'}(theta)
+      namespace qubit_ranges
+      {
+        template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename ControlQubitsRange>
+        inline auto controlled_phase_shift_coeff(
+          ParallelPolicy const parallel_policy,
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          Complex const& phase_coefficient, ControlQubitsRange const& control_qubits)
+        -> void
+        { ::ket::gate::runtime::qubit_ranges::phase_shift_coeff(parallel_policy, first, last, phase_coefficient, control_qubits); }
+
+        template <typename RandomAccessIterator, typename Complex, typename ControlQubitsRange>
+        inline auto controlled_phase_shift_coeff(
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          Complex const& phase_coefficient, ControlQubitsRange const& control_qubits)
+        -> void
+        { ::ket::gate::runtime::qubit_ranges::phase_shift_coeff(first, last, phase_coefficient, control_qubits); }
+      } // namespace qubit_ranges
+
+      template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename ControlQubitIterator>
+      inline auto controlled_phase_shift_coeff(
+        ParallelPolicy const parallel_policy,
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Complex const& phase_coefficient,
+        ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+      -> void
+      { ::ket::gate::runtime::phase_shift_coeff(parallel_policy, first, last, phase_coefficient, control_qubit_first, control_qubit_last); }
+
+      template <typename RandomAccessIterator, typename Complex, typename ControlQubitIterator>
+      inline auto controlled_phase_shift_coeff(
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Complex const& phase_coefficient,
+        ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+      -> void
+      { ::ket::gate::runtime::phase_shift_coeff(first, last, phase_coefficient, control_qubit_first, control_qubit_last); }
+
+      namespace ranges
+      {
+        template <typename ParallelPolicy, typename RandomAccessRange, typename Complex, typename ControlQubitsRange>
+        inline auto controlled_phase_shift_coeff(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& state, Complex const& phase_coefficient,
+          ControlQubitsRange const& control_qubits)
+        -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
+        { return ::ket::gate::runtime::ranges::phase_shift_coeff(parallel_policy, state, phase_coefficient, control_qubits); }
+
+        template <typename RandomAccessRange, typename Complex, typename ControlQubitsRange>
+        inline auto controlled_phase_shift_coeff(
+          RandomAccessRange& state, Complex const& phase_coefficient,
+          ControlQubitsRange const& control_qubits)
+        -> RandomAccessRange&
+        { return ::ket::gate::runtime::ranges::phase_shift_coeff(state, phase_coefficient, control_qubits); }
+      } // namespace ranges
+
+      namespace qubit_ranges
+      {
+        template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename ControlQubitsRange>
+        inline auto adj_controlled_phase_shift_coeff(
+          ParallelPolicy const parallel_policy,
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          Complex const& phase_coefficient, ControlQubitsRange const& control_qubits)
+        -> void
+        { ::ket::gate::runtime::qubit_ranges::adj_phase_shift_coeff(parallel_policy, first, last, phase_coefficient, control_qubits); }
+
+        template <typename RandomAccessIterator, typename Complex, typename ControlQubitsRange>
+        inline auto adj_controlled_phase_shift_coeff(
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          Complex const& phase_coefficient, ControlQubitsRange const& control_qubits)
+        -> void
+        { ::ket::gate::runtime::qubit_ranges::adj_phase_shift_coeff(first, last, phase_coefficient, control_qubits); }
+      } // namespace qubit_ranges
+
+      template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename ControlQubitIterator>
+      inline auto adj_controlled_phase_shift_coeff(
+        ParallelPolicy const parallel_policy,
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Complex const& phase_coefficient,
+        ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+      -> void
+      { ::ket::gate::runtime::adj_phase_shift_coeff(parallel_policy, first, last, phase_coefficient, control_qubit_first, control_qubit_last); }
+
+      template <typename RandomAccessIterator, typename Complex, typename ControlQubitIterator>
+      inline auto adj_controlled_phase_shift_coeff(
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Complex const& phase_coefficient,
+        ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+      -> void
+      { ::ket::gate::runtime::adj_phase_shift_coeff(first, last, phase_coefficient, control_qubit_first, control_qubit_last); }
+
+      namespace ranges
+      {
+        template <typename ParallelPolicy, typename RandomAccessRange, typename Complex, typename ControlQubitsRange>
+        inline auto adj_controlled_phase_shift_coeff(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& state, Complex const& phase_coefficient,
+          ControlQubitsRange const& control_qubits)
+        -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
+        { return ::ket::gate::runtime::ranges::adj_phase_shift_coeff(parallel_policy, state, phase_coefficient, control_qubits); }
+
+        template <typename RandomAccessRange, typename Complex, typename ControlQubitsRange>
+        inline auto adj_controlled_phase_shift_coeff(
+          RandomAccessRange& state, Complex const& phase_coefficient,
+          ControlQubitsRange const& control_qubits)
+        -> RandomAccessRange&
+        { return ::ket::gate::runtime::ranges::adj_phase_shift_coeff(state, phase_coefficient, control_qubits); }
+      } // namespace ranges
+
+      // Case 2: the first argument of qubits is ket::qubit<S, B>
+      // C...CU_{tc...c'}(theta) or CnU_{tc...c'}(theta)
+      namespace qubit_ranges
+      {
+        template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger, typename ControlQubitsRange>
+        inline auto controlled_phase_shift_coeff(
+          ParallelPolicy const parallel_policy,
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          Complex const& phase_coefficient,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitsRange const& control_qubits)
+        -> void
+        { ::ket::gate::runtime::qubit_ranges::phase_shift_coeff(parallel_policy, first, last, phase_coefficient, target_qubit, control_qubits); }
+
+        template <typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger, typename ControlQubitsRange>
+        inline auto controlled_phase_shift_coeff(
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          Complex const& phase_coefficient,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitsRange const& control_qubits)
+        -> void
+        { ::ket::gate::runtime::qubit_ranges::phase_shift_coeff(first, last, phase_coefficient, target_qubit, control_qubits); }
+      } // namespace qubit_ranges
+
+      template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger, typename ControlQubitIterator>
+      inline auto controlled_phase_shift_coeff(
+        ParallelPolicy const parallel_policy,
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Complex const& phase_coefficient,
+        ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+        ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+      -> void
+      { ::ket::gate::runtime::phase_shift_coeff(parallel_policy, first, last, phase_coefficient, target_qubit, control_qubit_first, control_qubit_last); }
+
+      template <typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger, typename ControlQubitIterator>
+      inline auto controlled_phase_shift_coeff(
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Complex const& phase_coefficient,
+        ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+        ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+      -> void
+      { ::ket::gate::runtime::phase_shift_coeff(first, last, phase_coefficient, target_qubit, control_qubit_first, control_qubit_last); }
+
+      namespace ranges
+      {
+        template <typename ParallelPolicy, typename RandomAccessRange, typename Complex, typename StateInteger, typename BitInteger, typename ControlQubitsRange>
+        inline auto controlled_phase_shift_coeff(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& state, Complex const& phase_coefficient,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitsRange const& control_qubits)
+        -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
+        { return ::ket::gate::runtime::ranges::phase_shift_coeff(parallel_policy, state, phase_coefficient, target_qubit, control_qubits); }
+
+        template <typename RandomAccessRange, typename Complex, typename StateInteger, typename BitInteger, typename ControlQubitsRange>
+        inline auto controlled_phase_shift_coeff(
+          RandomAccessRange& state, Complex const& phase_coefficient,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitsRange const& control_qubits)
+        -> RandomAccessRange&
+        { return ::ket::gate::runtime::ranges::phase_shift_coeff(state, phase_coefficient, target_qubit, control_qubits); }
+      } // namespace ranges
+
+      namespace qubit_ranges
+      {
+        template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger, typename ControlQubitsRange>
+        inline auto adj_controlled_phase_shift_coeff(
+          ParallelPolicy const parallel_policy,
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          Complex const& phase_coefficient,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitsRange const& control_qubits)
+        -> void
+        { ::ket::gate::runtime::qubit_ranges::adj_phase_shift_coeff(parallel_policy, first, last, phase_coefficient, target_qubit, control_qubits); }
+
+        template <typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger, typename ControlQubitsRange>
+        inline auto adj_controlled_phase_shift_coeff(
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          Complex const& phase_coefficient,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitsRange const& control_qubits)
+        -> void
+        { ::ket::gate::runtime::qubit_ranges::adj_phase_shift_coeff(first, last, phase_coefficient, target_qubit, control_qubits); }
+      } // namespace qubit_ranges
+
+      template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger, typename ControlQubitIterator>
+      inline auto adj_controlled_phase_shift_coeff(
+        ParallelPolicy const parallel_policy,
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Complex const& phase_coefficient,
+        ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+        ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+      -> void
+      { ::ket::gate::runtime::adj_phase_shift_coeff(parallel_policy, first, last, phase_coefficient, target_qubit, control_qubit_first, control_qubit_last); }
+
+      template <typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger, typename ControlQubitIterator>
+      inline auto adj_controlled_phase_shift_coeff(
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Complex const& phase_coefficient,
+        ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+        ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+      -> void
+      { ::ket::gate::runtime::adj_phase_shift_coeff(first, last, phase_coefficient, target_qubit, control_qubit_first, control_qubit_last); }
+
+      namespace ranges
+      {
+        template <typename ParallelPolicy, typename RandomAccessRange, typename Complex, typename StateInteger, typename BitInteger, typename ControlQubitsRange>
+        inline auto adj_controlled_phase_shift_coeff(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& state, Complex const& phase_coefficient,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitsRange const& control_qubits)
+        -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
+        { return ::ket::gate::runtime::ranges::adj_phase_shift_coeff(parallel_policy, state, phase_coefficient, target_qubit, control_qubits); }
+
+        template <typename RandomAccessRange, typename Complex, typename StateInteger, typename BitInteger, typename ControlQubitsRange>
+        inline auto adj_controlled_phase_shift_coeff(
+          RandomAccessRange& state, Complex const& phase_coefficient,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitsRange const& control_qubits)
+        -> RandomAccessRange&
+        { return ::ket::gate::runtime::ranges::adj_phase_shift_coeff(state, phase_coefficient, target_qubit, control_qubits); }
+      } // namespace ranges
+
+      // controlled_phase_shift
+      // Case 1: the first argument of qubits is ket::control<ket::qubit<S, B>>
+      namespace qubit_ranges
+      {
+        template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename ControlQubitsRange>
+        inline auto controlled_phase_shift(
+          ParallelPolicy const parallel_policy,
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          Real const phase, ControlQubitsRange const& control_qubits)
+        -> void
+        { ::ket::gate::runtime::qubit_ranges::phase_shift(parallel_policy, first, last, phase, control_qubits); }
+
+        template <typename RandomAccessIterator, typename Real, typename ControlQubitsRange>
+        inline auto controlled_phase_shift(
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          Real const phase, ControlQubitsRange const& control_qubits)
+        -> void
+        { ::ket::gate::runtime::qubit_ranges::phase_shift(first, last, phase, control_qubits); }
+      } // namespace qubit_ranges
+
+      template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename ControlQubitIterator>
+      inline auto controlled_phase_shift(
+        ParallelPolicy const parallel_policy,
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Real const phase,
+        ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+      -> void
+      { ::ket::gate::runtime::phase_shift(parallel_policy, first, last, phase, control_qubit_first, control_qubit_last); }
+
+      template <typename RandomAccessIterator, typename Real, typename ControlQubitIterator>
+      inline auto controlled_phase_shift(
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Real const phase,
+        ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+      -> void
+      { ::ket::gate::runtime::phase_shift(first, last, phase, control_qubit_first, control_qubit_last); }
+
+      namespace ranges
+      {
+        template <typename ParallelPolicy, typename RandomAccessRange, typename Real, typename ControlQubitsRange>
+        inline auto controlled_phase_shift(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& state, Real const phase,
+          ControlQubitsRange const& control_qubits)
+        -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
+        { return ::ket::gate::runtime::ranges::phase_shift(parallel_policy, state, phase, control_qubits); }
+
+        template <typename RandomAccessRange, typename Real, typename ControlQubitsRange>
+        inline auto controlled_phase_shift(
+          RandomAccessRange& state, Real const phase,
+          ControlQubitsRange const& control_qubits)
+        -> RandomAccessRange&
+        { return ::ket::gate::runtime::ranges::phase_shift(state, phase, control_qubits); }
+      } // namespace ranges
+
+      namespace qubit_ranges
+      {
+        template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename ControlQubitsRange>
+        inline auto adj_controlled_phase_shift(
+          ParallelPolicy const parallel_policy,
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          Real const phase, ControlQubitsRange const& control_qubits)
+        -> void
+        { ::ket::gate::runtime::qubit_ranges::adj_phase_shift(parallel_policy, first, last, phase, control_qubits); }
+
+        template <typename RandomAccessIterator, typename Real, typename ControlQubitsRange>
+        inline auto adj_controlled_phase_shift(
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          Real const phase, ControlQubitsRange const& control_qubits)
+        -> void
+        { ::ket::gate::runtime::qubit_ranges::adj_phase_shift(first, last, phase, control_qubits); }
+      } // namespace qubit_ranges
+
+      template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename ControlQubitIterator>
+      inline auto adj_controlled_phase_shift(
+        ParallelPolicy const parallel_policy,
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Real const phase,
+        ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+      -> void
+      { ::ket::gate::runtime::adj_phase_shift(parallel_policy, first, last, phase, control_qubit_first, control_qubit_last); }
+
+      template <typename RandomAccessIterator, typename Real, typename ControlQubitIterator>
+      inline auto adj_controlled_phase_shift(
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Real const phase,
+        ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+      -> void
+      { ::ket::gate::runtime::adj_phase_shift(first, last, phase, control_qubit_first, control_qubit_last); }
+
+      namespace ranges
+      {
+        template <typename ParallelPolicy, typename RandomAccessRange, typename Real, typename ControlQubitsRange>
+        inline auto adj_controlled_phase_shift(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& state, Real const phase,
+          ControlQubitsRange const& control_qubits)
+        -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
+        { return ::ket::gate::runtime::ranges::adj_phase_shift(parallel_policy, state, phase, control_qubits); }
+
+        template <typename RandomAccessRange, typename Real, typename ControlQubitsRange>
+        inline auto adj_controlled_phase_shift(
+          RandomAccessRange& state, Real const phase,
+          ControlQubitsRange const& control_qubits)
+        -> RandomAccessRange&
+        { return ::ket::gate::runtime::ranges::adj_phase_shift(state, phase, control_qubits); }
+      } // namespace ranges
+
+      // Case 2: the first argument of qubits is ket::qubit<S, B>
+      namespace qubit_ranges
+      {
+        template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger, typename ControlQubitsRange>
+        inline auto controlled_phase_shift(
+          ParallelPolicy const parallel_policy,
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          Real const phase,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitsRange const& control_qubits)
+        -> void
+        { ::ket::gate::runtime::qubit_ranges::phase_shift(parallel_policy, first, last, phase, target_qubit, control_qubits); }
+
+        template <typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger, typename ControlQubitsRange>
+        inline auto controlled_phase_shift(
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          Real const phase,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitsRange const& control_qubits)
+        -> void
+        { ::ket::gate::runtime::qubit_ranges::phase_shift(first, last, phase, target_qubit, control_qubits); }
+      } // namespace qubit_ranges
+
+      template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger, typename ControlQubitIterator>
+      inline auto controlled_phase_shift(
+        ParallelPolicy const parallel_policy,
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Real const phase,
+        ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+        ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+      -> void
+      { ::ket::gate::runtime::phase_shift(parallel_policy, first, last, phase, target_qubit, control_qubit_first, control_qubit_last); }
+
+      template <typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger, typename ControlQubitIterator>
+      inline auto controlled_phase_shift(
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Real const phase,
+        ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+        ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+      -> void
+      { ::ket::gate::runtime::phase_shift(first, last, phase, target_qubit, control_qubit_first, control_qubit_last); }
+
+      namespace ranges
+      {
+        template <typename ParallelPolicy, typename RandomAccessRange, typename Real, typename StateInteger, typename BitInteger, typename ControlQubitsRange>
+        inline auto controlled_phase_shift(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& state, Real const phase,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitsRange const& control_qubits)
+        -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
+        { return ::ket::gate::runtime::ranges::phase_shift(parallel_policy, state, phase, target_qubit, control_qubits); }
+
+        template <typename RandomAccessRange, typename Real, typename StateInteger, typename BitInteger, typename ControlQubitsRange>
+        inline auto controlled_phase_shift(
+          RandomAccessRange& state, Real const phase,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitsRange const& control_qubits)
+        -> RandomAccessRange&
+        { return ::ket::gate::runtime::ranges::phase_shift(state, phase, target_qubit, control_qubits); }
+      } // namespace ranges
+
+      namespace qubit_ranges
+      {
+        template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger, typename ControlQubitsRange>
+        inline auto adj_controlled_phase_shift(
+          ParallelPolicy const parallel_policy,
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          Real const phase,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitsRange const& control_qubits)
+        -> void
+        { ::ket::gate::runtime::qubit_ranges::adj_phase_shift(parallel_policy, first, last, phase, target_qubit, control_qubits); }
+
+        template <typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger, typename ControlQubitsRange>
+        inline auto adj_controlled_phase_shift(
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          Real const phase,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitsRange const& control_qubits)
+        -> void
+        { ::ket::gate::runtime::qubit_ranges::adj_phase_shift(first, last, phase, target_qubit, control_qubits); }
+      } // namespace qubit_ranges
+
+      template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger, typename ControlQubitIterator>
+      inline auto adj_controlled_phase_shift(
+        ParallelPolicy const parallel_policy,
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Real const phase,
+        ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+        ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+      -> void
+      { ::ket::gate::runtime::adj_phase_shift(parallel_policy, first, last, phase, target_qubit, control_qubit_first, control_qubit_last); }
+
+      template <typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger, typename ControlQubitIterator>
+      inline auto adj_controlled_phase_shift(
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Real const phase,
+        ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+        ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+      -> void
+      { ::ket::gate::runtime::adj_phase_shift(first, last, phase, target_qubit, control_qubit_first, control_qubit_last); }
+
+      namespace ranges
+      {
+        template <typename ParallelPolicy, typename RandomAccessRange, typename Real, typename StateInteger, typename BitInteger, typename ControlQubitsRange>
+        inline auto adj_controlled_phase_shift(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& state, Real const phase,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitsRange const& control_qubits)
+        -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
+        { return ::ket::gate::runtime::ranges::adj_phase_shift(parallel_policy, state, phase, target_qubit, control_qubits); }
+
+        template <typename RandomAccessRange, typename Real, typename StateInteger, typename BitInteger, typename ControlQubitsRange>
+        inline auto adj_controlled_phase_shift(
+          RandomAccessRange& state, Real const phase,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitsRange const& control_qubits)
+        -> RandomAccessRange&
+        { return ::ket::gate::runtime::ranges::adj_phase_shift(state, phase, target_qubit, control_qubits); }
+      } // namespace ranges
+    } // namespace runtime
   } // namespace gate
 } // namespace ket
 
