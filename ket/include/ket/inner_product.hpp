@@ -9,6 +9,8 @@
 # include <utility>
 # include <type_traits>
 
+# include <boost/range/iterator_range.hpp>
+
 # include <ket/qubit.hpp>
 # include <ket/gate/gate.hpp>
 # include <ket/meta/state_integer_of.hpp>
@@ -213,6 +215,113 @@ namespace ket
     -> ::ket::utility::meta::range_value_t<RandomAccessRange1>
     { using std::begin; using std::end; return ::ket::inner_product(begin(state1), end(state1), begin(state2), std::forward<Observable>(observable), qubit, qubits...); }
   } // namespace ranges
+
+  namespace runtime
+  {
+    namespace qubit_ranges
+    {
+      // <Psi_2| A_{ij} |Psi_1>
+      template <typename ParallelPolicy, typename RandomAccessIterator1, typename RandomAccessIterator2, typename Observable, typename QubitsRange>
+      inline auto inner_product(
+        ParallelPolicy const parallel_policy,
+        RandomAccessIterator1 const first1, RandomAccessIterator1 const last1, RandomAccessIterator2 const first2,
+        Observable&& observable, QubitsRange const& qubits)
+      -> typename std::iterator_traits<RandomAccessIterator1>::value_type
+      {
+        using complex_type = typename std::iterator_traits<RandomAccessIterator1>::value_type;
+        static_assert(
+          std::is_same<complex_type, typename std::iterator_traits<RandomAccessIterator2>::value_type>::value,
+          "value_type's of RandomAccessIterator1 and RandomAccessIterator2 should be the same");
+        auto partial_sums = std::vector<complex_type>(::ket::utility::num_threads(parallel_policy));
+
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+        ::ket::gate::runtime::nocache::qubit_ranges::gate(
+          parallel_policy, first1, last1,
+          [first2, &observable, &partial_sums](
+            auto const first1, auto const index_wo_qubits,
+            auto const& unsorted_qubits, auto const& sorted_qubits_with_sentinel,
+            int const thread_index)
+          { partial_sums[thread_index] += observable(first1, first2, index_wo_qubits, unsorted_qubits, sorted_qubits_with_sentinel); },
+          qubits);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+        ::ket::gate::runtime::nocache::qubit_ranges::gate(
+          parallel_policy, first1, last1,
+          [first2, &observable, &partial_sums](
+            auto const first1, auto const index_wo_qubits,
+            auto const& qubit_masks, auto const& index_masks,
+            int const thread_index)
+          { partial_sums[thread_index] += observable(first1, first2, index_wo_qubits, qubit_masks, index_masks); },
+          qubits);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+
+        using std::begin;
+        using std::end;
+        return std::accumulate(begin(partial_sums), end(partial_sums), complex_type{});
+      }
+
+      template <typename RandomAccessIterator1, typename RandomAccessIterator2, typename Observable, typename QubitsRange>
+      inline auto inner_product(
+        RandomAccessIterator1 const first1, RandomAccessIterator1 const last1, RandomAccessIterator2 const first2,
+        Observable&& observable, QubitsRange const& qubits)
+      -> typename std::iterator_traits<RandomAccessIterator1>::value_type
+      {
+        return ::ket::runtime::qubit_ranges::inner_product(
+          ::ket::utility::policy::make_sequential(),
+          first1, last1, first2, std::forward<Observable>(observable), qubits);
+      }
+    } // namespace qubit_ranges
+
+    template <typename ParallelPolicy, typename RandomAccessIterator1, typename RandomAccessIterator2, typename Observable, typename QubitIterator>
+    inline auto inner_product(
+      ParallelPolicy const parallel_policy,
+      RandomAccessIterator1 const first1, RandomAccessIterator1 const last1, RandomAccessIterator2 const first2,
+      Observable&& observable, QubitIterator const qubit_first, QubitIterator const qubit_last)
+    -> typename std::iterator_traits<RandomAccessIterator1>::value_type
+    {
+      return ::ket::runtime::qubit_ranges::inner_product(
+        parallel_policy, first1, last1, first2, std::forward<Observable>(observable),
+        boost::make_iterator_range(qubit_first, qubit_last));
+    }
+
+    template <typename RandomAccessIterator1, typename RandomAccessIterator2, typename Observable, typename QubitIterator>
+    inline auto inner_product(
+      RandomAccessIterator1 const first1, RandomAccessIterator1 const last1, RandomAccessIterator2 const first2,
+      Observable&& observable, QubitIterator const qubit_first, QubitIterator const qubit_last)
+    -> typename std::iterator_traits<RandomAccessIterator1>::value_type
+    {
+      return ::ket::runtime::qubit_ranges::inner_product(
+        first1, last1, first2, std::forward<Observable>(observable),
+        boost::make_iterator_range(qubit_first, qubit_last));
+    }
+
+    namespace ranges
+    {
+      template <typename ParallelPolicy, typename RandomAccessRange1, typename RandomAccessRange2, typename Observable, typename QubitsRange>
+      inline auto inner_product(
+        ParallelPolicy const parallel_policy,
+        RandomAccessRange1 const& state1, RandomAccessRange2 const& state2,
+        Observable&& observable, QubitsRange const& qubits)
+      -> ::ket::utility::meta::range_value_t<RandomAccessRange1>
+      {
+        using std::begin;
+        using std::end;
+        return ::ket::runtime::qubit_ranges::inner_product(
+          parallel_policy, begin(state1), end(state1), begin(state2), std::forward<Observable>(observable), qubits);
+      }
+
+      template <typename RandomAccessRange1, typename RandomAccessRange2, typename Observable, typename QubitsRange>
+      inline auto inner_product(
+        RandomAccessRange1 const& state1, RandomAccessRange2 const& state2,
+        Observable&& observable, QubitsRange const& qubits)
+      -> ::ket::utility::meta::range_value_t<RandomAccessRange1>
+      {
+        using std::begin;
+        using std::end;
+        return ::ket::runtime::qubit_ranges::inner_product(
+          begin(state1), end(state1), begin(state2), std::forward<Observable>(observable), qubits);
+      }
+    } // namespace ranges
+  } // namespace runtime
 } // namespace ket
 
 
