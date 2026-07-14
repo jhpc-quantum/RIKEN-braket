@@ -3,10 +3,15 @@
 
 # include <vector>
 # include <array>
+# include <utility>
 
 # include <yampi/environment.hpp>
 # include <yampi/datatype_base.hpp>
 # include <yampi/communicator.hpp>
+
+# include <boost/range/iterator_range.hpp>
+# include <boost/range/join.hpp>
+# include <boost/range/adaptor/transformed.hpp>
 
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
@@ -714,6 +719,616 @@ namespace ket
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
           local_state, permutation, buffer, datatype, communicator, environment, target_qubit, control_qubits...);
       }
+
+      namespace runtime
+      {
+        namespace local
+        {
+          namespace dispatch
+          {
+            template <typename LocalState>
+            struct transpage_hadamard
+            {
+              template <
+                typename ParallelPolicy,
+                typename RandomAccessRange, typename StateInteger, typename BitInteger,
+                typename PermutatedControlQubitsRange>
+              [[noreturn]] static auto call(
+                ParallelPolicy const parallel_policy,
+                RandomAccessRange& local_state,
+                ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
+                PermutatedControlQubitsRange const& permutated_control_qubits)
+              -> RandomAccessRange&
+              { throw 1; }
+            }; // struct transpage_hadamard<LocalState>
+          } // namespace dispatch
+
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename ControlQubitsRange>
+          inline auto hadamard(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+            ControlQubitsRange const& control_qubits)
+          -> RandomAccessRange&
+          {
+            auto const permutated_target_qubit = permutation[target_qubit];
+            using control_qubit_type = ::ket::utility::meta::range_value_t<ControlQubitsRange>;
+            auto const permutated_control_qubits
+              = control_qubits | boost::adaptors::transformed(
+                  [&permutation](control_qubit_type const control_qubit) { return permutation[control_qubit]; });
+            ::ket::mpi::gate::detail::runtime::ranges::assert_all_qubits_are_local(
+              mpi_policy, local_state, communicator, environment,
+              permutated_target_qubit, permutated_control_qubits);
+
+            if (::ket::mpi::page::runtime::ranges::any_on_page(local_state, permutated_target_qubit, permutated_control_qubits))
+            {
+              using local_state_type = std::remove_const_t<std::remove_reference_t<RandomAccessRange>>;
+              return ::ket::mpi::gate::runtime::local::dispatch::transpage_hadamard<local_state_type>::call(
+                parallel_policy, local_state, permutated_target_qubit, permutated_control_qubits);
+            }
+
+            return ::ket::mpi::utility::for_each_local_range(
+              mpi_policy, local_state, communicator, environment,
+              [parallel_policy, permutated_target_qubit, permutated_control_qubits](auto const first, auto const last)
+              {
+                using permutated_control_qubit_type = ::ket::utility::meta::range_value_t<decltype(permutated_control_qubits)>;
+                ::ket::gate::runtime::qubit_ranges::hadamard(
+                  parallel_policy, first, last, permutated_target_qubit.qubit(),
+                  permutated_control_qubits | boost::adaptors::transformed(
+                    [](permutated_control_qubit_type const permutated_control_qubit)
+                    { return permutated_control_qubit.qubit(); }));
+              });
+          }
+        } // namespace local
+
+        namespace hadamard_detail
+        {
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename ControlQubitsRange>
+          inline auto hadamard(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+            ControlQubitsRange const& control_qubits)
+          -> RandomAccessRange&
+          {
+            using control_qubit_type = ::ket::utility::meta::range_value_t<ControlQubitsRange>;
+            ::ket::mpi::utility::runtime::ranges::maybe_interchange_qubits(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment,
+              boost::join(
+                boost::make_iterator_range(&target_qubit, &target_qubit + 1),
+                control_qubits | boost::adaptors::transformed(
+                  [](control_qubit_type const control_qubit) { return control_qubit.qubit(); })));
+
+            return ::ket::mpi::gate::runtime::local::hadamard(
+              mpi_policy, parallel_policy,
+              local_state, permutation, communicator, environment,
+              target_qubit, control_qubits);
+          }
+
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename ControlQubitsRange>
+          inline auto hadamard(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::datatype_base<DerivedDatatype> const& datatype,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+            ControlQubitsRange const& control_qubits)
+          -> RandomAccessRange&
+          {
+            using control_qubit_type = ::ket::utility::meta::range_value_t<ControlQubitsRange>;
+            ::ket::mpi::utility::runtime::ranges::maybe_interchange_qubits(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment,
+              boost::join(
+                boost::make_iterator_range(&target_qubit, &target_qubit + 1),
+                control_qubits | boost::adaptors::transformed(
+                  [](control_qubit_type const control_qubit) { return control_qubit.qubit(); })));
+
+            return ::ket::mpi::gate::runtime::local::hadamard(
+              mpi_policy, parallel_policy,
+              local_state, permutation, communicator, environment,
+              target_qubit, control_qubits);
+          }
+        } // namespace hadamard_detail
+
+        namespace ranges
+        {
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename ControlQubitsRange>
+          inline auto hadamard(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+            ControlQubitsRange const& control_qubits)
+          -> RandomAccessRange&
+          {
+            using std::begin;
+            using std::end;
+            auto const num_control_qubits = static_cast<std::size_t>(std::distance(begin(control_qubits), end(control_qubits)));
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::runtime::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(std::string(num_control_qubits, 'C').append("H ")),
+                target_qubit, control_qubits),
+              environment};
+
+            return ::ket::mpi::gate::runtime::hadamard_detail::hadamard(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment,
+              target_qubit, control_qubits);
+          }
+
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename ControlQubitsRange>
+          inline auto hadamard(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::datatype_base<DerivedDatatype> const& datatype,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+            ControlQubitsRange const& control_qubits)
+          -> RandomAccessRange&
+          {
+            using std::begin;
+            using std::end;
+            auto const num_control_qubits = static_cast<std::size_t>(std::distance(begin(control_qubits), end(control_qubits)));
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::runtime::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(std::string(num_control_qubits, 'C').append("H ")),
+                target_qubit, control_qubits),
+              environment};
+
+            return ::ket::mpi::gate::runtime::hadamard_detail::hadamard(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment,
+              target_qubit, control_qubits);
+          }
+
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator>
+          inline auto hadamard(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+          -> RandomAccessRange&
+          {
+            using control_qubit_type = ::ket::control< ::ket::qubit<StateInteger, BitInteger> >;
+            std::array<control_qubit_type, 0u> const control_qubits{};
+            return ::ket::mpi::gate::runtime::ranges::hadamard(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment,
+              target_qubit, control_qubits);
+          }
+
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename DerivedDatatype>
+          inline auto hadamard(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::datatype_base<DerivedDatatype> const& datatype,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+          -> RandomAccessRange&
+          {
+            using control_qubit_type = ::ket::control< ::ket::qubit<StateInteger, BitInteger> >;
+            std::array<control_qubit_type, 0u> const control_qubits{};
+            return ::ket::mpi::gate::runtime::ranges::hadamard(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment,
+              target_qubit, control_qubits);
+          }
+        } // namespace ranges
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename ControlQubitIterator>
+        inline auto hadamard(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::ranges::hadamard(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, communicator, environment,
+            target_qubit, boost::make_iterator_range(control_qubit_first, control_qubit_last));
+        }
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename ControlQubitIterator>
+        inline auto hadamard(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::ranges::hadamard(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, datatype, communicator, environment,
+            target_qubit, boost::make_iterator_range(control_qubit_first, control_qubit_last));
+        }
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator>
+        inline auto hadamard(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::ranges::hadamard(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, communicator, environment, target_qubit);
+        }
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename DerivedDatatype>
+        inline auto hadamard(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::ranges::hadamard(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, datatype, communicator, environment, target_qubit);
+        }
+
+        namespace ranges
+        {
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename ControlQubitsRange>
+          inline auto adj_hadamard(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+            ControlQubitsRange const& control_qubits)
+          -> RandomAccessRange&
+          {
+            using std::begin;
+            using std::end;
+            auto const num_control_qubits = static_cast<std::size_t>(std::distance(begin(control_qubits), end(control_qubits)));
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::runtime::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(std::string{"Adj("}.append(num_control_qubits, 'C').append("H) ")),
+                target_qubit, control_qubits),
+              environment};
+
+            return ::ket::mpi::gate::runtime::hadamard_detail::hadamard(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment,
+              target_qubit, control_qubits);
+          }
+
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename ControlQubitsRange>
+          inline auto adj_hadamard(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::datatype_base<DerivedDatatype> const& datatype,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+            ControlQubitsRange const& control_qubits)
+          -> RandomAccessRange&
+          {
+            using std::begin;
+            using std::end;
+            auto const num_control_qubits = static_cast<std::size_t>(std::distance(begin(control_qubits), end(control_qubits)));
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::runtime::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(std::string{"Adj("}.append(num_control_qubits, 'C').append("H) ")),
+                target_qubit, control_qubits),
+              environment};
+
+            return ::ket::mpi::gate::runtime::hadamard_detail::hadamard(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment,
+              target_qubit, control_qubits);
+          }
+
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator>
+          inline auto adj_hadamard(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+          -> RandomAccessRange&
+          {
+            using control_qubit_type = ::ket::control< ::ket::qubit<StateInteger, BitInteger> >;
+            std::array<control_qubit_type, 0u> const control_qubits{};
+            return ::ket::mpi::gate::runtime::ranges::adj_hadamard(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment,
+              target_qubit, control_qubits);
+          }
+
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename DerivedDatatype>
+          inline auto adj_hadamard(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::datatype_base<DerivedDatatype> const& datatype,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+          -> RandomAccessRange&
+          {
+            using control_qubit_type = ::ket::control< ::ket::qubit<StateInteger, BitInteger> >;
+            std::array<control_qubit_type, 0u> const control_qubits{};
+            return ::ket::mpi::gate::runtime::ranges::adj_hadamard(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment,
+              target_qubit, control_qubits);
+          }
+        } // namespace ranges
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename ControlQubitIterator>
+        inline auto adj_hadamard(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::ranges::adj_hadamard(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, communicator, environment,
+            target_qubit, boost::make_iterator_range(control_qubit_first, control_qubit_last));
+        }
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename ControlQubitIterator>
+        inline auto adj_hadamard(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::ranges::adj_hadamard(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, datatype, communicator, environment,
+            target_qubit, boost::make_iterator_range(control_qubit_first, control_qubit_last));
+        }
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator>
+        inline auto adj_hadamard(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::ranges::adj_hadamard(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, communicator, environment, target_qubit);
+        }
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename DerivedDatatype>
+        inline auto adj_hadamard(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::ranges::adj_hadamard(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, datatype, communicator, environment, target_qubit);
+        }
+
+        namespace ranges
+        {
+          template <typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename... Args>
+          inline auto hadamard(
+            ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            Args&&... args)
+          -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::runtime::ranges::hadamard(
+              ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
+              local_state, permutation, buffer, std::forward<Args>(args)...);
+          }
+
+          template <typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename... Args>
+          inline auto hadamard(
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            Args&&... args)
+          -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::runtime::ranges::hadamard(
+              ::ket::mpi::utility::policy::make_simple_mpi(),
+              ::ket::utility::policy::make_sequential(),
+              local_state, permutation, buffer, std::forward<Args>(args)...);
+          }
+
+          template <typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename... Args>
+          inline auto adj_hadamard(
+            ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            Args&&... args)
+          -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::runtime::ranges::adj_hadamard(
+              ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
+              local_state, permutation, buffer, std::forward<Args>(args)...);
+          }
+
+          template <typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename... Args>
+          inline auto adj_hadamard(
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            Args&&... args)
+          -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::runtime::ranges::adj_hadamard(
+              ::ket::mpi::utility::policy::make_simple_mpi(),
+              ::ket::utility::policy::make_sequential(),
+              local_state, permutation, buffer, std::forward<Args>(args)...);
+          }
+        } // namespace ranges
+
+        template <typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename... Args>
+        inline auto hadamard(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          Args&&... args)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::hadamard(
+            ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
+            local_state, permutation, buffer, std::forward<Args>(args)...);
+        }
+
+        template <typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename... Args>
+        inline auto hadamard(
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          Args&&... args)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::hadamard(
+            ::ket::mpi::utility::policy::make_simple_mpi(),
+            ::ket::utility::policy::make_sequential(),
+            local_state, permutation, buffer, std::forward<Args>(args)...);
+        }
+
+        template <typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename... Args>
+        inline auto adj_hadamard(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          Args&&... args)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::adj_hadamard(
+            ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
+            local_state, permutation, buffer, std::forward<Args>(args)...);
+        }
+
+        template <typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename... Args>
+        inline auto adj_hadamard(
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          Args&&... args)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::adj_hadamard(
+            ::ket::mpi::utility::policy::make_simple_mpi(),
+            ::ket::utility::policy::make_sequential(),
+            local_state, permutation, buffer, std::forward<Args>(args)...);
+        }
+      } // namespace runtime
     } // namespace gate
   } // namespace mpi
 } // namespace ket
