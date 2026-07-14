@@ -9,6 +9,9 @@
 # include <utility>
 # include <type_traits>
 
+# include <boost/range/join.hpp>
+# include <boost/range/adaptor/transformed.hpp>
+
 # include <ket/qubit.hpp>
 # include <ket/gate/gate.hpp>
 # include <ket/gate/utility/index_with_qubits.hpp>
@@ -327,6 +330,267 @@ namespace ket
             local_state, on_cache_state_first, on_cache_state_last, data_block_index,
             std::forward<Function>(function), permutated_qubit, permutated_qubits...);
         }
+
+
+        namespace runtime
+        {
+          template <
+            typename ParallelPolicy,
+            typename RandomAccessRange, typename OnCacheStateRange, typename StateInteger,
+            typename Function, typename PermutatedQubitsRange, typename PermutatedControlQubitsRange>
+          [[noreturn]] inline auto gate(
+            ParallelPolicy const,
+            RandomAccessRange&, OnCacheStateRange&, StateInteger const,
+            Function&&, PermutatedQubitsRange const&, PermutatedControlQubitsRange const&)
+          -> RandomAccessRange&
+          { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"gate"}; }
+
+          template <
+            typename ParallelPolicy,
+            typename Complex, typename Allocator, typename OnCacheStateRange, typename StateInteger,
+            typename Function, typename PermutatedQubitsRange, typename PermutatedControlQubitsRange>
+          [[noreturn]] inline auto gate(
+            ParallelPolicy const,
+            ::ket::mpi::state<Complex, false, Allocator>&, OnCacheStateRange&, StateInteger const,
+            Function&&, PermutatedQubitsRange const&, PermutatedControlQubitsRange const&)
+          -> ::ket::mpi::state<Complex, false, Allocator>&
+          { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"gate"}; }
+
+          // Case 2) Some operated qubits are page qubits
+          // Note that num. page qubits are smaller than or equal to num. off-cache qubits
+          template <
+            typename ParallelPolicy,
+            typename Complex, typename Allocator, typename OnCacheStateRange, typename StateInteger,
+            typename Function, typename PermutatedQubitsRange, typename PermutatedControlQubitsRange>
+          inline auto gate(
+            ParallelPolicy const parallel_policy,
+            ::ket::mpi::state<Complex, true, Allocator>& local_state,
+            OnCacheStateRange& on_cache_state, StateInteger const data_block_index,
+            Function&& function, PermutatedQubitsRange const& permutated_target_qubits, PermutatedControlQubitsRange const& permutated_control_qubits)
+          -> ::ket::mpi::state<Complex, true, Allocator>&
+          {
+            static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+
+            using permutated_qubit_type = ::ket::utility::meta::range_value_t<PermutatedQubitsRange>;
+            using bit_integer_type = ::ket::meta::bit_integer_t<permutated_qubit_type>;
+
+            // Case 1) should be resolved before calling this function
+            assert(::ket::mpi::page::runtime::ranges::any_on_page(local_state, permutated_target_qubits, permutated_control_qubits));
+
+            assert(local_state.num_local_qubits() > local_state.num_page_qubits());
+            using std::begin;
+            using std::end;
+            auto const on_cache_state_first = begin(on_cache_state);
+            auto const on_cache_state_size = static_cast<StateInteger>(end(on_cache_state) - on_cache_state_first);
+            auto const num_on_cache_qubits = ::ket::utility::integer_log2<bit_integer_type>(on_cache_state_size);
+            assert(::ket::utility::integer_exp2<StateInteger>(num_on_cache_qubits) == on_cache_state_size);
+#     ifndef NDEBUG
+            auto const num_nonpage_qubits = static_cast<bit_integer_type>(local_state.num_local_qubits() - local_state.num_page_qubits());
+#     endif // NDEBUG
+            assert(num_nonpage_qubits >= num_on_cache_qubits);
+            assert(static_cast<bit_integer_type>(local_state.num_local_qubits()) > num_on_cache_qubits); // because num_page_qubits >= 1
+            auto const num_off_cache_qubits = static_cast<bit_integer_type>(local_state.num_local_qubits()) - num_on_cache_qubits;
+            assert(static_cast<bit_integer_type>(local_state.num_page_qubits()) <= num_off_cache_qubits);
+
+            auto const num_target_qubits = static_cast<bit_integer_type>(end(permutated_target_qubits) - begin(permutated_target_qubits));
+            auto const num_control_qubits = static_cast<bit_integer_type>(end(permutated_control_qubits) - begin(permutated_control_qubits));
+            auto const num_operated_qubits = num_target_qubits + num_control_qubits;
+            assert(num_operated_qubits < num_on_cache_qubits);
+
+            // ppxx|yyyy|zzzzzz: local qubits
+            // * ppxx: off-cache qubits
+            // * yyyy|zzzzzz: on-cache qubits
+            //   - yyyy: chunk qubits
+            // * ppxx|yyyy: tag qubits
+            // * zzzzzz: nontag qubits
+
+            using qubit_type = ::ket::qubit<StateInteger, bit_integer_type>;
+            auto const least_significant_off_cache_permutated_qubit = permutated_qubit_type{num_on_cache_qubits};
+
+            // operated_on_cache_permutated_qubits_first, operated_on_cache_permutated_qubits_last
+            auto sorted_permutated_qubits = std::vector<permutated_qubit_type>{};
+            sorted_permutated_qubits.reserve(num_operated_qubits);
+            std::copy(begin(permutated_target_qubits), end(permutated_target_qubits), std::back_inserter(sorted_permutated_qubits));
+            using permutated_control_qubit_type = ::ket::utility::meta::range_value_t<PermutatedControlQubitsRange>;
+            std::transform(
+              begin(permutated_control_qubits), end(permutated_control_qubits), std::back_inserter(sorted_permutated_qubits),
+              [](permutated_control_qubit_type const permutated_control_qubit) { return ::ket::mpi::remove_control(permutated_control_qubit); });
+            std::sort(begin(sorted_permutated_qubits), end(sorted_permutated_qubits));
+            auto const operated_on_cache_permutated_qubits_last
+              = std::lower_bound(begin(sorted_permutated_qubits), end(sorted_permutated_qubits), least_significant_off_cache_permutated_qubit);
+            auto const operated_on_cache_permutated_qubits_first = begin(sorted_permutated_qubits);
+            auto const operated_off_cache_permutated_qubits_first = operated_on_cache_permutated_qubits_last;
+            auto const operated_off_cache_permutated_qubits_last = end(sorted_permutated_qubits);
+            // num_page_qubits <= num_off_cache_qubits and there are some operated page qubits -> there are some operated off-cache qubits
+            assert(operated_off_cache_permutated_qubits_first != operated_off_cache_permutated_qubits_last);
+
+            // Case 2-1) There is no operated on-cache qubit
+            //   ex1: ppxx|yyy|zzzzzzz
+            //        ^^ ^             <- operated qubits
+            //   ex2: pppp|yyy|zzzzzzz
+            //        ^^ ^             <- operated qubits
+            if (operated_on_cache_permutated_qubits_first == operated_on_cache_permutated_qubits_last)
+            {
+              // num_chunk_qubits, chunk_size, least_significant_chunk_permutated_qubit, num_tag_qubits, num_nontag_qubits
+              auto const num_chunk_qubits = num_operated_qubits;
+              auto const num_chunks_in_on_cache_state = ::ket::utility::integer_exp2<StateInteger>(num_chunk_qubits);
+              auto const chunk_size = on_cache_state_size / num_chunks_in_on_cache_state;
+              auto const least_significant_chunk_permutated_qubit = least_significant_off_cache_permutated_qubit - num_chunk_qubits;
+              auto const num_tag_qubits = num_off_cache_qubits + num_chunk_qubits;
+              auto const num_nontag_qubits = num_on_cache_qubits - num_chunk_qubits;
+              auto const num_nonpage_tag_qubits = num_tag_qubits - static_cast<bit_integer_type>(local_state.num_page_qubits());
+
+              // unsorted_tag_qubits, sorted_tag_qubits_with_sentinel
+              auto unsorted_tag_qubits = std::vector<qubit_type>{};
+              unsorted_tag_qubits.reserve(num_operated_qubits);
+              std::transform(
+                begin(permutated_target_qubits), end(permutated_target_qubits), std::back_inserter(unsorted_tag_qubits),
+                [num_nontag_qubits](permutated_qubit_type const permutated_target_qubit)
+                { return (permutated_target_qubit - num_nontag_qubits).qubit(); });
+              std::transform(
+                begin(permutated_control_qubits), end(permutated_control_qubits), std::back_inserter(unsorted_tag_qubits),
+                [num_nontag_qubits](permutated_control_qubit_type const permutated_control_qubit)
+                { return (::ket::mpi::remove_control(permutated_control_qubit) - num_nontag_qubits).qubit(); });
+              auto sorted_tag_qubits_with_sentinel = std::vector<qubit_type>{};
+              sorted_tag_qubits_with_sentinel.reserve(num_operated_qubits + bit_integer_type{1u});
+              std::copy(begin(unsorted_tag_qubits), end(unsorted_tag_qubits), std::back_inserter(sorted_tag_qubits_with_sentinel));
+              sorted_tag_qubits_with_sentinel.push_back(qubit_type{num_tag_qubits});
+              std::sort(begin(sorted_tag_qubits_with_sentinel), std::prev(end(sorted_tag_qubits_with_sentinel)));
+
+              auto const tag_loop_size = ::ket::utility::integer_exp2<StateInteger>(num_tag_qubits - num_operated_qubits);
+              for (auto tag_index_wo_qubits = StateInteger{0u}; tag_index_wo_qubits < tag_loop_size; ++tag_index_wo_qubits)
+              {
+                for (auto chunk_index = StateInteger{0u}; chunk_index < num_chunks_in_on_cache_state; ++chunk_index)
+                {
+                  auto const tag_index
+                    = ::ket::gate::utility::index_with_qubits(
+                        tag_index_wo_qubits, chunk_index,
+                        begin(unsorted_tag_qubits), end(unsorted_tag_qubits),
+                        begin(sorted_tag_qubits_with_sentinel), end(sorted_tag_qubits_with_sentinel));
+                  auto const nonpage_tag_index = tag_index bitand ((StateInteger{1u} << num_nonpage_tag_qubits) - StateInteger{1u});
+                  auto const page_index = tag_index >> num_nonpage_tag_qubits;
+                  auto const page_first = begin(local_state.page_range(std::make_pair(data_block_index, page_index)));
+                  ::ket::utility::copy_n(
+                    parallel_policy,
+                    page_first + nonpage_tag_index * chunk_size, chunk_size, on_cache_state_first + chunk_index * chunk_size);
+                }
+
+                auto qubits = std::vector<qubit_type>(num_operated_qubits);
+                std::iota(begin(qubits), end(qubits), least_significant_chunk_permutated_qubit.qubit());
+                ::ket::gate::runtime::nocache::ranges::gate(parallel_policy, on_cache_state, std::forward<Function>(function), qubits);
+
+                for (auto chunk_index = StateInteger{0u}; chunk_index < num_chunks_in_on_cache_state; ++chunk_index)
+                {
+                  auto const tag_index
+                    = ::ket::gate::utility::index_with_qubits(
+                        tag_index_wo_qubits, chunk_index,
+                        begin(unsorted_tag_qubits), end(unsorted_tag_qubits),
+                        begin(sorted_tag_qubits_with_sentinel), end(sorted_tag_qubits_with_sentinel));
+                  auto const nonpage_tag_index = tag_index bitand ((StateInteger{1u} << num_nonpage_tag_qubits) - StateInteger{1u});
+                  auto const page_index = tag_index >> num_nonpage_tag_qubits;
+                  auto const page_first = begin(local_state.page_range(std::make_pair(data_block_index, page_index)));
+                  ::ket::utility::copy_n(
+                    parallel_policy,
+                    on_cache_state_first + chunk_index * chunk_size, chunk_size, page_first + nonpage_tag_index * chunk_size);
+                }
+              }
+
+              return local_state;
+            }
+
+            // Case 2-2) There are some operated on-cache qubits
+            //   ex: ppxx|yyy|zzzzzzz
+            //        ^^   ^    ^     <- operated qubits
+            // least_significant_chunk_permutated_qubit, num_chunk_qubits, chunk_size, num_tag_qubits, num_nontag_qubits
+            assert(operated_on_cache_permutated_qubits_first != operated_on_cache_permutated_qubits_last);
+            auto operated_on_cache_permutated_qubits_iter = std::prev(operated_on_cache_permutated_qubits_last);
+            auto free_most_significant_on_cache_permutated_qubit = least_significant_off_cache_permutated_qubit - bit_integer_type{1u};
+            auto const num_operated_off_cache_qubits
+              = static_cast<bit_integer_type>(operated_off_cache_permutated_qubits_last - operated_off_cache_permutated_qubits_first);
+            for (auto num_found_operated_off_cache_qubits = bit_integer_type{0u};
+                 num_found_operated_off_cache_qubits < num_operated_off_cache_qubits; ++num_found_operated_off_cache_qubits)
+              while (free_most_significant_on_cache_permutated_qubit-- == *operated_on_cache_permutated_qubits_iter)
+                if (operated_on_cache_permutated_qubits_iter != operated_on_cache_permutated_qubits_first)
+                  --operated_on_cache_permutated_qubits_iter;
+            auto const least_significant_chunk_permutated_qubit = free_most_significant_on_cache_permutated_qubit + bit_integer_type{1u};
+            auto const num_chunk_qubits = static_cast<bit_integer_type>(least_significant_off_cache_permutated_qubit - least_significant_chunk_permutated_qubit);
+            assert(num_chunk_qubits <= num_operated_qubits);
+            auto const num_chunks_in_on_cache_state = ::ket::utility::integer_exp2<StateInteger>(num_chunk_qubits);
+            auto const chunk_size = on_cache_state_size / num_chunks_in_on_cache_state;
+            auto const num_tag_qubits = num_off_cache_qubits + num_chunk_qubits;
+            auto const num_nontag_qubits = num_on_cache_qubits - num_chunk_qubits;
+            auto const num_nonpage_tag_qubits = num_tag_qubits - static_cast<bit_integer_type>(local_state.num_page_qubits());
+
+            // unsorted_tag_qubits, modified_operated_qubits
+            auto unsorted_tag_qubits = std::vector<qubit_type>{};
+            unsorted_tag_qubits.reserve(num_chunk_qubits);
+            auto present_chunk_permutated_qubit = least_significant_chunk_permutated_qubit;
+            auto modified_operated_qubits = std::vector<qubit_type>{};
+            modified_operated_qubits.reserve(num_operated_qubits);
+            for (auto const permutated_qubit:
+                 boost::join(
+                   permutated_target_qubits,
+                   permutated_control_qubits | boost::adaptors::transformed(
+                     [](permutated_control_qubit_type const permutated_control_qubit)
+                     { return ::ket::mpi::remove_control(permutated_control_qubit); })))
+            {
+              if (permutated_qubit < least_significant_chunk_permutated_qubit)
+                modified_operated_qubits.push_back(permutated_qubit.qubit());
+
+              unsorted_tag_qubits.push_back(permutated_qubit.qubit());
+              modified_operated_qubits.push_back((present_chunk_permutated_qubit++).qubit());
+            }
+            assert(present_chunk_permutated_qubit == least_significant_off_cache_permutated_qubit);
+            assert(static_cast<bit_integer_type>(unsorted_tag_qubits.size()) == num_chunk_qubits);
+
+            // sorted_tag_qubits_with_sentinel
+            auto sorted_tag_qubits_with_sentinel = std::vector<qubit_type>{};
+            sorted_tag_qubits_with_sentinel.reserve(unsorted_tag_qubits.size() + 1u);
+            std::copy(begin(unsorted_tag_qubits), end(unsorted_tag_qubits), std::back_inserter(sorted_tag_qubits_with_sentinel));
+            sorted_tag_qubits_with_sentinel.push_back(qubit_type{num_tag_qubits});
+            std::sort(begin(sorted_tag_qubits_with_sentinel), std::prev(end(sorted_tag_qubits_with_sentinel)));
+            assert(sorted_tag_qubits_with_sentinel.size() == unsorted_tag_qubits.size() + 1u);
+
+            auto const tag_loop_size = ::ket::utility::integer_exp2<StateInteger>(num_tag_qubits - num_chunk_qubits); // num_chunk_qubits == operated_tag_qubits.size()
+            for (auto tag_index_wo_qubits = StateInteger{0u}; tag_index_wo_qubits < tag_loop_size; ++tag_index_wo_qubits)
+            {
+              for (auto chunk_index = StateInteger{0u}; chunk_index < num_chunks_in_on_cache_state; ++chunk_index)
+              {
+                auto const tag_index
+                  = ::ket::gate::utility::index_with_qubits(
+                      tag_index_wo_qubits, chunk_index,
+                      begin(unsorted_tag_qubits), end(unsorted_tag_qubits),
+                      begin(sorted_tag_qubits_with_sentinel), end(sorted_tag_qubits_with_sentinel));
+                auto const nonpage_tag_index = tag_index bitand ((StateInteger{1u} << num_nonpage_tag_qubits) - StateInteger{1u});
+                auto const page_index = tag_index >> num_nonpage_tag_qubits;
+                auto const page_first = begin(local_state.page_range(std::make_pair(data_block_index, page_index)));
+                ::ket::utility::copy_n(
+                  parallel_policy,
+                  page_first + nonpage_tag_index * chunk_size, chunk_size, on_cache_state_first + chunk_index * chunk_size);
+              }
+
+              ::ket::gate::runtime::nocache::ranges::gate(
+                parallel_policy, on_cache_state, std::forward<Function>(function), modified_operated_qubits);
+
+              for (auto chunk_index = StateInteger{0u}; chunk_index < num_chunks_in_on_cache_state; ++chunk_index)
+              {
+                auto const tag_index
+                  = ::ket::gate::utility::index_with_qubits(
+                      tag_index_wo_qubits, chunk_index,
+                      begin(unsorted_tag_qubits), end(unsorted_tag_qubits),
+                      begin(sorted_tag_qubits_with_sentinel), end(sorted_tag_qubits_with_sentinel));
+                auto const nonpage_tag_index = tag_index bitand ((StateInteger{1u} << num_nonpage_tag_qubits) - StateInteger{1u});
+                auto const page_index = tag_index >> num_nonpage_tag_qubits;
+                auto const page_first = begin(local_state.page_range(std::make_pair(data_block_index, page_index)));
+                ::ket::utility::copy_n(
+                  parallel_policy,
+                  on_cache_state_first + chunk_index * chunk_size, chunk_size, page_first + nonpage_tag_index * chunk_size);
+              }
+            }
+
+            return local_state;
+          }
+        } // namespace runtime
 #   else // KET_USE_BIT_MASKS_EXPLICITLY
         template <
           typename ParallelPolicy,
@@ -576,6 +840,291 @@ namespace ket
 
           return local_state;
         }
+
+
+        namespace runtime
+        {
+          template <
+            typename ParallelPolicy,
+            typename RandomAccessRange, typename OnCacheStateRange, typename StateInteger,
+            typename Function, typename PermutatedQubitsRange, typename PermutatedControlQubitsRange>
+          [[noreturn]] inline auto gate(
+            ParallelPolicy const,
+            RandomAccessRange&, OnCacheStateRange&, StateInteger const,
+            Function&&, PermutatedQubitsRange const&, PermutatedControlQubitsRange const&)
+          -> RandomAccessRange&
+          { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"gate"}; }
+
+          template <
+            typename ParallelPolicy,
+            typename Complex, typename Allocator, typename OnCacheStateRange, typename StateInteger,
+            typename Function, typename PermutatedQubitsRange, typename PermutatedControlQubitsRange>
+          [[noreturn]] inline auto gate(
+            ParallelPolicy const,
+            ::ket::mpi::state<Complex, false, Allocator>&, OnCacheStateRange&, StateInteger const,
+            Function&&, PermutatedQubitsRange const&, PermutatedControlQubitsRange const&)
+          -> ::ket::mpi::state<Complex, false, Allocator>&
+          { throw ::ket::mpi::gate::page::unsupported_page_gate_operation{"gate"}; }
+
+          // Case 2) Some operated qubits are page qubits
+          // Note that num. page qubits are smaller than or equal to num. off-cache qubits
+          template <
+            typename ParallelPolicy,
+            typename Complex, typename Allocator, typename OnCacheStateRange, typename StateInteger,
+            typename Function, typename PermutatedQubitsRange, typename PermutatedControlQubitsRange>
+          inline auto gate(
+            ParallelPolicy const parallel_policy,
+            ::ket::mpi::state<Complex, true, Allocator>& local_state,
+            OnCacheStateRange& on_cache_state, StateInteger const data_block_index,
+            Function&& function, PermutatedQubitsRange const& permutated_target_qubits, PermutatedControlQubitsRange const& permutated_control_qubits)
+          -> ::ket::mpi::state<Complex, true, Allocator>&
+          {
+            static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+
+            using permutated_qubit_type = ::ket::utility::meta::range_value_t<PermutatedQubitsRange>;
+            using bit_integer_type = ::ket::meta::bit_integer_t<permutated_qubit_type>;
+
+            // Case 1) should be resolved before calling this function
+            assert(::ket::mpi::page::runtime::ranges::any_on_page(local_state, permutated_target_qubits, permutated_control_qubits));
+
+            assert(local_state.num_local_qubits() > local_state.num_page_qubits());
+            using std::begin;
+            using std::end;
+            auto const on_cache_state_size = static_cast<StateInteger>(end(on_cache_state) - begin(on_cache_state));
+            auto const num_on_cache_qubits = ::ket::utility::integer_log2<bit_integer_type>(on_cache_state_size);
+            assert(::ket::utility::integer_exp2<StateInteger>(num_on_cache_qubits) == on_cache_state_size);
+#     ifndef NDEBUG
+            auto const num_nonpage_qubits = static_cast<bit_integer_type>(local_state.num_local_qubits() - local_state.num_page_qubits());
+#     endif // NDEBUG
+            assert(num_nonpage_qubits >= num_on_cache_qubits);
+            assert(static_cast<bit_integer_type>(local_state.num_local_qubits()) > num_on_cache_qubits); // because num_page_qubits >= 1
+            auto const num_off_cache_qubits = static_cast<bit_integer_type>(local_state.num_local_qubits()) - num_on_cache_qubits;
+            assert(static_cast<bit_integer_type>(local_state.num_page_qubits()) <= num_off_cache_qubits);
+
+            auto const num_target_qubits = static_cast<bit_integer_type>(end(permutated_target_qubits) - begin(permutated_target_qubits));
+            auto const num_control_qubits = static_cast<bit_integer_type>(end(permutated_control_qubits) - begin(permutated_control_qubits));
+            auto const num_operated_qubits = num_target_qubits + num_control_qubits;
+            assert(num_operated_qubits < num_on_cache_qubits);
+
+            // ppxx|yyyy|zzzzzz: local qubits
+            // * ppxx: off-cache qubits
+            // * yyyy|zzzzzz: on-cache qubits
+            //   - yyyy: chunk qubits
+            // * ppxx|yyyy: tag qubits
+            // * zzzzzz: nontag qubits
+
+            using qubit_type = ::ket::qubit<StateInteger, bit_integer_type>;
+            auto const least_significant_off_cache_permutated_qubit = permutated_qubit_type{num_on_cache_qubits};
+
+            // operated_on_cache_permutated_qubits_first, operated_on_cache_permutated_qubits_last
+            auto sorted_permutated_qubits = std::vector<permutated_qubit_type>{};
+            sorted_permutated_qubits.reserve(num_operated_qubits);
+            std::copy(begin(permutated_target_qubits), end(permutated_target_qubits), std::back_inserter(sorted_permutated_qubits));
+            using permutated_control_qubit_type = ::ket::utility::meta::range_value_t<PermutatedControlQubitsRange>;
+            std::transform(
+              begin(permutated_control_qubits), end(permutated_control_qubits), std::back_inserter(sorted_permutated_qubits),
+              [](permutated_control_qubit_type const permutated_control_qubit) { return ::ket::mpi::remove_control(permutated_control_qubit); });
+            std::sort(begin(sorted_permutated_qubits), end(sorted_permutated_qubits));
+            auto const operated_on_cache_permutated_qubits_last
+              = std::lower_bound(begin(sorted_permutated_qubits), end(sorted_permutated_qubits), least_significant_off_cache_permutated_qubit);
+            auto const operated_on_cache_permutated_qubits_first = begin(sorted_permutated_qubits);
+            auto const operated_off_cache_permutated_qubits_first = operated_on_cache_permutated_qubits_last;
+            auto const operated_off_cache_permutated_qubits_last = end(sorted_permutated_qubits);
+            // num_page_qubits <= num_off_cache_qubits and there are some operated page qubits -> there are some operated off-cache qubits
+            assert(operated_off_cache_permutated_qubits_first != operated_off_cache_permutated_qubits_last);
+
+            // Case 2-1) There is no operated on-cache qubit
+            //   ex1: ppxx|yyy|zzzzzzz
+            //        ^^ ^             <- operated qubits
+            //   ex2: pppp|yyy|zzzzzzz
+            //        ^^ ^             <- operated qubits
+            if (operated_on_cache_permutated_qubits_first == operated_on_cache_permutated_qubits_last)
+            {
+              // num_chunk_qubits, chunk_size, least_significant_chunk_permutated_qubit, num_tag_qubits, num_nontag_qubits
+              auto const num_chunk_qubits = num_operated_qubits;
+              auto const num_chunks_in_on_cache_state = ::ket::utility::integer_exp2<StateInteger>(num_chunk_qubits);
+              auto const chunk_size = on_cache_state_size / num_chunks_in_on_cache_state;
+              auto const least_significant_chunk_permutated_qubit = least_significant_off_cache_permutated_qubit - num_chunk_qubits;
+              auto const num_tag_qubits = num_off_cache_qubits + num_chunk_qubits;
+              auto const num_nontag_qubits = num_on_cache_qubits - num_chunk_qubits;
+              auto const num_nonpage_tag_qubits = num_tag_qubits - static_cast<bit_integer_type>(local_state.num_page_qubits());
+
+              // on_cache_qubit_masks, on_cache_index_masks
+              auto on_cache_qubit_masks = std::vector<StateInteger>{};
+              on_cache_qubit_masks.reserve(num_operated_qubits);
+              for (auto index = bit_integer_type{0u}; index < num_operated_qubits; ++index)
+                on_cache_qubit_masks.push_back(StateInteger{1u} << (least_significant_chunk_permutated_qubit + index));
+              auto on_cache_index_masks = std::vector<StateInteger>(num_operated_qubits);
+              on_cache_index_masks.front() = (StateInteger{1u} << least_significant_chunk_permutated_qubit) - StateInteger{1u};
+              // on_cache_index_masks.size() >= 2 => std::prev(end(on_cache_index_masks)) >= std::next(begin(on_cache_index_masks))
+              std::fill(std::next(begin(on_cache_index_masks)), std::prev(end(on_cache_index_masks)), StateInteger{0u});
+              on_cache_index_masks.back() = compl on_cache_index_masks.front();
+
+              // tag_qubit_masks, tag_index_masks
+              auto tag_qubit_masks = std::vector<StateInteger>{};
+              tag_qubit_masks.reserve(num_operated_qubits);
+              ::ket::gate::gate_detail::runtime::ranges::make_qubit_masks(
+                boost::join(
+                  permutated_target_qubits | boost::adaptors::transformed(
+                    [num_nontag_qubits](permutated_qubit_type const permutated_target_qubit)
+                    { return (permutated_target_qubit - num_nontag_qubits).qubit(); }),
+                  permutated_control_qubits | boost::adaptors::transformed(
+                    [num_nontag_qubits](permutated_control_qubit_type const permutated_control_qubit)
+                    { return (permutated_control_qubit - num_nontag_qubits).qubit().qubit(); })),
+                std::back_inserter(tag_qubit_masks));
+              auto tag_index_masks = std::vector<StateInteger>{};
+              tag_index_masks.reserve(num_operated_qubits + bit_integer_type{1u});
+              ::ket::gate::gate_detail::runtime::ranges::make_index_masks(
+                boost::join(
+                  permutated_target_qubits | boost::adaptors::transformed(
+                    [num_nontag_qubits](permutated_qubit_type const permutated_target_qubit)
+                    { return (permutated_target_qubit - num_nontag_qubits).qubit(); }),
+                  permutated_control_qubits | boost::adaptors::transformed(
+                    [num_nontag_qubits](permutated_control_qubit_type const permutated_control_qubit)
+                    { return (permutated_control_qubit - num_nontag_qubits).qubit().qubit(); })),
+                std::back_inserter(tag_index_masks));
+
+              auto const tag_loop_size = ::ket::utility::integer_exp2<StateInteger>(num_tag_qubits - num_operated_qubits);
+              for (auto tag_index_wo_qubits = StateInteger{0u}; tag_index_wo_qubits < tag_loop_size; ++tag_index_wo_qubits)
+              {
+                for (auto chunk_index = StateInteger{0u}; chunk_index < num_chunks_in_on_cache_state; ++chunk_index)
+                {
+                  auto const tag_index
+                    = ::ket::gate::utility::index_with_qubits(
+                        tag_index_wo_qubits, chunk_index,
+                        begin(tag_qubit_masks), end(tag_qubit_masks), begin(tag_index_masks), end(tag_index_masks));
+                  auto const nonpage_tag_index = tag_index bitand ((StateInteger{1u} << num_nonpage_tag_qubits) - StateInteger{1u});
+                  auto const page_index = tag_index >> num_nonpage_tag_qubits;
+                  auto const page_first = begin(local_state.page_range(std::make_pair(data_block_index, page_index)));
+                  ::ket::utility::copy_n(
+                    parallel_policy,
+                    page_first + nonpage_tag_index * chunk_size, chunk_size, begin(on_cache_state) + chunk_index * chunk_size);
+                }
+
+                ::ket::gate::runtime::gate_detail::ranges::gate(
+                  parallel_policy, on_cache_state,
+                  on_cache_qubit_masks, on_cache_index_masks, std::forward<Function>(function));
+
+                for (auto chunk_index = StateInteger{0u}; chunk_index < num_chunks_in_on_cache_state; ++chunk_index)
+                {
+                  auto const tag_index
+                    = ::ket::gate::utility::index_with_qubits(
+                        tag_index_wo_qubits, chunk_index,
+                        begin(tag_qubit_masks), end(tag_qubit_masks), begin(tag_index_masks), end(tag_index_masks));
+                  auto const nonpage_tag_index = tag_index bitand ((StateInteger{1u} << num_nonpage_tag_qubits) - StateInteger{1u});
+                  auto const page_index = tag_index >> num_nonpage_tag_qubits;
+                  auto const page_first = begin(local_state.page_range(std::make_pair(data_block_index, page_index)));
+                  ::ket::utility::copy_n(
+                    parallel_policy,
+                    begin(on_cache_state) + chunk_index * chunk_size, chunk_size, page_first + nonpage_tag_index * chunk_size);
+                }
+              }
+
+              return local_state;
+            }
+
+            // Case 2-2) There are some operated on-cache qubits
+            //   ex: ppxx|yyy|zzzzzzz
+            //        ^^   ^    ^     <- operated qubits
+            // least_significant_chunk_permutated_qubit, num_chunk_qubits, chunk_size, num_tag_qubits, num_nontag_qubits
+            assert(operated_on_cache_permutated_qubits_first != operated_on_cache_permutated_qubits_last);
+            auto operated_on_cache_permutated_qubits_iter = std::prev(operated_on_cache_permutated_qubits_last);
+            auto free_most_significant_on_cache_permutated_qubit = least_significant_off_cache_permutated_qubit - bit_integer_type{1u};
+            auto const num_operated_off_cache_qubits
+              = static_cast<bit_integer_type>(operated_off_cache_permutated_qubits_last - operated_off_cache_permutated_qubits_first);
+            for (auto num_found_operated_off_cache_qubits = bit_integer_type{0u};
+                 num_found_operated_off_cache_qubits < num_operated_off_cache_qubits; ++num_found_operated_off_cache_qubits)
+              while (free_most_significant_on_cache_permutated_qubit-- == *operated_on_cache_permutated_qubits_iter)
+                if (operated_on_cache_permutated_qubits_iter != operated_on_cache_permutated_qubits_first)
+                  --operated_on_cache_permutated_qubits_iter;
+            auto const least_significant_chunk_permutated_qubit = free_most_significant_on_cache_permutated_qubit + bit_integer_type{1u};
+            auto const num_chunk_qubits = static_cast<bit_integer_type>(least_significant_off_cache_permutated_qubit - least_significant_chunk_permutated_qubit);
+            assert(num_chunk_qubits <= num_operated_qubits);
+            auto const num_chunks_in_on_cache_state = ::ket::utility::integer_exp2<StateInteger>(num_chunk_qubits);
+            auto const chunk_size = on_cache_state_size / num_chunks_in_on_cache_state;
+            auto const num_tag_qubits = num_off_cache_qubits + num_chunk_qubits;
+            auto const num_nontag_qubits = num_on_cache_qubits - num_chunk_qubits;
+            auto const num_nonpage_tag_qubits = num_tag_qubits - static_cast<bit_integer_type>(local_state.num_page_qubits());
+
+            // operated_tag_qubits, on_cache_qubit_masks, on_cache_index_masks
+            auto operated_tag_qubits = std::vector<qubit_type>{};
+            operated_tag_qubits.reserve(num_chunk_qubits);
+            auto present_chunk_permutated_qubit = least_significant_chunk_permutated_qubit;
+            auto modified_operated_qubits = std::vector<qubit_type>{};
+            modified_operated_qubits.reserve(num_operated_qubits);
+            for (auto const permutated_qubit:
+                 boost::join(
+                   permutated_target_qubits,
+                   permutated_control_qubits | boost::adaptors::transformed(
+                     [](permutated_control_qubit_type const permutated_control_qubit)
+                     { return ::ket::mpi::remove_control(permutated_control_qubit); })))
+            {
+              if (permutated_qubit < least_significant_chunk_permutated_qubit)
+                modified_operated_qubits.push_back(permutated_qubit.qubit());
+
+              operated_tag_qubits.push_back(permutated_qubit.qubit() - num_nontag_qubits);
+              modified_operated_qubits.push_back((present_chunk_permutated_qubit++).qubit());
+            }
+            assert(present_chunk_permutated_qubit == least_significant_off_cache_permutated_qubit);
+            assert(static_cast<bit_integer_type>(operated_tag_qubits.size()) == num_chunk_qubits);
+            auto on_cache_qubit_masks = std::vector<StateInteger>{};
+            on_cache_qubit_masks.reserve(num_operated_qubits);
+            ::ket::gate::gate_detail::runtime::ranges::make_qubit_masks(
+              modified_operated_qubits, std::back_inserter(on_cache_qubit_masks));
+            auto on_cache_index_masks = std::vector<StateInteger>{};
+            on_cache_index_masks.reserve(num_operated_qubits + bit_integer_type{1u});
+            ::ket::gate::gate_detail::runtime::ranges::make_index_masks(
+              modified_operated_qubits, std::back_inserter(on_cache_index_masks));
+
+            // tag_qubit_masks, tag_index_masks
+            auto tag_qubit_masks = std::vector<StateInteger>{};
+            tag_qubit_masks.reserve(operated_tag_qubits.size());
+            ::ket::gate::gate_detail::runtime::ranges::make_qubit_masks(operated_tag_qubits, std::back_inserter(tag_qubit_masks));
+            assert(tag_qubit_masks.size() == operated_tag_qubits.size());
+            auto tag_index_masks = std::vector<StateInteger>{};
+            tag_index_masks.reserve(operated_tag_qubits.size() + 1u);
+            ::ket::gate::gate_detail::runtime::ranges::make_index_masks(operated_tag_qubits, std::back_inserter(tag_index_masks));
+            assert(tag_index_masks.size() == operated_tag_qubits.size() + 1u);
+
+            auto const tag_loop_size = ::ket::utility::integer_exp2<StateInteger>(num_tag_qubits - num_chunk_qubits); // num_chunk_qubits == operated_tag_qubits.size()
+            for (auto tag_index_wo_qubits = StateInteger{0u}; tag_index_wo_qubits < tag_loop_size; ++tag_index_wo_qubits)
+            {
+              for (auto chunk_index = StateInteger{0u}; chunk_index < num_chunks_in_on_cache_state; ++chunk_index)
+              {
+                auto const tag_index
+                  = ::ket::gate::utility::index_with_qubits(
+                      tag_index_wo_qubits, chunk_index,
+                      begin(tag_qubit_masks), end(tag_qubit_masks), begin(tag_index_masks), end(tag_index_masks));
+                auto const nonpage_tag_index = tag_index bitand ((StateInteger{1u} << num_nonpage_tag_qubits) - StateInteger{1u});
+                auto const page_index = tag_index >> num_nonpage_tag_qubits;
+                auto const page_first = begin(local_state.page_range(std::make_pair(data_block_index, page_index)));
+                ::ket::utility::copy_n(
+                  parallel_policy,
+                  page_first + nonpage_tag_index * chunk_size, chunk_size, begin(on_cache_state) + chunk_index * chunk_size);
+              }
+
+              ::ket::gate::runtime::gate_detail::ranges::gate(
+                parallel_policy, on_cache_state,
+                on_cache_qubit_masks, on_cache_index_masks, std::forward<Function>(function));
+
+              for (auto chunk_index = StateInteger{0u}; chunk_index < num_chunks_in_on_cache_state; ++chunk_index)
+              {
+                auto const tag_index
+                  = ::ket::gate::utility::index_with_qubits(
+                      tag_index_wo_qubits, chunk_index,
+                      begin(tag_qubit_masks), end(tag_qubit_masks), begin(tag_index_masks), end(tag_index_masks));
+                auto const nonpage_tag_index = tag_index bitand ((StateInteger{1u} << num_nonpage_tag_qubits) - StateInteger{1u});
+                auto const page_index = tag_index >> num_nonpage_tag_qubits;
+                auto const page_first = begin(local_state.page_range(std::make_pair(data_block_index, page_index)));
+                ::ket::utility::copy_n(
+                  parallel_policy,
+                  begin(on_cache_state) + chunk_index * chunk_size, chunk_size, page_first + nonpage_tag_index * chunk_size);
+              }
+            }
+
+            return local_state;
+          }
+        } // namespace runtime
 #   endif // KET_USE_BIT_MASKS_EXPLICITLY
       } // namespace page
     } // namespace gate
