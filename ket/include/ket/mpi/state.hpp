@@ -246,7 +246,7 @@ namespace ket
 
       state(std::initializer_list<value_type> initializer_list, allocator_type const& allocator = allocator_type())
         : data_{generate_initial_data(initializer_list, std::size_t{2u}, std::size_t{1u}, allocator)},
-          num_local_qubits_{::ket::utility::integer_log2(initializer_list.size())},
+          num_local_qubits_{::ket::utility::integer_log2<std::size_t>(initializer_list.size())},
           num_page_qubits_{std::size_t{1u}},
           num_pages_{std::size_t{2u}},
           num_data_blocks_{std::size_t{1u}},
@@ -260,7 +260,7 @@ namespace ket
       template <typename BitInteger>
       state(std::initializer_list<value_type> initializer_list, BitInteger const num_page_qubits, allocator_type const& allocator = allocator_type())
         : data_{generate_initial_data(initializer_list, std::size_t{1u} << num_page_qubits, std::size_t{1u}, allocator)},
-          num_local_qubits_{::ket::utility::integer_log2(initializer_list.size())},
+          num_local_qubits_{::ket::utility::integer_log2<std::size_t>(initializer_list.size())},
           num_page_qubits_{static_cast<std::size_t>(num_page_qubits)},
           num_pages_{std::size_t{1u} << num_page_qubits},
           num_data_blocks_{std::size_t{1u}},
@@ -274,7 +274,7 @@ namespace ket
       template <typename BitInteger, typename StateInteger>
       state(std::initializer_list<value_type> initializer_list, BitInteger const num_page_qubits, StateInteger const num_data_blocks, allocator_type const& allocator = allocator_type())
         : data_{generate_initial_data(initializer_list, std::size_t{1u} << num_page_qubits, static_cast<std::size_t>(num_data_blocks), allocator)},
-          num_local_qubits_{::ket::utility::integer_log2(initializer_list.size() / num_data_blocks)},
+          num_local_qubits_{::ket::utility::integer_log2<std::size_t>(initializer_list.size() / num_data_blocks)},
           num_page_qubits_{static_cast<std::size_t>(num_page_qubits)},
           num_pages_{std::size_t{1u} << num_page_qubits},
           num_data_blocks_{static_cast<std::size_t>(num_data_blocks)},
@@ -332,7 +332,7 @@ namespace ket
       {
         initialize_data(data_, initializer_list, std::size_t{1u} << num_page_qubits, static_cast<std::size_t>(num_data_blocks));
 
-        num_local_qubits_ = ::ket::utility::integer_log2(initializer_list.size() / num_data_blocks);
+        num_local_qubits_ = ::ket::utility::integer_log2<std::size_t>(initializer_list.size() / num_data_blocks);
         num_page_qubits_ = static_cast<std::size_t>(num_page_qubits);
         num_pages_ = std::size_t{1u} << num_page_qubits;
         num_data_blocks_ = static_cast<std::size_t>(num_data_blocks);
@@ -2014,14 +2014,14 @@ namespace ket
 
       state(std::initializer_list<value_type> initializer_list, allocator_type const& allocator = allocator_type())
         : data_{initializer_list, allocator},
-          num_local_qubits_{::ket::utility::integer_log2(initializer_list.size())},
+          num_local_qubits_{::ket::utility::integer_log2<std::size_t>(initializer_list.size())},
           num_data_blocks_{1u}
       { }
 
       template <typename StateInteger>
       state(std::initializer_list<value_type> initializer_list, StateInteger const num_data_blocks, allocator_type const& allocator = allocator_type())
         : data_{initializer_list, allocator},
-          num_local_qubits_{::ket::utility::integer_log2(initializer_list.size() / num_data_blocks)},
+          num_local_qubits_{::ket::utility::integer_log2<std::size_t>(initializer_list.size() / num_data_blocks)},
           num_data_blocks_{static_cast<std::size_t>(num_data_blocks)}
       { assert(::ket::utility::integer_exp2<std::size_t>(num_local_qubits_) * num_data_blocks_ == initializer_list.size()); }
 
@@ -2055,7 +2055,7 @@ namespace ket
       auto assign(std::initializer_list<value_type> initializer_list, StateInteger const num_data_blocks) -> void
       {
         data_.assign(initializer_list);
-        num_local_qubits_ = ::ket::utility::integer_log2(initializer_list.size() / num_data_blocks);
+        num_local_qubits_ = ::ket::utility::integer_log2<std::size_t>(initializer_list.size() / num_data_blocks);
         num_data_blocks_ = static_cast<std::size_t>(num_data_blocks);
 
         assert(::ket::utility::integer_exp2<std::size_t>(num_local_qubits_) * num_data_blocks_ == initializer_list.size());
