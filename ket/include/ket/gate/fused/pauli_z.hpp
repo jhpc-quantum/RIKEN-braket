@@ -21,6 +21,7 @@
 # include <ket/utility/integer_exp2.hpp>
 # include <ket/utility/integer_log2.hpp>
 # include <ket/utility/meta/real_of.hpp>
+# include <ket/utility/meta/ranges.hpp>
 
 
 namespace ket
@@ -492,6 +493,37 @@ namespace ket
                 [](control_qubit_type const control_qubit) { return control_qubit.qubit(); }));
           }
 
+          // Z with no qubits; multiply all fused entries by -1.
+          template <typename RandomAccessIterator, typename StateInteger, typename QubitsRange1, typename QubitsRange2>
+          inline auto pauli_z(
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            QubitsRange1 const& unsorted_fused_qubits, QubitsRange2 const& sorted_fused_qubits_with_sentinel)
+          -> void
+          {
+            using fused_qubit_type = ::ket::utility::meta::range_value_t<QubitsRange1>;
+            using bit_integer_type = ::ket::meta::bit_integer_t<fused_qubit_type>;
+            static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+            static_assert(std::is_unsigned<bit_integer_type>::value, "The bit_integer_type of value_type of QubitsRange1 should be unsigned");
+
+            using std::begin;
+            using std::end;
+            auto const num_fused_qubits = static_cast<bit_integer_type>(end(unsorted_fused_qubits) - begin(unsorted_fused_qubits));
+            assert(static_cast<bit_integer_type>(end(sorted_fused_qubits_with_sentinel) - begin(sorted_fused_qubits_with_sentinel)) == num_fused_qubits + bit_integer_type{1u});
+
+            auto const num_fused_indices = ::ket::utility::integer_exp2<std::size_t>(num_fused_qubits);
+            for (auto fused_index = std::size_t{0u}; fused_index < num_fused_indices; ++fused_index)
+            {
+              auto const iter
+                = first
+                  + ::ket::gate::utility::ranges::index_with_qubits(
+                      fused_index_wo_qubits, fused_index,
+                      unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);
+              using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+              using real_type = ::ket::utility::meta::real_t<complex_type>;
+              *iter *= real_type{-1};
+            }
+          }
+
           template <typename RandomAccessIterator, typename StateInteger, typename QubitsRange1, typename QubitsRange2, typename ControlQubitsRange>
           inline auto adj_pauli_z(
             RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
@@ -505,7 +537,44 @@ namespace ket
               unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
               control_qubits);
           }
+
+          template <typename RandomAccessIterator, typename StateInteger, typename QubitsRange1, typename QubitsRange2>
+          inline auto adj_pauli_z(
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            QubitsRange1 const& unsorted_fused_qubits, QubitsRange2 const& sorted_fused_qubits_with_sentinel)
+          -> void
+          {
+            ::ket::gate::fused::runtime::ranges::pauli_z(
+              first, fused_index_wo_qubits,
+              unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);
+          }
         } // namespace ranges
+
+        template <typename RandomAccessIterator, typename StateInteger, typename QubitIterator1, typename QubitIterator2>
+        inline auto pauli_z(
+          RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+          QubitIterator1 const unsorted_fused_qubit_first, QubitIterator1 const unsorted_fused_qubit_last,
+          QubitIterator2 const sorted_fused_qubit_with_sentinel_first, QubitIterator2 const sorted_fused_qubit_with_sentinel_last)
+        -> void
+        {
+          ::ket::gate::fused::runtime::ranges::pauli_z(
+            first, fused_index_wo_qubits,
+            boost::make_iterator_range(unsorted_fused_qubit_first, unsorted_fused_qubit_last),
+            boost::make_iterator_range(sorted_fused_qubit_with_sentinel_first, sorted_fused_qubit_with_sentinel_last));
+        }
+
+        template <typename RandomAccessIterator, typename StateInteger, typename QubitIterator1, typename QubitIterator2>
+        inline auto adj_pauli_z(
+          RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+          QubitIterator1 const unsorted_fused_qubit_first, QubitIterator1 const unsorted_fused_qubit_last,
+          QubitIterator2 const sorted_fused_qubit_with_sentinel_first, QubitIterator2 const sorted_fused_qubit_with_sentinel_last)
+        -> void
+        {
+          ::ket::gate::fused::runtime::ranges::adj_pauli_z(
+            first, fused_index_wo_qubits,
+            boost::make_iterator_range(unsorted_fused_qubit_first, unsorted_fused_qubit_last),
+            boost::make_iterator_range(sorted_fused_qubit_with_sentinel_first, sorted_fused_qubit_with_sentinel_last));
+        }
 
         template <typename RandomAccessIterator, typename StateInteger, typename QubitIterator1, typename QubitIterator2, typename ControlQubitIterator>
         inline auto pauli_z(
@@ -1162,6 +1231,34 @@ namespace ket
                 [](control_qubit_type const control_qubit) { return control_qubit.qubit(); }));
           }
 
+          // Z with no qubits; multiply all fused entries by -1.
+          template <typename RandomAccessIterator, typename StateInteger, typename StateIntegersRange1, typename StateIntegersRange2>
+          inline auto pauli_z(
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            StateIntegersRange1 const& fused_qubit_masks, StateIntegersRange2 const& fused_index_masks)
+          -> void
+          {
+            static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+
+            using std::begin;
+            using std::end;
+            auto const num_fused_qubits = static_cast<std::size_t>(end(fused_qubit_masks) - begin(fused_qubit_masks));
+            assert(static_cast<std::size_t>(end(fused_index_masks) - begin(fused_index_masks)) == num_fused_qubits + std::size_t{1u});
+
+            auto const num_fused_indices = ::ket::utility::integer_exp2<std::size_t>(num_fused_qubits);
+            for (auto fused_index = std::size_t{0u}; fused_index < num_fused_indices; ++fused_index)
+            {
+              auto const iter
+                = first
+                  + ::ket::gate::utility::ranges::index_with_qubits(
+                      fused_index_wo_qubits, fused_index,
+                      fused_qubit_masks, fused_index_masks);
+              using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+              using real_type = ::ket::utility::meta::real_t<complex_type>;
+              *iter *= real_type{-1};
+            }
+          }
+
           template <typename RandomAccessIterator, typename StateInteger, typename StateIntegersRange1, typename StateIntegersRange2, typename ControlQubitsRange>
           inline auto adj_pauli_z(
             RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
@@ -1175,7 +1272,44 @@ namespace ket
               fused_qubit_masks, fused_index_masks,
               control_qubits);
           }
+
+          template <typename RandomAccessIterator, typename StateInteger, typename StateIntegersRange1, typename StateIntegersRange2>
+          inline auto adj_pauli_z(
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            StateIntegersRange1 const& fused_qubit_masks, StateIntegersRange2 const& fused_index_masks)
+          -> void
+          {
+            ::ket::gate::fused::runtime::ranges::pauli_z(
+              first, fused_index_wo_qubits,
+              fused_qubit_masks, fused_index_masks);
+          }
         } // namespace ranges
+
+        template <typename RandomAccessIterator, typename StateInteger, typename StateIntegerIterator1, typename StateIntegerIterator2>
+        inline auto pauli_z(
+          RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+          StateIntegerIterator1 const fused_qubit_mask_first, StateIntegerIterator1 const fused_qubit_mask_last,
+          StateIntegerIterator2 const fused_index_mask_first, StateIntegerIterator2 const fused_index_mask_last)
+        -> void
+        {
+          ::ket::gate::fused::runtime::ranges::pauli_z(
+            first, fused_index_wo_qubits,
+            boost::make_iterator_range(fused_qubit_mask_first, fused_qubit_mask_last),
+            boost::make_iterator_range(fused_index_mask_first, fused_index_mask_last));
+        }
+
+        template <typename RandomAccessIterator, typename StateInteger, typename StateIntegerIterator1, typename StateIntegerIterator2>
+        inline auto adj_pauli_z(
+          RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+          StateIntegerIterator1 const fused_qubit_mask_first, StateIntegerIterator1 const fused_qubit_mask_last,
+          StateIntegerIterator2 const fused_index_mask_first, StateIntegerIterator2 const fused_index_mask_last)
+        -> void
+        {
+          ::ket::gate::fused::runtime::ranges::adj_pauli_z(
+            first, fused_index_wo_qubits,
+            boost::make_iterator_range(fused_qubit_mask_first, fused_qubit_mask_last),
+            boost::make_iterator_range(fused_index_mask_first, fused_index_mask_last));
+        }
 
         template <typename RandomAccessIterator, typename StateInteger, typename StateIntegerIterator1, typename StateIntegerIterator2, typename ControlQubitIterator>
         inline auto pauli_z(
