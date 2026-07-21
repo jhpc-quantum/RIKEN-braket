@@ -3,20 +3,12 @@
 # include <iostream>
 # include <sstream>
 # include <vector>
-# include <array>
 # include <iterator>
 # include <algorithm>
 # include <numeric>
 # include <utility>
 
 # include <boost/algorithm/string/case_conv.hpp>
-
-# include <boost/preprocessor/arithmetic/dec.hpp>
-# include <boost/preprocessor/arithmetic/inc.hpp>
-# include <boost/preprocessor/comparison/equal.hpp>
-# include <boost/preprocessor/control/iif.hpp>
-# include <boost/preprocessor/repetition/repeat.hpp>
-# include <boost/preprocessor/repetition/repeat_from_to.hpp>
 
 # include <ket/inner_product.hpp>
 # include <ket/fidelity.hpp>
@@ -60,11 +52,6 @@
 # include <bra/types.hpp>
 # include <bra/fused_gate.hpp>
 # include <bra/utility/closest_floating_point_of.hpp>
-
-# ifndef BRA_MAX_NUM_OPERATED_QUBITS
-#   define BRA_MAX_NUM_OPERATED_QUBITS 6
-# endif // BRA_MAX_NUM_OPERATED_QUBITS
-
 
 namespace bra
 {
@@ -356,23 +343,9 @@ namespace bra
       return;
     }
 
-    auto const num_operated_qubits = qubits.size();
-    assert(num_operated_qubits > 2u);
+    assert(qubits.size() > 2u);
 
-    switch (num_operated_qubits)
-    {
-# define QUBITS(z, n, _) , qubits[n]
-# define CASE_N(z, num_operated_qubits, _) \
-     case num_operated_qubits:\
-      ket::gate::ranges::pauli_x(parallel_policy_, data_ BOOST_PP_REPEAT_ ## z(num_operated_qubits, QUBITS, nil));\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef QUBITS
-    }
+    ket::gate::runtime::ranges::pauli_x(parallel_policy_, data_, qubits);
   }
 
   void nompi_state::do_pauli_y(qubit_type const qubit)
@@ -412,23 +385,9 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
       return;
     }
 
-    auto const num_operated_qubits = qubits.size();
-    assert(num_operated_qubits > 2u);
+    assert(qubits.size() > 2u);
 
-    switch (num_operated_qubits)
-    {
-# define QUBITS(z, n, _) , qubits[n]
-# define CASE_N(z, num_operated_qubits, _) \
-     case num_operated_qubits:\
-      ket::gate::ranges::pauli_y(parallel_policy_, data_ BOOST_PP_REPEAT_ ## z(num_operated_qubits, QUBITS, nil));\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef QUBITS
-    }
+    ket::gate::runtime::ranges::pauli_y(parallel_policy_, data_, qubits);
   }
 
   void nompi_state::do_pauli_z(control_qubit_type const control_qubit)
@@ -468,23 +427,9 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
       return;
     }
 
-    auto const num_operated_qubits = qubits.size();
-    assert(num_operated_qubits > 2u);
+    assert(qubits.size() > 2u);
 
-    switch (num_operated_qubits)
-    {
-# define QUBITS(z, n, _) , qubits[n]
-# define CASE_N(z, num_operated_qubits, _) \
-     case num_operated_qubits:\
-      ket::gate::ranges::pauli_z(parallel_policy_, data_ BOOST_PP_REPEAT_ ## z(num_operated_qubits, QUBITS, nil));\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef QUBITS
-    }
+    ket::gate::runtime::ranges::pauli_z(parallel_policy_, data_, qubits);
   }
 
   void nompi_state::do_swap(qubit_type const qubit1, qubit_type const qubit2)
@@ -615,23 +560,9 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
       return;
     }
 
-    auto const num_operated_qubits = qubits.size();
-    assert(num_operated_qubits > 2u);
+    assert(qubits.size() > 2u);
 
-    switch (num_operated_qubits)
-    {
-# define QUBITS(z, n, _) , qubits[n]
-# define CASE_N(z, num_operated_qubits, _) \
-     case num_operated_qubits:\
-      ket::gate::ranges::sqrt_pauli_z(parallel_policy_, data_ BOOST_PP_REPEAT_ ## z(num_operated_qubits, QUBITS, nil));\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef QUBITS
-    }
+    ket::gate::runtime::ranges::sqrt_pauli_z(parallel_policy_, data_, qubits);
   }
 
   void nompi_state::do_adj_sqrt_pauli_zn(std::vector<qubit_type> const& qubits)
@@ -645,23 +576,9 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
       return;
     }
 
-    auto const num_operated_qubits = qubits.size();
-    assert(num_operated_qubits > 2u);
+    assert(qubits.size() > 2u);
 
-    switch (num_operated_qubits)
-    {
-# define QUBITS(z, n, _) , qubits[n]
-# define CASE_N(z, num_operated_qubits, _) \
-     case num_operated_qubits:\
-      ket::gate::ranges::adj_sqrt_pauli_z(parallel_policy_, data_ BOOST_PP_REPEAT_ ## z(num_operated_qubits, QUBITS, nil));\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef QUBITS
-    }
+    ket::gate::runtime::ranges::adj_sqrt_pauli_z(parallel_policy_, data_, qubits);
   }
 
   void nompi_state::do_u1(real_type const phase, control_qubit_type const control_qubit)
@@ -894,23 +811,9 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
       return;
     }
 
-    auto const num_operated_qubits = qubits.size();
-    assert(num_operated_qubits > 2u);
+    assert(qubits.size() > 2u);
 
-    switch (num_operated_qubits)
-    {
-# define QUBITS(z, n, _) , qubits[n]
-# define CASE_N(z, num_operated_qubits, _) \
-     case num_operated_qubits:\
-      ket::gate::ranges::exponential_pauli_x(parallel_policy_, data_, phase BOOST_PP_REPEAT_ ## z(num_operated_qubits, QUBITS, nil));\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef QUBITS
-    }
+    ket::gate::runtime::ranges::exponential_pauli_x(parallel_policy_, data_, phase, qubits);
   }
 
   void nompi_state::do_adj_exponential_pauli_xn(
@@ -925,23 +828,9 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
       return;
     }
 
-    auto const num_operated_qubits = qubits.size();
-    assert(num_operated_qubits > 2u);
+    assert(qubits.size() > 2u);
 
-    switch (num_operated_qubits)
-    {
-# define QUBITS(z, n, _) , qubits[n]
-# define CASE_N(z, num_operated_qubits, _) \
-     case num_operated_qubits:\
-      ket::gate::ranges::adj_exponential_pauli_x(parallel_policy_, data_, phase BOOST_PP_REPEAT_ ## z(num_operated_qubits, QUBITS, nil));\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef QUBITS
-    }
+    ket::gate::runtime::ranges::adj_exponential_pauli_x(parallel_policy_, data_, phase, qubits);
   }
 
   void nompi_state::do_exponential_pauli_y(real_type const phase, qubit_type const qubit)
@@ -1010,23 +899,9 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
       return;
     }
 
-    auto const num_operated_qubits = qubits.size();
-    assert(num_operated_qubits > 2u);
+    assert(qubits.size() > 2u);
 
-    switch (num_operated_qubits)
-    {
-# define QUBITS(z, n, _) , qubits[n]
-# define CASE_N(z, num_operated_qubits, _) \
-     case num_operated_qubits:\
-      ket::gate::ranges::exponential_pauli_y(parallel_policy_, data_, phase BOOST_PP_REPEAT_ ## z(num_operated_qubits, QUBITS, nil));\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef QUBITS
-    }
+    ket::gate::runtime::ranges::exponential_pauli_y(parallel_policy_, data_, phase, qubits);
   }
 
   void nompi_state::do_adj_exponential_pauli_yn(
@@ -1041,23 +916,9 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
       return;
     }
 
-    auto const num_operated_qubits = qubits.size();
-    assert(num_operated_qubits > 2u);
+    assert(qubits.size() > 2u);
 
-    switch (num_operated_qubits)
-    {
-# define QUBITS(z, n, _) , qubits[n]
-# define CASE_N(z, num_operated_qubits, _) \
-     case num_operated_qubits:\
-      ket::gate::ranges::adj_exponential_pauli_y(parallel_policy_, data_, phase BOOST_PP_REPEAT_ ## z(num_operated_qubits, QUBITS, nil));\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef QUBITS
-    }
+    ket::gate::runtime::ranges::adj_exponential_pauli_y(parallel_policy_, data_, phase, qubits);
   }
 
   void nompi_state::do_exponential_pauli_z(real_type const phase, qubit_type const qubit)
@@ -1126,23 +987,9 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
       return;
     }
 
-    auto const num_operated_qubits = qubits.size();
-    assert(num_operated_qubits > 2u);
+    assert(qubits.size() > 2u);
 
-    switch (num_operated_qubits)
-    {
-# define QUBITS(z, n, _) , qubits[n]
-# define CASE_N(z, num_operated_qubits, _) \
-     case num_operated_qubits:\
-      ket::gate::ranges::exponential_pauli_z(parallel_policy_, data_, phase BOOST_PP_REPEAT_ ## z(num_operated_qubits, QUBITS, nil));\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef QUBITS
-    }
+    ket::gate::runtime::ranges::exponential_pauli_z(parallel_policy_, data_, phase, qubits);
   }
 
   void nompi_state::do_adj_exponential_pauli_zn(
@@ -1157,23 +1004,9 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
       return;
     }
 
-    auto const num_operated_qubits = qubits.size();
-    assert(num_operated_qubits > 2u);
+    assert(qubits.size() > 2u);
 
-    switch (num_operated_qubits)
-    {
-# define QUBITS(z, n, _) , qubits[n]
-# define CASE_N(z, num_operated_qubits, _) \
-     case num_operated_qubits:\
-      ket::gate::ranges::adj_exponential_pauli_z(parallel_policy_, data_, phase BOOST_PP_REPEAT_ ## z(num_operated_qubits, QUBITS, nil));\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef QUBITS
-    }
+    ket::gate::runtime::ranges::adj_exponential_pauli_z(parallel_policy_, data_, phase, qubits);
   }
 
   void nompi_state::do_exponential_swap(
@@ -1284,101 +1117,45 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     if (num_operated_qubits != pauli_string_space_element.num_qubits())
       throw ::bra::wrong_pauli_string_length_error{num_operated_qubits, pauli_string_space_element.num_qubits()};
 
-    switch (num_operated_qubits)
-    {
-# define OPERATED_QUBITS(z, n, _) , operated_qubits[n]
-# ifndef KET_USE_BIT_MASKS_EXPLICITLY
-#   define CASE_N(z, num_operated_qubits_, _) \
-     case num_operated_qubits_:\
-      result_\
-        = ket::ranges::expectation_value(\
-            parallel_policy_, data_,\
-            [&pauli_string_space_element](\
-              auto const first, state_integer_type const index_wo_qubits,\
-              std::array< ::bra::qubit_type, num_operated_qubits_ > const& unsorted_qubits,\
-              std::array< ::bra::qubit_type, BOOST_PP_INC(num_operated_qubits_) > const& sorted_qubits_with_sentinel)\
-            {\
-              auto result = ::bra::complex_type{};\
-\
-              auto const last_index = (::bra::state_integer_type{1u} << num_operated_qubits_);\
-              for (auto index = ::bra::state_integer_type{0u}; index < last_index; ++index)\
-              {\
-                using std::begin;\
-                using std::end;\
-                auto const iter\
-                  = first\
-                    + ket::gate::utility::index_with_qubits(\
-                        index_wo_qubits, index,\
-                        begin(unsorted_qubits), end(unsorted_qubits), begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));\
-\
-                for (auto const& basis_scalar: pauli_string_space_element)\
-                {\
-                  auto const other_index_coeff = ket::gate::utility::pauli_index_coeff< ::bra::complex_type >(basis_scalar.first, index);\
-                  auto const other_iter\
-                    = first\
-                      + ket::gate::utility::index_with_qubits(\
-                          index_wo_qubits, other_index_coeff.first,\
-                          begin(unsorted_qubits), end(unsorted_qubits), begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));\
-\
-                  using std::conj;\
-                  result += basis_scalar.second * (conj(*iter) * (other_index_coeff.second * *other_iter));\
-                }\
-              }\
-\
-              return result;\
-            } BOOST_PP_REPEAT_ ## z(num_operated_qubits_, OPERATED_QUBITS, nil));\
-      break;\
+    result_
+      = ket::runtime::ranges::expectation_value(
+          parallel_policy_, data_,
+          [&pauli_string_space_element, num_operated_qubits](
+            auto const first, auto const index_wo_qubits,
+            auto const& unsorted_qubits_or_masks, auto const& sorted_qubits_or_index_masks)
+          {
+            auto result = ::bra::complex_type{};
 
-# else // KET_USE_BIT_MASKS_EXPLICITLY
-#   define CASE_N(z, num_operated_qubits_, _) \
-     case num_operated_qubits_:\
-      result_\
-        = ket::ranges::expectation_value(\
-            parallel_policy_, data_,\
-            [&pauli_string_space_element](\
-              auto const first, state_integer_type const index_wo_qubits,\
-              std::array< ::bra::state_integer_type, num_operated_qubits_ > const& qubit_masks,\
-              std::array< ::bra::state_integer_type, BOOST_PP_INC(num_operated_qubits_) > const& index_masks)\
-            {\
-              auto result = ::bra::complex_type{};\
-\
-              auto const last_index = (::bra::state_integer_type{1u} << num_operated_qubits_);\
-              for (auto index = ::bra::state_integer_type{0u}; index < last_index; ++index)\
-              {\
-                using std::begin;\
-                using std::end;\
-                auto const iter\
-                  = first\
-                    + ket::gate::utility::index_with_qubits(\
-                        index_wo_qubits, index,\
-                        begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));\
-\
-                for (auto const& basis_scalar: pauli_string_space_element)\
-                {\
-                  auto const other_index_coeff = ket::gate::utility::pauli_index_coeff< ::bra::complex_type >(basis_scalar.first, index);\
-                  auto const other_iter\
-                    = first\
-                      + ket::gate::utility::index_with_qubits(\
-                          index_wo_qubits, other_index_coeff.first,\
-                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));\
-\
-                  using std::conj;\
-                  result += basis_scalar.second * (conj(*iter) * (other_index_coeff.second * *other_iter));\
-                }\
-              }\
-\
-              return result;\
-            } BOOST_PP_REPEAT_ ## z(num_operated_qubits_, OPERATED_QUBITS, nil));\
-      break;\
+            auto const last_index = (::bra::state_integer_type{1u} << num_operated_qubits);
+            for (auto index = ::bra::state_integer_type{0u}; index < last_index; ++index)
+            {
+              using std::begin;
+              using std::end;
+              auto const iter
+                = first
+                  + ket::gate::utility::index_with_qubits(
+                      index_wo_qubits, index,
+                      begin(unsorted_qubits_or_masks), end(unsorted_qubits_or_masks),
+                      begin(sorted_qubits_or_index_masks), end(sorted_qubits_or_index_masks));
 
-# endif // KET_USE_BIT_MASKS_EXPLICITLY
+              for (auto const& basis_scalar: pauli_string_space_element)
+              {
+                auto const other_index_coeff = ket::gate::utility::pauli_index_coeff< ::bra::complex_type >(basis_scalar.first, index);
+                auto const other_iter
+                  = first
+                    + ket::gate::utility::index_with_qubits(
+                        index_wo_qubits, other_index_coeff.first,
+                        begin(unsorted_qubits_or_masks), end(unsorted_qubits_or_masks),
+                        begin(sorted_qubits_or_index_masks), end(sorted_qubits_or_index_masks));
 
-BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef OPERATED_QUBITS
-    }
+                using std::conj;
+                result += basis_scalar.second * (conj(*iter) * (other_index_coeff.second * *other_iter));
+              }
+            }
+
+            return result;
+          },
+          operated_qubits);
   }
 
   void nompi_state::do_inner_product(std::string const& remote_circuit_index_or_all)
@@ -1620,23 +1397,9 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
       return;
     }
 
-    auto const num_control_qubits = control_qubits.size();
-    assert(num_control_qubits > 1u);
+    assert(control_qubits.size() > 1u);
 
-    switch (num_control_qubits)
-    {
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_N(z, num_control_qubits, _) \
-     case num_control_qubits:\
-      ket::gate::ranges::hadamard(parallel_policy_, data_, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_control_qubits + std::size_t{1u}, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CONTROL_QUBITS
-    }
+    ket::gate::runtime::ranges::hadamard(parallel_policy_, data_, target_qubit, control_qubits);
   }
 
   void nompi_state::do_controlled_not(
@@ -1669,23 +1432,9 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
       return;
     }
 
-    auto const num_control_qubits = control_qubits.size();
-    assert(num_control_qubits > 1u);
+    assert(control_qubits.size() > 1u);
 
-    switch (num_control_qubits)
-    {
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_N(z, num_control_qubits, _) \
-     case num_control_qubits:\
-      ket::gate::ranges::not_(parallel_policy_, data_, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_control_qubits + std::size_t{1u}, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CONTROL_QUBITS
-    }
+    ket::gate::runtime::ranges::not_(parallel_policy_, data_, target_qubit, control_qubits);
   }
 
   void nompi_state::do_controlled_pauli_x(
@@ -1718,40 +1467,11 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
       return;
     }
 
-    auto const num_target_qubits = target_qubits.size();
-    auto const num_control_qubits = control_qubits.size();
-    auto const num_operated_qubits = num_target_qubits + num_control_qubits;
-    assert(num_target_qubits > 0u);
-    assert(num_control_qubits > 0u);
-    assert(num_operated_qubits > 2u);
+    assert(target_qubits.size() > 0u);
+    assert(control_qubits.size() > 0u);
+    assert(target_qubits.size() + control_qubits.size() > 2u);
 
-    switch (num_target_qubits)
-    {
-# define TARGET_QUBITS(z, n, _) , target_qubits[n]
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_NC(z, num_control_qubits, num_target_qubits) \
-       case num_control_qubits:\
-        ket::gate::ranges::pauli_x(parallel_policy_, data_ BOOST_PP_REPEAT_ ## z(num_target_qubits, TARGET_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
-        break;\
-
-# define CASE_N(z, num_target_qubits, _) \
-     case num_target_qubits:\
-      switch (num_control_qubits)\
-      {\
-BOOST_PP_REPEAT_FROM_TO_ ## z(BOOST_PP_IIF(BOOST_PP_EQUAL(num_target_qubits, 1), 2, 1), BOOST_PP_SUB(BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), num_target_qubits), CASE_NC, num_target_qubits)\
-       default:\
-        throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};\
-      }\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CASE_NC
-# undef CONTROL_QUBITS
-# undef TARGET_QUBITS
-    }
+    ket::gate::runtime::ranges::pauli_x(parallel_policy_, data_, target_qubits, control_qubits);
   }
 
   void nompi_state::do_controlled_pauli_y(
@@ -1784,40 +1504,11 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
       return;
     }
 
-    auto const num_target_qubits = target_qubits.size();
-    auto const num_control_qubits = control_qubits.size();
-    auto const num_operated_qubits = num_target_qubits + num_control_qubits;
-    assert(num_target_qubits > 0u);
-    assert(num_control_qubits > 0u);
-    assert(num_operated_qubits > 2u);
+    assert(target_qubits.size() > 0u);
+    assert(control_qubits.size() > 0u);
+    assert(target_qubits.size() + control_qubits.size() > 2u);
 
-    switch (num_target_qubits)
-    {
-# define TARGET_QUBITS(z, n, _) , target_qubits[n]
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_NC(z, num_control_qubits, num_target_qubits) \
-       case num_control_qubits:\
-        ket::gate::ranges::pauli_y(parallel_policy_, data_ BOOST_PP_REPEAT_ ## z(num_target_qubits, TARGET_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
-        break;\
-
-# define CASE_N(z, num_target_qubits, _) \
-     case num_target_qubits:\
-      switch (num_control_qubits)\
-      {\
-BOOST_PP_REPEAT_FROM_TO_ ## z(BOOST_PP_IIF(BOOST_PP_EQUAL(num_target_qubits, 1), 2, 1), BOOST_PP_SUB(BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), num_target_qubits), CASE_NC, num_target_qubits)\
-       default:\
-        throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};\
-      }\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CASE_NC
-# undef CONTROL_QUBITS
-# undef TARGET_QUBITS
-    }
+    ket::gate::runtime::ranges::pauli_y(parallel_policy_, data_, target_qubits, control_qubits);
   }
 
   void nompi_state::do_controlled_pauli_z(
@@ -1849,23 +1540,9 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
       return;
     }
 
-    auto const num_operated_qubits = control_qubits.size();
-    assert(num_operated_qubits > 2u);
+    assert(control_qubits.size() > 2u);
 
-    switch (num_operated_qubits)
-    {
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_N(z, num_operated_qubits, num_target_qubits) \
-       case num_operated_qubits:\
-        ket::gate::ranges::pauli_z(parallel_policy_, data_ BOOST_PP_REPEAT_ ## z(num_operated_qubits, CONTROL_QUBITS, nil));\
-        break;\
-
-BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CONTROL_QUBITS
-    }
+    ket::gate::runtime::ranges::pauli_z(parallel_policy_, data_, control_qubits);
   }
 
   void nompi_state::do_multi_controlled_pauli_zn(
@@ -1880,40 +1557,11 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
       return;
     }
 
-    auto const num_target_qubits = target_qubits.size();
-    auto const num_control_qubits = control_qubits.size();
-    auto const num_operated_qubits = num_target_qubits + num_control_qubits;
-    assert(num_target_qubits > 0u);
-    assert(num_control_qubits > 0u);
-    assert(num_operated_qubits > 2u);
+    assert(target_qubits.size() > 0u);
+    assert(control_qubits.size() > 0u);
+    assert(target_qubits.size() + control_qubits.size() > 2u);
 
-    switch (num_target_qubits)
-    {
-# define TARGET_QUBITS(z, n, _) , target_qubits[n]
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_NC(z, num_control_qubits, num_target_qubits) \
-       case num_control_qubits:\
-        ket::gate::ranges::pauli_z(parallel_policy_, data_ BOOST_PP_REPEAT_ ## z(num_target_qubits, TARGET_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
-        break;\
-
-# define CASE_N(z, num_target_qubits, _) \
-     case num_target_qubits:\
-      switch (num_control_qubits)\
-      {\
-BOOST_PP_REPEAT_FROM_TO_ ## z(BOOST_PP_IIF(BOOST_PP_EQUAL(num_target_qubits, 1), 2, 1), BOOST_PP_SUB(BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), num_target_qubits), CASE_NC, num_target_qubits)\
-       default:\
-        throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};\
-      }\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CASE_NC
-# undef CONTROL_QUBITS
-# undef TARGET_QUBITS
-    }
+    ket::gate::runtime::ranges::pauli_z(parallel_policy_, data_, target_qubits, control_qubits);
   }
 
   void nompi_state::do_multi_controlled_swap(
@@ -1929,23 +1577,9 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
       return;
     }
 
-    auto const num_control_qubits = control_qubits.size();
-    assert(num_control_qubits > 0u);
+    assert(control_qubits.size() > 0u);
 
-    switch (num_control_qubits)
-    {
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_N(z, num_control_qubits, _) \
-     case num_control_qubits:\
-      ket::gate::ranges::swap(parallel_policy_, data_, target_qubit1, target_qubit2 BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_DEC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_control_qubits + std::size_t{2u}, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CONTROL_QUBITS
-    }
+    ket::gate::runtime::ranges::swap(parallel_policy_, data_, target_qubit1, target_qubit2, control_qubits);
   }
 
   void nompi_state::do_controlled_sqrt_pauli_x(
@@ -1996,23 +1630,9 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_DEC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
       return;
     }
 
-    auto const num_control_qubits = control_qubits.size();
-    assert(num_control_qubits > 1u);
+    assert(control_qubits.size() > 1u);
 
-    switch (num_control_qubits)
-    {
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_N(z, num_control_qubits, _) \
-     case num_control_qubits:\
-      ket::gate::ranges::sqrt_pauli_x(parallel_policy_, data_, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_control_qubits + std::size_t{1u}, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CONTROL_QUBITS
-    }
+    ket::gate::runtime::ranges::sqrt_pauli_x(parallel_policy_, data_, target_qubit, control_qubits);
   }
 
   void nompi_state::do_adj_multi_controlled_sqrt_pauli_x(
@@ -2027,23 +1647,9 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
       return;
     }
 
-    auto const num_control_qubits = control_qubits.size();
-    assert(num_control_qubits > 1u);
+    assert(control_qubits.size() > 1u);
 
-    switch (num_control_qubits)
-    {
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_N(z, num_control_qubits, _) \
-     case num_control_qubits:\
-      ket::gate::ranges::adj_sqrt_pauli_x(parallel_policy_, data_, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_control_qubits + std::size_t{1u}, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CONTROL_QUBITS
-    }
+    ket::gate::runtime::ranges::adj_sqrt_pauli_x(parallel_policy_, data_, target_qubit, control_qubits);
   }
 
   void nompi_state::do_controlled_sqrt_pauli_y(
@@ -2094,23 +1700,9 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
       return;
     }
 
-    auto const num_control_qubits = control_qubits.size();
-    assert(num_control_qubits > 1u);
+    assert(control_qubits.size() > 1u);
 
-    switch (num_control_qubits)
-    {
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_N(z, num_control_qubits, _) \
-     case num_control_qubits:\
-      ket::gate::ranges::sqrt_pauli_y(parallel_policy_, data_, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_control_qubits + std::size_t{1u}, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CONTROL_QUBITS
-    }
+    ket::gate::runtime::ranges::sqrt_pauli_y(parallel_policy_, data_, target_qubit, control_qubits);
   }
 
   void nompi_state::do_adj_multi_controlled_sqrt_pauli_y(
@@ -2125,23 +1717,9 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
       return;
     }
 
-    auto const num_control_qubits = control_qubits.size();
-    assert(num_control_qubits > 1u);
+    assert(control_qubits.size() > 1u);
 
-    switch (num_control_qubits)
-    {
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_N(z, num_control_qubits, _) \
-     case num_control_qubits:\
-      ket::gate::ranges::adj_sqrt_pauli_y(parallel_policy_, data_, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_control_qubits + std::size_t{1u}, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CONTROL_QUBITS
-    }
+    ket::gate::runtime::ranges::adj_sqrt_pauli_y(parallel_policy_, data_, target_qubit, control_qubits);
   }
 
   void nompi_state::do_controlled_sqrt_pauli_z(
@@ -2191,23 +1769,9 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
       return;
     }
 
-    auto const num_operated_qubits = control_qubits.size();
-    assert(num_operated_qubits > 2u);
+    assert(control_qubits.size() > 2u);
 
-    switch (num_operated_qubits)
-    {
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_N(z, num_operated_qubits, _) \
-       case num_operated_qubits:\
-        ket::gate::ranges::sqrt_pauli_z(parallel_policy_, data_ BOOST_PP_REPEAT_ ## z(num_operated_qubits, CONTROL_QUBITS, nil));\
-        break;\
-
-BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CONTROL_QUBITS
-    }
+    ket::gate::runtime::ranges::sqrt_pauli_z(parallel_policy_, data_, control_qubits);
   }
 
   void nompi_state::do_adj_multi_controlled_sqrt_pauli_z(std::vector<control_qubit_type> const& control_qubits)
@@ -2221,23 +1785,9 @@ BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
       return;
     }
 
-    auto const num_operated_qubits = control_qubits.size();
-    assert(num_operated_qubits > 2u);
+    assert(control_qubits.size() > 2u);
 
-    switch (num_operated_qubits)
-    {
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_N(z, num_operated_qubits, _) \
-       case num_operated_qubits:\
-        ket::gate::ranges::adj_sqrt_pauli_z(parallel_policy_, data_ BOOST_PP_REPEAT_ ## z(num_operated_qubits, CONTROL_QUBITS, nil));\
-        break;\
-
-BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CONTROL_QUBITS
-    }
+    ket::gate::runtime::ranges::adj_sqrt_pauli_z(parallel_policy_, data_, control_qubits);
   }
 
   void nompi_state::do_multi_controlled_sqrt_pauli_zn(
@@ -2252,40 +1802,11 @@ BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
       return;
     }
 
-    auto const num_target_qubits = target_qubits.size();
-    auto const num_control_qubits = control_qubits.size();
-    auto const num_operated_qubits = num_target_qubits + num_control_qubits;
-    assert(num_target_qubits > 0u);
-    assert(num_control_qubits > 0u);
-    assert(num_operated_qubits > 2u);
+    assert(target_qubits.size() > 0u);
+    assert(control_qubits.size() > 0u);
+    assert(target_qubits.size() + control_qubits.size() > 2u);
 
-    switch (num_target_qubits)
-    {
-# define TARGET_QUBITS(z, n, _) , target_qubits[n]
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_NC(z, num_control_qubits, num_target_qubits) \
-       case num_control_qubits:\
-        ket::gate::ranges::sqrt_pauli_z(parallel_policy_, data_ BOOST_PP_REPEAT_ ## z(num_target_qubits, TARGET_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
-        break;\
-
-# define CASE_N(z, num_target_qubits, _) \
-     case num_target_qubits:\
-      switch (num_control_qubits)\
-      {\
-BOOST_PP_REPEAT_FROM_TO_ ## z(BOOST_PP_IIF(BOOST_PP_EQUAL(num_target_qubits, 1), 2, 1), BOOST_PP_SUB(BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), num_target_qubits), CASE_NC, num_target_qubits)\
-       default:\
-        throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};\
-      }\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CASE_NC
-# undef CONTROL_QUBITS
-# undef TARGET_QUBITS
-    }
+    ket::gate::runtime::ranges::sqrt_pauli_z(parallel_policy_, data_, target_qubits, control_qubits);
   }
 
   void nompi_state::do_adj_multi_controlled_sqrt_pauli_zn(
@@ -2300,40 +1821,11 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
       return;
     }
 
-    auto const num_target_qubits = target_qubits.size();
-    auto const num_control_qubits = control_qubits.size();
-    auto const num_operated_qubits = num_target_qubits + num_control_qubits;
-    assert(num_target_qubits > 0u);
-    assert(num_control_qubits > 0u);
-    assert(num_operated_qubits > 2u);
+    assert(target_qubits.size() > 0u);
+    assert(control_qubits.size() > 0u);
+    assert(target_qubits.size() + control_qubits.size() > 2u);
 
-    switch (num_target_qubits)
-    {
-# define TARGET_QUBITS(z, n, _) , target_qubits[n]
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_NC(z, num_control_qubits, num_target_qubits) \
-       case num_control_qubits:\
-        ket::gate::ranges::adj_sqrt_pauli_z(parallel_policy_, data_ BOOST_PP_REPEAT_ ## z(num_target_qubits, TARGET_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
-        break;\
-
-# define CASE_N(z, num_target_qubits, _) \
-     case num_target_qubits:\
-      switch (num_control_qubits)\
-      {\
-BOOST_PP_REPEAT_FROM_TO_ ## z(BOOST_PP_IIF(BOOST_PP_EQUAL(num_target_qubits, 1), 2, 1), BOOST_PP_SUB(BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), num_target_qubits), CASE_NC, num_target_qubits)\
-       default:\
-        throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};\
-      }\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CASE_NC
-# undef CONTROL_QUBITS
-# undef TARGET_QUBITS
-    }
+    ket::gate::runtime::ranges::adj_sqrt_pauli_z(parallel_policy_, data_, target_qubits, control_qubits);
   }
 
   void nompi_state::do_controlled_phase_shift(
@@ -2387,23 +1879,10 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
       return;
     }
 
-    auto const num_operated_qubits = control_qubits.size();
-    assert(num_operated_qubits > 2u);
+    assert(control_qubits.size() > 2u);
 
-    switch (num_operated_qubits)
-    {
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_N(z, num_operated_qubits, _) \
-     case num_operated_qubits:\
-      ket::gate::ranges::phase_shift_coeff(parallel_policy_, data_, phase_coefficient BOOST_PP_REPEAT_ ## z(num_operated_qubits, CONTROL_QUBITS, nil));\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CONTROL_QUBITS
-    }
+    ket::gate::runtime::ranges::phase_shift_coeff(
+      parallel_policy_, data_, phase_coefficient, control_qubits);
   }
 
   void nompi_state::do_adj_multi_controlled_phase_shift(
@@ -2419,23 +1898,10 @@ BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
       return;
     }
 
-    auto const num_operated_qubits = control_qubits.size();
-    assert(num_operated_qubits > 1u);
+    assert(control_qubits.size() > 1u);
 
-    switch (num_operated_qubits)
-    {
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_N(z, num_operated_qubits, _) \
-     case num_operated_qubits:\
-      ket::gate::ranges::adj_phase_shift_coeff(parallel_policy_, data_, phase_coefficient BOOST_PP_REPEAT_ ## z(num_operated_qubits, CONTROL_QUBITS, nil));\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CONTROL_QUBITS
-    }
+    ket::gate::runtime::ranges::adj_phase_shift_coeff(
+      parallel_policy_, data_, phase_coefficient, control_qubits);
   }
 
   void nompi_state::do_controlled_u1(
@@ -2486,23 +1952,10 @@ BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
       return;
     }
 
-    auto const num_operated_qubits = control_qubits.size();
-    assert(num_operated_qubits > 2u);
+    assert(control_qubits.size() > 2u);
 
-    switch (num_operated_qubits)
-    {
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_N(z, num_operated_qubits, _) \
-     case num_operated_qubits:\
-      ket::gate::ranges::phase_shift(parallel_policy_, data_, phase BOOST_PP_REPEAT_ ## z(num_operated_qubits, CONTROL_QUBITS, nil));\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CONTROL_QUBITS
-    }
+    ket::gate::runtime::ranges::phase_shift(
+      parallel_policy_, data_, phase, control_qubits);
   }
 
   void nompi_state::do_adj_multi_controlled_u1(
@@ -2517,23 +1970,10 @@ BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
       return;
     }
 
-    auto const num_operated_qubits = control_qubits.size();
-    assert(num_operated_qubits > 2u);
+    assert(control_qubits.size() > 2u);
 
-    switch (num_operated_qubits)
-    {
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_N(z, num_operated_qubits, _) \
-     case num_operated_qubits:\
-      ket::gate::ranges::adj_phase_shift(parallel_policy_, data_, phase BOOST_PP_REPEAT_ ## z(num_operated_qubits, CONTROL_QUBITS, nil));\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CONTROL_QUBITS
-    }
+    ket::gate::runtime::ranges::adj_phase_shift(
+      parallel_policy_, data_, phase, control_qubits);
   }
 
   void nompi_state::do_controlled_u2(
@@ -2584,23 +2024,10 @@ BOOST_PP_REPEAT_FROM_TO(3, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
       return;
     }
 
-    auto const num_control_qubits = control_qubits.size();
-    assert(num_control_qubits > 1u);
+    assert(control_qubits.size() > 1u);
 
-    switch (num_control_qubits)
-    {
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_N(z, num_control_qubits, _) \
-     case num_control_qubits:\
-      ket::gate::ranges::phase_shift2(parallel_policy_, data_, phase1, phase2, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_control_qubits + std::size_t{1u}, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CONTROL_QUBITS
-    }
+    ket::gate::runtime::ranges::phase_shift2(
+      parallel_policy_, data_, phase1, phase2, target_qubit, control_qubits);
   }
 
   void nompi_state::do_adj_multi_controlled_u2(
@@ -2615,23 +2042,10 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
       return;
     }
 
-    auto const num_control_qubits = control_qubits.size();
-    assert(num_control_qubits > 1u);
+    assert(control_qubits.size() > 1u);
 
-    switch (num_control_qubits)
-    {
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_N(z, num_control_qubits, _) \
-     case num_control_qubits:\
-      ket::gate::ranges::adj_phase_shift2(parallel_policy_, data_, phase1, phase2, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_control_qubits + std::size_t{1u}, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CONTROL_QUBITS
-    }
+    ket::gate::runtime::ranges::adj_phase_shift2(
+      parallel_policy_, data_, phase1, phase2, target_qubit, control_qubits);
   }
 
   void nompi_state::do_controlled_u3(
@@ -2685,23 +2099,10 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
       return;
     }
 
-    auto const num_control_qubits = control_qubits.size();
-    assert(num_control_qubits > 1u);
+    assert(control_qubits.size() > 1u);
 
-    switch (num_control_qubits)
-    {
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_N(z, num_control_qubits, _) \
-     case num_control_qubits:\
-      ket::gate::ranges::phase_shift3(parallel_policy_, data_, phase1, phase2, phase3, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_control_qubits + std::size_t{1u}, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CONTROL_QUBITS
-    }
+    ket::gate::runtime::ranges::phase_shift3(
+      parallel_policy_, data_, phase1, phase2, phase3, target_qubit, control_qubits);
   }
 
   void nompi_state::do_adj_multi_controlled_u3(
@@ -2717,23 +2118,10 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
       return;
     }
 
-    auto const num_control_qubits = control_qubits.size();
-    assert(num_control_qubits > 1u);
+    assert(control_qubits.size() > 1u);
 
-    switch (num_control_qubits)
-    {
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_N(z, num_control_qubits, _) \
-     case num_control_qubits:\
-      ket::gate::ranges::adj_phase_shift3(parallel_policy_, data_, phase1, phase2, phase3, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_control_qubits + std::size_t{1u}, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CONTROL_QUBITS
-    }
+    ket::gate::runtime::ranges::adj_phase_shift3(
+      parallel_policy_, data_, phase1, phase2, phase3, target_qubit, control_qubits);
   }
 
   void nompi_state::do_controlled_x_rotation_half_pi(
@@ -2784,23 +2172,9 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
       return;
     }
 
-    auto const num_control_qubits = control_qubits.size();
-    assert(num_control_qubits > 1u);
+    assert(control_qubits.size() > 1u);
 
-    switch (num_control_qubits)
-    {
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_N(z, num_control_qubits, _) \
-     case num_control_qubits:\
-      ket::gate::ranges::x_rotation_half_pi(parallel_policy_, data_, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_control_qubits + std::size_t{1u}, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CONTROL_QUBITS
-    }
+    ket::gate::runtime::ranges::x_rotation_half_pi(parallel_policy_, data_, target_qubit, control_qubits);
   }
 
   void nompi_state::do_adj_multi_controlled_x_rotation_half_pi(
@@ -2815,23 +2189,9 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
       return;
     }
 
-    auto const num_control_qubits = control_qubits.size();
-    assert(num_control_qubits > 1u);
+    assert(control_qubits.size() > 1u);
 
-    switch (num_control_qubits)
-    {
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_N(z, num_control_qubits, _) \
-     case num_control_qubits:\
-      ket::gate::ranges::adj_x_rotation_half_pi(parallel_policy_, data_, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_control_qubits + std::size_t{1u}, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CONTROL_QUBITS
-    }
+    ket::gate::runtime::ranges::adj_x_rotation_half_pi(parallel_policy_, data_, target_qubit, control_qubits);
   }
 
   void nompi_state::do_controlled_y_rotation_half_pi(
@@ -2882,23 +2242,9 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
       return;
     }
 
-    auto const num_control_qubits = control_qubits.size();
-    assert(num_control_qubits > 1u);
+    assert(control_qubits.size() > 1u);
 
-    switch (num_control_qubits)
-    {
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_N(z, num_control_qubits, _) \
-     case num_control_qubits:\
-      ket::gate::ranges::y_rotation_half_pi(parallel_policy_, data_, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_control_qubits + std::size_t{1u}, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CONTROL_QUBITS
-    }
+    ket::gate::runtime::ranges::y_rotation_half_pi(parallel_policy_, data_, target_qubit, control_qubits);
   }
 
   void nompi_state::do_adj_multi_controlled_y_rotation_half_pi(
@@ -2913,23 +2259,9 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
       return;
     }
 
-    auto const num_control_qubits = control_qubits.size();
-    assert(num_control_qubits > 1u);
+    assert(control_qubits.size() > 1u);
 
-    switch (num_control_qubits)
-    {
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_N(z, num_control_qubits, _) \
-     case num_control_qubits:\
-      ket::gate::ranges::adj_y_rotation_half_pi(parallel_policy_, data_, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_control_qubits + std::size_t{1u}, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CONTROL_QUBITS
-    }
+    ket::gate::runtime::ranges::adj_y_rotation_half_pi(parallel_policy_, data_, target_qubit, control_qubits);
   }
 
   void nompi_state::do_controlled_exponential_pauli_x(
@@ -2980,40 +2312,12 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
       return;
     }
 
-    auto const num_target_qubits = target_qubits.size();
-    auto const num_control_qubits = control_qubits.size();
-    auto const num_operated_qubits = num_target_qubits + num_control_qubits;
-    assert(num_target_qubits > 0u);
-    assert(num_control_qubits > 0u);
-    assert(num_operated_qubits > 2u);
+    assert(target_qubits.size() > 0u);
+    assert(control_qubits.size() > 0u);
+    assert(target_qubits.size() + control_qubits.size() > 2u);
 
-    switch (num_target_qubits)
-    {
-# define TARGET_QUBITS(z, n, _) , target_qubits[n]
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_NC(z, num_control_qubits, num_target_qubits) \
-       case num_control_qubits:\
-        ket::gate::ranges::exponential_pauli_x(parallel_policy_, data_, phase BOOST_PP_REPEAT_ ## z(num_target_qubits, TARGET_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
-        break;\
-
-# define CASE_N(z, num_target_qubits, _) \
-     case num_target_qubits:\
-      switch (num_control_qubits)\
-      {\
-BOOST_PP_REPEAT_FROM_TO_ ## z(BOOST_PP_IIF(BOOST_PP_EQUAL(num_target_qubits, 1), 2, 1), BOOST_PP_SUB(BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), num_target_qubits), CASE_NC, num_target_qubits)\
-       default:\
-        throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};\
-      }\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CASE_NC
-# undef CONTROL_QUBITS
-# undef TARGET_QUBITS
-    }
+    ket::gate::runtime::ranges::exponential_pauli_x(
+      parallel_policy_, data_, phase, target_qubits, control_qubits);
   }
 
   void nompi_state::do_adj_multi_controlled_exponential_pauli_xn(
@@ -3028,40 +2332,12 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
       return;
     }
 
-    auto const num_target_qubits = target_qubits.size();
-    auto const num_control_qubits = control_qubits.size();
-    auto const num_operated_qubits = num_target_qubits + num_control_qubits;
-    assert(num_target_qubits > 0u);
-    assert(num_control_qubits > 0u);
-    assert(num_operated_qubits > 2u);
+    assert(target_qubits.size() > 0u);
+    assert(control_qubits.size() > 0u);
+    assert(target_qubits.size() + control_qubits.size() > 2u);
 
-    switch (num_target_qubits)
-    {
-# define TARGET_QUBITS(z, n, _) , target_qubits[n]
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_NC(z, num_control_qubits, num_target_qubits) \
-       case num_control_qubits:\
-        ket::gate::ranges::adj_exponential_pauli_x(parallel_policy_, data_, phase BOOST_PP_REPEAT_ ## z(num_target_qubits, TARGET_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
-        break;\
-
-# define CASE_N(z, num_target_qubits, _) \
-     case num_target_qubits:\
-      switch (num_control_qubits)\
-      {\
-BOOST_PP_REPEAT_FROM_TO_ ## z(BOOST_PP_IIF(BOOST_PP_EQUAL(num_target_qubits, 1), 2, 1), BOOST_PP_SUB(BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), num_target_qubits), CASE_NC, num_target_qubits)\
-       default:\
-        throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};\
-      }\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CASE_NC
-# undef CONTROL_QUBITS
-# undef TARGET_QUBITS
-    }
+    ket::gate::runtime::ranges::adj_exponential_pauli_x(
+      parallel_policy_, data_, phase, target_qubits, control_qubits);
   }
 
   void nompi_state::do_controlled_exponential_pauli_y(
@@ -3112,40 +2388,12 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
       return;
     }
 
-    auto const num_target_qubits = target_qubits.size();
-    auto const num_control_qubits = control_qubits.size();
-    auto const num_operated_qubits = num_target_qubits + num_control_qubits;
-    assert(num_target_qubits > 0u);
-    assert(num_control_qubits > 0u);
-    assert(num_operated_qubits > 2u);
+    assert(target_qubits.size() > 0u);
+    assert(control_qubits.size() > 0u);
+    assert(target_qubits.size() + control_qubits.size() > 2u);
 
-    switch (num_target_qubits)
-    {
-# define TARGET_QUBITS(z, n, _) , target_qubits[n]
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_NC(z, num_control_qubits, num_target_qubits) \
-       case num_control_qubits:\
-        ket::gate::ranges::exponential_pauli_y(parallel_policy_, data_, phase BOOST_PP_REPEAT_ ## z(num_target_qubits, TARGET_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
-        break;\
-
-# define CASE_N(z, num_target_qubits, _) \
-     case num_target_qubits:\
-      switch (num_control_qubits)\
-      {\
-BOOST_PP_REPEAT_FROM_TO_ ## z(BOOST_PP_IIF(BOOST_PP_EQUAL(num_target_qubits, 1), 2, 1), BOOST_PP_SUB(BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), num_target_qubits), CASE_NC, num_target_qubits)\
-       default:\
-        throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};\
-      }\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CASE_NC
-# undef CONTROL_QUBITS
-# undef TARGET_QUBITS
-    }
+    ket::gate::runtime::ranges::exponential_pauli_y(
+      parallel_policy_, data_, phase, target_qubits, control_qubits);
   }
 
   void nompi_state::do_adj_multi_controlled_exponential_pauli_yn(
@@ -3160,40 +2408,12 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
       return;
     }
 
-    auto const num_target_qubits = target_qubits.size();
-    auto const num_control_qubits = control_qubits.size();
-    auto const num_operated_qubits = num_target_qubits + num_control_qubits;
-    assert(num_target_qubits > 0u);
-    assert(num_control_qubits > 0u);
-    assert(num_operated_qubits > 2u);
+    assert(target_qubits.size() > 0u);
+    assert(control_qubits.size() > 0u);
+    assert(target_qubits.size() + control_qubits.size() > 2u);
 
-    switch (num_target_qubits)
-    {
-# define TARGET_QUBITS(z, n, _) , target_qubits[n]
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_NC(z, num_control_qubits, num_target_qubits) \
-       case num_control_qubits:\
-        ket::gate::ranges::adj_exponential_pauli_y(parallel_policy_, data_, phase BOOST_PP_REPEAT_ ## z(num_target_qubits, TARGET_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
-        break;\
-
-# define CASE_N(z, num_target_qubits, _) \
-     case num_target_qubits:\
-      switch (num_control_qubits)\
-      {\
-BOOST_PP_REPEAT_FROM_TO_ ## z(BOOST_PP_IIF(BOOST_PP_EQUAL(num_target_qubits, 1), 2, 1), BOOST_PP_SUB(BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), num_target_qubits), CASE_NC, num_target_qubits)\
-       default:\
-        throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};\
-      }\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CASE_NC
-# undef CONTROL_QUBITS
-# undef TARGET_QUBITS
-    }
+    ket::gate::runtime::ranges::adj_exponential_pauli_y(
+      parallel_policy_, data_, phase, target_qubits, control_qubits);
   }
 
   void nompi_state::do_controlled_exponential_pauli_z(
@@ -3244,27 +2464,11 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
       return;
     }
 
-    constexpr auto num_target_qubits = 1u;
-    auto const num_control_qubits = control_qubits.size();
-    auto const num_operated_qubits = num_target_qubits + num_control_qubits;
-    assert(num_operated_qubits > 2u);
+    assert(1u + control_qubits.size() > 2u);
 
-    switch (num_control_qubits)
-    {
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_N(z, num_control_qubits, _) \
-       case num_control_qubits:\
-        ket::gate::ranges::exponential_pauli_z(parallel_policy_, data_, phase, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
-        break;\
-
-BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CASE_NC
-# undef CONTROL_QUBITS
-# undef TARGET_QUBITS
-    }
+    ket::gate::runtime::ranges::exponential_pauli_z(
+      parallel_policy_, data_, phase,
+      boost::make_iterator_range(&target_qubit, &target_qubit + 1), control_qubits);
   }
 
   void nompi_state::do_adj_multi_controlled_exponential_pauli_z(
@@ -3279,27 +2483,11 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
       return;
     }
 
-    constexpr auto num_target_qubits = 1u;
-    auto const num_control_qubits = control_qubits.size();
-    auto const num_operated_qubits = num_target_qubits + num_control_qubits;
-    assert(num_operated_qubits > 2u);
+    assert(1u + control_qubits.size() > 2u);
 
-    switch (num_control_qubits)
-    {
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_N(z, num_control_qubits, _) \
-       case num_control_qubits:\
-        ket::gate::ranges::adj_exponential_pauli_z(parallel_policy_, data_, phase, target_qubit BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
-        break;\
-
-BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CASE_NC
-# undef CONTROL_QUBITS
-# undef TARGET_QUBITS
-    }
+    ket::gate::runtime::ranges::adj_exponential_pauli_z(
+      parallel_policy_, data_, phase,
+      boost::make_iterator_range(&target_qubit, &target_qubit + 1), control_qubits);
   }
 
   void nompi_state::do_multi_controlled_exponential_pauli_zn(
@@ -3314,40 +2502,12 @@ BOOST_PP_REPEAT_FROM_TO(2, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
       return;
     }
 
-    auto const num_target_qubits = target_qubits.size();
-    auto const num_control_qubits = control_qubits.size();
-    auto const num_operated_qubits = num_target_qubits + num_control_qubits;
-    assert(num_target_qubits > 0u);
-    assert(num_control_qubits > 0u);
-    assert(num_operated_qubits > 2u);
+    assert(target_qubits.size() > 0u);
+    assert(control_qubits.size() > 0u);
+    assert(target_qubits.size() + control_qubits.size() > 2u);
 
-    switch (num_target_qubits)
-    {
-# define TARGET_QUBITS(z, n, _) , target_qubits[n]
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_NC(z, num_control_qubits, num_target_qubits) \
-       case num_control_qubits:\
-        ket::gate::ranges::exponential_pauli_z(parallel_policy_, data_, phase BOOST_PP_REPEAT_ ## z(num_target_qubits, TARGET_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
-        break;\
-
-# define CASE_N(z, num_target_qubits, _) \
-     case num_target_qubits:\
-      switch (num_control_qubits)\
-      {\
-BOOST_PP_REPEAT_FROM_TO_ ## z(BOOST_PP_IIF(BOOST_PP_EQUAL(num_target_qubits, 1), 2, 1), BOOST_PP_SUB(BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), num_target_qubits), CASE_NC, num_target_qubits)\
-       default:\
-        throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};\
-      }\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CASE_NC
-# undef CONTROL_QUBITS
-# undef TARGET_QUBITS
-    }
+    ket::gate::runtime::ranges::exponential_pauli_z(
+      parallel_policy_, data_, phase, target_qubits, control_qubits);
   }
 
   void nompi_state::do_adj_multi_controlled_exponential_pauli_zn(
@@ -3362,40 +2522,12 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
       return;
     }
 
-    auto const num_target_qubits = target_qubits.size();
-    auto const num_control_qubits = control_qubits.size();
-    auto const num_operated_qubits = num_target_qubits + num_control_qubits;
-    assert(num_target_qubits > 0u);
-    assert(num_control_qubits > 0u);
-    assert(num_operated_qubits > 2u);
+    assert(target_qubits.size() > 0u);
+    assert(control_qubits.size() > 0u);
+    assert(target_qubits.size() + control_qubits.size() > 2u);
 
-    switch (num_target_qubits)
-    {
-# define TARGET_QUBITS(z, n, _) , target_qubits[n]
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_NC(z, num_control_qubits, num_target_qubits) \
-       case num_control_qubits:\
-        ket::gate::ranges::adj_exponential_pauli_z(parallel_policy_, data_, phase BOOST_PP_REPEAT_ ## z(num_target_qubits, TARGET_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
-        break;\
-
-# define CASE_N(z, num_target_qubits, _) \
-     case num_target_qubits:\
-      switch (num_control_qubits)\
-      {\
-BOOST_PP_REPEAT_FROM_TO_ ## z(BOOST_PP_IIF(BOOST_PP_EQUAL(num_target_qubits, 1), 2, 1), BOOST_PP_SUB(BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), num_target_qubits), CASE_NC, num_target_qubits)\
-       default:\
-        throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};\
-      }\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CASE_NC
-# undef CONTROL_QUBITS
-# undef TARGET_QUBITS
-    }
+    ket::gate::runtime::ranges::adj_exponential_pauli_z(
+      parallel_policy_, data_, phase, target_qubits, control_qubits);
   }
 
   void nompi_state::do_multi_controlled_exponential_swap(
@@ -3411,23 +2543,10 @@ BOOST_PP_REPEAT_FROM_TO(1, BRA_MAX_NUM_OPERATED_QUBITS, CASE_N, nil)
       return;
     }
 
-    auto const num_control_qubits = control_qubits.size();
-    assert(num_control_qubits > 0u);
+    assert(control_qubits.size() > 0u);
 
-    switch (num_control_qubits)
-    {
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_N(z, num_control_qubits, _) \
-     case num_control_qubits:\
-      ket::gate::ranges::exponential_swap(parallel_policy_, data_, phase, target_qubit1, target_qubit2 BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_DEC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_control_qubits + std::size_t{2u}, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CONTROL_QUBITS
-    }
+    ket::gate::runtime::ranges::exponential_swap(
+      parallel_policy_, data_, phase, target_qubit1, target_qubit2, control_qubits);
   }
 
   void nompi_state::do_adj_multi_controlled_exponential_swap(
@@ -3443,23 +2562,10 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_DEC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
       return;
     }
 
-    auto const num_control_qubits = control_qubits.size();
-    assert(num_control_qubits > 0u);
+    assert(control_qubits.size() > 0u);
 
-    switch (num_control_qubits)
-    {
-# define CONTROL_QUBITS(z, n, _) , control_qubits[n]
-# define CASE_N(z, num_control_qubits, _) \
-     case num_control_qubits:\
-      ket::gate::ranges::adj_exponential_swap(parallel_policy_, data_, phase, target_qubit1, target_qubit2 BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
-      break;\
-
-BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_DEC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_control_qubits + std::size_t{2u}, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef CONTROL_QUBITS
-    }
+    ket::gate::runtime::ranges::adj_exponential_swap(
+      parallel_policy_, data_, phase, target_qubit1, target_qubit2, control_qubits);
   }
 
   void inner_product(::bra::nompi_state& state1, ::bra::nompi_state& state2)
@@ -3496,108 +2602,48 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_DEC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     if (num_operated_qubits != pauli_string_space_element.num_qubits())
       throw ::bra::wrong_pauli_string_length_error{num_operated_qubits, pauli_string_space_element.num_qubits()};
 
-    auto result = ::bra::complex_type{};
-    switch (num_operated_qubits)
-    {
-# define OPERATED_QUBITS(z, n, _) , operated_qubits[n]
-# ifndef KET_USE_BIT_MASKS_EXPLICITLY
-#   define CASE_N(z, num_operated_qubits_, _) \
-     case num_operated_qubits_:\
-      result\
-        = ket::ranges::inner_product(\
-            state1.parallel_policy_, state1.data_, state2.data_,\
-            [&pauli_string_space_element](\
-              auto const ket_first, auto const bra_first, state_integer_type const index_wo_qubits,\
-              std::array< ::bra::qubit_type, num_operated_qubits_ > const& unsorted_qubits,\
-              std::array< ::bra::qubit_type, BOOST_PP_INC(num_operated_qubits_) > const& sorted_qubits_with_sentinel)\
-            {\
-              auto result = ::bra::complex_type{};\
-\
-              auto const last_index = (::bra::state_integer_type{1u} << num_operated_qubits_);\
-              for (auto bra_index = ::bra::state_integer_type{0u}; bra_index < last_index; ++bra_index)\
-              {\
-                using std::begin;\
-                using std::end;\
-                auto const bra_iter\
-                  = bra_first\
-                    + ket::gate::utility::index_with_qubits(\
-                        index_wo_qubits, bra_index,\
-                        begin(unsorted_qubits), end(unsorted_qubits), begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));\
-\
-                for (auto const& basis_scalar: pauli_string_space_element)\
-                {\
-                  auto const ket_index_coeff = ket::gate::utility::pauli_index_coeff< ::bra::complex_type >(basis_scalar.first, bra_index);\
-                  auto const ket_iter\
-                    = ket_first\
-                      + ket::gate::utility::index_with_qubits(\
-                          index_wo_qubits, ket_index_coeff.first,\
-                          begin(unsorted_qubits), end(unsorted_qubits), begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));\
-\
-                  using std::conj;\
-                  result += basis_scalar.second * (conj(*bra_iter) * (ket_index_coeff.second * *ket_iter));\
-                }\
-              }\
-\
-              return result;\
-            } BOOST_PP_REPEAT_ ## z(num_operated_qubits_, OPERATED_QUBITS, nil));\
-      state1.result_ = result;\
-      using std::conj;\
-      state2.result_ = conj(result);\
-      break;\
+    auto const result
+      = ket::runtime::ranges::inner_product(
+          state1.parallel_policy_, state1.data_, state2.data_,
+          [&pauli_string_space_element, num_operated_qubits](
+            auto const ket_first, auto const bra_first, auto const index_wo_qubits,
+            auto const& unsorted_qubits_or_masks, auto const& sorted_qubits_or_index_masks)
+          {
+            auto result = ::bra::complex_type{};
 
-# else // KET_USE_BIT_MASKS_EXPLICITLY
-#   define CASE_N(z, num_operated_qubits_, _) \
-     case num_operated_qubits_:\
-      result\
-        = ket::ranges::inner_product(\
-            state1.parallel_policy_, state1.data_, state2.data_,\
-            [&pauli_string_space_element](\
-              auto const ket_first, auto const bra_first, state_integer_type const index_wo_qubits,\
-              std::array< ::bra::state_integer_type, num_operated_qubits_ > const& qubit_masks,\
-              std::array< ::bra::state_integer_type, BOOST_PP_INC(num_operated_qubits_) > const& index_masks)\
-            {\
-              auto result = ::bra::complex_type{};\
-\
-              auto const last_index = (::bra::state_integer_type{1u} << num_operated_qubits_);\
-              for (auto bra_index = ::bra::state_integer_type{0u}; bra_index < last_index; ++bra_index)\
-              {\
-                using std::begin;\
-                using std::end;\
-                auto const bra_iter\
-                  = bra_first\
-                    + ket::gate::utility::index_with_qubits(\
-                        index_wo_qubits, bra_index,\
-                        begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));\
-\
-                for (auto const& basis_scalar: pauli_string_space_element)\
-                {\
-                  auto const ket_index_coeff = ket::gate::utility::pauli_index_coeff< ::bra::complex_type >(basis_scalar.first, bra_index);\
-                  auto const ket_iter\
-                    = ket_first\
-                      + ket::gate::utility::index_with_qubits(\
-                          index_wo_qubits, ket_index_coeff.first,\
-                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));\
-\
-                  using std::conj;\
-                  result += basis_scalar.second * (conj(*bra_iter) * (ket_index_coeff.second * *ket_iter));\
-                }\
-              }\
-\
-              return result;\
-            } BOOST_PP_REPEAT_ ## z(num_operated_qubits_, OPERATED_QUBITS, nil));\
-      state1.result_ = result;\
-      using std::conj;\
-      state2.result_ = conj(result);\
-      break;\
+            auto const last_index = (::bra::state_integer_type{1u} << num_operated_qubits);
+            for (auto bra_index = ::bra::state_integer_type{0u}; bra_index < last_index; ++bra_index)
+            {
+              using std::begin;
+              using std::end;
+              auto const bra_iter
+                = bra_first
+                  + ket::gate::utility::index_with_qubits(
+                      index_wo_qubits, bra_index,
+                      begin(unsorted_qubits_or_masks), end(unsorted_qubits_or_masks),
+                      begin(sorted_qubits_or_index_masks), end(sorted_qubits_or_index_masks));
 
-# endif // KET_USE_BIT_MASKS_EXPLICITLY
+              for (auto const& basis_scalar: pauli_string_space_element)
+              {
+                auto const ket_index_coeff = ket::gate::utility::pauli_index_coeff< ::bra::complex_type >(basis_scalar.first, bra_index);
+                auto const ket_iter
+                  = ket_first
+                    + ket::gate::utility::index_with_qubits(
+                        index_wo_qubits, ket_index_coeff.first,
+                        begin(unsorted_qubits_or_masks), end(unsorted_qubits_or_masks),
+                        begin(sorted_qubits_or_index_masks), end(sorted_qubits_or_index_masks));
 
-BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef OPERATED_QUBITS
-    }
+                using std::conj;
+                result += basis_scalar.second * (conj(*bra_iter) * (ket_index_coeff.second * *ket_iter));
+              }
+            }
+
+            return result;
+          },
+          operated_qubits);
+    state1.result_ = result;
+    using std::conj;
+    state2.result_ = conj(result);
   }
 
   void inner_product_all_op(
@@ -3620,101 +2666,45 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
       throw ::bra::wrong_pauli_string_length_error{num_operated_qubits, pauli_string_space_element.num_qubits()};
 
     for (auto iter = state_first; iter != state_last; ++iter)
-      switch (num_operated_qubits)
-      {
-# define OPERATED_QUBITS(z, n, _) , operated_qubits[n]
-# ifndef KET_USE_BIT_MASKS_EXPLICITLY
-#   define CASE_N(z, num_operated_qubits_, _) \
-       case num_operated_qubits_:\
-        iter->result_\
-          = ket::ranges::inner_product(\
-              state_first->parallel_policy_, state_first->data_, iter->data_,\
-              [&pauli_string_space_element](\
-                auto const ket_first, auto const bra_first, state_integer_type const index_wo_qubits,\
-                std::array< ::bra::qubit_type, num_operated_qubits_ > const& unsorted_qubits,\
-                std::array< ::bra::qubit_type, BOOST_PP_INC(num_operated_qubits_) > const& sorted_qubits_with_sentinel)\
-              {\
-                auto result = ::bra::complex_type{};\
-\
-                auto const last_index = (::bra::state_integer_type{1u} << num_operated_qubits_);\
-                for (auto bra_index = ::bra::state_integer_type{0u}; bra_index < last_index; ++bra_index)\
-                {\
-                  using std::begin;\
-                  using std::end;\
-                  auto const bra_iter\
-                    = bra_first\
-                      + ket::gate::utility::index_with_qubits(\
-                          index_wo_qubits, bra_index,\
-                          begin(unsorted_qubits), end(unsorted_qubits), begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));\
-\
-                  for (auto const& basis_scalar: pauli_string_space_element)\
-                  {\
-                    auto const ket_index_coeff = ket::gate::utility::pauli_index_coeff< ::bra::complex_type >(basis_scalar.first, bra_index);\
-                    auto const ket_iter\
-                      = ket_first\
-                        + ket::gate::utility::index_with_qubits(\
-                            index_wo_qubits, ket_index_coeff.first,\
-                            begin(unsorted_qubits), end(unsorted_qubits), begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));\
-\
-                    using std::conj;\
-                    result += basis_scalar.second * (conj(*bra_iter) * (ket_index_coeff.second * *ket_iter));\
-                  }\
-                }\
-\
-                return result;\
-              } BOOST_PP_REPEAT_ ## z(num_operated_qubits_, OPERATED_QUBITS, nil));\
-        break;\
+      iter->result_
+        = ket::runtime::ranges::inner_product(
+            state_first->parallel_policy_, state_first->data_, iter->data_,
+            [&pauli_string_space_element, num_operated_qubits](
+              auto const ket_first, auto const bra_first, auto const index_wo_qubits,
+              auto const& unsorted_qubits_or_masks, auto const& sorted_qubits_or_index_masks)
+            {
+              auto result = ::bra::complex_type{};
 
-# else // KET_USE_BIT_MASKS_EXPLICITLY
-#   define CASE_N(z, num_operated_qubits_, _) \
-       case num_operated_qubits_:\
-        iter->result_\
-          = ket::ranges::inner_product(\
-              state_first->parallel_policy_, state_first->data_, iter->data_,\
-              [&pauli_string_space_element](\
-                auto const ket_first, auto const bra_first, state_integer_type const index_wo_qubits,\
-                std::array< ::bra::state_integer_type, num_operated_qubits_ > const& qubit_masks,\
-                std::array< ::bra::state_integer_type, BOOST_PP_INC(num_operated_qubits_) > const& index_masks)\
-              {\
-                auto result = ::bra::complex_type{};\
-\
-                auto const last_index = (::bra::state_integer_type{1u} << num_operated_qubits_);\
-                for (auto bra_index = ::bra::state_integer_type{0u}; bra_index < last_index; ++bra_index)\
-                {\
-                  using std::begin;\
-                  using std::end;\
-                  auto const bra_iter\
-                    = bra_first\
-                      + ket::gate::utility::index_with_qubits(\
-                          index_wo_qubits, bra_index,\
-                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));\
-\
-                  for (auto const& basis_scalar: pauli_string_space_element)\
-                  {\
-                    auto const ket_index_coeff = ket::gate::utility::pauli_index_coeff< ::bra::complex_type >(basis_scalar.first, bra_index);\
-                    auto const ket_iter\
-                      = ket_first\
-                        + ket::gate::utility::index_with_qubits(\
-                            index_wo_qubits, ket_index_coeff.first,\
-                            begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));\
-\
-                    using std::conj;\
-                    result += basis_scalar.second * (conj(*bra_iter) * (ket_index_coeff.second * *ket_iter));\
-                  }\
-                }\
-\
-                return result;\
-              } BOOST_PP_REPEAT_ ## z(num_operated_qubits_, OPERATED_QUBITS, nil));\
-        break;\
+              auto const last_index = (::bra::state_integer_type{1u} << num_operated_qubits);
+              for (auto bra_index = ::bra::state_integer_type{0u}; bra_index < last_index; ++bra_index)
+              {
+                using std::begin;
+                using std::end;
+                auto const bra_iter
+                  = bra_first
+                    + ket::gate::utility::index_with_qubits(
+                        index_wo_qubits, bra_index,
+                        begin(unsorted_qubits_or_masks), end(unsorted_qubits_or_masks),
+                        begin(sorted_qubits_or_index_masks), end(sorted_qubits_or_index_masks));
 
-# endif // KET_USE_BIT_MASKS_EXPLICITLY
+                for (auto const& basis_scalar: pauli_string_space_element)
+                {
+                  auto const ket_index_coeff = ket::gate::utility::pauli_index_coeff< ::bra::complex_type >(basis_scalar.first, bra_index);
+                  auto const ket_iter
+                    = ket_first
+                      + ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, ket_index_coeff.first,
+                          begin(unsorted_qubits_or_masks), end(unsorted_qubits_or_masks),
+                          begin(sorted_qubits_or_index_masks), end(sorted_qubits_or_index_masks));
 
-  BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
-       default:
-        throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef OPERATED_QUBITS
-      }
+                  using std::conj;
+                  result += basis_scalar.second * (conj(*bra_iter) * (ket_index_coeff.second * *ket_iter));
+                }
+              }
+
+              return result;
+            },
+            operated_qubits);
   }
 
   void fidelity(::bra::nompi_state& state1, ::bra::nompi_state& state2)
@@ -3751,108 +2741,48 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     if (num_operated_qubits != pauli_string_space_element.num_qubits())
       throw ::bra::wrong_pauli_string_length_error{num_operated_qubits, pauli_string_space_element.num_qubits()};
 
-    auto result = ::bra::complex_type{};
-    switch (num_operated_qubits)
-    {
-# define OPERATED_QUBITS(z, n, _) , operated_qubits[n]
-# ifndef KET_USE_BIT_MASKS_EXPLICITLY
-#   define CASE_N(z, num_operated_qubits_, _) \
-     case num_operated_qubits_:\
-      result\
-        = ket::ranges::fidelity(\
-            state1.parallel_policy_, state1.data_, state2.data_,\
-            [&pauli_string_space_element](\
-              auto const ket_first, auto const bra_first, state_integer_type const index_wo_qubits,\
-              std::array< ::bra::qubit_type, num_operated_qubits_ > const& unsorted_qubits,\
-              std::array< ::bra::qubit_type, BOOST_PP_INC(num_operated_qubits_) > const& sorted_qubits_with_sentinel)\
-            {\
-              auto result = ::bra::complex_type{};\
-\
-              auto const last_index = (::bra::state_integer_type{1u} << num_operated_qubits_);\
-              for (auto bra_index = ::bra::state_integer_type{0u}; bra_index < last_index; ++bra_index)\
-              {\
-                using std::begin;\
-                using std::end;\
-                auto const bra_iter\
-                  = bra_first\
-                    + ket::gate::utility::index_with_qubits(\
-                        index_wo_qubits, bra_index,\
-                        begin(unsorted_qubits), end(unsorted_qubits), begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));\
-\
-                for (auto const& basis_scalar: pauli_string_space_element)\
-                {\
-                  auto const ket_index_coeff = ket::gate::utility::pauli_index_coeff< ::bra::complex_type >(basis_scalar.first, bra_index);\
-                  auto const ket_iter\
-                    = ket_first\
-                      + ket::gate::utility::index_with_qubits(\
-                          index_wo_qubits, ket_index_coeff.first,\
-                          begin(unsorted_qubits), end(unsorted_qubits), begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));\
-\
-                  using std::conj;\
-                  result += basis_scalar.second * (conj(*bra_iter) * (ket_index_coeff.second * *ket_iter));\
-                }\
-              }\
-\
-              return result;\
-            } BOOST_PP_REPEAT_ ## z(num_operated_qubits_, OPERATED_QUBITS, nil));\
-      state1.result_ = result;\
-      using std::conj;\
-      state2.result_ = conj(result);\
-      break;\
+    auto const result
+      = ket::runtime::ranges::fidelity(
+          state1.parallel_policy_, state1.data_, state2.data_,
+          [&pauli_string_space_element, num_operated_qubits](
+            auto const ket_first, auto const bra_first, auto const index_wo_qubits,
+            auto const& unsorted_qubits_or_masks, auto const& sorted_qubits_or_index_masks)
+          {
+            auto result = ::bra::complex_type{};
 
-# else // KET_USE_BIT_MASKS_EXPLICITLY
-#   define CASE_N(z, num_operated_qubits_, _) \
-     case num_operated_qubits_:\
-      result\
-        = ket::ranges::fidelity(\
-            state1.parallel_policy_, state1.data_, state2.data_,\
-            [&pauli_string_space_element](\
-              auto const ket_first, auto const bra_first, state_integer_type const index_wo_qubits,\
-              std::array< ::bra::state_integer_type, num_operated_qubits_ > const& qubit_masks,\
-              std::array< ::bra::state_integer_type, BOOST_PP_INC(num_operated_qubits_) > const& index_masks)\
-            {\
-              auto result = ::bra::complex_type{};\
-\
-              auto const last_index = (::bra::state_integer_type{1u} << num_operated_qubits_);\
-              for (auto bra_index = ::bra::state_integer_type{0u}; bra_index < last_index; ++bra_index)\
-              {\
-                using std::begin;\
-                using std::end;\
-                auto const bra_iter\
-                  = bra_first\
-                    + ket::gate::utility::index_with_qubits(\
-                        index_wo_qubits, bra_index,\
-                        begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));\
-\
-                for (auto const& basis_scalar: pauli_string_space_element)\
-                {\
-                  auto const ket_index_coeff = ket::gate::utility::pauli_index_coeff< ::bra::complex_type >(basis_scalar.first, bra_index);\
-                  auto const ket_iter\
-                    = ket_first\
-                      + ket::gate::utility::index_with_qubits(\
-                          index_wo_qubits, ket_index_coeff.first,\
-                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));\
-\
-                  using std::conj;\
-                  result += basis_scalar.second * (conj(*bra_iter) * (ket_index_coeff.second * *ket_iter));\
-                }\
-              }\
-\
-              return result;\
-            } BOOST_PP_REPEAT_ ## z(num_operated_qubits_, OPERATED_QUBITS, nil));\
-      state1.result_ = result;\
-      using std::conj;\
-      state2.result_ = conj(result);\
-      break;\
+            auto const last_index = (::bra::state_integer_type{1u} << num_operated_qubits);
+            for (auto bra_index = ::bra::state_integer_type{0u}; bra_index < last_index; ++bra_index)
+            {
+              using std::begin;
+              using std::end;
+              auto const bra_iter
+                = bra_first
+                  + ket::gate::utility::index_with_qubits(
+                      index_wo_qubits, bra_index,
+                      begin(unsorted_qubits_or_masks), end(unsorted_qubits_or_masks),
+                      begin(sorted_qubits_or_index_masks), end(sorted_qubits_or_index_masks));
 
-# endif // KET_USE_BIT_MASKS_EXPLICITLY
+              for (auto const& basis_scalar: pauli_string_space_element)
+              {
+                auto const ket_index_coeff = ket::gate::utility::pauli_index_coeff< ::bra::complex_type >(basis_scalar.first, bra_index);
+                auto const ket_iter
+                  = ket_first
+                    + ket::gate::utility::index_with_qubits(
+                        index_wo_qubits, ket_index_coeff.first,
+                        begin(unsorted_qubits_or_masks), end(unsorted_qubits_or_masks),
+                        begin(sorted_qubits_or_index_masks), end(sorted_qubits_or_index_masks));
 
-BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
-     default:
-      throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef OPERATED_QUBITS
-    }
+                using std::conj;
+                result += basis_scalar.second * (conj(*bra_iter) * (ket_index_coeff.second * *ket_iter));
+              }
+            }
+
+            return result;
+          },
+          operated_qubits);
+    state1.result_ = result;
+    using std::conj;
+    state2.result_ = conj(result);
   }
 
   void fidelity_all_op(
@@ -3875,101 +2805,45 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
       throw ::bra::wrong_pauli_string_length_error{num_operated_qubits, pauli_string_space_element.num_qubits()};
 
     for (auto iter = state_first; iter != state_last; ++iter)
-      switch (num_operated_qubits)
-      {
-# define OPERATED_QUBITS(z, n, _) , operated_qubits[n]
-# ifndef KET_USE_BIT_MASKS_EXPLICITLY
-#   define CASE_N(z, num_operated_qubits_, _) \
-       case num_operated_qubits_:\
-        iter->result_\
-          = ket::ranges::fidelity(\
-              state_first->parallel_policy_, state_first->data_, iter->data_,\
-              [&pauli_string_space_element](\
-                auto const ket_first, auto const bra_first, state_integer_type const index_wo_qubits,\
-                std::array< ::bra::qubit_type, num_operated_qubits_ > const& unsorted_qubits,\
-                std::array< ::bra::qubit_type, BOOST_PP_INC(num_operated_qubits_) > const& sorted_qubits_with_sentinel)\
-              {\
-                auto result = ::bra::complex_type{};\
-\
-                auto const last_index = (::bra::state_integer_type{1u} << num_operated_qubits_);\
-                for (auto bra_index = ::bra::state_integer_type{0u}; bra_index < last_index; ++bra_index)\
-                {\
-                  using std::begin;\
-                  using std::end;\
-                  auto const bra_iter\
-                    = bra_first\
-                      + ket::gate::utility::index_with_qubits(\
-                          index_wo_qubits, bra_index,\
-                          begin(unsorted_qubits), end(unsorted_qubits), begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));\
-\
-                  for (auto const& basis_scalar: pauli_string_space_element)\
-                  {\
-                    auto const ket_index_coeff = ket::gate::utility::pauli_index_coeff< ::bra::complex_type >(basis_scalar.first, bra_index);\
-                    auto const ket_iter\
-                      = ket_first\
-                        + ket::gate::utility::index_with_qubits(\
-                            index_wo_qubits, ket_index_coeff.first,\
-                            begin(unsorted_qubits), end(unsorted_qubits), begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel));\
-\
-                    using std::conj;\
-                    result += basis_scalar.second * (conj(*bra_iter) * (ket_index_coeff.second * *ket_iter));\
-                  }\
-                }\
-\
-                return result;\
-              } BOOST_PP_REPEAT_ ## z(num_operated_qubits_, OPERATED_QUBITS, nil));\
-        break;\
+      iter->result_
+        = ket::runtime::ranges::fidelity(
+            state_first->parallel_policy_, state_first->data_, iter->data_,
+            [&pauli_string_space_element, num_operated_qubits](
+              auto const ket_first, auto const bra_first, auto const index_wo_qubits,
+              auto const& unsorted_qubits_or_masks, auto const& sorted_qubits_or_index_masks)
+            {
+              auto result = ::bra::complex_type{};
 
-# else // KET_USE_BIT_MASKS_EXPLICITLY
-#   define CASE_N(z, num_operated_qubits_, _) \
-       case num_operated_qubits_:\
-        iter->result_\
-          = ket::ranges::fidelity(\
-              state_first->parallel_policy_, state_first->data_, iter->data_,\
-              [&pauli_string_space_element](\
-                auto const ket_first, auto const bra_first, state_integer_type const index_wo_qubits,\
-                std::array< ::bra::state_integer_type, num_operated_qubits_ > const& qubit_masks,\
-                std::array< ::bra::state_integer_type, BOOST_PP_INC(num_operated_qubits_) > const& index_masks)\
-              {\
-                auto result = ::bra::complex_type{};\
-\
-                auto const last_index = (::bra::state_integer_type{1u} << num_operated_qubits_);\
-                for (auto bra_index = ::bra::state_integer_type{0u}; bra_index < last_index; ++bra_index)\
-                {\
-                  using std::begin;\
-                  using std::end;\
-                  auto const bra_iter\
-                    = bra_first\
-                      + ket::gate::utility::index_with_qubits(\
-                          index_wo_qubits, bra_index,\
-                          begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));\
-\
-                  for (auto const& basis_scalar: pauli_string_space_element)\
-                  {\
-                    auto const ket_index_coeff = ket::gate::utility::pauli_index_coeff< ::bra::complex_type >(basis_scalar.first, bra_index);\
-                    auto const ket_iter\
-                      = ket_first\
-                        + ket::gate::utility::index_with_qubits(\
-                            index_wo_qubits, ket_index_coeff.first,\
-                            begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));\
-\
-                    using std::conj;\
-                    result += basis_scalar.second * (conj(*bra_iter) * (ket_index_coeff.second * *ket_iter));\
-                  }\
-                }\
-\
-                return result;\
-              } BOOST_PP_REPEAT_ ## z(num_operated_qubits_, OPERATED_QUBITS, nil));\
-        break;\
+              auto const last_index = (::bra::state_integer_type{1u} << num_operated_qubits);
+              for (auto bra_index = ::bra::state_integer_type{0u}; bra_index < last_index; ++bra_index)
+              {
+                using std::begin;
+                using std::end;
+                auto const bra_iter
+                  = bra_first
+                    + ket::gate::utility::index_with_qubits(
+                        index_wo_qubits, bra_index,
+                        begin(unsorted_qubits_or_masks), end(unsorted_qubits_or_masks),
+                        begin(sorted_qubits_or_index_masks), end(sorted_qubits_or_index_masks));
 
-# endif // KET_USE_BIT_MASKS_EXPLICITLY
+                for (auto const& basis_scalar: pauli_string_space_element)
+                {
+                  auto const ket_index_coeff = ket::gate::utility::pauli_index_coeff< ::bra::complex_type >(basis_scalar.first, bra_index);
+                  auto const ket_iter
+                    = ket_first
+                      + ket::gate::utility::index_with_qubits(
+                          index_wo_qubits, ket_index_coeff.first,
+                          begin(unsorted_qubits_or_masks), end(unsorted_qubits_or_masks),
+                          begin(sorted_qubits_or_index_masks), end(sorted_qubits_or_index_masks));
 
-  BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, nil)
-       default:
-        throw bra::too_many_operated_qubits_error{num_operated_qubits, BRA_MAX_NUM_OPERATED_QUBITS};
-# undef CASE_N
-# undef OPERATED_QUBITS
-      }
+                  using std::conj;
+                  result += basis_scalar.second * (conj(*bra_iter) * (ket_index_coeff.second * *ket_iter));
+                }
+              }
+
+              return result;
+            },
+            operated_qubits);
   }
 
   void send_real_variable(
