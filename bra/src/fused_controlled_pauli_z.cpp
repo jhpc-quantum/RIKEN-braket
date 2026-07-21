@@ -1,12 +1,11 @@
 #include <array>
 #include <vector>
+#include <utility>
+#include <stdexcept>
 #include <algorithm>
 
-#include <boost/preprocessor/arithmetic/dec.hpp>
-#include <boost/preprocessor/arithmetic/inc.hpp>
-#include <boost/preprocessor/repetition/repeat_from_to.hpp>
-
 #include <ket/gate/fused/pauli_z.hpp>
+#include <ket/utility/exp_i.hpp>
 #if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
 # include <ket/gate/utility/cache_aware_iterator.hpp>
 #endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
@@ -27,102 +26,45 @@ namespace bra
 
 #ifndef KET_USE_BIT_MASKS_EXPLICITLY
     template <typename Iterator>
-    [[noreturn]] auto fused_controlled_pauli_z<Iterator>::do_call(
+    auto fused_controlled_pauli_z<Iterator>::do_call(
       Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
-      std::array< ::bra::qubit_type, 0u > const& unsorted_fused_qubits,
-      std::array< ::bra::qubit_type, 1u > const& sorted_fused_qubits_with_sentinel,
+      std::vector< ::bra::qubit_type > const& unsorted_fused_qubits,
+      std::vector< ::bra::qubit_type > const& sorted_fused_qubits_with_sentinel,
       std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void
-    { throw 1; }
-
-    template <typename Iterator>
-    [[noreturn]] auto fused_controlled_pauli_z<Iterator>::do_call(
-      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
-      std::array< ::bra::qubit_type, 1u > const& unsorted_fused_qubits,
-      std::array< ::bra::qubit_type, 2u > const& sorted_fused_qubits_with_sentinel,
-      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void
-    { throw 1; }
-#else // KET_USE_BIT_MASKS_EXPLICITLY
-    template <typename Iterator>
-    [[noreturn]] auto fused_controlled_pauli_z<Iterator>::do_call(
-      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
-      std::array< ::bra::state_integer_type, 0u > const& qubit_masks,
-      std::array< ::bra::state_integer_type, 1u > const& index_masks,
-      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void
-    { throw 1; }
-
-    template <typename Iterator>
-    [[noreturn]] auto fused_controlled_pauli_z<Iterator>::do_call(
-      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
-      std::array< ::bra::state_integer_type, 1u > const& qubit_masks,
-      std::array< ::bra::state_integer_type, 2u > const& index_masks,
-      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void
-    { throw 1; }
-#endif // KET_USE_BIT_MASKS_EXPLICITLY
-
-#ifndef BRA_MAX_NUM_FUSED_QUBITS
-# ifdef KET_DEFAULT_NUM_ON_CACHE_QUBITS
-#   define BRA_MAX_NUM_FUSED_QUBITS BOOST_PP_DEC(KET_DEFAULT_NUM_ON_CACHE_QUBITS)
-# else // KET_DEFAULT_NUM_ON_CACHE_QUBITS
-#   define BRA_MAX_NUM_FUSED_QUBITS 10
-# endif // KET_DEFAULT_NUM_ON_CACHE_QUBITS
-#endif // BRA_MAX_NUM_FUSED_QUBITS
-#ifndef KET_USE_BIT_MASKS_EXPLICITLY
-# define DO_CALL(z, num_fused_qubits, _) \
-    template <typename Iterator>\
-    auto fused_controlled_pauli_z<Iterator>::do_call(\
-      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,\
-      std::array< ::bra::qubit_type, num_fused_qubits > const& unsorted_fused_qubits,\
-      std::array< ::bra::qubit_type, num_fused_qubits + 1u > const& sorted_fused_qubits_with_sentinel,\
-      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void\
-    {\
-      if (is_control_qubit1_enabled_)\
-        if (is_control_qubit2_enabled_)\
-          ket::gate::fused::pauli_z(\
-            first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,\
-            static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit1_.qubit())]),\
-            static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit2_.qubit())]));\
-        else\
-          ket::gate::fused::pauli_z(\
-            first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,\
-            static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit1_.qubit())]));\
-      else if (is_control_qubit2_enabled_)\
-        ket::gate::fused::pauli_z(\
-          first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,\
-          static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit2_.qubit())]));\
-      else\
-        ket::gate::fused::pauli_z(\
-          first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);\
+    {
+      if (unsorted_fused_qubits.size() < std::size_t{1u})
+        throw std::runtime_error{"fused_controlled_pauli_z requires at least one fused qubit"};
+      auto enabled_control_qubits = std::vector< ::bra::control_qubit_type >{};
+      enabled_control_qubits.reserve(2u);
+      if (is_control_qubit1_enabled_)
+        enabled_control_qubits.push_back(static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit1_.qubit())]));
+      if (is_control_qubit2_enabled_)
+        enabled_control_qubits.push_back(static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit2_.qubit())]));
+      ::ket::gate::fused::runtime::ranges::pauli_z(
+        first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
+        enabled_control_qubits);
     }
 #else // KET_USE_BIT_MASKS_EXPLICITLY
-# define DO_CALL(z, num_fused_qubits, _) \
-    template <typename Iterator>\
-    auto fused_controlled_pauli_z<Iterator>::do_call(\
-      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,\
-      std::array< ::bra::state_integer_type, num_fused_qubits > const& qubit_masks,\
-      std::array< ::bra::state_integer_type, num_fused_qubits + 1u > const& index_masks,\
-      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void\
-    {\
-      if (is_control_qubit1_enabled_)\
-        if (is_control_qubit2_enabled_)\
-          ket::gate::fused::pauli_z(\
-            first, fused_index_wo_qubits, qubit_masks, index_masks,\
-            static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit1_.qubit())]),\
-            static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit2_.qubit())]));\
-        else\
-          ket::gate::fused::pauli_z(\
-            first, fused_index_wo_qubits, qubit_masks, index_masks,\
-            static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit1_.qubit())]));\
-      else if (is_control_qubit2_enabled_)\
-        ket::gate::fused::pauli_z(\
-          first, fused_index_wo_qubits, qubit_masks, index_masks,\
-          static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit2_.qubit())]));\
-      else\
-        ket::gate::fused::pauli_z(\
-          first, fused_index_wo_qubits, qubit_masks, index_masks);\
+    template <typename Iterator>
+    auto fused_controlled_pauli_z<Iterator>::do_call(
+      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
+      std::vector< ::bra::state_integer_type > const& qubit_masks,
+      std::vector< ::bra::state_integer_type > const& index_masks,
+      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void
+    {
+      if (qubit_masks.size() < std::size_t{1u})
+        throw std::runtime_error{"fused_controlled_pauli_z requires at least one fused qubit"};
+      auto enabled_control_qubits = std::vector< ::bra::control_qubit_type >{};
+      enabled_control_qubits.reserve(2u);
+      if (is_control_qubit1_enabled_)
+        enabled_control_qubits.push_back(static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit1_.qubit())]));
+      if (is_control_qubit2_enabled_)
+        enabled_control_qubits.push_back(static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit2_.qubit())]));
+      ::ket::gate::fused::runtime::ranges::pauli_z(
+        first, fused_index_wo_qubits, qubit_masks, index_masks,
+        enabled_control_qubits);
     }
 #endif // KET_USE_BIT_MASKS_EXPLICITLY
-BOOST_PP_REPEAT_FROM_TO(2, BOOST_PP_INC(BRA_MAX_NUM_FUSED_QUBITS), DO_CALL, nil)
-#undef DO_CALL
 
     template <typename Iterator>
     auto fused_controlled_pauli_z<Iterator>::do_disable_control_qubits(
@@ -130,18 +72,8 @@ BOOST_PP_REPEAT_FROM_TO(2, BOOST_PP_INC(BRA_MAX_NUM_FUSED_QUBITS), DO_CALL, nil)
       typename std::vector< ::bra::qubit_type >::const_iterator const last)
     -> void
     {
-      is_control_qubit1_enabled_
-        = is_control_qubit1_enabled_
-          and std::none_of(
-                first, last,
-                [this](::bra::qubit_type const found_qubit)
-                { return found_qubit == this->control_qubit1_; });
-      is_control_qubit2_enabled_
-        = is_control_qubit2_enabled_
-          and std::none_of(
-                first, last,
-                [this](::bra::qubit_type const found_qubit)
-                { return found_qubit == this->control_qubit2_; });
+      is_control_qubit1_enabled_ = is_control_qubit1_enabled_ and std::none_of(first, last, [this](::bra::qubit_type const q) { return q == this->control_qubit1_; });
+      is_control_qubit2_enabled_ = is_control_qubit2_enabled_ and std::none_of(first, last, [this](::bra::qubit_type const q) { return q == this->control_qubit2_; });
     }
 
     template <typename Iterator>
@@ -150,18 +82,8 @@ BOOST_PP_REPEAT_FROM_TO(2, BOOST_PP_INC(BRA_MAX_NUM_FUSED_QUBITS), DO_CALL, nil)
       typename std::vector< ::bra::control_qubit_type >::const_iterator const last)
     -> void
     {
-      is_control_qubit1_enabled_
-        = is_control_qubit1_enabled_
-          and std::none_of(
-                first, last,
-                [this](::bra::control_qubit_type const found_control_qubit)
-                { return found_control_qubit == this->control_qubit1_; });
-      is_control_qubit2_enabled_
-        = is_control_qubit2_enabled_
-          and std::none_of(
-                first, last,
-                [this](::bra::control_qubit_type const found_control_qubit)
-                { return found_control_qubit == this->control_qubit2_; });
+      is_control_qubit1_enabled_ = is_control_qubit1_enabled_ and std::none_of(first, last, [this](::bra::control_qubit_type const q) { return q == this->control_qubit1_; });
+      is_control_qubit2_enabled_ = is_control_qubit2_enabled_ and std::none_of(first, last, [this](::bra::control_qubit_type const q) { return q == this->control_qubit2_; });
     }
 
     template class fused_controlled_pauli_z< ::bra::data_type::iterator >;

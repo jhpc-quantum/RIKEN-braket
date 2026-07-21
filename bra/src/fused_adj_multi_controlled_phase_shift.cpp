@@ -1,13 +1,11 @@
 #include <array>
 #include <vector>
 #include <utility>
-
-#include <boost/preprocessor/arithmetic/dec.hpp>
-#include <boost/preprocessor/arithmetic/inc.hpp>
-#include <boost/preprocessor/repetition/repeat.hpp>
-#include <boost/preprocessor/repetition/repeat_from_to.hpp>
+#include <stdexcept>
+#include <algorithm>
 
 #include <ket/gate/fused/phase_shift.hpp>
+#include <ket/utility/exp_i.hpp>
 #if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
 # include <ket/gate/utility/cache_aware_iterator.hpp>
 #endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
@@ -33,124 +31,47 @@ namespace bra
 
 #ifndef KET_USE_BIT_MASKS_EXPLICITLY
     template <typename Iterator>
-    [[noreturn]] auto fused_adj_multi_controlled_phase_shift<Iterator>::do_call(
+    auto fused_adj_multi_controlled_phase_shift<Iterator>::do_call(
       Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
-      std::array< ::bra::qubit_type, 0u > const& unsorted_fused_qubits,
-      std::array< ::bra::qubit_type, 1u > const& sorted_fused_qubits_with_sentinel,
+      std::vector< ::bra::qubit_type > const& unsorted_fused_qubits,
+      std::vector< ::bra::qubit_type > const& sorted_fused_qubits_with_sentinel,
       std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void
-    { throw 1; }
-
-    template <typename Iterator>
-    [[noreturn]] auto fused_adj_multi_controlled_phase_shift<Iterator>::do_call(
-      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
-      std::array< ::bra::qubit_type, 1u > const& unsorted_fused_qubits,
-      std::array< ::bra::qubit_type, 2u > const& sorted_fused_qubits_with_sentinel,
-      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void
-    { throw 1; }
-
-    template <typename Iterator>
-    [[noreturn]] auto fused_adj_multi_controlled_phase_shift<Iterator>::do_call(
-      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
-      std::array< ::bra::qubit_type, 2u > const& unsorted_fused_qubits,
-      std::array< ::bra::qubit_type, 3u > const& sorted_fused_qubits_with_sentinel,
-      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void
-    { throw 1; }
-#else // KET_USE_BIT_MASKS_EXPLICITLY
-    template <typename Iterator>
-    [[noreturn]] auto fused_adj_multi_controlled_phase_shift<Iterator>::do_call(
-      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
-      std::array< ::bra::state_integer_type, 0u > const& qubit_masks,
-      std::array< ::bra::state_integer_type, 1u > const& index_masks,
-      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void
-    { throw 1; }
-
-    template <typename Iterator>
-    [[noreturn]] auto fused_adj_multi_controlled_phase_shift<Iterator>::do_call(
-      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
-      std::array< ::bra::state_integer_type, 1u > const& qubit_masks,
-      std::array< ::bra::state_integer_type, 2u > const& index_masks,
-      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void
-    { throw 1; }
-
-    template <typename Iterator>
-    [[noreturn]] auto fused_adj_multi_controlled_phase_shift<Iterator>::do_call(
-      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
-      std::array< ::bra::state_integer_type, 2u > const& qubit_masks,
-      std::array< ::bra::state_integer_type, 3u > const& index_masks,
-      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void
-    { throw 1; }
-#endif // KET_USE_BIT_MASKS_EXPLICITLY
-
-#ifndef BRA_MAX_NUM_FUSED_QUBITS
-# ifdef KET_DEFAULT_NUM_ON_CACHE_QUBITS
-#   define BRA_MAX_NUM_FUSED_QUBITS BOOST_PP_DEC(KET_DEFAULT_NUM_ON_CACHE_QUBITS)
-# else // KET_DEFAULT_NUM_ON_CACHE_QUBITS
-#   define BRA_MAX_NUM_FUSED_QUBITS 10
-# endif // KET_DEFAULT_NUM_ON_CACHE_QUBITS
-#endif // BRA_MAX_NUM_FUSED_QUBITS
-#define CONTROL_QUBITS(z, n, _) , static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubits[n].qubit())])
-#ifndef KET_USE_BIT_MASKS_EXPLICITLY
-# define CASE_CN(z, num_control_qubits, _) \
-       case num_control_qubits:\
-        ::ket::gate::fused::adj_phase_shift_coeff(\
-          first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,\
-          phase_coefficient_\
-          BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
-        break;\
-
-# define DO_CALL(z, num_fused_qubits, _) \
-    template <typename Iterator>\
-    auto fused_adj_multi_controlled_phase_shift<Iterator>::do_call(\
-      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,\
-      std::array< ::bra::qubit_type, num_fused_qubits > const& unsorted_fused_qubits,\
-      std::array< ::bra::qubit_type, num_fused_qubits + 1u > const& sorted_fused_qubits_with_sentinel,\
-      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void\
-    {\
-      auto control_qubits = std::vector< ::bra::control_qubit_type >{};\
-      auto const num_control_qubits = control_qubits_.size();\
-      control_qubits.reserve(num_control_qubits);\
-      for (auto index = decltype(num_control_qubits){0}; index < num_control_qubits; ++index)\
-        if (static_cast<bool>(is_control_qubit_enabled_vec_[index]))\
-          control_qubits.push_back(control_qubits_[index]);\
-\
-      switch (control_qubits.size())\
-      {\
-BOOST_PP_REPEAT_FROM_TO_ ## z(0, BOOST_PP_INC(num_fused_qubits), CASE_CN, nil)\
-      }\
+    {
+      if (unsorted_fused_qubits.size() < std::size_t{1u})
+        throw std::runtime_error{"fused_adj_multi_controlled_phase_shift requires at least one fused qubit"};
+      auto enabled_control_qubits = std::vector< ::bra::control_qubit_type >{};
+      auto const num_control_qubits = control_qubits_.size();
+      enabled_control_qubits.reserve(num_control_qubits);
+      for (auto index = decltype(num_control_qubits){0}; index < num_control_qubits; ++index)
+        if (static_cast<bool>(is_control_qubit_enabled_vec_[index]))
+          enabled_control_qubits.push_back(static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubits_[index].qubit())]));
+      ::ket::gate::fused::runtime::ranges::adj_phase_shift_coeff(
+        first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
+        phase_coefficient_,
+        enabled_control_qubits);
     }
 #else // KET_USE_BIT_MASKS_EXPLICITLY
-# define CASE_CN(z, num_control_qubits, _) \
-       case num_control_qubits:\
-        ::ket::gate::fused::adj_phase_shift_coeff(\
-          first, fused_index_wo_qubits, qubit_masks, index_masks,\
-          phase_coefficient_\
-          BOOST_PP_REPEAT_ ## z(num_control_qubits, CONTROL_QUBITS, nil));\
-        break;\
-
-# define DO_CALL(z, num_fused_qubits, _) \
-    template <typename Iterator>\
-    auto fused_adj_multi_controlled_phase_shift<Iterator>::do_call(\
-      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,\
-      std::array< ::bra::state_integer_type, num_fused_qubits > const& qubit_masks,\
-      std::array< ::bra::state_integer_type, num_fused_qubits + 1u > const& index_masks,\
-      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void\
-    {\
-      auto control_qubits = std::vector< ::bra::control_qubit_type >{};\
-      auto const num_control_qubits = control_qubits_.size();\
-      control_qubits.reserve(num_control_qubits);\
-      for (auto index = decltype(num_control_qubits){0}; index < num_control_qubits; ++index)\
-        if (static_cast<bool>(is_control_qubit_enabled_vec_[index]))\
-          control_qubits.push_back(control_qubits_[index]);\
-\
-      switch (control_qubits.size())\
-      {\
-BOOST_PP_REPEAT_FROM_TO_ ## z(0, BOOST_PP_INC(num_fused_qubits), CASE_CN, nil)\
-      }\
+    template <typename Iterator>
+    auto fused_adj_multi_controlled_phase_shift<Iterator>::do_call(
+      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
+      std::vector< ::bra::state_integer_type > const& qubit_masks,
+      std::vector< ::bra::state_integer_type > const& index_masks,
+      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void
+    {
+      if (qubit_masks.size() < std::size_t{1u})
+        throw std::runtime_error{"fused_adj_multi_controlled_phase_shift requires at least one fused qubit"};
+      auto enabled_control_qubits = std::vector< ::bra::control_qubit_type >{};
+      auto const num_control_qubits = control_qubits_.size();
+      enabled_control_qubits.reserve(num_control_qubits);
+      for (auto index = decltype(num_control_qubits){0}; index < num_control_qubits; ++index)
+        if (static_cast<bool>(is_control_qubit_enabled_vec_[index]))
+          enabled_control_qubits.push_back(static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubits_[index].qubit())]));
+      ::ket::gate::fused::runtime::ranges::adj_phase_shift_coeff(
+        first, fused_index_wo_qubits, qubit_masks, index_masks,
+        phase_coefficient_,
+        enabled_control_qubits);
     }
 #endif // KET_USE_BIT_MASKS_EXPLICITLY
-BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_FUSED_QUBITS), DO_CALL, nil)
-#undef DO_CALL
-#undef CONTROL_QUBITS
 
     template <typename Iterator>
     auto fused_adj_multi_controlled_phase_shift<Iterator>::do_disable_control_qubits(
@@ -161,12 +82,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_FUSED_QUBITS), DO_CALL, nil)
       auto const num_control_qubits = control_qubits_.size();
       for (auto index = decltype(num_control_qubits){0}; index < num_control_qubits; ++index)
         is_control_qubit_enabled_vec_[index]
-          = static_cast<int>(
-              static_cast<bool>(is_control_qubit_enabled_vec_[index])
-              and std::none_of(
-                    first, last,
-                    [this, index](::bra::qubit_type const found_qubit)
-                    { return found_qubit == this->control_qubits_[index]; }));
+          = static_cast<int>(static_cast<bool>(is_control_qubit_enabled_vec_[index]) and std::none_of(first, last, [this, index](::bra::qubit_type const q) { return q == this->control_qubits_[index]; }));
     }
 
     template <typename Iterator>
@@ -178,12 +94,7 @@ BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_FUSED_QUBITS), DO_CALL, nil)
       auto const num_control_qubits = control_qubits_.size();
       for (auto index = decltype(num_control_qubits){0}; index < num_control_qubits; ++index)
         is_control_qubit_enabled_vec_[index]
-          = static_cast<int>(
-              static_cast<bool>(is_control_qubit_enabled_vec_[index])
-              and std::none_of(
-                    first, last,
-                    [this, index](::bra::control_qubit_type const found_control_qubit)
-                    { return found_control_qubit == this->control_qubits_[index]; }));
+          = static_cast<int>(static_cast<bool>(is_control_qubit_enabled_vec_[index]) and std::none_of(first, last, [this, index](::bra::control_qubit_type const q) { return q == this->control_qubits_[index]; }));
     }
 
     template class fused_adj_multi_controlled_phase_shift< ::bra::data_type::iterator >;

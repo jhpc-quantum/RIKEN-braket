@@ -1,11 +1,7 @@
-#include <array>
 #include <vector>
+#include <stdexcept>
 #include <utility>
 
-#include <boost/preprocessor/arithmetic/dec.hpp>
-#include <boost/preprocessor/arithmetic/inc.hpp>
-#include <boost/preprocessor/repetition/repeat.hpp>
-#include <boost/preprocessor/repetition/repeat_from_to.hpp>
 
 #include <ket/gate/fused/exponential_pauli_x.hpp>
 #if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
@@ -33,94 +29,45 @@ namespace bra
 
 #ifndef KET_USE_BIT_MASKS_EXPLICITLY
     template <typename Iterator>
-    [[noreturn]] auto fused_exponential_pauli_xn<Iterator>::do_call(
+    auto fused_exponential_pauli_xn<Iterator>::do_call(
       Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
-      std::array< ::bra::qubit_type, 0u > const& unsorted_fused_qubits,
-      std::array< ::bra::qubit_type, 1u > const& sorted_fused_qubits_with_sentinel,
+      std::vector< ::bra::qubit_type > const& unsorted_fused_qubits,
+      std::vector< ::bra::qubit_type > const& sorted_fused_qubits_with_sentinel,
       std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void
-    { throw 1; }
+    {
+      if (unsorted_fused_qubits.size() < std::size_t{3u})
+        throw std::runtime_error{"fused_exponential_pauli_xn requires at least three fused qubits"};
 
-    template <typename Iterator>
-    [[noreturn]] auto fused_exponential_pauli_xn<Iterator>::do_call(
-      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
-      std::array< ::bra::qubit_type, 1u > const& unsorted_fused_qubits,
-      std::array< ::bra::qubit_type, 2u > const& sorted_fused_qubits_with_sentinel,
-      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void
-    { throw 1; }
+      std::vector< ::bra::qubit_type > target_qubits;
+      target_qubits.reserve(qubits_.size());
+      for (auto const qubit : qubits_)
+        target_qubits.push_back(static_cast< ::bra::qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(qubit)]));
 
-    template <typename Iterator>
-    [[noreturn]] auto fused_exponential_pauli_xn<Iterator>::do_call(
-      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
-      std::array< ::bra::qubit_type, 2u > const& unsorted_fused_qubits,
-      std::array< ::bra::qubit_type, 3u > const& sorted_fused_qubits_with_sentinel,
-      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void
-    { throw 1; }
-#else // KET_USE_BIT_MASKS_EXPLICITLY
-    template <typename Iterator>
-    [[noreturn]] auto fused_exponential_pauli_xn<Iterator>::do_call(
-      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
-      std::array< ::bra::state_integer_type, 0u > const& qubit_masks,
-      std::array< ::bra::state_integer_type, 1u > const& index_masks,
-      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void
-    { throw 1; }
-
-    template <typename Iterator>
-    [[noreturn]] auto fused_exponential_pauli_xn<Iterator>::do_call(
-      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
-      std::array< ::bra::state_integer_type, 1u > const& qubit_masks,
-      std::array< ::bra::state_integer_type, 2u > const& index_masks,
-      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void
-    { throw 1; }
-
-    template <typename Iterator>
-    [[noreturn]] auto fused_exponential_pauli_xn<Iterator>::do_call(
-      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
-      std::array< ::bra::state_integer_type, 2u > const& qubit_masks,
-      std::array< ::bra::state_integer_type, 3u > const& index_masks,
-      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void
-    { throw 1; }
-#endif // KET_USE_BIT_MASKS_EXPLICITLY
-
-#ifndef BRA_MAX_NUM_FUSED_QUBITS
-# ifdef KET_DEFAULT_NUM_ON_CACHE_QUBITS
-#   define BRA_MAX_NUM_FUSED_QUBITS BOOST_PP_DEC(KET_DEFAULT_NUM_ON_CACHE_QUBITS)
-# else // KET_DEFAULT_NUM_ON_CACHE_QUBITS
-#   define BRA_MAX_NUM_FUSED_QUBITS 10
-# endif // KET_DEFAULT_NUM_ON_CACHE_QUBITS
-#endif // BRA_MAX_NUM_FUSED_QUBITS
-#define QUBITS(z, n, to_qubit_index_in_fused_gates) , static_cast< ::bra::qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(qubits_[n])])
-#ifndef KET_USE_BIT_MASKS_EXPLICITLY
-# define DO_CALL(z, num_fused_qubits, _) \
-    template <typename Iterator>\
-    auto fused_exponential_pauli_xn<Iterator>::do_call(\
-      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,\
-      std::array< ::bra::qubit_type, num_fused_qubits > const& unsorted_fused_qubits,\
-      std::array< ::bra::qubit_type, num_fused_qubits + 1u > const& sorted_fused_qubits_with_sentinel,\
-      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void\
-    {\
-      ::ket::gate::fused::exponential_pauli_x(\
-        first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,\
-        phase_\
-        BOOST_PP_REPEAT_ ## z(num_fused_qubits, QUBITS, to_qubit_index_in_fused_gates));\
+      ::ket::gate::fused::runtime::ranges::exponential_pauli_x(
+        first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
+        phase_, target_qubits);
     }
 #else // KET_USE_BIT_MASKS_EXPLICITLY
-# define DO_CALL(z, num_fused_qubits, _) \
-    template <typename Iterator>\
-    auto fused_exponential_pauli_xn<Iterator>::do_call(\
-      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,\
-      std::array< ::bra::state_integer_type, num_fused_qubits > const& qubit_masks,\
-      std::array< ::bra::state_integer_type, num_fused_qubits + 1u > const& index_masks,\
-      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void\
-    {\
-      ::ket::gate::fused::exponential_pauli_x(\
-        first, fused_index_wo_qubits, qubit_masks, index_masks,\
-        phase_\
-        BOOST_PP_REPEAT_ ## z(num_fused_qubits, QUBITS, to_qubit_index_in_fused_gates));\
+    template <typename Iterator>
+    auto fused_exponential_pauli_xn<Iterator>::do_call(
+      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
+      std::vector< ::bra::state_integer_type > const& qubit_masks,
+      std::vector< ::bra::state_integer_type > const& index_masks,
+      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void
+    {
+      if (qubit_masks.size() < std::size_t{3u})
+        throw std::runtime_error{"fused_exponential_pauli_xn requires at least three fused qubits"};
+
+      std::vector< ::bra::qubit_type > target_qubits;
+      target_qubits.reserve(qubits_.size());
+      for (auto const qubit : qubits_)
+        target_qubits.push_back(static_cast< ::bra::qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(qubit)]));
+
+      ::ket::gate::fused::runtime::ranges::exponential_pauli_x(
+        first, fused_index_wo_qubits, qubit_masks, index_masks,
+        phase_, target_qubits);
     }
 #endif // KET_USE_BIT_MASKS_EXPLICITLY
-BOOST_PP_REPEAT_FROM_TO(3, BOOST_PP_INC(BRA_MAX_NUM_FUSED_QUBITS), DO_CALL, nil)
-#undef DO_CALL
-#undef QUBITS
 
     template class fused_exponential_pauli_xn< ::bra::data_type::iterator >;
 #if !defined(BRA_NO_MPI) && (!defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)))

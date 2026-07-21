@@ -1501,331 +1501,67 @@ BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_OPERATED_QUBITS), CASE_N, ni
     for (auto const fused_control_qubit: fused_control_qubits)
       to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(fused_control_qubit.qubit())] = present_qubit_index++;
 
+    auto operated_qubits = std::vector< ::bra::qubit_type >{};
+    operated_qubits.reserve(fused_qubits.size() + fused_control_qubits.size());
+    operated_qubits.insert(end(operated_qubits), begin(fused_qubits), end(fused_qubits));
+    for (auto const fused_control_qubit: fused_control_qubits)
+      operated_qubits.push_back(fused_control_qubit.qubit());
+
+    auto const call_fused_gates
+      = [this, &to_qubit_index_in_fused_gates](
+          auto const first, ::bra::state_integer_type const index_wo_qubits,
+          auto const& unsorted_fused_qubits_or_masks,
+          auto const& sorted_fused_qubits_with_sentinel_or_index_masks,
+          int const)
+        {
+          for (auto const& gate_ptr: this->fused_gates_)
+            gate_ptr->call(
+              first, index_wo_qubits,
+              unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
+              to_qubit_index_in_fused_gates);
+        };
+
+# if !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || defined(KET_USE_ON_CACHE_STATE_VECTOR)
+    ket::gate::runtime::ranges::gate(parallel_policy_, data_, call_fused_gates, operated_qubits);
+# else // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
 #   ifndef KET_DEFAULT_NUM_ON_CACHE_QUBITS
 #     define KET_DEFAULT_NUM_ON_CACHE_QUBITS 16
 #   endif // KET_DEFAULT_NUM_ON_CACHE_QUBITS
     constexpr auto num_on_cache_qubits = bit_integer_type{KET_DEFAULT_NUM_ON_CACHE_QUBITS};
     constexpr auto cache_size = ket::utility::integer_exp2<state_integer_type>(num_on_cache_qubits);
 
-    switch (fused_qubits.size())
+    if (data_.size() <= cache_size)
+      ket::gate::runtime::nocache::qubit_ranges::gate(
+        parallel_policy_, begin(data_), end(data_), call_fused_gates, operated_qubits);
+    else if (::ket::utility::runtime::ranges::all_in_state_vector(num_on_cache_qubits, operated_qubits))
+      ket::gate::runtime::cache::all_on_cache::qubit_ranges::gate(
+        parallel_policy_, begin(data_), end(data_), call_fused_gates, num_on_cache_qubits, operated_qubits);
+    else
     {
-# define FUSED_QUBITS(z, n, _) , fused_qubits[n]
-# define FUSED_CONTROL_QUBITS(z, n, _) , fused_control_qubits[n]
-# if !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION)
-#   ifndef KET_USE_BIT_MASKS_EXPLICITLY
-#     define CASE_CN(z, num_control_qubits, num_target_qubits) \
-       case num_control_qubits:\
-        ket::gate::ranges::gate(\
-          parallel_policy_, data_,\
-          [this, &to_qubit_index_in_fused_gates](\
-            auto const first, ::bra::state_integer_type const index_wo_qubits,\
-            std::array< ::bra::qubit_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) > const& unsorted_fused_qubits,\
-            std::array< ::bra::qubit_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) + 1u > const& sorted_fused_qubits_with_sentinel,\
-            int const)\
-          {\
-            for (auto const& gate_ptr: this->fused_gates_)\
-              gate_ptr->call(\
-                first, index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,\
-                to_qubit_index_in_fused_gates);\
-          } BOOST_PP_REPEAT_ ## z(num_target_qubits, FUSED_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, FUSED_CONTROL_QUBITS, nil));\
-        break;\
+      auto const call_cache_aware_fused_gates
+        = [this, &to_qubit_index_in_fused_gates](
+            auto const first, ::bra::state_integer_type const index_wo_qubits,
+            auto const& unsorted_fused_qubits_or_masks,
+            auto const& sorted_fused_qubits_with_sentinel_or_index_masks,
+            int const)
+          {
+            for (auto const& gate_ptr: this->cache_aware_fused_gates_)
+              gate_ptr->call(
+                first, index_wo_qubits,
+                unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
+                to_qubit_index_in_fused_gates);
+          };
 
-#   else // KET_USE_BIT_MASKS_EXPLICITLY
-#     define CASE_CN(z, num_control_qubits, num_target_qubits) \
-       case num_control_qubits:\
-        ket::gate::ranges::gate(\
-          parallel_policy_, data_,\
-          [this, &to_qubit_index_in_fused_gates](\
-            auto const first, ::bra::state_integer_type const index_wo_qubits,\
-            std::array< ::bra::state_integer_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) > const& qubit_masks,\
-            std::array< ::bra::state_integer_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) + 1u > const& index_masks,\
-            int const)\
-          {\
-            for (auto const& gate_ptr: this->fused_gates_)\
-              gate_ptr->call(\
-                first, index_wo_qubits, qubit_masks, index_masks,\
-                to_qubit_index_in_fused_gates);\
-          } BOOST_PP_REPEAT_ ## z(num_target_qubits, FUSED_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, FUSED_CONTROL_QUBITS, nil));\
-        break;\
-
-#   endif // KET_USE_BIT_MASKS_EXPLICITLY
-# elif !defined(KET_USE_ON_CACHE_STATE_VECTOR)
-#   ifndef KET_USE_BIT_MASKS_EXPLICITLY
-#     define CASE_CN(z, num_control_qubits, num_target_qubits) \
-       case num_control_qubits:\
-        if (data_.size() <= cache_size)\
-          ket::gate::nocache::ranges::gate(\
-            parallel_policy_, data_,\
-            [this, &to_qubit_index_in_fused_gates](\
-              auto const first, ::bra::state_integer_type const index_wo_qubits,\
-              std::array< ::bra::qubit_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) > const& unsorted_fused_qubits,\
-              std::array< ::bra::qubit_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) + 1u > const& sorted_fused_qubits_with_sentinel,\
-              int const)\
-            {\
-              for (auto const& gate_ptr: this->fused_gates_)\
-                gate_ptr->call(\
-                  first, index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,\
-                  to_qubit_index_in_fused_gates);\
-            } BOOST_PP_REPEAT_ ## z(num_target_qubits, FUSED_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, FUSED_CONTROL_QUBITS, nil));\
-        else if (ket::utility::all_in_state_vector(num_on_cache_qubits BOOST_PP_REPEAT_ ## z(num_target_qubits, FUSED_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, FUSED_CONTROL_QUBITS, nil)))\
-          ket::gate::cache::all_on_cache::gate(\
-            parallel_policy_, begin(data_), end(data_),\
-            [this, &to_qubit_index_in_fused_gates](\
-              auto const first, ::bra::state_integer_type const index_wo_qubits,\
-              std::array< ::bra::qubit_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) > const& unsorted_fused_qubits,\
-              std::array< ::bra::qubit_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) + 1u > const& sorted_fused_qubits_with_sentinel,\
-              int const)\
-            {\
-              for (auto const& gate_ptr: this->fused_gates_)\
-                gate_ptr->call(\
-                  first, index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,\
-                  to_qubit_index_in_fused_gates);\
-            } BOOST_PP_REPEAT_ ## z(num_target_qubits, FUSED_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, FUSED_CONTROL_QUBITS, nil));\
-        else if (ket::utility::none_in_state_vector(num_on_cache_qubits BOOST_PP_REPEAT_ ## z(num_target_qubits, FUSED_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, FUSED_CONTROL_QUBITS, nil)))\
-          ket::gate::cache::none_on_cache::gate(\
-            parallel_policy_, begin(data_), end(data_),\
-            [this, &to_qubit_index_in_fused_gates](\
-              auto const first, ::bra::state_integer_type const index_wo_qubits,\
-              std::array< ::bra::qubit_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) > const& unsorted_fused_qubits,\
-              std::array< ::bra::qubit_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) + 1u > const& sorted_fused_qubits_with_sentinel,\
-              int const)\
-            {\
-              for (auto const& gate_ptr: this->cache_aware_fused_gates_)\
-                gate_ptr->call(\
-                  first, index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,\
-                  to_qubit_index_in_fused_gates);\
-            } BOOST_PP_REPEAT_ ## z(num_target_qubits, FUSED_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, FUSED_CONTROL_QUBITS, nil));\
-        else\
-          ket::gate::cache::some_on_cache::gate(\
-            parallel_policy_, begin(data_), end(data_),\
-            [this, &to_qubit_index_in_fused_gates](\
-              auto const first, ::bra::state_integer_type const index_wo_qubits,\
-              std::array< ::bra::qubit_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) > const& unsorted_fused_qubits,\
-              std::array< ::bra::qubit_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) + 1u > const& sorted_fused_qubits_with_sentinel,\
-              int const)\
-            {\
-              for (auto const& gate_ptr: this->cache_aware_fused_gates_)\
-                gate_ptr->call(\
-                  first, index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,\
-                  to_qubit_index_in_fused_gates);\
-            } BOOST_PP_REPEAT_ ## z(num_target_qubits, FUSED_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, FUSED_CONTROL_QUBITS, nil));\
-        break;\
-
-#   else // KET_USE_BIT_MASKS_EXPLICITLY
-#     define CASE_CN(z, num_control_qubits, num_target_qubits) \
-       case num_control_qubits:\
-        if (data_.size() <= cache_size)\
-          ket::gate::nocache::ranges::gate(\
-            parallel_policy_, data_,\
-            [this, &to_qubit_index_in_fused_gates](\
-              auto const first, ::bra::state_integer_type const index_wo_qubits,\
-              std::array< ::bra::state_integer_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) > const& qubit_masks,\
-              std::array< ::bra::state_integer_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) + 1u > const& index_masks,\
-              int const)\
-            {\
-              for (auto const& gate_ptr: this->fused_gates_)\
-                gate_ptr->call(\
-                  first, index_wo_qubits, qubit_masks, index_masks,\
-                  to_qubit_index_in_fused_gates);\
-            } BOOST_PP_REPEAT_ ## z(num_target_qubits, FUSED_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, FUSED_CONTROL_QUBITS, nil));\
-        else if (ket::utility::all_in_state_vector(num_on_cache_qubits BOOST_PP_REPEAT_ ## z(num_target_qubits, FUSED_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, FUSED_CONTROL_QUBITS, nil)))\
-          ket::gate::cache::all_on_cache::gate(\
-            parallel_policy_, begin(data_), end(data_),\
-            [this, &to_qubit_index_in_fused_gates](\
-              auto const first, ::bra::state_integer_type const index_wo_qubits,\
-              std::array< ::bra::state_integer_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) > const& qubit_masks,\
-              std::array< ::bra::state_integer_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) + 1u > const& index_masks,\
-              int const)\
-            {\
-              for (auto const& gate_ptr: this->fused_gates_)\
-                gate_ptr->call(\
-                  first, index_wo_qubits, qubit_masks, index_masks,\
-                  to_qubit_index_in_fused_gates);\
-            } BOOST_PP_REPEAT_ ## z(num_target_qubits, FUSED_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, FUSED_CONTROL_QUBITS, nil));\
-        else if (ket::utility::none_in_state_vector(num_on_cache_qubits BOOST_PP_REPEAT_ ## z(num_target_qubits, FUSED_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, FUSED_CONTROL_QUBITS, nil)))\
-          ket::gate::cache::none_on_cache::gate(\
-            parallel_policy_, begin(data_), end(data_),\
-            [this, &to_qubit_index_in_fused_gates](\
-              auto const first, ::bra::state_integer_type const index_wo_qubits,\
-              std::array< ::bra::state_integer_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) > const& qubit_masks,\
-              std::array< ::bra::state_integer_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) + 1u > const& index_masks,\
-              int const)\
-            {\
-              for (auto const& gate_ptr: this->cache_aware_fused_gates_)\
-                gate_ptr->call(\
-                  first, index_wo_qubits, qubit_masks, index_masks,\
-                  to_qubit_index_in_fused_gates);\
-            } BOOST_PP_REPEAT_ ## z(num_target_qubits, FUSED_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, FUSED_CONTROL_QUBITS, nil));\
-        else\
-          ket::gate::cache::some_on_cache::gate(\
-            parallel_policy_, begin(data_), end(data_),\
-            [this, &to_qubit_index_in_fused_gates](\
-              auto const first, ::bra::state_integer_type const index_wo_qubits,\
-              std::array< ::bra::state_integer_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) > const& qubit_masks,\
-              std::array< ::bra::state_integer_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) + 1u > const& index_masks,\
-              int const)\
-            {\
-              for (auto const& gate_ptr: this->cache_aware_fused_gates_)\
-                gate_ptr->call(\
-                  first, index_wo_qubits, qubit_masks, index_masks,\
-                  to_qubit_index_in_fused_gates);\
-            } BOOST_PP_REPEAT_ ## z(num_target_qubits, FUSED_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, FUSED_CONTROL_QUBITS, nil));\
-        break;\
-
-#   endif // KET_USE_BIT_MASKS_EXPLICITLY
-# else
-#   ifndef KET_USE_BIT_MASKS_EXPLICITLY
-#     define CASE_CN(z, num_control_qubits, num_target_qubits) \
-       case num_control_qubits:\
-        if (data_.size() <= cache_size)\
-          ket::gate::nocache::ranges::gate(\
-            parallel_policy_, data_,\
-            [this, &to_qubit_index_in_fused_gates](\
-              auto const first, ::bra::state_integer_type const index_wo_qubits,\
-              std::array< ::bra::qubit_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) > const& unsorted_fused_qubits,\
-              std::array< ::bra::qubit_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) + 1u > const& sorted_fused_qubits_with_sentinel,\
-              int const)\
-            {\
-              for (auto const& gate_ptr: this->fused_gates_)\
-                gate_ptr->call(\
-                  first, index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,\
-                  to_qubit_index_in_fused_gates);\
-            } BOOST_PP_REPEAT_ ## z(num_target_qubits, FUSED_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, FUSED_CONTROL_QUBITS, nil));\
-        else if (ket::utility::all_in_state_vector(num_on_cache_qubits BOOST_PP_REPEAT_ ## z(num_target_qubits, FUSED_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, FUSED_CONTROL_QUBITS, nil)))\
-          ket::gate::cache::all_on_cache::gate(\
-            parallel_policy_, begin(data_), end(data_),\
-            [this, &to_qubit_index_in_fused_gates](\
-              auto const first, ::bra::state_integer_type const index_wo_qubits,\
-              std::array< ::bra::qubit_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) > const& unsorted_fused_qubits,\
-              std::array< ::bra::qubit_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) + 1u > const& sorted_fused_qubits_with_sentinel,\
-              int const)\
-            {\
-              for (auto const& gate_ptr: this->fused_gates_)\
-                gate_ptr->call(\
-                  first, index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,\
-                  to_qubit_index_in_fused_gates);\
-            } BOOST_PP_REPEAT_ ## z(num_target_qubits, FUSED_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, FUSED_CONTROL_QUBITS, nil));\
-        else if (ket::utility::none_in_state_vector(num_on_cache_qubits BOOST_PP_REPEAT_ ## z(num_target_qubits, FUSED_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, FUSED_CONTROL_QUBITS, nil)))\
-          ket::gate::cache::none_on_cache::gate(\
-            parallel_policy_, begin(data_), end(data_),\
-            [this, &to_qubit_index_in_fused_gates](\
-              auto const first, ::bra::state_integer_type const index_wo_qubits,\
-              std::array< ::bra::qubit_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) > const& unsorted_fused_qubits,\
-              std::array< ::bra::qubit_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) + 1u > const& sorted_fused_qubits_with_sentinel,\
-              int const)\
-            {\
-              for (auto const& gate_ptr: this->fused_gates_)\
-                gate_ptr->call(\
-                  first, index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,\
-                  to_qubit_index_in_fused_gates);\
-            } BOOST_PP_REPEAT_ ## z(num_target_qubits, FUSED_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, FUSED_CONTROL_QUBITS, nil));\
-        else\
-          ket::gate::cache::some_on_cache::gate(\
-            parallel_policy_, begin(data_), end(data_),\
-            [this, &to_qubit_index_in_fused_gates](\
-              auto const first, ::bra::state_integer_type const index_wo_qubits,\
-              std::array< ::bra::qubit_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) > const& unsorted_fused_qubits,\
-              std::array< ::bra::qubit_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) + 1u > const& sorted_fused_qubits_with_sentinel,\
-              int const)\
-            {\
-              for (auto const& gate_ptr: this->fused_gates_)\
-                gate_ptr->call(\
-                  first, index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,\
-                  to_qubit_index_in_fused_gates);\
-            } BOOST_PP_REPEAT_ ## z(num_target_qubits, FUSED_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, FUSED_CONTROL_QUBITS, nil));\
-        break;\
-
-#   else // KET_USE_BIT_MASKS_EXPLICITLY
-#     define CASE_CN(z, num_control_qubits, num_target_qubits) \
-       case num_control_qubits:\
-        if (data_.size() <= cache_size)\
-          ket::gate::nocache::ranges::gate(\
-            parallel_policy_, data_,\
-            [this, &to_qubit_index_in_fused_gates](\
-              auto const first, ::bra::state_integer_type const index_wo_qubits,\
-              std::array< ::bra::state_integer_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) > const& qubit_masks,\
-              std::array< ::bra::state_integer_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) + 1u > const& index_masks,\
-              int const)\
-            {\
-              for (auto const& gate_ptr: this->fused_gates_)\
-                gate_ptr->call(\
-                  first, index_wo_qubits, qubit_masks, index_masks,\
-                  to_qubit_index_in_fused_gates);\
-            } BOOST_PP_REPEAT_ ## z(num_target_qubits, FUSED_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, FUSED_CONTROL_QUBITS, nil));\
-        else if (ket::utility::all_in_state_vector(num_on_cache_qubits BOOST_PP_REPEAT_ ## z(num_target_qubits, FUSED_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, FUSED_CONTROL_QUBITS, nil)))\
-          ket::gate::cache::all_on_cache::gate(\
-            parallel_policy_, begin(data_), end(data_),\
-            [this, &to_qubit_index_in_fused_gates](\
-              auto const first, ::bra::state_integer_type const index_wo_qubits,\
-              std::array< ::bra::state_integer_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) > const& qubit_masks,\
-              std::array< ::bra::state_integer_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) + 1u > const& index_masks,\
-              int const)\
-            {\
-              for (auto const& gate_ptr: this->fused_gates_)\
-                gate_ptr->call(\
-                  first, index_wo_qubits, qubit_masks, index_masks,\
-                  to_qubit_index_in_fused_gates);\
-            } BOOST_PP_REPEAT_ ## z(num_target_qubits, FUSED_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, FUSED_CONTROL_QUBITS, nil));\
-        else if (ket::utility::none_in_state_vector(num_on_cache_qubits BOOST_PP_REPEAT_ ## z(num_target_qubits, FUSED_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, FUSED_CONTROL_QUBITS, nil)))\
-          ket::gate::cache::none_on_cache::gate(\
-            parallel_policy_, begin(data_), end(data_),\
-            [this, &to_qubit_index_in_fused_gates](\
-              auto const first, ::bra::state_integer_type const index_wo_qubits,\
-              std::array< ::bra::state_integer_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) > const& qubit_masks,\
-              std::array< ::bra::state_integer_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) + 1u > const& index_masks,\
-              int const)\
-            {\
-              for (auto const& gate_ptr: this->fused_gates_)\
-                gate_ptr->call(\
-                  first, index_wo_qubits, qubit_masks, index_masks,\
-                  to_qubit_index_in_fused_gates);\
-            } BOOST_PP_REPEAT_ ## z(num_target_qubits, FUSED_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, FUSED_CONTROL_QUBITS, nil));\
-        else\
-          ket::gate::cache::some_on_cache::gate(\
-            parallel_policy_, begin(data_), end(data_),\
-            [this, &to_qubit_index_in_fused_gates](\
-              auto const first, ::bra::state_integer_type const index_wo_qubits,\
-              std::array< ::bra::state_integer_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) > const& qubit_masks,\
-              std::array< ::bra::state_integer_type, BOOST_PP_ADD(num_target_qubits, num_control_qubits) + 1u > const& index_masks,\
-              int const)\
-            {\
-              for (auto const& gate_ptr: this->fused_gates_)\
-                gate_ptr->call(\
-                  first, index_wo_qubits, qubit_masks, index_masks,\
-                  to_qubit_index_in_fused_gates);\
-            } BOOST_PP_REPEAT_ ## z(num_target_qubits, FUSED_QUBITS, nil) BOOST_PP_REPEAT_ ## z(num_control_qubits, FUSED_CONTROL_QUBITS, nil));\
-        break;\
-
-#   endif // KET_USE_BIT_MASKS_EXPLICITLY
-# endif
-# ifndef BRA_MAX_NUM_FUSED_QUBITS
-#   ifdef KET_DEFAULT_NUM_ON_CACHE_QUBITS
-#     define BRA_MAX_NUM_FUSED_QUBITS BOOST_PP_DEC(KET_DEFAULT_NUM_ON_CACHE_QUBITS)
-#   else // KET_DEFAULT_NUM_ON_CACHE_QUBITS
-#     define BRA_MAX_NUM_FUSED_QUBITS 10
-#   endif // KET_DEFAULT_NUM_ON_CACHE_QUBITS
-# endif // BRA_MAX_NUM_FUSED_QUBITS
-# define CASE_N(z, num_target_qubits, _) \
-     case num_target_qubits:\
-      switch (fused_control_qubits.size())\
-      {\
-BOOST_PP_REPEAT_FROM_TO_ ## z(0, BOOST_PP_INC(BOOST_PP_SUB(BRA_MAX_NUM_FUSED_QUBITS, num_target_qubits)), CASE_CN, num_target_qubits)\
-      }\
-      break;\
-
-     case 0:
-      switch (fused_control_qubits.size())
-      {
-BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_FUSED_QUBITS), CASE_CN, 0)
-      }
-      break;
-
-BOOST_PP_REPEAT_FROM_TO(1, BOOST_PP_INC(BRA_MAX_NUM_FUSED_QUBITS), CASE_N, nil)
-# undef CASE_N
-# undef CASE_CN
-# undef FUSED_CONTROL_QUBITS
-# undef FUSED_QUBITS
+      if (::ket::utility::runtime::ranges::none_in_state_vector(num_on_cache_qubits, operated_qubits))
+        ket::gate::runtime::cache::none_on_cache::qubit_ranges::gate(
+          parallel_policy_, begin(data_), end(data_), call_cache_aware_fused_gates,
+          num_on_cache_qubits, operated_qubits);
+      else
+        ket::gate::runtime::cache::some_on_cache::qubit_ranges::gate(
+          parallel_policy_, begin(data_), end(data_), call_cache_aware_fused_gates,
+          num_on_cache_qubits, operated_qubits);
     }
+# endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
 
     fused_gates_.clear();
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
