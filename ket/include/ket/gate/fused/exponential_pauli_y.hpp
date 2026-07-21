@@ -415,7 +415,6 @@ namespace ket
             using std::end;
             auto const num_target_qubits = static_cast<bit_integer_type>(end(target_qubits) - begin(target_qubits));
             auto const num_control_qubits = static_cast<bit_integer_type>(end(control_qubits) - begin(control_qubits));
-            auto const num_operated_qubits = num_target_qubits + num_control_qubits;
             auto const num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
             auto const half_num_target_indices = num_target_indices / std::size_t{2u};
             auto const num_fused_qubits = static_cast<bit_integer_type>(end(unsorted_fused_qubits) - begin(unsorted_fused_qubits));
@@ -1126,12 +1125,11 @@ namespace ket
             using std::end;
             auto const num_target_qubits = static_cast<bit_integer_type>(end(target_qubits) - begin(target_qubits));
             auto const num_control_qubits = static_cast<bit_integer_type>(end(control_qubits) - begin(control_qubits));
-            auto const num_operated_qubits = num_target_qubits + num_control_qubits;
             auto const num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
             auto const half_num_target_indices = num_target_indices / std::size_t{2u};
             auto const num_fused_qubits = static_cast<bit_integer_type>(end(fused_qubit_masks) - begin(fused_qubit_masks));
             assert(static_cast<bit_integer_type>(end(fused_index_masks) - begin(fused_index_masks)) == num_fused_qubits + bit_integer_type{1u});
-            assert(num_operated_qubits <= num_fused_qubits);
+            assert(num_target_qubits + num_control_qubits <= num_fused_qubits);
 
             assert(::ket::utility::runtime::ranges::all_in_state_vector(num_fused_qubits, target_qubits));
             assert(::ket::utility::runtime::ranges::all_in_state_vector(num_fused_qubits, control_qubits));
