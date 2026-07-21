@@ -1713,7 +1713,7 @@ namespace ket
         namespace ranges
         {
           template <typename RandomAccessIterator, typename StateInteger, typename QubitsRange1, typename QubitsRange2, typename Real, typename ControlQubitsRange>
-          inline auto phase_shift_coeff(
+          inline auto phase_shift(
             RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
             QubitsRange1 const& unsorted_fused_qubits, QubitsRange2 const& sorted_fused_qubits_with_sentinel,
             Real const phase, ControlQubitsRange const& control_qubits)
@@ -1730,7 +1730,7 @@ namespace ket
           }
 
           template <typename RandomAccessIterator, typename StateInteger, typename QubitsRange1, typename QubitsRange2, typename Real, typename ControlQubitsRange>
-          inline auto adj_phase_shift_coeff(
+          inline auto adj_phase_shift(
             RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
             QubitsRange1 const& unsorted_fused_qubits, QubitsRange2 const& sorted_fused_qubits_with_sentinel,
             Real const phase, ControlQubitsRange const& control_qubits)
@@ -1819,7 +1819,7 @@ namespace ket
         namespace ranges
         {
           template <typename RandomAccessIterator, typename StateInteger, typename QubitsRange1, typename QubitsRange2, typename Real, typename BitInteger, typename ControlQubitsRange>
-          inline auto phase_shift_coeff(
+          inline auto phase_shift(
             RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
             QubitsRange1 const& unsorted_fused_qubits, QubitsRange2 const& sorted_fused_qubits_with_sentinel,
             Real const phase,
@@ -1835,7 +1835,7 @@ namespace ket
           }
 
           template <typename RandomAccessIterator, typename StateInteger, typename QubitsRange1, typename QubitsRange2, typename Real, typename BitInteger>
-          inline auto phase_shift_coeff(
+          inline auto phase_shift(
             RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
             QubitsRange1 const& unsorted_fused_qubits, QubitsRange2 const& sorted_fused_qubits_with_sentinel,
             Real const phase, ::ket::qubit<StateInteger, BitInteger> const target_qubit)
@@ -1849,7 +1849,7 @@ namespace ket
           }
 
           template <typename RandomAccessIterator, typename StateInteger, typename QubitsRange1, typename QubitsRange2, typename Real, typename BitInteger, typename ControlQubitsRange>
-          inline auto adj_phase_shift_coeff(
+          inline auto adj_phase_shift(
             RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
             QubitsRange1 const& unsorted_fused_qubits, QubitsRange2 const& sorted_fused_qubits_with_sentinel,
             Real const phase,
@@ -1865,7 +1865,7 @@ namespace ket
           }
 
           template <typename RandomAccessIterator, typename StateInteger, typename QubitsRange1, typename QubitsRange2, typename Real, typename BitInteger>
-          inline auto adj_phase_shift_coeff(
+          inline auto adj_phase_shift(
             RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
             QubitsRange1 const& unsorted_fused_qubits, QubitsRange2 const& sorted_fused_qubits_with_sentinel,
             Real const phase, ::ket::qubit<StateInteger, BitInteger> const target_qubit)
@@ -4014,7 +4014,7 @@ namespace ket
         namespace ranges
         {
           template <typename RandomAccessIterator, typename StateInteger, typename StateIntegersRange1, typename StateIntegersRange2, typename Real, typename ControlQubitsRange>
-          inline auto phase_shift_coeff(
+          inline auto phase_shift(
             RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
             StateIntegersRange1 const& fused_qubit_masks, StateIntegersRange2 const& fused_index_masks,
             Real const phase, ControlQubitsRange const& control_qubits)
@@ -4031,7 +4031,7 @@ namespace ket
           }
 
           template <typename RandomAccessIterator, typename StateInteger, typename StateIntegersRange1, typename StateIntegersRange2, typename Real, typename ControlQubitsRange>
-          inline auto adj_phase_shift_coeff(
+          inline auto adj_phase_shift(
             RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
             StateIntegersRange1 const& fused_qubit_masks, StateIntegersRange2 const& fused_index_masks,
             Real const phase, ControlQubitsRange const& control_qubits)
@@ -4120,7 +4120,7 @@ namespace ket
         namespace ranges
         {
           template <typename RandomAccessIterator, typename StateInteger, typename StateIntegersRange1, typename StateIntegersRange2, typename Real, typename BitInteger, typename ControlQubitsRange>
-          inline auto phase_shift_coeff(
+          inline auto phase_shift(
             RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
             StateIntegersRange1 const& fused_qubit_masks, StateIntegersRange2 const& fused_index_masks,
             Real const phase,
@@ -4136,7 +4136,7 @@ namespace ket
           }
 
           template <typename RandomAccessIterator, typename StateInteger, typename StateIntegersRange1, typename StateIntegersRange2, typename Real, typename BitInteger>
-          inline auto phase_shift_coeff(
+          inline auto phase_shift(
             RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
             StateIntegersRange1 const& fused_qubit_masks, StateIntegersRange2 const& fused_index_masks,
             Real const phase,
@@ -4151,7 +4151,7 @@ namespace ket
           }
 
           template <typename RandomAccessIterator, typename StateInteger, typename StateIntegersRange1, typename StateIntegersRange2, typename Real, typename BitInteger, typename ControlQubitsRange>
-          inline auto adj_phase_shift_coeff(
+          inline auto adj_phase_shift(
             RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
             StateIntegersRange1 const& fused_qubit_masks, StateIntegersRange2 const& fused_index_masks,
             Real const phase,
@@ -4167,7 +4167,7 @@ namespace ket
           }
 
           template <typename RandomAccessIterator, typename StateInteger, typename StateIntegersRange1, typename StateIntegersRange2, typename Real, typename BitInteger>
-          inline auto adj_phase_shift_coeff(
+          inline auto adj_phase_shift(
             RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
             StateIntegersRange1 const& fused_qubit_masks, StateIntegersRange2 const& fused_index_masks,
             Real const phase,
