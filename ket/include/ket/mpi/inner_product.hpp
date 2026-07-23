@@ -3882,7 +3882,6 @@ namespace ket
             using permutated_qubit_type = ::ket::utility::meta::range_value_t<PermutatedQubitsRange>;
             using StateInteger = ::ket::meta::state_integer_t<permutated_qubit_type>;
             using BitInteger = ::ket::meta::bit_integer_t<permutated_qubit_type>;
-            using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
 
             using std::begin;
             using std::end;
@@ -3931,7 +3930,6 @@ namespace ket
             using permutated_qubit_type = ::ket::utility::meta::range_value_t<PermutatedQubitsRange>;
             using StateInteger = ::ket::meta::state_integer_t<permutated_qubit_type>;
             using BitInteger = ::ket::meta::bit_integer_t<permutated_qubit_type>;
-            using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
 
             using std::begin;
             using std::end;

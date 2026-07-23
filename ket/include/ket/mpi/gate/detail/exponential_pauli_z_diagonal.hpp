@@ -2110,8 +2110,6 @@ namespace ket
             QubitsRange const& target_qubits, ControlQubitsRange const& control_qubits)
           -> bool
           {
-            using qubit_type = ::ket::utility::meta::range_value_t<QubitsRange>;
-            using control_qubit_type = ::ket::utility::meta::range_value_t<ControlQubitsRange>;
             using std::begin;
             using std::end;
             auto const num_target_qubits = std::distance(begin(target_qubits), end(target_qubits));
