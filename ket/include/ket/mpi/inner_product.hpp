@@ -3880,11 +3880,14 @@ namespace ket
           -> ::ket::utility::meta::range_value_t<LocalState>
           {
             using permutated_qubit_type = ::ket::utility::meta::range_value_t<PermutatedQubitsRange>;
+# ifndef NDEBUG
             using StateInteger = ::ket::meta::state_integer_t<permutated_qubit_type>;
             using BitInteger = ::ket::meta::bit_integer_t<permutated_qubit_type>;
+# endif // NDEBUG
 
             using std::begin;
             using std::end;
+# ifndef NDEBUG
             auto const num_local_qubits
               = static_cast<BitInteger>(
                   ::ket::mpi::utility::policy::num_local_qubits(mpi_policy, local_state, intracommunicator, environment));
@@ -3892,6 +3895,7 @@ namespace ket
               begin(permutated_qubits), end(permutated_qubits),
               [num_local_qubits](permutated_qubit_type const permutated_qubit)
               { return permutated_qubit.qubit() < ::ket::make_qubit<StateInteger>(num_local_qubits); }));
+# endif // NDEBUG
 
             auto sorted_permutated_operated_qubits
               = std::vector<permutated_qubit_type>{begin(permutated_qubits), end(permutated_qubits)};
@@ -3928,11 +3932,14 @@ namespace ket
           -> ::ket::utility::meta::range_value_t<LocalState>
           {
             using permutated_qubit_type = ::ket::utility::meta::range_value_t<PermutatedQubitsRange>;
+# ifndef NDEBUG
             using StateInteger = ::ket::meta::state_integer_t<permutated_qubit_type>;
             using BitInteger = ::ket::meta::bit_integer_t<permutated_qubit_type>;
+# endif // NDEBUG
 
             using std::begin;
             using std::end;
+# ifndef NDEBUG
             auto const num_local_qubits
               = static_cast<BitInteger>(
                   ::ket::mpi::utility::policy::num_local_qubits(mpi_policy, local_state, intracommunicator, environment));
@@ -3940,6 +3947,7 @@ namespace ket
               begin(permutated_qubits), end(permutated_qubits),
               [num_local_qubits](permutated_qubit_type const permutated_qubit)
               { return permutated_qubit.qubit() < ::ket::make_qubit<StateInteger>(num_local_qubits); }));
+# endif // NDEBUG
 
             auto sorted_permutated_operated_qubits
               = std::vector<permutated_qubit_type>{begin(permutated_qubits), end(permutated_qubits)};
@@ -5537,6 +5545,7 @@ namespace ket
 
             using std::begin;
             using std::end;
+# ifndef NDEBUG
             auto const num_local_qubits
               = static_cast<BitInteger>(
                   ::ket::mpi::utility::policy::num_local_qubits(mpi_policy, local_state, circuit_communicator, environment));
@@ -5544,6 +5553,7 @@ namespace ket
               begin(permutated_qubits), end(permutated_qubits),
               [num_local_qubits](permutated_qubit_type const permutated_qubit)
               { return permutated_qubit.qubit() < ::ket::make_qubit<StateInteger>(num_local_qubits); }));
+# endif // NDEBUG
 
             auto sorted_permutated_operated_qubits
               = std::vector<permutated_qubit_type>{begin(permutated_qubits), end(permutated_qubits)};
@@ -5611,17 +5621,21 @@ namespace ket
           -> ::ket::utility::meta::range_value_t<LocalState>
           {
             using permutated_qubit_type = ::ket::utility::meta::range_value_t<PermutatedQubitsRange>;
+# ifndef NDEBUG
             using StateInteger = ::ket::meta::state_integer_t<permutated_qubit_type>;
             using BitInteger = ::ket::meta::bit_integer_t<permutated_qubit_type>;
+# endif // NDEBUG
 
             using std::begin;
             using std::end;
+# ifndef NDEBUG
             assert(std::all_of(
               begin(permutated_qubits), end(permutated_qubits),
               [num_local_qubits = static_cast<BitInteger>(
                  ::ket::mpi::utility::policy::num_local_qubits(mpi_policy, local_state, circuit_communicator, environment))]
               (permutated_qubit_type const permutated_qubit)
               { return permutated_qubit.qubit() < ::ket::make_qubit<StateInteger>(num_local_qubits); }));
+# endif // NDEBUG
 
             auto sorted_permutated_operated_qubits
               = std::vector<permutated_qubit_type>{begin(permutated_qubits), end(permutated_qubits)};
@@ -5682,17 +5696,21 @@ namespace ket
           -> ::ket::utility::meta::range_value_t<LocalState>
           {
             using permutated_qubit_type = ::ket::utility::meta::range_value_t<PermutatedQubitsRange>;
+# ifndef NDEBUG
             using StateInteger = ::ket::meta::state_integer_t<permutated_qubit_type>;
             using BitInteger = ::ket::meta::bit_integer_t<permutated_qubit_type>;
+# endif // NDEBUG
 
             using std::begin;
             using std::end;
+# ifndef NDEBUG
             assert(std::all_of(
               begin(permutated_qubits), end(permutated_qubits),
               [num_local_qubits = static_cast<BitInteger>(
                  ::ket::mpi::utility::policy::num_local_qubits(mpi_policy, local_state, circuit_communicator, environment))]
               (permutated_qubit_type const permutated_qubit)
               { return permutated_qubit.qubit() < ::ket::make_qubit<StateInteger>(num_local_qubits); }));
+# endif // NDEBUG
 
             auto sorted_permutated_operated_qubits
               = std::vector<permutated_qubit_type>{begin(permutated_qubits), end(permutated_qubits)};
