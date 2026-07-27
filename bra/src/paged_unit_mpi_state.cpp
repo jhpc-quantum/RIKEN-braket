@@ -250,7 +250,7 @@ namespace bra
     int const circuit_index,
     std::vector<yampi::intercommunicator> const& intercommunicators,
     yampi::environment const& environment)
-    : ::bra::state{total_num_qubits, seed, is_depolarizing_channel, depolarizing_px, depolarizing_py, depolarizing_pz, uses_depolarizing_seed, depolarizing_seed, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment},
+    : ::bra::mpi_state{total_num_qubits, seed, is_depolarizing_channel, depolarizing_px, depolarizing_py, depolarizing_pz, uses_depolarizing_seed, depolarizing_seed, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment},
       parallel_policy_{num_threads_per_process},
       mpi_policy_{num_unit_qubits, num_processes_per_unit},
       data_{
@@ -282,7 +282,7 @@ namespace bra
     int const circuit_index,
     std::vector<yampi::intercommunicator> const& intercommunicators,
     yampi::environment const& environment)
-    : ::bra::state{initial_permutation, seed, is_depolarizing_channel, depolarizing_px, depolarizing_py, depolarizing_pz, uses_depolarizing_seed, depolarizing_seed, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment},
+    : ::bra::mpi_state{initial_permutation, seed, is_depolarizing_channel, depolarizing_px, depolarizing_py, depolarizing_pz, uses_depolarizing_seed, depolarizing_seed, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment},
       parallel_policy_{num_threads_per_process},
       mpi_policy_{num_unit_qubits, num_processes_per_unit},
       data_{
@@ -314,7 +314,7 @@ namespace bra
     int const circuit_index,
     std::vector<yampi::intercommunicator> const& intercommunicators,
     yampi::environment const& environment)
-    : ::bra::state{total_num_qubits, seed, is_depolarizing_channel, depolarizing_px, depolarizing_py, depolarizing_pz, uses_depolarizing_seed, depolarizing_seed, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment},
+    : ::bra::mpi_state{total_num_qubits, seed, is_depolarizing_channel, depolarizing_px, depolarizing_py, depolarizing_pz, uses_depolarizing_seed, depolarizing_seed, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment},
       parallel_policy_{num_threads_per_process},
       mpi_policy_{num_unit_qubits, num_processes_per_unit},
       data_{
@@ -344,7 +344,7 @@ namespace bra
     int const circuit_index,
     std::vector<yampi::intercommunicator> const& intercommunicators,
     yampi::environment const& environment)
-    : ::bra::state{initial_permutation, seed, is_depolarizing_channel, depolarizing_px, depolarizing_py, depolarizing_pz, uses_depolarizing_seed, depolarizing_seed, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment},
+    : ::bra::mpi_state{initial_permutation, seed, is_depolarizing_channel, depolarizing_px, depolarizing_py, depolarizing_pz, uses_depolarizing_seed, depolarizing_seed, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment},
       parallel_policy_{num_threads_per_process},
       mpi_policy_{num_unit_qubits, num_processes_per_unit},
       data_{
@@ -374,7 +374,7 @@ namespace bra
     int const circuit_index,
     std::vector<yampi::intercommunicator> const& intercommunicators,
     yampi::environment const& environment)
-    : ::bra::state{total_num_qubits, seed, is_depolarizing_channel, depolarizing_px, depolarizing_py, depolarizing_pz, uses_depolarizing_seed, depolarizing_seed, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment},
+    : ::bra::mpi_state{total_num_qubits, seed, is_depolarizing_channel, depolarizing_px, depolarizing_py, depolarizing_pz, uses_depolarizing_seed, depolarizing_seed, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment},
       parallel_policy_{num_threads_per_process},
       mpi_policy_{num_unit_qubits, num_processes_per_unit},
       data_{
@@ -403,7 +403,7 @@ namespace bra
     int const circuit_index,
     std::vector<yampi::intercommunicator> const& intercommunicators,
     yampi::environment const& environment)
-    : ::bra::state{initial_permutation, seed, is_depolarizing_channel, depolarizing_px, depolarizing_py, depolarizing_pz, uses_depolarizing_seed, depolarizing_seed, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment},
+    : ::bra::mpi_state{initial_permutation, seed, is_depolarizing_channel, depolarizing_px, depolarizing_py, depolarizing_pz, uses_depolarizing_seed, depolarizing_seed, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment},
       parallel_policy_{num_threads_per_process},
       mpi_policy_{num_unit_qubits, num_processes_per_unit},
       data_{
@@ -432,360 +432,6 @@ namespace bra
     yampi::broadcast(yampi::make_buffer(result), 0_r, circuit_communicator_, environment_);
 
     return result;
-  }
-
-  auto paged_unit_mpi_state::do_send_real_variable(int const destination_circuit_index, std::string const& variable_name, int const num_elements) const -> void
-  {
-    if (destination_circuit_index == circuit_index_)
-      return;
-    if (is_real_symbol(variable_name))
-      return;
-
-    auto const& real_variable = to_real_variable(variable_name);
-    auto const num_circuits = intercircuit_communicator_.size(environment_);
-    // soruce_circuit_index + num_circuits * destination_circuit_index + num_circuits * num_circuits * rank_in_circuit
-    auto const tag
-      = yampi::tag{circuit_index_ + num_circuits * destination_circuit_index + num_circuits * num_circuits * circuit_communicator_.size(environment_)};
-
-    yampi::send(
-      yampi::make_buffer(std::addressof(real_variable), std::addressof(real_variable) + num_elements),
-      yampi::rank{destination_circuit_index}, tag, intercircuit_communicator_, environment_);
-  }
-
-  auto paged_unit_mpi_state::do_send_complex_variable(int const destination_circuit_index, std::string const& variable_name, int const num_elements) const -> void
-  {
-    if (destination_circuit_index == circuit_index_)
-      return;
-    if (is_complex_symbol(variable_name))
-      return;
-
-    auto const& complex_variable = to_complex_variable(variable_name);
-    auto const num_circuits = intercircuit_communicator_.size(environment_);
-    // soruce_circuit_index + num_circuits * destination_circuit_index + num_circuits * num_circuits * rank_in_circuit
-    auto const tag
-      = yampi::tag{circuit_index_ + num_circuits * destination_circuit_index + num_circuits * num_circuits * circuit_communicator_.size(environment_)};
-
-    yampi::send(
-      yampi::make_buffer(std::addressof(complex_variable), std::addressof(complex_variable) + num_elements),
-      yampi::rank{destination_circuit_index}, tag, intercircuit_communicator_, environment_);
-  }
-
-  auto paged_unit_mpi_state::do_send_int_variable(int const destination_circuit_index, std::string const& variable_name, int const num_elements) const -> void
-  {
-    if (destination_circuit_index == circuit_index_)
-      return;
-    if (is_int_symbol(variable_name))
-      return;
-
-    auto const& int_variable = to_int_variable(variable_name);
-    auto const num_circuits = intercircuit_communicator_.size(environment_);
-    // soruce_circuit_index + num_circuits * destination_circuit_index + num_circuits * num_circuits * rank_in_circuit
-    auto const tag
-      = yampi::tag{circuit_index_ + num_circuits * destination_circuit_index + num_circuits * num_circuits * circuit_communicator_.size(environment_)};
-
-    yampi::send(
-      yampi::make_buffer(std::addressof(int_variable), std::addressof(int_variable) + num_elements),
-      yampi::rank{destination_circuit_index}, tag, intercircuit_communicator_, environment_);
-  }
-
-  auto paged_unit_mpi_state::do_receive_real_variable(int const source_circuit_index, std::string const& variable_name, int const num_elements) -> void
-  {
-    if (source_circuit_index == circuit_index_)
-      return;
-    if (is_real_symbol(variable_name))
-      return;
-
-    auto& real_variable = to_real_variable(variable_name);
-    auto const num_circuits = intercircuit_communicator_.size(environment_);
-    // soruce_circuit_index + num_circuits * destination_circuit_index + num_circuits * num_circuits * rank_in_circuit
-    auto const tag
-      = yampi::tag{source_circuit_index + num_circuits * circuit_index_ + num_circuits * num_circuits * circuit_communicator_.size(environment_)};
-
-    yampi::receive(
-      yampi::make_buffer(std::addressof(real_variable), std::addressof(real_variable) + num_elements),
-      yampi::rank{source_circuit_index}, tag, intercircuit_communicator_, environment_);
-  }
-
-  auto paged_unit_mpi_state::do_receive_complex_variable(int const source_circuit_index, std::string const& variable_name, int const num_elements) -> void
-  {
-    if (source_circuit_index == circuit_index_)
-      return;
-    if (is_complex_symbol(variable_name))
-      return;
-
-    auto& complex_variable = to_complex_variable(variable_name);
-    auto const num_circuits = intercircuit_communicator_.size(environment_);
-    // soruce_circuit_index + num_circuits * destination_circuit_index + num_circuits * num_circuits * rank_in_circuit
-    auto const tag
-      = yampi::tag{source_circuit_index + num_circuits * circuit_index_ + num_circuits * num_circuits * circuit_communicator_.size(environment_)};
-
-    yampi::receive(
-      yampi::make_buffer(std::addressof(complex_variable), std::addressof(complex_variable) + num_elements),
-      yampi::rank{source_circuit_index}, tag, intercircuit_communicator_, environment_);
-  }
-
-  auto paged_unit_mpi_state::do_receive_int_variable(int const source_circuit_index, std::string const& variable_name, int const num_elements) -> void
-  {
-    if (source_circuit_index == circuit_index_)
-      return;
-    if (is_int_symbol(variable_name))
-      return;
-
-    auto& int_variable = to_int_variable(variable_name);
-    auto const num_circuits = intercircuit_communicator_.size(environment_);
-    // soruce_circuit_index + num_circuits * destination_circuit_index + num_circuits * num_circuits * rank_in_circuit
-    auto const tag
-      = yampi::tag{source_circuit_index + num_circuits * circuit_index_ + num_circuits * num_circuits * circuit_communicator_.size(environment_)};
-
-    yampi::receive(
-      yampi::make_buffer(std::addressof(int_variable), std::addressof(int_variable) + num_elements),
-      yampi::rank{source_circuit_index}, tag, intercircuit_communicator_, environment_);
-  }
-
-  auto paged_unit_mpi_state::do_broadcast_real_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements) -> void
-  {
-    if (is_real_symbol(variable_name))
-      return;
-
-    auto& real_variable = to_real_variable(variable_name);
-
-    yampi::broadcast(
-      yampi::make_buffer(std::addressof(real_variable), std::addressof(real_variable) + num_elements),
-      yampi::rank{root_circuit_index}, intercircuit_communicator_, environment_);
-  }
-
-  auto paged_unit_mpi_state::do_broadcast_complex_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements) -> void
-  {
-    if (is_complex_symbol(variable_name))
-      return;
-
-    auto& complex_variable = to_complex_variable(variable_name);
-
-    yampi::broadcast(
-      yampi::make_buffer(std::addressof(complex_variable), std::addressof(complex_variable) + num_elements),
-      yampi::rank{root_circuit_index}, intercircuit_communicator_, environment_);
-  }
-
-  auto paged_unit_mpi_state::do_broadcast_int_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements) -> void
-  {
-    if (is_int_symbol(variable_name))
-      return;
-
-    auto& int_variable = to_int_variable(variable_name);
-
-    yampi::broadcast(
-      yampi::make_buffer(std::addressof(int_variable), std::addressof(int_variable) + num_elements),
-      yampi::rank{root_circuit_index}, intercircuit_communicator_, environment_);
-  }
-
-  auto paged_unit_mpi_state::do_gather_real_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements, std::string const& destination_variable_name) -> void
-  {
-    if (is_real_symbol(variable_name))
-      return;
-
-    auto const intercircuit_root = yampi::rank{root_circuit_index};
-    if (intercircuit_communicator_.rank(environment_) == intercircuit_root)
-    {
-      if (destination_variable_name == "")
-      {
-        auto& real_variable = to_real_variable(variable_name);
-        yampi::gather(
-          yampi::in_place,
-          yampi::make_buffer(std::addressof(real_variable), std::addressof(real_variable) + num_elements * intercircuit_communicator_.size(environment_)),
-          intercircuit_root, intercircuit_communicator_, environment_);
-
-        return;
-      }
-
-      auto const& real_variable = to_real_variable(variable_name);
-      auto& destination_real_variable = to_real_variable(destination_variable_name);
-      yampi::gather(
-        yampi::make_buffer(std::addressof(real_variable), std::addressof(real_variable) + num_elements),
-        std::addressof(destination_real_variable),
-        intercircuit_root, intercircuit_communicator_, environment_);
-
-      return;
-    }
-
-    auto const& real_variable = to_real_variable(variable_name);
-    yampi::gather(
-      yampi::make_buffer(std::addressof(real_variable), std::addressof(real_variable) + num_elements),
-      intercircuit_root, intercircuit_communicator_, environment_);
-  }
-
-  auto paged_unit_mpi_state::do_gather_complex_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements, std::string const& destination_variable_name) -> void
-  {
-    if (is_complex_symbol(variable_name))
-      return;
-
-    auto const intercircuit_root = yampi::rank{root_circuit_index};
-    if (intercircuit_communicator_.rank(environment_) == intercircuit_root)
-    {
-      if (destination_variable_name == "")
-      {
-        auto& complex_variable = to_complex_variable(variable_name);
-        yampi::gather(
-          yampi::in_place,
-          yampi::make_buffer(std::addressof(complex_variable), std::addressof(complex_variable) + num_elements * intercircuit_communicator_.size(environment_)),
-          intercircuit_root, intercircuit_communicator_, environment_);
-
-        return;
-      }
-
-      auto const& complex_variable = to_complex_variable(variable_name);
-      auto& destination_complex_variable = to_complex_variable(destination_variable_name);
-      yampi::gather(
-        yampi::make_buffer(std::addressof(complex_variable), std::addressof(complex_variable) + num_elements),
-        std::addressof(destination_complex_variable),
-        intercircuit_root, intercircuit_communicator_, environment_);
-
-      return;
-    }
-
-    auto const& complex_variable = to_complex_variable(variable_name);
-    yampi::gather(
-      yampi::make_buffer(std::addressof(complex_variable), std::addressof(complex_variable) + num_elements),
-      intercircuit_root, intercircuit_communicator_, environment_);
-  }
-
-  auto paged_unit_mpi_state::do_gather_int_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements, std::string const& destination_variable_name) -> void
-  {
-    if (is_int_symbol(variable_name))
-      return;
-
-    auto const intercircuit_root = yampi::rank{root_circuit_index};
-    if (intercircuit_communicator_.rank(environment_) == intercircuit_root)
-    {
-      if (destination_variable_name == "")
-      {
-        auto& int_variable = to_int_variable(variable_name);
-        yampi::gather(
-          yampi::in_place,
-          yampi::make_buffer(std::addressof(int_variable), std::addressof(int_variable) + num_elements * intercircuit_communicator_.size(environment_)),
-          intercircuit_root, intercircuit_communicator_, environment_);
-
-        return;
-      }
-
-      auto const& int_variable = to_int_variable(variable_name);
-      auto& destination_int_variable = to_int_variable(destination_variable_name);
-      yampi::gather(
-        yampi::make_buffer(std::addressof(int_variable), std::addressof(int_variable) + num_elements),
-        std::addressof(destination_int_variable),
-        intercircuit_root, intercircuit_communicator_, environment_);
-
-      return;
-    }
-
-    auto const& int_variable = to_int_variable(variable_name);
-    yampi::gather(
-      yampi::make_buffer(std::addressof(int_variable), std::addressof(int_variable) + num_elements),
-      intercircuit_root, intercircuit_communicator_, environment_);
-  }
-
-  auto paged_unit_mpi_state::do_scatter_real_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements, std::string const& source_variable_name) -> void
-  {
-    if (is_real_symbol(variable_name))
-      return;
-
-    auto const intercircuit_root = yampi::rank{root_circuit_index};
-    if (intercircuit_communicator_.rank(environment_) == intercircuit_root)
-    {
-      if (source_variable_name == "")
-      {
-        auto const& real_variable = to_real_variable(variable_name);
-        yampi::scatter(
-          yampi::in_place,
-          yampi::make_buffer(std::addressof(real_variable), std::addressof(real_variable) + num_elements * intercircuit_communicator_.size(environment_)),
-          intercircuit_root, intercircuit_communicator_, environment_);
-
-        return;
-      }
-
-      auto& real_variable = to_real_variable(variable_name);
-      auto const& source_real_variable = to_real_variable(source_variable_name);
-      yampi::scatter(
-        std::addressof(source_real_variable),
-        yampi::make_buffer(std::addressof(real_variable), std::addressof(real_variable) + num_elements),
-        intercircuit_root, intercircuit_communicator_, environment_);
-
-      return;
-    }
-
-    auto& real_variable = to_real_variable(variable_name);
-    yampi::scatter(
-      yampi::make_buffer(std::addressof(real_variable), std::addressof(real_variable) + num_elements),
-      intercircuit_root, intercircuit_communicator_, environment_);
-  }
-
-  auto paged_unit_mpi_state::do_scatter_complex_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements, std::string const& source_variable_name) -> void
-  {
-    if (is_complex_symbol(variable_name))
-      return;
-
-    auto const intercircuit_root = yampi::rank{root_circuit_index};
-    if (intercircuit_communicator_.rank(environment_) == intercircuit_root)
-    {
-      if (source_variable_name == "")
-      {
-        auto const& complex_variable = to_complex_variable(variable_name);
-        yampi::scatter(
-          yampi::in_place,
-          yampi::make_buffer(std::addressof(complex_variable), std::addressof(complex_variable) + num_elements * intercircuit_communicator_.size(environment_)),
-          intercircuit_root, intercircuit_communicator_, environment_);
-
-        return;
-      }
-
-      auto& complex_variable = to_complex_variable(variable_name);
-      auto const& source_complex_variable = to_complex_variable(source_variable_name);
-      yampi::scatter(
-        std::addressof(source_complex_variable),
-        yampi::make_buffer(std::addressof(complex_variable), std::addressof(complex_variable) + num_elements),
-        intercircuit_root, intercircuit_communicator_, environment_);
-
-      return;
-    }
-
-    auto& complex_variable = to_complex_variable(variable_name);
-    yampi::scatter(
-      yampi::make_buffer(std::addressof(complex_variable), std::addressof(complex_variable) + num_elements),
-      intercircuit_root, intercircuit_communicator_, environment_);
-  }
-
-  auto paged_unit_mpi_state::do_scatter_int_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements, std::string const& source_variable_name) -> void
-  {
-    if (is_int_symbol(variable_name))
-      return;
-
-    auto const intercircuit_root = yampi::rank{root_circuit_index};
-    if (intercircuit_communicator_.rank(environment_) == intercircuit_root)
-    {
-      if (source_variable_name == "")
-      {
-        auto const& int_variable = to_int_variable(variable_name);
-        yampi::scatter(
-          yampi::in_place,
-          yampi::make_buffer(std::addressof(int_variable), std::addressof(int_variable) + num_elements * intercircuit_communicator_.size(environment_)),
-          intercircuit_root, intercircuit_communicator_, environment_);
-
-        return;
-      }
-
-      auto& int_variable = to_int_variable(variable_name);
-      auto const& source_int_variable = to_int_variable(source_variable_name);
-      yampi::scatter(
-        std::addressof(source_int_variable),
-        yampi::make_buffer(std::addressof(int_variable), std::addressof(int_variable) + num_elements),
-        intercircuit_root, intercircuit_communicator_, environment_);
-
-      return;
-    }
-
-    auto& int_variable = to_int_variable(variable_name);
-    yampi::scatter(
-      yampi::make_buffer(std::addressof(int_variable), std::addressof(int_variable) + num_elements),
-      intercircuit_root, intercircuit_communicator_, environment_);
   }
 
   void paged_unit_mpi_state::do_i_gate(qubit_type const qubit)
