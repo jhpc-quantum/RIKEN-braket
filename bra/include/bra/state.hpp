@@ -42,14 +42,6 @@
 #   define BRA_clock std::chrono::system_clock
 # endif // BRA_NO_MPI
 
-# ifndef BRA_MAX_NUM_FUSED_QUBITS
-#   ifdef KET_DEFAULT_NUM_ON_CACHE_QUBITS
-#     define BRA_MAX_NUM_FUSED_QUBITS BOOST_PP_DEC(KET_DEFAULT_NUM_ON_CACHE_QUBITS)
-#   else // KET_DEFAULT_NUM_ON_CACHE_QUBITS
-#     define BRA_MAX_NUM_FUSED_QUBITS 10
-#   endif // KET_DEFAULT_NUM_ON_CACHE_QUBITS
-# endif // BRA_MAX_NUM_FUSED_QUBITS
-
 
 namespace bra
 {

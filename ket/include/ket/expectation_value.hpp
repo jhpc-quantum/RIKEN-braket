@@ -8,6 +8,8 @@
 # include <utility>
 # include <type_traits>
 
+# include <boost/range/iterator_range.hpp>
+
 # include <ket/qubit.hpp>
 # include <ket/gate/gate.hpp>
 # include <ket/meta/state_integer_of.hpp>
@@ -150,6 +152,108 @@ namespace ket
     -> ::ket::utility::meta::range_value_t<RandomAccessRange>
     { using std::begin; using std::end; return ::ket::expectation_value(begin(state), end(state), std::forward<Observable>(observable), qubit, qubits...); }
   } // namespace ranges
+
+  namespace runtime
+  {
+    namespace qubit_ranges
+    {
+      // <Psi| A_{ij} |Psi>
+      template <typename ParallelPolicy, typename RandomAccessIterator, typename Observable, typename QubitsRange>
+      inline auto expectation_value(
+        ParallelPolicy const parallel_policy,
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Observable&& observable, QubitsRange const& qubits)
+      -> typename std::iterator_traits<RandomAccessIterator>::value_type
+      {
+        using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+        auto partial_sums = std::vector<complex_type>(::ket::utility::num_threads(parallel_policy));
+
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+        ::ket::gate::runtime::nocache::qubit_ranges::gate(
+          parallel_policy, first, last,
+          [&observable, &partial_sums](
+            auto const first, auto const index_wo_qubits,
+            auto const& unsorted_qubits, auto const& sorted_qubits_with_sentinel,
+            int const thread_index)
+          { partial_sums[thread_index] += observable(first, index_wo_qubits, unsorted_qubits, sorted_qubits_with_sentinel); },
+          qubits);
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+        ::ket::gate::runtime::nocache::qubit_ranges::gate(
+          parallel_policy, first, last,
+          [&observable, &partial_sums](
+            auto const first, auto const index_wo_qubits,
+            auto const& qubit_masks, auto const& index_masks,
+            int const thread_index)
+          { partial_sums[thread_index] += observable(first, index_wo_qubits, qubit_masks, index_masks); },
+          qubits);
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+
+        using std::begin;
+        using std::end;
+        return std::accumulate(begin(partial_sums), end(partial_sums), complex_type{0});
+      }
+
+      template <typename RandomAccessIterator, typename Observable, typename QubitsRange>
+      inline auto expectation_value(
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Observable&& observable, QubitsRange const& qubits)
+      -> typename std::iterator_traits<RandomAccessIterator>::value_type
+      {
+        return ::ket::runtime::qubit_ranges::expectation_value(
+          ::ket::utility::policy::make_sequential(),
+          first, last, std::forward<Observable>(observable), qubits);
+      }
+    } // namespace qubit_ranges
+
+    template <typename ParallelPolicy, typename RandomAccessIterator, typename Observable, typename QubitIterator>
+    inline auto expectation_value(
+      ParallelPolicy const parallel_policy,
+      RandomAccessIterator const first, RandomAccessIterator const last,
+      Observable&& observable, QubitIterator const qubit_first, QubitIterator const qubit_last)
+    -> typename std::iterator_traits<RandomAccessIterator>::value_type
+    {
+      return ::ket::runtime::qubit_ranges::expectation_value(
+        parallel_policy, first, last, std::forward<Observable>(observable),
+        boost::make_iterator_range(qubit_first, qubit_last));
+    }
+
+    template <typename RandomAccessIterator, typename Observable, typename QubitIterator>
+    inline auto expectation_value(
+      RandomAccessIterator const first, RandomAccessIterator const last,
+      Observable&& observable, QubitIterator const qubit_first, QubitIterator const qubit_last)
+    -> typename std::iterator_traits<RandomAccessIterator>::value_type
+    {
+      return ::ket::runtime::qubit_ranges::expectation_value(
+        first, last, std::forward<Observable>(observable),
+        boost::make_iterator_range(qubit_first, qubit_last));
+    }
+
+    namespace ranges
+    {
+      template <typename ParallelPolicy, typename RandomAccessRange, typename Observable, typename QubitsRange>
+      inline auto expectation_value(
+        ParallelPolicy const parallel_policy,
+        RandomAccessRange const& state, Observable&& observable, QubitsRange const& qubits)
+      -> ::ket::utility::meta::range_value_t<RandomAccessRange>
+      {
+        using std::begin;
+        using std::end;
+        return ::ket::runtime::qubit_ranges::expectation_value(
+          parallel_policy, begin(state), end(state), std::forward<Observable>(observable), qubits);
+      }
+
+      template <typename RandomAccessRange, typename Observable, typename QubitsRange>
+      inline auto expectation_value(
+        RandomAccessRange const& state, Observable&& observable, QubitsRange const& qubits)
+      -> ::ket::utility::meta::range_value_t<RandomAccessRange>
+      {
+        using std::begin;
+        using std::end;
+        return ::ket::runtime::qubit_ranges::expectation_value(
+          begin(state), end(state), std::forward<Observable>(observable), qubits);
+      }
+    } // namespace ranges
+  } // namespace runtime
 } // namespace ket
 
 

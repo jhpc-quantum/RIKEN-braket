@@ -2,6 +2,9 @@
 # define KET_MPI_GATE_NOT_HPP
 
 # include <vector>
+# include <array>
+
+# include <boost/range/iterator_range.hpp>
 
 # include <yampi/environment.hpp>
 # include <yampi/datatype_base.hpp>
@@ -359,6 +362,810 @@ namespace ket
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
           local_state, permutation, buffer, datatype, communicator, environment, target_qubit, control_qubits...);
       }
+
+      namespace runtime
+      {
+        namespace ranges
+        {
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename ControlQubitsRange>
+          inline auto not_(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+            ControlQubitsRange const& control_qubits)
+          -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::runtime::ranges::pauli_x(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment,
+              boost::make_iterator_range(&target_qubit, &target_qubit + 1), control_qubits);
+          }
+
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename ControlQubitsRange>
+          inline auto not_(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::datatype_base<DerivedDatatype> const& datatype,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+            ControlQubitsRange const& control_qubits)
+          -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::runtime::ranges::pauli_x(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment,
+              boost::make_iterator_range(&target_qubit, &target_qubit + 1), control_qubits);
+          }
+
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator>
+          inline auto not_(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+          -> RandomAccessRange&
+          {
+            using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+            using control_qubit_type = ::ket::control<qubit_type>;
+            std::array<control_qubit_type, 0u> const control_qubits{};
+            return ::ket::mpi::gate::runtime::ranges::not_(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment,
+              target_qubit, control_qubits);
+          }
+
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename DerivedDatatype>
+          inline auto not_(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::datatype_base<DerivedDatatype> const& datatype,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+          -> RandomAccessRange&
+          {
+            using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+            using control_qubit_type = ::ket::control<qubit_type>;
+            std::array<control_qubit_type, 0u> const control_qubits{};
+            return ::ket::mpi::gate::runtime::ranges::not_(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment,
+              target_qubit, control_qubits);
+          }
+
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename ControlQubitsRange>
+          inline auto adj_not_(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+            ControlQubitsRange const& control_qubits)
+          -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::runtime::ranges::adj_pauli_x(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment,
+              boost::make_iterator_range(&target_qubit, &target_qubit + 1), control_qubits);
+          }
+
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename ControlQubitsRange>
+          inline auto adj_not_(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::datatype_base<DerivedDatatype> const& datatype,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+            ControlQubitsRange const& control_qubits)
+          -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::runtime::ranges::adj_pauli_x(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment,
+              boost::make_iterator_range(&target_qubit, &target_qubit + 1), control_qubits);
+          }
+
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator>
+          inline auto adj_not_(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+          -> RandomAccessRange&
+          {
+            using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+            using control_qubit_type = ::ket::control<qubit_type>;
+            std::array<control_qubit_type, 0u> const control_qubits{};
+            return ::ket::mpi::gate::runtime::ranges::adj_not_(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment,
+              target_qubit, control_qubits);
+          }
+
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename DerivedDatatype>
+          inline auto adj_not_(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::datatype_base<DerivedDatatype> const& datatype,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+          -> RandomAccessRange&
+          {
+            using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+            using control_qubit_type = ::ket::control<qubit_type>;
+            std::array<control_qubit_type, 0u> const control_qubits{};
+            return ::ket::mpi::gate::runtime::ranges::adj_not_(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment,
+              target_qubit, control_qubits);
+          }
+
+          template <
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename ControlQubitsRange>
+          inline auto not_(
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+            ControlQubitsRange const& control_qubits)
+          -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::runtime::ranges::not_(
+              ::ket::mpi::utility::policy::make_simple_mpi(),
+              ::ket::utility::policy::make_sequential(),
+              local_state, permutation, buffer, communicator, environment,
+              target_qubit, control_qubits);
+          }
+
+          template <
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename ControlQubitsRange>
+          inline auto not_(
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::datatype_base<DerivedDatatype> const& datatype,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+            ControlQubitsRange const& control_qubits)
+          -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::runtime::ranges::not_(
+              ::ket::mpi::utility::policy::make_simple_mpi(),
+              ::ket::utility::policy::make_sequential(),
+              local_state, permutation, buffer, datatype, communicator, environment,
+              target_qubit, control_qubits);
+          }
+
+          template <
+            typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename ControlQubitsRange>
+          inline auto not_(
+            ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+            ControlQubitsRange const& control_qubits)
+          -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::runtime::ranges::not_(
+              ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
+              local_state, permutation, buffer, communicator, environment,
+              target_qubit, control_qubits);
+          }
+
+          template <
+            typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename ControlQubitsRange>
+          inline auto not_(
+            ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::datatype_base<DerivedDatatype> const& datatype,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+            ControlQubitsRange const& control_qubits)
+          -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::runtime::ranges::not_(
+              ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment,
+              target_qubit, control_qubits);
+          }
+
+          template <
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename ControlQubitsRange>
+          inline auto adj_not_(
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+            ControlQubitsRange const& control_qubits)
+          -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::runtime::ranges::adj_not_(
+              ::ket::mpi::utility::policy::make_simple_mpi(),
+              ::ket::utility::policy::make_sequential(),
+              local_state, permutation, buffer, communicator, environment,
+              target_qubit, control_qubits);
+          }
+
+          template <
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename ControlQubitsRange>
+          inline auto adj_not_(
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::datatype_base<DerivedDatatype> const& datatype,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+            ControlQubitsRange const& control_qubits)
+          -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::runtime::ranges::adj_not_(
+              ::ket::mpi::utility::policy::make_simple_mpi(),
+              ::ket::utility::policy::make_sequential(),
+              local_state, permutation, buffer, datatype, communicator, environment,
+              target_qubit, control_qubits);
+          }
+
+          template <
+            typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename ControlQubitsRange>
+          inline auto adj_not_(
+            ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+            ControlQubitsRange const& control_qubits)
+          -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::runtime::ranges::adj_not_(
+              ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
+              local_state, permutation, buffer, communicator, environment,
+              target_qubit, control_qubits);
+          }
+
+          template <
+            typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename ControlQubitsRange>
+          inline auto adj_not_(
+            ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::datatype_base<DerivedDatatype> const& datatype,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+            ControlQubitsRange const& control_qubits)
+          -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::runtime::ranges::adj_not_(
+              ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment,
+              target_qubit, control_qubits);
+          }
+        } // namespace ranges
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename ControlQubitIterator>
+        inline auto not_(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::ranges::not_(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, communicator, environment,
+            target_qubit, boost::make_iterator_range(control_qubit_first, control_qubit_last));
+        }
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename DerivedDatatype,
+          typename ControlQubitIterator>
+        inline auto not_(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::ranges::not_(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, datatype, communicator, environment,
+            target_qubit, boost::make_iterator_range(control_qubit_first, control_qubit_last));
+        }
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator>
+        inline auto not_(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::ranges::not_(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, communicator, environment, target_qubit);
+        }
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename DerivedDatatype>
+        inline auto not_(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::ranges::not_(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, datatype, communicator, environment, target_qubit);
+        }
+
+        template <
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename ControlQubitIterator>
+        inline auto not_(
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::not_(
+            ::ket::mpi::utility::policy::make_simple_mpi(),
+            ::ket::utility::policy::make_sequential(),
+            local_state, permutation, buffer, communicator, environment,
+            target_qubit, control_qubit_first, control_qubit_last);
+        }
+
+        template <
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename DerivedDatatype,
+          typename ControlQubitIterator>
+        inline auto not_(
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::not_(
+            ::ket::mpi::utility::policy::make_simple_mpi(),
+            ::ket::utility::policy::make_sequential(),
+            local_state, permutation, buffer, datatype, communicator, environment,
+            target_qubit, control_qubit_first, control_qubit_last);
+        }
+
+        template <
+          typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename ControlQubitIterator>
+        inline auto not_(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::not_(
+            ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
+            local_state, permutation, buffer, communicator, environment,
+            target_qubit, control_qubit_first, control_qubit_last);
+        }
+
+        template <
+          typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename DerivedDatatype,
+          typename ControlQubitIterator>
+        inline auto not_(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::not_(
+            ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
+            local_state, permutation, buffer, datatype, communicator, environment,
+            target_qubit, control_qubit_first, control_qubit_last);
+        }
+
+        template <
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator>
+        inline auto not_(
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::not_(
+            ::ket::mpi::utility::policy::make_simple_mpi(),
+            ::ket::utility::policy::make_sequential(),
+            local_state, permutation, buffer, communicator, environment, target_qubit);
+        }
+
+        template <
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename DerivedDatatype>
+        inline auto not_(
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::not_(
+            ::ket::mpi::utility::policy::make_simple_mpi(),
+            ::ket::utility::policy::make_sequential(),
+            local_state, permutation, buffer, datatype, communicator, environment, target_qubit);
+        }
+
+        template <
+          typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator>
+        inline auto not_(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::not_(
+            ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
+            local_state, permutation, buffer, communicator, environment, target_qubit);
+        }
+
+        template <
+          typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename DerivedDatatype>
+        inline auto not_(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::not_(
+            ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
+            local_state, permutation, buffer, datatype, communicator, environment, target_qubit);
+        }
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename ControlQubitIterator>
+        inline auto adj_not_(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::ranges::adj_not_(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, communicator, environment,
+            target_qubit, boost::make_iterator_range(control_qubit_first, control_qubit_last));
+        }
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename DerivedDatatype,
+          typename ControlQubitIterator>
+        inline auto adj_not_(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::ranges::adj_not_(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, datatype, communicator, environment,
+            target_qubit, boost::make_iterator_range(control_qubit_first, control_qubit_last));
+        }
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator>
+        inline auto adj_not_(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::ranges::adj_not_(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, communicator, environment, target_qubit);
+        }
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename DerivedDatatype>
+        inline auto adj_not_(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::ranges::adj_not_(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, datatype, communicator, environment, target_qubit);
+        }
+
+        template <
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename ControlQubitIterator>
+        inline auto adj_not_(
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::adj_not_(
+            ::ket::mpi::utility::policy::make_simple_mpi(),
+            ::ket::utility::policy::make_sequential(),
+            local_state, permutation, buffer, communicator, environment,
+            target_qubit, control_qubit_first, control_qubit_last);
+        }
+
+        template <
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename DerivedDatatype,
+          typename ControlQubitIterator>
+        inline auto adj_not_(
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::adj_not_(
+            ::ket::mpi::utility::policy::make_simple_mpi(),
+            ::ket::utility::policy::make_sequential(),
+            local_state, permutation, buffer, datatype, communicator, environment,
+            target_qubit, control_qubit_first, control_qubit_last);
+        }
+
+        template <
+          typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename ControlQubitIterator>
+        inline auto adj_not_(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::adj_not_(
+            ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
+            local_state, permutation, buffer, communicator, environment,
+            target_qubit, control_qubit_first, control_qubit_last);
+        }
+
+        template <
+          typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename DerivedDatatype,
+          typename ControlQubitIterator>
+        inline auto adj_not_(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::adj_not_(
+            ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
+            local_state, permutation, buffer, datatype, communicator, environment,
+            target_qubit, control_qubit_first, control_qubit_last);
+        }
+
+        template <
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator>
+        inline auto adj_not_(
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::adj_not_(
+            ::ket::mpi::utility::policy::make_simple_mpi(),
+            ::ket::utility::policy::make_sequential(),
+            local_state, permutation, buffer, communicator, environment, target_qubit);
+        }
+
+        template <
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename DerivedDatatype>
+        inline auto adj_not_(
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::adj_not_(
+            ::ket::mpi::utility::policy::make_simple_mpi(),
+            ::ket::utility::policy::make_sequential(),
+            local_state, permutation, buffer, datatype, communicator, environment, target_qubit);
+        }
+
+        template <
+          typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator>
+        inline auto adj_not_(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::adj_not_(
+            ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
+            local_state, permutation, buffer, communicator, environment, target_qubit);
+        }
+
+        template <
+          typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename DerivedDatatype>
+        inline auto adj_not_(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::adj_not_(
+            ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
+            local_state, permutation, buffer, datatype, communicator, environment, target_qubit);
+        }
+      } // namespace runtime
     } // namespace gate
   } // namespace mpi
 } // namespace ket

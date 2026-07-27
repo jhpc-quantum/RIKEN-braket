@@ -7,6 +7,7 @@
 # include <type_traits>
 
 # include <boost/optional.hpp>
+# include <boost/range/iterator_range.hpp>
 
 # include <yampi/environment.hpp>
 # include <yampi/datatype_base.hpp>
@@ -983,6 +984,216 @@ namespace ket
         std::forward<Observable>(observable), qubit, qubits...);
     }
 
+    namespace runtime
+    {
+      namespace ranges
+      {
+        // all_reduce version
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename LocalState1, typename StateInteger, typename BitInteger, typename Allocator1,
+          typename LocalState2, typename Allocator2, typename BufferAllocator,
+          typename Observable, typename QubitsRange>
+        inline std::enable_if_t<
+          ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
+          ::ket::utility::meta::real_t< ::ket::utility::meta::range_value_t<LocalState1> > >
+        fidelity(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          LocalState1& local_state1,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator1>& permutation1,
+          LocalState2& local_state2,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator2>& permutation2,
+          std::vector< ::ket::utility::meta::range_value_t<LocalState1>, BufferAllocator >& buffer,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          Observable&& observable, QubitsRange const& qubits)
+        {
+          using std::norm;
+          return norm(::ket::mpi::runtime::ranges::inner_product(
+            mpi_policy, parallel_policy,
+            local_state1, permutation1, local_state2, permutation2,
+            buffer, communicator, environment,
+            std::forward<Observable>(observable), qubits));
+        }
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename LocalState1, typename StateInteger, typename BitInteger, typename Allocator1,
+          typename LocalState2, typename Allocator2, typename BufferAllocator, typename DerivedDatatype,
+          typename Observable, typename QubitsRange>
+        inline std::enable_if_t<
+          ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
+          ::ket::utility::meta::real_t< ::ket::utility::meta::range_value_t<LocalState1> > >
+        fidelity(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          LocalState1& local_state1,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator1>& permutation1,
+          LocalState2& local_state2,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator2>& permutation2,
+          std::vector< ::ket::utility::meta::range_value_t<LocalState1>, BufferAllocator >& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          Observable&& observable, QubitsRange const& qubits)
+        {
+          using std::norm;
+          return norm(::ket::mpi::runtime::ranges::inner_product(
+            mpi_policy, parallel_policy,
+            local_state1, permutation1, local_state2, permutation2,
+            buffer, datatype, communicator, environment,
+            std::forward<Observable>(observable), qubits));
+        }
+
+        // reduce version
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename LocalState1, typename StateInteger, typename BitInteger, typename Allocator1,
+          typename LocalState2, typename Allocator2, typename BufferAllocator,
+          typename Observable, typename QubitsRange>
+        inline std::enable_if_t<
+          ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
+          boost::optional< ::ket::utility::meta::real_t< ::ket::utility::meta::range_value_t<LocalState1> > > >
+        fidelity(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          LocalState1& local_state1,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator1>& permutation1,
+          LocalState2& local_state2,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator2>& permutation2,
+          std::vector< ::ket::utility::meta::range_value_t<LocalState1>, BufferAllocator >& buffer,
+          yampi::rank const root, yampi::communicator const& communicator, yampi::environment const& environment,
+          Observable&& observable, QubitsRange const& qubits)
+        {
+          using complex_type = ::ket::utility::meta::range_value_t<LocalState1>;
+          return ::ket::mpi::runtime::ranges::inner_product(
+            mpi_policy, parallel_policy,
+            local_state1, permutation1, local_state2, permutation2,
+            buffer, root, communicator, environment,
+            std::forward<Observable>(observable), qubits)
+          .map([](complex_type const& inner_product) { using std::norm; return norm(inner_product); });
+        }
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename LocalState1, typename StateInteger, typename BitInteger, typename Allocator1,
+          typename LocalState2, typename Allocator2, typename BufferAllocator, typename DerivedDatatype,
+          typename Observable, typename QubitsRange>
+        inline std::enable_if_t<
+          ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
+          boost::optional< ::ket::utility::meta::real_t< ::ket::utility::meta::range_value_t<LocalState1> > > >
+        fidelity(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          LocalState1& local_state1,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator1>& permutation1,
+          LocalState2& local_state2,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator2>& permutation2,
+          std::vector< ::ket::utility::meta::range_value_t<LocalState1>, BufferAllocator >& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::rank const root, yampi::communicator const& communicator, yampi::environment const& environment,
+          Observable&& observable, QubitsRange const& qubits)
+        {
+          using complex_type = ::ket::utility::meta::range_value_t<LocalState1>;
+          return ::ket::mpi::runtime::ranges::inner_product(
+            mpi_policy, parallel_policy,
+            local_state1, permutation1, local_state2, permutation2,
+            buffer, datatype, root, communicator, environment,
+            std::forward<Observable>(observable), qubits)
+          .map([](complex_type const& inner_product) { using std::norm; return norm(inner_product); });
+        }
+      } // namespace ranges
+
+      template <
+        typename MpiPolicy, typename ParallelPolicy,
+        typename LocalState1, typename StateInteger, typename BitInteger, typename Allocator1,
+        typename LocalState2, typename Allocator2, typename BufferAllocator,
+        typename Observable, typename QubitIterator>
+      inline auto fidelity(
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+        LocalState1& local_state1,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator1>& permutation1,
+        LocalState2& local_state2,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator2>& permutation2,
+        std::vector< ::ket::utility::meta::range_value_t<LocalState1>, BufferAllocator >& buffer,
+        yampi::communicator const& communicator, yampi::environment const& environment,
+        Observable&& observable, QubitIterator const qubit_first, QubitIterator const qubit_last)
+      -> decltype(::ket::mpi::runtime::ranges::fidelity(
+           mpi_policy, parallel_policy, local_state1, permutation1, local_state2, permutation2, buffer,
+           communicator, environment, std::forward<Observable>(observable), boost::make_iterator_range(qubit_first, qubit_last)))
+      {
+        return ::ket::mpi::runtime::ranges::fidelity(
+          mpi_policy, parallel_policy, local_state1, permutation1, local_state2, permutation2, buffer,
+          communicator, environment, std::forward<Observable>(observable), boost::make_iterator_range(qubit_first, qubit_last));
+      }
+
+      template <
+        typename MpiPolicy, typename ParallelPolicy,
+        typename LocalState1, typename StateInteger, typename BitInteger, typename Allocator1,
+        typename LocalState2, typename Allocator2, typename BufferAllocator, typename DerivedDatatype,
+        typename Observable, typename QubitIterator>
+      inline auto fidelity(
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+        LocalState1& local_state1,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator1>& permutation1,
+        LocalState2& local_state2,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator2>& permutation2,
+        std::vector< ::ket::utility::meta::range_value_t<LocalState1>, BufferAllocator >& buffer,
+        yampi::datatype_base<DerivedDatatype> const& datatype,
+        yampi::communicator const& communicator, yampi::environment const& environment,
+        Observable&& observable, QubitIterator const qubit_first, QubitIterator const qubit_last)
+      -> decltype(::ket::mpi::runtime::ranges::fidelity(
+           mpi_policy, parallel_policy, local_state1, permutation1, local_state2, permutation2, buffer,
+           datatype, communicator, environment, std::forward<Observable>(observable), boost::make_iterator_range(qubit_first, qubit_last)))
+      {
+        return ::ket::mpi::runtime::ranges::fidelity(
+          mpi_policy, parallel_policy, local_state1, permutation1, local_state2, permutation2, buffer,
+          datatype, communicator, environment, std::forward<Observable>(observable), boost::make_iterator_range(qubit_first, qubit_last));
+      }
+
+      template <
+        typename MpiPolicy, typename ParallelPolicy,
+        typename LocalState1, typename StateInteger, typename BitInteger, typename Allocator1,
+        typename LocalState2, typename Allocator2, typename BufferAllocator,
+        typename Observable, typename QubitIterator>
+      inline auto fidelity(
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+        LocalState1& local_state1,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator1>& permutation1,
+        LocalState2& local_state2,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator2>& permutation2,
+        std::vector< ::ket::utility::meta::range_value_t<LocalState1>, BufferAllocator >& buffer,
+        yampi::rank const root, yampi::communicator const& communicator, yampi::environment const& environment,
+        Observable&& observable, QubitIterator const qubit_first, QubitIterator const qubit_last)
+      -> decltype(::ket::mpi::runtime::ranges::fidelity(
+           mpi_policy, parallel_policy, local_state1, permutation1, local_state2, permutation2, buffer,
+           root, communicator, environment, std::forward<Observable>(observable), boost::make_iterator_range(qubit_first, qubit_last)))
+      {
+        return ::ket::mpi::runtime::ranges::fidelity(
+          mpi_policy, parallel_policy, local_state1, permutation1, local_state2, permutation2, buffer,
+          root, communicator, environment, std::forward<Observable>(observable), boost::make_iterator_range(qubit_first, qubit_last));
+      }
+
+      template <
+        typename MpiPolicy, typename ParallelPolicy,
+        typename LocalState1, typename StateInteger, typename BitInteger, typename Allocator1,
+        typename LocalState2, typename Allocator2, typename BufferAllocator, typename DerivedDatatype,
+        typename Observable, typename QubitIterator>
+      inline auto fidelity(
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+        LocalState1& local_state1,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator1>& permutation1,
+        LocalState2& local_state2,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator2>& permutation2,
+        std::vector< ::ket::utility::meta::range_value_t<LocalState1>, BufferAllocator >& buffer,
+        yampi::datatype_base<DerivedDatatype> const& datatype,
+        yampi::rank const root, yampi::communicator const& communicator, yampi::environment const& environment,
+        Observable&& observable, QubitIterator const qubit_first, QubitIterator const qubit_last)
+      -> decltype(::ket::mpi::runtime::ranges::fidelity(
+           mpi_policy, parallel_policy, local_state1, permutation1, local_state2, permutation2, buffer,
+           datatype, root, communicator, environment, std::forward<Observable>(observable), boost::make_iterator_range(qubit_first, qubit_last)))
+      {
+        return ::ket::mpi::runtime::ranges::fidelity(
+          mpi_policy, parallel_policy, local_state1, permutation1, local_state2, permutation2, buffer,
+          datatype, root, communicator, environment, std::forward<Observable>(observable), boost::make_iterator_range(qubit_first, qubit_last));
+      }
+    } // namespace runtime
+
     // <Psi_{remote}| A_{ij} |Psi_{local}>
     // (2) two states |Psi_{local}> and |Psi_{remote}> do not exist in the same MPI group
     // all_reduce version
@@ -1266,6 +1477,198 @@ namespace ket
         local_state, permutation, buffer, datatype, root, intracommunicator, intercommunicator, environment,
         std::forward<Observable>(observable), qubit, qubits...);
     }
+
+    namespace runtime
+    {
+      namespace ranges
+      {
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename LocalState, typename StateInteger, typename BitInteger, typename Allocator,
+          typename BufferAllocator, typename Observable, typename QubitsRange>
+        inline std::enable_if_t<
+          ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
+          ::ket::utility::meta::real_t< ::ket::utility::meta::range_value_t<LocalState> > >
+        fidelity(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          LocalState& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<LocalState>, BufferAllocator >& buffer,
+          yampi::communicator const& intracommunicator, yampi::intercommunicator const& intercommunicator, yampi::environment const& environment,
+          Observable&& observable, QubitsRange const& qubits)
+        {
+          using std::norm;
+          return norm(::ket::mpi::runtime::ranges::inner_product(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer,
+            intracommunicator, intercommunicator, environment,
+            std::forward<Observable>(observable), qubits));
+        }
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename LocalState, typename StateInteger, typename BitInteger, typename Allocator,
+          typename BufferAllocator, typename DerivedDatatype, typename Observable, typename QubitsRange>
+        inline std::enable_if_t<
+          ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
+          ::ket::utility::meta::real_t< ::ket::utility::meta::range_value_t<LocalState> > >
+        fidelity(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          LocalState& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<LocalState>, BufferAllocator >& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::communicator const& intracommunicator, yampi::intercommunicator const& intercommunicator, yampi::environment const& environment,
+          Observable&& observable, QubitsRange const& qubits)
+        {
+          using std::norm;
+          return norm(::ket::mpi::runtime::ranges::inner_product(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, datatype,
+            intracommunicator, intercommunicator, environment,
+            std::forward<Observable>(observable), qubits));
+        }
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename LocalState, typename StateInteger, typename BitInteger, typename Allocator,
+          typename BufferAllocator, typename Observable, typename QubitsRange>
+        inline std::enable_if_t<
+          ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
+          boost::optional< ::ket::utility::meta::real_t< ::ket::utility::meta::range_value_t<LocalState> > > >
+        fidelity(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          LocalState& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<LocalState>, BufferAllocator >& buffer,
+          yampi::rank const root, yampi::communicator const& intracommunicator, yampi::intercommunicator const& intercommunicator, yampi::environment const& environment,
+          Observable&& observable, QubitsRange const& qubits)
+        {
+          using complex_type = ::ket::utility::meta::range_value_t<LocalState>;
+          return ::ket::mpi::runtime::ranges::inner_product(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer,
+            root, intracommunicator, intercommunicator, environment,
+            std::forward<Observable>(observable), qubits)
+          .map([](complex_type const& inner_product) { using std::norm; return norm(inner_product); });
+        }
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename LocalState, typename StateInteger, typename BitInteger, typename Allocator,
+          typename BufferAllocator, typename DerivedDatatype, typename Observable, typename QubitsRange>
+        inline std::enable_if_t<
+          ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
+          boost::optional< ::ket::utility::meta::real_t< ::ket::utility::meta::range_value_t<LocalState> > > >
+        fidelity(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          LocalState& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<LocalState>, BufferAllocator >& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::rank const root, yampi::communicator const& intracommunicator, yampi::intercommunicator const& intercommunicator, yampi::environment const& environment,
+          Observable&& observable, QubitsRange const& qubits)
+        {
+          using complex_type = ::ket::utility::meta::range_value_t<LocalState>;
+          return ::ket::mpi::runtime::ranges::inner_product(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, datatype,
+            root, intracommunicator, intercommunicator, environment,
+            std::forward<Observable>(observable), qubits)
+          .map([](complex_type const& inner_product) { using std::norm; return norm(inner_product); });
+        }
+      } // namespace ranges
+
+      template <
+        typename MpiPolicy, typename ParallelPolicy,
+        typename LocalState, typename StateInteger, typename BitInteger, typename Allocator,
+        typename BufferAllocator, typename Observable, typename QubitIterator>
+      inline auto fidelity(
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+        LocalState& local_state,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector< ::ket::utility::meta::range_value_t<LocalState>, BufferAllocator >& buffer,
+        yampi::communicator const& intracommunicator, yampi::intercommunicator const& intercommunicator, yampi::environment const& environment,
+        Observable&& observable, QubitIterator const qubit_first, QubitIterator const qubit_last)
+      -> decltype(::ket::mpi::runtime::ranges::fidelity(
+           mpi_policy, parallel_policy, local_state, permutation, buffer,
+           intracommunicator, intercommunicator, environment,
+           std::forward<Observable>(observable), boost::make_iterator_range(qubit_first, qubit_last)))
+      {
+        return ::ket::mpi::runtime::ranges::fidelity(
+          mpi_policy, parallel_policy, local_state, permutation, buffer,
+          intracommunicator, intercommunicator, environment,
+          std::forward<Observable>(observable), boost::make_iterator_range(qubit_first, qubit_last));
+      }
+
+      template <
+        typename MpiPolicy, typename ParallelPolicy,
+        typename LocalState, typename StateInteger, typename BitInteger, typename Allocator,
+        typename BufferAllocator, typename DerivedDatatype, typename Observable, typename QubitIterator>
+      inline auto fidelity(
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+        LocalState& local_state,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector< ::ket::utility::meta::range_value_t<LocalState>, BufferAllocator >& buffer,
+        yampi::datatype_base<DerivedDatatype> const& datatype,
+        yampi::communicator const& intracommunicator, yampi::intercommunicator const& intercommunicator, yampi::environment const& environment,
+        Observable&& observable, QubitIterator const qubit_first, QubitIterator const qubit_last)
+      -> decltype(::ket::mpi::runtime::ranges::fidelity(
+           mpi_policy, parallel_policy, local_state, permutation, buffer, datatype,
+           intracommunicator, intercommunicator, environment,
+           std::forward<Observable>(observable), boost::make_iterator_range(qubit_first, qubit_last)))
+      {
+        return ::ket::mpi::runtime::ranges::fidelity(
+          mpi_policy, parallel_policy, local_state, permutation, buffer, datatype,
+          intracommunicator, intercommunicator, environment,
+          std::forward<Observable>(observable), boost::make_iterator_range(qubit_first, qubit_last));
+      }
+
+      template <
+        typename MpiPolicy, typename ParallelPolicy,
+        typename LocalState, typename StateInteger, typename BitInteger, typename Allocator,
+        typename BufferAllocator, typename Observable, typename QubitIterator>
+      inline auto fidelity(
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+        LocalState& local_state,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector< ::ket::utility::meta::range_value_t<LocalState>, BufferAllocator >& buffer,
+        yampi::rank const root, yampi::communicator const& intracommunicator, yampi::intercommunicator const& intercommunicator, yampi::environment const& environment,
+        Observable&& observable, QubitIterator const qubit_first, QubitIterator const qubit_last)
+      -> decltype(::ket::mpi::runtime::ranges::fidelity(
+           mpi_policy, parallel_policy, local_state, permutation, buffer,
+           root, intracommunicator, intercommunicator, environment,
+           std::forward<Observable>(observable), boost::make_iterator_range(qubit_first, qubit_last)))
+      {
+        return ::ket::mpi::runtime::ranges::fidelity(
+          mpi_policy, parallel_policy, local_state, permutation, buffer,
+          root, intracommunicator, intercommunicator, environment,
+          std::forward<Observable>(observable), boost::make_iterator_range(qubit_first, qubit_last));
+      }
+
+      template <
+        typename MpiPolicy, typename ParallelPolicy,
+        typename LocalState, typename StateInteger, typename BitInteger, typename Allocator,
+        typename BufferAllocator, typename DerivedDatatype, typename Observable, typename QubitIterator>
+      inline auto fidelity(
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+        LocalState& local_state,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector< ::ket::utility::meta::range_value_t<LocalState>, BufferAllocator >& buffer,
+        yampi::datatype_base<DerivedDatatype> const& datatype,
+        yampi::rank const root, yampi::communicator const& intracommunicator, yampi::intercommunicator const& intercommunicator, yampi::environment const& environment,
+        Observable&& observable, QubitIterator const qubit_first, QubitIterator const qubit_last)
+      -> decltype(::ket::mpi::runtime::ranges::fidelity(
+           mpi_policy, parallel_policy, local_state, permutation, buffer, datatype,
+           root, intracommunicator, intercommunicator, environment,
+           std::forward<Observable>(observable), boost::make_iterator_range(qubit_first, qubit_last)))
+      {
+        return ::ket::mpi::runtime::ranges::fidelity(
+          mpi_policy, parallel_policy, local_state, permutation, buffer, datatype,
+          root, intracommunicator, intercommunicator, environment,
+          std::forward<Observable>(observable), boost::make_iterator_range(qubit_first, qubit_last));
+      }
+    } // namespace runtime
 
     // <Psi_k| A_{ij} |Psi_0> (k = 0, ..., N_{states}: value of intercircuit_communicator.rank(environment))
     // (3) states |Psi_k> do not exist in the same MPI group
@@ -1586,6 +1989,214 @@ namespace ket
         intercircuit_root, intercircuit_communicator, environment,
         std::forward<Observable>(observable), qubit, qubits...);
     }
+
+    namespace runtime
+    {
+      namespace ranges
+      {
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename LocalState, typename StateInteger, typename BitInteger, typename Allocator,
+          typename BufferAllocator, typename Observable, typename QubitsRange>
+        inline std::enable_if_t<
+          ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
+          ::ket::utility::meta::real_t< ::ket::utility::meta::range_value_t<LocalState> > >
+        fidelity(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          LocalState& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<LocalState>, BufferAllocator >& buffer,
+          yampi::communicator const& circuit_communicator,
+          yampi::rank const intercircuit_root, yampi::communicator const& intercircuit_communicator,
+          yampi::environment const& environment,
+          Observable&& observable, QubitsRange const& qubits)
+        {
+          using std::norm;
+          return norm(::ket::mpi::runtime::ranges::inner_product(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, circuit_communicator,
+            intercircuit_root, intercircuit_communicator, environment,
+            std::forward<Observable>(observable), qubits));
+        }
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename LocalState, typename StateInteger, typename BitInteger, typename Allocator,
+          typename BufferAllocator, typename DerivedDatatype, typename Observable, typename QubitsRange>
+        inline std::enable_if_t<
+          ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
+          ::ket::utility::meta::real_t< ::ket::utility::meta::range_value_t<LocalState> > >
+        fidelity(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          LocalState& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<LocalState>, BufferAllocator >& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::communicator const& circuit_communicator,
+          yampi::rank const intercircuit_root, yampi::communicator const& intercircuit_communicator,
+          yampi::environment const& environment,
+          Observable&& observable, QubitsRange const& qubits)
+        {
+          using std::norm;
+          return norm(::ket::mpi::runtime::ranges::inner_product(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, datatype, circuit_communicator,
+            intercircuit_root, intercircuit_communicator, environment,
+            std::forward<Observable>(observable), qubits));
+        }
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename LocalState, typename StateInteger, typename BitInteger, typename Allocator,
+          typename BufferAllocator, typename Observable, typename QubitsRange>
+        inline std::enable_if_t<
+          ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
+          boost::optional< ::ket::utility::meta::real_t< ::ket::utility::meta::range_value_t<LocalState> > > >
+        fidelity(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          LocalState& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<LocalState>, BufferAllocator >& buffer,
+          yampi::rank const circuit_root, yampi::communicator const& circuit_communicator,
+          yampi::rank const intercircuit_root, yampi::communicator const& intercircuit_communicator,
+          yampi::environment const& environment,
+          Observable&& observable, QubitsRange const& qubits)
+        {
+          using complex_type = ::ket::utility::meta::range_value_t<LocalState>;
+          return ::ket::mpi::runtime::ranges::inner_product(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, circuit_root, circuit_communicator,
+            intercircuit_root, intercircuit_communicator, environment,
+            std::forward<Observable>(observable), qubits)
+          .map([](complex_type const& inner_product) { using std::norm; return norm(inner_product); });
+        }
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename LocalState, typename StateInteger, typename BitInteger, typename Allocator,
+          typename BufferAllocator, typename DerivedDatatype, typename Observable, typename QubitsRange>
+        inline std::enable_if_t<
+          ::ket::mpi::utility::policy::meta::is_mpi_policy<MpiPolicy>::value,
+          boost::optional< ::ket::utility::meta::real_t< ::ket::utility::meta::range_value_t<LocalState> > > >
+        fidelity(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          LocalState& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<LocalState>, BufferAllocator >& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::rank const circuit_root, yampi::communicator const& circuit_communicator,
+          yampi::rank const intercircuit_root, yampi::communicator const& intercircuit_communicator,
+          yampi::environment const& environment,
+          Observable&& observable, QubitsRange const& qubits)
+        {
+          using complex_type = ::ket::utility::meta::range_value_t<LocalState>;
+          return ::ket::mpi::runtime::ranges::inner_product(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, datatype, circuit_root, circuit_communicator,
+            intercircuit_root, intercircuit_communicator, environment,
+            std::forward<Observable>(observable), qubits)
+          .map([](complex_type const& inner_product) { using std::norm; return norm(inner_product); });
+        }
+      } // namespace ranges
+
+      template <
+        typename MpiPolicy, typename ParallelPolicy,
+        typename LocalState, typename StateInteger, typename BitInteger, typename Allocator,
+        typename BufferAllocator, typename Observable, typename QubitIterator>
+      inline auto fidelity(
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+        LocalState& local_state,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector< ::ket::utility::meta::range_value_t<LocalState>, BufferAllocator >& buffer,
+        yampi::communicator const& circuit_communicator,
+        yampi::rank const intercircuit_root, yampi::communicator const& intercircuit_communicator,
+        yampi::environment const& environment,
+        Observable&& observable, QubitIterator const qubit_first, QubitIterator const qubit_last)
+      -> decltype(::ket::mpi::runtime::ranges::fidelity(
+           mpi_policy, parallel_policy, local_state, permutation, buffer,
+           circuit_communicator, intercircuit_root, intercircuit_communicator, environment,
+           std::forward<Observable>(observable), boost::make_iterator_range(qubit_first, qubit_last)))
+      {
+        return ::ket::mpi::runtime::ranges::fidelity(
+          mpi_policy, parallel_policy, local_state, permutation, buffer,
+          circuit_communicator, intercircuit_root, intercircuit_communicator, environment,
+          std::forward<Observable>(observable), boost::make_iterator_range(qubit_first, qubit_last));
+      }
+
+      template <
+        typename MpiPolicy, typename ParallelPolicy,
+        typename LocalState, typename StateInteger, typename BitInteger, typename Allocator,
+        typename BufferAllocator, typename DerivedDatatype, typename Observable, typename QubitIterator>
+      inline auto fidelity(
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+        LocalState& local_state,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector< ::ket::utility::meta::range_value_t<LocalState>, BufferAllocator >& buffer,
+        yampi::datatype_base<DerivedDatatype> const& datatype,
+        yampi::communicator const& circuit_communicator,
+        yampi::rank const intercircuit_root, yampi::communicator const& intercircuit_communicator,
+        yampi::environment const& environment,
+        Observable&& observable, QubitIterator const qubit_first, QubitIterator const qubit_last)
+      -> decltype(::ket::mpi::runtime::ranges::fidelity(
+           mpi_policy, parallel_policy, local_state, permutation, buffer, datatype,
+           circuit_communicator, intercircuit_root, intercircuit_communicator, environment,
+           std::forward<Observable>(observable), boost::make_iterator_range(qubit_first, qubit_last)))
+      {
+        return ::ket::mpi::runtime::ranges::fidelity(
+          mpi_policy, parallel_policy, local_state, permutation, buffer, datatype,
+          circuit_communicator, intercircuit_root, intercircuit_communicator, environment,
+          std::forward<Observable>(observable), boost::make_iterator_range(qubit_first, qubit_last));
+      }
+
+      template <
+        typename MpiPolicy, typename ParallelPolicy,
+        typename LocalState, typename StateInteger, typename BitInteger, typename Allocator,
+        typename BufferAllocator, typename Observable, typename QubitIterator>
+      inline auto fidelity(
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+        LocalState& local_state,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector< ::ket::utility::meta::range_value_t<LocalState>, BufferAllocator >& buffer,
+        yampi::rank const circuit_root, yampi::communicator const& circuit_communicator,
+        yampi::rank const intercircuit_root, yampi::communicator const& intercircuit_communicator,
+        yampi::environment const& environment,
+        Observable&& observable, QubitIterator const qubit_first, QubitIterator const qubit_last)
+      -> decltype(::ket::mpi::runtime::ranges::fidelity(
+           mpi_policy, parallel_policy, local_state, permutation, buffer,
+           circuit_root, circuit_communicator, intercircuit_root, intercircuit_communicator, environment,
+           std::forward<Observable>(observable), boost::make_iterator_range(qubit_first, qubit_last)))
+      {
+        return ::ket::mpi::runtime::ranges::fidelity(
+          mpi_policy, parallel_policy, local_state, permutation, buffer,
+          circuit_root, circuit_communicator, intercircuit_root, intercircuit_communicator, environment,
+          std::forward<Observable>(observable), boost::make_iterator_range(qubit_first, qubit_last));
+      }
+
+      template <
+        typename MpiPolicy, typename ParallelPolicy,
+        typename LocalState, typename StateInteger, typename BitInteger, typename Allocator,
+        typename BufferAllocator, typename DerivedDatatype, typename Observable, typename QubitIterator>
+      inline auto fidelity(
+        MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+        LocalState& local_state,
+        ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+        std::vector< ::ket::utility::meta::range_value_t<LocalState>, BufferAllocator >& buffer,
+        yampi::datatype_base<DerivedDatatype> const& datatype,
+        yampi::rank const circuit_root, yampi::communicator const& circuit_communicator,
+        yampi::rank const intercircuit_root, yampi::communicator const& intercircuit_communicator,
+        yampi::environment const& environment,
+        Observable&& observable, QubitIterator const qubit_first, QubitIterator const qubit_last)
+      -> decltype(::ket::mpi::runtime::ranges::fidelity(
+           mpi_policy, parallel_policy, local_state, permutation, buffer, datatype,
+           circuit_root, circuit_communicator, intercircuit_root, intercircuit_communicator, environment,
+           std::forward<Observable>(observable), boost::make_iterator_range(qubit_first, qubit_last)))
+      {
+        return ::ket::mpi::runtime::ranges::fidelity(
+          mpi_policy, parallel_policy, local_state, permutation, buffer, datatype,
+          circuit_root, circuit_communicator, intercircuit_root, intercircuit_communicator, environment,
+          std::forward<Observable>(observable), boost::make_iterator_range(qubit_first, qubit_last));
+      }
+    } // namespace runtime
   } // namespace mpi
 } // namespace ket
 

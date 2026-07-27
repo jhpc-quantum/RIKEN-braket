@@ -4,6 +4,7 @@
 # include <complex>
 # include <vector>
 # include <array>
+# include <utility>
 
 # include <yampi/environment.hpp>
 # include <yampi/datatype_base.hpp>
@@ -128,7 +129,7 @@ namespace ket
           if (::ket::mpi::page::any_on_page(local_state, permutation[target_qubit], permutation[control_qubit1], permutation[control_qubit2], permutation[control_qubits]...))
           {
             using local_state_type = std::remove_const_t<std::remove_reference_t<RandomAccessRange>>;
-            ::ket::mpi::gate::local::dispatch::transpage_controlled_v_coeff<local_state_type>::call(
+            return ::ket::mpi::gate::local::dispatch::transpage_controlled_v_coeff<local_state_type>::call(
               parallel_policy, local_state, phase_coefficient,
               permutation[target_qubit], permutation[control_qubit1],
               permutation[control_qubit2], permutation[control_qubits]...);
@@ -136,7 +137,7 @@ namespace ket
 
           return ::ket::mpi::utility::for_each_local_range(
             mpi_policy, local_state, communicator, environment,
-            [parallel_policy, &permutation, target_qubit, control_qubit1, control_qubit2, control_qubits...](auto const first, auto const last)
+            [parallel_policy, &permutation, &phase_coefficient, target_qubit, control_qubit1, control_qubit2, control_qubits...](auto const first, auto const last)
             {
               ::ket::gate::controlled_v_coeff(
                 parallel_policy, first, last, phase_coefficient,
@@ -1434,6 +1435,818 @@ namespace ket
           local_state, permutation, buffer, datatype, communicator, environment,
           phase, target_qubit, control_qubit, control_qubits...);
       }
+
+      namespace runtime
+      {
+        // controlled_v_coeff
+        namespace local
+        {
+          // C...CV_{tc...c'}(theta) or CnV_{tc...c'}(theta)
+          namespace dispatch
+          {
+            template <typename LocalState>
+            struct transpage_controlled_v_coeff
+            {
+              template <
+                typename ParallelPolicy,
+                typename RandomAccessRange, typename Complex,
+                typename StateInteger, typename BitInteger, typename PermutatedControlQubitsRange>
+              [[noreturn]] static auto call(
+                ParallelPolicy const parallel_policy,
+                RandomAccessRange& local_state,
+                Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+                ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const permutated_target_qubit,
+                PermutatedControlQubitsRange const& control_qubits)
+              -> RandomAccessRange&
+              { throw 1; }
+            }; // struct transpage_controlled_v_coeff<LocalState>
+          } // namespace dispatch
+
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename Complex, typename ControlQubitsRange>
+          inline auto controlled_v_coeff(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+            ControlQubitsRange const& control_qubits)
+          -> RandomAccessRange&
+          {
+            auto const permutated_target_qubit = permutation[target_qubit];
+            using control_qubit_type = ::ket::utility::meta::range_value_t<ControlQubitsRange>;
+            auto const& permutated_control_qubits
+              = control_qubits | boost::adaptors::transformed(
+                  [&permutation](control_qubit_type const control_qubit) { return permutation[control_qubit]; });
+            ::ket::mpi::gate::detail::runtime::ranges::assert_all_qubits_are_local(
+              mpi_policy, local_state, communicator, environment,
+              permutated_target_qubit, permutated_control_qubits);
+
+            if (::ket::mpi::page::runtime::ranges::any_on_page(local_state, permutated_target_qubit, permutated_control_qubits))
+            {
+              using local_state_type = std::remove_const_t<std::remove_reference_t<RandomAccessRange>>;
+              return ::ket::mpi::gate::runtime::local::dispatch::transpage_controlled_v_coeff<local_state_type>::call(
+                parallel_policy, local_state, phase_coefficient,
+                permutated_target_qubit, permutated_control_qubits);
+            }
+
+            return ::ket::mpi::utility::for_each_local_range(
+              mpi_policy, local_state, communicator, environment,
+              [parallel_policy, &phase_coefficient, permutated_target_qubit, permutated_control_qubits](auto const first, auto const last)
+              {
+                ::ket::gate::runtime::qubit_ranges::controlled_v_coeff(
+                  parallel_policy, first, last, phase_coefficient,
+                  permutated_target_qubit.qubit(),
+                  permutated_control_qubits | boost::adaptors::transformed(
+                    [](::ket::mpi::permutated<control_qubit_type> const permutated_control_qubit)
+                    { return permutated_control_qubit.qubit(); }));
+              });
+          }
+        } // namespace local
+
+        namespace controlled_v_detail
+        {
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename Complex, typename ControlQubitsRange>
+          inline auto controlled_v_coeff(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Complex const& phase_coefficient,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+            ControlQubitsRange const& control_qubits)
+          -> RandomAccessRange&
+          {
+            using control_qubit_type = ::ket::utility::meta::range_value_t<ControlQubitsRange>;
+            ::ket::mpi::utility::runtime::ranges::maybe_interchange_qubits(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment,
+              boost::join(
+                boost::make_iterator_range(&target_qubit, &target_qubit + 1),
+                control_qubits | boost::adaptors::transformed(
+                  [](control_qubit_type const control_qubit) { return control_qubit.qubit(); })));
+
+            return ::ket::mpi::gate::runtime::local::controlled_v_coeff(
+              mpi_policy, parallel_policy,
+              local_state, permutation, communicator, environment,
+              phase_coefficient, target_qubit, control_qubits);
+          }
+
+                    template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Complex, typename ControlQubitsRange>
+          inline auto controlled_v_coeff(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::datatype_base<DerivedDatatype> const& datatype,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Complex const& phase_coefficient,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+            ControlQubitsRange const& control_qubits)
+          -> RandomAccessRange&
+          {
+            using control_qubit_type = ::ket::utility::meta::range_value_t<ControlQubitsRange>;
+            ::ket::mpi::utility::runtime::ranges::maybe_interchange_qubits(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment,
+              boost::join(
+                boost::make_iterator_range(&target_qubit, &target_qubit + 1),
+                control_qubits | boost::adaptors::transformed(
+                  [](control_qubit_type const control_qubit) { return control_qubit.qubit(); })));
+
+            return ::ket::mpi::gate::runtime::local::controlled_v_coeff(
+              mpi_policy, parallel_policy,
+              local_state, permutation, communicator, environment,
+              phase_coefficient, target_qubit, control_qubits);
+          }
+        } // namespace controlled_v_detail
+
+        namespace ranges
+        {
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename Complex, typename ControlQubitsRange>
+          inline auto controlled_v_coeff(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Complex const& phase_coefficient,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+            ControlQubitsRange const& control_qubits)
+          -> RandomAccessRange&
+          {
+            using std::begin;
+            using std::end;
+            auto const num_control_qubits = static_cast<std::size_t>(std::distance(begin(control_qubits), end(control_qubits)));
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::runtime::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(
+                  std::string(num_control_qubits + std::size_t{1u}, 'C').append("v(coeff) "), phase_coefficient),
+                target_qubit, control_qubits),
+              environment};
+
+            return ::ket::mpi::gate::runtime::controlled_v_detail::controlled_v_coeff(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment,
+              phase_coefficient, target_qubit, control_qubits);
+          }
+
+                    template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Complex, typename ControlQubitsRange>
+          inline auto controlled_v_coeff(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::datatype_base<DerivedDatatype> const& datatype,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Complex const& phase_coefficient,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+            ControlQubitsRange const& control_qubits)
+          -> RandomAccessRange&
+          {
+            using std::begin;
+            using std::end;
+            auto const num_control_qubits = static_cast<std::size_t>(std::distance(begin(control_qubits), end(control_qubits)));
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::runtime::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(
+                  std::string(num_control_qubits + std::size_t{1u}, 'C').append("v(coeff) "), phase_coefficient),
+                target_qubit, control_qubits),
+              environment};
+
+            return ::ket::mpi::gate::runtime::controlled_v_detail::controlled_v_coeff(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment,
+              phase_coefficient, target_qubit, control_qubits);
+          }
+
+} // namespace ranges
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename Complex, typename ControlQubitIterator>
+        inline auto controlled_v_coeff(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          Complex const& phase_coefficient,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::ranges::controlled_v_coeff(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, communicator, environment,
+            phase_coefficient, target_qubit,
+            boost::make_iterator_range(control_qubit_first, control_qubit_last));
+        }
+
+                template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Complex, typename ControlQubitIterator>
+        inline auto controlled_v_coeff(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          Complex const& phase_coefficient,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::ranges::controlled_v_coeff(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, datatype, communicator, environment,
+            phase_coefficient, target_qubit,
+            boost::make_iterator_range(control_qubit_first, control_qubit_last));
+        }
+
+namespace ranges
+        {
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename Complex, typename ControlQubitsRange>
+          inline auto adj_controlled_v_coeff(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Complex const& phase_coefficient,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+            ControlQubitsRange const& control_qubits)
+          -> RandomAccessRange&
+          {
+            using std::begin;
+            using std::conj;
+            using std::end;
+            auto const num_control_qubits = static_cast<std::size_t>(std::distance(begin(control_qubits), end(control_qubits)));
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::runtime::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(
+                  std::string{"Adj("}.append(num_control_qubits + std::size_t{1u}, 'C').append("v(coeff)) "), phase_coefficient),
+                target_qubit, control_qubits),
+              environment};
+
+            return ::ket::mpi::gate::runtime::controlled_v_detail::controlled_v_coeff(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment,
+              conj(phase_coefficient), target_qubit, control_qubits);
+          }
+
+                    template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Complex, typename ControlQubitsRange>
+          inline auto adj_controlled_v_coeff(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::datatype_base<DerivedDatatype> const& datatype,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Complex const& phase_coefficient,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+            ControlQubitsRange const& control_qubits)
+          -> RandomAccessRange&
+          {
+            using std::begin;
+            using std::conj;
+            using std::end;
+            auto const num_control_qubits = static_cast<std::size_t>(std::distance(begin(control_qubits), end(control_qubits)));
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::runtime::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(
+                  std::string{"Adj("}.append(num_control_qubits + std::size_t{1u}, 'C').append("v(coeff)) "), phase_coefficient),
+                target_qubit, control_qubits),
+              environment};
+
+            return ::ket::mpi::gate::runtime::controlled_v_detail::controlled_v_coeff(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment,
+              conj(phase_coefficient), target_qubit, control_qubits);
+          }
+
+} // namespace ranges
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename Complex, typename ControlQubitIterator>
+        inline auto adj_controlled_v_coeff(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          Complex const& phase_coefficient,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::ranges::adj_controlled_v_coeff(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, communicator, environment,
+            phase_coefficient, target_qubit,
+            boost::make_iterator_range(control_qubit_first, control_qubit_last));
+        }
+
+                template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Complex, typename ControlQubitIterator>
+        inline auto adj_controlled_v_coeff(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          Complex const& phase_coefficient,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::ranges::adj_controlled_v_coeff(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, datatype, communicator, environment,
+            phase_coefficient, target_qubit,
+            boost::make_iterator_range(control_qubit_first, control_qubit_last));
+        }
+
+namespace ranges
+        {
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename Real, typename ControlQubitsRange>
+          inline auto controlled_v(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Real const phase,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+            ControlQubitsRange const& control_qubits)
+          -> RandomAccessRange&
+          {
+            using complex_type = ::ket::utility::meta::range_value_t<RandomAccessRange>;
+            using std::begin;
+            using std::end;
+            auto const num_control_qubits = static_cast<std::size_t>(std::distance(begin(control_qubits), end(control_qubits)));
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::runtime::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(
+                  std::string(num_control_qubits + std::size_t{1u}, 'C').append("v "), phase),
+                target_qubit, control_qubits),
+              environment};
+
+            return ::ket::mpi::gate::runtime::controlled_v_detail::controlled_v_coeff(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment,
+              ::ket::utility::exp_i<complex_type>(phase), target_qubit, control_qubits);
+          }
+
+                    template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Real, typename ControlQubitsRange>
+          inline auto controlled_v(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::datatype_base<DerivedDatatype> const& datatype,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Real const phase,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+            ControlQubitsRange const& control_qubits)
+          -> RandomAccessRange&
+          {
+            using complex_type = ::ket::utility::meta::range_value_t<RandomAccessRange>;
+            using std::begin;
+            using std::end;
+            auto const num_control_qubits = static_cast<std::size_t>(std::distance(begin(control_qubits), end(control_qubits)));
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::runtime::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(
+                  std::string(num_control_qubits + std::size_t{1u}, 'C').append("v "), phase),
+                target_qubit, control_qubits),
+              environment};
+
+            return ::ket::mpi::gate::runtime::controlled_v_detail::controlled_v_coeff(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment,
+              ::ket::utility::exp_i<complex_type>(phase), target_qubit, control_qubits);
+          }
+
+                    template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename Real, typename ControlQubitsRange>
+          inline auto adj_controlled_v(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Real const phase,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+            ControlQubitsRange const& control_qubits)
+          -> RandomAccessRange&
+          {
+            using complex_type = ::ket::utility::meta::range_value_t<RandomAccessRange>;
+            using std::begin;
+            using std::end;
+            auto const num_control_qubits = static_cast<std::size_t>(std::distance(begin(control_qubits), end(control_qubits)));
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::runtime::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(
+                  std::string{"Adj("}.append(num_control_qubits + std::size_t{1u}, 'C').append("v) "), phase),
+                target_qubit, control_qubits),
+              environment};
+
+            return ::ket::mpi::gate::runtime::controlled_v_detail::controlled_v_coeff(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment,
+              ::ket::utility::exp_i<complex_type>(-phase), target_qubit, control_qubits);
+          }
+
+                    template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Real, typename ControlQubitsRange>
+          inline auto adj_controlled_v(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::datatype_base<DerivedDatatype> const& datatype,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Real const phase,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+            ControlQubitsRange const& control_qubits)
+          -> RandomAccessRange&
+          {
+            using complex_type = ::ket::utility::meta::range_value_t<RandomAccessRange>;
+            using std::begin;
+            using std::end;
+            auto const num_control_qubits = static_cast<std::size_t>(std::distance(begin(control_qubits), end(control_qubits)));
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::runtime::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(
+                  std::string{"Adj("}.append(num_control_qubits + std::size_t{1u}, 'C').append("v) "), phase),
+                target_qubit, control_qubits),
+              environment};
+
+            return ::ket::mpi::gate::runtime::controlled_v_detail::controlled_v_coeff(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment,
+              ::ket::utility::exp_i<complex_type>(-phase), target_qubit, control_qubits);
+          }
+
+} // namespace ranges
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename Real, typename ControlQubitIterator>
+        inline auto controlled_v(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          Real const phase,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::ranges::controlled_v(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, communicator, environment,
+            phase, target_qubit,
+            boost::make_iterator_range(control_qubit_first, control_qubit_last));
+        }
+
+                template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Real, typename ControlQubitIterator>
+        inline auto controlled_v(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          Real const phase,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::ranges::controlled_v(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, datatype, communicator, environment,
+            phase, target_qubit,
+            boost::make_iterator_range(control_qubit_first, control_qubit_last));
+        }
+
+                template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename Real, typename ControlQubitIterator>
+        inline auto adj_controlled_v(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          Real const phase,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::ranges::adj_controlled_v(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, communicator, environment,
+            phase, target_qubit,
+            boost::make_iterator_range(control_qubit_first, control_qubit_last));
+        }
+
+                template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Real, typename ControlQubitIterator>
+        inline auto adj_controlled_v(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          Real const phase,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::ranges::adj_controlled_v(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, datatype, communicator, environment,
+            phase, target_qubit,
+            boost::make_iterator_range(control_qubit_first, control_qubit_last));
+        }
+        namespace ranges
+        {
+          template <typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename... Args>
+          inline auto controlled_v_coeff(
+            ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            Args&&... args)
+          -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::runtime::ranges::controlled_v_coeff(
+              ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
+              local_state, permutation, buffer, std::forward<Args>(args)...);
+          }
+
+          template <typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename... Args>
+          inline auto controlled_v_coeff(
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            Args&&... args)
+          -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::runtime::ranges::controlled_v_coeff(
+              ::ket::mpi::utility::policy::make_simple_mpi(),
+              ::ket::utility::policy::make_sequential(),
+              local_state, permutation, buffer, std::forward<Args>(args)...);
+          }
+
+          template <typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename... Args>
+          inline auto adj_controlled_v_coeff(
+            ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            Args&&... args)
+          -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::runtime::ranges::adj_controlled_v_coeff(
+              ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
+              local_state, permutation, buffer, std::forward<Args>(args)...);
+          }
+
+          template <typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename... Args>
+          inline auto adj_controlled_v_coeff(
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            Args&&... args)
+          -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::runtime::ranges::adj_controlled_v_coeff(
+              ::ket::mpi::utility::policy::make_simple_mpi(),
+              ::ket::utility::policy::make_sequential(),
+              local_state, permutation, buffer, std::forward<Args>(args)...);
+          }
+
+          template <typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename... Args>
+          inline auto controlled_v(
+            ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            Args&&... args)
+          -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::runtime::ranges::controlled_v(
+              ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
+              local_state, permutation, buffer, std::forward<Args>(args)...);
+          }
+
+          template <typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename... Args>
+          inline auto controlled_v(
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            Args&&... args)
+          -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::runtime::ranges::controlled_v(
+              ::ket::mpi::utility::policy::make_simple_mpi(),
+              ::ket::utility::policy::make_sequential(),
+              local_state, permutation, buffer, std::forward<Args>(args)...);
+          }
+
+          template <typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename... Args>
+          inline auto adj_controlled_v(
+            ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            Args&&... args)
+          -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::runtime::ranges::adj_controlled_v(
+              ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
+              local_state, permutation, buffer, std::forward<Args>(args)...);
+          }
+
+          template <typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename... Args>
+          inline auto adj_controlled_v(
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            Args&&... args)
+          -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::runtime::ranges::adj_controlled_v(
+              ::ket::mpi::utility::policy::make_simple_mpi(),
+              ::ket::utility::policy::make_sequential(),
+              local_state, permutation, buffer, std::forward<Args>(args)...);
+          }
+        } // namespace ranges
+
+        template <typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename... Args>
+        inline auto controlled_v_coeff(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          Args&&... args)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::controlled_v_coeff(
+            ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
+            local_state, permutation, buffer, std::forward<Args>(args)...);
+        }
+
+        template <typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename... Args>
+        inline auto controlled_v_coeff(
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          Args&&... args)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::controlled_v_coeff(
+            ::ket::mpi::utility::policy::make_simple_mpi(),
+            ::ket::utility::policy::make_sequential(),
+            local_state, permutation, buffer, std::forward<Args>(args)...);
+        }
+
+        template <typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename... Args>
+        inline auto adj_controlled_v_coeff(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          Args&&... args)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::adj_controlled_v_coeff(
+            ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
+            local_state, permutation, buffer, std::forward<Args>(args)...);
+        }
+
+        template <typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename... Args>
+        inline auto adj_controlled_v_coeff(
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          Args&&... args)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::adj_controlled_v_coeff(
+            ::ket::mpi::utility::policy::make_simple_mpi(),
+            ::ket::utility::policy::make_sequential(),
+            local_state, permutation, buffer, std::forward<Args>(args)...);
+        }
+
+        template <typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename... Args>
+        inline auto controlled_v(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          Args&&... args)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::controlled_v(
+            ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
+            local_state, permutation, buffer, std::forward<Args>(args)...);
+        }
+
+        template <typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename... Args>
+        inline auto controlled_v(
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          Args&&... args)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::controlled_v(
+            ::ket::mpi::utility::policy::make_simple_mpi(),
+            ::ket::utility::policy::make_sequential(),
+            local_state, permutation, buffer, std::forward<Args>(args)...);
+        }
+
+        template <typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename... Args>
+        inline auto adj_controlled_v(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          Args&&... args)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::adj_controlled_v(
+            ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
+            local_state, permutation, buffer, std::forward<Args>(args)...);
+        }
+
+        template <typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename... Args>
+        inline auto adj_controlled_v(
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          Args&&... args)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::adj_controlled_v(
+            ::ket::mpi::utility::policy::make_simple_mpi(),
+            ::ket::utility::policy::make_sequential(),
+            local_state, permutation, buffer, std::forward<Args>(args)...);
+        }
+      } // namespace runtime
     } // namespace gate
   } // namespace mpi
 } // namespace ket

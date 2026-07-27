@@ -7,9 +7,13 @@
 # include <array>
 # include <algorithm>
 # include <iterator>
+# include <memory>
 # include <type_traits>
 
 # include <boost/math/constants/constants.hpp>
+# include <boost/range/iterator_range.hpp>
+# include <boost/range/join.hpp>
+# include <boost/range/adaptor/transformed.hpp>
 
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
@@ -17,6 +21,7 @@
 # include <ket/gate/utility/index_with_qubits.hpp>
 # include <ket/utility/integer_exp2.hpp>
 # include <ket/utility/exp_i.hpp>
+# include <ket/utility/meta/ranges.hpp>
 # include <ket/utility/meta/real_of.hpp>
 
 
@@ -81,16 +86,14 @@ namespace ket
           using std::end;
           auto const control_on_iter
             = first
-              + ::ket::gate::utility::index_with_qubits(
+              + ::ket::gate::utility::ranges::index_with_qubits(
                   fused_index_wo_qubits, control_on_index,
-                  begin(unsorted_fused_qubits), end(unsorted_fused_qubits),
-                  begin(sorted_fused_qubits_with_sentinel), end(sorted_fused_qubits_with_sentinel));
+                  unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);
           auto const target_control_on_iter
             = first
-              + ::ket::gate::utility::index_with_qubits(
+              + ::ket::gate::utility::ranges::index_with_qubits(
                   fused_index_wo_qubits, target_control_on_index,
-                  begin(unsorted_fused_qubits), end(unsorted_fused_qubits),
-                  begin(sorted_fused_qubits_with_sentinel), end(sorted_fused_qubits_with_sentinel));
+                  unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);
           auto const control_on_iter_value = *control_on_iter;
 
           using boost::math::constants::half;
@@ -145,24 +148,20 @@ namespace ket
             using std::end;
             auto const iter0
               = first
-                + ::ket::gate::utility::index_with_qubits(
+                + ::ket::gate::utility::ranges::index_with_qubits(
                     fused_index_wo_qubits,
-                    ::ket::gate::utility::index_with_qubits(
+                    ::ket::gate::utility::ranges::index_with_qubits(
                       operated_index_wo_qubits, index0,
-                      begin(unsorted_operated_qubits), end(unsorted_operated_qubits),
-                      begin(sorted_operated_qubits_with_sentinel), end(sorted_operated_qubits_with_sentinel)),
-                    begin(unsorted_fused_qubits), end(unsorted_fused_qubits),
-                    begin(sorted_fused_qubits_with_sentinel), end(sorted_fused_qubits_with_sentinel));
+                      unsorted_operated_qubits, sorted_operated_qubits_with_sentinel),
+                    unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);
             auto const iter1
               = first
-                + ::ket::gate::utility::index_with_qubits(
+                + ::ket::gate::utility::ranges::index_with_qubits(
                     fused_index_wo_qubits,
-                    ::ket::gate::utility::index_with_qubits(
+                    ::ket::gate::utility::ranges::index_with_qubits(
                       operated_index_wo_qubits, index1,
-                      begin(unsorted_operated_qubits), end(unsorted_operated_qubits),
-                      begin(sorted_operated_qubits_with_sentinel), end(sorted_operated_qubits_with_sentinel)),
-                    begin(unsorted_fused_qubits), end(unsorted_fused_qubits),
-                    begin(sorted_fused_qubits_with_sentinel), end(sorted_fused_qubits_with_sentinel));
+                      unsorted_operated_qubits, sorted_operated_qubits_with_sentinel),
+                    unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);
             auto const value0 = *iter0;
 
             using boost::math::constants::half;
@@ -203,6 +202,205 @@ namespace ket
         Real const phase, ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
       -> void
       { ::ket::gate::fused::controlled_v(first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel, -phase, target_qubit, control_qubits...); }
+
+
+      namespace runtime
+      {
+        // controlled_v_coeff
+        namespace ranges
+        {
+          // C...CU_{tc...c'}(theta) or CnU_{tc...c'}(theta)
+          template <typename RandomAccessIterator, typename StateInteger, typename QubitsRange1, typename QubitsRange2, typename Complex, typename BitInteger, typename ControlQubitsRange>
+          inline auto controlled_v_coeff(
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            QubitsRange1 const& unsorted_fused_qubits, QubitsRange2 const& sorted_fused_qubits_with_sentinel,
+            Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubitsRange const& control_qubits)
+          -> void
+          {
+            using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+            using control_qubit_type = ::ket::control<qubit_type>;
+            static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+            static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
+            static_assert(std::is_same< ::ket::control<qubit_type>, ::ket::utility::meta::range_value_t<ControlQubitsRange> >::value, "The value_type of ControlQubitsRange should be the same as ::ket::control<::ket::qubit<S,B>>");
+
+            using std::begin;
+            using std::end;
+            auto const num_control_qubits = static_cast<BitInteger>(end(control_qubits) - begin(control_qubits));
+            auto const num_fused_qubits = static_cast<BitInteger>(end(unsorted_fused_qubits) - begin(unsorted_fused_qubits));
+            assert(static_cast<BitInteger>(end(sorted_fused_qubits_with_sentinel) - begin(sorted_fused_qubits_with_sentinel)) == num_fused_qubits + BitInteger{1u});
+            assert(num_control_qubits + BitInteger{1u} <= num_fused_qubits);
+
+            assert(target_qubit < qubit_type{num_fused_qubits});
+            assert(::ket::utility::runtime::ranges::all_in_state_vector(num_fused_qubits, control_qubits));
+
+            static_assert(
+              std::is_same<Complex, typename std::iterator_traits<RandomAccessIterator>::value_type>::value,
+              "Complex should be the same to value_type of RandomAccessRange");
+
+            using real_type = ::ket::utility::meta::real_t<Complex>;
+            auto const one_plus_phase_coefficient = Complex{real_type{1}} + phase_coefficient;
+            auto const one_minus_phase_coefficient = Complex{real_type{1}} - phase_coefficient;
+            ::ket::gate::fused::runtime::ranges::gate(
+              first, num_fused_qubits,
+              [fused_index_wo_qubits, &unsorted_fused_qubits, &sorted_fused_qubits_with_sentinel,
+               num_control_qubits, one_plus_phase_coefficient, one_minus_phase_coefficient](
+                auto const first, StateInteger const operated_index_wo_qubits,
+                auto const& unsorted_operated_qubits, auto const& sorted_operated_qubits_with_sentinel)
+              {
+                // 0b11...10u
+                auto const index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{1u};
+                // 0b11...11u
+                auto const index1 = index0 bitor std::size_t{1u};
+
+                auto const iter0
+                  = first
+                    + ::ket::gate::utility::ranges::index_with_qubits(
+                        fused_index_wo_qubits,
+                        ::ket::gate::utility::ranges::index_with_qubits(
+                          operated_index_wo_qubits, index0,
+                          unsorted_operated_qubits, sorted_operated_qubits_with_sentinel),
+                        unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);
+                auto const iter1
+                  = first
+                    + ::ket::gate::utility::ranges::index_with_qubits(
+                        fused_index_wo_qubits,
+                        ::ket::gate::utility::ranges::index_with_qubits(
+                          operated_index_wo_qubits, index1,
+                          unsorted_operated_qubits, sorted_operated_qubits_with_sentinel),
+                        unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);
+                auto const value0 = *iter0;
+
+                using boost::math::constants::half;
+                *iter0 = half<real_type>() * (one_plus_phase_coefficient * value0 + one_minus_phase_coefficient * *iter1);
+                *iter1 = half<real_type>() * (one_minus_phase_coefficient * value0 + one_plus_phase_coefficient * *iter1);
+              },
+              boost::join(
+                boost::make_iterator_range(std::addressof(target_qubit), std::next(std::addressof(target_qubit))),
+                control_qubits | boost::adaptors::transformed(
+                  [](control_qubit_type const control_qubit) { return control_qubit.qubit(); })));
+          }
+
+          template <typename RandomAccessIterator, typename StateInteger, typename QubitsRange1, typename QubitsRange2, typename Complex, typename BitInteger, typename ControlQubitsRange>
+          inline auto adj_controlled_v_coeff(
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            QubitsRange1 const& unsorted_fused_qubits, QubitsRange2 const& sorted_fused_qubits_with_sentinel,
+            Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubitsRange const& control_qubits)
+          -> void
+          {
+            using std::conj;
+            ::ket::gate::fused::runtime::ranges::controlled_v_coeff(
+              first, fused_index_wo_qubits,
+              unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
+              conj(phase_coefficient), target_qubit, control_qubits);
+          }
+        } // namespace ranges
+
+        template <typename RandomAccessIterator, typename StateInteger, typename QubitIterator1, typename QubitIterator2, typename Complex, typename BitInteger, typename ControlQubitIterator>
+        inline auto controlled_v_coeff(
+          RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+          QubitIterator1 const unsorted_fused_qubit_first, QubitIterator1 const unsorted_fused_qubit_last,
+          QubitIterator2 const sorted_fused_qubit_with_sentinel_first, QubitIterator2 const sorted_fused_qubit_with_sentinel_last,
+          Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> void
+        {
+          ::ket::gate::fused::runtime::ranges::controlled_v_coeff(
+            first, fused_index_wo_qubits,
+            boost::make_iterator_range(unsorted_fused_qubit_first, unsorted_fused_qubit_last),
+            boost::make_iterator_range(sorted_fused_qubit_with_sentinel_first, sorted_fused_qubit_with_sentinel_last),
+            phase_coefficient, target_qubit, boost::make_iterator_range(control_qubit_first, control_qubit_last));
+        }
+
+        template <typename RandomAccessIterator, typename StateInteger, typename QubitIterator1, typename QubitIterator2, typename Complex, typename BitInteger, typename ControlQubitIterator>
+        inline auto adj_controlled_v_coeff(
+          RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+          QubitIterator1 const unsorted_fused_qubit_first, QubitIterator1 const unsorted_fused_qubit_last,
+          QubitIterator2 const sorted_fused_qubit_with_sentinel_first, QubitIterator2 const sorted_fused_qubit_with_sentinel_last,
+          Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> void
+        {
+          ::ket::gate::fused::runtime::ranges::adj_controlled_v_coeff(
+            first, fused_index_wo_qubits,
+            boost::make_iterator_range(unsorted_fused_qubit_first, unsorted_fused_qubit_last),
+            boost::make_iterator_range(sorted_fused_qubit_with_sentinel_first, sorted_fused_qubit_with_sentinel_last),
+            phase_coefficient, target_qubit, boost::make_iterator_range(control_qubit_first, control_qubit_last));
+        }
+
+        // controlled_v
+        template <typename RandomAccessIterator, typename StateInteger, typename QubitIterator1, typename QubitIterator2, typename Real, typename BitInteger, typename ControlQubitIterator>
+        inline auto controlled_v(
+          RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+          QubitIterator1 const unsorted_fused_qubit_first, QubitIterator1 const unsorted_fused_qubit_last,
+          QubitIterator2 const sorted_fused_qubit_with_sentinel_first, QubitIterator2 const sorted_fused_qubit_with_sentinel_last,
+          Real const phase,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> void
+        {
+          using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+          ::ket::gate::fused::runtime::controlled_v_coeff(
+            first, fused_index_wo_qubits,
+            unsorted_fused_qubit_first, unsorted_fused_qubit_last,
+            sorted_fused_qubit_with_sentinel_first, sorted_fused_qubit_with_sentinel_last,
+            ::ket::utility::exp_i<complex_type>(phase), target_qubit, control_qubit_first, control_qubit_last);
+        }
+
+        template <typename RandomAccessIterator, typename StateInteger, typename QubitIterator1, typename QubitIterator2, typename Real, typename BitInteger, typename ControlQubitIterator>
+        inline auto adj_controlled_v(
+          RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+          QubitIterator1 const unsorted_fused_qubit_first, QubitIterator1 const unsorted_fused_qubit_last,
+          QubitIterator2 const sorted_fused_qubit_with_sentinel_first, QubitIterator2 const sorted_fused_qubit_with_sentinel_last,
+          Real const phase,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> void
+        {
+          using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+          ::ket::gate::fused::runtime::adj_controlled_v_coeff(
+            first, fused_index_wo_qubits,
+            unsorted_fused_qubit_first, unsorted_fused_qubit_last,
+            sorted_fused_qubit_with_sentinel_first, sorted_fused_qubit_with_sentinel_last,
+            ::ket::utility::exp_i<complex_type>(phase), target_qubit, control_qubit_first, control_qubit_last);
+        }
+
+        namespace ranges
+        {
+          template <typename RandomAccessIterator, typename StateInteger, typename QubitsRange1, typename QubitsRange2, typename Real, typename BitInteger, typename ControlQubitsRange>
+          inline auto controlled_v(
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            QubitsRange1 const& unsorted_fused_qubits, QubitsRange2 const& sorted_fused_qubits_with_sentinel,
+            Real const phase,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubitsRange const& control_qubits)
+          -> void
+          {
+            using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+            ::ket::gate::fused::runtime::ranges::controlled_v_coeff(
+              first, fused_index_wo_qubits,
+              unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
+              ::ket::utility::exp_i<complex_type>(phase), target_qubit, control_qubits);
+          }
+
+          template <typename RandomAccessIterator, typename StateInteger, typename QubitsRange1, typename QubitsRange2, typename Real, typename BitInteger, typename ControlQubitsRange>
+          inline auto adj_controlled_v(
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            QubitsRange1 const& unsorted_fused_qubits, QubitsRange2 const& sorted_fused_qubits_with_sentinel,
+            Real const phase,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubitsRange const& control_qubits)
+          -> void
+          {
+            using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+            ::ket::gate::fused::runtime::ranges::adj_controlled_v_coeff(
+              first, fused_index_wo_qubits,
+              unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
+              ::ket::utility::exp_i<complex_type>(phase), target_qubit, control_qubits);
+          }
+        } // namespace ranges
+      } // namespace runtime
 # else // KET_USE_BIT_MASKS_EXPLICITLY
       // controlled_v_coeff
       // V_{tc}(theta) or CV_{tc}(theta)
@@ -368,6 +566,205 @@ namespace ket
         Real const phase, ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
       -> void
       { ::ket::gate::fused::controlled_v(first, fused_index_wo_qubits, fused_qubit_masks, fused_index_masks, -phase, target_qubit, control_qubits...); }
+
+
+      namespace runtime
+      {
+        // controlled_v_coeff
+        namespace ranges
+        {
+          // C...CU_{tc...c'}(theta) or CnU_{tc...c'}(theta)
+          template <typename RandomAccessIterator, typename StateInteger, typename StateIntegersRange1, typename StateIntegersRange2, typename Complex, typename BitInteger, typename ControlQubitsRange>
+          inline auto controlled_v_coeff(
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            StateIntegersRange1 const& fused_qubit_masks, StateIntegersRange2 const& fused_index_masks,
+            Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubitsRange const& control_qubits)
+          -> void
+          {
+            using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+            using control_qubit_type = ::ket::control<qubit_type>;
+            static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+            static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
+            static_assert(std::is_same< ::ket::control<qubit_type>, ::ket::utility::meta::range_value_t<ControlQubitsRange> >::value, "The value_type of ControlQubitsRange should be the same as ::ket::control<::ket::qubit<S,B>>");
+
+            using std::begin;
+            using std::end;
+            auto const num_control_qubits = static_cast<BitInteger>(end(control_qubits) - begin(control_qubits));
+            auto const num_fused_qubits = static_cast<BitInteger>(end(fused_qubit_masks) - begin(fused_qubit_masks));
+            assert(static_cast<BitInteger>(end(fused_index_masks) - begin(fused_index_masks)) == num_fused_qubits + BitInteger{1u});
+            assert(num_control_qubits + BitInteger{1u} <= num_fused_qubits);
+
+            assert(target_qubit < qubit_type{num_fused_qubits});
+            assert(::ket::utility::runtime::ranges::all_in_state_vector(num_fused_qubits, control_qubits));
+
+            static_assert(
+              std::is_same<Complex, typename std::iterator_traits<RandomAccessIterator>::value_type>::value,
+              "Complex should be the same to value_type of RandomAccessRange");
+
+            using real_type = ::ket::utility::meta::real_t<Complex>;
+            auto const one_plus_phase_coefficient = Complex{real_type{1}} + phase_coefficient;
+            auto const one_minus_phase_coefficient = Complex{real_type{1}} - phase_coefficient;
+            ::ket::gate::fused::runtime::ranges::gate(
+              first, num_fused_qubits,
+              [fused_index_wo_qubits, &fused_qubit_masks, &fused_index_masks,
+               num_control_qubits, one_plus_phase_coefficient, one_minus_phase_coefficient](
+                auto const first, StateInteger const operated_index_wo_qubits,
+                auto const& operated_qubit_masks, auto const& operated_index_masks)
+              {
+                // 0b11...10u
+                auto const index0 = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << BitInteger{1u};
+                // 0b11...11u
+                auto const index1 = index0 bitor std::size_t{1u};
+
+                auto const iter0
+                  = first
+                    + ::ket::gate::utility::ranges::index_with_qubits(
+                        fused_index_wo_qubits,
+                        ::ket::gate::utility::ranges::index_with_qubits(
+                          operated_index_wo_qubits, index0,
+                          operated_qubit_masks, operated_index_masks),
+                        fused_qubit_masks, fused_index_masks);
+                auto const iter1
+                  = first
+                    + ::ket::gate::utility::ranges::index_with_qubits(
+                        fused_index_wo_qubits,
+                        ::ket::gate::utility::ranges::index_with_qubits(
+                          operated_index_wo_qubits, index1,
+                          operated_qubit_masks, operated_index_masks),
+                        fused_qubit_masks, fused_index_masks);
+                auto const value0 = *iter0;
+
+                using boost::math::constants::half;
+                *iter0 = half<real_type>() * (one_plus_phase_coefficient * value0 + one_minus_phase_coefficient * *iter1);
+                *iter1 = half<real_type>() * (one_minus_phase_coefficient * value0 + one_plus_phase_coefficient * *iter1);
+              },
+              boost::join(
+                boost::make_iterator_range(std::addressof(target_qubit), std::next(std::addressof(target_qubit))),
+                control_qubits | boost::adaptors::transformed(
+                  [](control_qubit_type const control_qubit) { return control_qubit.qubit(); })));
+          }
+
+          template <typename RandomAccessIterator, typename StateInteger, typename StateIntegersRange1, typename StateIntegersRange2, typename Complex, typename BitInteger, typename ControlQubitsRange>
+          inline auto adj_controlled_v_coeff(
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            StateIntegersRange1 const& fused_qubit_masks, StateIntegersRange2 const& fused_index_masks,
+            Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubitsRange const& control_qubits)
+          -> void
+          {
+            using std::conj;
+            ::ket::gate::fused::runtime::ranges::controlled_v_coeff(
+              first, fused_index_wo_qubits,
+              fused_qubit_masks, fused_index_masks,
+              conj(phase_coefficient), target_qubit, control_qubits);
+          }
+        } // namespace ranges
+
+        template <typename RandomAccessIterator, typename StateInteger, typename StateIntegerIterator1, typename StateIntegerIterator2, typename Complex, typename BitInteger, typename ControlQubitIterator>
+        inline auto controlled_v_coeff(
+          RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+          StateIntegerIterator1 const fused_qubit_mask_first, StateIntegerIterator1 const fused_qubit_mask_last,
+          StateIntegerIterator2 const fused_index_mask_first, StateIntegerIterator2 const fused_index_mask_last,
+          Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> void
+        {
+          ::ket::gate::fused::runtime::ranges::controlled_v_coeff(
+            first, fused_index_wo_qubits,
+            boost::make_iterator_range(fused_qubit_mask_first, fused_qubit_mask_last),
+            boost::make_iterator_range(fused_index_mask_first, fused_index_mask_last),
+            phase_coefficient, target_qubit, boost::make_iterator_range(control_qubit_first, control_qubit_last));
+        }
+
+        template <typename RandomAccessIterator, typename StateInteger, typename StateIntegerIterator1, typename StateIntegerIterator2, typename Complex, typename BitInteger, typename ControlQubitIterator>
+        inline auto adj_controlled_v_coeff(
+          RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+          StateIntegerIterator1 const fused_qubit_mask_first, StateIntegerIterator1 const fused_qubit_mask_last,
+          StateIntegerIterator2 const fused_index_mask_first, StateIntegerIterator2 const fused_index_mask_last,
+          Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> void
+        {
+          ::ket::gate::fused::runtime::ranges::adj_controlled_v_coeff(
+            first, fused_index_wo_qubits,
+            boost::make_iterator_range(fused_qubit_mask_first, fused_qubit_mask_last),
+            boost::make_iterator_range(fused_index_mask_first, fused_index_mask_last),
+            phase_coefficient, target_qubit, boost::make_iterator_range(control_qubit_first, control_qubit_last));
+        }
+
+        // controlled_v
+        template <typename RandomAccessIterator, typename StateInteger, typename StateIntegerIterator1, typename StateIntegerIterator2, typename Real, typename BitInteger, typename ControlQubitIterator>
+        inline auto controlled_v(
+          RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+          StateIntegerIterator1 const fused_qubit_mask_first, StateIntegerIterator1 const fused_qubit_mask_last,
+          StateIntegerIterator2 const fused_index_mask_first, StateIntegerIterator2 const fused_index_mask_last,
+          Real const phase,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> void
+        {
+          using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+          ::ket::gate::fused::runtime::controlled_v_coeff(
+            first, fused_index_wo_qubits,
+            fused_qubit_mask_first, fused_qubit_mask_last,
+            fused_index_mask_first, fused_index_mask_last,
+            ::ket::utility::exp_i<complex_type>(phase), target_qubit, control_qubit_first, control_qubit_last);
+        }
+
+        template <typename RandomAccessIterator, typename StateInteger, typename StateIntegerIterator1, typename StateIntegerIterator2, typename Real, typename BitInteger, typename ControlQubitIterator>
+        inline auto adj_controlled_v(
+          RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+          StateIntegerIterator1 const fused_qubit_mask_first, StateIntegerIterator1 const fused_qubit_mask_last,
+          StateIntegerIterator2 const fused_index_mask_first, StateIntegerIterator2 const fused_index_mask_last,
+          Real const phase,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> void
+        {
+          using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+          ::ket::gate::fused::runtime::adj_controlled_v_coeff(
+            first, fused_index_wo_qubits,
+            fused_qubit_mask_first, fused_qubit_mask_last,
+            fused_index_mask_first, fused_index_mask_last,
+            ::ket::utility::exp_i<complex_type>(phase), target_qubit, control_qubit_first, control_qubit_last);
+        }
+
+        namespace ranges
+        {
+          template <typename RandomAccessIterator, typename StateInteger, typename StateIntegersRange1, typename StateIntegersRange2, typename Real, typename BitInteger, typename ControlQubitsRange>
+          inline auto controlled_v(
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            StateIntegersRange1 const& fused_qubit_masks, StateIntegersRange2 const& fused_index_masks,
+            Real const phase,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubitsRange const& control_qubits)
+          -> void
+          {
+            using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+            ::ket::gate::fused::runtime::ranges::controlled_v_coeff(
+              first, fused_index_wo_qubits,
+              fused_qubit_masks, fused_index_masks,
+              ::ket::utility::exp_i<complex_type>(phase), target_qubit, control_qubits);
+          }
+
+          template <typename RandomAccessIterator, typename StateInteger, typename StateIntegersRange1, typename StateIntegersRange2, typename Real, typename BitInteger, typename ControlQubitsRange>
+          inline auto adj_controlled_v(
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            StateIntegersRange1 const& fused_qubit_masks, StateIntegersRange2 const& fused_index_masks,
+            Real const phase,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubitsRange const& control_qubits)
+          -> void
+          {
+            using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+            ::ket::gate::fused::runtime::ranges::adj_controlled_v_coeff(
+              first, fused_index_wo_qubits,
+              fused_qubit_masks, fused_index_masks,
+              ::ket::utility::exp_i<complex_type>(phase), target_qubit, control_qubits);
+          }
+        } // namespace ranges
+      } // namespace runtime
 # endif // KET_USE_BIT_MASKS_EXPLICITLY
     } // namespace fused
   } // namespace gate

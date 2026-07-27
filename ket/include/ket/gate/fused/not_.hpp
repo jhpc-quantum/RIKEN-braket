@@ -4,6 +4,10 @@
 # include <cstddef>
 # include <algorithm>
 # include <array>
+# include <iterator>
+# include <memory>
+
+# include <boost/range/iterator_range.hpp>
 
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
@@ -104,6 +108,137 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
       -> void
       { ::ket::gate::fused::not_(first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel, target_qubit, control_qubits...); }
+
+
+      namespace runtime
+      {
+        template <typename RandomAccessIterator, typename StateInteger, typename QubitIterator1, typename QubitIterator2, typename BitInteger, typename ControlQubitIterator>
+        inline auto not_(
+          RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+          QubitIterator1 const unsorted_fused_qubit_first, QubitIterator1 const unsorted_fused_qubit_last,
+          QubitIterator2 const sorted_fused_qubit_with_sentinel_first, QubitIterator2 const sorted_fused_qubit_with_sentinel_last,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> void
+        {
+          auto const target_qubit_ptr = std::addressof(target_qubit);
+          ::ket::gate::fused::runtime::pauli_x(
+            first, fused_index_wo_qubits,
+            unsorted_fused_qubit_first, unsorted_fused_qubit_last,
+            sorted_fused_qubit_with_sentinel_first, sorted_fused_qubit_with_sentinel_last,
+            target_qubit_ptr, std::next(target_qubit_ptr), control_qubit_first, control_qubit_last);
+        }
+
+        template <typename RandomAccessIterator, typename StateInteger, typename QubitIterator1, typename QubitIterator2, typename BitInteger>
+        inline auto not_(
+          RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+          QubitIterator1 const unsorted_fused_qubit_first, QubitIterator1 const unsorted_fused_qubit_last,
+          QubitIterator2 const sorted_fused_qubit_with_sentinel_first, QubitIterator2 const sorted_fused_qubit_with_sentinel_last,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+        -> void
+        {
+          auto const target_qubit_ptr = std::addressof(target_qubit);
+          ::ket::gate::fused::runtime::pauli_x(
+            first, fused_index_wo_qubits,
+            unsorted_fused_qubit_first, unsorted_fused_qubit_last,
+            sorted_fused_qubit_with_sentinel_first, sorted_fused_qubit_with_sentinel_last,
+            target_qubit_ptr, std::next(target_qubit_ptr));
+        }
+
+        template <typename RandomAccessIterator, typename StateInteger, typename QubitIterator1, typename QubitIterator2, typename BitInteger, typename ControlQubitIterator>
+        inline auto adj_not_(
+          RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+          QubitIterator1 const unsorted_fused_qubit_first, QubitIterator1 const unsorted_fused_qubit_last,
+          QubitIterator2 const sorted_fused_qubit_with_sentinel_first, QubitIterator2 const sorted_fused_qubit_with_sentinel_last,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> void
+        {
+          auto const target_qubit_ptr = std::addressof(target_qubit);
+          ::ket::gate::fused::runtime::adj_pauli_x(
+            first, fused_index_wo_qubits,
+            unsorted_fused_qubit_first, unsorted_fused_qubit_last,
+            sorted_fused_qubit_with_sentinel_first, sorted_fused_qubit_with_sentinel_last,
+            target_qubit_ptr, std::next(target_qubit_ptr), control_qubit_first, control_qubit_last);
+        }
+
+        template <typename RandomAccessIterator, typename StateInteger, typename QubitIterator1, typename QubitIterator2, typename BitInteger>
+        inline auto adj_not_(
+          RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+          QubitIterator1 const unsorted_fused_qubit_first, QubitIterator1 const unsorted_fused_qubit_last,
+          QubitIterator2 const sorted_fused_qubit_with_sentinel_first, QubitIterator2 const sorted_fused_qubit_with_sentinel_last,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+        -> void
+        {
+          auto const target_qubit_ptr = std::addressof(target_qubit);
+          ::ket::gate::fused::runtime::adj_pauli_x(
+            first, fused_index_wo_qubits,
+            unsorted_fused_qubit_first, unsorted_fused_qubit_last,
+            sorted_fused_qubit_with_sentinel_first, sorted_fused_qubit_with_sentinel_last,
+            target_qubit_ptr, std::next(target_qubit_ptr));
+        }
+
+        namespace ranges
+        {
+          template <typename RandomAccessIterator, typename StateInteger, typename QubitsRange1, typename QubitsRange2, typename BitInteger, typename ControlQubitsRange>
+          inline auto not_(
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            QubitsRange1 const& unsorted_fused_qubits, QubitsRange2 const& sorted_fused_qubits_with_sentinel,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+            ControlQubitsRange const& control_qubits)
+          -> void
+          {
+            auto const target_qubit_ptr = std::addressof(target_qubit);
+            ::ket::gate::fused::runtime::ranges::pauli_x(
+              first, fused_index_wo_qubits,
+              unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
+              boost::make_iterator_range(target_qubit_ptr, std::next(target_qubit_ptr)), control_qubits);
+          }
+
+          template <typename RandomAccessIterator, typename StateInteger, typename QubitsRange1, typename QubitsRange2, typename BitInteger>
+          inline auto not_(
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            QubitsRange1 const& unsorted_fused_qubits, QubitsRange2 const& sorted_fused_qubits_with_sentinel,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+          -> void
+          {
+            auto const target_qubit_ptr = std::addressof(target_qubit);
+            ::ket::gate::fused::runtime::ranges::pauli_x(
+              first, fused_index_wo_qubits,
+              unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
+              boost::make_iterator_range(target_qubit_ptr, std::next(target_qubit_ptr)));
+          }
+
+          template <typename RandomAccessIterator, typename StateInteger, typename QubitsRange1, typename QubitsRange2, typename BitInteger, typename ControlQubitsRange>
+          inline auto adj_not_(
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            QubitsRange1 const& unsorted_fused_qubits, QubitsRange2 const& sorted_fused_qubits_with_sentinel,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+            ControlQubitsRange const& control_qubits)
+          -> void
+          {
+            auto const target_qubit_ptr = std::addressof(target_qubit);
+            ::ket::gate::fused::runtime::ranges::adj_pauli_x(
+              first, fused_index_wo_qubits,
+              unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
+              boost::make_iterator_range(target_qubit_ptr, std::next(target_qubit_ptr)), control_qubits);
+          }
+
+          template <typename RandomAccessIterator, typename StateInteger, typename QubitsRange1, typename QubitsRange2, typename BitInteger>
+          inline auto adj_not_(
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            QubitsRange1 const& unsorted_fused_qubits, QubitsRange2 const& sorted_fused_qubits_with_sentinel,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+          -> void
+          {
+            auto const target_qubit_ptr = std::addressof(target_qubit);
+            ::ket::gate::fused::runtime::ranges::adj_pauli_x(
+              first, fused_index_wo_qubits,
+              unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
+              boost::make_iterator_range(target_qubit_ptr, std::next(target_qubit_ptr)));
+          }
+        } // namespace ranges
+      } // namespace runtime
 # else // KET_USE_BIT_MASKS_EXPLICITLY
       // NOT_i
       // NOT_1 (a_0 |0> + a_1 |1>) = a_1 |0> + a_0 |1>
@@ -180,6 +315,137 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
       -> void
       { ::ket::gate::fused::not_(first, fused_index_wo_qubits, fused_qubit_masks, fused_index_masks, target_qubit, control_qubits...); }
+
+
+      namespace runtime
+      {
+        template <typename RandomAccessIterator, typename StateInteger, typename StateIntegerIterator1, typename StateIntegerIterator2, typename BitInteger, typename ControlQubitIterator>
+        inline auto not_(
+          RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+          StateIntegerIterator1 const fused_qubit_mask_first, StateIntegerIterator1 const fused_qubit_mask_last,
+          StateIntegerIterator2 const fused_index_mask_first, StateIntegerIterator2 const fused_index_mask_last,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> void
+        {
+          auto const target_qubit_ptr = std::addressof(target_qubit);
+          ::ket::gate::fused::runtime::pauli_x(
+            first, fused_index_wo_qubits,
+            fused_qubit_mask_first, fused_qubit_mask_last,
+            fused_index_mask_first, fused_index_mask_last,
+            target_qubit_ptr, std::next(target_qubit_ptr), control_qubit_first, control_qubit_last);
+        }
+
+        template <typename RandomAccessIterator, typename StateInteger, typename StateIntegerIterator1, typename StateIntegerIterator2, typename BitInteger>
+        inline auto not_(
+          RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+          StateIntegerIterator1 const fused_qubit_mask_first, StateIntegerIterator1 const fused_qubit_mask_last,
+          StateIntegerIterator2 const fused_index_mask_first, StateIntegerIterator2 const fused_index_mask_last,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+        -> void
+        {
+          auto const target_qubit_ptr = std::addressof(target_qubit);
+          ::ket::gate::fused::runtime::pauli_x(
+            first, fused_index_wo_qubits,
+            fused_qubit_mask_first, fused_qubit_mask_last,
+            fused_index_mask_first, fused_index_mask_last,
+            target_qubit_ptr, std::next(target_qubit_ptr));
+        }
+
+        template <typename RandomAccessIterator, typename StateInteger, typename StateIntegerIterator1, typename StateIntegerIterator2, typename BitInteger, typename ControlQubitIterator>
+        inline auto adj_not_(
+          RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+          StateIntegerIterator1 const fused_qubit_mask_first, StateIntegerIterator1 const fused_qubit_mask_last,
+          StateIntegerIterator2 const fused_index_mask_first, StateIntegerIterator2 const fused_index_mask_last,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+        -> void
+        {
+          auto const target_qubit_ptr = std::addressof(target_qubit);
+          ::ket::gate::fused::runtime::adj_pauli_x(
+            first, fused_index_wo_qubits,
+            fused_qubit_mask_first, fused_qubit_mask_last,
+            fused_index_mask_first, fused_index_mask_last,
+            target_qubit_ptr, std::next(target_qubit_ptr), control_qubit_first, control_qubit_last);
+        }
+
+        template <typename RandomAccessIterator, typename StateInteger, typename StateIntegerIterator1, typename StateIntegerIterator2, typename BitInteger>
+        inline auto adj_not_(
+          RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+          StateIntegerIterator1 const fused_qubit_mask_first, StateIntegerIterator1 const fused_qubit_mask_last,
+          StateIntegerIterator2 const fused_index_mask_first, StateIntegerIterator2 const fused_index_mask_last,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+        -> void
+        {
+          auto const target_qubit_ptr = std::addressof(target_qubit);
+          ::ket::gate::fused::runtime::adj_pauli_x(
+            first, fused_index_wo_qubits,
+            fused_qubit_mask_first, fused_qubit_mask_last,
+            fused_index_mask_first, fused_index_mask_last,
+            target_qubit_ptr, std::next(target_qubit_ptr));
+        }
+
+        namespace ranges
+        {
+          template <typename RandomAccessIterator, typename StateInteger, typename StateIntegersRange1, typename StateIntegersRange2, typename BitInteger, typename ControlQubitsRange>
+          inline auto not_(
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            StateIntegersRange1 const& fused_qubit_masks, StateIntegersRange2 const& fused_index_masks,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+            ControlQubitsRange const& control_qubits)
+          -> void
+          {
+            auto const target_qubit_ptr = std::addressof(target_qubit);
+            ::ket::gate::fused::runtime::ranges::pauli_x(
+              first, fused_index_wo_qubits,
+              fused_qubit_masks, fused_index_masks,
+              boost::make_iterator_range(target_qubit_ptr, std::next(target_qubit_ptr)), control_qubits);
+          }
+
+          template <typename RandomAccessIterator, typename StateInteger, typename StateIntegersRange1, typename StateIntegersRange2, typename BitInteger>
+          inline auto not_(
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            StateIntegersRange1 const& fused_qubit_masks, StateIntegersRange2 const& fused_index_masks,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+          -> void
+          {
+            auto const target_qubit_ptr = std::addressof(target_qubit);
+            ::ket::gate::fused::runtime::ranges::pauli_x(
+              first, fused_index_wo_qubits,
+              fused_qubit_masks, fused_index_masks,
+              boost::make_iterator_range(target_qubit_ptr, std::next(target_qubit_ptr)));
+          }
+
+          template <typename RandomAccessIterator, typename StateInteger, typename StateIntegersRange1, typename StateIntegersRange2, typename BitInteger, typename ControlQubitsRange>
+          inline auto adj_not_(
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            StateIntegersRange1 const& fused_qubit_masks, StateIntegersRange2 const& fused_index_masks,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+            ControlQubitsRange const& control_qubits)
+          -> void
+          {
+            auto const target_qubit_ptr = std::addressof(target_qubit);
+            ::ket::gate::fused::runtime::ranges::adj_pauli_x(
+              first, fused_index_wo_qubits,
+              fused_qubit_masks, fused_index_masks,
+              boost::make_iterator_range(target_qubit_ptr, std::next(target_qubit_ptr)), control_qubits);
+          }
+
+          template <typename RandomAccessIterator, typename StateInteger, typename StateIntegersRange1, typename StateIntegersRange2, typename BitInteger>
+          inline auto adj_not_(
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            StateIntegersRange1 const& fused_qubit_masks, StateIntegersRange2 const& fused_index_masks,
+            ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+          -> void
+          {
+            auto const target_qubit_ptr = std::addressof(target_qubit);
+            ::ket::gate::fused::runtime::ranges::adj_pauli_x(
+              first, fused_index_wo_qubits,
+              fused_qubit_masks, fused_index_masks,
+              boost::make_iterator_range(target_qubit_ptr, std::next(target_qubit_ptr)));
+          }
+        } // namespace ranges
+      } // namespace runtime
 # endif // KET_USE_BIT_MASKS_EXPLICITLY
     } // namespace fused
   } // namespace gate

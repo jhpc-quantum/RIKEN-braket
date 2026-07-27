@@ -13,30 +13,35 @@ namespace ket
     {
       namespace ranges_detail
       {
-        template <typename Range>
-        inline auto begin(Range& range) { using std::begin; return begin(range); }
+        using std::begin;
+        using std::cbegin;
+        using std::cend;
+        using std::end;
 
         template <typename Range>
-        inline auto begin(Range const& range) { using std::begin; return begin(range); }
+        auto adl_begin(Range& range) -> decltype(begin(range));
 
         template <typename Range>
-        inline auto cbegin(Range const& range) { using std::cbegin; return cbegin(range); }
+        auto adl_begin(Range const& range) -> decltype(begin(range));
 
         template <typename Range>
-        inline auto end(Range& range) { using std::end; return end(range); }
+        auto adl_cbegin(Range const& range) -> decltype(cbegin(range));
 
         template <typename Range>
-        inline auto end(Range const& range) { using std::end; return end(range); }
+        auto adl_end(Range& range) -> decltype(end(range));
 
         template <typename Range>
-        inline auto cend(Range const& range) { using std::cend; return cend(range); }
+        auto adl_end(Range const& range) -> decltype(end(range));
+
+        template <typename Range>
+        auto adl_cend(Range const& range) -> decltype(cend(range));
       } // namespace ranges_detail
 
       template <typename Range>
-      using iterator_t = decltype(::ket::utility::meta::ranges_detail::begin(std::declval<Range&>()));
+      using iterator_t = decltype(::ket::utility::meta::ranges_detail::adl_begin(std::declval<Range&>()));
 
       template <typename Range>
-      using const_iterator_t = decltype(::ket::utility::meta::ranges_detail::cbegin(std::declval<std::remove_reference_t<Range> const&>()));
+      using const_iterator_t = decltype(::ket::utility::meta::ranges_detail::adl_cbegin(std::declval<std::remove_reference_t<Range> const&>()));
 
       template <typename Range>
       using range_difference_t = typename std::iterator_traits< ::ket::utility::meta::iterator_t<Range> >::difference_type;

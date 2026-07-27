@@ -276,7 +276,7 @@ int main(int argc, char* argv[])
           num_page_qubits, interpreter.initial_state_value(), interpreter.num_lqubits(), num_unit_qubits, interpreter.initial_permutation(),
           num_threads_per_process, num_processes_per_unit, seed,
           interpreter.is_depolarizing_channel(), interpreter.depolarizing_px(), interpreter.depolarizing_py(), interpreter.depolarizing_pz(), interpreter.depolarizing_seed() > 0, depolarizing_seed,
-          num_elements_in_buffer, circuit_communicator, circuit_index, intercircuit_communicator, intercommunicators, environment)
+          num_elements_in_buffer, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment)
       : bra::make_simple_mpi_state(
           num_page_qubits, interpreter.initial_state_value(), interpreter.num_lqubits(), interpreter.initial_permutation(),
           num_threads_per_process, seed,

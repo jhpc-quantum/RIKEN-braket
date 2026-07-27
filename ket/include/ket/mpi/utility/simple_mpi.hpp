@@ -14,6 +14,9 @@
 # include <array>
 # include <type_traits>
 
+# include <boost/range/iterator_range.hpp>
+# include <boost/range/adaptor/transformed.hpp>
+
 # include <yampi/environment.hpp>
 # include <yampi/datatype_base.hpp>
 # include <yampi/communicator.hpp>
@@ -589,6 +592,583 @@ namespace ket
 
       namespace dispatch
       {
+        namespace runtime
+        {
+          template <typename MpiPolicy>
+          struct maybe_interchange_qubits;
+
+          template <>
+          struct maybe_interchange_qubits< ::ket::mpi::utility::policy::simple_mpi >
+          {
+            template <
+              typename ParallelPolicy, typename LocalState,
+              typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator,
+              typename QubitsRange>
+            static auto call(
+              ::ket::mpi::utility::policy::simple_mpi const mpi_policy,
+              ParallelPolicy const parallel_policy,
+              LocalState& local_state,
+              ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+              std::vector< ::ket::utility::meta::range_value_t<LocalState>, BufferAllocator >& buffer,
+              yampi::communicator const& communicator, yampi::environment const& environment,
+              QubitsRange const& operated_qubits)
+            -> void
+            {
+              static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+              static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
+
+              using std::begin;
+              using std::end;
+# ifndef NDEBUG
+              auto const local_state_size = static_cast<StateInteger>(std::distance(begin(local_state), end(local_state)));
+# endif // NDEBUG
+              assert(::ket::utility::integer_exp2<StateInteger>(::ket::utility::integer_log2<BitInteger>(local_state_size)) == local_state_size);
+
+              using std::begin;
+              using std::end;
+              auto const num_operated_qubits = static_cast<BitInteger>(std::distance(begin(operated_qubits), end(operated_qubits)));
+              assert(num_operated_qubits <= ::ket::mpi::utility::policy::num_local_qubits(mpi_policy, local_state, communicator, environment));
+
+              using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+              using permutated_qubit_type = ::ket::mpi::permutated<qubit_type>;
+              auto const least_global_permutated_qubit
+                = permutated_qubit_type{::ket::mpi::utility::policy::num_local_qubits(mpi_policy, local_state, communicator, environment)};
+
+              auto global_operated_qubits = std::vector<qubit_type>{};
+              auto local_operated_qubits = std::vector<qubit_type>{};
+              global_operated_qubits.reserve(num_operated_qubits);
+              local_operated_qubits.reserve(num_operated_qubits);
+
+              std::partition_copy(
+                begin(operated_qubits), end(operated_qubits),
+                std::back_inserter(global_operated_qubits), std::back_inserter(local_operated_qubits),
+                [&permutation, least_global_permutated_qubit](qubit_type const qubit)
+                { return permutation[qubit] >= least_global_permutated_qubit; });
+
+              auto permutated_global_operated_qubits = std::vector<permutated_qubit_type>{};
+              permutated_global_operated_qubits.reserve(global_operated_qubits.size());
+              std::transform(
+                begin(global_operated_qubits), end(global_operated_qubits), std::back_inserter(permutated_global_operated_qubits),
+                [&permutation](qubit_type const qubit) { return permutation[qubit]; });
+
+# ifdef KET_USE_COLLECTIVE_COMMUNICATIONS
+              do_call(
+                mpi_policy, parallel_policy, local_state, permutation, communicator, environment,
+                [&buffer](
+                  LocalState& local_state,
+                  StateInteger const data_block_index, StateInteger const data_block_size,
+                  StateInteger const source_local_first_index, StateInteger const source_local_last_index,
+                  yampi::rank const target_rank,
+                  yampi::communicator const& communicator, yampi::environment const& environment)
+                {
+                  ::ket::mpi::utility::detail::interchange_qubits(
+                    local_state, buffer,
+                    data_block_index, data_block_size,
+                    source_local_first_index, source_local_last_index,
+                    target_rank, communicator, environment);
+                },
+                [](LocalState& local_state, yampi::communicator const& communicator, yampi::environment const& environment)
+                { yampi::complete_exchange(yampi::in_place, yampi::range_to_buffer(local_state), communicator, environment); },
+                local_operated_qubits, least_global_permutated_qubit, permutated_global_operated_qubits, global_operated_qubits);
+# else // KET_USE_COLLECTIVE_COMMUNICATIONS
+              do_call(
+                mpi_policy, parallel_policy, local_state, permutation, communicator, environment,
+                [&buffer](
+                  LocalState& local_state,
+                  StateInteger const data_block_index, StateInteger const data_block_size,
+                  StateInteger const source_local_first_index, StateInteger const source_local_last_index,
+                  yampi::rank const target_rank,
+                  yampi::communicator const& communicator, yampi::environment const& environment)
+                {
+                  ::ket::mpi::utility::detail::interchange_qubits(
+                    local_state, buffer,
+                    data_block_index, data_block_size,
+                    source_local_first_index, source_local_last_index,
+                    target_rank, communicator, environment);
+                },
+                local_operated_qubits, least_global_permutated_qubit, permutated_global_operated_qubits, global_operated_qubits);
+# endif // KET_USE_COLLECTIVE_COMMUNICATIONS
+            }
+
+            template <
+              typename ParallelPolicy, typename LocalState,
+              typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename DerivedDatatype,
+              typename QubitsRange>
+            static auto call(
+              ::ket::mpi::utility::policy::simple_mpi const mpi_policy,
+              ParallelPolicy const parallel_policy,
+              LocalState& local_state,
+              ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+              std::vector< ::ket::utility::meta::range_value_t<LocalState>, BufferAllocator >& buffer,
+              yampi::datatype_base<DerivedDatatype> const& datatype,
+              yampi::communicator const& communicator, yampi::environment const& environment,
+              QubitsRange const& operated_qubits)
+            -> void
+            {
+              static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+              static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
+
+              using std::begin;
+              using std::end;
+# ifndef NDEBUG
+              auto const local_state_size = static_cast<StateInteger>(std::distance(begin(local_state), end(local_state)));
+# endif // NDEBUG
+              assert(::ket::utility::integer_exp2<StateInteger>(::ket::utility::integer_log2<BitInteger>(local_state_size)) == local_state_size);
+
+              using std::begin;
+              using std::end;
+              auto const num_operated_qubits = static_cast<BitInteger>(std::distance(begin(operated_qubits), end(operated_qubits)));
+              assert(num_operated_qubits <= ::ket::mpi::utility::policy::num_local_qubits(mpi_policy, local_state, communicator, environment));
+
+              using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+              using permutated_qubit_type = ::ket::mpi::permutated<qubit_type>;
+              auto const least_global_permutated_qubit
+                = permutated_qubit_type{::ket::mpi::utility::policy::num_local_qubits(mpi_policy, local_state, communicator, environment)};
+
+              auto global_operated_qubits = std::vector<qubit_type>{};
+              auto local_operated_qubits = std::vector<qubit_type>{};
+              global_operated_qubits.reserve(num_operated_qubits);
+              local_operated_qubits.reserve(num_operated_qubits);
+
+              std::partition_copy(
+                begin(operated_qubits), end(operated_qubits),
+                std::back_inserter(global_operated_qubits), std::back_inserter(local_operated_qubits),
+                [&permutation, least_global_permutated_qubit](qubit_type const qubit)
+                { return permutation[qubit] >= least_global_permutated_qubit; });
+
+              auto permutated_global_operated_qubits = std::vector<permutated_qubit_type>{};
+              permutated_global_operated_qubits.reserve(global_operated_qubits.size());
+              std::transform(
+                begin(global_operated_qubits), end(global_operated_qubits), std::back_inserter(permutated_global_operated_qubits),
+                [&permutation](qubit_type const qubit) { return permutation[qubit]; });
+
+# ifdef KET_USE_COLLECTIVE_COMMUNICATIONS
+              do_call(
+                mpi_policy, parallel_policy, local_state, permutation, communicator, environment,
+                [&buffer, &datatype](
+                  LocalState& local_state,
+                  StateInteger const data_block_index, StateInteger const data_block_size,
+                  StateInteger const source_local_first_index, StateInteger const source_local_last_index,
+                  yampi::rank const target_rank,
+                  yampi::communicator const& communicator, yampi::environment const& environment)
+                {
+                  ::ket::mpi::utility::detail::interchange_qubits(
+                    local_state, buffer,
+                    data_block_index, data_block_size,
+                    source_local_first_index, source_local_last_index,
+                    datatype, target_rank, communicator, environment);
+                },
+                [&datatype](LocalState& local_state, yampi::communicator const& communicator, yampi::environment const& environment)
+                { yampi::complete_exchange(yampi::in_place, yampi::range_to_buffer(local_state, datatype), communicator, environment); },
+                local_operated_qubits, least_global_permutated_qubit, permutated_global_operated_qubits, global_operated_qubits);
+# else // KET_USE_COLLECTIVE_COMMUNICATIONS
+              do_call(
+                mpi_policy, parallel_policy, local_state, permutation, communicator, environment,
+                [&buffer, &datatype](
+                  LocalState& local_state,
+                  StateInteger const data_block_index, StateInteger const data_block_size,
+                  StateInteger const source_local_first_index, StateInteger const source_local_last_index,
+                  yampi::rank const target_rank,
+                  yampi::communicator const& communicator, yampi::environment const& environment)
+                {
+                  ::ket::mpi::utility::detail::interchange_qubits(
+                    local_state, buffer,
+                    data_block_index, data_block_size,
+                    source_local_first_index, source_local_last_index,
+                    datatype, target_rank, communicator, environment);
+                },
+                local_operated_qubits, least_global_permutated_qubit, permutated_global_operated_qubits, global_operated_qubits);
+# endif // KET_USE_COLLECTIVE_COMMUNICATIONS
+            }
+
+           private:
+            template <
+              typename ParallelPolicy,
+              typename LocalState, typename StateInteger, typename BitInteger,
+              typename Allocator, typename QubitAllocator, typename PermutatedQubitAllocator>
+            static auto initialize_swap_qubits(
+              ::ket::mpi::utility::policy::simple_mpi const mpi_policy,
+              ParallelPolicy const parallel_policy,
+              LocalState& local_state,
+              ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+              yampi::communicator const& communicator, yampi::environment const& environment,
+              std::vector< ::ket::qubit<StateInteger, BitInteger>, QubitAllocator > const& local_operated_qubits,
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const least_global_permutated_qubit,
+              std::vector< ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >, PermutatedQubitAllocator >& permutated_swap_qubits,
+              std::vector< ::ket::qubit<StateInteger, BitInteger>, QubitAllocator >& swap_qubits)
+            -> void
+            {
+# ifndef NDEBUG
+              auto const maybe_io_rank = yampi::lowest_io_process(environment);
+              auto const my_rank = yampi::communicator{yampi::tags::world_communicator}.rank(environment);
+              if (maybe_io_rank && my_rank == *maybe_io_rank)
+                std::clog << "[permutation before changing qubits] " << permutation << std::endl;
+# endif // NDEBUG
+
+              auto const num_data_blocks = static_cast<StateInteger>(::ket::mpi::utility::policy::num_data_blocks(mpi_policy, communicator, environment));
+              auto const data_block_size = static_cast<StateInteger>(::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment));
+
+              // (ex.: num_qubits_of_operation == 3)
+              //  Swaps between xxbxb'xb''xx|cc'c''xxxxxxxx and
+              // xxcxc'xc''xx|bb'b''xxxxxxxx (c = b or ~b). Upper qubits are
+              // global qubits representing MPI rank. Lower qubits are local
+              // qubits representing memory address. The first three upper qubits
+              // in the local qubits are "local swap qubits". Three bits in global
+              // qubits and the "local swap qubits" would be swapped.
+
+              auto const num_swap_qubits = swap_qubits.size();
+              for (auto index = std::size_t{0u}; index < num_swap_qubits; ++index)
+              {
+                permutated_swap_qubits[index] = least_global_permutated_qubit - static_cast<BitInteger>(std::size_t{1u} + index);
+                swap_qubits[index]
+                  = ::ket::mpi::utility::detail::make_local_swap_qubit(
+                      parallel_policy, local_state, permutation,
+                      num_data_blocks, data_block_size, communicator, environment,
+                      local_operated_qubits, permutated_swap_qubits[index]);
+              }
+
+# ifndef NDEBUG
+              if (maybe_io_rank && my_rank == *maybe_io_rank)
+                std::clog << "[permutation after changing local swap qubits] " << permutation << std::endl;
+# endif // NDEBUG
+            }
+
+            template <typename StateInteger, typename BitInteger, typename Allocator, typename QubitAllocator>
+            static auto update_permutation(
+              ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+              yampi::communicator const& communicator, yampi::environment const& environment,
+              std::vector< ::ket::qubit<StateInteger, BitInteger>, QubitAllocator > const& swap_qubits,
+              std::vector< ::ket::qubit<StateInteger, BitInteger>, QubitAllocator > const& global_operated_qubits)
+            -> void
+            {
+              assert(swap_qubits.size() == global_operated_qubits.size());
+
+              auto const num_swap_qubits = swap_qubits.size();
+              for (auto index = std::size_t{0u}; index < num_swap_qubits; ++index)
+                ::ket::mpi::permutate(permutation, global_operated_qubits[index], swap_qubits[index]);
+
+# ifndef NDEBUG
+              auto const maybe_io_rank = yampi::lowest_io_process(environment);
+              auto const my_rank = yampi::communicator{yampi::tags::world_communicator}.rank(environment);
+              if (maybe_io_rank && my_rank == *maybe_io_rank)
+                std::clog << "[permutation after changing local/global qubits] " << permutation << std::endl;
+# endif // NDEBUG
+            }
+
+# ifdef KET_USE_COLLECTIVE_COMMUNICATIONS
+            template <typename StateInteger, typename BitInteger, typename PermutatedQubitAllocator>
+            static auto generate_color_key(
+              StateInteger const global_qubit_value,
+              std::vector< ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >, PermutatedQubitAllocator > const& permutated_swap_qubits,
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const least_global_permutated_qubit,
+              std::vector< ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >, PermutatedQubitAllocator > const& permutated_global_operated_qubits)
+            -> std::pair<yampi::color, int>
+            {
+              assert(permutated_swap_qubits.size() == permutated_global_operated_qubits.size());
+              auto const num_swap_qubits = permutated_swap_qubits.size();
+
+              // initialization of permutated_global_qubit_index_pairs ({sorted_global_qubit, corresponding_index_in_vectors}, ...)
+              using permutated_qubit_type = ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >;
+              using permutated_global_qubit_index_pair_type = std::pair<permutated_qubit_type, std::size_t>;
+              auto permutated_global_qubit_index_pairs = std::vector<permutated_global_qubit_index_pair_type>{};
+              permutated_global_qubit_index_pairs.reserve(num_swap_qubits);
+              for (auto index = std::size_t{0u}; index < num_swap_qubits; ++index)
+                permutated_global_qubit_index_pairs.push_back(std::make_pair(permutated_global_operated_qubits[index], index));
+
+              using std::begin;
+              using std::end;
+              std::sort(
+                begin(permutated_global_qubit_index_pairs), end(permutated_global_qubit_index_pairs),
+                [](permutated_global_qubit_index_pair_type const& lhs, permutated_global_qubit_index_pair_type const& rhs)
+                { return lhs.first < rhs.first;});
+
+              // initialization of global_qubit_value_masks (000000111, 000011000, 001100000, 110000000)
+              //   *permutated_global_qubit_masks: 000001000000, 000000001000, 001000000000
+              auto global_qubit_value_masks = std::vector<StateInteger>{};
+              global_qubit_value_masks.reserve(num_swap_qubits + std::size_t{1u});
+              for (auto index = std::size_t{0u}; index < num_swap_qubits; ++index)
+                global_qubit_value_masks.push_back(
+                  (((StateInteger{1u} << permutated_global_operated_qubits[permutated_global_qubit_index_pairs[index].second]) >> least_global_permutated_qubit)
+                   >> index)
+                  - StateInteger{1u});
+              global_qubit_value_masks.push_back(compl StateInteger{0u});
+
+              using std::rbegin;
+              using std::rend;
+              std::transform(
+                rbegin(global_qubit_value_masks), std::prev(rend(global_qubit_value_masks)),
+                std::next(rbegin(global_qubit_value_masks)), rbegin(global_qubit_value_masks),
+                std::minus<StateInteger>{});
+
+              auto key = StateInteger{0u};
+              for (auto index = std::size_t{0u}; index < num_swap_qubits; ++index)
+                key
+                  &= (((global_qubit_value bitand ((StateInteger{1u} << permutated_global_operated_qubits[index]) >> least_global_permutated_qubit))
+                       << least_global_permutated_qubit) >> permutated_global_operated_qubits[index]) << permutated_swap_qubits[index];
+
+              auto color_integer = StateInteger{0u};
+              for (auto index = std::size_t{0u}; index <= num_swap_qubits; ++index)
+                color_integer |= ((global_qubit_value >> index) bitand global_qubit_value_masks[index]);
+
+              return {yampi::color{static_cast<int>(color_integer)}, static_cast<int>(key)};
+            }
+
+            template <typename LocalState, typename Function, typename StateInteger, typename BitInteger, typename PermutatedQubitAllocator>
+            static auto interchange_qubits_collective(
+              ::ket::mpi::utility::policy::simple_mpi const mpi_policy,
+              LocalState& local_state,
+              yampi::communicator const& communicator, yampi::environment const& environment,
+              Function&& complete_exchange_qubits,
+              std::vector< ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >, PermutatedQubitAllocator > const& permutated_swap_qubits,
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const least_global_permutated_qubit,
+              std::vector< ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >, PermutatedQubitAllocator > const& permutated_global_operated_qubits)
+            -> void
+            {
+              // xxbxb'xb''xx(|**********) => xxxxxx: color
+              auto const global_qubit_value
+                = static_cast<StateInteger>(::ket::mpi::utility::policy::global_qubit_value(mpi_policy, communicator, environment));
+              auto const color_key
+                = generate_color_key(global_qubit_value, permutated_swap_qubits, least_global_permutated_qubit, permutated_global_operated_qubits);
+
+              auto local_communicator = yampi::communicator{communicator, color_key.first, color_key.second, environment};
+              complete_exchange_qubits(local_state, local_communicator, environment);
+            }
+# endif // KET_USE_COLLECTIVE_COMMUNICATIONS
+
+            template <typename LocalState, typename Function, typename StateInteger, typename BitInteger, typename PermutatedQubitAllocator>
+            static auto interchange_qubits_p2p(
+              ::ket::mpi::utility::policy::simple_mpi const mpi_policy,
+              LocalState& local_state,
+              yampi::communicator const& communicator, yampi::environment const& environment,
+              Function&& interchange_qubits,
+              std::vector< ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >, PermutatedQubitAllocator > const& permutated_swap_qubits,
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const least_global_permutated_qubit,
+              std::vector< ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >, PermutatedQubitAllocator > const& permutated_global_operated_qubits)
+            -> void
+            {
+              assert(permutated_swap_qubits.size() == permutated_global_operated_qubits.size());
+
+              auto const data_block_size = static_cast<StateInteger>(::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment));
+
+              auto const num_swap_qubits = permutated_swap_qubits.size();
+
+              // xxbxb'xb''xx(|xxxxxxxxxx)
+              auto const source_global_qubit_value
+                = static_cast<StateInteger>(::ket::mpi::utility::policy::global_qubit_value(mpi_policy, communicator, environment));
+
+              for (auto target_global_mask = StateInteger{1u};
+                   target_global_mask < ::ket::utility::integer_exp2<StateInteger>(num_swap_qubits);
+                   ++target_global_mask)
+              {
+                // xxcxc'xc''xx(|xxxxxxxxxx) (c = b or ~b, except for (c, c', c'') = (b, b', b''))
+                auto mask = StateInteger{0u};
+                for (auto index = decltype(num_swap_qubits){0u}; index < num_swap_qubits; ++index)
+                  mask
+                    |= ((target_global_mask bitand (StateInteger{1u} << index)) >> index)
+                       << (permutated_global_operated_qubits[index] - least_global_permutated_qubit);
+                auto const target_global_qubit_value = source_global_qubit_value xor mask;
+                auto const target_rank = ::ket::mpi::utility::policy::rank(mpi_policy, target_global_qubit_value, communicator, environment);
+
+                // (0000000|)cc'c''00000000
+                auto source_local_first_index = StateInteger{0u};
+                for (auto index = std::size_t{0u}; index < num_swap_qubits; ++index)
+                  source_local_first_index
+                    |= ((target_global_qubit_value << least_global_permutated_qubit)
+                        bitand (StateInteger{1u} << permutated_global_operated_qubits[index]))
+                       >> (permutated_global_operated_qubits[index] - permutated_swap_qubits[index]);
+
+                // (0000000|)cc'c''11111111 + 1
+                auto const source_local_last_index = source_local_first_index + (data_block_size >> num_swap_qubits);
+
+                ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"interchange_qubits::swap"}), environment};
+
+                interchange_qubits(
+                  local_state, StateInteger{0u}, data_block_size,
+                  source_local_first_index, source_local_last_index,
+                  target_rank, communicator, environment);
+              }
+            }
+
+# ifdef KET_USE_COLLECTIVE_COMMUNICATIONS
+            template <typename NoncontiguousIterator>
+            struct interchange_qubits_dispatch2
+            {
+              template <typename LocalState, typename Function1, typename Function2, typename StateInteger, typename BitInteger, typename PermutatedQubitAllocator>
+              static auto call(
+                ::ket::mpi::utility::policy::simple_mpi const mpi_policy,
+                LocalState& local_state,
+                yampi::communicator const& communicator, yampi::environment const& environment,
+                Function1&& interchange_qubits, Function2&&,
+                std::vector< ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >, PermutatedQubitAllocator > const& permutated_swap_qubits,
+                ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const least_global_permutated_qubit,
+                std::vector< ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >, PermutatedQubitAllocator > const& permutated_global_operated_qubits)
+              -> void
+              {
+                interchange_qubits_p2p(
+                  mpi_policy, local_state,
+                  communicator, environment, std::forward<Function1>(interchange_qubits),
+                  permutated_swap_qubits, least_global_permutated_qubit, permutated_global_operated_qubits);
+              }
+            }; // struct interchange_qubits_dispatch2<NoncontiguousIterator>
+
+            template <typename T>
+            struct interchange_qubits_dispatch2<T*>
+            {
+              template <typename LocalState, typename Function1, typename Function2, typename StateInteger, typename BitInteger, typename PermutatedQubitAllocator>
+              static auto call(
+                ::ket::mpi::utility::policy::simple_mpi const mpi_policy,
+                LocalState& local_state,
+                yampi::communicator const& communicator, yampi::environment const& environment,
+                Function1&&, Function2&& complete_exchange_qubits,
+                std::vector< ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >, PermutatedQubitAllocator > const& permutated_swap_qubits,
+                ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const least_global_permutated_qubit,
+                std::vector< ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >, PermutatedQubitAllocator > const& permutated_global_operated_qubits)
+              -> void
+              {
+                interchange_qubits_collective(
+                  mpi_policy, local_state,
+                  communicator, environment, std::forward<Function2>(complete_exchange_qubits),
+                  permutated_swap_qubits, least_global_permutated_qubit, permutated_global_operated_qubits);
+              }
+            }; // struct interchange_qubits_dispatch2<T*>
+
+            template <typename LocalState_>
+            struct interchange_qubits_dispatch1
+            {
+              template <typename LocalState, typename Function1, typename Function2, typename StateInteger, typename BitInteger, typename PermutatedQubitAllocator>
+              static auto call(
+                ::ket::mpi::utility::policy::simple_mpi const mpi_policy,
+                LocalState& local_state,
+                yampi::communicator const& communicator, yampi::environment const& environment,
+                Function1&& interchange_qubits, Function2&& complete_exchange_qubits,
+                std::vector< ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >, PermutatedQubitAllocator > const& permutated_swap_qubits,
+                ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const least_global_permutated_qubit,
+                std::vector< ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >, PermutatedQubitAllocator > const& permutated_global_operated_qubits)
+              -> void
+              {
+                interchange_qubits_dispatch2< ::ket::utility::meta::iterator_t<LocalState_> >::call(
+                  mpi_policy, local_state,
+                  communicator, environment,
+                  std::forward<Function1>(interchange_qubits), std::forward<Function2>(complete_exchange_qubits),
+                  permutated_swap_qubits, least_global_permutated_qubit, permutated_global_operated_qubits);
+              }
+            }; // struct interchange_qubits_dispatch1<LocalState_>
+
+            template <typename Complex, typename LocalStateAllocator>
+            struct interchange_qubits_dispatch1<std::vector<Complex, LocalStateAllocator>>
+            {
+              template <typename Function1, typename Function2, typename StateInteger, typename BitInteger, typename PermutatedQubitAllocator>
+              static auto call(
+                ::ket::mpi::utility::policy::simple_mpi const mpi_policy,
+                std::vector<Complex, LocalStateAllocator>& local_state,
+                yampi::communicator const& communicator, yampi::environment const& environment,
+                Function1&&, Function2&& complete_exchange_qubits,
+                std::vector< ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >, PermutatedQubitAllocator > const& permutated_swap_qubits,
+                ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const least_global_permutated_qubit,
+                std::vector< ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >, PermutatedQubitAllocator > const& permutated_global_operated_qubits)
+              -> void
+              {
+                interchange_qubits_collective(
+                  mpi_policy, local_state,
+                  communicator, environment, std::forward<Function2>(complete_exchange_qubits),
+                  permutated_swap_qubits, least_global_permutated_qubit, permutated_global_operated_qubits);
+              }
+            }; // struct interchange_qubits_dispatch1<std::vector<Complex, LocalStateAllocator>>
+# endif // KET_USE_COLLECTIVE_COMMUNICATIONS
+
+# ifdef KET_USE_COLLECTIVE_COMMUNICATIONS
+            template <
+              typename ParallelPolicy, typename LocalState,
+              typename StateInteger, typename BitInteger, typename Allocator,
+              typename Function1, typename Function2, typename QubitAllocator, typename PermutatedQubitAllocator>
+            static auto do_call(
+              ::ket::mpi::utility::policy::simple_mpi const mpi_policy,
+              ParallelPolicy const parallel_policy,
+              LocalState& local_state,
+              ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+              yampi::communicator const& communicator, yampi::environment const& environment,
+              Function1&& interchange_qubits, Function2&& complete_exchange_qubits,
+              std::vector< ::ket::qubit<StateInteger, BitInteger>, QubitAllocator > const& local_operated_qubits,
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const least_global_permutated_qubit,
+              std::vector< ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >, PermutatedQubitAllocator > const& permutated_global_operated_qubits,
+              std::vector< ::ket::qubit<StateInteger, BitInteger>, QubitAllocator > const& global_operated_qubits)
+            -> void
+            {
+              assert(permutated_global_operated_qubits.size() == global_operated_qubits.size());
+
+#   ifdef KET_USE_BARRIER
+              ::yampi::barrier(communicator, environment);
+#   endif // KET_USE_BARRIER
+
+              ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"interchange_qubits"}), environment};
+
+              using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+              using permutated_qubit_type = ::ket::mpi::permutated<qubit_type>;
+              auto permutated_swap_qubits = std::vector<permutated_qubit_type, PermutatedQubitAllocator>(global_operated_qubits.size());
+              auto swap_qubits = std::vector<qubit_type, QubitAllocator>(global_operated_qubits.size());
+              initialize_swap_qubits(
+                mpi_policy, parallel_policy, local_state, permutation, communicator, environment,
+                local_operated_qubits, least_global_permutated_qubit, permutated_swap_qubits, swap_qubits);
+
+              interchange_qubits_dispatch1<LocalState>::call(
+                mpi_policy, local_state, communicator, environment,
+                std::forward<Function1>(interchange_qubits), std::forward<Function2>(complete_exchange_qubits),
+                permutated_swap_qubits, least_global_permutated_qubit, permutated_global_operated_qubits);
+
+              update_permutation(permutation, communicator, environment, swap_qubits, global_operated_qubits);
+
+#   ifdef KET_USE_BARRIER
+              ::yampi::barrier(communicator, environment);
+#   endif // KET_USE_BARRIER
+            }
+# else // KET_USE_COLLECTIVE_COMMUNICATIONS
+            template <
+              typename ParallelPolicy, typename LocalState,
+              typename StateInteger, typename BitInteger, typename Allocator,
+              typename Function, typename QubitAllocator, typename PermutatedQubitAllocator>
+            static auto do_call(
+              ::ket::mpi::utility::policy::simple_mpi const mpi_policy,
+              ParallelPolicy const parallel_policy,
+              LocalState& local_state,
+              ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+              yampi::communicator const& communicator, yampi::environment const& environment,
+              Function&& interchange_qubits,
+              std::vector< ::ket::qubit<StateInteger, BitInteger>, QubitAllocator > const& local_operated_qubits,
+              ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> > const least_global_permutated_qubit,
+              std::vector< ::ket::mpi::permutated< ::ket::qubit<StateInteger, BitInteger> >, PermutatedQubitAllocator > const& permutated_global_operated_qubits,
+              std::vector< ::ket::qubit<StateInteger, BitInteger>, QubitAllocator > const& global_operated_qubits)
+            -> void
+            {
+              assert(permutated_global_operated_qubits.size() == global_operated_qubits.size());
+
+#   ifdef KET_USE_BARRIER
+              ::yampi::barrier(communicator, environment);
+#   endif // KET_USE_BARRIER
+
+              ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"interchange_qubits"}), environment};
+
+              using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+              using permutated_qubit_type = ::ket::mpi::permutated<qubit_type>;
+              auto permutated_swap_qubits = std::vector<permutated_qubit_type, PermutatedQubitAllocator>(global_operated_qubits.size());
+              auto swap_qubits = std::vector<qubit_type, QubitAllocator>(global_operated_qubits.size());
+              initialize_swap_qubits(
+                mpi_policy, parallel_policy, local_state, permutation, communicator, environment,
+                local_operated_qubits, least_global_permutated_qubit, permutated_swap_qubits, swap_qubits);
+
+              interchange_qubits_p2p(
+                mpi_policy, local_state, communicator, environment, std::forward<Function>(interchange_qubits),
+                permutated_swap_qubits, least_global_permutated_qubit, permutated_global_operated_qubits);
+
+              update_permutation(permutation, communicator, environment, swap_qubits, global_operated_qubits);
+
+#   ifdef KET_USE_BARRIER
+              ::yampi::barrier(communicator, environment);
+#   endif // KET_USE_BARRIER
+            }
+# endif // KET_USE_COLLECTIVE_COMMUNICATIONS
+          }; // struct maybe_interchange_qubits< ::ket::mpi::utility::policy::simple_mpi >
+        } // namespace runtime
+
         template <std::size_t num_qubits_of_operation, typename MpiPolicy>
         struct maybe_interchange_qubits;
 
@@ -837,10 +1417,6 @@ namespace ket
             if (maybe_io_rank && my_rank == *maybe_io_rank)
               std::clog << "[permutation after changing local/global qubits] " << permutation << std::endl;
 # endif // NDEBUG
-
-# ifdef KET_USE_BARRIER
-            ::yampi::barrier(communicator, environment);
-# endif // KET_USE_BARRIER
           }
 
 # ifdef KET_USE_COLLECTIVE_COMMUNICATIONS
@@ -1076,9 +1652,10 @@ namespace ket
             std::array< ::ket::qubit<StateInteger, BitInteger>, num_qubits_of_operation > const& qubits)
           -> void
           {
-# ifdef KET_USE_BARRIER
+#   ifdef KET_USE_BARRIER
             ::yampi::barrier(communicator, environment);
-# endif // KET_USE_BARRIER
+#   endif // KET_USE_BARRIER
+
             ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"interchange_qubits<"}, num_qubits_of_operation, '>'), environment};
 
             using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
@@ -1095,6 +1672,10 @@ namespace ket
               permutated_local_swap_qubits, least_global_permutated_qubit, permutated_global_swap_qubits);
 
             update_permutation(permutation, communicator, environment, local_swap_qubits, qubits);
+
+#   ifdef KET_USE_BARRIER
+            ::yampi::barrier(communicator, environment);
+#   endif // KET_USE_BARRIER
           }
 # else // KET_USE_COLLECTIVE_COMMUNICATIONS
           template <
@@ -1114,9 +1695,10 @@ namespace ket
             std::array< ::ket::qubit<StateInteger, BitInteger>, num_qubits_of_operation > const& qubits)
           -> void
           {
-# ifdef KET_USE_BARRIER
+#   ifdef KET_USE_BARRIER
             ::yampi::barrier(communicator, environment);
-# endif // KET_USE_BARRIER
+#   endif // KET_USE_BARRIER
+
             ::ket::mpi::utility::log_with_time_guard<char> print{::ket::mpi::utility::generate_logger_string(std::string{"interchange_qubits<"}, num_qubits_of_operation, '>'), environment};
 
             using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
@@ -1132,6 +1714,10 @@ namespace ket
               permutated_local_swap_qubits, least_global_permutated_qubit, permutated_global_swap_qubits);
 
             update_permutation(permutation, communicator, environment, local_swap_qubits, qubits);
+
+#   ifdef KET_USE_BARRIER
+            ::yampi::barrier(communicator, environment);
+#   endif // KET_USE_BARRIER
           }
 # endif // KET_USE_COLLECTIVE_COMMUNICATIONS
 
@@ -1840,6 +2426,97 @@ namespace ket
         }; // struct diagonal_loop< ::ket::mpi::utility::policy::simple_mpi >
 # endif // KET_USE_DIAGONAL_LOOP
       } // namespace dispatch
+
+
+      namespace runtime
+      {
+        namespace ranges
+        {
+          template <
+            typename MpiPolicy, typename ParallelPolicy, typename LocalState,
+            typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator,
+            typename QubitsRange>
+          inline auto maybe_interchange_qubits(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            LocalState& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<LocalState>, BufferAllocator >& buffer,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            QubitsRange const& qubits)
+          -> void
+          {
+            static_assert(
+              std::is_same< ::ket::utility::meta::range_value_t<QubitsRange>, ::ket::qubit<StateInteger, BitInteger> >::value,
+              "The value_type of QubitsRange should be the same to ket::qubit<S, B>");
+
+            ::ket::mpi::utility::dispatch::runtime::maybe_interchange_qubits<MpiPolicy>::call(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment, qubits);
+          }
+
+          template <
+            typename MpiPolicy, typename ParallelPolicy, typename LocalState,
+            typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename DerivedDatatype,
+            typename QubitsRange>
+          inline auto maybe_interchange_qubits(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            LocalState& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<LocalState>, BufferAllocator >& buffer,
+            yampi::datatype_base<DerivedDatatype> const& datatype,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            QubitsRange const& qubits)
+          -> void
+          {
+            static_assert(
+              std::is_same< ::ket::utility::meta::range_value_t<QubitsRange>, ::ket::qubit<StateInteger, BitInteger> >::value,
+              "The value_type of QubitsRange should be the same to ket::qubit<S, B>");
+
+            ::ket::mpi::utility::dispatch::runtime::maybe_interchange_qubits<MpiPolicy>::call(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment, qubits);
+          }
+        } // namespace ranges
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy, typename LocalState,
+          typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator,
+          typename QubitIterator>
+        inline auto maybe_interchange_qubits(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          LocalState& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<LocalState>, BufferAllocator >& buffer,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          QubitIterator const qubit_first, QubitIterator const qubit_last)
+        -> void
+        {
+          ::ket::mpi::utility::runtime::ranges::maybe_interchange_qubits(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, communicator, environment,
+            boost::make_iterator_range(qubit_first, qubit_last));
+        }
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy, typename LocalState,
+          typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename DerivedDatatype,
+          typename QubitIterator>
+        inline auto maybe_interchange_qubits(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          LocalState& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<LocalState>, BufferAllocator >& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          QubitIterator const qubit_first, QubitIterator const qubit_last)
+        -> void
+        {
+          ::ket::mpi::utility::runtime::ranges::maybe_interchange_qubits(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, datatype, communicator, environment,
+            boost::make_iterator_range(qubit_first, qubit_last));
+        }
+      } // namespace runtime
 
       template <
         typename MpiPolicy, typename ParallelPolicy, typename LocalState,

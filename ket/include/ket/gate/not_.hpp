@@ -8,6 +8,10 @@
 # include <utility>
 # include <type_traits>
 
+# include <boost/range/iterator_range.hpp>
+# include <boost/range/join.hpp>
+# include <boost/range/adaptor/transformed.hpp>
+
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
 # include <ket/gate/pauli_x.hpp>
@@ -78,15 +82,9 @@ namespace ket
           using std::end;
           std::iter_swap(
             first
-              + ::ket::gate::utility::index_with_qubits(
-                  index_wo_qubits, index0,
-                  begin(unsorted_qubits), end(unsorted_qubits),
-                  begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel)),
+              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index0, unsorted_qubits, sorted_qubits_with_sentinel),
             first
-              + ::ket::gate::utility::index_with_qubits(
-                  index_wo_qubits, index1,
-                  begin(unsorted_qubits), end(unsorted_qubits),
-                  begin(sorted_qubits_with_sentinel), end(sorted_qubits_with_sentinel)));
+              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index1, unsorted_qubits, sorted_qubits_with_sentinel));
         },
         target_qubit, control_qubit1, control_qubit2, control_qubits...);
 # else // KET_USE_BIT_MASKS_EXPLICITLY
@@ -106,13 +104,9 @@ namespace ket
           using std::end;
           std::iter_swap(
             first
-              + ::ket::gate::utility::index_with_qubits(
-                  index_wo_qubits, index0,
-                  begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks)),
+              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index0, qubit_masks, index_masks),
             first
-              + ::ket::gate::utility::index_with_qubits(
-                  index_wo_qubits, index1,
-                  begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks)));
+              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index1, qubit_masks, index_masks));
         },
         target_qubit, control_qubit1, control_qubit2, control_qubits...);
 # endif // KET_USE_BIT_MASKS_EXPLICITLY
@@ -139,7 +133,7 @@ namespace ket
       inline auto not_(
         ParallelPolicy const parallel_policy, RandomAccessRange& state,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
-      -> RandomAccessRange&
+      -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
       {
         using std::begin;
         using std::end;
@@ -173,13 +167,305 @@ namespace ket
       inline auto adj_not_(
         ParallelPolicy const parallel_policy, RandomAccessRange& state,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits)
-      -> RandomAccessRange&
+      -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
       { return ::ket::gate::ranges::not_(parallel_policy, state, target_qubit, control_qubits...); }
 
       template <typename RandomAccessRange, typename StateInteger, typename BitInteger, typename... ControlQubits>
       inline auto adj_not_(RandomAccessRange& state, ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubits const... control_qubits) -> RandomAccessRange&
       { return ::ket::gate::ranges::not_(state, target_qubit, control_qubits...); }
     } // namespace ranges
+
+
+    namespace runtime
+    {
+      // C...CNOT_{tc...c'}, or CnNOT_{tc...c'}
+      namespace qubit_ranges
+      {
+        template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger, typename ControlQubitsRange>
+        inline auto not_(
+          ParallelPolicy const parallel_policy,
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitsRange const& control_qubits)
+        -> void
+        {
+          using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+          using control_qubit_type = ::ket::control<qubit_type>;
+          static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+          static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
+          static_assert(std::is_same< ::ket::utility::meta::range_value_t<ControlQubitsRange>, control_qubit_type >::value, "The value_type of ControlQubitsRange should be the same as ket::control<ket::qubit<S, B> >");
+
+          assert(::ket::utility::integer_exp2<StateInteger>(target_qubit) < static_cast<StateInteger>(last - first));
+          assert(
+            ::ket::utility::integer_exp2<StateInteger>(::ket::utility::integer_log2<BitInteger>(last - first))
+            == static_cast<StateInteger>(last - first));
+          using std::begin;
+          using std::end;
+          auto const num_control_qubits = static_cast<BitInteger>(end(control_qubits) - begin(control_qubits));
+
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+          ::ket::gate::runtime::nocache::qubit_ranges::gate(
+            parallel_policy, first, last,
+            [num_control_qubits](
+              auto const first, StateInteger const index_wo_qubits,
+              auto const& unsorted_qubits, auto const& sorted_qubits_with_sentinel,
+              int const)
+            {
+              // 0b11...10u
+              auto const index0 = ((StateInteger{1u} << num_control_qubits) - StateInteger{1u}) << BitInteger{1u};
+              // 0b11...11u
+              auto const index1 = index0 bitor StateInteger{1u};
+
+              std::iter_swap(
+                first
+                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index0, unsorted_qubits, sorted_qubits_with_sentinel),
+                first
+                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index1, unsorted_qubits, sorted_qubits_with_sentinel));
+            },
+            boost::join(
+              boost::make_iterator_range(std::addressof(target_qubit), std::next(std::addressof(target_qubit))),
+              control_qubits | boost::adaptors::transformed(
+                [](control_qubit_type const control_qubit) { return control_qubit.qubit(); })));
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+          ::ket::gate::runtime::nocache::qubit_ranges::gate(
+            parallel_policy, first, last,
+            [num_control_qubits](
+              auto const first, StateInteger const index_wo_qubits,
+              auto const& qubit_masks, auto const& index_masks,
+              int const)
+            {
+              // 0b11...10u
+              auto const index0 = ((StateInteger{1u} << num_control_qubits) - StateInteger{1u}) << BitInteger{1u};
+              // 0b11...11u
+              auto const index1 = index0 bitor StateInteger{1u};
+
+              std::iter_swap(
+                first
+                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index0, qubit_masks, index_masks),
+                first
+                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index1, qubit_masks, index_masks));
+            },
+            boost::join(
+              boost::make_iterator_range(std::addressof(target_qubit), std::next(std::addressof(target_qubit))),
+              control_qubits | boost::adaptors::transformed(
+                [](control_qubit_type const control_qubit) { return control_qubit.qubit(); })));
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+        }
+
+        template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger>
+        inline auto not_(
+          ParallelPolicy const parallel_policy,
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+        -> void
+        {
+          using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
+          using control_qubit_type = ::ket::control<qubit_type>;
+          std::array<control_qubit_type, 0u> const control_qubits{};
+          ::ket::gate::runtime::qubit_ranges::not_(parallel_policy, first, last, target_qubit, control_qubits);
+        }
+
+        template <typename RandomAccessIterator, typename StateInteger, typename BitInteger, typename ControlQubitsRange>
+        inline auto not_(
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitsRange const& control_qubits)
+        -> void
+        { ::ket::gate::runtime::qubit_ranges::not_(::ket::utility::policy::make_sequential(), first, last, target_qubit, control_qubits); }
+
+        template <typename RandomAccessIterator, typename StateInteger, typename BitInteger>
+        inline auto not_(
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+        -> void
+        { ::ket::gate::runtime::qubit_ranges::not_(::ket::utility::policy::make_sequential(), first, last, target_qubit); }
+      } // namespace qubit_ranges
+
+      template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger, typename ControlQubitIterator>
+      inline auto not_(
+        ParallelPolicy const parallel_policy,
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+        ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+      -> void
+      {
+        ::ket::gate::runtime::qubit_ranges::not_(
+          parallel_policy, first, last,
+          target_qubit, boost::make_iterator_range(control_qubit_first, control_qubit_last));
+      }
+
+      template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger>
+      inline auto not_(
+        ParallelPolicy const parallel_policy,
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+      -> void
+      { ::ket::gate::runtime::qubit_ranges::not_(parallel_policy, first, last, target_qubit); }
+
+      template <typename RandomAccessIterator, typename StateInteger, typename BitInteger, typename ControlQubitIterator>
+      inline auto not_(
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+        ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+      -> void
+      {
+        ::ket::gate::runtime::qubit_ranges::not_(
+          first, last,
+          target_qubit, boost::make_iterator_range(control_qubit_first, control_qubit_last));
+      }
+
+      template <typename RandomAccessIterator, typename StateInteger, typename BitInteger>
+      inline auto not_(
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+      -> void
+      { ::ket::gate::runtime::qubit_ranges::not_(first, last, target_qubit); }
+
+      namespace ranges
+      {
+        template <typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename ControlQubitsRange>
+        inline auto not_(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& state,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitsRange const& control_qubits)
+        -> RandomAccessRange&
+        {
+          using std::begin;
+          using std::end;
+          ::ket::gate::runtime::qubit_ranges::not_(parallel_policy, begin(state), end(state), target_qubit, control_qubits);
+          return state;
+        }
+
+        template <typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger>
+        inline auto not_(
+          ParallelPolicy const parallel_policy,
+          RandomAccessRange& state,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+        -> RandomAccessRange&
+        {
+          using std::begin;
+          using std::end;
+          ::ket::gate::runtime::qubit_ranges::not_(parallel_policy, begin(state), end(state), target_qubit);
+          return state;
+        }
+
+        template <typename RandomAccessRange, typename StateInteger, typename BitInteger, typename ControlQubitsRange>
+        inline auto not_(
+          RandomAccessRange& state,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitsRange const& control_qubits)
+        -> RandomAccessRange&
+        {
+          using std::begin;
+          using std::end;
+          ::ket::gate::runtime::qubit_ranges::not_(begin(state), end(state), target_qubit, control_qubits);
+          return state;
+        }
+
+        template <typename RandomAccessRange, typename StateInteger, typename BitInteger>
+        inline auto not_(RandomAccessRange& state, ::ket::qubit<StateInteger, BitInteger> const target_qubit) -> RandomAccessRange&
+        {
+          using std::begin;
+          using std::end;
+          ::ket::gate::runtime::qubit_ranges::not_(begin(state), end(state), target_qubit);
+          return state;
+        }
+      } // namespace ranges
+
+      namespace qubit_ranges
+      {
+        template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger, typename ControlQubitsRange>
+        inline auto adj_not_(
+          ParallelPolicy const parallel_policy,
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitsRange const& control_qubits)
+        -> void
+        { ::ket::gate::runtime::qubit_ranges::not_(parallel_policy, first, last, target_qubit, control_qubits); }
+
+        template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger>
+        inline auto adj_not_(
+          ParallelPolicy const parallel_policy,
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+        -> void
+        { ::ket::gate::runtime::qubit_ranges::not_(parallel_policy, first, last, target_qubit); }
+
+        template <typename RandomAccessIterator, typename StateInteger, typename BitInteger, typename ControlQubitsRange>
+        inline auto adj_not_(
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitsRange const& control_qubits)
+        -> void
+        { ::ket::gate::runtime::qubit_ranges::not_(first, last, target_qubit, control_qubits); }
+
+        template <typename RandomAccessIterator, typename StateInteger, typename BitInteger>
+        inline auto adj_not_(
+          RandomAccessIterator const first, RandomAccessIterator const last,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+        -> void
+        { ::ket::gate::runtime::qubit_ranges::not_(first, last, target_qubit); }
+      } // namespace qubit_ranges
+
+      template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger, typename ControlQubitIterator>
+      inline auto adj_not_(
+        ParallelPolicy const parallel_policy,
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+        ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+      -> void
+      { ::ket::gate::runtime::not_(parallel_policy, first, last, target_qubit, control_qubit_first, control_qubit_last); }
+
+      template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger>
+      inline auto adj_not_(
+        ParallelPolicy const parallel_policy,
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+      -> void
+      { ::ket::gate::runtime::not_(parallel_policy, first, last, target_qubit); }
+
+      template <typename RandomAccessIterator, typename StateInteger, typename BitInteger, typename ControlQubitIterator>
+      inline auto adj_not_(
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+        ControlQubitIterator const control_qubit_first, ControlQubitIterator const control_qubit_last)
+      -> void
+      { ::ket::gate::runtime::not_(first, last, target_qubit, control_qubit_first, control_qubit_last); }
+
+      template <typename RandomAccessIterator, typename StateInteger, typename BitInteger>
+      inline auto adj_not_(
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+      -> void
+      { ::ket::gate::runtime::not_(first, last, target_qubit); }
+
+      namespace ranges
+      {
+        template <typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename ControlQubitsRange>
+        inline auto adj_not_(
+          ParallelPolicy const parallel_policy, RandomAccessRange& state,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit,
+          ControlQubitsRange const& control_qubits)
+        -> RandomAccessRange&
+        { return ::ket::gate::runtime::ranges::not_(parallel_policy, state, target_qubit, control_qubits); }
+
+        template <typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger>
+        inline auto adj_not_(
+          ParallelPolicy const parallel_policy, RandomAccessRange& state,
+          ::ket::qubit<StateInteger, BitInteger> const target_qubit)
+        -> RandomAccessRange&
+        { return ::ket::gate::runtime::ranges::not_(parallel_policy, state, target_qubit); }
+
+        template <typename RandomAccessRange, typename StateInteger, typename BitInteger, typename ControlQubitsRange>
+        inline auto adj_not_(RandomAccessRange& state, ::ket::qubit<StateInteger, BitInteger> const target_qubit, ControlQubitsRange const& control_qubits) -> RandomAccessRange&
+        { return ::ket::gate::runtime::ranges::not_(state, target_qubit, control_qubits); }
+
+        template <typename RandomAccessRange, typename StateInteger, typename BitInteger>
+        inline auto adj_not_(RandomAccessRange& state, ::ket::qubit<StateInteger, BitInteger> const target_qubit) -> RandomAccessRange&
+        { return ::ket::gate::runtime::ranges::not_(state, target_qubit); }
+      } // namespace ranges
+    } // namespace runtime
   } // namespace gate
 } // namespace ket
 

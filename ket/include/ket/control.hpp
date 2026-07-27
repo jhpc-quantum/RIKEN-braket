@@ -55,6 +55,24 @@ namespace ket
     }
   }; // class control<Qubit>
 
+  namespace meta
+  {
+    template <typename>
+    struct is_control
+      : std::false_type
+    { };
+
+    template <typename Qubit>
+    struct is_control< ::ket::control<Qubit> >
+      : std::true_type
+    { };
+
+    template <typename T>
+    struct is_control_cvref
+      : ::ket::meta::is_control<typename std::remove_cv<typename std::remove_reference<T>::type>::type>
+    { };
+  } // namespace meta
+
   template <typename Qubit>
   inline constexpr auto operator==(
     ::ket::control<Qubit> const control_qubit1, ::ket::control<Qubit> const control_qubit2) noexcept
