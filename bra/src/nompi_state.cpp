@@ -7,6 +7,7 @@
 # include <algorithm>
 # include <numeric>
 # include <utility>
+# include <type_traits>
 
 # include <boost/algorithm/string/case_conv.hpp>
 
@@ -55,6 +56,48 @@
 
 namespace bra
 {
+# if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
+  template <typename Iterator, typename CacheAwareIterator>
+  struct nompi_fused_gate_caller
+  {
+    std::vector<std::unique_ptr< ::bra::fused_gate::fused_gate<Iterator> >> const& fused_gates_;
+    std::vector<std::unique_ptr< ::bra::fused_gate::fused_gate<CacheAwareIterator> >> const& cache_aware_fused_gates_;
+    std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates_;
+
+    template <typename First, typename UnsortedFusedQubitsOrMasks, typename SortedFusedQubitsWithSentinelOrIndexMasks>
+    auto operator()(
+      First const first, ::bra::state_integer_type const index_wo_qubits,
+      UnsortedFusedQubitsOrMasks const& unsorted_fused_qubits_or_masks,
+      SortedFusedQubitsWithSentinelOrIndexMasks const& sorted_fused_qubits_with_sentinel_or_index_masks,
+      int const) const
+    -> typename std::enable_if<
+         std::is_same<typename std::decay<First>::type, Iterator>::value>::type
+    {
+      for (auto const& gate_ptr: fused_gates_)
+        gate_ptr->call(
+          first, index_wo_qubits,
+          unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
+          to_qubit_index_in_fused_gates_);
+    }
+
+    template <typename First, typename UnsortedFusedQubitsOrMasks, typename SortedFusedQubitsWithSentinelOrIndexMasks>
+    auto operator()(
+      First const first, ::bra::state_integer_type const index_wo_qubits,
+      UnsortedFusedQubitsOrMasks const& unsorted_fused_qubits_or_masks,
+      SortedFusedQubitsWithSentinelOrIndexMasks const& sorted_fused_qubits_with_sentinel_or_index_masks,
+      int const) const
+    -> typename std::enable_if<
+         std::is_same<typename std::decay<First>::type, CacheAwareIterator>::value>::type
+    {
+      for (auto const& gate_ptr: cache_aware_fused_gates_)
+        gate_ptr->call(
+          first, index_wo_qubits,
+          unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
+          to_qubit_index_in_fused_gates_);
+    }
+  };
+# endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
+
 # if !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION)
   nompi_state::nompi_state(
     ::bra::state::state_integer_type const initial_integer,
@@ -1284,6 +1327,7 @@ namespace bra
     for (auto const fused_control_qubit: fused_control_qubits)
       operated_qubits.push_back(fused_control_qubit.qubit());
 
+# if !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || defined(KET_USE_ON_CACHE_STATE_VECTOR)
     auto const call_fused_gates
       = [this, &to_qubit_index_in_fused_gates](
           auto const first, ::bra::state_integer_type const index_wo_qubits,
@@ -1298,47 +1342,13 @@ namespace bra
               to_qubit_index_in_fused_gates);
         };
 
-# if !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || defined(KET_USE_ON_CACHE_STATE_VECTOR)
-    ket::gate::runtime::ranges::gate(parallel_policy_, data_, call_fused_gates, operated_qubits);
 # else // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
-#   ifndef KET_DEFAULT_NUM_ON_CACHE_QUBITS
-#     define KET_DEFAULT_NUM_ON_CACHE_QUBITS 16
-#   endif // KET_DEFAULT_NUM_ON_CACHE_QUBITS
-    constexpr auto num_on_cache_qubits = bit_integer_type{KET_DEFAULT_NUM_ON_CACHE_QUBITS};
-    constexpr auto cache_size = ket::utility::integer_exp2<state_integer_type>(num_on_cache_qubits);
-
-    if (data_.size() <= cache_size)
-      ket::gate::runtime::nocache::qubit_ranges::gate(
-        parallel_policy_, begin(data_), end(data_), call_fused_gates, operated_qubits);
-    else if (::ket::utility::runtime::ranges::all_in_state_vector(num_on_cache_qubits, operated_qubits))
-      ket::gate::runtime::cache::all_on_cache::qubit_ranges::gate(
-        parallel_policy_, begin(data_), end(data_), call_fused_gates, num_on_cache_qubits, operated_qubits);
-    else
-    {
-      auto const call_cache_aware_fused_gates
-        = [this, &to_qubit_index_in_fused_gates](
-            auto const first, ::bra::state_integer_type const index_wo_qubits,
-            auto const& unsorted_fused_qubits_or_masks,
-            auto const& sorted_fused_qubits_with_sentinel_or_index_masks,
-            int const)
-          {
-            for (auto const& gate_ptr: this->cache_aware_fused_gates_)
-              gate_ptr->call(
-                first, index_wo_qubits,
-                unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
-                to_qubit_index_in_fused_gates);
-          };
-
-      if (::ket::utility::runtime::ranges::none_in_state_vector(num_on_cache_qubits, operated_qubits))
-        ket::gate::runtime::cache::none_on_cache::qubit_ranges::gate(
-          parallel_policy_, begin(data_), end(data_), call_cache_aware_fused_gates,
-          num_on_cache_qubits, operated_qubits);
-      else
-        ket::gate::runtime::cache::some_on_cache::qubit_ranges::gate(
-          parallel_policy_, begin(data_), end(data_), call_cache_aware_fused_gates,
-          num_on_cache_qubits, operated_qubits);
-    }
+    auto const call_fused_gates
+      = nompi_fused_gate_caller<fused_gate_iterator, cache_aware_fused_gate_iterator>{
+          fused_gates_, cache_aware_fused_gates_, to_qubit_index_in_fused_gates};
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
+
+    ket::gate::runtime::ranges::gate(parallel_policy_, data_, call_fused_gates, operated_qubits);
 
     fused_gates_.clear();
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)

@@ -2,9 +2,12 @@
 # define BRA_FUSED_GATE_FUSED_GATE_HPP
 
 # include <cassert>
+# include <type_traits>
 # include <vector>
 
 # include <boost/optional.hpp>
+# include <boost/range/begin.hpp>
+# include <boost/range/end.hpp>
 
 # include <bra/types.hpp>
 
@@ -36,6 +39,28 @@ namespace bra
       {
         assert(sorted_fused_qubits_with_sentinel.size() == unsorted_fused_qubits.size() + std::size_t{1u});
         do_call(first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel, to_qubit_index_in_fused_gates);
+      }
+
+      template <typename UnsortedFusedQubitsRange, typename SortedFusedQubitsWithSentinelRange>
+      auto call(
+        Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
+        UnsortedFusedQubitsRange const& unsorted_fused_qubits,
+        SortedFusedQubitsWithSentinelRange const& sorted_fused_qubits_with_sentinel,
+        std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const
+      -> typename std::enable_if<
+           not std::is_same<typename std::decay<UnsortedFusedQubitsRange>::type, std::vector< ::bra::qubit_type >>::value
+           or not std::is_same<typename std::decay<SortedFusedQubitsWithSentinelRange>::type, std::vector< ::bra::qubit_type >>::value>::type
+      {
+        auto const unsorted_fused_qubits_vector
+          = std::vector< ::bra::qubit_type >{boost::begin(unsorted_fused_qubits), boost::end(unsorted_fused_qubits)};
+        auto const sorted_fused_qubits_with_sentinel_vector
+          = std::vector< ::bra::qubit_type >{
+              boost::begin(sorted_fused_qubits_with_sentinel), boost::end(sorted_fused_qubits_with_sentinel)};
+
+        call(
+          first, fused_index_wo_qubits,
+          unsorted_fused_qubits_vector, sorted_fused_qubits_with_sentinel_vector,
+          to_qubit_index_in_fused_gates);
       }
 # else // KET_USE_BIT_MASKS_EXPLICITLY
       auto call(
