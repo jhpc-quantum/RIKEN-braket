@@ -501,7 +501,7 @@ namespace ket
             // Case 2-2) There are some operated on-cache qubits
             //   ex: ppxx|yyy|zzzzzzz
             //        ^^   ^    ^     <- operated qubits
-            // least_significant_chunk_permutated_qubit, num_chunk_qubits, chunk_size, num_tag_qubits, num_nontag_qubits
+            // least_significant_chunk_permutated_qubit, num_chunk_qubits, chunk_size, num_tag_qubits
             assert(operated_on_cache_permutated_qubits_first != operated_on_cache_permutated_qubits_last);
             auto operated_on_cache_permutated_qubits_iter = std::prev(operated_on_cache_permutated_qubits_last);
             auto free_most_significant_on_cache_permutated_qubit = least_significant_off_cache_permutated_qubit - bit_integer_type{1u};
@@ -518,7 +518,6 @@ namespace ket
             auto const num_chunks_in_on_cache_state = ::ket::utility::integer_exp2<StateInteger>(num_chunk_qubits);
             auto const chunk_size = on_cache_state_size / num_chunks_in_on_cache_state;
             auto const num_tag_qubits = num_off_cache_qubits + num_chunk_qubits;
-            auto const num_nontag_qubits = num_on_cache_qubits - num_chunk_qubits;
             auto const num_nonpage_tag_qubits = num_tag_qubits - static_cast<bit_integer_type>(local_state.num_page_qubits());
 
             // unsorted_tag_qubits, modified_operated_qubits

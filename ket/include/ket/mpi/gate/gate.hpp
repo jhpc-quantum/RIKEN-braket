@@ -2066,14 +2066,14 @@ namespace ket
                 //                  ^  ^  <- operated qubits
                 if (::ket::mpi::page::page_size(mpi_policy, local_state, communicator, environment) <= cache_size)
                   return ::ket::mpi::gate::local::runtime::nopage::all_on_cache::small::gate(
-                    mpi_policy, parallel_policy, local_state, communicator, environment, unit_control_qubit_mask,
+                    mpi_policy, parallel_policy, local_state, buffer, communicator, environment, unit_control_qubit_mask,
                     std::forward<Function>(function), num_on_cache_qubits, permutated_qubits, permutated_control_qubits);
 
                 // Case 1-1-2) page size > on-cache state size
                 //   ex: ppxx|zzzzzzzzzz
                 //             ^   ^ ^   <- operated qubits
                 return ::ket::mpi::gate::local::runtime::nopage::all_on_cache::gate(
-                  mpi_policy, parallel_policy, local_state, communicator, environment, unit_control_qubit_mask,
+                  mpi_policy, parallel_policy, local_state, buffer, communicator, environment, unit_control_qubit_mask,
                   std::forward<Function>(function), num_on_cache_qubits, permutated_qubits, permutated_control_qubits);
               }
 
@@ -2125,17 +2125,15 @@ namespace ket
                 //   ex2: ....|..ppzzzzzz (num. local qubits <= num. on-cache qubits)
                 //                  ^  ^  <- operated qubits
                 if (::ket::mpi::page::page_size(mpi_policy, local_state, communicator, environment) <= cache_size)
-                  return ::ket::mpi::gate::local::runtime::nopage::all_on_cache::small::gate<
-                    MpiPolicy, ParallelPolicy, RandomAccessRange, state_integer_type>(
-                    mpi_policy, parallel_policy, local_state, communicator, environment,
+                  return ::ket::mpi::gate::local::runtime::nopage::all_on_cache::small::gate(
+                    mpi_policy, parallel_policy, local_state, buffer, communicator, environment,
                     std::forward<Function>(function), num_on_cache_qubits, permutated_qubits);
 
                 // Case 1-1-2) page size > on-cache state size
                 //   ex: ppxx|zzzzzzzzzz
                 //             ^   ^ ^   <- operated qubits
-                return ::ket::mpi::gate::local::runtime::nopage::all_on_cache::gate<
-                  MpiPolicy, ParallelPolicy, RandomAccessRange, state_integer_type>(
-                  mpi_policy, parallel_policy, local_state, communicator, environment,
+                return ::ket::mpi::gate::local::runtime::nopage::all_on_cache::gate(
+                  mpi_policy, parallel_policy, local_state, buffer, communicator, environment,
                   std::forward<Function>(function), num_on_cache_qubits, permutated_qubits);
               }
 
@@ -2639,6 +2637,7 @@ namespace ket
             {
               using permutated_qubit_type = ::ket::utility::meta::range_value_t<PermutatedQubitsRange>;
               using state_integer_type = ::ket::meta::state_integer_t<permutated_qubit_type>;
+              using bit_integer_type = ::ket::meta::bit_integer_t<permutated_qubit_type>;
               auto const on_cache_state_size = ::ket::utility::integer_exp2<state_integer_type>(num_on_cache_qubits);
 
               // xxxx|yyyy|zzzzzz: local qubits
@@ -2660,6 +2659,9 @@ namespace ket
               auto const rank_in_unit = ::ket::mpi::utility::policy::rank_in_unit(mpi_policy, communicator, environment);
               auto const num_data_blocks = static_cast<state_integer_type>(::ket::mpi::utility::policy::num_data_blocks(mpi_policy, rank_in_unit));
 
+              using permutated_control_qubit_type = ::ket::mpi::permutated< ::ket::control< ::ket::qubit<state_integer_type, bit_integer_type> > >;
+              std::array<permutated_control_qubit_type, 0u> permutated_control_qubits{{}};
+
               // Case 2-1) Buffer size is large enough
               auto const present_buffer_size = static_cast<state_integer_type>(::ket::mpi::utility::buffer_end(local_state, buffer) - ::ket::mpi::utility::buffer_begin(local_state, buffer));
               if (present_buffer_size >= modified_on_cache_state_size)
@@ -2671,7 +2673,7 @@ namespace ket
                   ::ket::mpi::gate::page::runtime::gate(
                     parallel_policy,
                     local_state, buffer_range, data_block_index,
-                    std::forward<Function>(function), permutated_qubits);
+                    std::forward<Function>(function), permutated_qubits, permutated_control_qubits);
                 }
 
                 return local_state;
@@ -2686,7 +2688,7 @@ namespace ket
                 ::ket::mpi::gate::page::runtime::gate(
                   parallel_policy,
                   local_state, buffer, data_block_index,
-                  std::forward<Function>(function), permutated_qubits);
+                  std::forward<Function>(function), permutated_qubits, permutated_control_qubits);
 
               return local_state;
             }
@@ -2916,9 +2918,6 @@ namespace ket
             PermutatedControlQubitsRange const& permutated_control_qubits)
           -> RandomAccessRange&
           {
-            using permutated_qubit_type = ::ket::utility::meta::range_value_t<PermutatedQubitsRange>;
-            using state_integer_type = ::ket::meta::state_integer_t<permutated_qubit_type>;
-
             // xxxx|yyyy|zzzzzz: local qubits
             // * xxxx: off-cache qubits
             // * yyyy|zzzzzz: on-cache qubits
