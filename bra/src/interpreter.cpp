@@ -23,8 +23,6 @@
 #include <boost/algorithm/string/split.hpp>
 #include <boost/algorithm/string/classification.hpp>
 
-#include <boost/preprocessor/arithmetic/dec.hpp>
-
 #ifndef BRA_NO_MPI
 # include <yampi/communicator.hpp>
 # include <yampi/environment.hpp>

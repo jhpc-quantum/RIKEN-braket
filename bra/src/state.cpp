@@ -17,7 +17,6 @@
 
 #include <boost/variant/variant.hpp>
 #include <boost/variant/apply_visitor.hpp>
-#include <boost/preprocessor/arithmetic/dec.hpp>
 
 #ifndef BRA_NO_MPI
 # include <yampi/rank.hpp>

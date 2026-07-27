@@ -33,8 +33,6 @@ macros += KET_USE_BIT_MASKS_EXPLICITLY
 macros += KET_ENABLE_CACHE_AWARE_GATE_FUNCTION
 #macros += KET_DEFAULT_NUM_ON_CACHE_QUBITS=18
 #macros += KET_USE_ON_CACHE_STATE_VECTOR
-macros += BRA_MAX_NUM_OPERATED_QUBITS=10
-macros += BRA_MAX_NUM_FUSED_QUBITS=10
 libraries =
 
 CPPFLAGS = $(addprefix -I,$(idirs)) $(addprefix -D,$(macros))
