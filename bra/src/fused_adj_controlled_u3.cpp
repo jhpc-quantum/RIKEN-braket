@@ -82,22 +82,24 @@ namespace bra
     auto fused_adj_controlled_u3<Iterator>::do_disable_control_qubits(
       typename std::vector< ::bra::qubit_type >::const_iterator const first,
       typename std::vector< ::bra::qubit_type >::const_iterator const last)
-    -> void
+    -> bool
     {
-      is_control_qubit_enabled_
-        = is_control_qubit_enabled_
-          and std::none_of(first, last, [this](::bra::qubit_type const found_qubit) { return found_qubit == this->control_qubit_; });
+      auto const has_control_qubit
+        = std::any_of(first, last, [this](::bra::qubit_type const q) { return q == this->control_qubit_; });
+      is_control_qubit_enabled_ = is_control_qubit_enabled_ and not has_control_qubit;
+      return has_control_qubit;
     }
 
     template <typename Iterator>
     auto fused_adj_controlled_u3<Iterator>::do_disable_control_qubits(
       typename std::vector< ::bra::control_qubit_type >::const_iterator const first,
       typename std::vector< ::bra::control_qubit_type >::const_iterator const last)
-    -> void
+    -> bool
     {
-      is_control_qubit_enabled_
-        = is_control_qubit_enabled_
-          and std::none_of(first, last, [this](::bra::control_qubit_type const found_control_qubit) { return found_control_qubit == this->control_qubit_; });
+      auto const has_control_qubit
+        = std::any_of(first, last, [this](::bra::control_qubit_type const q) { return q == this->control_qubit_; });
+      is_control_qubit_enabled_ = is_control_qubit_enabled_ and not has_control_qubit;
+      return has_control_qubit;
     }
 
     template class fused_adj_controlled_u3< ::bra::data_type::iterator >;

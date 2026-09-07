@@ -15,7 +15,6 @@ namespace bra
     class fused_hadamard final
       : public ::bra::fused_gate::fused_gate<Iterator>
     {
-     private:
       ::bra::qubit_type qubit_;
 
      public:

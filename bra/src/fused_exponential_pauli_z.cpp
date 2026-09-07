@@ -1,6 +1,7 @@
 #include <array>
 #include <vector>
 #include <stdexcept>
+#include <cassert>
 
 
 #include <ket/gate/fused/exponential_pauli_z.hpp>
@@ -31,6 +32,33 @@ namespace bra
       std::vector< ::bra::qubit_type > const& sorted_fused_qubits_with_sentinel,
       std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void
     {
+      assert(not (qubit_state_ != ::bra::fused_gate::cez_qubit_state::not_global and is_qubit_unit_));
+      if (is_qubit_unit_)
+      {
+        std::array< ::bra::control_qubit_type, 1u > const control_qubits{{
+          static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(qubit_)])}};
+        ::ket::gate::fused::runtime::ranges::phase_shift(
+          first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
+          ::bra::real_type{-2} * phase_, control_qubits);
+        return;
+      }
+
+      if (qubit_state_ == ::bra::fused_gate::cez_qubit_state::global_zero)
+      {
+        ::ket::gate::fused::runtime::ranges::global_phase(
+          first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
+          phase_);
+        return;
+      }
+
+      if (qubit_state_ == ::bra::fused_gate::cez_qubit_state::global_one)
+      {
+        ::ket::gate::fused::runtime::ranges::global_phase(
+          first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
+          -phase_);
+        return;
+      }
+
       if (unsorted_fused_qubits.size() < std::size_t{1u})
         throw std::runtime_error{"fused_exponential_pauli_z requires at least one fused qubit"};
 
@@ -49,6 +77,33 @@ namespace bra
       std::vector< ::bra::state_integer_type > const& index_masks,
       std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void
     {
+      assert(not (qubit_state_ != ::bra::fused_gate::cez_qubit_state::not_global and is_qubit_unit_));
+      if (is_qubit_unit_)
+      {
+        std::array< ::bra::control_qubit_type, 1u > const control_qubits{{
+          static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(qubit_)])}};
+        ::ket::gate::fused::runtime::ranges::phase_shift(
+          first, fused_index_wo_qubits, qubit_masks, index_masks,
+          ::bra::real_type{-2} * phase_, control_qubits);
+        return;
+      }
+
+      if (qubit_state_ == ::bra::fused_gate::cez_qubit_state::global_zero)
+      {
+        ::ket::gate::fused::runtime::ranges::global_phase(
+          first, fused_index_wo_qubits, qubit_masks, index_masks,
+          phase_);
+        return;
+      }
+
+      if (qubit_state_ == ::bra::fused_gate::cez_qubit_state::global_one)
+      {
+        ::ket::gate::fused::runtime::ranges::global_phase(
+          first, fused_index_wo_qubits, qubit_masks, index_masks,
+          -phase_);
+        return;
+      }
+
       if (qubit_masks.size() < std::size_t{1u})
         throw std::runtime_error{"fused_exponential_pauli_z requires at least one fused qubit"};
 

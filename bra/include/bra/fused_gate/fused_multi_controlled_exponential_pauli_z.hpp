@@ -15,7 +15,6 @@ namespace bra
     class fused_multi_controlled_exponential_pauli_z final
       : public ::bra::fused_gate::fused_gate<Iterator>
     {
-     private:
       ::bra::real_type phase_;
       ::bra::qubit_type target_qubit_;
       std::vector< ::bra::control_qubit_type > control_qubits_;
@@ -50,11 +49,11 @@ namespace bra
 
       auto do_disable_control_qubits(
         typename std::vector< ::bra::qubit_type >::const_iterator const first,
-        typename std::vector< ::bra::qubit_type >::const_iterator const last) -> void override;
+        typename std::vector< ::bra::qubit_type >::const_iterator const last) -> bool override;
 
       auto do_disable_control_qubits(
         typename std::vector< ::bra::control_qubit_type >::const_iterator const first,
-        typename std::vector< ::bra::control_qubit_type >::const_iterator const last) -> void override;
+        typename std::vector< ::bra::control_qubit_type >::const_iterator const last) -> bool override;
 
       auto do_modify_cez(
         typename std::vector< ::bra::qubit_type >::const_iterator const first,

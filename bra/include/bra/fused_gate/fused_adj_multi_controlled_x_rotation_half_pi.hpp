@@ -15,7 +15,6 @@ namespace bra
     class fused_adj_multi_controlled_x_rotation_half_pi final
       : public ::bra::fused_gate::fused_gate<Iterator>
     {
-     private:
       ::bra::qubit_type target_qubit_;
       std::vector< ::bra::control_qubit_type > control_qubits_;
 
@@ -48,11 +47,11 @@ namespace bra
 
       auto do_disable_control_qubits(
         typename std::vector< ::bra::qubit_type >::const_iterator const first,
-        typename std::vector< ::bra::qubit_type >::const_iterator const last) -> void override;
+        typename std::vector< ::bra::qubit_type >::const_iterator const last) -> bool override;
 
       auto do_disable_control_qubits(
         typename std::vector< ::bra::control_qubit_type >::const_iterator const first,
-        typename std::vector< ::bra::control_qubit_type >::const_iterator const last) -> void override;
+        typename std::vector< ::bra::control_qubit_type >::const_iterator const last) -> bool override;
     }; // class fused_adj_multi_controlled_x_rotation_half_pi<Iterator>
   } // namespace fused_gate
 } // namespace bra

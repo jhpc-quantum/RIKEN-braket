@@ -16,7 +16,6 @@ namespace bra
     class fused_u2 final
       : public ::bra::fused_gate::fused_gate<Iterator>
     {
-     private:
       ::bra::real_type phase1_;
       ::bra::real_type phase2_;
       ::bra::qubit_type qubit_;

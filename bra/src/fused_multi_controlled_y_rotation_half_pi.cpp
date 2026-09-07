@@ -83,34 +83,38 @@ namespace bra
     auto fused_multi_controlled_y_rotation_half_pi<Iterator>::do_disable_control_qubits(
       typename std::vector< ::bra::qubit_type >::const_iterator const first,
       typename std::vector< ::bra::qubit_type >::const_iterator const last)
-    -> void
+    -> bool
     {
+      auto has_control_qubit = false;
       auto const num_control_qubits = control_qubits_.size();
       for (auto index = decltype(num_control_qubits){0}; index < num_control_qubits; ++index)
+      {
+        auto const has_this_control_qubit
+          = std::any_of(first, last, [this, index](::bra::qubit_type const q) { return q == this->control_qubits_[index]; });
+        has_control_qubit = has_control_qubit or has_this_control_qubit;
         is_control_qubit_enabled_vec_[index]
-          = static_cast<int>(
-              static_cast<bool>(is_control_qubit_enabled_vec_[index])
-              and std::none_of(
-                    first, last,
-                    [this, index](::bra::qubit_type const found_qubit)
-                    { return found_qubit == this->control_qubits_[index]; }));
+          = static_cast<int>(static_cast<bool>(is_control_qubit_enabled_vec_[index]) and not has_this_control_qubit);
+      }
+      return has_control_qubit;
     }
 
     template <typename Iterator>
     auto fused_multi_controlled_y_rotation_half_pi<Iterator>::do_disable_control_qubits(
       typename std::vector< ::bra::control_qubit_type >::const_iterator const first,
       typename std::vector< ::bra::control_qubit_type >::const_iterator const last)
-    -> void
+    -> bool
     {
+      auto has_control_qubit = false;
       auto const num_control_qubits = control_qubits_.size();
       for (auto index = decltype(num_control_qubits){0}; index < num_control_qubits; ++index)
+      {
+        auto const has_this_control_qubit
+          = std::any_of(first, last, [this, index](::bra::control_qubit_type const q) { return q == this->control_qubits_[index]; });
+        has_control_qubit = has_control_qubit or has_this_control_qubit;
         is_control_qubit_enabled_vec_[index]
-          = static_cast<int>(
-              static_cast<bool>(is_control_qubit_enabled_vec_[index])
-              and std::none_of(
-                    first, last,
-                    [this, index](::bra::control_qubit_type const found_control_qubit)
-                    { return found_control_qubit == this->control_qubits_[index]; }));
+          = static_cast<int>(static_cast<bool>(is_control_qubit_enabled_vec_[index]) and not has_this_control_qubit);
+      }
+      return has_control_qubit;
     }
 
     template class fused_multi_controlled_y_rotation_half_pi< ::bra::data_type::iterator >;

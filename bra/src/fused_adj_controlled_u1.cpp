@@ -69,20 +69,30 @@ namespace bra
     auto fused_adj_controlled_u1<Iterator>::do_disable_control_qubits(
       typename std::vector< ::bra::qubit_type >::const_iterator const first,
       typename std::vector< ::bra::qubit_type >::const_iterator const last)
-    -> void
+    -> bool
     {
-      is_control_qubit1_enabled_ = is_control_qubit1_enabled_ and std::none_of(first, last, [this](::bra::qubit_type const q) { return q == this->control_qubit1_; });
-      is_control_qubit2_enabled_ = is_control_qubit2_enabled_ and std::none_of(first, last, [this](::bra::qubit_type const q) { return q == this->control_qubit2_; });
+      auto const has_control_qubit1
+        = std::any_of(first, last, [this](::bra::qubit_type const q) { return q == this->control_qubit1_; });
+      auto const has_control_qubit2
+        = std::any_of(first, last, [this](::bra::qubit_type const q) { return q == this->control_qubit2_; });
+      is_control_qubit1_enabled_ = is_control_qubit1_enabled_ and not has_control_qubit1;
+      is_control_qubit2_enabled_ = is_control_qubit2_enabled_ and not has_control_qubit2;
+      return has_control_qubit1 or has_control_qubit2;
     }
 
     template <typename Iterator>
     auto fused_adj_controlled_u1<Iterator>::do_disable_control_qubits(
       typename std::vector< ::bra::control_qubit_type >::const_iterator const first,
       typename std::vector< ::bra::control_qubit_type >::const_iterator const last)
-    -> void
+    -> bool
     {
-      is_control_qubit1_enabled_ = is_control_qubit1_enabled_ and std::none_of(first, last, [this](::bra::control_qubit_type const q) { return q == this->control_qubit1_; });
-      is_control_qubit2_enabled_ = is_control_qubit2_enabled_ and std::none_of(first, last, [this](::bra::control_qubit_type const q) { return q == this->control_qubit2_; });
+      auto const has_control_qubit1
+        = std::any_of(first, last, [this](::bra::control_qubit_type const q) { return q == this->control_qubit1_; });
+      auto const has_control_qubit2
+        = std::any_of(first, last, [this](::bra::control_qubit_type const q) { return q == this->control_qubit2_; });
+      is_control_qubit1_enabled_ = is_control_qubit1_enabled_ and not has_control_qubit1;
+      is_control_qubit2_enabled_ = is_control_qubit2_enabled_ and not has_control_qubit2;
+      return has_control_qubit1 or has_control_qubit2;
     }
 
     template class fused_adj_controlled_u1< ::bra::data_type::iterator >;

@@ -17,7 +17,6 @@ namespace bra
     class fused_adj_exponential_pauli_z final
       : public ::bra::fused_gate::fused_gate<Iterator>
     {
-     private:
       ::bra::real_type phase_;
       ::bra::qubit_type qubit_;
 

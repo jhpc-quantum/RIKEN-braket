@@ -1457,9 +1457,17 @@ namespace bra
       fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_toffoli<fused_gate_iterator> >(
           target_qubit, control_qubit1, control_qubit2));
+# if !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
+      paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_toffoli<paged_fused_gate_iterator> >(
+          target_qubit, control_qubit1, control_qubit2));
+# endif // !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
       cache_aware_fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_toffoli<cache_aware_fused_gate_iterator> >(
+          target_qubit, control_qubit1, control_qubit2));
+      cache_aware_paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_toffoli<cache_aware_paged_fused_gate_iterator> >(
           target_qubit, control_qubit1, control_qubit2));
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
@@ -1964,7 +1972,6 @@ namespace bra
        case ::bra::found_qubit::not_found:
         break;
       }
-
     auto const data_block_size = ket::mpi::utility::policy::data_block_size(mpi_policy_, data_, circuit_communicator_, environment_);
     auto const least_permutated_unit_qubit
       = ket::mpi::make_permutated(ket::make_qubit< ::bra::state_integer_type >(
@@ -1973,17 +1980,18 @@ namespace bra
       = ket::mpi::make_permutated(ket::make_qubit< ::bra::state_integer_type >(
           static_cast< ::bra::bit_integer_type >(ket::mpi::utility::policy::num_nonglobal_qubits(mpi_policy_, data_block_size))));
 
-    // generate local_fused_control_qubits and nonlocal_fused_control_qubits by using std::partition
     using std::begin;
     using std::end;
-    auto const local_fused_control_qubit_first = begin(fused_control_qubits);
-    auto const nonlocal_fused_control_qubit_last = end(fused_control_qubits);
-    auto const local_fused_control_qubit_last
+
+    // generate nonglobal_fused_control_qubits and global_fused_control_qubits by using std::partition
+    auto const nonglobal_fused_control_qubit_first = begin(fused_control_qubits);
+    auto const global_fused_control_qubit_last = end(fused_control_qubits);
+    auto const nonglobal_fused_control_qubit_last
       = std::partition(
-          local_fused_control_qubit_first, nonlocal_fused_control_qubit_last,
-          [this, least_permutated_unit_qubit](::bra::control_qubit_type const control_qubit)
-          { return this->permutation_[control_qubit] < least_permutated_unit_qubit; });
-    auto const nonlocal_fused_control_qubit_first = local_fused_control_qubit_last;
+          nonglobal_fused_control_qubit_first, global_fused_control_qubit_last,
+          [this, least_permutated_global_qubit](::bra::control_qubit_type const control_qubit)
+          { return this->permutation_[control_qubit] < least_permutated_global_qubit; });
+    auto const global_fused_control_qubit_first = nonglobal_fused_control_qubit_last;
 
     // generate local_fused_ez_qubits, unit_fused_ez_qubits, global_fused_unit_qubits, and nonlocal_fused_ez_qubits by using std::partition
     auto const local_fused_ez_qubit_first = begin(fused_ez_qubits);
@@ -2013,10 +2021,20 @@ namespace bra
           { return this->permutation_[qubit] < least_permutated_global_qubit; });
     auto const global_fused_cez_qubit_first = nonglobal_fused_cez_qubit_last;
 
-    // generate ez_qubit_states and cez_qubit_states
+    // generate global_control_qubit_states, ez_qubit_states, and cez_qubit_states
     auto const global_qubit_value = static_cast< ::bra::state_integer_type >(::ket::mpi::utility::policy::global_qubit_value(mpi_policy_, circuit_communicator_, environment_));
+    auto global_control_qubit_states = std::vector< ::bra::fused_gate::control_qubit_state >(global_fused_control_qubit_last - global_fused_control_qubit_first, ::bra::fused_gate::control_qubit_state::zero);
     auto ez_qubit_states = std::vector< ::bra::fused_gate::cez_qubit_state >(global_fused_ez_qubit_last - global_fused_ez_qubit_first, ::bra::fused_gate::cez_qubit_state::not_global);
     auto cez_qubit_states = std::vector< ::bra::fused_gate::cez_qubit_state >(global_fused_cez_qubit_last - global_fused_cez_qubit_first, ::bra::fused_gate::cez_qubit_state::not_global);
+    for (auto iter = global_fused_control_qubit_first; iter != global_fused_control_qubit_last; ++iter)
+    {
+      constexpr auto zero = ::bra::state_integer_type{0u};
+      constexpr auto one = ::bra::state_integer_type{1u};
+      if ((global_qubit_value bitand (one << (permutation_[*iter] - least_permutated_global_qubit))) == zero)
+        global_control_qubit_states[iter - global_fused_control_qubit_first] = ::bra::fused_gate::control_qubit_state::zero;
+      else
+        global_control_qubit_states[iter - global_fused_control_qubit_first] = ::bra::fused_gate::control_qubit_state::one;
+    }
     for (auto iter = global_fused_ez_qubit_first; iter != global_fused_ez_qubit_last; ++iter)
     {
       constexpr auto zero = ::bra::state_integer_type{0u};
@@ -2037,13 +2055,12 @@ namespace bra
     }
 
     // modify fused_gate's in fused_gates_ and its variants, and calculate global_phase if needed
-    auto new_fused_control_qubits = std::vector< ::bra::control_qubit_type >{};
-    new_fused_control_qubits.reserve(total_num_qubits_);
     auto exists_global_phase = false;
     auto global_phase = ::bra::real_type{0};
     for (auto& fused_gate_ptr: fused_gates_)
     {
-      fused_gate_ptr->disable_control_qubits(nonlocal_fused_control_qubit_first, nonlocal_fused_control_qubit_last);
+      fused_gate_ptr->disable_control_qubits(
+        global_fused_control_qubit_first, global_fused_control_qubit_last, begin(global_control_qubit_states));
       fused_gate_ptr->disable_control_qubits(nonlocal_fused_ez_qubit_first, nonlocal_fused_ez_qubit_last);
       fused_gate_ptr->disable_control_qubits(global_fused_cez_qubit_first, global_fused_cez_qubit_last);
 
@@ -2053,7 +2070,6 @@ namespace bra
       auto const maybe_cqubit_global_phase = fused_gate_ptr->maybe_phase_shiftize_ez(unit_fused_ez_qubit_first, unit_fused_ez_qubit_last);
       if (maybe_cqubit_global_phase)
       {
-        new_fused_control_qubits.push_back(maybe_cqubit_global_phase->first);
         exists_global_phase = true;
         global_phase += maybe_cqubit_global_phase->second;
       }
@@ -2061,7 +2077,8 @@ namespace bra
 #   if !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
     for (auto& fused_gate_ptr: paged_fused_gates_)
     {
-      fused_gate_ptr->disable_control_qubits(nonlocal_fused_control_qubit_first, nonlocal_fused_control_qubit_last);
+      fused_gate_ptr->disable_control_qubits(
+        global_fused_control_qubit_first, global_fused_control_qubit_last, begin(global_control_qubit_states));
       fused_gate_ptr->disable_control_qubits(nonlocal_fused_ez_qubit_first, nonlocal_fused_ez_qubit_last);
       fused_gate_ptr->disable_control_qubits(global_fused_cez_qubit_first, global_fused_cez_qubit_last);
 
@@ -2074,7 +2091,8 @@ namespace bra
 #   if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     for (auto& fused_gate_ptr: cache_aware_fused_gates_)
     {
-      fused_gate_ptr->disable_control_qubits(nonlocal_fused_control_qubit_first, nonlocal_fused_control_qubit_last);
+      fused_gate_ptr->disable_control_qubits(
+        global_fused_control_qubit_first, global_fused_control_qubit_last, begin(global_control_qubit_states));
       fused_gate_ptr->disable_control_qubits(nonlocal_fused_ez_qubit_first, nonlocal_fused_ez_qubit_last);
       fused_gate_ptr->disable_control_qubits(global_fused_cez_qubit_first, global_fused_cez_qubit_last);
 
@@ -2085,7 +2103,8 @@ namespace bra
     }
     for (auto& fused_gate_ptr: cache_aware_paged_fused_gates_)
     {
-      fused_gate_ptr->disable_control_qubits(nonlocal_fused_control_qubit_first, nonlocal_fused_control_qubit_last);
+      fused_gate_ptr->disable_control_qubits(
+        global_fused_control_qubit_first, global_fused_control_qubit_last, begin(global_control_qubit_states));
       fused_gate_ptr->disable_control_qubits(nonlocal_fused_ez_qubit_first, nonlocal_fused_ez_qubit_last);
       fused_gate_ptr->disable_control_qubits(global_fused_cez_qubit_first, global_fused_cez_qubit_last);
 
@@ -2099,10 +2118,13 @@ namespace bra
     // modify fused_qubits and fused_control_qubits
     std::copy(nonglobal_fused_cez_qubit_first, nonglobal_fused_cez_qubit_last, std::back_inserter(fused_qubits));
     std::copy(local_fused_ez_qubit_first, local_fused_ez_qubit_last, std::back_inserter(fused_qubits));
-    std::sort(begin(new_fused_control_qubits), end(new_fused_control_qubits));
-    new_fused_control_qubits.resize(std::unique(begin(new_fused_control_qubits), end(new_fused_control_qubits)) - begin(new_fused_control_qubits));
-    std::copy(local_fused_control_qubit_first, local_fused_control_qubit_last, std::back_inserter(new_fused_control_qubits));
-    fused_control_qubits.swap(new_fused_control_qubits);
+    std::copy(unit_fused_ez_qubit_first, unit_fused_ez_qubit_last, std::back_inserter(fused_qubits));
+    std::transform(
+      nonglobal_fused_control_qubit_first, nonglobal_fused_control_qubit_last, std::back_inserter(fused_qubits),
+      [](::bra::control_qubit_type const fused_control_qubit) { return fused_control_qubit.qubit(); });
+    if (not fused_qubits.empty())
+      ::bra::throw_if_too_many_operated_qubits(
+        fused_qubits.size(), mpi_policy_, data_, circuit_communicator_, environment_);
 
     // generate to_qubit_index_in_fused_gates
     auto to_qubit_index_in_fused_gates = std::vector< ::bra::bit_integer_type >(total_num_qubits_);
@@ -2110,8 +2132,6 @@ namespace bra
     auto present_qubit_index = ::bra::bit_integer_type{0u};
     for (auto const fused_qubit: fused_qubits)
       to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(fused_qubit)] = present_qubit_index++;
-    for (auto const fused_control_qubit: fused_control_qubits)
-      to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(fused_control_qubit.qubit())] = present_qubit_index++;
 
     if (exists_global_phase)
       ::ket::mpi::gate::phase_shift(mpi_policy_, parallel_policy_, data_, permutation_, buffer_, circuit_communicator_, environment_, global_phase);
@@ -2134,10 +2154,16 @@ namespace bra
           fused_gates_, to_qubit_index_in_fused_gates};
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && defined(KET_USE_ON_CACHE_STATE_VECTOR)
 
-    ket::mpi::gate::runtime::ranges::gate(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, circuit_communicator_, environment_,
-      call_fused_gates, fused_qubits, fused_control_qubits);
+    if (fused_qubits.empty())
+      ket::mpi::gate::runtime::ranges::gate(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, circuit_communicator_, environment_,
+        call_fused_gates);
+    else
+      ket::mpi::gate::runtime::ranges::gate(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, circuit_communicator_, environment_,
+        call_fused_gates, fused_qubits);
 
     fused_gates_.clear();
 # if !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
@@ -2240,9 +2266,17 @@ namespace bra
       fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_controlled_hadamard<fused_gate_iterator> >(
           target_qubit, control_qubit));
+# if !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
+      paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_hadamard<paged_fused_gate_iterator> >(
+          target_qubit, control_qubit));
+# endif // !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
       cache_aware_fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_controlled_hadamard<cache_aware_fused_gate_iterator> >(
+          target_qubit, control_qubit));
+      cache_aware_paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_hadamard<cache_aware_paged_fused_gate_iterator> >(
           target_qubit, control_qubit));
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
@@ -2287,9 +2321,17 @@ namespace bra
       fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_controlled_not<fused_gate_iterator> >(
           target_qubit, control_qubit));
+# if !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
+      paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_not<paged_fused_gate_iterator> >(
+          target_qubit, control_qubit));
+# endif // !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
       cache_aware_fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_controlled_not<cache_aware_fused_gate_iterator> >(
+          target_qubit, control_qubit));
+      cache_aware_paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_not<cache_aware_paged_fused_gate_iterator> >(
           target_qubit, control_qubit));
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
@@ -2334,9 +2376,17 @@ namespace bra
       fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_controlled_pauli_x<fused_gate_iterator> >(
           target_qubit, control_qubit));
+# if !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
+      paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_pauli_x<paged_fused_gate_iterator> >(
+          target_qubit, control_qubit));
+# endif // !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
       cache_aware_fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_controlled_pauli_x<cache_aware_fused_gate_iterator> >(
+          target_qubit, control_qubit));
+      cache_aware_paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_pauli_x<cache_aware_paged_fused_gate_iterator> >(
           target_qubit, control_qubit));
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
@@ -2383,9 +2433,17 @@ namespace bra
       fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_controlled_pauli_y<fused_gate_iterator> >(
           target_qubit, control_qubit));
+# if !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
+      paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_pauli_y<paged_fused_gate_iterator> >(
+          target_qubit, control_qubit));
+# endif // !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
       cache_aware_fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_controlled_pauli_y<cache_aware_fused_gate_iterator> >(
+          target_qubit, control_qubit));
+      cache_aware_paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_pauli_y<cache_aware_paged_fused_gate_iterator> >(
           target_qubit, control_qubit));
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
@@ -2432,9 +2490,17 @@ namespace bra
       fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_controlled_pauli_z<fused_gate_iterator> >(
           control_qubit1, control_qubit2));
+# if !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
+      paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_pauli_z<paged_fused_gate_iterator> >(
+          control_qubit1, control_qubit2));
+# endif // !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
       cache_aware_fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_controlled_pauli_z<cache_aware_fused_gate_iterator> >(
+          control_qubit1, control_qubit2));
+      cache_aware_paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_pauli_z<cache_aware_paged_fused_gate_iterator> >(
           control_qubit1, control_qubit2));
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
@@ -2533,9 +2599,17 @@ namespace bra
       fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_controlled_sqrt_pauli_x<fused_gate_iterator> >(
           target_qubit, control_qubit));
+# if !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
+      paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_sqrt_pauli_x<paged_fused_gate_iterator> >(
+          target_qubit, control_qubit));
+# endif // !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
       cache_aware_fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_controlled_sqrt_pauli_x<cache_aware_fused_gate_iterator> >(
+          target_qubit, control_qubit));
+      cache_aware_paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_sqrt_pauli_x<cache_aware_paged_fused_gate_iterator> >(
           target_qubit, control_qubit));
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
@@ -2554,9 +2628,17 @@ namespace bra
       fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_adj_controlled_sqrt_pauli_x<fused_gate_iterator> >(
           target_qubit, control_qubit));
+# if !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
+      paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_adj_controlled_sqrt_pauli_x<paged_fused_gate_iterator> >(
+          target_qubit, control_qubit));
+# endif // !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
       cache_aware_fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_adj_controlled_sqrt_pauli_x<cache_aware_fused_gate_iterator> >(
+          target_qubit, control_qubit));
+      cache_aware_paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_adj_controlled_sqrt_pauli_x<cache_aware_paged_fused_gate_iterator> >(
           target_qubit, control_qubit));
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
@@ -2627,9 +2709,17 @@ namespace bra
       fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_controlled_sqrt_pauli_y<fused_gate_iterator> >(
           target_qubit, control_qubit));
+# if !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
+      paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_sqrt_pauli_y<paged_fused_gate_iterator> >(
+          target_qubit, control_qubit));
+# endif // !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
       cache_aware_fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_controlled_sqrt_pauli_y<cache_aware_fused_gate_iterator> >(
+          target_qubit, control_qubit));
+      cache_aware_paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_sqrt_pauli_y<cache_aware_paged_fused_gate_iterator> >(
           target_qubit, control_qubit));
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
@@ -2648,9 +2738,17 @@ namespace bra
       fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_adj_controlled_sqrt_pauli_y<fused_gate_iterator> >(
           target_qubit, control_qubit));
+# if !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
+      paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_adj_controlled_sqrt_pauli_y<paged_fused_gate_iterator> >(
+          target_qubit, control_qubit));
+# endif // !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
       cache_aware_fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_adj_controlled_sqrt_pauli_y<cache_aware_fused_gate_iterator> >(
+          target_qubit, control_qubit));
+      cache_aware_paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_adj_controlled_sqrt_pauli_y<cache_aware_paged_fused_gate_iterator> >(
           target_qubit, control_qubit));
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
@@ -2721,9 +2819,17 @@ namespace bra
       fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_controlled_sqrt_pauli_z<fused_gate_iterator> >(
           control_qubit1, control_qubit2));
+# if !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
+      paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_sqrt_pauli_z<paged_fused_gate_iterator> >(
+          control_qubit1, control_qubit2));
+# endif // !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
       cache_aware_fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_controlled_sqrt_pauli_z<cache_aware_fused_gate_iterator> >(
+          control_qubit1, control_qubit2));
+      cache_aware_paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_sqrt_pauli_z<cache_aware_paged_fused_gate_iterator> >(
           control_qubit1, control_qubit2));
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
@@ -2742,9 +2848,17 @@ namespace bra
       fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_adj_controlled_sqrt_pauli_z<fused_gate_iterator> >(
           control_qubit1, control_qubit2));
+# if !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
+      paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_adj_controlled_sqrt_pauli_z<paged_fused_gate_iterator> >(
+          control_qubit1, control_qubit2));
+# endif // !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
       cache_aware_fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_adj_controlled_sqrt_pauli_z<cache_aware_fused_gate_iterator> >(
+          control_qubit1, control_qubit2));
+      cache_aware_paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_adj_controlled_sqrt_pauli_z<cache_aware_paged_fused_gate_iterator> >(
           control_qubit1, control_qubit2));
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
@@ -3313,9 +3427,17 @@ namespace bra
       fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_controlled_x_rotation_half_pi<fused_gate_iterator> >(
           target_qubit, control_qubit));
+# if !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
+      paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_x_rotation_half_pi<paged_fused_gate_iterator> >(
+          target_qubit, control_qubit));
+# endif // !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
       cache_aware_fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_controlled_x_rotation_half_pi<cache_aware_fused_gate_iterator> >(
+          target_qubit, control_qubit));
+      cache_aware_paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_x_rotation_half_pi<cache_aware_paged_fused_gate_iterator> >(
           target_qubit, control_qubit));
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
@@ -3334,9 +3456,17 @@ namespace bra
       fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_adj_controlled_x_rotation_half_pi<fused_gate_iterator> >(
           target_qubit, control_qubit));
+# if !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
+      paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_adj_controlled_x_rotation_half_pi<paged_fused_gate_iterator> >(
+          target_qubit, control_qubit));
+# endif // !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
       cache_aware_fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_adj_controlled_x_rotation_half_pi<cache_aware_fused_gate_iterator> >(
+          target_qubit, control_qubit));
+      cache_aware_paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_adj_controlled_x_rotation_half_pi<cache_aware_paged_fused_gate_iterator> >(
           target_qubit, control_qubit));
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
@@ -3407,9 +3537,17 @@ namespace bra
       fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_controlled_y_rotation_half_pi<fused_gate_iterator> >(
           target_qubit, control_qubit));
+# if !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
+      paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_y_rotation_half_pi<paged_fused_gate_iterator> >(
+          target_qubit, control_qubit));
+# endif // !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
       cache_aware_fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_controlled_y_rotation_half_pi<cache_aware_fused_gate_iterator> >(
+          target_qubit, control_qubit));
+      cache_aware_paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_y_rotation_half_pi<cache_aware_paged_fused_gate_iterator> >(
           target_qubit, control_qubit));
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
@@ -3428,9 +3566,17 @@ namespace bra
       fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_adj_controlled_y_rotation_half_pi<fused_gate_iterator> >(
           target_qubit, control_qubit));
+# if !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
+      paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_adj_controlled_y_rotation_half_pi<paged_fused_gate_iterator> >(
+          target_qubit, control_qubit));
+# endif // !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
       cache_aware_fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_adj_controlled_y_rotation_half_pi<cache_aware_fused_gate_iterator> >(
+          target_qubit, control_qubit));
+      cache_aware_paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_adj_controlled_y_rotation_half_pi<cache_aware_paged_fused_gate_iterator> >(
           target_qubit, control_qubit));
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
@@ -3501,9 +3647,17 @@ namespace bra
       fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_controlled_exponential_pauli_x<fused_gate_iterator> >(
           phase, target_qubit, control_qubit));
+# if !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
+      paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_exponential_pauli_x<paged_fused_gate_iterator> >(
+          phase, target_qubit, control_qubit));
+# endif // !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
       cache_aware_fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_controlled_exponential_pauli_x<cache_aware_fused_gate_iterator> >(
+          phase, target_qubit, control_qubit));
+      cache_aware_paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_exponential_pauli_x<cache_aware_paged_fused_gate_iterator> >(
           phase, target_qubit, control_qubit));
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
@@ -3522,9 +3676,17 @@ namespace bra
       fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_adj_controlled_exponential_pauli_x<fused_gate_iterator> >(
           phase, target_qubit, control_qubit));
+# if !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
+      paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_adj_controlled_exponential_pauli_x<paged_fused_gate_iterator> >(
+          phase, target_qubit, control_qubit));
+# endif // !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
       cache_aware_fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_adj_controlled_exponential_pauli_x<cache_aware_fused_gate_iterator> >(
+          phase, target_qubit, control_qubit));
+      cache_aware_paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_adj_controlled_exponential_pauli_x<cache_aware_paged_fused_gate_iterator> >(
           phase, target_qubit, control_qubit));
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
@@ -3601,9 +3763,17 @@ namespace bra
       fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_controlled_exponential_pauli_y<fused_gate_iterator> >(
           phase, target_qubit, control_qubit));
+# if !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
+      paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_exponential_pauli_y<paged_fused_gate_iterator> >(
+          phase, target_qubit, control_qubit));
+# endif // !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
       cache_aware_fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_controlled_exponential_pauli_y<cache_aware_fused_gate_iterator> >(
+          phase, target_qubit, control_qubit));
+      cache_aware_paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_exponential_pauli_y<cache_aware_paged_fused_gate_iterator> >(
           phase, target_qubit, control_qubit));
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
@@ -3622,9 +3792,17 @@ namespace bra
       fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_adj_controlled_exponential_pauli_y<fused_gate_iterator> >(
           phase, target_qubit, control_qubit));
+# if !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
+      paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_adj_controlled_exponential_pauli_y<paged_fused_gate_iterator> >(
+          phase, target_qubit, control_qubit));
+# endif // !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
       cache_aware_fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_adj_controlled_exponential_pauli_y<cache_aware_fused_gate_iterator> >(
+          phase, target_qubit, control_qubit));
+      cache_aware_paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_adj_controlled_exponential_pauli_y<cache_aware_paged_fused_gate_iterator> >(
           phase, target_qubit, control_qubit));
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
@@ -3701,9 +3879,17 @@ namespace bra
       fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_controlled_exponential_pauli_z<fused_gate_iterator> >(
           phase, target_qubit, control_qubit));
+# if !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
+      paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_exponential_pauli_z<paged_fused_gate_iterator> >(
+          phase, target_qubit, control_qubit));
+# endif // !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
       cache_aware_fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_controlled_exponential_pauli_z<cache_aware_fused_gate_iterator> >(
+          phase, target_qubit, control_qubit));
+      cache_aware_paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_controlled_exponential_pauli_z<cache_aware_paged_fused_gate_iterator> >(
           phase, target_qubit, control_qubit));
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
@@ -3722,9 +3908,17 @@ namespace bra
       fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_adj_controlled_exponential_pauli_z<fused_gate_iterator> >(
           phase, target_qubit, control_qubit));
+# if !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
+      paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_adj_controlled_exponential_pauli_z<paged_fused_gate_iterator> >(
+          phase, target_qubit, control_qubit));
+# endif // !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
       cache_aware_fused_gates_.push_back(
         std::make_unique< ::bra::fused_gate::fused_adj_controlled_exponential_pauli_z<cache_aware_fused_gate_iterator> >(
+          phase, target_qubit, control_qubit));
+      cache_aware_paged_fused_gates_.push_back(
+        std::make_unique< ::bra::fused_gate::fused_adj_controlled_exponential_pauli_z<cache_aware_paged_fused_gate_iterator> >(
           phase, target_qubit, control_qubit));
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }

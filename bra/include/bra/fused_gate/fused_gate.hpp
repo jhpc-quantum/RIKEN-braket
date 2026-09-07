@@ -2,6 +2,7 @@
 # define BRA_FUSED_GATE_FUSED_GATE_HPP
 
 # include <cassert>
+# include <iterator>
 # include <type_traits>
 # include <vector>
 
@@ -17,12 +18,15 @@ namespace bra
   namespace fused_gate
   {
     enum class cez_qubit_state : int { not_global, global_zero, global_one };
+    enum class control_qubit_state : int { zero, one };
 
     template <typename Iterator>
     class fused_gate
     {
+      bool is_enabled_;
+
      public:
-      fused_gate() = default;
+      fused_gate() : is_enabled_{true} { }
       virtual ~fused_gate() = default;
 
       fused_gate(fused_gate const&) = delete;
@@ -38,6 +42,9 @@ namespace bra
         std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void
       {
         assert(sorted_fused_qubits_with_sentinel.size() == unsorted_fused_qubits.size() + std::size_t{1u});
+        if (not is_enabled_)
+          return;
+
         do_call(first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel, to_qubit_index_in_fused_gates);
       }
 
@@ -70,6 +77,9 @@ namespace bra
         std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void
       {
         assert(index_masks.size() == qubit_masks.size() + std::size_t{1u});
+        if (not is_enabled_)
+          return;
+
         do_call(first, fused_index_wo_qubits, qubit_masks, index_masks, to_qubit_index_in_fused_gates);
       }
 # endif // KET_USE_BIT_MASKS_EXPLICITLY
@@ -77,20 +87,35 @@ namespace bra
       auto disable_control_qubits(
         typename std::vector< ::bra::qubit_type >::const_iterator const first,
         typename std::vector< ::bra::qubit_type >::const_iterator const last)
-      -> void
-      { do_disable_control_qubits(first, last); }
+      -> bool
+      { return do_disable_control_qubits(first, last); }
 
       auto disable_control_qubits(
         typename std::vector< ::bra::control_qubit_type >::const_iterator const first,
         typename std::vector< ::bra::control_qubit_type >::const_iterator const last)
+      -> bool
+      { return do_disable_control_qubits(first, last); }
+
+      auto disable_control_qubits(
+        typename std::vector< ::bra::control_qubit_type >::const_iterator first,
+        typename std::vector< ::bra::control_qubit_type >::const_iterator const last,
+        typename std::vector< ::bra::fused_gate::control_qubit_state >::const_iterator control_qubit_state_first)
       -> void
-      { do_disable_control_qubits(first, last); }
+      {
+        for (; first != last; ++first, ++control_qubit_state_first)
+        {
+          auto const next = std::next(first);
+          auto const is_control_used = do_disable_control_qubits(first, next);
+          if (is_control_used and *control_qubit_state_first == ::bra::fused_gate::control_qubit_state::zero)
+            is_enabled_ = false;
+        }
+      }
 
       auto disable_cez_global_qubits(
         typename std::vector< ::bra::qubit_type >::const_iterator const first,
         typename std::vector< ::bra::qubit_type >::const_iterator const last)
-      -> void
-      { do_disable_control_qubits(first, last); }
+      -> bool
+      { return do_disable_control_qubits(first, last); }
 
       auto modify_cez(
         typename std::vector< ::bra::qubit_type >::const_iterator const first,
@@ -122,11 +147,11 @@ namespace bra
 
       virtual auto do_disable_control_qubits(
         typename std::vector< ::bra::qubit_type >::const_iterator const first,
-        typename std::vector< ::bra::qubit_type >::const_iterator const last) -> void;
+        typename std::vector< ::bra::qubit_type >::const_iterator const last) -> bool;
 
       virtual auto do_disable_control_qubits(
         typename std::vector< ::bra::control_qubit_type >::const_iterator const first,
-        typename std::vector< ::bra::control_qubit_type >::const_iterator const last) -> void;
+        typename std::vector< ::bra::control_qubit_type >::const_iterator const last) -> bool;
 
       virtual auto do_modify_cez(
         typename std::vector< ::bra::qubit_type >::const_iterator const first,

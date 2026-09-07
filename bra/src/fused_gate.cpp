@@ -19,15 +19,15 @@ namespace bra
     auto fused_gate<Iterator>::do_disable_control_qubits(
       typename std::vector< ::bra::qubit_type >::const_iterator const first,
       typename std::vector< ::bra::qubit_type >::const_iterator const last)
-    -> void
-    { }
+    -> bool
+    { return false; }
 
     template <typename Iterator>
     auto fused_gate<Iterator>::do_disable_control_qubits(
       typename std::vector< ::bra::control_qubit_type >::const_iterator const first,
       typename std::vector< ::bra::control_qubit_type >::const_iterator const last)
-    -> void
-    { }
+    -> bool
+    { return false; }
 
     template <typename Iterator>
     auto fused_gate<Iterator>::do_modify_cez(

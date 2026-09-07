@@ -16,7 +16,6 @@ namespace bra
     class fused_sqrt_pauli_zn final
       : public ::bra::fused_gate::fused_gate<Iterator>
     {
-     private:
       std::vector< ::bra::qubit_type > qubits_;
 
      public:

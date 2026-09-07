@@ -16,7 +16,6 @@ namespace bra
     class fused_adj_u3 final
       : public ::bra::fused_gate::fused_gate<Iterator>
     {
-     private:
       ::bra::real_type phase1_;
       ::bra::real_type phase2_;
       ::bra::real_type phase3_;

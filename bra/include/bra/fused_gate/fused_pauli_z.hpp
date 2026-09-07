@@ -16,7 +16,6 @@ namespace bra
     class fused_pauli_z final
       : public ::bra::fused_gate::fused_gate<Iterator>
     {
-     private:
       ::bra::control_qubit_type control_qubit_;
 
       bool is_control_qubit_enabled_;
@@ -47,11 +46,11 @@ namespace bra
 
       auto do_disable_control_qubits(
         typename std::vector< ::bra::qubit_type >::const_iterator const first,
-        typename std::vector< ::bra::qubit_type >::const_iterator const last) -> void override;
+        typename std::vector< ::bra::qubit_type >::const_iterator const last) -> bool override;
 
       auto do_disable_control_qubits(
         typename std::vector< ::bra::control_qubit_type >::const_iterator const first,
-        typename std::vector< ::bra::control_qubit_type >::const_iterator const last) -> void override;
+        typename std::vector< ::bra::control_qubit_type >::const_iterator const last) -> bool override;
     }; // class fused_pauli_z<Iterator>
   } // namespace fused_gate
 } // namespace bra

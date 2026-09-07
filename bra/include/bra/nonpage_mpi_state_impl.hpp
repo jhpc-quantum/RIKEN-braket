@@ -1648,8 +1648,13 @@ namespace bra
     assert(fused_gates_.size() == cache_aware_fused_gates_.size());
 # endif // !(!defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && defined(KET_USE_ON_CACHE_STATE_VECTOR)))
 
+    // generate fused_control_qubits, fused_ez_qubits, fused_cez_qubits, and fused_qubits from found_qubits_
     auto fused_control_qubits = std::vector< ::bra::control_qubit_type >{};
     fused_control_qubits.reserve(total_num_qubits_);
+    auto fused_ez_qubits = std::vector< ::bra::qubit_type >{};
+    fused_ez_qubits.reserve(total_num_qubits_);
+    auto fused_cez_qubits = std::vector< ::bra::qubit_type >{};
+    fused_cez_qubits.reserve(total_num_qubits_);
     auto fused_qubits = std::vector< ::bra::qubit_type >{};
     fused_qubits.reserve(total_num_qubits_);
     for (auto index = ::bra::bit_integer_type{0}; index < total_num_qubits_; ++index)
@@ -1660,7 +1665,13 @@ namespace bra
         break;
 
        case ::bra::found_qubit::ez_qubit:
+        fused_ez_qubits.push_back(ket::make_qubit< ::bra::state_integer_type >(index));
+        break;
+
        case ::bra::found_qubit::cez_qubit:
+        fused_cez_qubits.push_back(ket::make_qubit< ::bra::state_integer_type >(index));
+        break;
+
        case ::bra::found_qubit::qubit:
         fused_qubits.push_back(ket::make_qubit< ::bra::state_integer_type >(index));
         break;
@@ -1668,16 +1679,143 @@ namespace bra
        case ::bra::found_qubit::not_found:
         break;
       }
+    auto const data_block_size = ket::mpi::utility::policy::data_block_size(mpi_policy_, data_, circuit_communicator_, environment_);
+    auto const least_permutated_unit_qubit
+      = ket::mpi::make_permutated(ket::make_qubit< ::bra::state_integer_type >(
+          static_cast< ::bra::bit_integer_type >(ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_block_size))));
+    auto const least_permutated_global_qubit
+      = ket::mpi::make_permutated(ket::make_qubit< ::bra::state_integer_type >(
+          static_cast< ::bra::bit_integer_type >(ket::mpi::utility::policy::num_nonglobal_qubits(mpi_policy_, data_block_size))));
 
-    auto to_qubit_index_in_fused_gates = std::vector< ::bra::bit_integer_type >(total_num_qubits_);
     using std::begin;
     using std::end;
+
+    // generate nonglobal_fused_control_qubits and global_fused_control_qubits by using std::partition
+    auto const nonglobal_fused_control_qubit_first = begin(fused_control_qubits);
+    auto const global_fused_control_qubit_last = end(fused_control_qubits);
+    auto const nonglobal_fused_control_qubit_last
+      = std::partition(
+          nonglobal_fused_control_qubit_first, global_fused_control_qubit_last,
+          [this, least_permutated_global_qubit](::bra::control_qubit_type const control_qubit)
+          { return this->permutation_[control_qubit] < least_permutated_global_qubit; });
+    auto const global_fused_control_qubit_first = nonglobal_fused_control_qubit_last;
+
+    // generate local_fused_ez_qubits, unit_fused_ez_qubits, global_fused_unit_qubits, and nonlocal_fused_ez_qubits by using std::partition
+    auto const local_fused_ez_qubit_first = begin(fused_ez_qubits);
+    auto const global_fused_ez_qubit_last = end(fused_ez_qubits);
+    auto const nonlocal_fused_ez_qubit_last = global_fused_ez_qubit_last;
+    auto const local_fused_ez_qubit_last
+      = std::partition(
+          local_fused_ez_qubit_first, global_fused_ez_qubit_last,
+          [this, least_permutated_unit_qubit](::bra::qubit_type const qubit)
+          { return this->permutation_[qubit] < least_permutated_unit_qubit; });
+    auto const unit_fused_ez_qubit_first = local_fused_ez_qubit_last;
+    auto const nonlocal_fused_ez_qubit_first = unit_fused_ez_qubit_first;
+    auto const unit_fused_ez_qubit_last
+      = std::partition(
+          unit_fused_ez_qubit_first, global_fused_ez_qubit_last,
+          [this, least_permutated_global_qubit](::bra::qubit_type const qubit)
+          { return this->permutation_[qubit] < least_permutated_global_qubit; });
+    auto const global_fused_ez_qubit_first = unit_fused_ez_qubit_last;
+
+    // generate nonglobal_fused_cez_qubits and global_fused_cez_qubits by using std::partition
+    auto const nonglobal_fused_cez_qubit_first = begin(fused_cez_qubits);
+    auto const global_fused_cez_qubit_last = end(fused_cez_qubits);
+    auto const nonglobal_fused_cez_qubit_last
+      = std::partition(
+          nonglobal_fused_cez_qubit_first, global_fused_cez_qubit_last,
+          [this, least_permutated_global_qubit](::bra::qubit_type const qubit)
+          { return this->permutation_[qubit] < least_permutated_global_qubit; });
+    auto const global_fused_cez_qubit_first = nonglobal_fused_cez_qubit_last;
+
+    // generate global_control_qubit_states, ez_qubit_states, and cez_qubit_states
+    auto const global_qubit_value = static_cast< ::bra::state_integer_type >(::ket::mpi::utility::policy::global_qubit_value(mpi_policy_, circuit_communicator_, environment_));
+    auto global_control_qubit_states = std::vector< ::bra::fused_gate::control_qubit_state >(global_fused_control_qubit_last - global_fused_control_qubit_first, ::bra::fused_gate::control_qubit_state::zero);
+    auto ez_qubit_states = std::vector< ::bra::fused_gate::cez_qubit_state >(global_fused_ez_qubit_last - global_fused_ez_qubit_first, ::bra::fused_gate::cez_qubit_state::not_global);
+    auto cez_qubit_states = std::vector< ::bra::fused_gate::cez_qubit_state >(global_fused_cez_qubit_last - global_fused_cez_qubit_first, ::bra::fused_gate::cez_qubit_state::not_global);
+    for (auto iter = global_fused_control_qubit_first; iter != global_fused_control_qubit_last; ++iter)
+    {
+      constexpr auto zero = ::bra::state_integer_type{0u};
+      constexpr auto one = ::bra::state_integer_type{1u};
+      if ((global_qubit_value bitand (one << (permutation_[*iter] - least_permutated_global_qubit))) == zero)
+        global_control_qubit_states[iter - global_fused_control_qubit_first] = ::bra::fused_gate::control_qubit_state::zero;
+      else
+        global_control_qubit_states[iter - global_fused_control_qubit_first] = ::bra::fused_gate::control_qubit_state::one;
+    }
+    for (auto iter = global_fused_ez_qubit_first; iter != global_fused_ez_qubit_last; ++iter)
+    {
+      constexpr auto zero = ::bra::state_integer_type{0u};
+      constexpr auto one = ::bra::state_integer_type{1u};
+      if ((global_qubit_value bitand (one << (permutation_[*iter] - least_permutated_global_qubit))) == zero)
+        ez_qubit_states[iter - global_fused_ez_qubit_first] = ::bra::fused_gate::cez_qubit_state::global_zero;
+      else
+        ez_qubit_states[iter - global_fused_ez_qubit_first] = ::bra::fused_gate::cez_qubit_state::global_one;
+    }
+    for (auto iter = global_fused_cez_qubit_first; iter != global_fused_cez_qubit_last; ++iter)
+    {
+      constexpr auto zero = ::bra::state_integer_type{0u};
+      constexpr auto one = ::bra::state_integer_type{1u};
+      if ((global_qubit_value bitand (one << (permutation_[*iter] - least_permutated_global_qubit))) == zero)
+        cez_qubit_states[iter - global_fused_cez_qubit_first] = ::bra::fused_gate::cez_qubit_state::global_zero;
+      else
+        cez_qubit_states[iter - global_fused_cez_qubit_first] = ::bra::fused_gate::cez_qubit_state::global_one;
+    }
+
+    // modify fused_gate's in fused_gates_ and its variants, and calculate global_phase if needed
+    auto exists_global_phase = false;
+    auto global_phase = ::bra::real_type{0};
+    for (auto& fused_gate_ptr: fused_gates_)
+    {
+      fused_gate_ptr->disable_control_qubits(
+        global_fused_control_qubit_first, global_fused_control_qubit_last, begin(global_control_qubit_states));
+      fused_gate_ptr->disable_control_qubits(nonlocal_fused_ez_qubit_first, nonlocal_fused_ez_qubit_last);
+      fused_gate_ptr->disable_control_qubits(global_fused_cez_qubit_first, global_fused_cez_qubit_last);
+
+      fused_gate_ptr->modify_cez(global_fused_ez_qubit_first, global_fused_ez_qubit_last, begin(ez_qubit_states));
+      fused_gate_ptr->modify_cez(global_fused_cez_qubit_first, global_fused_cez_qubit_last, begin(cez_qubit_states));
+
+      auto const maybe_cqubit_global_phase = fused_gate_ptr->maybe_phase_shiftize_ez(unit_fused_ez_qubit_first, unit_fused_ez_qubit_last);
+      if (maybe_cqubit_global_phase)
+      {
+        exists_global_phase = true;
+        global_phase += maybe_cqubit_global_phase->second;
+      }
+    }
+# if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
+    for (auto& fused_gate_ptr: cache_aware_fused_gates_)
+    {
+      fused_gate_ptr->disable_control_qubits(
+        global_fused_control_qubit_first, global_fused_control_qubit_last, begin(global_control_qubit_states));
+      fused_gate_ptr->disable_control_qubits(nonlocal_fused_ez_qubit_first, nonlocal_fused_ez_qubit_last);
+      fused_gate_ptr->disable_control_qubits(global_fused_cez_qubit_first, global_fused_cez_qubit_last);
+
+      fused_gate_ptr->modify_cez(global_fused_ez_qubit_first, global_fused_ez_qubit_last, begin(ez_qubit_states));
+      fused_gate_ptr->modify_cez(global_fused_cez_qubit_first, global_fused_cez_qubit_last, begin(cez_qubit_states));
+
+      fused_gate_ptr->maybe_phase_shiftize_ez(unit_fused_ez_qubit_first, unit_fused_ez_qubit_last);
+    }
+# endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
+
+    // modify fused_qubits and fused_control_qubits
+    std::copy(nonglobal_fused_cez_qubit_first, nonglobal_fused_cez_qubit_last, std::back_inserter(fused_qubits));
+    std::copy(local_fused_ez_qubit_first, local_fused_ez_qubit_last, std::back_inserter(fused_qubits));
+    std::copy(unit_fused_ez_qubit_first, unit_fused_ez_qubit_last, std::back_inserter(fused_qubits));
+    std::transform(
+      nonglobal_fused_control_qubit_first, nonglobal_fused_control_qubit_last, std::back_inserter(fused_qubits),
+      [](::bra::control_qubit_type const fused_control_qubit) { return fused_control_qubit.qubit(); });
+    if (not fused_qubits.empty())
+      ::bra::throw_if_too_many_operated_qubits(
+        fused_qubits.size(), mpi_policy_, data_, circuit_communicator_, environment_);
+
+    // generate to_qubit_index_in_fused_gates
+    auto to_qubit_index_in_fused_gates = std::vector< ::bra::bit_integer_type >(total_num_qubits_);
     std::iota(begin(to_qubit_index_in_fused_gates), end(to_qubit_index_in_fused_gates), ::bra::bit_integer_type{0u});
     auto present_qubit_index = ::bra::bit_integer_type{0u};
     for (auto const fused_qubit: fused_qubits)
       to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(fused_qubit)] = present_qubit_index++;
-    for (auto const fused_control_qubit: fused_control_qubits)
-      to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(fused_control_qubit.qubit())] = present_qubit_index++;
+
+    if (exists_global_phase)
+      ::ket::mpi::gate::phase_shift(mpi_policy_, parallel_policy_, data_, permutation_, buffer_, circuit_communicator_, environment_, global_phase);
 
 # if !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || defined(KET_USE_ON_CACHE_STATE_VECTOR)
     auto const call_fused_gates
@@ -1699,10 +1837,16 @@ namespace bra
           fused_gates_, cache_aware_fused_gates_, to_qubit_index_in_fused_gates};
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
 
-    ket::mpi::gate::runtime::ranges::gate(
-      mpi_policy_, parallel_policy_,
-      data_, permutation_, buffer_, circuit_communicator_, environment_,
-      call_fused_gates, fused_qubits, fused_control_qubits);
+    if (fused_qubits.empty())
+      ket::mpi::gate::runtime::ranges::gate(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, circuit_communicator_, environment_,
+        call_fused_gates);
+    else
+      ket::mpi::gate::runtime::ranges::gate(
+        mpi_policy_, parallel_policy_,
+        data_, permutation_, buffer_, circuit_communicator_, environment_,
+        call_fused_gates, fused_qubits);
 
     fused_gates_.clear();
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)

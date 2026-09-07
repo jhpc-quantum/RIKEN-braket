@@ -15,7 +15,6 @@ namespace bra
     class fused_adj_multi_controlled_sqrt_pauli_z final
       : public ::bra::fused_gate::fused_gate<Iterator>
     {
-     private:
       std::vector< ::bra::control_qubit_type > control_qubits_;
 
       std::vector<int> is_control_qubit_enabled_vec_;
@@ -47,11 +46,11 @@ namespace bra
 
       auto do_disable_control_qubits(
         typename std::vector< ::bra::qubit_type >::const_iterator const first,
-        typename std::vector< ::bra::qubit_type >::const_iterator const last) -> void override;
+        typename std::vector< ::bra::qubit_type >::const_iterator const last) -> bool override;
 
       auto do_disable_control_qubits(
         typename std::vector< ::bra::control_qubit_type >::const_iterator const first,
-        typename std::vector< ::bra::control_qubit_type >::const_iterator const last) -> void override;
+        typename std::vector< ::bra::control_qubit_type >::const_iterator const last) -> bool override;
     }; // class fused_adj_multi_controlled_sqrt_pauli_z<Iterator>
   } // namespace fused_gate
 } // namespace bra
