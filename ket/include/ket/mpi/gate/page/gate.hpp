@@ -535,9 +535,11 @@ namespace ket
             {
               if (permutated_qubit < least_significant_chunk_permutated_qubit)
                 modified_operated_qubits.push_back(permutated_qubit.qubit());
-
-              unsorted_tag_qubits.push_back(permutated_qubit.qubit());
-              modified_operated_qubits.push_back((present_chunk_permutated_qubit++).qubit());
+              else
+              {
+                unsorted_tag_qubits.push_back(permutated_qubit.qubit());
+                modified_operated_qubits.push_back((present_chunk_permutated_qubit++).qubit());
+              }
             }
             assert(present_chunk_permutated_qubit == least_significant_off_cache_permutated_qubit);
             assert(static_cast<bit_integer_type>(unsorted_tag_qubits.size()) == num_chunk_qubits);
@@ -953,7 +955,7 @@ namespace ket
               on_cache_qubit_masks.reserve(num_operated_qubits);
               for (auto index = bit_integer_type{0u}; index < num_operated_qubits; ++index)
                 on_cache_qubit_masks.push_back(StateInteger{1u} << (least_significant_chunk_permutated_qubit + index));
-              auto on_cache_index_masks = std::vector<StateInteger>(num_operated_qubits);
+              auto on_cache_index_masks = std::vector<StateInteger>(num_operated_qubits + bit_integer_type{1u});
               on_cache_index_masks.front() = (StateInteger{1u} << least_significant_chunk_permutated_qubit) - StateInteger{1u};
               // on_cache_index_masks.size() >= 2 => std::prev(end(on_cache_index_masks)) >= std::next(begin(on_cache_index_masks))
               std::fill(std::next(begin(on_cache_index_masks)), std::prev(end(on_cache_index_masks)), StateInteger{0u});
@@ -1060,9 +1062,11 @@ namespace ket
             {
               if (permutated_qubit < least_significant_chunk_permutated_qubit)
                 modified_operated_qubits.push_back(permutated_qubit.qubit());
-
-              operated_tag_qubits.push_back(permutated_qubit.qubit() - num_nontag_qubits);
-              modified_operated_qubits.push_back((present_chunk_permutated_qubit++).qubit());
+              else
+              {
+                operated_tag_qubits.push_back(permutated_qubit.qubit() - num_nontag_qubits);
+                modified_operated_qubits.push_back((present_chunk_permutated_qubit++).qubit());
+              }
             }
             assert(present_chunk_permutated_qubit == least_significant_off_cache_permutated_qubit);
             assert(static_cast<bit_integer_type>(operated_tag_qubits.size()) == num_chunk_qubits);
