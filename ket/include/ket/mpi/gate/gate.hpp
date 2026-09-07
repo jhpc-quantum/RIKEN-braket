@@ -3065,6 +3065,73 @@ namespace ket
           template <
             typename MpiPolicy, typename ParallelPolicy,
             typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename Function>
+          inline auto gate(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>&,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >&,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Function&& function, BitInteger const)
+          -> RandomAccessRange&
+          {
+            ::ket::mpi::utility::log_with_time_guard<char> print{"Gate", environment};
+
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+            auto unsorted_qubits = std::vector< ::ket::qubit<StateInteger, BitInteger> >{};
+            auto sorted_qubits_with_sentinel
+              = std::vector< ::ket::qubit<StateInteger, BitInteger> >{
+                  ::ket::qubit<StateInteger, BitInteger>{BitInteger{0u}}};
+
+            return ::ket::mpi::utility::for_each_local_range(
+              mpi_policy, local_state, communicator, environment,
+              [parallel_policy, &function, &unsorted_qubits, &sorted_qubits_with_sentinel](
+                auto const first, auto const last)
+              {
+                ::ket::gate::runtime::gate_detail::qubit_ranges::gate(
+                  parallel_policy, first, last,
+                  unsorted_qubits, sorted_qubits_with_sentinel, function);
+              });
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+            auto qubit_masks = std::vector<StateInteger>{};
+            auto index_masks = std::vector<StateInteger>{compl StateInteger{0u}};
+
+            return ::ket::mpi::utility::for_each_local_range(
+              mpi_policy, local_state, communicator, environment,
+              [parallel_policy, &function, &qubit_masks, &index_masks](
+                auto const first, auto const last)
+              {
+                ::ket::gate::runtime::gate_detail::qubit_ranges::gate(
+                  parallel_policy, first, last,
+                  qubit_masks, index_masks, function);
+              });
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+          }
+
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename DerivedDatatype,
+            typename Function>
+          inline auto gate(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::datatype_base<DerivedDatatype> const&,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Function&& function, BitInteger const num_on_cache_qubits)
+          -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::runtime::ranges::gate(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment,
+              std::forward<Function>(function), num_on_cache_qubits);
+          }
+
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
             typename Allocator, typename BufferAllocator,
             typename Function, typename QubitsRange, typename ControlQubitsRange>
           inline auto gate(
@@ -3096,6 +3163,31 @@ namespace ket
                   mpi_policy, parallel_policy, local_state, buffer, communicator, environment, unit_control_qubit_mask,
                   function, num_on_cache_qubits, permutated_qubits, permutated_control_qubits);
               }, qubits, control_qubits);
+          }
+
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator,
+            typename Function>
+          inline auto gate(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Function&& function)
+          -> RandomAccessRange&
+          {
+#   ifndef KET_DEFAULT_NUM_ON_CACHE_QUBITS
+#     define KET_DEFAULT_NUM_ON_CACHE_QUBITS 16
+#   endif // KET_DEFAULT_NUM_ON_CACHE_QUBITS
+          constexpr auto num_on_cache_qubits = BitInteger{KET_DEFAULT_NUM_ON_CACHE_QUBITS};
+
+            return ::ket::mpi::gate::runtime::ranges::gate(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment,
+              std::forward<Function>(function), num_on_cache_qubits);
           }
 
           template <
@@ -3168,6 +3260,32 @@ namespace ket
                   mpi_policy, parallel_policy, local_state, buffer, communicator, environment, unit_control_qubit_mask,
                   function, num_on_cache_qubits, permutated_qubits, permutated_control_qubits);
               }, qubits, control_qubits);
+          }
+
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename DerivedDatatype,
+            typename Function>
+          inline auto gate(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::datatype_base<DerivedDatatype> const& datatype,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Function&& function)
+          -> RandomAccessRange&
+          {
+#   ifndef KET_DEFAULT_NUM_ON_CACHE_QUBITS
+#     define KET_DEFAULT_NUM_ON_CACHE_QUBITS 16
+#   endif // KET_DEFAULT_NUM_ON_CACHE_QUBITS
+          constexpr auto num_on_cache_qubits = BitInteger{KET_DEFAULT_NUM_ON_CACHE_QUBITS};
+
+            return ::ket::mpi::gate::runtime::ranges::gate(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment,
+              std::forward<Function>(function), num_on_cache_qubits);
           }
 
           template <
@@ -3316,6 +3434,86 @@ namespace ket
               std::forward<Function>(function), num_on_cache_qubits, qubits);
           }
         } // namespace ranges
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename Function>
+        inline auto gate(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          Function&& function, BitInteger const num_on_cache_qubits)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::ranges::gate(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, communicator, environment,
+            std::forward<Function>(function), num_on_cache_qubits);
+        }
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename DerivedDatatype,
+          typename Function>
+        inline auto gate(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          Function&& function, BitInteger const num_on_cache_qubits)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::ranges::gate(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, datatype, communicator, environment,
+            std::forward<Function>(function), num_on_cache_qubits);
+        }
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename Function>
+        inline auto gate(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          Function&& function)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::ranges::gate(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, communicator, environment,
+            std::forward<Function>(function));
+        }
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename DerivedDatatype,
+          typename Function>
+        inline auto gate(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          Function&& function)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::ranges::gate(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, datatype, communicator, environment,
+            std::forward<Function>(function));
+        }
 
         template <
           typename MpiPolicy, typename ParallelPolicy,
