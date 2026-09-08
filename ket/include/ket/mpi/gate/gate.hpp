@@ -3079,15 +3079,16 @@ namespace ket
 
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
             auto unsorted_qubits = std::vector< ::ket::qubit<StateInteger, BitInteger> >{};
-            auto sorted_qubits_with_sentinel
-              = std::vector< ::ket::qubit<StateInteger, BitInteger> >{
-                  ::ket::qubit<StateInteger, BitInteger>{BitInteger{0u}}};
 
             return ::ket::mpi::utility::for_each_local_range(
               mpi_policy, local_state, communicator, environment,
-              [parallel_policy, &function, &unsorted_qubits, &sorted_qubits_with_sentinel](
+              [parallel_policy, &function, &unsorted_qubits](
                 auto const first, auto const last)
               {
+                auto const sorted_qubits_with_sentinel
+                  = std::vector< ::ket::qubit<StateInteger, BitInteger> >{
+                      ::ket::qubit<StateInteger, BitInteger>{
+                        ::ket::utility::integer_log2<BitInteger>(static_cast<StateInteger>(last - first))}};
                 ::ket::gate::runtime::gate_detail::qubit_ranges::gate(
                   parallel_policy, first, last,
                   unsorted_qubits, sorted_qubits_with_sentinel, function);

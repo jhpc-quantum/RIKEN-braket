@@ -1490,7 +1490,7 @@ namespace ket
           ::ket::mpi::gate::detail::append_qubits_string(std::string{"Adj("}.append(std::max(sizeof...(Qubits), std::size_t{1u}) - std::size_t{1u}, 'C').append("sZ)"), control_qubits...),
           environment};
 
-        return ::ket::mpi::gate::sqrt_pauli_z_detail::sqrt_pauli_z(
+        return ::ket::mpi::gate::sqrt_pauli_z_detail::adj_sqrt_pauli_z(
           mpi_policy, parallel_policy,
           local_state, permutation, buffer, communicator, environment, control_qubits...);
       }
@@ -1513,7 +1513,7 @@ namespace ket
           ::ket::mpi::gate::detail::append_qubits_string(std::string{"Adj("}.append(std::max(sizeof...(Qubits), std::size_t{1u}) - std::size_t{1u}, 'C').append("sZ)"), control_qubits...),
           environment};
 
-        return ::ket::mpi::gate::sqrt_pauli_z_detail::sqrt_pauli_z(
+        return ::ket::mpi::gate::sqrt_pauli_z_detail::adj_sqrt_pauli_z(
           mpi_policy, parallel_policy,
           local_state, permutation, buffer, datatype, communicator, environment, control_qubits...);
       }
@@ -1609,7 +1609,7 @@ namespace ket
           ::ket::mpi::gate::detail::append_qubits_string(std::string{"Adj("}.append(num_control_qubits, 'C').append("s").append(sizeof...(Qubits) + 1u - num_control_qubits, 'Z').append(")"), qubit, qubits...),
           environment};
 
-        return ::ket::mpi::gate::sqrt_pauli_z_detail::sqrt_pauli_z(
+        return ::ket::mpi::gate::sqrt_pauli_z_detail::adj_sqrt_pauli_z(
           mpi_policy, parallel_policy,
           local_state, permutation, buffer, communicator, environment, qubit, qubits...);
       }
@@ -1633,7 +1633,7 @@ namespace ket
           ::ket::mpi::gate::detail::append_qubits_string(std::string{"Adj("}.append(num_control_qubits, 'C').append("s").append(sizeof...(Qubits) + 1u - num_control_qubits, 'Z').append(")"), qubit, qubits...),
           environment};
 
-        return ::ket::mpi::gate::sqrt_pauli_z_detail::sqrt_pauli_z(
+        return ::ket::mpi::gate::sqrt_pauli_z_detail::adj_sqrt_pauli_z(
           mpi_policy, parallel_policy,
           local_state, permutation, buffer, datatype, communicator, environment, qubit, qubits...);
       }

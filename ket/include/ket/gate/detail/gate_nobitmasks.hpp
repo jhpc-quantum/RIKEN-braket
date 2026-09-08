@@ -2204,7 +2204,7 @@ namespace ket
 
               auto const cache_size = ::ket::utility::integer_exp2<state_integer_type>(num_on_cache_qubits);
               // It is required to be confirmed not to satisfy Case 1)
-              assert(::ket::utility::runtime::ranges::all_in_state_vector(num_on_cache_qubits, qubits));
+              assert(not ::ket::utility::runtime::ranges::all_in_state_vector(num_on_cache_qubits, qubits));
 
               // xxxx|yyyy|zzzzzz: (local) qubits
               // * xxxx: off-cache qubits
@@ -2404,7 +2404,7 @@ namespace ket
               sorted_on_cache_qubits_with_sentinel.push_back(qubit_type{num_on_cache_qubits});
               std::sort(begin(sorted_on_cache_qubits_with_sentinel), std::prev(end(sorted_on_cache_qubits_with_sentinel)));
 
-              auto const tag_loop_size = ::ket::utility::integer_exp2<state_integer_type>(num_tag_qubits - num_operated_qubits);
+              auto const tag_loop_size = ::ket::utility::integer_exp2<state_integer_type>(num_tag_qubits - num_chunk_qubits);
               for (auto tag_index_wo_qubits = state_integer_type{0u}; tag_index_wo_qubits < tag_loop_size; ++tag_index_wo_qubits)
                 ::ket::gate::runtime::gate_detail::ranges::gate_n(
                   parallel_policy,

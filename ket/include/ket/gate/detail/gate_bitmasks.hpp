@@ -2533,7 +2533,7 @@ namespace ket
 
               auto const cache_size = ::ket::utility::integer_exp2<state_integer_type>(num_on_cache_qubits);
               // It is required to be confirmed not to satisfy Case 1)
-              assert(::ket::utility::runtime::ranges::all_in_state_vector(num_on_cache_qubits, qubits));
+              assert(not ::ket::utility::runtime::ranges::all_in_state_vector(num_on_cache_qubits, qubits));
 
               // xxxx|yyyy|zzzzzz: (local) qubits
               // * xxxx: off-cache qubits
