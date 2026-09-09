@@ -132,6 +132,21 @@ namespace bra
         }
       }
 
+      auto disable_control_qubits(
+        typename std::vector< ::bra::qubit_type >::const_iterator first,
+        typename std::vector< ::bra::qubit_type >::const_iterator const last,
+        typename std::vector< ::bra::fused_gate::cez_qubit_state >::const_iterator qubit_state_first)
+      -> void
+      {
+        for (; first != last; ++first, ++qubit_state_first)
+        {
+          assert(*qubit_state_first != ::bra::fused_gate::cez_qubit_state::not_global);
+          auto const is_control_used = do_disable_control_qubits(first, std::next(first));
+          if (is_control_used and *qubit_state_first == ::bra::fused_gate::cez_qubit_state::global_zero)
+            is_enabled_ = false;
+        }
+      }
+
       auto disable_cez_global_qubits(
         typename std::vector< ::bra::qubit_type >::const_iterator const first,
         typename std::vector< ::bra::qubit_type >::const_iterator const last)

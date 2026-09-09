@@ -2006,17 +2006,15 @@ namespace bra
       unit_control_qubit_masks.push_back(
         ::bra::state_integer_type{1u} << (permutation_[control_qubit] - least_permutated_unit_qubit));
 
-    // generate local_fused_ez_qubits, unit_fused_ez_qubits, global_fused_unit_qubits, and nonlocal_fused_ez_qubits by using std::partition
+    // Partition eZ qubits into local, unit, and global qubits.
     auto const local_fused_ez_qubit_first = begin(fused_ez_qubits);
     auto const global_fused_ez_qubit_last = end(fused_ez_qubits);
-    auto const nonlocal_fused_ez_qubit_last = global_fused_ez_qubit_last;
     auto const local_fused_ez_qubit_last
       = std::partition(
           local_fused_ez_qubit_first, global_fused_ez_qubit_last,
           [this, least_permutated_unit_qubit](::bra::qubit_type const qubit)
           { return this->permutation_[qubit] < least_permutated_unit_qubit; });
     auto const unit_fused_ez_qubit_first = local_fused_ez_qubit_last;
-    auto const nonlocal_fused_ez_qubit_first = unit_fused_ez_qubit_first;
     auto const unit_fused_ez_qubit_last
       = std::partition(
           unit_fused_ez_qubit_first, global_fused_ez_qubit_last,
@@ -2075,8 +2073,11 @@ namespace bra
       fused_gate_ptr->disable_unit_control_qubits(unit_fused_control_qubits, unit_control_qubit_masks);
       fused_gate_ptr->disable_control_qubits(
         global_fused_control_qubit_first, global_fused_control_qubit_last, begin(global_control_qubit_states));
-      fused_gate_ptr->disable_control_qubits(nonlocal_fused_ez_qubit_first, nonlocal_fused_ez_qubit_last);
-      fused_gate_ptr->disable_control_qubits(global_fused_cez_qubit_first, global_fused_cez_qubit_last);
+      // Unit eZ qubits are localized below, so keep their uses as controls enabled.
+      fused_gate_ptr->disable_control_qubits(
+        global_fused_ez_qubit_first, global_fused_ez_qubit_last, begin(ez_qubit_states));
+      fused_gate_ptr->disable_control_qubits(
+        global_fused_cez_qubit_first, global_fused_cez_qubit_last, begin(cez_qubit_states));
 
       fused_gate_ptr->modify_cez(global_fused_ez_qubit_first, global_fused_ez_qubit_last, begin(ez_qubit_states));
       fused_gate_ptr->modify_cez(global_fused_cez_qubit_first, global_fused_cez_qubit_last, begin(cez_qubit_states));
@@ -2094,8 +2095,11 @@ namespace bra
       fused_gate_ptr->disable_unit_control_qubits(unit_fused_control_qubits, unit_control_qubit_masks);
       fused_gate_ptr->disable_control_qubits(
         global_fused_control_qubit_first, global_fused_control_qubit_last, begin(global_control_qubit_states));
-      fused_gate_ptr->disable_control_qubits(nonlocal_fused_ez_qubit_first, nonlocal_fused_ez_qubit_last);
-      fused_gate_ptr->disable_control_qubits(global_fused_cez_qubit_first, global_fused_cez_qubit_last);
+      // Unit eZ qubits are localized below, so keep their uses as controls enabled.
+      fused_gate_ptr->disable_control_qubits(
+        global_fused_ez_qubit_first, global_fused_ez_qubit_last, begin(ez_qubit_states));
+      fused_gate_ptr->disable_control_qubits(
+        global_fused_cez_qubit_first, global_fused_cez_qubit_last, begin(cez_qubit_states));
 
       fused_gate_ptr->modify_cez(global_fused_ez_qubit_first, global_fused_ez_qubit_last, begin(ez_qubit_states));
       fused_gate_ptr->modify_cez(global_fused_cez_qubit_first, global_fused_cez_qubit_last, begin(cez_qubit_states));
@@ -2109,8 +2113,11 @@ namespace bra
       fused_gate_ptr->disable_unit_control_qubits(unit_fused_control_qubits, unit_control_qubit_masks);
       fused_gate_ptr->disable_control_qubits(
         global_fused_control_qubit_first, global_fused_control_qubit_last, begin(global_control_qubit_states));
-      fused_gate_ptr->disable_control_qubits(nonlocal_fused_ez_qubit_first, nonlocal_fused_ez_qubit_last);
-      fused_gate_ptr->disable_control_qubits(global_fused_cez_qubit_first, global_fused_cez_qubit_last);
+      // Unit eZ qubits are localized below, so keep their uses as controls enabled.
+      fused_gate_ptr->disable_control_qubits(
+        global_fused_ez_qubit_first, global_fused_ez_qubit_last, begin(ez_qubit_states));
+      fused_gate_ptr->disable_control_qubits(
+        global_fused_cez_qubit_first, global_fused_cez_qubit_last, begin(cez_qubit_states));
 
       fused_gate_ptr->modify_cez(global_fused_ez_qubit_first, global_fused_ez_qubit_last, begin(ez_qubit_states));
       fused_gate_ptr->modify_cez(global_fused_cez_qubit_first, global_fused_cez_qubit_last, begin(cez_qubit_states));
@@ -2122,8 +2129,11 @@ namespace bra
       fused_gate_ptr->disable_unit_control_qubits(unit_fused_control_qubits, unit_control_qubit_masks);
       fused_gate_ptr->disable_control_qubits(
         global_fused_control_qubit_first, global_fused_control_qubit_last, begin(global_control_qubit_states));
-      fused_gate_ptr->disable_control_qubits(nonlocal_fused_ez_qubit_first, nonlocal_fused_ez_qubit_last);
-      fused_gate_ptr->disable_control_qubits(global_fused_cez_qubit_first, global_fused_cez_qubit_last);
+      // Unit eZ qubits are localized below, so keep their uses as controls enabled.
+      fused_gate_ptr->disable_control_qubits(
+        global_fused_ez_qubit_first, global_fused_ez_qubit_last, begin(ez_qubit_states));
+      fused_gate_ptr->disable_control_qubits(
+        global_fused_cez_qubit_first, global_fused_cez_qubit_last, begin(cez_qubit_states));
 
       fused_gate_ptr->modify_cez(global_fused_ez_qubit_first, global_fused_ez_qubit_last, begin(ez_qubit_states));
       fused_gate_ptr->modify_cez(global_fused_cez_qubit_first, global_fused_cez_qubit_last, begin(cez_qubit_states));
