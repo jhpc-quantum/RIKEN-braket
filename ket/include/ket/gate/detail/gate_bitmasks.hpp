@@ -2172,6 +2172,49 @@ namespace ket
     {
       namespace gate_detail
       {
+        template <int n>
+        struct priority_tag
+          : priority_tag<n - 1>
+        { };
+
+        template <>
+        struct priority_tag<0>
+        { };
+
+        template <
+          typename Function, typename RandomAccessIterator, typename StateInteger,
+          typename StateIntegersRange1, typename StateIntegersRange2, typename UnitQubitValue>
+        inline auto call_function(
+          priority_tag<1>, Function&& function,
+          RandomAccessIterator const first, StateInteger const index_wo_qubits,
+          StateIntegersRange1 const& qubit_masks, StateIntegersRange2 const& index_masks,
+          int const thread_index, UnitQubitValue const unit_qubit_value)
+        -> decltype(
+             std::forward<Function>(function)(
+               first, index_wo_qubits, qubit_masks, index_masks, thread_index, unit_qubit_value),
+             void())
+        {
+          std::forward<Function>(function)(
+            first, index_wo_qubits, qubit_masks, index_masks, thread_index, unit_qubit_value);
+        }
+
+        template <
+          typename Function, typename RandomAccessIterator, typename StateInteger,
+          typename StateIntegersRange1, typename StateIntegersRange2, typename UnitQubitValue>
+        inline auto call_function(
+          priority_tag<0>, Function&& function,
+          RandomAccessIterator const first, StateInteger const index_wo_qubits,
+          StateIntegersRange1 const& qubit_masks, StateIntegersRange2 const& index_masks,
+          int const thread_index, UnitQubitValue const)
+        -> decltype(
+             std::forward<Function>(function)(
+               first, index_wo_qubits, qubit_masks, index_masks, thread_index),
+             void())
+        {
+          std::forward<Function>(function)(
+            first, index_wo_qubits, qubit_masks, index_masks, thread_index);
+        }
+
         namespace ranges
         {
           template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename StateIntegersRange1, typename StateIntegersRange2, typename Function>
@@ -2192,6 +2235,30 @@ namespace ket
               [first, &function, &qubit_masks, &index_masks](
                 StateInteger const index_wo_qubits, int const thread_index)
               { function(first, index_wo_qubits, qubit_masks, index_masks, thread_index); });
+          }
+
+          template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename StateIntegersRange1, typename StateIntegersRange2, typename Function, typename UnitQubitValue>
+          inline auto gate_n(
+            ParallelPolicy const parallel_policy,
+            RandomAccessIterator const first, StateInteger const size,
+            StateIntegersRange1 const& qubit_masks, StateIntegersRange2 const& index_masks,
+            Function&& function, UnitQubitValue const unit_qubit_value)
+          -> void
+          {
+            using std::begin;
+            using std::end;
+            auto const num_operated_qubits = end(qubit_masks) - begin(qubit_masks);
+            assert(end(index_masks) - begin(index_masks) == num_operated_qubits + 1);
+
+            ::ket::utility::loop_n(
+              parallel_policy, size >> num_operated_qubits,
+              [first, unit_qubit_value, &function, &qubit_masks, &index_masks](
+                StateInteger const index_wo_qubits, int const thread_index)
+              {
+                ::ket::gate::runtime::gate_detail::call_function(
+                  ::ket::gate::runtime::gate_detail::priority_tag<1>{},
+                  function, first, index_wo_qubits, qubit_masks, index_masks, thread_index, unit_qubit_value);
+              });
           }
         } // namespace ranges
 
@@ -2226,6 +2293,21 @@ namespace ket
             ::ket::gate::runtime::gate_detail::ranges::gate_n(
               parallel_policy, first, static_cast<state_integer_type>(last - first),
               qubit_masks, index_masks, std::forward<Function>(function));
+          }
+
+          template <typename ParallelPolicy, typename RandomAccessIterator, typename StateIntegersRange1, typename StateIntegersRange2, typename Function, typename UnitQubitValue>
+          inline auto gate(
+            ParallelPolicy const parallel_policy,
+            RandomAccessIterator const first, RandomAccessIterator const last,
+            StateIntegersRange1 const& qubit_masks, StateIntegersRange2 const& index_masks,
+            Function&& function, UnitQubitValue const unit_qubit_value)
+          -> void
+          {
+            using state_integer_type = ::ket::utility::meta::range_value_t<StateIntegersRange1>;
+            static_assert(std::is_same< ::ket::utility::meta::range_value_t<StateIntegersRange2>, state_integer_type >::value, "The value_type's of StateIntegersRange1 and StateIntegersRange2 are the same");
+            ::ket::gate::runtime::gate_detail::ranges::gate_n(
+              parallel_policy, first, static_cast<state_integer_type>(last - first),
+              qubit_masks, index_masks, std::forward<Function>(function), unit_qubit_value);
           }
         } // namespace qubit_ranges
 
