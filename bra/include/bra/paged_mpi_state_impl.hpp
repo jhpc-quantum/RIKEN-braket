@@ -90,7 +90,7 @@ namespace bra
       First const first, ::bra::state_integer_type const index_wo_qubits,
       UnsortedFusedQubitsOrMasks const& unsorted_fused_qubits_or_masks,
       SortedFusedQubitsWithSentinelOrIndexMasks const& sorted_fused_qubits_with_sentinel_or_index_masks,
-      int const) const
+      int const, ::bra::state_integer_type const unit_qubit_value) const
     -> typename std::enable_if<
          std::is_same<typename std::decay<First>::type, Iterator>::value>::type
     {
@@ -98,7 +98,7 @@ namespace bra
         gate_ptr->call(
           first, index_wo_qubits,
           unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
-          to_qubit_index_in_fused_gates_);
+          to_qubit_index_in_fused_gates_, unit_qubit_value);
     }
 
     template <typename First, typename UnsortedFusedQubitsOrMasks, typename SortedFusedQubitsWithSentinelOrIndexMasks>
@@ -106,7 +106,7 @@ namespace bra
       First const first, ::bra::state_integer_type const index_wo_qubits,
       UnsortedFusedQubitsOrMasks const& unsorted_fused_qubits_or_masks,
       SortedFusedQubitsWithSentinelOrIndexMasks const& sorted_fused_qubits_with_sentinel_or_index_masks,
-      int const) const
+      int const, ::bra::state_integer_type const unit_qubit_value) const
     -> typename std::enable_if<
          std::is_same<typename std::decay<First>::type, PagedIterator>::value>::type
     {
@@ -114,7 +114,7 @@ namespace bra
         gate_ptr->call(
           first, index_wo_qubits,
           unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
-          to_qubit_index_in_fused_gates_);
+          to_qubit_index_in_fused_gates_, unit_qubit_value);
     }
 
     template <typename First, typename UnsortedFusedQubitsOrMasks, typename SortedFusedQubitsWithSentinelOrIndexMasks>
@@ -122,7 +122,7 @@ namespace bra
       First const first, ::bra::state_integer_type const index_wo_qubits,
       UnsortedFusedQubitsOrMasks const& unsorted_fused_qubits_or_masks,
       SortedFusedQubitsWithSentinelOrIndexMasks const& sorted_fused_qubits_with_sentinel_or_index_masks,
-      int const) const
+      int const, ::bra::state_integer_type const unit_qubit_value) const
     -> typename std::enable_if<
          std::is_same<typename std::decay<First>::type, CacheAwareIterator>::value>::type
     {
@@ -130,7 +130,7 @@ namespace bra
         gate_ptr->call(
           first, index_wo_qubits,
           unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
-          to_qubit_index_in_fused_gates_);
+          to_qubit_index_in_fused_gates_, unit_qubit_value);
     }
 
     template <typename First, typename UnsortedFusedQubitsOrMasks, typename SortedFusedQubitsWithSentinelOrIndexMasks>
@@ -138,7 +138,7 @@ namespace bra
       First const first, ::bra::state_integer_type const index_wo_qubits,
       UnsortedFusedQubitsOrMasks const& unsorted_fused_qubits_or_masks,
       SortedFusedQubitsWithSentinelOrIndexMasks const& sorted_fused_qubits_with_sentinel_or_index_masks,
-      int const) const
+      int const, ::bra::state_integer_type const unit_qubit_value) const
     -> typename std::enable_if<
          std::is_same<typename std::decay<First>::type, CacheAwarePagedIterator>::value>::type
     {
@@ -146,7 +146,7 @@ namespace bra
         gate_ptr->call(
           first, index_wo_qubits,
           unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
-          to_qubit_index_in_fused_gates_);
+          to_qubit_index_in_fused_gates_, unit_qubit_value);
     }
   };
 # elif !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION)
@@ -162,7 +162,7 @@ namespace bra
       First const first, ::bra::state_integer_type const index_wo_qubits,
       UnsortedFusedQubitsOrMasks const& unsorted_fused_qubits_or_masks,
       SortedFusedQubitsWithSentinelOrIndexMasks const& sorted_fused_qubits_with_sentinel_or_index_masks,
-      int const) const
+      int const, ::bra::state_integer_type const unit_qubit_value) const
     -> typename std::enable_if<
          std::is_same<typename std::decay<First>::type, Iterator>::value>::type
     {
@@ -170,7 +170,7 @@ namespace bra
         gate_ptr->call(
           first, index_wo_qubits,
           unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
-          to_qubit_index_in_fused_gates_);
+          to_qubit_index_in_fused_gates_, unit_qubit_value);
     }
 
     template <typename First, typename UnsortedFusedQubitsOrMasks, typename SortedFusedQubitsWithSentinelOrIndexMasks>
@@ -178,7 +178,7 @@ namespace bra
       First const first, ::bra::state_integer_type const index_wo_qubits,
       UnsortedFusedQubitsOrMasks const& unsorted_fused_qubits_or_masks,
       SortedFusedQubitsWithSentinelOrIndexMasks const& sorted_fused_qubits_with_sentinel_or_index_masks,
-      int const) const
+      int const, ::bra::state_integer_type const unit_qubit_value) const
     -> typename std::enable_if<
          std::is_same<typename std::decay<First>::type, PagedIterator>::value>::type
     {
@@ -186,7 +186,7 @@ namespace bra
         gate_ptr->call(
           first, index_wo_qubits,
           unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
-          to_qubit_index_in_fused_gates_);
+          to_qubit_index_in_fused_gates_, unit_qubit_value);
     }
   };
 # else // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && defined(KET_USE_ON_CACHE_STATE_VECTOR)
@@ -201,13 +201,13 @@ namespace bra
       First const first, ::bra::state_integer_type const index_wo_qubits,
       UnsortedFusedQubitsOrMasks const& unsorted_fused_qubits_or_masks,
       SortedFusedQubitsWithSentinelOrIndexMasks const& sorted_fused_qubits_with_sentinel_or_index_masks,
-      int const) const -> void
+      int const, ::bra::state_integer_type const unit_qubit_value) const -> void
     {
       for (auto const& gate_ptr: fused_gates_)
         gate_ptr->call(
           first, index_wo_qubits,
           unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
-          to_qubit_index_in_fused_gates_);
+          to_qubit_index_in_fused_gates_, unit_qubit_value);
     }
   };
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && defined(KET_USE_ON_CACHE_STATE_VECTOR)
@@ -1983,7 +1983,7 @@ namespace bra
     using std::begin;
     using std::end;
 
-    // generate nonglobal_fused_control_qubits and global_fused_control_qubits by using std::partition
+    // Partition controls into local, unit, and global qubits.
     auto const nonglobal_fused_control_qubit_first = begin(fused_control_qubits);
     auto const global_fused_control_qubit_last = end(fused_control_qubits);
     auto const nonglobal_fused_control_qubit_last
@@ -1992,6 +1992,19 @@ namespace bra
           [this, least_permutated_global_qubit](::bra::control_qubit_type const control_qubit)
           { return this->permutation_[control_qubit] < least_permutated_global_qubit; });
     auto const global_fused_control_qubit_first = nonglobal_fused_control_qubit_last;
+    auto const local_fused_control_qubit_first = nonglobal_fused_control_qubit_first;
+    auto const local_fused_control_qubit_last
+      = std::partition(
+          local_fused_control_qubit_first, nonglobal_fused_control_qubit_last,
+          [this, least_permutated_unit_qubit](::bra::control_qubit_type const control_qubit)
+          { return this->permutation_[control_qubit] < least_permutated_unit_qubit; });
+    auto const unit_fused_control_qubits = std::vector< ::bra::control_qubit_type >{
+      local_fused_control_qubit_last, nonglobal_fused_control_qubit_last};
+    auto unit_control_qubit_masks = std::vector< ::bra::state_integer_type >{};
+    unit_control_qubit_masks.reserve(unit_fused_control_qubits.size());
+    for (auto const control_qubit: unit_fused_control_qubits)
+      unit_control_qubit_masks.push_back(
+        ::bra::state_integer_type{1u} << (permutation_[control_qubit] - least_permutated_unit_qubit));
 
     // generate local_fused_ez_qubits, unit_fused_ez_qubits, global_fused_unit_qubits, and nonlocal_fused_ez_qubits by using std::partition
     auto const local_fused_ez_qubit_first = begin(fused_ez_qubits);
@@ -2059,6 +2072,7 @@ namespace bra
     auto global_phase = ::bra::real_type{0};
     for (auto& fused_gate_ptr: fused_gates_)
     {
+      fused_gate_ptr->disable_unit_control_qubits(unit_fused_control_qubits, unit_control_qubit_masks);
       fused_gate_ptr->disable_control_qubits(
         global_fused_control_qubit_first, global_fused_control_qubit_last, begin(global_control_qubit_states));
       fused_gate_ptr->disable_control_qubits(nonlocal_fused_ez_qubit_first, nonlocal_fused_ez_qubit_last);
@@ -2077,6 +2091,7 @@ namespace bra
 #   if !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
     for (auto& fused_gate_ptr: paged_fused_gates_)
     {
+      fused_gate_ptr->disable_unit_control_qubits(unit_fused_control_qubits, unit_control_qubit_masks);
       fused_gate_ptr->disable_control_qubits(
         global_fused_control_qubit_first, global_fused_control_qubit_last, begin(global_control_qubit_states));
       fused_gate_ptr->disable_control_qubits(nonlocal_fused_ez_qubit_first, nonlocal_fused_ez_qubit_last);
@@ -2091,6 +2106,7 @@ namespace bra
 #   if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     for (auto& fused_gate_ptr: cache_aware_fused_gates_)
     {
+      fused_gate_ptr->disable_unit_control_qubits(unit_fused_control_qubits, unit_control_qubit_masks);
       fused_gate_ptr->disable_control_qubits(
         global_fused_control_qubit_first, global_fused_control_qubit_last, begin(global_control_qubit_states));
       fused_gate_ptr->disable_control_qubits(nonlocal_fused_ez_qubit_first, nonlocal_fused_ez_qubit_last);
@@ -2103,6 +2119,7 @@ namespace bra
     }
     for (auto& fused_gate_ptr: cache_aware_paged_fused_gates_)
     {
+      fused_gate_ptr->disable_unit_control_qubits(unit_fused_control_qubits, unit_control_qubit_masks);
       fused_gate_ptr->disable_control_qubits(
         global_fused_control_qubit_first, global_fused_control_qubit_last, begin(global_control_qubit_states));
       fused_gate_ptr->disable_control_qubits(nonlocal_fused_ez_qubit_first, nonlocal_fused_ez_qubit_last);
@@ -2120,7 +2137,7 @@ namespace bra
     std::copy(local_fused_ez_qubit_first, local_fused_ez_qubit_last, std::back_inserter(fused_qubits));
     std::copy(unit_fused_ez_qubit_first, unit_fused_ez_qubit_last, std::back_inserter(fused_qubits));
     std::transform(
-      nonglobal_fused_control_qubit_first, nonglobal_fused_control_qubit_last, std::back_inserter(fused_qubits),
+      local_fused_control_qubit_first, local_fused_control_qubit_last, std::back_inserter(fused_qubits),
       [](::bra::control_qubit_type const fused_control_qubit) { return fused_control_qubit.qubit(); });
     if (not fused_qubits.empty())
       ::bra::throw_if_too_many_operated_qubits(

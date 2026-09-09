@@ -37,7 +37,9 @@ namespace bra
       std::vector< ::bra::qubit_type > const& sorted_fused_qubits_with_sentinel,
       std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void
     {
-      if (unsorted_fused_qubits.size() < std::size_t{1u})
+      if (unsorted_fused_qubits.empty() and std::any_of(
+              is_control_qubit_enabled_vec_.begin(), is_control_qubit_enabled_vec_.end(),
+              [](int const enabled) { return static_cast<bool>(enabled); }))
         throw std::runtime_error{"fused_adj_multi_controlled_sqrt_pauli_z requires at least one fused qubit"};
       auto enabled_control_qubits = std::vector< ::bra::control_qubit_type >{};
       auto const num_control_qubits = control_qubits_.size();
@@ -57,7 +59,9 @@ namespace bra
       std::vector< ::bra::state_integer_type > const& index_masks,
       std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void
     {
-      if (qubit_masks.size() < std::size_t{1u})
+      if (qubit_masks.empty() and std::any_of(
+              is_control_qubit_enabled_vec_.begin(), is_control_qubit_enabled_vec_.end(),
+              [](int const enabled) { return static_cast<bool>(enabled); }))
         throw std::runtime_error{"fused_adj_multi_controlled_sqrt_pauli_z requires at least one fused qubit"};
       auto enabled_control_qubits = std::vector< ::bra::control_qubit_type >{};
       auto const num_control_qubits = control_qubits_.size();

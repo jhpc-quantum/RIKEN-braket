@@ -31,7 +31,7 @@ namespace bra
       std::vector< ::bra::qubit_type > const& sorted_fused_qubits_with_sentinel,
       std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void
     {
-      if (unsorted_fused_qubits.size() < std::size_t{1u})
+      if (unsorted_fused_qubits.empty() and is_control_qubit_enabled_)
         throw std::runtime_error{"fused_adj_phase_shift requires at least one fused qubit"};
 
       std::array< ::bra::control_qubit_type, 1u > const control_qubits{{
@@ -53,7 +53,7 @@ namespace bra
       std::vector< ::bra::state_integer_type > const& index_masks,
       std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void
     {
-      if (qubit_masks.size() < std::size_t{1u})
+      if (qubit_masks.empty() and is_control_qubit_enabled_)
         throw std::runtime_error{"fused_adj_phase_shift requires at least one fused qubit"};
 
       std::array< ::bra::control_qubit_type, 1u > const control_qubits{{
