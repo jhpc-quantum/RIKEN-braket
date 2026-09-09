@@ -1377,7 +1377,7 @@ namespace bra
   interpreter::read_multi_controls_2targets(
     interpreter::columns_type const& columns, std::vector< ::bra::control_qubit_type >& controls)
   {
-    if (boost::size(columns) < 5u or controls.size() != boost::size(columns) - 3u)
+    if (boost::size(columns) < 4u or controls.size() != boost::size(columns) - 3u)
       throw wrong_mnemonics_error{columns};
 
     using std::begin;
@@ -1758,7 +1758,7 @@ namespace bra
     std::vector< ::bra::control_qubit_type >& controls,
     boost::variant< ::bra::real_type, std::string >& phase)
   {
-    if (boost::size(columns) < 6u or controls.size() != boost::size(columns) - 4u)
+    if (boost::size(columns) < 5u or controls.size() != boost::size(columns) - 4u)
       throw wrong_mnemonics_error{columns};
 
     using std::begin;
@@ -4091,7 +4091,7 @@ namespace bra
     }
     else // num_control_qubits >= 2
     {
-      auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
+      auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits + 1u);
       auto phase_exponent = boost::variant<int_type, std::string>{};
       read_multi_controls_phaseexp(columns, controls, phase_exponent);
 
@@ -4236,7 +4236,7 @@ namespace bra
     std::string const& noncontrol_mnemonic)
   {
     auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
-    auto targets = std::vector< ::bra::qubit_type >(noncontrol_mnemonic.size() - 1u);
+    auto targets = std::vector< ::bra::qubit_type >(noncontrol_mnemonic.size() - 2u);
     auto phase = boost::variant<real_type, std::string>{};
     read_multi_controls_multi_targets_phase(columns, controls, targets, phase);
 
@@ -4378,7 +4378,7 @@ namespace bra
     std::string const& noncontrol_mnemonic)
   {
     auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
-    auto targets = std::vector< ::bra::qubit_type >(noncontrol_mnemonic.size() - 1u);
+    auto targets = std::vector< ::bra::qubit_type >(noncontrol_mnemonic.size() - 2u);
     auto phase = boost::variant<real_type, std::string>{};
     read_multi_controls_multi_targets_phase(columns, controls, targets, phase);
 
@@ -4518,7 +4518,7 @@ namespace bra
     std::string const& noncontrol_mnemonic)
   {
     auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
-    auto targets = std::vector< ::bra::qubit_type >(noncontrol_mnemonic.size() - 1u);
+    auto targets = std::vector< ::bra::qubit_type >(noncontrol_mnemonic.size() - 2u);
     auto phase = boost::variant<real_type, std::string>{};
     read_multi_controls_multi_targets_phase(columns, controls, targets, phase);
 
@@ -4767,7 +4767,7 @@ namespace bra
     std::string const& noncontrol_mnemonic)
   {
     auto controls = std::vector< ::bra::control_qubit_type >(num_control_qubits);
-    auto targets = std::vector< ::bra::qubit_type >(noncontrol_mnemonic.size() - 1u);
+    auto targets = std::vector< ::bra::qubit_type >(noncontrol_mnemonic.size() - 2u);
     read_multi_controls_multi_targets(columns, controls, targets);
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_multi_controlled_sqrt_pauli_zn >(std::move(targets), std::move(controls)));
