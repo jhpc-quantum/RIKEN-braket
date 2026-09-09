@@ -928,8 +928,13 @@ namespace bra
   std::vector< ::bra::permutated_qubit_type >
   interpreter::read_initial_permutation(interpreter::columns_type const& columns) const
   {
-    auto result = std::vector< ::bra::permutated_qubit_type >{};
-    result.reserve(boost::size(columns)-2u);
+    if (boost::size(columns) != static_cast<interpreter::columns_type::size_type>(num_qubits_) + 2u)
+      throw wrong_mnemonics_error{columns};
+
+    auto result
+      = std::vector< ::bra::permutated_qubit_type >(
+          num_qubits_, ::bra::permutated_qubit_type{::bra::bit_integer_type{0u}});
+    auto is_assigned = std::vector<bool>(num_qubits_, false);
 
     using std::begin;
     auto iter = begin(columns);
@@ -937,8 +942,16 @@ namespace bra
     ++iter;
 
     auto const last = std::end(columns);
-    for (; iter != last; ++iter)
-      result.push_back(static_cast< ::bra::permutated_qubit_type >(boost::lexical_cast< ::bra::bit_integer_type >(*iter)));
+    auto permutated_bit = ::bra::bit_integer_type{0u};
+    for (; iter != last; ++iter, ++permutated_bit)
+    {
+      auto const qubit = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
+      if (qubit >= num_qubits_ or is_assigned[qubit])
+        throw wrong_mnemonics_error{columns};
+
+      result[qubit] = ::bra::permutated_qubit_type{permutated_bit};
+      is_assigned[qubit] = true;
+    }
 
     return result;
   }

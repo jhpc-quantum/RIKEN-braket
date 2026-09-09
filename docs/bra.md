@@ -165,7 +165,7 @@ The instruction set supported by *bra* is as follows.
 * `M i`: projective measurement on qubit $i$. Its result is assigned to `:OUTCOME` AND `:OUTCOME:i`.
 * `CIRCUITS n`: specifies the number of quantum circuits. This should be placed before the `QUBITS` instruction. If this `CIRCUITS` instruction is omitted, the number of circuits is assumed to be 1.
 * `QUBITS n`: specifies the number of qubits. This should be placed before any insstructions except for the `CIRCUITS` instruction.
-* `BIT ASSIGNMENT i j k...`: specifies the initial permutation of qubits. The number of qubits specified as arguments of this instruction must be equal to the number of qubits specified in the `QUBITS n` instruction.
+* `BIT ASSIGNMENT i j k...`: specifies the initial permutation of qubits by listing the logical qubit at each permuted position, from the least significant local position to the most significant global position. The number of qubits specified as arguments of this instruction must be equal to the number of qubits specified in the `QUBITS n` instruction.
 * `SHORBOX nx G y`
 * `CLEAR i`: projects the state of qubit $i$ to $\ket{0}$.
 * `SET i`: projects the state of qubit $i$ to $\ket{1}$.
@@ -186,4 +186,3 @@ The instruction set supported by *bra* is as follows.
 * `PRINT var [...]`/`PRINTLN var [...]`: prints classical variables `var`, `...` with single-space separators.
 
 [^1]: To be more precise, `EXPECTATION H ...` calculates $\bra{\Psi} (H \ket{\Psi})$ for given operator $H$ and state $\ket{\Psi}$. It becomes the expectation value of $H$ if $H$ is Hermitian.
-

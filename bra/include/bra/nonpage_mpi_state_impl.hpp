@@ -1690,6 +1690,34 @@ namespace bra
     using std::begin;
     using std::end;
 
+    // Localize mandatory targets before deciding which optional qubits can remain nonlocal.
+    ::bra::throw_if_too_many_operated_qubits(
+      fused_qubits.size(), mpi_policy_, data_, circuit_communicator_, environment_);
+    auto local_optional_qubits = std::vector< ::bra::qubit_type >{};
+    local_optional_qubits.reserve(fused_control_qubits.size() + fused_ez_qubits.size() + fused_cez_qubits.size());
+    for (auto const control_qubit: fused_control_qubits)
+      if (permutation_[control_qubit] < least_permutated_unit_qubit)
+        local_optional_qubits.push_back(control_qubit.qubit());
+    for (auto const qubit: fused_ez_qubits)
+      if (permutation_[qubit] < least_permutated_unit_qubit)
+        local_optional_qubits.push_back(qubit);
+    for (auto const qubit: fused_cez_qubits)
+      if (permutation_[qubit] < least_permutated_unit_qubit)
+        local_optional_qubits.push_back(qubit);
+
+    auto const num_local_qubits
+      = static_cast<std::size_t>(ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_block_size));
+    if (fused_qubits.size() + local_optional_qubits.size() > num_local_qubits)
+    {
+      auto qubits_to_localize = fused_qubits;
+      qubits_to_localize.insert(
+        end(qubits_to_localize), begin(local_optional_qubits),
+        begin(local_optional_qubits) + (num_local_qubits - fused_qubits.size()));
+      ket::mpi::gate::runtime::ranges::identity(
+        mpi_policy_, parallel_policy_, data_, permutation_, buffer_,
+        circuit_communicator_, environment_, qubits_to_localize);
+    }
+
     // Partition controls into local, unit, and global qubits.
     auto const nonglobal_fused_control_qubit_first = begin(fused_control_qubits);
     auto const global_fused_control_qubit_last = end(fused_control_qubits);
