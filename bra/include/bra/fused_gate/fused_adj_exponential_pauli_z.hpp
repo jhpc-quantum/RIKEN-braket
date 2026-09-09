@@ -21,7 +21,7 @@ namespace bra
       ::bra::qubit_type qubit_;
 
       ::bra::fused_gate::cez_qubit_state qubit_state_;
-      bool is_qubit_unit_;
+      ::bra::state_integer_type unit_qubit_mask_;
 
      public:
       explicit fused_adj_exponential_pauli_z(::bra::real_type const phase, ::bra::qubit_type const qubit);
@@ -39,12 +39,26 @@ namespace bra
         std::vector< ::bra::qubit_type > const& unsorted_fused_qubits,
         std::vector< ::bra::qubit_type > const& sorted_fused_qubits_with_sentinel,
         std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void override;
+
+      auto do_call(
+        Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
+        std::vector< ::bra::qubit_type > const& unsorted_fused_qubits,
+        std::vector< ::bra::qubit_type > const& sorted_fused_qubits_with_sentinel,
+        std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+        ::bra::state_integer_type const unit_qubit_value) const -> void override;
 # else // KET_USE_BIT_MASKS_EXPLICITLY
       auto do_call(
         Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
         std::vector< ::bra::state_integer_type > const& qubit_masks,
         std::vector< ::bra::state_integer_type > const& index_masks,
         std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void override;
+
+      auto do_call(
+        Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
+        std::vector< ::bra::state_integer_type > const& qubit_masks,
+        std::vector< ::bra::state_integer_type > const& index_masks,
+        std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+        ::bra::state_integer_type const unit_qubit_value) const -> void override;
 # endif // KET_USE_BIT_MASKS_EXPLICITLY
 
       auto do_modify_cez(
@@ -52,10 +66,11 @@ namespace bra
         typename std::vector< ::bra::qubit_type >::const_iterator const last,
         typename std::vector< ::bra::fused_gate::cez_qubit_state >::const_iterator const cez_qubit_state_first) -> void override;
 
-      auto do_maybe_phase_shiftize_ez(
+      auto do_modify_unit_ez(
         typename std::vector< ::bra::qubit_type >::const_iterator const first,
-        typename std::vector< ::bra::qubit_type >::const_iterator const last)
-      -> boost::optional<std::pair< ::bra::control_qubit_type, ::bra::real_type >> override;
+        typename std::vector< ::bra::qubit_type >::const_iterator const last,
+        typename std::vector< ::bra::state_integer_type >::const_iterator const unit_qubit_mask_first)
+      -> void override;
     }; // class fused_adj_exponential_pauli_z<Iterator>
   } // namespace fused_gate
 } // namespace bra

@@ -6,7 +6,6 @@
 # include <type_traits>
 # include <vector>
 
-# include <boost/optional.hpp>
 # include <boost/range/begin.hpp>
 # include <boost/range/end.hpp>
 
@@ -47,7 +46,7 @@ namespace bra
         if (not is_enabled_ or (unit_qubit_value bitand unit_control_qubit_mask_) != unit_control_qubit_mask_)
           return;
 
-        do_call(first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel, to_qubit_index_in_fused_gates);
+        do_call(first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel, to_qubit_index_in_fused_gates, unit_qubit_value);
       }
 
       template <typename UnsortedFusedQubitsRange, typename SortedFusedQubitsWithSentinelRange>
@@ -84,7 +83,7 @@ namespace bra
         if (not is_enabled_ or (unit_qubit_value bitand unit_control_qubit_mask_) != unit_control_qubit_mask_)
           return;
 
-        do_call(first, fused_index_wo_qubits, qubit_masks, index_masks, to_qubit_index_in_fused_gates);
+        do_call(first, fused_index_wo_qubits, qubit_masks, index_masks, to_qubit_index_in_fused_gates, unit_qubit_value);
       }
 # endif // KET_USE_BIT_MASKS_EXPLICITLY
 
@@ -160,11 +159,12 @@ namespace bra
       -> void
       { do_modify_cez(first, last, cez_qubit_state_first); }
 
-      auto maybe_phase_shiftize_ez(
+      auto modify_unit_ez(
         typename std::vector< ::bra::qubit_type >::const_iterator const first,
-        typename std::vector< ::bra::qubit_type >::const_iterator const last)
-      -> boost::optional<std::pair< ::bra::control_qubit_type, ::bra::real_type >>
-      { return do_maybe_phase_shiftize_ez(first, last); }
+        typename std::vector< ::bra::qubit_type >::const_iterator const last,
+        typename std::vector< ::bra::state_integer_type >::const_iterator const unit_qubit_mask_first)
+      -> void
+      { do_modify_unit_ez(first, last, unit_qubit_mask_first); }
 
      private:
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
@@ -173,12 +173,28 @@ namespace bra
         std::vector< ::bra::qubit_type > const& unsorted_fused_qubits,
         std::vector< ::bra::qubit_type > const& sorted_fused_qubits_with_sentinel,
         std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void = 0;
+
+      virtual auto do_call(
+        Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
+        std::vector< ::bra::qubit_type > const& unsorted_fused_qubits,
+        std::vector< ::bra::qubit_type > const& sorted_fused_qubits_with_sentinel,
+        std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+        ::bra::state_integer_type const unit_qubit_value) const -> void
+      { do_call(first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel, to_qubit_index_in_fused_gates); }
 # else // KET_USE_BIT_MASKS_EXPLICITLY
       virtual auto do_call(
         Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
         std::vector< ::bra::state_integer_type > const& qubit_masks,
         std::vector< ::bra::state_integer_type > const& index_masks,
         std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void = 0;
+
+      virtual auto do_call(
+        Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
+        std::vector< ::bra::state_integer_type > const& qubit_masks,
+        std::vector< ::bra::state_integer_type > const& index_masks,
+        std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+        ::bra::state_integer_type const unit_qubit_value) const -> void
+      { do_call(first, fused_index_wo_qubits, qubit_masks, index_masks, to_qubit_index_in_fused_gates); }
 # endif // KET_USE_BIT_MASKS_EXPLICITLY
 
       virtual auto do_disable_control_qubits(
@@ -194,10 +210,11 @@ namespace bra
         typename std::vector< ::bra::qubit_type >::const_iterator const last,
         typename std::vector< ::bra::fused_gate::cez_qubit_state >::const_iterator const cez_qubit_state_first) -> void;
 
-      virtual auto do_maybe_phase_shiftize_ez(
+      virtual auto do_modify_unit_ez(
         typename std::vector< ::bra::qubit_type >::const_iterator const first,
-        typename std::vector< ::bra::qubit_type >::const_iterator const last)
-      -> boost::optional<std::pair< ::bra::control_qubit_type, ::bra::real_type >>;
+        typename std::vector< ::bra::qubit_type >::const_iterator const last,
+        typename std::vector< ::bra::state_integer_type >::const_iterator const unit_qubit_mask_first)
+      -> void;
     }; // class fused_gate<Iterator>
   } // namespace fused_gate
 } // namespace bra

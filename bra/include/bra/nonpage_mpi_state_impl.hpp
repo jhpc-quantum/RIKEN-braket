@@ -1729,6 +1729,17 @@ namespace bra
           { return this->permutation_[qubit] < least_permutated_global_qubit; });
     auto const global_fused_ez_qubit_first = unit_fused_ez_qubit_last;
 
+    auto unit_ez_control_qubits = std::vector< ::bra::control_qubit_type >{};
+    auto unit_ez_qubit_masks = std::vector< ::bra::state_integer_type >{};
+    unit_ez_control_qubits.reserve(unit_fused_ez_qubit_last - unit_fused_ez_qubit_first);
+    unit_ez_qubit_masks.reserve(unit_fused_ez_qubit_last - unit_fused_ez_qubit_first);
+    for (auto iter = unit_fused_ez_qubit_first; iter != unit_fused_ez_qubit_last; ++iter)
+    {
+      unit_ez_control_qubits.push_back(ket::make_control(*iter));
+      unit_ez_qubit_masks.push_back(
+        ::bra::state_integer_type{1u} << (permutation_[*iter] - least_permutated_unit_qubit));
+    }
+
     // generate nonglobal_fused_cez_qubits and global_fused_cez_qubits by using std::partition
     auto const nonglobal_fused_cez_qubit_first = begin(fused_cez_qubits);
     auto const global_fused_cez_qubit_last = end(fused_cez_qubits);
@@ -1772,15 +1783,13 @@ namespace bra
         cez_qubit_states[iter - global_fused_cez_qubit_first] = ::bra::fused_gate::cez_qubit_state::global_one;
     }
 
-    // modify fused_gate's in fused_gates_ and its variants, and calculate global_phase if needed
-    auto exists_global_phase = false;
-    auto global_phase = ::bra::real_type{0};
+    // Configure nonlocal controls and diagonal targets for each fused gate.
     for (auto& fused_gate_ptr: fused_gates_)
     {
       fused_gate_ptr->disable_unit_control_qubits(unit_fused_control_qubits, unit_control_qubit_masks);
+      fused_gate_ptr->disable_unit_control_qubits(unit_ez_control_qubits, unit_ez_qubit_masks);
       fused_gate_ptr->disable_control_qubits(
         global_fused_control_qubit_first, global_fused_control_qubit_last, begin(global_control_qubit_states));
-      // Unit eZ qubits are localized below, so keep their uses as controls enabled.
       fused_gate_ptr->disable_control_qubits(
         global_fused_ez_qubit_first, global_fused_ez_qubit_last, begin(ez_qubit_states));
       fused_gate_ptr->disable_control_qubits(
@@ -1789,20 +1798,15 @@ namespace bra
       fused_gate_ptr->modify_cez(global_fused_ez_qubit_first, global_fused_ez_qubit_last, begin(ez_qubit_states));
       fused_gate_ptr->modify_cez(global_fused_cez_qubit_first, global_fused_cez_qubit_last, begin(cez_qubit_states));
 
-      auto const maybe_cqubit_global_phase = fused_gate_ptr->maybe_phase_shiftize_ez(unit_fused_ez_qubit_first, unit_fused_ez_qubit_last);
-      if (maybe_cqubit_global_phase)
-      {
-        exists_global_phase = true;
-        global_phase += maybe_cqubit_global_phase->second;
-      }
+      fused_gate_ptr->modify_unit_ez(unit_fused_ez_qubit_first, unit_fused_ez_qubit_last, begin(unit_ez_qubit_masks));
     }
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     for (auto& fused_gate_ptr: cache_aware_fused_gates_)
     {
       fused_gate_ptr->disable_unit_control_qubits(unit_fused_control_qubits, unit_control_qubit_masks);
+      fused_gate_ptr->disable_unit_control_qubits(unit_ez_control_qubits, unit_ez_qubit_masks);
       fused_gate_ptr->disable_control_qubits(
         global_fused_control_qubit_first, global_fused_control_qubit_last, begin(global_control_qubit_states));
-      // Unit eZ qubits are localized below, so keep their uses as controls enabled.
       fused_gate_ptr->disable_control_qubits(
         global_fused_ez_qubit_first, global_fused_ez_qubit_last, begin(ez_qubit_states));
       fused_gate_ptr->disable_control_qubits(
@@ -1811,14 +1815,13 @@ namespace bra
       fused_gate_ptr->modify_cez(global_fused_ez_qubit_first, global_fused_ez_qubit_last, begin(ez_qubit_states));
       fused_gate_ptr->modify_cez(global_fused_cez_qubit_first, global_fused_cez_qubit_last, begin(cez_qubit_states));
 
-      fused_gate_ptr->maybe_phase_shiftize_ez(unit_fused_ez_qubit_first, unit_fused_ez_qubit_last);
+      fused_gate_ptr->modify_unit_ez(unit_fused_ez_qubit_first, unit_fused_ez_qubit_last, begin(unit_ez_qubit_masks));
     }
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
 
     // modify fused_qubits and fused_control_qubits
     std::copy(nonglobal_fused_cez_qubit_first, nonglobal_fused_cez_qubit_last, std::back_inserter(fused_qubits));
     std::copy(local_fused_ez_qubit_first, local_fused_ez_qubit_last, std::back_inserter(fused_qubits));
-    std::copy(unit_fused_ez_qubit_first, unit_fused_ez_qubit_last, std::back_inserter(fused_qubits));
     std::transform(
       local_fused_control_qubit_first, local_fused_control_qubit_last, std::back_inserter(fused_qubits),
       [](::bra::control_qubit_type const fused_control_qubit) { return fused_control_qubit.qubit(); });
@@ -1832,9 +1835,6 @@ namespace bra
     auto present_qubit_index = ::bra::bit_integer_type{0u};
     for (auto const fused_qubit: fused_qubits)
       to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(fused_qubit)] = present_qubit_index++;
-
-    if (exists_global_phase)
-      ::ket::mpi::gate::phase_shift(mpi_policy_, parallel_policy_, data_, permutation_, buffer_, circuit_communicator_, environment_, global_phase);
 
 # if !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || defined(KET_USE_ON_CACHE_STATE_VECTOR)
     auto const call_fused_gates

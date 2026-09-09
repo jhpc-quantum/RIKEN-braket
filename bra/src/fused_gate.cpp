@@ -1,7 +1,4 @@
 #include <vector>
-#include <utility>
-
-#include <boost/optional.hpp>
 
 #if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
 # include <ket/gate/utility/cache_aware_iterator.hpp>
@@ -38,11 +35,12 @@ namespace bra
     { }
 
     template <typename Iterator>
-    auto fused_gate<Iterator>::do_maybe_phase_shiftize_ez(
+    auto fused_gate<Iterator>::do_modify_unit_ez(
       typename std::vector< ::bra::qubit_type >::const_iterator const,
-      typename std::vector< ::bra::qubit_type >::const_iterator const)
-    -> boost::optional<std::pair< ::bra::control_qubit_type, ::bra::real_type >>
-    { return boost::none; }
+      typename std::vector< ::bra::qubit_type >::const_iterator const,
+      typename std::vector< ::bra::state_integer_type >::const_iterator const)
+    -> void
+    { }
 
     template class fused_gate< ::bra::data_type::iterator >;
 #if !defined(BRA_NO_MPI) && (!defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)))
