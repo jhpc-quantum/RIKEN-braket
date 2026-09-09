@@ -42,6 +42,14 @@ namespace bra
     -> void
     { }
 
+    template <typename Iterator>
+    auto fused_gate<Iterator>::do_modify_unit_cez(
+      typename std::vector< ::bra::qubit_type >::const_iterator const,
+      typename std::vector< ::bra::qubit_type >::const_iterator const,
+      typename std::vector< ::bra::state_integer_type >::const_iterator const)
+    -> void
+    { }
+
     template class fused_gate< ::bra::data_type::iterator >;
 #if !defined(BRA_NO_MPI) && (!defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)))
     template class fused_gate< ::bra::paged_data_type::iterator >;

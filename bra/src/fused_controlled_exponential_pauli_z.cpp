@@ -3,6 +3,7 @@
 #include <utility>
 #include <stdexcept>
 #include <algorithm>
+#include <cassert>
 
 #include <ket/gate/fused/exponential_pauli_z.hpp>
 #include <ket/gate/fused/phase_shift.hpp>
@@ -22,7 +23,7 @@ namespace bra
   {
     template <typename Iterator>
     fused_controlled_exponential_pauli_z<Iterator>::fused_controlled_exponential_pauli_z(::bra::real_type const phase, ::bra::qubit_type const target_qubit, ::bra::control_qubit_type const control_qubit)
-      : ::bra::fused_gate::fused_gate<Iterator>{}, phase_{phase}, target_qubit_{target_qubit}, control_qubit_{control_qubit}, qubit_state_{::bra::fused_gate::cez_qubit_state::not_global}, is_control_qubit_enabled_{true}
+      : ::bra::fused_gate::fused_gate<Iterator>{}, phase_{phase}, target_qubit_{target_qubit}, control_qubit_{control_qubit}, qubit_state_{::bra::fused_gate::cez_qubit_state::not_global}, unit_qubit_mask_{0u}, is_control_qubit_enabled_{true}
     { }
 
 #ifndef KET_USE_BIT_MASKS_EXPLICITLY
@@ -33,15 +34,26 @@ namespace bra
       std::vector< ::bra::qubit_type > const& sorted_fused_qubits_with_sentinel,
       std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void
     {
-      if (unsorted_fused_qubits.size() < std::size_t{1u})
-        throw std::runtime_error{"fused_controlled_exponential_pauli_z requires at least one fused qubit"};
-      std::array< ::bra::qubit_type, 1u > const target_qubits{{
-        static_cast< ::bra::qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(target_qubit_)])}};
+      do_call(first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel, to_qubit_index_in_fused_gates, ::bra::state_integer_type{0u});
+    }
+
+    template <typename Iterator>
+    auto fused_controlled_exponential_pauli_z<Iterator>::do_call(
+      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
+      std::vector< ::bra::qubit_type > const& unsorted_fused_qubits,
+      std::vector< ::bra::qubit_type > const& sorted_fused_qubits_with_sentinel,
+      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+      ::bra::state_integer_type const unit_qubit_value) const -> void
+    {
       using complex_type = typename std::iterator_traits<Iterator>::value_type;
       auto enabled_control_qubits = std::vector< ::bra::control_qubit_type >{};
       if (is_control_qubit_enabled_)
         enabled_control_qubits.push_back(static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit_.qubit())]));
-      if (qubit_state_ == ::bra::fused_gate::cez_qubit_state::global_zero)
+      if (unit_qubit_mask_ != ::bra::state_integer_type{0u})
+        ::ket::gate::fused::runtime::ranges::phase_shift_coeff(
+          first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
+          ::ket::utility::exp_i<complex_type>((unit_qubit_value bitand unit_qubit_mask_) == ::bra::state_integer_type{0u} ? phase_ : -phase_), enabled_control_qubits);
+      else if (qubit_state_ == ::bra::fused_gate::cez_qubit_state::global_zero)
         ::ket::gate::fused::runtime::ranges::phase_shift_coeff(
           first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
           ::ket::utility::exp_i<complex_type>(phase_), enabled_control_qubits);
@@ -50,10 +62,16 @@ namespace bra
           first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
           ::ket::utility::exp_i<complex_type>(-phase_), enabled_control_qubits);
       else
+      {
+        if (unsorted_fused_qubits.size() < std::size_t{1u})
+          throw std::runtime_error{"fused_controlled_exponential_pauli_z requires at least one fused qubit"};
+        std::array< ::bra::qubit_type, 1u > const target_qubits{{
+          static_cast< ::bra::qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(target_qubit_)])}};
         ::ket::gate::fused::runtime::ranges::exponential_pauli_z(
           first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel, phase_,
           target_qubits,
           enabled_control_qubits);
+      }
     }
 #else // KET_USE_BIT_MASKS_EXPLICITLY
     template <typename Iterator>
@@ -63,15 +81,26 @@ namespace bra
       std::vector< ::bra::state_integer_type > const& index_masks,
       std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void
     {
-      if (qubit_masks.size() < std::size_t{1u})
-        throw std::runtime_error{"fused_controlled_exponential_pauli_z requires at least one fused qubit"};
-      std::array< ::bra::qubit_type, 1u > const target_qubits{{
-        static_cast< ::bra::qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(target_qubit_)])}};
+      do_call(first, fused_index_wo_qubits, qubit_masks, index_masks, to_qubit_index_in_fused_gates, ::bra::state_integer_type{0u});
+    }
+
+    template <typename Iterator>
+    auto fused_controlled_exponential_pauli_z<Iterator>::do_call(
+      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
+      std::vector< ::bra::state_integer_type > const& qubit_masks,
+      std::vector< ::bra::state_integer_type > const& index_masks,
+      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+      ::bra::state_integer_type const unit_qubit_value) const -> void
+    {
       using complex_type = typename std::iterator_traits<Iterator>::value_type;
       auto enabled_control_qubits = std::vector< ::bra::control_qubit_type >{};
       if (is_control_qubit_enabled_)
         enabled_control_qubits.push_back(static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit_.qubit())]));
-      if (qubit_state_ == ::bra::fused_gate::cez_qubit_state::global_zero)
+      if (unit_qubit_mask_ != ::bra::state_integer_type{0u})
+        ::ket::gate::fused::runtime::ranges::phase_shift_coeff(
+          first, fused_index_wo_qubits, qubit_masks, index_masks,
+          ::ket::utility::exp_i<complex_type>((unit_qubit_value bitand unit_qubit_mask_) == ::bra::state_integer_type{0u} ? phase_ : -phase_), enabled_control_qubits);
+      else if (qubit_state_ == ::bra::fused_gate::cez_qubit_state::global_zero)
         ::ket::gate::fused::runtime::ranges::phase_shift_coeff(
           first, fused_index_wo_qubits, qubit_masks, index_masks,
           ::ket::utility::exp_i<complex_type>(phase_), enabled_control_qubits);
@@ -80,10 +109,16 @@ namespace bra
           first, fused_index_wo_qubits, qubit_masks, index_masks,
           ::ket::utility::exp_i<complex_type>(-phase_), enabled_control_qubits);
       else
+      {
+        if (qubit_masks.size() < std::size_t{1u})
+          throw std::runtime_error{"fused_controlled_exponential_pauli_z requires at least one fused qubit"};
+        std::array< ::bra::qubit_type, 1u > const target_qubits{{
+          static_cast< ::bra::qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(target_qubit_)])}};
         ::ket::gate::fused::runtime::ranges::exponential_pauli_z(
           first, fused_index_wo_qubits, qubit_masks, index_masks, phase_,
           target_qubits,
           enabled_control_qubits);
+      }
     }
 #endif // KET_USE_BIT_MASKS_EXPLICITLY
 
@@ -123,6 +158,22 @@ namespace bra
         return;
 
       qubit_state_ = cez_qubit_state_first[found - first];
+    }
+
+    template <typename Iterator>
+    auto fused_controlled_exponential_pauli_z<Iterator>::do_modify_unit_cez(
+      typename std::vector< ::bra::qubit_type >::const_iterator const first,
+      typename std::vector< ::bra::qubit_type >::const_iterator const last,
+      typename std::vector< ::bra::state_integer_type >::const_iterator const unit_qubit_mask_first)
+    -> void
+    {
+      auto const found = std::find(first, last, target_qubit_);
+      if (found == last)
+        return;
+
+      unit_qubit_mask_ = unit_qubit_mask_first[found - first];
+      assert(unit_qubit_mask_ != ::bra::state_integer_type{0u});
+      assert((unit_qubit_mask_ bitand (unit_qubit_mask_ - ::bra::state_integer_type{1u})) == ::bra::state_integer_type{0u});
     }
 
     template class fused_controlled_exponential_pauli_z< ::bra::data_type::iterator >;

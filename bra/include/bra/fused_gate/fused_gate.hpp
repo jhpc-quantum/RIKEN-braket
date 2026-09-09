@@ -166,6 +166,13 @@ namespace bra
       -> void
       { do_modify_unit_ez(first, last, unit_qubit_mask_first); }
 
+      auto modify_unit_cez(
+        typename std::vector< ::bra::qubit_type >::const_iterator const first,
+        typename std::vector< ::bra::qubit_type >::const_iterator const last,
+        typename std::vector< ::bra::state_integer_type >::const_iterator const unit_qubit_mask_first)
+      -> void
+      { do_modify_unit_cez(first, last, unit_qubit_mask_first); }
+
      private:
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
       virtual auto do_call(
@@ -211,6 +218,12 @@ namespace bra
         typename std::vector< ::bra::fused_gate::cez_qubit_state >::const_iterator const cez_qubit_state_first) -> void;
 
       virtual auto do_modify_unit_ez(
+        typename std::vector< ::bra::qubit_type >::const_iterator const first,
+        typename std::vector< ::bra::qubit_type >::const_iterator const last,
+        typename std::vector< ::bra::state_integer_type >::const_iterator const unit_qubit_mask_first)
+      -> void;
+
+      virtual auto do_modify_unit_cez(
         typename std::vector< ::bra::qubit_type >::const_iterator const first,
         typename std::vector< ::bra::qubit_type >::const_iterator const last,
         typename std::vector< ::bra::state_integer_type >::const_iterator const unit_qubit_mask_first)
