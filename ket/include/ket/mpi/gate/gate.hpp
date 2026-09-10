@@ -2760,6 +2760,28 @@ namespace ket
               [](permutated_control_qubit_type const permutated_control_qubit) { return permutated_control_qubit.qubit(); });
 
             auto const cache_size = ::ket::utility::integer_exp2<StateInteger>(num_on_cache_qubits);
+            using std::begin;
+            using std::end;
+            auto const num_operated_qubits
+              = static_cast<BitInteger>(
+                  std::distance(begin(permutated_qubits), end(permutated_qubits))
+                  + std::distance(begin(permutated_control_qubits), end(permutated_control_qubits)));
+            if (num_operated_qubits >= num_on_cache_qubits)
+            {
+              if (::ket::mpi::page::runtime::ranges::none_on_page(local_state, permutated_qubits, permutated_control_qubits))
+              {
+                auto const data_block_size
+                  = static_cast<StateInteger>(::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment));
+                auto const num_local_qubits = ::ket::utility::integer_log2<BitInteger>(data_block_size);
+                return ::ket::mpi::gate::local::runtime::nopage::all_on_cache::small::gate(
+                  mpi_policy, parallel_policy, local_state, buffer, communicator, environment, unit_control_qubit_mask,
+                  std::forward<Function>(function), num_local_qubits, permutated_qubits, permutated_control_qubits);
+              }
+
+              return ::ket::mpi::gate::local::runtime::page::all_on_cache::small::gate(
+                mpi_policy, parallel_policy, local_state, buffer, communicator, environment, unit_control_qubit_mask,
+                std::forward<Function>(function), num_on_cache_qubits, permutated_qubits, permutated_control_qubits);
+            }
 
             // xxxx|yyyy|zzzzzz: local qubits
             // * xxxx: off-cache qubits
@@ -2861,6 +2883,26 @@ namespace ket
               [](permutated_qubit_type const permutated_qubit) { return permutated_qubit.qubit(); });
 
             auto const cache_size = ::ket::utility::integer_exp2<state_integer_type>(num_on_cache_qubits);
+            using std::begin;
+            using std::end;
+            auto const num_operated_qubits
+              = static_cast<BitInteger>(std::distance(begin(permutated_qubits), end(permutated_qubits)));
+            if (num_operated_qubits >= num_on_cache_qubits)
+            {
+              if (::ket::mpi::page::runtime::ranges::none_on_page(local_state, permutated_qubits))
+              {
+                auto const data_block_size
+                  = static_cast<state_integer_type>(::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment));
+                auto const num_local_qubits = ::ket::utility::integer_log2<BitInteger>(data_block_size);
+                return ::ket::mpi::gate::local::runtime::nopage::all_on_cache::small::gate(
+                  mpi_policy, parallel_policy, local_state, buffer, communicator, environment,
+                  std::forward<Function>(function), num_local_qubits, permutated_qubits);
+              }
+
+              return ::ket::mpi::gate::local::runtime::page::all_on_cache::small::gate(
+                mpi_policy, parallel_policy, local_state, buffer, communicator, environment,
+                std::forward<Function>(function), num_on_cache_qubits, permutated_qubits);
+            }
 
             // xxxx|yyyy|zzzzzz: local qubits
             // * xxxx: off-cache qubits
@@ -3265,6 +3307,47 @@ namespace ket
               }, qubits);
           }
 
+          // preparation_function may reorder or remove qubits after interchange,
+          // but every resulting qubit must have been present in the input range.
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator,
+            typename Function, typename QubitsRange, typename PreparationFunction>
+          inline auto gate_with_preparation(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Function&& function, BitInteger const num_on_cache_qubits,
+            QubitsRange& qubits, PreparationFunction&& preparation_function)
+          -> RandomAccessRange&
+          {
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::runtime::append_qubits_string(std::string("Gate"), qubits),
+              environment};
+
+            return ::ket::mpi::utility::runtime::ranges::apply_local_gate(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment,
+              [&function, num_on_cache_qubits, &permutation, &qubits, &preparation_function](
+                MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+                RandomAccessRange& local_state,
+                std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+                yampi::communicator const& communicator, yampi::environment const& environment,
+                auto const&)
+              {
+                preparation_function();
+                using qubit_type = ::ket::utility::meta::range_value_t<QubitsRange>;
+                return ::ket::mpi::gate::local::runtime::gate(
+                  mpi_policy, parallel_policy, local_state, buffer, communicator, environment,
+                  function, num_on_cache_qubits,
+                  qubits | boost::adaptors::transformed(
+                    [&permutation](qubit_type const qubit) { return permutation[qubit]; }));
+              }, qubits);
+          }
+
           template <
             typename MpiPolicy, typename ParallelPolicy,
             typename RandomAccessRange, typename StateInteger, typename BitInteger,
@@ -3416,6 +3499,34 @@ namespace ket
               mpi_policy, parallel_policy,
               local_state, permutation, buffer, communicator, environment,
               std::forward<Function>(function), num_on_cache_qubits, qubits);
+          }
+
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator,
+            typename Function, typename QubitsRange, typename PreparationFunction>
+          inline auto gate_with_preparation(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Function&& function, QubitsRange& qubits, PreparationFunction&& preparation_function)
+          -> RandomAccessRange&
+          {
+            using qubit_type = ::ket::utility::meta::range_value_t<QubitsRange>;
+            using bit_integer_type = ::ket::meta::bit_integer_t<qubit_type>;
+#   ifndef KET_DEFAULT_NUM_ON_CACHE_QUBITS
+#     define KET_DEFAULT_NUM_ON_CACHE_QUBITS 16
+#   endif // KET_DEFAULT_NUM_ON_CACHE_QUBITS
+            constexpr auto num_on_cache_qubits = bit_integer_type{KET_DEFAULT_NUM_ON_CACHE_QUBITS};
+
+            return ::ket::mpi::gate::runtime::ranges::gate_with_preparation(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment,
+              std::forward<Function>(function), num_on_cache_qubits, qubits,
+              std::forward<PreparationFunction>(preparation_function));
           }
 
           template <

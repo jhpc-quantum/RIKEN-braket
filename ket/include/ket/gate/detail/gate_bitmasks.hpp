@@ -3382,6 +3382,13 @@ namespace ket
             return;
           }
 
+          auto const num_operated_qubits = static_cast<BitInteger>(end(qubits) - begin(qubits));
+          if (num_operated_qubits >= num_on_cache_qubits)
+          {
+            ::ket::gate::runtime::nocache::qubit_ranges::gate(parallel_policy, first, last, std::forward<Function>(function), qubits);
+            return;
+          }
+
           // xxxx|yyyy|zzzzzz: (local) qubits
           // * xxxx: off-cache qubits
           // * yyyy|zzzzzz: on-cache qubits

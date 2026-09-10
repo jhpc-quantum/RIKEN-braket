@@ -30,6 +30,7 @@ namespace bra
   {
     ket::utility::policy::parallel<unsigned int> parallel_policy_;
     MpiPolicy mpi_policy_;
+    unsigned int num_on_cache_qubits_;
 
     using data_type = ::bra::paged_data_type;
     data_type data_;
@@ -62,6 +63,7 @@ namespace bra
       unsigned int const num_local_qubits,
       unsigned int const num_page_qubits,
       unsigned int const num_threads_per_process,
+      unsigned int const num_on_cache_qubits,
       MpiPolicy mpi_policy,
       yampi::communicator const& circuit_communicator,
       yampi::environment const& environment,
@@ -69,6 +71,7 @@ namespace bra
       : ::bra::mpi_state{std::forward<StateConstructorArgs>(state_constructor_args)...},
         parallel_policy_{num_threads_per_process},
         mpi_policy_{std::move(mpi_policy)},
+        num_on_cache_qubits_{num_on_cache_qubits},
         data_{
           mpi_policy_, num_local_qubits, num_page_qubits, initial_integer,
           permutation_, circuit_communicator, environment},

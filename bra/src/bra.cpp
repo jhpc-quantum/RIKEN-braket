@@ -10,6 +10,7 @@
 #include <random>
 #include <chrono>
 #include <memory>
+#include <limits>
 
 #include <cxxopts.hpp>
 
@@ -42,6 +43,12 @@ int main(int argc, char* argv[])
   using rng_type = std::mt19937_64;
   using seed_type = rng_type::result_type;
 
+#ifdef KET_DEFAULT_NUM_ON_CACHE_QUBITS
+  constexpr auto default_num_on_cache_qubits = static_cast<unsigned int>(KET_DEFAULT_NUM_ON_CACHE_QUBITS);
+#else // KET_DEFAULT_NUM_ON_CACHE_QUBITS
+  constexpr auto default_num_on_cache_qubits = 16u;
+#endif // KET_DEFAULT_NUM_ON_CACHE_QUBITS
+
 #ifndef BRA_NO_MPI
   yampi::environment environment{argc, argv, yampi::thread_support::funneled};
   auto const world_communicator = yampi::communicator{yampi::tags::world_communicator};
@@ -69,6 +76,7 @@ int main(int argc, char* argv[])
     ("unit-qubits", "set the number of unit qubits (meaningful only for unit mode)", cxxopts::value<unsigned int>())
     ("unit-processes", "set the number of MPI processes for each unit (meaningful only for unit mode)", cxxopts::value<unsigned int>())
     ("threads", "set the number of threads per process", cxxopts::value<unsigned int>()->default_value("1"))
+    ("num-cache-qubits", "set the number of qubits represented by the cache used in gate fusion", cxxopts::value<unsigned int>()->default_value(std::to_string(default_num_on_cache_qubits)))
     ("page-qubits", "set the number of page qubits", cxxopts::value<unsigned int>()->default_value("2"))
     ("seed", "set seed of random number generator", cxxopts::value<seed_type>()->default_value("1"))
     ("h,help", "print this information")
@@ -78,6 +86,7 @@ int main(int argc, char* argv[])
   options.add_options()
     ("f,file", "set the name of input qcx file, or read from standard input if this option is unspecified", cxxopts::value<std::string>())
     ("threads", "set the number of threads", cxxopts::value<unsigned int>()->default_value("1"))
+    ("num-cache-qubits", "set the number of qubits represented by the cache used in gate fusion", cxxopts::value<unsigned int>()->default_value(std::to_string(default_num_on_cache_qubits)))
     ("seed", "set seed of random number generator", cxxopts::value<seed_type>()->default_value("1"))
     ("h,help", "print this information")
     ;
@@ -143,7 +152,17 @@ int main(int argc, char* argv[])
 #endif // BRA_NO_MPI
 
   auto const num_threads_per_process = parse_result["threads"].as<unsigned int>();
+  auto const num_on_cache_qubits = parse_result["num-cache-qubits"].as<unsigned int>();
   auto const given_seed = parse_result["seed"].as<seed_type>();
+
+  if (num_on_cache_qubits >= std::numeric_limits< ::bra::state_integer_type >::digits)
+  {
+#ifndef BRA_NO_MPI
+    if (is_io_root_rank)
+#endif // BRA_NO_MPI
+      std::cerr << "Error: num-cache-qubits should be less than " << std::numeric_limits< ::bra::state_integer_type >::digits << '\n' << options.help() << std::flush;
+    return EXIT_FAILURE;
+  }
 
   std::ifstream possible_input_stream;
   if (parse_result.count("file"))
@@ -261,12 +280,12 @@ int main(int argc, char* argv[])
     = is_unit
       ? bra::make_unit_mpi_state(
           num_page_qubits, interpreter.initial_state_value(), interpreter.num_lqubits(), num_unit_qubits, interpreter.initial_permutation(),
-          num_threads_per_process, num_processes_per_unit, seed,
+          num_threads_per_process, num_on_cache_qubits, num_processes_per_unit, seed,
           interpreter.is_depolarizing_channel(), interpreter.depolarizing_px(), interpreter.depolarizing_py(), interpreter.depolarizing_pz(), interpreter.depolarizing_seed() > 0, depolarizing_seed,
           circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment)
       : bra::make_simple_mpi_state(
           num_page_qubits, interpreter.initial_state_value(), interpreter.num_lqubits(), interpreter.initial_permutation(),
-          num_threads_per_process, seed,
+          num_threads_per_process, num_on_cache_qubits, seed,
           interpreter.is_depolarizing_channel(), interpreter.depolarizing_px(), interpreter.depolarizing_py(), interpreter.depolarizing_pz(), interpreter.depolarizing_seed() > 0, depolarizing_seed,
           circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment);
 # else // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
@@ -274,12 +293,12 @@ int main(int argc, char* argv[])
     = is_unit
       ? bra::make_unit_mpi_state(
           num_page_qubits, interpreter.initial_state_value(), interpreter.num_lqubits(), num_unit_qubits, interpreter.initial_permutation(),
-          num_threads_per_process, num_processes_per_unit, seed,
+          num_threads_per_process, num_on_cache_qubits, num_processes_per_unit, seed,
           interpreter.is_depolarizing_channel(), interpreter.depolarizing_px(), interpreter.depolarizing_py(), interpreter.depolarizing_pz(), interpreter.depolarizing_seed() > 0, depolarizing_seed,
           num_elements_in_buffer, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment)
       : bra::make_simple_mpi_state(
           num_page_qubits, interpreter.initial_state_value(), interpreter.num_lqubits(), interpreter.initial_permutation(),
-          num_threads_per_process, seed,
+          num_threads_per_process, num_on_cache_qubits, seed,
           interpreter.is_depolarizing_channel(), interpreter.depolarizing_px(), interpreter.depolarizing_py(), interpreter.depolarizing_pz(), interpreter.depolarizing_seed() > 0, depolarizing_seed,
           num_elements_in_buffer, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment);
 # endif // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
@@ -315,12 +334,12 @@ int main(int argc, char* argv[])
   auto nompi_states = std::vector< ::bra::nompi_state >{};
   nompi_states.reserve(num_circuits);
   nompi_states.emplace_back(
-    interpreter.initial_state_value(), interpreter.num_qubits(), num_threads_per_process, given_seed,
+    interpreter.initial_state_value(), interpreter.num_qubits(), num_threads_per_process, num_on_cache_qubits, given_seed,
     interpreter.is_depolarizing_channel(), interpreter.depolarizing_px(), interpreter.depolarizing_py(), interpreter.depolarizing_pz(), interpreter.depolarizing_seed() > 0, static_cast<seed_type>(interpreter.depolarizing_seed()),
     0);
   for (auto circuit_index = 1; circuit_index < static_cast<int>(num_circuits); ++circuit_index)
     nompi_states.emplace_back(
-      interpreter.initial_state_value(), interpreter.num_qubits(), num_threads_per_process, seed_generator(),
+      interpreter.initial_state_value(), interpreter.num_qubits(), num_threads_per_process, num_on_cache_qubits, seed_generator(),
       interpreter.is_depolarizing_channel(), interpreter.depolarizing_px(), interpreter.depolarizing_py(), interpreter.depolarizing_pz(), interpreter.depolarizing_seed() > 0, depolarizing_seed_generator(),
       circuit_index);
 
@@ -954,4 +973,3 @@ int main(int argc, char* argv[])
   }
 #endif // BRA_NO_MPI
 }
-

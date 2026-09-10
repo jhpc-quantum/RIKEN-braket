@@ -2000,17 +2000,34 @@ namespace bra
 
     auto const num_local_qubits
       = static_cast<std::size_t>(ket::mpi::utility::policy::num_local_qubits(mpi_policy_, data_block_size));
-    if (fused_qubits.size() + local_optional_qubits.size() > num_local_qubits)
-    {
-      auto qubits_to_localize = fused_qubits;
-      qubits_to_localize.insert(
-        end(qubits_to_localize), begin(local_optional_qubits),
-        begin(local_optional_qubits) + (num_local_qubits - fused_qubits.size()));
-      ket::mpi::gate::runtime::ranges::identity(
-        mpi_policy_, parallel_policy_, data_, permutation_, buffer_,
-        circuit_communicator_, environment_, qubits_to_localize);
-    }
+    auto const num_mandatory_fused_qubits = fused_qubits.size();
+    auto const num_local_optional_qubits_to_keep
+      = std::min(local_optional_qubits.size(), num_local_qubits - num_mandatory_fused_qubits);
+    fused_qubits.insert(
+      end(fused_qubits), begin(local_optional_qubits),
+      begin(local_optional_qubits) + num_local_optional_qubits_to_keep);
 
+    auto to_qubit_index_in_fused_gates = std::vector< ::bra::bit_integer_type >(total_num_qubits_);
+# if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
+    auto const call_fused_gates
+      = paged_mpi_fused_gate_caller<
+          fused_gate_iterator, paged_fused_gate_iterator,
+          cache_aware_fused_gate_iterator, cache_aware_paged_fused_gate_iterator>{
+          fused_gates_, paged_fused_gates_,
+          cache_aware_fused_gates_, cache_aware_paged_fused_gates_,
+          to_qubit_index_in_fused_gates};
+# elif !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION)
+    auto const call_fused_gates
+      = paged_mpi_fused_gate_caller<fused_gate_iterator, paged_fused_gate_iterator>{
+          fused_gates_, paged_fused_gates_, to_qubit_index_in_fused_gates};
+# else // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && defined(KET_USE_ON_CACHE_STATE_VECTOR)
+    auto const call_fused_gates
+      = paged_mpi_fused_gate_caller<fused_gate_iterator>{
+          fused_gates_, to_qubit_index_in_fused_gates};
+# endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && defined(KET_USE_ON_CACHE_STATE_VECTOR)
+
+    auto const prepare_fused_gates = [&]()
+    {
     // Partition controls into local, unit, and global qubits.
     auto const nonglobal_fused_control_qubit_first = begin(fused_control_qubits);
     auto const global_fused_control_qubit_last = end(fused_control_qubits);
@@ -2206,6 +2223,7 @@ namespace bra
 #   endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
 
     // modify fused_qubits and fused_control_qubits
+    fused_qubits.resize(num_mandatory_fused_qubits);
     std::copy(local_fused_cez_qubit_first, local_fused_cez_qubit_last, std::back_inserter(fused_qubits));
     std::copy(local_fused_ez_qubit_first, local_fused_ez_qubit_last, std::back_inserter(fused_qubits));
     std::transform(
@@ -2216,40 +2234,26 @@ namespace bra
         fused_qubits.size(), mpi_policy_, data_, circuit_communicator_, environment_);
 
     // generate to_qubit_index_in_fused_gates
-    auto to_qubit_index_in_fused_gates = std::vector< ::bra::bit_integer_type >(total_num_qubits_);
     std::iota(begin(to_qubit_index_in_fused_gates), end(to_qubit_index_in_fused_gates), ::bra::bit_integer_type{0u});
     auto present_qubit_index = ::bra::bit_integer_type{0u};
     for (auto const fused_qubit: fused_qubits)
       to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(fused_qubit)] = present_qubit_index++;
 
-# if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
-    auto const call_fused_gates
-      = paged_mpi_fused_gate_caller<
-          fused_gate_iterator, paged_fused_gate_iterator,
-          cache_aware_fused_gate_iterator, cache_aware_paged_fused_gate_iterator>{
-          fused_gates_, paged_fused_gates_,
-          cache_aware_fused_gates_, cache_aware_paged_fused_gates_,
-          to_qubit_index_in_fused_gates};
-# elif !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION)
-    auto const call_fused_gates
-      = paged_mpi_fused_gate_caller<fused_gate_iterator, paged_fused_gate_iterator>{
-          fused_gates_, paged_fused_gates_, to_qubit_index_in_fused_gates};
-# else // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && defined(KET_USE_ON_CACHE_STATE_VECTOR)
-    auto const call_fused_gates
-      = paged_mpi_fused_gate_caller<fused_gate_iterator>{
-          fused_gates_, to_qubit_index_in_fused_gates};
-# endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && defined(KET_USE_ON_CACHE_STATE_VECTOR)
+    };
 
     if (fused_qubits.empty())
+    {
+      prepare_fused_gates();
       ket::mpi::gate::runtime::ranges::gate(
         mpi_policy_, parallel_policy_,
         data_, permutation_, buffer_, circuit_communicator_, environment_,
-        call_fused_gates);
+        call_fused_gates, num_on_cache_qubits_);
+    }
     else
-      ket::mpi::gate::runtime::ranges::gate(
+      ket::mpi::gate::runtime::ranges::gate_with_preparation(
         mpi_policy_, parallel_policy_,
         data_, permutation_, buffer_, circuit_communicator_, environment_,
-        call_fused_gates, fused_qubits);
+        call_fused_gates, num_on_cache_qubits_, fused_qubits, prepare_fused_gates);
 
     fused_gates_.clear();
 # if !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))

@@ -86,11 +86,12 @@ https://github.com/jhpc-quantum/RIKEN-braket/blob/ec5460b24455de307949ad1289752a
 *bra* can be used in the following way:
 
 ```bash
-$ ./bin/bra --file <path> --threads <threads> --seed <seed>
+$ ./bin/bra --file <path> --threads <threads> --num-cache-qubits <cache-qubits> --seed <seed>
 ```
 
 * `--file <path>`: specifies the path of "quantum assembler" file. If this option is omitted, "quantum assembler" code is read from the standard input. Therefore `./bin/bra < <path>` and `/path/to/script_generating_my_excellent_quantum_circuit | ./bin/bra` are OK.
 * `--threads <threads>`: specifies the number of threads. The default value is `1` if this option is omitted.
+* `--num-cache-qubits <cache-qubits>`: specifies the number of on-cache qubits used by gate fusion. The default value is `KET_DEFAULT_NUM_ON_CACHE_QUBITS` (or `16` if the macro is not defined). A hardware-cache-sized value enables cache-efficient fusion. For MPI simulations, specifying the number of local qubits allows a larger fusion block to reduce communication; fusion falls back to the non-cache algorithm when its number of operated qubits is greater than or equal to this value.
 * `--seed <seed>`: specifies the initial seed of the random number generator. You can omit this option, too.
 
 ### MPI version
@@ -98,7 +99,7 @@ $ ./bin/bra --file <path> --threads <threads> --seed <seed>
 There are additional options other than ones of the nompi version of *bra*.
 
 ```bash
-$ mpiexec -n <processes> ./bin/bra --file <path> --threads <threads> --seed <seed> --mode <mode> --unit-qubits <unit-qubits> --unit-processes <unit-processes> --page-qubits <page-qubits>
+$ mpiexec -n <processes> ./bin/bra --file <path> --threads <threads> --num-cache-qubits <cache-qubits> --seed <seed> --mode <mode> --unit-qubits <unit-qubits> --unit-processes <unit-processes> --page-qubits <page-qubits>
 ```
 
 ## Quantum assembler

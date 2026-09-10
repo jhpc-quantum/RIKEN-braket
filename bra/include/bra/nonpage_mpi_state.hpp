@@ -30,6 +30,7 @@ namespace bra
   {
     ket::utility::policy::parallel<unsigned int> parallel_policy_;
     MpiPolicy mpi_policy_;
+    unsigned int num_on_cache_qubits_;
 
     using data_type = ::bra::data_type;
     data_type data_;
@@ -51,6 +52,7 @@ namespace bra
       ::bra::state::state_integer_type const initial_integer,
       unsigned int const num_local_qubits,
       unsigned int const num_threads_per_process,
+      unsigned int const num_on_cache_qubits,
       MpiPolicy mpi_policy,
       yampi::communicator const& circuit_communicator,
       yampi::environment const& environment,
@@ -58,6 +60,7 @@ namespace bra
       : ::bra::mpi_state{std::forward<StateConstructorArgs>(state_constructor_args)...},
         parallel_policy_{num_threads_per_process},
         mpi_policy_{std::move(mpi_policy)},
+        num_on_cache_qubits_{num_on_cache_qubits},
         data_{generate_initial_data(num_local_qubits, initial_integer, circuit_communicator, environment)},
         fused_gates_{}
 #   if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
