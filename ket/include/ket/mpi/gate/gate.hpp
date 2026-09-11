@@ -1182,9 +1182,9 @@ namespace ket
 
             if (::ket::utility::all_in_state_vector(num_on_cache_qubits, permutated_qubit.qubit(), permutated_qubits.qubit()...))
             {
-              // ....|..ppzzzzzz (num. qubits <= num. on-cache qubits)
+              // ....|..ppzzzzzz (num. local qubits <= num. on-cache qubits)
               //         ^   ^   <- operated qubits
-              if (::ket::mpi::utility::policy::num_qubits(mpi_policy, local_state, communicator, environment) <= num_on_cache_qubits)
+              if (::ket::mpi::utility::policy::num_local_qubits(mpi_policy, local_state, communicator, environment) <= num_on_cache_qubits)
                 return ::ket::mpi::gate::local::page::all_on_cache::small::gate(
                   mpi_policy, parallel_policy, local_state, buffer, communicator, environment, unit_control_qubit_mask,
                   std::forward<Function>(function), permutated_qubit, permutated_qubits...);
@@ -2841,9 +2841,9 @@ namespace ket
             //         ^^   ^     ^   <- operated qubits
             if (::ket::utility::runtime::ranges::all_in_state_vector(num_on_cache_qubits, qubits, control_qubits))
             {
-              // ....|..ppzzzzzz (num. qubits <= num. on-cache qubits)
+              // ....|..ppzzzzzz (num. local qubits <= num. on-cache qubits)
               //         ^   ^   <- operated qubits
-              if (::ket::mpi::utility::policy::num_qubits(mpi_policy, local_state, communicator, environment) <= num_on_cache_qubits)
+              if (::ket::mpi::utility::policy::num_local_qubits(mpi_policy, local_state, communicator, environment) <= num_on_cache_qubits)
                 return ::ket::mpi::gate::local::runtime::page::all_on_cache::small::gate(
                   mpi_policy, parallel_policy, local_state, buffer, communicator, environment, unit_control_qubit_mask,
                   std::forward<Function>(function), num_on_cache_qubits, permutated_qubits, permutated_control_qubits);
@@ -2962,9 +2962,9 @@ namespace ket
             //         ^^   ^     ^   <- operated qubits
             if (::ket::utility::runtime::ranges::all_in_state_vector(num_on_cache_qubits, qubits))
             {
-              // ....|..ppzzzzzz (num. qubits <= num. on-cache qubits)
+              // ....|..ppzzzzzz (num. local qubits <= num. on-cache qubits)
               //         ^   ^   <- operated qubits
-              if (::ket::mpi::utility::policy::num_qubits(mpi_policy, local_state, communicator, environment) <= num_on_cache_qubits)
+              if (::ket::mpi::utility::policy::num_local_qubits(mpi_policy, local_state, communicator, environment) <= num_on_cache_qubits)
                 return ::ket::mpi::gate::local::runtime::page::all_on_cache::small::gate(
                   mpi_policy, parallel_policy, local_state, buffer, communicator, environment,
                   std::forward<Function>(function), num_on_cache_qubits, permutated_qubits);
