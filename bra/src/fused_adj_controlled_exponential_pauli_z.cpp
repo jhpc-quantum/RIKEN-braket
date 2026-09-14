@@ -73,6 +73,48 @@ namespace bra
           enabled_control_qubits);
       }
     }
+
+    template <typename Iterator>
+    auto fused_adj_controlled_exponential_pauli_z<Iterator>::do_call_in_execute(
+      ::ket::utility::policy::parallel<unsigned int> const parallel_policy, int const thread_index,
+      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
+      std::vector< ::bra::qubit_type > const& unsorted_fused_qubits,
+      std::vector< ::bra::qubit_type > const& sorted_fused_qubits_with_sentinel,
+      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+      ::bra::state_integer_type const unit_qubit_value) const -> void
+    {
+      using complex_type = typename std::iterator_traits<Iterator>::value_type;
+      auto enabled_control_qubits = std::vector< ::bra::control_qubit_type >{};
+      if (is_control_qubit_enabled_)
+        enabled_control_qubits.push_back(static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit_.qubit())]));
+      if (unit_qubit_mask_ != ::bra::state_integer_type{0u})
+        ::ket::gate::fused::runtime::ranges::adj_phase_shift_coeff(
+          parallel_policy, thread_index,
+          first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
+          ::ket::utility::exp_i<complex_type>((unit_qubit_value bitand unit_qubit_mask_) == ::bra::state_integer_type{0u} ? phase_ : -phase_), enabled_control_qubits);
+      else if (qubit_state_ == ::bra::fused_gate::cez_qubit_state::global_zero)
+        ::ket::gate::fused::runtime::ranges::adj_phase_shift_coeff(
+          parallel_policy, thread_index,
+          first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
+          ::ket::utility::exp_i<complex_type>(phase_), enabled_control_qubits);
+      else if (qubit_state_ == ::bra::fused_gate::cez_qubit_state::global_one)
+        ::ket::gate::fused::runtime::ranges::adj_phase_shift_coeff(
+          parallel_policy, thread_index,
+          first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
+          ::ket::utility::exp_i<complex_type>(-phase_), enabled_control_qubits);
+      else
+      {
+        if (unsorted_fused_qubits.size() < std::size_t{1u})
+          throw std::runtime_error{"fused_adj_controlled_exponential_pauli_z requires at least one fused qubit"};
+        std::array< ::bra::qubit_type, 1u > const target_qubits{{
+          static_cast< ::bra::qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(target_qubit_)])}};
+        ::ket::gate::fused::runtime::ranges::adj_exponential_pauli_z(
+          parallel_policy, thread_index,
+          first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel, phase_,
+          target_qubits,
+          enabled_control_qubits);
+      }
+    }
 #else // KET_USE_BIT_MASKS_EXPLICITLY
     template <typename Iterator>
     auto fused_adj_controlled_exponential_pauli_z<Iterator>::do_call(
@@ -115,6 +157,48 @@ namespace bra
         std::array< ::bra::qubit_type, 1u > const target_qubits{{
           static_cast< ::bra::qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(target_qubit_)])}};
         ::ket::gate::fused::runtime::ranges::adj_exponential_pauli_z(
+          first, fused_index_wo_qubits, qubit_masks, index_masks, phase_,
+          target_qubits,
+          enabled_control_qubits);
+      }
+    }
+
+    template <typename Iterator>
+    auto fused_adj_controlled_exponential_pauli_z<Iterator>::do_call_in_execute(
+      ::ket::utility::policy::parallel<unsigned int> const parallel_policy, int const thread_index,
+      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
+      std::vector< ::bra::state_integer_type > const& qubit_masks,
+      std::vector< ::bra::state_integer_type > const& index_masks,
+      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+      ::bra::state_integer_type const unit_qubit_value) const -> void
+    {
+      using complex_type = typename std::iterator_traits<Iterator>::value_type;
+      auto enabled_control_qubits = std::vector< ::bra::control_qubit_type >{};
+      if (is_control_qubit_enabled_)
+        enabled_control_qubits.push_back(static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit_.qubit())]));
+      if (unit_qubit_mask_ != ::bra::state_integer_type{0u})
+        ::ket::gate::fused::runtime::ranges::adj_phase_shift_coeff(
+          parallel_policy, thread_index,
+          first, fused_index_wo_qubits, qubit_masks, index_masks,
+          ::ket::utility::exp_i<complex_type>((unit_qubit_value bitand unit_qubit_mask_) == ::bra::state_integer_type{0u} ? phase_ : -phase_), enabled_control_qubits);
+      else if (qubit_state_ == ::bra::fused_gate::cez_qubit_state::global_zero)
+        ::ket::gate::fused::runtime::ranges::adj_phase_shift_coeff(
+          parallel_policy, thread_index,
+          first, fused_index_wo_qubits, qubit_masks, index_masks,
+          ::ket::utility::exp_i<complex_type>(phase_), enabled_control_qubits);
+      else if (qubit_state_ == ::bra::fused_gate::cez_qubit_state::global_one)
+        ::ket::gate::fused::runtime::ranges::adj_phase_shift_coeff(
+          parallel_policy, thread_index,
+          first, fused_index_wo_qubits, qubit_masks, index_masks,
+          ::ket::utility::exp_i<complex_type>(-phase_), enabled_control_qubits);
+      else
+      {
+        if (qubit_masks.size() < std::size_t{1u})
+          throw std::runtime_error{"fused_adj_controlled_exponential_pauli_z requires at least one fused qubit"};
+        std::array< ::bra::qubit_type, 1u > const target_qubits{{
+          static_cast< ::bra::qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(target_qubit_)])}};
+        ::ket::gate::fused::runtime::ranges::adj_exponential_pauli_z(
+          parallel_policy, thread_index,
           first, fused_index_wo_qubits, qubit_masks, index_masks, phase_,
           target_qubits,
           enabled_control_qubits);

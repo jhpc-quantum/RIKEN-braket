@@ -35,12 +35,28 @@ namespace bra
         std::vector< ::bra::qubit_type > const& unsorted_fused_qubits,
         std::vector< ::bra::qubit_type > const& sorted_fused_qubits_with_sentinel,
         std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void override;
+
+      auto do_call_in_execute(
+        ::ket::utility::policy::parallel<unsigned int> const parallel_policy, int const thread_index,
+        Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
+        std::vector< ::bra::qubit_type > const& unsorted_fused_qubits,
+        std::vector< ::bra::qubit_type > const& sorted_fused_qubits_with_sentinel,
+        std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+        ::bra::state_integer_type const unit_qubit_value) const -> void override;
 # else // KET_USE_BIT_MASKS_EXPLICITLY
       auto do_call(
         Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
         std::vector< ::bra::state_integer_type > const& qubit_masks,
         std::vector< ::bra::state_integer_type > const& index_masks,
         std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void override;
+
+      auto do_call_in_execute(
+        ::ket::utility::policy::parallel<unsigned int> const parallel_policy, int const thread_index,
+        Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
+        std::vector< ::bra::state_integer_type > const& qubit_masks,
+        std::vector< ::bra::state_integer_type > const& index_masks,
+        std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+        ::bra::state_integer_type const unit_qubit_value) const -> void override;
 # endif // KET_USE_BIT_MASKS_EXPLICITLY
     }; // class fused_sqrt_pauli_zz<Iterator>
   } // namespace fused_gate

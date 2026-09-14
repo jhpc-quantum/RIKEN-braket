@@ -44,6 +44,29 @@ namespace bra
         first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
         enabled_control_qubits);
     }
+
+    template <typename Iterator>
+    auto fused_controlled_pauli_z<Iterator>::do_call_in_execute(
+      ::ket::utility::policy::parallel<unsigned int> const parallel_policy, int const thread_index,
+      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
+      std::vector< ::bra::qubit_type > const& unsorted_fused_qubits,
+      std::vector< ::bra::qubit_type > const& sorted_fused_qubits_with_sentinel,
+      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+      ::bra::state_integer_type const) const -> void
+    {
+      if (unsorted_fused_qubits.empty() and (is_control_qubit1_enabled_ or is_control_qubit2_enabled_))
+        throw std::runtime_error{"fused_controlled_pauli_z requires at least one fused qubit"};
+      auto enabled_control_qubits = std::vector< ::bra::control_qubit_type >{};
+      enabled_control_qubits.reserve(2u);
+      if (is_control_qubit1_enabled_)
+        enabled_control_qubits.push_back(static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit1_.qubit())]));
+      if (is_control_qubit2_enabled_)
+        enabled_control_qubits.push_back(static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit2_.qubit())]));
+      ::ket::gate::fused::runtime::ranges::pauli_z(
+        parallel_policy, thread_index,
+        first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
+        enabled_control_qubits);
+    }
 #else // KET_USE_BIT_MASKS_EXPLICITLY
     template <typename Iterator>
     auto fused_controlled_pauli_z<Iterator>::do_call(
@@ -61,6 +84,29 @@ namespace bra
       if (is_control_qubit2_enabled_)
         enabled_control_qubits.push_back(static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit2_.qubit())]));
       ::ket::gate::fused::runtime::ranges::pauli_z(
+        first, fused_index_wo_qubits, qubit_masks, index_masks,
+        enabled_control_qubits);
+    }
+
+    template <typename Iterator>
+    auto fused_controlled_pauli_z<Iterator>::do_call_in_execute(
+      ::ket::utility::policy::parallel<unsigned int> const parallel_policy, int const thread_index,
+      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
+      std::vector< ::bra::state_integer_type > const& qubit_masks,
+      std::vector< ::bra::state_integer_type > const& index_masks,
+      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+      ::bra::state_integer_type const) const -> void
+    {
+      if (qubit_masks.empty() and (is_control_qubit1_enabled_ or is_control_qubit2_enabled_))
+        throw std::runtime_error{"fused_controlled_pauli_z requires at least one fused qubit"};
+      auto enabled_control_qubits = std::vector< ::bra::control_qubit_type >{};
+      enabled_control_qubits.reserve(2u);
+      if (is_control_qubit1_enabled_)
+        enabled_control_qubits.push_back(static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit1_.qubit())]));
+      if (is_control_qubit2_enabled_)
+        enabled_control_qubits.push_back(static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit2_.qubit())]));
+      ::ket::gate::fused::runtime::ranges::pauli_z(
+        parallel_policy, thread_index,
         first, fused_index_wo_qubits, qubit_masks, index_masks,
         enabled_control_qubits);
     }

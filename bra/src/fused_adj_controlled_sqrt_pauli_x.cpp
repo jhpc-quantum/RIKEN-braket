@@ -48,6 +48,34 @@ namespace bra
           first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
           target_qubit);
     }
+
+    template <typename Iterator>
+    auto fused_adj_controlled_sqrt_pauli_x<Iterator>::do_call_in_execute(
+      ::ket::utility::policy::parallel<unsigned int> const parallel_policy, int const thread_index,
+      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
+      std::vector< ::bra::qubit_type > const& unsorted_fused_qubits,
+      std::vector< ::bra::qubit_type > const& sorted_fused_qubits_with_sentinel,
+      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+      ::bra::state_integer_type const) const -> void
+    {
+      if (unsorted_fused_qubits.size() < std::size_t{1u})
+        throw std::runtime_error{"fused_adj_controlled_sqrt_pauli_x requires at least one fused qubit"};
+      auto const target_qubit = static_cast< ::bra::qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(target_qubit_)]);
+      if (is_control_qubit_enabled_)
+      {
+        std::array< ::bra::control_qubit_type, 1u > const control_qubits{{
+          static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit_.qubit())])}};
+        ::ket::gate::fused::runtime::ranges::adj_sqrt_pauli_x(
+        parallel_policy, thread_index,
+          first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
+          target_qubit, control_qubits);
+      }
+      else
+        ::ket::gate::fused::runtime::ranges::adj_sqrt_pauli_x(
+        parallel_policy, thread_index,
+          first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
+          target_qubit);
+    }
 #else // KET_USE_BIT_MASKS_EXPLICITLY
     template <typename Iterator>
     auto fused_adj_controlled_sqrt_pauli_x<Iterator>::do_call(
@@ -69,6 +97,34 @@ namespace bra
       }
       else
         ::ket::gate::fused::runtime::ranges::adj_sqrt_pauli_x(
+          first, fused_index_wo_qubits, qubit_masks, index_masks,
+          target_qubit);
+    }
+
+    template <typename Iterator>
+    auto fused_adj_controlled_sqrt_pauli_x<Iterator>::do_call_in_execute(
+      ::ket::utility::policy::parallel<unsigned int> const parallel_policy, int const thread_index,
+      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
+      std::vector< ::bra::state_integer_type > const& qubit_masks,
+      std::vector< ::bra::state_integer_type > const& index_masks,
+      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+      ::bra::state_integer_type const) const -> void
+    {
+      if (qubit_masks.size() < std::size_t{1u})
+        throw std::runtime_error{"fused_adj_controlled_sqrt_pauli_x requires at least one fused qubit"};
+      auto const target_qubit = static_cast< ::bra::qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(target_qubit_)]);
+      if (is_control_qubit_enabled_)
+      {
+        std::array< ::bra::control_qubit_type, 1u > const control_qubits{{
+          static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit_.qubit())])}};
+        ::ket::gate::fused::runtime::ranges::adj_sqrt_pauli_x(
+        parallel_policy, thread_index,
+          first, fused_index_wo_qubits, qubit_masks, index_masks,
+          target_qubit, control_qubits);
+      }
+      else
+        ::ket::gate::fused::runtime::ranges::adj_sqrt_pauli_x(
+        parallel_policy, thread_index,
           first, fused_index_wo_qubits, qubit_masks, index_masks,
           target_qubit);
     }

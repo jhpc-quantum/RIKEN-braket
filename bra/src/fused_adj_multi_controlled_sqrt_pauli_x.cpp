@@ -51,6 +51,31 @@ namespace bra
         target_qubit,
         enabled_control_qubits);
     }
+
+    template <typename Iterator>
+    auto fused_adj_multi_controlled_sqrt_pauli_x<Iterator>::do_call_in_execute(
+      ::ket::utility::policy::parallel<unsigned int> const parallel_policy, int const thread_index,
+      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
+      std::vector< ::bra::qubit_type > const& unsorted_fused_qubits,
+      std::vector< ::bra::qubit_type > const& sorted_fused_qubits_with_sentinel,
+      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+      ::bra::state_integer_type const) const -> void
+    {
+      if (unsorted_fused_qubits.size() < std::size_t{1u})
+        throw std::runtime_error{"fused_adj_multi_controlled_sqrt_pauli_x requires at least one fused qubit"};
+      auto const target_qubit = static_cast< ::bra::qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(target_qubit_)]);
+      auto enabled_control_qubits = std::vector< ::bra::control_qubit_type >{};
+      auto const num_control_qubits = control_qubits_.size();
+      enabled_control_qubits.reserve(num_control_qubits);
+      for (auto index = decltype(num_control_qubits){0}; index < num_control_qubits; ++index)
+        if (static_cast<bool>(is_control_qubit_enabled_vec_[index]))
+          enabled_control_qubits.push_back(static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubits_[index].qubit())]));
+      ::ket::gate::fused::runtime::ranges::adj_sqrt_pauli_x(
+        parallel_policy, thread_index,
+        first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
+        target_qubit,
+        enabled_control_qubits);
+    }
 #else // KET_USE_BIT_MASKS_EXPLICITLY
     template <typename Iterator>
     auto fused_adj_multi_controlled_sqrt_pauli_x<Iterator>::do_call(
@@ -69,6 +94,31 @@ namespace bra
         if (static_cast<bool>(is_control_qubit_enabled_vec_[index]))
           enabled_control_qubits.push_back(static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubits_[index].qubit())]));
       ::ket::gate::fused::runtime::ranges::adj_sqrt_pauli_x(
+        first, fused_index_wo_qubits, qubit_masks, index_masks,
+        target_qubit,
+        enabled_control_qubits);
+    }
+
+    template <typename Iterator>
+    auto fused_adj_multi_controlled_sqrt_pauli_x<Iterator>::do_call_in_execute(
+      ::ket::utility::policy::parallel<unsigned int> const parallel_policy, int const thread_index,
+      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
+      std::vector< ::bra::state_integer_type > const& qubit_masks,
+      std::vector< ::bra::state_integer_type > const& index_masks,
+      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+      ::bra::state_integer_type const) const -> void
+    {
+      if (qubit_masks.size() < std::size_t{1u})
+        throw std::runtime_error{"fused_adj_multi_controlled_sqrt_pauli_x requires at least one fused qubit"};
+      auto const target_qubit = static_cast< ::bra::qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(target_qubit_)]);
+      auto enabled_control_qubits = std::vector< ::bra::control_qubit_type >{};
+      auto const num_control_qubits = control_qubits_.size();
+      enabled_control_qubits.reserve(num_control_qubits);
+      for (auto index = decltype(num_control_qubits){0}; index < num_control_qubits; ++index)
+        if (static_cast<bool>(is_control_qubit_enabled_vec_[index]))
+          enabled_control_qubits.push_back(static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubits_[index].qubit())]));
+      ::ket::gate::fused::runtime::ranges::adj_sqrt_pauli_x(
+        parallel_policy, thread_index,
         first, fused_index_wo_qubits, qubit_masks, index_masks,
         target_qubit,
         enabled_control_qubits);
