@@ -70,11 +70,47 @@
 # include <bra/state.hpp>
 # include <bra/types.hpp>
 # include <bra/fused_gate.hpp>
+# include <bra/fused_gate/in_execute_fused_gate_caller.hpp>
 # include <bra/utility/closest_floating_point_of.hpp>
 # include <bra/utility/throw_if_too_many_operated_qubits.hpp>
 
 namespace bra
 {
+  namespace paged_mpi_state_detail
+  {
+    template <typename GateIterator, typename Executor, typename First, typename UnsortedFusedQubitsOrMasks, typename SortedFusedQubitsWithSentinelOrIndexMasks>
+    auto call_fused_gates_in_execute(
+      std::vector<std::unique_ptr< ::bra::fused_gate::fused_gate<GateIterator> >> const& fused_gates,
+      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+      ::ket::utility::policy::parallel<unsigned int> const parallel_policy,
+      Executor& executor, int const thread_index,
+      First const first, ::bra::state_integer_type const index_wo_qubits,
+      UnsortedFusedQubitsOrMasks const& unsorted_fused_qubits_or_masks,
+      SortedFusedQubitsWithSentinelOrIndexMasks const& sorted_fused_qubits_with_sentinel_or_index_masks,
+      ::bra::state_integer_type const unit_qubit_value)
+    -> typename std::enable_if<std::is_same<typename std::decay<First>::type, GateIterator>::value>::type
+    {
+      for (auto const& gate_ptr: fused_gates)
+        gate_ptr->call_in_execute(
+          parallel_policy, executor, thread_index,
+          first, index_wo_qubits,
+          unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
+          to_qubit_index_in_fused_gates, unit_qubit_value);
+    }
+
+    template <typename GateIterator, typename Executor, typename First, typename UnsortedFusedQubitsOrMasks, typename SortedFusedQubitsWithSentinelOrIndexMasks>
+    auto call_fused_gates_in_execute(
+      std::vector<std::unique_ptr< ::bra::fused_gate::fused_gate<GateIterator> >> const&,
+      std::vector< ::bra::bit_integer_type > const&,
+      ::ket::utility::policy::parallel<unsigned int> const,
+      Executor&, int const,
+      First const, ::bra::state_integer_type const,
+      UnsortedFusedQubitsOrMasks const&, SortedFusedQubitsWithSentinelOrIndexMasks const&,
+      ::bra::state_integer_type const)
+    -> typename std::enable_if<not std::is_same<typename std::decay<First>::type, GateIterator>::value>::type
+    { }
+  } // namespace paged_mpi_state_detail
+
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
   template <typename Iterator, typename PagedIterator, typename CacheAwareIterator, typename CacheAwarePagedIterator>
   struct paged_mpi_fused_gate_caller
@@ -99,6 +135,33 @@ namespace bra
           first, index_wo_qubits,
           unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
           to_qubit_index_in_fused_gates_, unit_qubit_value);
+    }
+
+    template <typename Executor, typename First, typename UnsortedFusedQubitsOrMasks, typename SortedFusedQubitsWithSentinelOrIndexMasks>
+    auto call_in_execute(
+      ::ket::utility::policy::parallel<unsigned int> const parallel_policy,
+      Executor& executor, int const thread_index,
+      First const first, ::bra::state_integer_type const index_wo_qubits,
+      UnsortedFusedQubitsOrMasks const& unsorted_fused_qubits_or_masks,
+      SortedFusedQubitsWithSentinelOrIndexMasks const& sorted_fused_qubits_with_sentinel_or_index_masks,
+      ::bra::state_integer_type const unit_qubit_value) const -> void
+    {
+      ::bra::paged_mpi_state_detail::call_fused_gates_in_execute(
+        fused_gates_, to_qubit_index_in_fused_gates_, parallel_policy, executor, thread_index,
+        first, index_wo_qubits, unsorted_fused_qubits_or_masks,
+        sorted_fused_qubits_with_sentinel_or_index_masks, unit_qubit_value);
+      ::bra::paged_mpi_state_detail::call_fused_gates_in_execute(
+        paged_fused_gates_, to_qubit_index_in_fused_gates_, parallel_policy, executor, thread_index,
+        first, index_wo_qubits, unsorted_fused_qubits_or_masks,
+        sorted_fused_qubits_with_sentinel_or_index_masks, unit_qubit_value);
+      ::bra::paged_mpi_state_detail::call_fused_gates_in_execute(
+        cache_aware_fused_gates_, to_qubit_index_in_fused_gates_, parallel_policy, executor, thread_index,
+        first, index_wo_qubits, unsorted_fused_qubits_or_masks,
+        sorted_fused_qubits_with_sentinel_or_index_masks, unit_qubit_value);
+      ::bra::paged_mpi_state_detail::call_fused_gates_in_execute(
+        cache_aware_paged_fused_gates_, to_qubit_index_in_fused_gates_, parallel_policy, executor, thread_index,
+        first, index_wo_qubits, unsorted_fused_qubits_or_masks,
+        sorted_fused_qubits_with_sentinel_or_index_masks, unit_qubit_value);
     }
 
     template <typename First, typename UnsortedFusedQubitsOrMasks, typename SortedFusedQubitsWithSentinelOrIndexMasks>
@@ -173,6 +236,25 @@ namespace bra
           to_qubit_index_in_fused_gates_, unit_qubit_value);
     }
 
+    template <typename Executor, typename First, typename UnsortedFusedQubitsOrMasks, typename SortedFusedQubitsWithSentinelOrIndexMasks>
+    auto call_in_execute(
+      ::ket::utility::policy::parallel<unsigned int> const parallel_policy,
+      Executor& executor, int const thread_index,
+      First const first, ::bra::state_integer_type const index_wo_qubits,
+      UnsortedFusedQubitsOrMasks const& unsorted_fused_qubits_or_masks,
+      SortedFusedQubitsWithSentinelOrIndexMasks const& sorted_fused_qubits_with_sentinel_or_index_masks,
+      ::bra::state_integer_type const unit_qubit_value) const -> void
+    {
+      ::bra::paged_mpi_state_detail::call_fused_gates_in_execute(
+        fused_gates_, to_qubit_index_in_fused_gates_, parallel_policy, executor, thread_index,
+        first, index_wo_qubits, unsorted_fused_qubits_or_masks,
+        sorted_fused_qubits_with_sentinel_or_index_masks, unit_qubit_value);
+      ::bra::paged_mpi_state_detail::call_fused_gates_in_execute(
+        paged_fused_gates_, to_qubit_index_in_fused_gates_, parallel_policy, executor, thread_index,
+        first, index_wo_qubits, unsorted_fused_qubits_or_masks,
+        sorted_fused_qubits_with_sentinel_or_index_masks, unit_qubit_value);
+    }
+
     template <typename First, typename UnsortedFusedQubitsOrMasks, typename SortedFusedQubitsWithSentinelOrIndexMasks>
     auto operator()(
       First const first, ::bra::state_integer_type const index_wo_qubits,
@@ -208,6 +290,21 @@ namespace bra
           first, index_wo_qubits,
           unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
           to_qubit_index_in_fused_gates_, unit_qubit_value);
+    }
+
+    template <typename Executor, typename First, typename UnsortedFusedQubitsOrMasks, typename SortedFusedQubitsWithSentinelOrIndexMasks>
+    auto call_in_execute(
+      ::ket::utility::policy::parallel<unsigned int> const parallel_policy,
+      Executor& executor, int const thread_index,
+      First const first, ::bra::state_integer_type const index_wo_qubits,
+      UnsortedFusedQubitsOrMasks const& unsorted_fused_qubits_or_masks,
+      SortedFusedQubitsWithSentinelOrIndexMasks const& sorted_fused_qubits_with_sentinel_or_index_masks,
+      ::bra::state_integer_type const unit_qubit_value) const -> void
+    {
+      ::bra::paged_mpi_state_detail::call_fused_gates_in_execute(
+        fused_gates_, to_qubit_index_in_fused_gates_, parallel_policy, executor, thread_index,
+        first, index_wo_qubits, unsorted_fused_qubits_or_masks,
+        sorted_fused_qubits_with_sentinel_or_index_masks, unit_qubit_value);
     }
   };
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && defined(KET_USE_ON_CACHE_STATE_VECTOR)
@@ -2241,6 +2338,12 @@ namespace bra
 
     };
 
+    auto const num_outer_blocks
+      = ::ket::utility::integer_exp2<std::size_t>(
+          static_cast<unsigned int>(num_local_qubits - fused_qubits.size()));
+    auto const uses_inner_parallelism
+      = num_outer_blocks < static_cast<std::size_t>(::ket::utility::num_threads(parallel_policy_));
+
     if (fused_qubits.empty())
     {
       prepare_fused_gates();
@@ -2248,6 +2351,16 @@ namespace bra
         mpi_policy_, parallel_policy_,
         data_, permutation_, buffer_, circuit_communicator_, environment_,
         call_fused_gates, num_on_cache_qubits_);
+    }
+    else if (uses_inner_parallelism)
+    {
+      auto const call_fused_gates_in_execute
+        = ::bra::fused_gate::in_execute_fused_gate_caller<decltype(call_fused_gates)>{
+            parallel_policy_, call_fused_gates};
+      ket::mpi::gate::runtime::ranges::gate_with_preparation(
+        mpi_policy_, ::ket::utility::policy::make_sequential(),
+        data_, permutation_, buffer_, circuit_communicator_, environment_,
+        call_fused_gates_in_execute, num_on_cache_qubits_, fused_qubits, prepare_fused_gates);
     }
     else
       ket::mpi::gate::runtime::ranges::gate_with_preparation(
