@@ -42,7 +42,13 @@ CASES = {
     # S exercises the synchronized serial fallback between parallel gates.
     "mixed": (
         "H 7",
+        "CH 7 6",
+        "CCH 7 5 6",
         "X 6",
+        "NOT 4",
+        "CNOT 7 4",
+        "TOFFOLI 7 5 4",
+        "CCNOT 7 6 4",
         "eX 6 0.125",
         "eXX 6 5 0.0625",
         "CeX 7 6 -0.09375",
@@ -90,6 +96,7 @@ CASES = {
         "CeSWAP 7 4 3 -0.203125",
         "S 4",
         "SWAP 4 3",
+        "CSWAP 7 4 3",
         "eSWAP+ 4 3 0.171875",
         "CeSWAP+ 7 4 3 -0.203125",
     ),
