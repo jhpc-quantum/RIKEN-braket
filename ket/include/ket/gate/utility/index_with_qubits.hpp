@@ -4,6 +4,7 @@
 # include <cassert>
 # include <cstddef>
 # include <array>
+# include <iterator>
 
 # include <ket/qubit.hpp>
 # include <ket/utility/integer_exp2.hpp>
@@ -27,6 +28,18 @@ namespace ket
         static_assert(std::is_unsigned<UnsignedInteger>::value, "UnsignedInteger should be unsigned");
         assert(sorted_qubit_with_sentinel_last - sorted_qubit_with_sentinel_first == unsorted_qubit_last - unsorted_qubit_first + 1);
         assert(qubits_value >> (unsorted_qubit_last - unsorted_qubit_first) == UnsignedInteger{0u});
+
+        auto const num_qubits = unsorted_qubit_last - unsorted_qubit_first;
+        if (index_wo_qubits == StateInteger{0u} and num_qubits > 0)
+        {
+          auto qubit_iter = unsorted_qubit_first;
+          using qubit_type = typename std::iterator_traits<RandomAccessIterator1>::value_type;
+          auto qubit_index = qubit_type{};
+          for (; qubit_iter != unsorted_qubit_last and *qubit_iter == qubit_index; ++qubit_iter, ++qubit_index)
+            ;
+          if (qubit_iter == unsorted_qubit_last)
+            return static_cast<StateInteger>(qubits_value);
+        }
 
         // xx0xx0xx0xx
         auto result = index_wo_qubits bitand ((StateInteger{1u} << *sorted_qubit_with_sentinel_first) - StateInteger{1u});
@@ -98,6 +111,17 @@ namespace ket
         static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
         static_assert(std::is_unsigned<UnsignedInteger>::value, "UnsignedInteger should be unsigned");
         assert(qubits_value < ::ket::utility::integer_exp2<UnsignedInteger>(qubit_mask_last - qubit_mask_first));
+
+        auto const num_qubits = qubit_mask_last - qubit_mask_first;
+        if (index_wo_qubits == StateInteger{0u} and num_qubits > 0)
+        {
+          auto qubit_mask_iter = qubit_mask_first;
+          auto qubit_mask = StateInteger{1u};
+          for (; qubit_mask_iter != qubit_mask_last and *qubit_mask_iter == qubit_mask; ++qubit_mask_iter, qubit_mask <<= 1u)
+            ;
+          if (qubit_mask_iter == qubit_mask_last)
+            return static_cast<StateInteger>(qubits_value);
+        }
 
         // xx0xx0xx0xx
         auto result = StateInteger{0u};

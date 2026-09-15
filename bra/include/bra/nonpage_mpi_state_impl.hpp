@@ -1968,6 +1968,13 @@ namespace bra
       ::bra::throw_if_too_many_operated_qubits(
         fused_qubits.size(), mpi_policy_, data_, circuit_communicator_, environment_);
 
+    // Keep fused indices in physical-bit order.  In particular, this avoids a
+    // bit-reversed state-vector traversal for descending bit assignments.
+    std::sort(
+      begin(fused_qubits), end(fused_qubits),
+      [this](::bra::qubit_type const lhs, ::bra::qubit_type const rhs)
+      { return this->permutation_[lhs] < this->permutation_[rhs]; });
+
     // generate to_qubit_index_in_fused_gates
     std::iota(begin(to_qubit_index_in_fused_gates), end(to_qubit_index_in_fused_gates), ::bra::bit_integer_type{0u});
     auto present_qubit_index = ::bra::bit_integer_type{0u};

@@ -40,6 +40,7 @@
 #include <ket/qubit.hpp>
 #include <ket/utility/exp_i.hpp>
 #include <ket/utility/loop_n.hpp>
+#include <ket/utility/parallel/loop_n.hpp>
 
 namespace
 {
@@ -168,6 +169,30 @@ int main()
     { ket::gate::fused::runtime::ranges::phase_shift_coeff(state.begin(), state_integer_type{0u}, unsorted, sorted, ket::utility::exp_i<complex_type>(0.375), 3_q, make_controls({0_cq})); },
     [](auto& state)
     { ket::gate::runtime::ranges::phase_shift_coeff(ket::utility::policy::make_sequential(), state, ket::utility::exp_i<complex_type>(0.375), 3_q, make_controls({0_cq})); }));
+
+  run(run_case(
+    "fused::runtime::ranges::phase_shift_coeff with two controls",
+    [](auto& state, auto const& unsorted, auto const& sorted)
+    { ket::gate::fused::runtime::ranges::phase_shift_coeff(state.begin(), state_integer_type{0u}, unsorted, sorted, ket::utility::exp_i<complex_type>(0.375), make_controls({0_cq, 3_cq})); },
+    [](auto& state)
+    { ket::gate::runtime::ranges::phase_shift_coeff(ket::utility::policy::make_sequential(), state, ket::utility::exp_i<complex_type>(0.375), make_controls({0_cq, 3_cq})); }));
+
+  run(run_case(
+    "fused::runtime::ranges::phase_shift_coeff with two controls and inner-loop parallelism",
+    [](auto& state, auto const& unsorted, auto const& sorted)
+    {
+      auto const parallel_policy = ket::utility::policy::make_parallel(4u);
+      ket::utility::execute(
+        parallel_policy,
+        [&](int const thread_index, auto&)
+        {
+          ket::gate::fused::runtime::ranges::phase_shift_coeff(
+            parallel_policy, thread_index, state.begin(), state_integer_type{0u}, unsorted, sorted,
+            ket::utility::exp_i<complex_type>(0.375), make_controls({0_cq, 3_cq}));
+        });
+    },
+    [](auto& state)
+    { ket::gate::runtime::ranges::phase_shift_coeff(ket::utility::policy::make_sequential(), state, ket::utility::exp_i<complex_type>(0.375), make_controls({0_cq, 3_cq})); }));
 
   run(run_case(
     "fused::runtime::ranges::controlled_v",
