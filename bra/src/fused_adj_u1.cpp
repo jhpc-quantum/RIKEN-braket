@@ -48,6 +48,35 @@ namespace bra
           phase_coefficient);
       }
     }
+
+    template <typename Iterator>
+    auto fused_adj_u1<Iterator>::do_call_in_execute(
+      ::ket::utility::policy::parallel<unsigned int> const parallel_policy, int const thread_index,
+      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
+      std::vector< ::bra::qubit_type > const& unsorted_fused_qubits,
+      std::vector< ::bra::qubit_type > const& sorted_fused_qubits_with_sentinel,
+      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+      ::bra::state_integer_type const) const -> void
+    {
+      if (unsorted_fused_qubits.empty() and is_control_qubit_enabled_)
+        throw std::runtime_error{"fused_adj_u1 requires at least one fused qubit"};
+
+      std::array< ::bra::control_qubit_type, 1u > const control_qubits{{
+        static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit_.qubit())])}};
+      if (is_control_qubit_enabled_)
+        ::ket::gate::fused::runtime::ranges::adj_phase_shift(
+          parallel_policy, thread_index,
+          first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
+          phase_, control_qubits);
+      else
+      {
+        auto const phase_coefficient = ::ket::utility::exp_i< ::bra::complex_type >(phase_);
+        ::ket::gate::fused::runtime::ranges::adj_phase_shift_coeff(
+          parallel_policy, thread_index,
+          first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
+          phase_coefficient);
+      }
+    }
 #else // KET_USE_BIT_MASKS_EXPLICITLY
     template <typename Iterator>
     auto fused_adj_u1<Iterator>::do_call(
@@ -69,6 +98,35 @@ namespace bra
       {
         auto const phase_coefficient = ::ket::utility::exp_i< ::bra::complex_type >(phase_);
         ::ket::gate::fused::runtime::ranges::adj_phase_shift_coeff(
+          first, fused_index_wo_qubits, qubit_masks, index_masks,
+          phase_coefficient);
+      }
+    }
+
+    template <typename Iterator>
+    auto fused_adj_u1<Iterator>::do_call_in_execute(
+      ::ket::utility::policy::parallel<unsigned int> const parallel_policy, int const thread_index,
+      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
+      std::vector< ::bra::state_integer_type > const& qubit_masks,
+      std::vector< ::bra::state_integer_type > const& index_masks,
+      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+      ::bra::state_integer_type const) const -> void
+    {
+      if (qubit_masks.empty() and is_control_qubit_enabled_)
+        throw std::runtime_error{"fused_adj_u1 requires at least one fused qubit"};
+
+      std::array< ::bra::control_qubit_type, 1u > const control_qubits{{
+        static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit_.qubit())])}};
+      if (is_control_qubit_enabled_)
+        ::ket::gate::fused::runtime::ranges::adj_phase_shift(
+          parallel_policy, thread_index,
+          first, fused_index_wo_qubits, qubit_masks, index_masks,
+          phase_, control_qubits);
+      else
+      {
+        auto const phase_coefficient = ::ket::utility::exp_i< ::bra::complex_type >(phase_);
+        ::ket::gate::fused::runtime::ranges::adj_phase_shift_coeff(
+          parallel_policy, thread_index,
           first, fused_index_wo_qubits, qubit_masks, index_masks,
           phase_coefficient);
       }
