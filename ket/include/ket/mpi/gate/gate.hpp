@@ -3093,6 +3093,7 @@ namespace ket
             std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
             yampi::communicator const& communicator, yampi::environment const& environment,
             StateInteger const unit_control_qubit_mask, auto&&... permutated_qubits)
+          -> RandomAccessRange&
           {
             return ::ket::mpi::gate::local::gate(
               mpi_policy, parallel_policy, local_state, buffer, communicator, environment, unit_control_qubit_mask,
@@ -3131,6 +3132,7 @@ namespace ket
             std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
             yampi::communicator const& communicator, yampi::environment const& environment,
             StateInteger const unit_control_qubit_mask, auto&&... permutated_qubits)
+          -> RandomAccessRange&
           {
             return ::ket::mpi::gate::local::gate(
               mpi_policy, parallel_policy, local_state, buffer, communicator, environment, unit_control_qubit_mask,
@@ -3240,6 +3242,7 @@ namespace ket
                 yampi::communicator const& communicator, yampi::environment const& environment,
                 StateInteger const unit_control_qubit_mask,
                 auto const& permutated_qubits, auto const& permutated_control_qubits)
+              -> RandomAccessRange&
               {
                 return ::ket::mpi::gate::local::runtime::gate(
                   mpi_policy, parallel_policy, local_state, buffer, communicator, environment, unit_control_qubit_mask,
@@ -3300,6 +3303,7 @@ namespace ket
                 std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
                 yampi::communicator const& communicator, yampi::environment const& environment,
                 auto const& permutated_qubits)
+              -> RandomAccessRange&
               {
                 return ::ket::mpi::gate::local::runtime::gate(
                   mpi_policy, parallel_policy, local_state, buffer, communicator, environment,
@@ -3337,6 +3341,7 @@ namespace ket
                 std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
                 yampi::communicator const& communicator, yampi::environment const& environment,
                 auto const&)
+              -> RandomAccessRange&
               {
                 preparation_function();
                 using qubit_type = ::ket::utility::meta::range_value_t<QubitsRange>;
@@ -3378,6 +3383,7 @@ namespace ket
                 yampi::communicator const& communicator, yampi::environment const& environment,
                 StateInteger const unit_control_qubit_mask,
                 auto const& permutated_qubits, auto const& permutated_control_qubits)
+              -> RandomAccessRange&
               {
                 return ::ket::mpi::gate::local::runtime::gate(
                   mpi_policy, parallel_policy, local_state, buffer, communicator, environment, unit_control_qubit_mask,
@@ -3440,6 +3446,7 @@ namespace ket
                 std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
                 yampi::communicator const& communicator, yampi::environment const& environment,
                 auto const& permutated_qubits)
+              -> RandomAccessRange&
               {
                 return ::ket::mpi::gate::local::runtime::gate(
                   mpi_policy, parallel_policy, local_state, buffer, communicator, environment,
