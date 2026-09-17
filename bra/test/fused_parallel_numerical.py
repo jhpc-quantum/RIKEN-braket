@@ -226,6 +226,8 @@ def run_bra(args, filename, num_processes, num_cache_qubits, configuration_args)
 
 def compare_case(args, temporary_directory, configuration, case_name, gates):
     configuration_name, num_processes, num_cache_qubits, configuration_args = configuration
+    if case_name == "outer":
+        num_cache_qubits -= 2
     prefix = temporary_directory / "{}_{}".format(configuration_name, case_name)
     unfused_filename = prefix.with_name(prefix.name + "_unfused.qcx")
     fused_filename = prefix.with_name(prefix.name + "_fused.qcx")

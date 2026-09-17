@@ -1791,6 +1791,24 @@ namespace bra
       end(fused_qubits), begin(local_optional_qubits),
       begin(local_optional_qubits) + num_local_optional_qubits_to_keep);
 
+    auto const num_block_qubits
+      = std::min(num_local_qubits, static_cast<std::size_t>(num_on_cache_qubits_));
+    auto const pad_fused_qubits_with_local_qubits
+      = [this, num_block_qubits, least_permutated_unit_qubit](std::vector< ::bra::qubit_type >& fused_qubits)
+        {
+          for (auto index = ::bra::bit_integer_type{0u};
+               fused_qubits.size() < num_block_qubits and index < total_num_qubits_; ++index)
+          {
+            auto const qubit = ket::make_qubit< ::bra::state_integer_type >(index);
+            if (permutation_[qubit] >= least_permutated_unit_qubit)
+              continue;
+            if (std::find(fused_qubits.begin(), fused_qubits.end(), qubit) != fused_qubits.end())
+              continue;
+            fused_qubits.push_back(qubit);
+          }
+        };
+    pad_fused_qubits_with_local_qubits(fused_qubits);
+
     auto to_qubit_index_in_fused_gates = std::vector< ::bra::bit_integer_type >(total_num_qubits_);
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     auto const call_fused_gates
@@ -1964,6 +1982,7 @@ namespace bra
     std::transform(
       local_fused_control_qubit_first, local_fused_control_qubit_last, std::back_inserter(fused_qubits),
       [](::bra::control_qubit_type const fused_control_qubit) { return fused_control_qubit.qubit(); });
+    pad_fused_qubits_with_local_qubits(fused_qubits);
     if (not fused_qubits.empty())
       ::bra::throw_if_too_many_operated_qubits(
         fused_qubits.size(), mpi_policy_, data_, circuit_communicator_, environment_);
