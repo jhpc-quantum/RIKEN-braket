@@ -39,6 +39,25 @@ CASES = {
         "SWAP 5 4",
         "H 3",
     ),
+    # Consecutive diagonal gates exercise controlled-U1 traversal batching,
+    # including rank-dependent global-control omission.
+    "phase-batch": (
+        "H 7",
+        "CU1 7 6 0.5",
+        "CU1 7 5 -0.375",
+        "CU1 7 4 0.25",
+        "CU1 7 3 -0.1875",
+        "CU1 7 2 0.125",
+        "CU1 7 1 -0.09375",
+        "CU1 7 0 0.0625",
+        "H 6",
+        "CU1 6 5 -0.4375",
+        "CU1 6 4 0.3125",
+        "CU1 6 3 -0.21875",
+        "CU1 6 2 0.15625",
+        "CU1 6 1 -0.109375",
+        "CU1 6 0 0.078125",
+    ),
     # S exercises the synchronized serial fallback between parallel gates.
     "mixed": (
         "H 7",

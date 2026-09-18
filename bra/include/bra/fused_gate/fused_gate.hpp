@@ -22,6 +22,12 @@ namespace bra
     enum class cez_qubit_state : int { not_global, global_zero, global_one };
     enum class control_qubit_state : int { zero, one };
 
+    struct phase_shift_term
+    {
+      ::bra::complex_type phase_coefficient;
+      ::bra::state_integer_type control_mask;
+    };
+
     template <typename Iterator>
     class fused_gate
     {
@@ -39,6 +45,18 @@ namespace bra
       fused_gate& operator=(fused_gate const&) = delete;
       fused_gate(fused_gate&&) = delete;
       fused_gate& operator=(fused_gate&&) = delete;
+
+      auto append_phase_shift_term(
+        std::vector< ::bra::fused_gate::phase_shift_term >& phase_shift_terms,
+        std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+        ::bra::state_integer_type const unit_qubit_value) const -> bool
+      {
+        if (not do_is_phase_shift_batchable())
+          return false;
+        if (is_enabled_ and (unit_qubit_value bitand unit_control_qubit_mask_) == unit_control_qubit_mask_)
+          do_append_phase_shift_term(phase_shift_terms, to_qubit_index_in_fused_gates);
+        return true;
+      }
 
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
       auto call(
@@ -244,6 +262,12 @@ namespace bra
       { do_modify_unit_cez(first, last, unit_qubit_mask_first); }
 
      private:
+      virtual auto do_is_phase_shift_batchable() const noexcept -> bool { return false; }
+      virtual auto do_append_phase_shift_term(
+        std::vector< ::bra::fused_gate::phase_shift_term >&,
+        std::vector< ::bra::bit_integer_type > const&) const -> void
+      { }
+
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
       virtual auto do_call(
         Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,

@@ -32,6 +32,11 @@ namespace bra
       fused_controlled_u1& operator=(fused_controlled_u1&&) = delete;
 
      private:
+      auto do_is_phase_shift_batchable() const noexcept -> bool override { return true; }
+      auto do_append_phase_shift_term(
+        std::vector< ::bra::fused_gate::phase_shift_term >& phase_shift_terms,
+        std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void override;
+
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
       auto do_call(
         Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,

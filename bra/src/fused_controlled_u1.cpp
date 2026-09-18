@@ -5,6 +5,7 @@
 #include <algorithm>
 
 #include <ket/gate/fused/phase_shift.hpp>
+#include <ket/utility/exp_i.hpp>
 #if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
 # include <ket/gate/utility/cache_aware_iterator.hpp>
 #endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
@@ -22,6 +23,23 @@ namespace bra
     fused_controlled_u1<Iterator>::fused_controlled_u1(::bra::real_type const phase, ::bra::control_qubit_type const control_qubit1, ::bra::control_qubit_type const control_qubit2)
       : ::bra::fused_gate::fused_gate<Iterator>{}, phase_{phase}, control_qubit1_{control_qubit1}, control_qubit2_{control_qubit2}, is_control_qubit1_enabled_{true}, is_control_qubit2_enabled_{true}
     { }
+
+    template <typename Iterator>
+    auto fused_controlled_u1<Iterator>::do_append_phase_shift_term(
+      std::vector< ::bra::fused_gate::phase_shift_term >& phase_shift_terms,
+      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void
+    {
+      auto control_mask = ::bra::state_integer_type{0u};
+      if (is_control_qubit1_enabled_)
+        control_mask |= ::bra::state_integer_type{1u}
+          << to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit1_.qubit())];
+      if (is_control_qubit2_enabled_)
+        control_mask |= ::bra::state_integer_type{1u}
+          << to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit2_.qubit())];
+      phase_shift_terms.push_back(
+        ::bra::fused_gate::phase_shift_term{
+          ::ket::utility::exp_i< ::bra::complex_type >(phase_), control_mask});
+    }
 
 #ifndef KET_USE_BIT_MASKS_EXPLICITLY
     template <typename Iterator>
