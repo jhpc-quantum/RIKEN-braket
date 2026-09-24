@@ -25,12 +25,41 @@ namespace bra
   {
     namespace apply_phase_shift_terms_detail
     {
+      constexpr auto phase_shift_table_max_num_bits = ::bra::bit_integer_type{16u};
+
       struct phase_shift_table
       {
         std::vector< ::bra::complex_type > coefficients;
         ::bra::bit_integer_type first_bit;
         ::bra::state_integer_type index_mask;
       };
+
+      inline auto phase_shift_table_num_bits(::bra::state_integer_type const operated_mask)
+      -> ::bra::bit_integer_type
+      {
+        if (operated_mask == ::bra::state_integer_type{0u})
+          return ::bra::bit_integer_type{0u};
+
+        auto first_bit = ::bra::bit_integer_type{0u};
+        while ((operated_mask bitand (::bra::state_integer_type{1u} << first_bit)) == ::bra::state_integer_type{0u})
+          ++first_bit;
+
+        auto num_bits = ::bra::bit_integer_type{0u};
+        for (auto shifted_mask = operated_mask >> first_bit;
+             shifted_mask != ::bra::state_integer_type{0u}; shifted_mask >>= 1u)
+          ++num_bits;
+        return num_bits;
+      }
+
+      inline auto phase_shift_table_num_bits(
+        std::vector< ::bra::fused_gate::phase_shift_term > const& phase_shift_terms)
+      -> ::bra::bit_integer_type
+      {
+        auto operated_mask = ::bra::state_integer_type{0u};
+        for (auto const& phase_shift_term: phase_shift_terms)
+          operated_mask |= phase_shift_term.control_mask;
+        return ::bra::fused_gate::apply_phase_shift_terms_detail::phase_shift_table_num_bits(operated_mask);
+      }
 
       inline auto make_phase_shift_table(
         std::vector< ::bra::fused_gate::phase_shift_term > const& phase_shift_terms)
@@ -45,11 +74,9 @@ namespace bra
           while ((operated_mask bitand (::bra::state_integer_type{1u} << first_bit)) == ::bra::state_integer_type{0u})
             ++first_bit;
 
-        auto num_bits = ::bra::bit_integer_type{0u};
-        for (auto shifted_mask = operated_mask >> first_bit;
-             shifted_mask != ::bra::state_integer_type{0u}; shifted_mask >>= 1u)
-          ++num_bits;
-        if (num_bits > ::bra::bit_integer_type{16u})
+        auto const num_bits
+          = ::bra::fused_gate::apply_phase_shift_terms_detail::phase_shift_table_num_bits(operated_mask);
+        if (num_bits > ::bra::fused_gate::apply_phase_shift_terms_detail::phase_shift_table_max_num_bits)
           return phase_shift_table{};
 
         auto const table_size
