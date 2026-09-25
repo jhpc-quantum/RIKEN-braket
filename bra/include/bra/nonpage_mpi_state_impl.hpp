@@ -2001,6 +2001,13 @@ namespace bra
           static_cast<unsigned int>(num_local_qubits - fused_qubits.size()));
     auto const uses_inner_parallelism
       = num_outer_blocks < static_cast<std::size_t>(::ket::utility::num_threads(parallel_policy_));
+# ifdef BRA_PROFILE_PHASE_SHIFT_BATCHES
+    std::clog
+      << "[fused-parallelism] fused_qubits=" << fused_qubits.size()
+      << " outer_blocks=" << num_outer_blocks
+      << " mode=" << (uses_inner_parallelism ? "inner" : "outer")
+      << std::endl;
+# endif // BRA_PROFILE_PHASE_SHIFT_BATCHES
 
     if (fused_qubits.empty())
     {

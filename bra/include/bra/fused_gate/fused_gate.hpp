@@ -58,6 +58,16 @@ namespace bra
         return true;
       }
 
+      auto get_hadamard_target(
+        ::bra::bit_integer_type& target_qubit,
+        std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+        ::bra::state_integer_type const unit_qubit_value) const -> bool
+      {
+        if (not is_enabled_ or (unit_qubit_value bitand unit_control_qubit_mask_) != unit_control_qubit_mask_)
+          return false;
+        return do_get_hadamard_target(target_qubit, to_qubit_index_in_fused_gates);
+      }
+
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
       auto call(
         Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
@@ -262,6 +272,11 @@ namespace bra
       { do_modify_unit_cez(first, last, unit_qubit_mask_first); }
 
      private:
+      virtual auto do_get_hadamard_target(
+        ::bra::bit_integer_type&,
+        std::vector< ::bra::bit_integer_type > const&) const -> bool
+      { return false; }
+
       virtual auto do_is_phase_shift_batchable() const noexcept -> bool { return false; }
       virtual auto do_append_phase_shift_term(
         std::vector< ::bra::fused_gate::phase_shift_term >&,

@@ -51,6 +51,13 @@ namespace bra
         return num_bits;
       }
 
+      inline auto phase_shift_table_index(
+        phase_shift_table const& phase_shift_table, ::bra::state_integer_type const fused_index)
+      -> ::bra::state_integer_type
+      {
+        return (fused_index >> phase_shift_table.first_bit) bitand phase_shift_table.index_mask;
+      }
+
       inline auto phase_shift_table_num_bits(
         std::vector< ::bra::fused_gate::phase_shift_term > const& phase_shift_terms)
       -> ::bra::bit_integer_type
@@ -176,7 +183,8 @@ namespace bra
       {
         auto const phase_coefficient
           = phase_shift_table.coefficients[static_cast<std::size_t>(
-              (fused_index >> phase_shift_table.first_bit) bitand phase_shift_table.index_mask)];
+              ::bra::fused_gate::apply_phase_shift_terms_detail::phase_shift_table_index(
+                phase_shift_table, fused_index))];
         if (phase_coefficient == ::bra::complex_type{1.0, 0.0})
           return;
 

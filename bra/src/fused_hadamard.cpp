@@ -20,6 +20,15 @@ namespace bra
       : ::bra::fused_gate::fused_gate<Iterator>{}, qubit_{qubit}
     { }
 
+    template <typename Iterator>
+    auto fused_hadamard<Iterator>::do_get_hadamard_target(
+      ::bra::bit_integer_type& target_qubit,
+      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> bool
+    {
+      target_qubit = to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(qubit_)];
+      return true;
+    }
+
 #ifndef KET_USE_BIT_MASKS_EXPLICITLY
     template <typename Iterator>
     auto fused_hadamard<Iterator>::do_call(

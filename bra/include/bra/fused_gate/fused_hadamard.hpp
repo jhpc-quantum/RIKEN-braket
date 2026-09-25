@@ -27,6 +27,10 @@ namespace bra
       fused_hadamard& operator=(fused_hadamard&&) = delete;
 
      private:
+      auto do_get_hadamard_target(
+        ::bra::bit_integer_type& target_qubit,
+        std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> bool override;
+
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
       auto do_call(
         Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
