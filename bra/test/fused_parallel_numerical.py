@@ -58,6 +58,21 @@ CASES = {
         "CU1 6 1 -0.109375",
         "CU1 6 0 0.078125",
     ),
+    # Interleaved delayed phases exercise common-control star extraction after
+    # the immediate Hadamard-controlled prefix has ended.
+    "phase-star": (
+        "H 7",
+        "CU1 7 6 0.5",
+        "CU1 7 5 -0.375",
+        "H 6",
+        "CU1 6 5 0.3125",
+        "CU1 6 4 -0.25",
+        "CU1 7 4 0.21875",
+        "CU1 6 3 -0.1875",
+        "CU1 7 3 0.15625",
+        "CU1 6 2 -0.125",
+        "CU1 7 2 0.09375",
+    ),
     # S exercises the synchronized serial fallback between parallel gates.
     "mixed": (
         "H 7",
