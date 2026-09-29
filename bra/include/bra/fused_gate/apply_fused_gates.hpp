@@ -5,6 +5,7 @@
 #   include <chrono>
 #   include <iostream>
 # endif // BRA_PROFILE_PHASE_SHIFT_BATCHES
+# include <algorithm>
 # include <cstddef>
 # include <iterator>
 # include <limits>
@@ -26,6 +27,7 @@ namespace bra
     namespace apply_fused_gates_detail
     {
       constexpr auto phase_shift_tables_max_num_tables = std::size_t{4u};
+      constexpr auto phase_shift_star_group_size = std::size_t{4u};
 
       struct indexed_phase_shift_term
       {
@@ -316,11 +318,27 @@ namespace bra
               indexed_phase_shift_terms, num_phase_shift_gates, selected_phase_shift_gates);
         if (not phase_shift_stars.empty())
         {
-          for (auto const& phase_shift_star: phase_shift_stars)
-            ::bra::fused_gate::apply_controlled_phase_shift_terms(
-              first, index_wo_qubits,
-              unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
-              phase_shift_star.common_control, phase_shift_star.phase_shift_terms);
+          for (auto group_first = phase_shift_stars.begin(); group_first != phase_shift_stars.end(); )
+          {
+            auto const num_remaining_stars
+              = static_cast<std::size_t>(phase_shift_stars.end() - group_first);
+            auto const num_group_stars
+              = std::min(
+                  num_remaining_stars,
+                  ::bra::fused_gate::apply_fused_gates_detail::phase_shift_star_group_size);
+            auto const group_last = group_first + num_group_stars;
+            if (num_group_stars == std::size_t{1u})
+              ::bra::fused_gate::apply_controlled_phase_shift_terms(
+                first, index_wo_qubits,
+                unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
+                group_first->common_control, group_first->phase_shift_terms);
+            else
+              ::bra::fused_gate::apply_controlled_phase_shift_stars(
+                first, index_wo_qubits,
+                unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
+                group_first, group_last);
+            group_first = group_last;
+          }
 
           auto phase_shift_gate_iter = gate_iter;
           for (auto gate_index = std::size_t{0u}; gate_index < num_phase_shift_gates;
@@ -366,7 +384,8 @@ namespace bra
       auto total_phase_fallback_time = std::chrono::steady_clock::duration{};
       auto num_other_fallback_gates = std::size_t{0u};
       auto total_other_fallback_time = std::chrono::steady_clock::duration{};
-      auto num_phase_star_batches = std::size_t{0u};
+      auto num_phase_star_groups = std::size_t{0u};
+      auto num_phase_stars = std::size_t{0u};
       auto num_phase_star_terms = std::size_t{0u};
       auto total_phase_star_time = std::chrono::steady_clock::duration{};
 # endif // BRA_PROFILE_PHASE_SHIFT_BATCHES
@@ -511,35 +530,58 @@ namespace bra
               indexed_phase_shift_terms, num_phase_shift_gates, selected_phase_shift_gates);
         if (not phase_shift_stars.empty())
         {
-          for (auto const& phase_shift_star: phase_shift_stars)
+          for (auto group_first = phase_shift_stars.begin(); group_first != phase_shift_stars.end(); )
           {
+            auto const num_remaining_stars
+              = static_cast<std::size_t>(phase_shift_stars.end() - group_first);
+            auto const num_group_stars
+              = std::min(
+                  num_remaining_stars,
+                  ::bra::fused_gate::apply_fused_gates_detail::phase_shift_star_group_size);
+            auto const group_last = group_first + num_group_stars;
 # ifdef BRA_PROFILE_PHASE_SHIFT_BATCHES
-            auto const num_tables
-              = ::bra::fused_gate::apply_phase_shift_terms_detail::phase_shift_table_num_tables(
-                  phase_shift_star.phase_shift_terms);
+            auto num_tables = std::size_t{0u};
+            auto num_terms = std::size_t{0u};
+            for (auto iter = group_first; iter != group_last; ++iter)
+            {
+              num_tables
+                += ::bra::fused_gate::apply_phase_shift_terms_detail::phase_shift_table_num_tables(
+                     iter->phase_shift_terms);
+              num_terms += iter->phase_shift_terms.size();
+            }
             auto const start_time
               = thread_index == 0 ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
 # endif // BRA_PROFILE_PHASE_SHIFT_BATCHES
-            ::bra::fused_gate::apply_controlled_phase_shift_terms(
-              parallel_policy, thread_index,
-              first, index_wo_qubits,
-              unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
-              phase_shift_star.common_control, phase_shift_star.phase_shift_terms);
+            if (num_group_stars == std::size_t{1u})
+              ::bra::fused_gate::apply_controlled_phase_shift_terms(
+                parallel_policy, thread_index,
+                first, index_wo_qubits,
+                unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
+                group_first->common_control, group_first->phase_shift_terms);
+            else
+              ::bra::fused_gate::apply_controlled_phase_shift_stars(
+                parallel_policy, thread_index,
+                first, index_wo_qubits,
+                unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
+                group_first, group_last);
             ::ket::utility::barrier(parallel_policy, executor);
 # ifdef BRA_PROFILE_PHASE_SHIFT_BATCHES
             if (thread_index == 0)
             {
               auto const elapsed_time = std::chrono::steady_clock::now() - start_time;
-              ++num_phase_star_batches;
-              num_phase_star_terms += phase_shift_star.phase_shift_terms.size();
+              ++num_phase_star_groups;
+              num_phase_stars += num_group_stars;
+              num_phase_star_terms += num_terms;
               total_phase_star_time += elapsed_time;
               std::clog
-                << "[phase-star-batch] terms=" << phase_shift_star.phase_shift_terms.size()
+                << "[phase-star-group] stars=" << num_group_stars
+                << " terms=" << num_terms
                 << " tables=" << num_tables
                 << " elapsed=" << std::chrono::duration<double>{elapsed_time}.count()
                 << std::endl;
             }
 # endif // BRA_PROFILE_PHASE_SHIFT_BATCHES
+            group_first = group_last;
           }
 
           auto phase_shift_gate_iter = gate_iter;
@@ -622,9 +664,10 @@ namespace bra
           << "[other-fallback-summary] gates=" << num_other_fallback_gates
           << " elapsed=" << std::chrono::duration<double>{total_other_fallback_time}.count()
           << std::endl;
-      if (thread_index == 0 and num_phase_star_batches != std::size_t{0u})
+      if (thread_index == 0 and num_phase_star_groups != std::size_t{0u})
         std::clog
-          << "[phase-star-batch-summary] batches=" << num_phase_star_batches
+          << "[phase-star-group-summary] groups=" << num_phase_star_groups
+          << " stars=" << num_phase_stars
           << " terms=" << num_phase_star_terms
           << " elapsed=" << std::chrono::duration<double>{total_phase_star_time}.count()
           << std::endl;
