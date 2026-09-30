@@ -18,6 +18,7 @@
 # include <bra/types.hpp>
 # include <bra/fused_gate/apply_hadamard_and_phase_shift_terms.hpp>
 # include <bra/fused_gate/apply_phase_shift_terms.hpp>
+# include <bra/fused_gate/apply_two_hadamards_and_phase_shift_terms.hpp>
 
 
 namespace bra
@@ -257,6 +258,26 @@ namespace bra
         if ((*gate_iter)->get_hadamard_target(
               target_qubit, to_qubit_index_in_fused_gates, unit_qubit_value))
         {
+          auto two_hadamard_phase_shift_terms = std::vector< ::bra::fused_gate::phase_shift_term >{};
+          auto const next_hadamard_gate_iter
+            = ::bra::fused_gate::apply_fused_gates_detail::append_table_compatible_phase_shift_terms(
+                std::next(gate_iter), fused_gates.end(), two_hadamard_phase_shift_terms,
+                to_qubit_index_in_fused_gates, unit_qubit_value);
+          auto next_target_qubit = ::bra::bit_integer_type{0u};
+          if (not two_hadamard_phase_shift_terms.empty()
+              and next_hadamard_gate_iter != fused_gates.end()
+              and (*next_hadamard_gate_iter)->get_hadamard_target(
+                    next_target_qubit, to_qubit_index_in_fused_gates, unit_qubit_value)
+              and next_target_qubit != target_qubit)
+          {
+            ::bra::fused_gate::apply_two_hadamards_and_phase_shift_terms(
+              first, index_wo_qubits,
+              unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
+              target_qubit, next_target_qubit, two_hadamard_phase_shift_terms);
+            gate_iter = std::next(next_hadamard_gate_iter);
+            continue;
+          }
+
           auto controlled_phase_shift_terms = std::vector< ::bra::fused_gate::phase_shift_term >{};
           auto const next_controlled_gate_iter
             = ::bra::fused_gate::apply_fused_gates_detail::append_common_target_phase_shift_terms(
@@ -396,6 +417,49 @@ namespace bra
         if ((*gate_iter)->get_hadamard_target(
               target_qubit, to_qubit_index_in_fused_gates, unit_qubit_value))
         {
+          auto two_hadamard_phase_shift_terms = std::vector< ::bra::fused_gate::phase_shift_term >{};
+          auto const next_hadamard_gate_iter
+            = ::bra::fused_gate::apply_fused_gates_detail::append_table_compatible_phase_shift_terms(
+                std::next(gate_iter), fused_gates.end(), two_hadamard_phase_shift_terms,
+                to_qubit_index_in_fused_gates, unit_qubit_value);
+          auto next_target_qubit = ::bra::bit_integer_type{0u};
+          if (not two_hadamard_phase_shift_terms.empty()
+              and next_hadamard_gate_iter != fused_gates.end()
+              and (*next_hadamard_gate_iter)->get_hadamard_target(
+                    next_target_qubit, to_qubit_index_in_fused_gates, unit_qubit_value)
+              and next_target_qubit != target_qubit)
+          {
+# ifdef BRA_PROFILE_PHASE_SHIFT_BATCHES
+            auto const table_num_bits
+              = ::bra::fused_gate::apply_phase_shift_terms_detail::phase_shift_table_num_bits(
+                  two_hadamard_phase_shift_terms);
+            auto const start_time
+              = thread_index == 0 ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+# endif // BRA_PROFILE_PHASE_SHIFT_BATCHES
+            ::bra::fused_gate::apply_two_hadamards_and_phase_shift_terms(
+              parallel_policy, thread_index,
+              first, index_wo_qubits,
+              unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
+              target_qubit, next_target_qubit, two_hadamard_phase_shift_terms);
+            ::ket::utility::barrier(parallel_policy, executor);
+# ifdef BRA_PROFILE_PHASE_SHIFT_BATCHES
+            if (thread_index == 0)
+            {
+              auto const elapsed_time = std::chrono::steady_clock::now() - start_time;
+              ++num_hadamard_phase_batches;
+              num_hadamard_phase_terms += two_hadamard_phase_shift_terms.size();
+              total_hadamard_phase_batch_time += elapsed_time;
+              std::clog
+                << "[two-hadamard-phase-batch] terms=" << two_hadamard_phase_shift_terms.size()
+                << " table_bits=" << table_num_bits
+                << " elapsed=" << std::chrono::duration<double>{elapsed_time}.count()
+                << std::endl;
+            }
+# endif // BRA_PROFILE_PHASE_SHIFT_BATCHES
+            gate_iter = std::next(next_hadamard_gate_iter);
+            continue;
+          }
+
           auto controlled_phase_shift_terms = std::vector< ::bra::fused_gate::phase_shift_term >{};
           auto const next_controlled_gate_iter
             = ::bra::fused_gate::apply_fused_gates_detail::append_common_target_phase_shift_terms(
