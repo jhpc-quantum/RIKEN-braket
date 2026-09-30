@@ -77,8 +77,8 @@
 #   include <bra/state.hpp>
 #   include <bra/types.hpp>
 #   include <bra/fused_gate.hpp>
-#   include <bra/fused_gate/apply_fused_gates.hpp>
-#   include <bra/fused_gate/in_execute_fused_gate_caller.hpp>
+#   include <bra/fused_gate/detail/apply_fused_gates.hpp>
+#   include <bra/fused_gate/detail/in_execute_fused_gate_caller.hpp>
 #   include <bra/utility/closest_floating_point_of.hpp>
 #   include <bra/utility/throw_if_too_many_operated_qubits.hpp>
 
@@ -101,7 +101,7 @@ namespace bra
     -> typename std::enable_if<
          std::is_same<typename std::decay<First>::type, Iterator>::value>::type
     {
-      ::bra::fused_gate::apply_fused_gates(
+      ::bra::fused_gate::detail::apply_fused_gates(
         fused_gates_, first, index_wo_qubits,
         unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
         to_qubit_index_in_fused_gates_, unit_qubit_value);
@@ -118,7 +118,7 @@ namespace bra
     -> typename std::enable_if<
          std::is_same<typename std::decay<First>::type, Iterator>::value>::type
     {
-      ::bra::fused_gate::apply_fused_gates_in_execute(
+      ::bra::fused_gate::detail::apply_fused_gates_in_execute(
         fused_gates_, parallel_policy, executor, thread_index,
         first, index_wo_qubits,
         unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
@@ -134,7 +134,7 @@ namespace bra
     -> typename std::enable_if<
          std::is_same<typename std::decay<First>::type, CacheAwareIterator>::value>::type
     {
-      ::bra::fused_gate::apply_fused_gates(
+      ::bra::fused_gate::detail::apply_fused_gates(
         cache_aware_fused_gates_, first, index_wo_qubits,
         unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
         to_qubit_index_in_fused_gates_, unit_qubit_value);
@@ -151,7 +151,7 @@ namespace bra
     -> typename std::enable_if<
          std::is_same<typename std::decay<First>::type, CacheAwareIterator>::value>::type
     {
-      ::bra::fused_gate::apply_fused_gates_in_execute(
+      ::bra::fused_gate::detail::apply_fused_gates_in_execute(
         cache_aware_fused_gates_, parallel_policy, executor, thread_index,
         first, index_wo_qubits,
         unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
@@ -172,7 +172,7 @@ namespace bra
       SortedFusedQubitsWithSentinelOrIndexMasks const& sorted_fused_qubits_with_sentinel_or_index_masks,
       int const, ::bra::state_integer_type const unit_qubit_value) const -> void
     {
-      ::bra::fused_gate::apply_fused_gates(
+      ::bra::fused_gate::detail::apply_fused_gates(
         fused_gates_, first, index_wo_qubits,
         unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
         to_qubit_index_in_fused_gates_, unit_qubit_value);
@@ -187,7 +187,7 @@ namespace bra
       SortedFusedQubitsWithSentinelOrIndexMasks const& sorted_fused_qubits_with_sentinel_or_index_masks,
       ::bra::state_integer_type const unit_qubit_value) const -> void
     {
-      ::bra::fused_gate::apply_fused_gates_in_execute(
+      ::bra::fused_gate::detail::apply_fused_gates_in_execute(
         fused_gates_, parallel_policy, executor, thread_index,
         first, index_wo_qubits,
         unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
@@ -2020,7 +2020,7 @@ namespace bra
     else if (uses_inner_parallelism)
     {
       auto const call_fused_gates_in_execute
-        = ::bra::fused_gate::in_execute_fused_gate_caller<decltype(call_fused_gates)>{
+        = ::bra::fused_gate::detail::in_execute_fused_gate_caller<decltype(call_fused_gates)>{
             parallel_policy_, call_fused_gates};
       ket::mpi::gate::runtime::ranges::gate_with_preparation(
         mpi_policy_, ::ket::utility::policy::make_sequential(),
