@@ -1,10 +1,6 @@
 #ifndef BRA_FUSED_GATE_DETAIL_APPLY_FUSED_GATES_HPP
 # define BRA_FUSED_GATE_DETAIL_APPLY_FUSED_GATES_HPP
 
-# ifdef BRA_PROFILE_PHASE_SHIFT_BATCHES
-#   include <chrono>
-#   include <iostream>
-# endif // BRA_PROFILE_PHASE_SHIFT_BATCHES
 # include <algorithm>
 # include <cstddef>
 # include <iterator>
@@ -394,24 +390,6 @@ namespace bra
         std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
         ::bra::state_integer_type const unit_qubit_value) -> void
       {
-# ifdef BRA_PROFILE_PHASE_SHIFT_BATCHES
-        auto num_batches = std::size_t{0u};
-        auto num_table_batches = std::size_t{0u};
-        auto num_fallback_batches = std::size_t{0u};
-        auto num_batched_terms = std::size_t{0u};
-        auto total_batch_time = std::chrono::steady_clock::duration{};
-        auto num_hadamard_phase_batches = std::size_t{0u};
-        auto num_hadamard_phase_terms = std::size_t{0u};
-        auto total_hadamard_phase_batch_time = std::chrono::steady_clock::duration{};
-        auto num_phase_fallback_gates = std::size_t{0u};
-        auto total_phase_fallback_time = std::chrono::steady_clock::duration{};
-        auto num_other_fallback_gates = std::size_t{0u};
-        auto total_other_fallback_time = std::chrono::steady_clock::duration{};
-        auto num_phase_star_groups = std::size_t{0u};
-        auto num_phase_stars = std::size_t{0u};
-        auto num_phase_star_terms = std::size_t{0u};
-        auto total_phase_star_time = std::chrono::steady_clock::duration{};
-# endif // BRA_PROFILE_PHASE_SHIFT_BATCHES
         auto gate_iter = fused_gates.begin();
         while (gate_iter != fused_gates.end())
         {
@@ -431,33 +409,12 @@ namespace bra
                       next_target_qubit, to_qubit_index_in_fused_gates, unit_qubit_value)
                 and next_target_qubit != target_qubit)
             {
-# ifdef BRA_PROFILE_PHASE_SHIFT_BATCHES
-              auto const table_num_bits
-                = ::bra::fused_gate::detail::apply_phase_shift_terms_detail::phase_shift_table_num_bits(
-                    two_hadamard_phase_shift_terms);
-              auto const start_time
-                = thread_index == 0 ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-# endif // BRA_PROFILE_PHASE_SHIFT_BATCHES
               ::bra::fused_gate::detail::apply_two_hadamards_and_phase_shift_terms(
                 parallel_policy, thread_index,
                 first, index_wo_qubits,
                 unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
                 target_qubit, next_target_qubit, two_hadamard_phase_shift_terms);
               ::ket::utility::barrier(parallel_policy, executor);
-# ifdef BRA_PROFILE_PHASE_SHIFT_BATCHES
-              if (thread_index == 0)
-              {
-                auto const elapsed_time = std::chrono::steady_clock::now() - start_time;
-                ++num_hadamard_phase_batches;
-                num_hadamard_phase_terms += two_hadamard_phase_shift_terms.size();
-                total_hadamard_phase_batch_time += elapsed_time;
-                std::clog
-                  << "[two-hadamard-phase-batch] terms=" << two_hadamard_phase_shift_terms.size()
-                  << " table_bits=" << table_num_bits
-                  << " elapsed=" << std::chrono::duration<double>{elapsed_time}.count()
-                  << std::endl;
-              }
-# endif // BRA_PROFILE_PHASE_SHIFT_BATCHES
               gate_iter = std::next(next_hadamard_gate_iter);
               continue;
             }
@@ -469,33 +426,12 @@ namespace bra
                   to_qubit_index_in_fused_gates, unit_qubit_value);
             if (not controlled_phase_shift_terms.empty())
             {
-# ifdef BRA_PROFILE_PHASE_SHIFT_BATCHES
-              auto const num_tables
-                = ::bra::fused_gate::detail::apply_phase_shift_terms_detail::phase_shift_table_num_tables(
-                    controlled_phase_shift_terms);
-              auto const start_time
-                = thread_index == 0 ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-# endif // BRA_PROFILE_PHASE_SHIFT_BATCHES
               ::bra::fused_gate::detail::apply_hadamard_and_controlled_phase_shift_terms(
                 parallel_policy, thread_index,
                 first, index_wo_qubits,
                 unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
                 target_qubit, controlled_phase_shift_terms);
               ::ket::utility::barrier(parallel_policy, executor);
-# ifdef BRA_PROFILE_PHASE_SHIFT_BATCHES
-              if (thread_index == 0)
-              {
-                auto const elapsed_time = std::chrono::steady_clock::now() - start_time;
-                ++num_hadamard_phase_batches;
-                num_hadamard_phase_terms += controlled_phase_shift_terms.size();
-                total_hadamard_phase_batch_time += elapsed_time;
-                std::clog
-                  << "[hadamard-controlled-phase-batch] terms=" << controlled_phase_shift_terms.size()
-                  << " tables=" << num_tables
-                  << " elapsed=" << std::chrono::duration<double>{elapsed_time}.count()
-                  << std::endl;
-              }
-# endif // BRA_PROFILE_PHASE_SHIFT_BATCHES
               gate_iter = next_controlled_gate_iter;
               continue;
             }
@@ -507,32 +443,12 @@ namespace bra
                   to_qubit_index_in_fused_gates, unit_qubit_value);
             if (not phase_shift_terms.empty())
             {
-# ifdef BRA_PROFILE_PHASE_SHIFT_BATCHES
-              auto const table_num_bits
-                = ::bra::fused_gate::detail::apply_phase_shift_terms_detail::phase_shift_table_num_bits(phase_shift_terms);
-              auto const start_time
-                = thread_index == 0 ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-# endif // BRA_PROFILE_PHASE_SHIFT_BATCHES
               ::bra::fused_gate::detail::apply_hadamard_and_phase_shift_terms(
                 parallel_policy, thread_index,
                 first, index_wo_qubits,
                 unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
                 target_qubit, phase_shift_terms);
               ::ket::utility::barrier(parallel_policy, executor);
-# ifdef BRA_PROFILE_PHASE_SHIFT_BATCHES
-              if (thread_index == 0)
-              {
-                auto const elapsed_time = std::chrono::steady_clock::now() - start_time;
-                ++num_hadamard_phase_batches;
-                num_hadamard_phase_terms += phase_shift_terms.size();
-                total_hadamard_phase_batch_time += elapsed_time;
-                std::clog
-                  << "[hadamard-phase-batch] terms=" << phase_shift_terms.size()
-                  << " table_bits=" << table_num_bits
-                  << " elapsed=" << std::chrono::duration<double>{elapsed_time}.count()
-                  << std::endl;
-              }
-# endif // BRA_PROFILE_PHASE_SHIFT_BATCHES
               gate_iter = next_gate_iter;
               continue;
             }
@@ -547,38 +463,12 @@ namespace bra
           if (next_gate_iter != gate_iter
               and ::bra::fused_gate::detail::apply_fused_gates_detail::should_batch(phase_shift_terms))
           {
-# ifdef BRA_PROFILE_PHASE_SHIFT_BATCHES
-            auto const table_num_bits
-              = ::bra::fused_gate::detail::apply_phase_shift_terms_detail::phase_shift_table_num_bits(phase_shift_terms);
-            auto const uses_table
-              = table_num_bits
-                <= ::bra::fused_gate::detail::apply_phase_shift_terms_detail::phase_shift_table_max_num_bits;
-            auto const start_time
-              = thread_index == 0 ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-# endif // BRA_PROFILE_PHASE_SHIFT_BATCHES
             ::bra::fused_gate::detail::apply_phase_shift_terms(
               parallel_policy, thread_index,
               first, index_wo_qubits,
               unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
               phase_shift_terms);
             ::ket::utility::barrier(parallel_policy, executor);
-# ifdef BRA_PROFILE_PHASE_SHIFT_BATCHES
-            if (thread_index == 0)
-            {
-              auto const elapsed_time = std::chrono::steady_clock::now() - start_time;
-              ++num_batches;
-              num_table_batches += uses_table ? std::size_t{1u} : std::size_t{0u};
-              num_fallback_batches += uses_table ? std::size_t{0u} : std::size_t{1u};
-              num_batched_terms += phase_shift_terms.size();
-              total_batch_time += elapsed_time;
-              std::clog
-                << "[phase-batch] terms=" << phase_shift_terms.size()
-                << " mode=" << (uses_table ? "table" : "fallback")
-                << " table_bits=" << table_num_bits
-                << " elapsed=" << std::chrono::duration<double>{elapsed_time}.count()
-                << std::endl;
-            }
-# endif // BRA_PROFILE_PHASE_SHIFT_BATCHES
             gate_iter = next_gate_iter;
             continue;
           }
@@ -605,19 +495,6 @@ namespace bra
                     num_remaining_stars,
                     ::bra::fused_gate::detail::apply_fused_gates_detail::phase_shift_star_group_size);
               auto const group_last = group_first + num_group_stars;
-# ifdef BRA_PROFILE_PHASE_SHIFT_BATCHES
-              auto num_tables = std::size_t{0u};
-              auto num_terms = std::size_t{0u};
-              for (auto iter = group_first; iter != group_last; ++iter)
-              {
-                num_tables
-                  += ::bra::fused_gate::detail::apply_phase_shift_terms_detail::phase_shift_table_num_tables(
-                       iter->phase_shift_terms);
-                num_terms += iter->phase_shift_terms.size();
-              }
-              auto const start_time
-                = thread_index == 0 ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-# endif // BRA_PROFILE_PHASE_SHIFT_BATCHES
               if (num_group_stars == std::size_t{1u})
                 ::bra::fused_gate::detail::apply_controlled_phase_shift_terms(
                   parallel_policy, thread_index,
@@ -631,22 +508,6 @@ namespace bra
                   unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
                   group_first, group_last);
               ::ket::utility::barrier(parallel_policy, executor);
-# ifdef BRA_PROFILE_PHASE_SHIFT_BATCHES
-              if (thread_index == 0)
-              {
-                auto const elapsed_time = std::chrono::steady_clock::now() - start_time;
-                ++num_phase_star_groups;
-                num_phase_stars += num_group_stars;
-                num_phase_star_terms += num_terms;
-                total_phase_star_time += elapsed_time;
-                std::clog
-                  << "[phase-star-group] stars=" << num_group_stars
-                  << " terms=" << num_terms
-                  << " tables=" << num_tables
-                  << " elapsed=" << std::chrono::duration<double>{elapsed_time}.count()
-                  << std::endl;
-              }
-# endif // BRA_PROFILE_PHASE_SHIFT_BATCHES
               group_first = group_last;
             }
 
@@ -656,88 +517,23 @@ namespace bra
             {
               if (selected_phase_shift_gates[gate_index])
                 continue;
-# ifdef BRA_PROFILE_PHASE_SHIFT_BATCHES
-              auto const start_time
-                = thread_index == 0 ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-# endif // BRA_PROFILE_PHASE_SHIFT_BATCHES
               (*phase_shift_gate_iter)->call_in_execute(
                 parallel_policy, executor, thread_index,
                 first, index_wo_qubits,
                 unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
                 to_qubit_index_in_fused_gates, unit_qubit_value);
-# ifdef BRA_PROFILE_PHASE_SHIFT_BATCHES
-              if (thread_index == 0)
-              {
-                ++num_phase_fallback_gates;
-                total_phase_fallback_time += std::chrono::steady_clock::now() - start_time;
-              }
-# endif // BRA_PROFILE_PHASE_SHIFT_BATCHES
             }
             gate_iter = phase_shift_block_end;
             continue;
           }
 
-# ifdef BRA_PROFILE_PHASE_SHIFT_BATCHES
-          auto const is_phase_fallback = next_gate_iter != gate_iter;
-          auto const start_time
-            = thread_index == 0 ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
-# endif // BRA_PROFILE_PHASE_SHIFT_BATCHES
           (*gate_iter)->call_in_execute(
             parallel_policy, executor, thread_index,
             first, index_wo_qubits,
             unsorted_fused_qubits_or_masks, sorted_fused_qubits_with_sentinel_or_index_masks,
             to_qubit_index_in_fused_gates, unit_qubit_value);
-# ifdef BRA_PROFILE_PHASE_SHIFT_BATCHES
-          if (thread_index == 0)
-          {
-            auto const elapsed_time = std::chrono::steady_clock::now() - start_time;
-            if (is_phase_fallback)
-            {
-              ++num_phase_fallback_gates;
-              total_phase_fallback_time += elapsed_time;
-            }
-            else
-            {
-              ++num_other_fallback_gates;
-              total_other_fallback_time += elapsed_time;
-            }
-          }
-# endif // BRA_PROFILE_PHASE_SHIFT_BATCHES
           ++gate_iter;
         }
-# ifdef BRA_PROFILE_PHASE_SHIFT_BATCHES
-        if (thread_index == 0 and num_batches != std::size_t{0u})
-          std::clog
-            << "[phase-batch-summary] batches=" << num_batches
-            << " table=" << num_table_batches
-            << " fallback=" << num_fallback_batches
-            << " terms=" << num_batched_terms
-            << " elapsed=" << std::chrono::duration<double>{total_batch_time}.count()
-            << std::endl;
-        if (thread_index == 0 and num_hadamard_phase_batches != std::size_t{0u})
-          std::clog
-            << "[hadamard-phase-batch-summary] batches=" << num_hadamard_phase_batches
-            << " terms=" << num_hadamard_phase_terms
-            << " elapsed=" << std::chrono::duration<double>{total_hadamard_phase_batch_time}.count()
-            << std::endl;
-        if (thread_index == 0 and num_phase_fallback_gates != std::size_t{0u})
-          std::clog
-            << "[phase-fallback-summary] gates=" << num_phase_fallback_gates
-            << " elapsed=" << std::chrono::duration<double>{total_phase_fallback_time}.count()
-            << std::endl;
-        if (thread_index == 0 and num_other_fallback_gates != std::size_t{0u})
-          std::clog
-            << "[other-fallback-summary] gates=" << num_other_fallback_gates
-            << " elapsed=" << std::chrono::duration<double>{total_other_fallback_time}.count()
-            << std::endl;
-        if (thread_index == 0 and num_phase_star_groups != std::size_t{0u})
-          std::clog
-            << "[phase-star-group-summary] groups=" << num_phase_star_groups
-            << " stars=" << num_phase_stars
-            << " terms=" << num_phase_star_terms
-            << " elapsed=" << std::chrono::duration<double>{total_phase_star_time}.count()
-            << std::endl;
-# endif // BRA_PROFILE_PHASE_SHIFT_BATCHES
       }
     } // namespace detail
   } // namespace fused_gate
