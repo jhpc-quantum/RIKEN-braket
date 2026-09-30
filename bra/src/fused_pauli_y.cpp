@@ -39,6 +39,26 @@ namespace bra
         first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
         target_qubits);
     }
+
+    template <typename Iterator>
+    auto fused_pauli_y<Iterator>::do_call_in_execute(
+      ::ket::utility::policy::parallel<unsigned int> const parallel_policy, int const thread_index,
+      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
+      std::vector< ::bra::qubit_type > const& unsorted_fused_qubits,
+      std::vector< ::bra::qubit_type > const& sorted_fused_qubits_with_sentinel,
+      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+      ::bra::state_integer_type const) const -> void
+    {
+      if (unsorted_fused_qubits.empty())
+        throw std::runtime_error{"fused_pauli_y requires at least one fused qubit"};
+
+      std::array< ::bra::qubit_type, 1u > const target_qubits{{
+        static_cast< ::bra::qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(qubit_)])}};
+      ::ket::gate::fused::runtime::ranges::pauli_y(
+        parallel_policy, thread_index,
+        first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
+        target_qubits);
+    }
 #else // KET_USE_BIT_MASKS_EXPLICITLY
     template <typename Iterator>
     auto fused_pauli_y<Iterator>::do_call(
@@ -53,6 +73,26 @@ namespace bra
       std::array< ::bra::qubit_type, 1u > const target_qubits{{
         static_cast< ::bra::qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(qubit_)])}};
       ::ket::gate::fused::runtime::ranges::pauli_y(
+        first, fused_index_wo_qubits, qubit_masks, index_masks,
+        target_qubits);
+    }
+
+    template <typename Iterator>
+    auto fused_pauli_y<Iterator>::do_call_in_execute(
+      ::ket::utility::policy::parallel<unsigned int> const parallel_policy, int const thread_index,
+      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
+      std::vector< ::bra::state_integer_type > const& qubit_masks,
+      std::vector< ::bra::state_integer_type > const& index_masks,
+      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+      ::bra::state_integer_type const) const -> void
+    {
+      if (qubit_masks.empty())
+        throw std::runtime_error{"fused_pauli_y requires at least one fused qubit"};
+
+      std::array< ::bra::qubit_type, 1u > const target_qubits{{
+        static_cast< ::bra::qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(qubit_)])}};
+      ::ket::gate::fused::runtime::ranges::pauli_y(
+        parallel_policy, thread_index,
         first, fused_index_wo_qubits, qubit_masks, index_masks,
         target_qubits);
     }

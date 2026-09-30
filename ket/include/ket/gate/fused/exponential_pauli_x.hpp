@@ -434,6 +434,87 @@ namespace ket
                   [](control_qubit_type const control_qubit) { return control_qubit.qubit(); })));
           }
 
+          template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename QubitsRange1, typename QubitsRange2, typename Complex, typename QubitsRange3, typename ControlQubitsRange>
+          inline auto exponential_pauli_x_coeff(
+            ParallelPolicy const parallel_policy, int const thread_index,
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            QubitsRange1 const& unsorted_fused_qubits, QubitsRange2 const& sorted_fused_qubits_with_sentinel,
+            Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+            QubitsRange3 const& target_qubits, ControlQubitsRange const& control_qubits)
+          -> void
+          {
+            using qubit_type = ::ket::utility::meta::range_value_t<QubitsRange3>;
+            using control_qubit_type = ::ket::control<qubit_type>;
+            static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+            static_assert(std::is_same<StateInteger, ::ket::meta::state_integer_t<qubit_type>>::value, "The state_integer_type of the value_type of QubitsRange3 should be the same as StateInteger");
+            using bit_integer_type = ::ket::meta::bit_integer_t<qubit_type>;
+            static_assert(std::is_unsigned<bit_integer_type>::value, "The bit_integer_type of the value_type of QubitsRange should be unsigned");
+            static_assert(std::is_same< ::ket::utility::meta::range_value_t<ControlQubitsRange>, control_qubit_type >::value, "The value_type of ControlQubitsRange should be the same as the value_type of QubitsRange");
+
+            using std::begin;
+            using std::end;
+            auto const num_target_qubits = static_cast<bit_integer_type>(end(target_qubits) - begin(target_qubits));
+            auto const num_control_qubits = static_cast<bit_integer_type>(end(control_qubits) - begin(control_qubits));
+            auto const num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
+            auto const half_num_target_indices = num_target_indices / std::size_t{2u};
+            auto const num_fused_qubits = static_cast<bit_integer_type>(end(unsorted_fused_qubits) - begin(unsorted_fused_qubits));
+            assert(static_cast<bit_integer_type>(end(sorted_fused_qubits_with_sentinel) - begin(sorted_fused_qubits_with_sentinel)) == num_fused_qubits + bit_integer_type{1u});
+            assert(num_target_qubits + num_control_qubits <= num_fused_qubits);
+
+            assert(::ket::utility::runtime::ranges::all_in_state_vector(num_fused_qubits, target_qubits));
+            assert(::ket::utility::runtime::ranges::all_in_state_vector(num_fused_qubits, control_qubits));
+
+            static_assert(
+              std::is_same<Complex, typename std::iterator_traits<RandomAccessIterator>::value_type>::value,
+              "Complex should be the same to value_type of RandomAccessRange");
+
+            using std::real;
+            using std::imag;
+            auto const cos_theta = real(phase_coefficient);
+            auto const i_sin_theta = ::ket::utility::imaginary_unit<Complex>() * imag(phase_coefficient);
+
+            ::ket::gate::fused::runtime::ranges::gate(
+              parallel_policy, thread_index, first, num_fused_qubits,
+              [fused_index_wo_qubits, &unsorted_fused_qubits, &sorted_fused_qubits_with_sentinel,
+               num_target_qubits, num_control_qubits, num_target_indices, half_num_target_indices, cos_theta, &i_sin_theta](
+                auto const first, StateInteger const operated_index_wo_qubits,
+                auto const& unsorted_operated_qubits, auto const& sorted_operated_qubits_with_sentinel)
+              {
+                // 0b1...10...0u
+                auto const base_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
+
+                for (auto i = std::size_t{0u}; i < half_num_target_indices; ++i)
+                {
+                  auto const iter1
+                    = first
+                      + ::ket::gate::utility::ranges::index_with_qubits(
+                          fused_index_wo_qubits,
+                          ::ket::gate::utility::ranges::index_with_qubits(
+                            operated_index_wo_qubits, base_index + i,
+                            unsorted_operated_qubits, sorted_operated_qubits_with_sentinel),
+                          unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);
+                  auto const iter2
+                    = first
+                      + ::ket::gate::utility::ranges::index_with_qubits(
+                          fused_index_wo_qubits,
+                          ::ket::gate::utility::ranges::index_with_qubits(
+                            operated_index_wo_qubits, base_index + (num_target_indices - std::size_t{1u} - i),
+                            unsorted_operated_qubits, sorted_operated_qubits_with_sentinel),
+                          unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);
+                  auto const value1 = *iter1;
+
+                  *iter1 *= cos_theta;
+                  *iter1 += *iter2 * i_sin_theta;
+                  *iter2 *= cos_theta;
+                  *iter2 += value1 * i_sin_theta;
+                }
+              },
+              boost::join(
+                target_qubits,
+                control_qubits | boost::adaptors::transformed(
+                  [](control_qubit_type const control_qubit) { return control_qubit.qubit(); })));
+          }
+
           template <typename RandomAccessIterator, typename StateInteger, typename QubitsRange1, typename QubitsRange2, typename Complex, typename QubitsRange3>
           inline auto exponential_pauli_x_coeff(
             RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
@@ -446,6 +527,25 @@ namespace ket
             using control_qubit_type = ::ket::control<qubit_type>;
             std::array<control_qubit_type, 0u> const control_qubits{};
             ::ket::gate::fused::runtime::ranges::exponential_pauli_x_coeff(
+              first, fused_index_wo_qubits,
+              unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
+              phase_coefficient, target_qubits, control_qubits);
+          }
+
+          template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename QubitsRange1, typename QubitsRange2, typename Complex, typename QubitsRange3>
+          inline auto exponential_pauli_x_coeff(
+            ParallelPolicy const parallel_policy, int const thread_index,
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            QubitsRange1 const& unsorted_fused_qubits, QubitsRange2 const& sorted_fused_qubits_with_sentinel,
+            Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+            QubitsRange3 const& target_qubits)
+          -> void
+          {
+            using qubit_type = ::ket::utility::meta::range_value_t<QubitsRange3>;
+            using control_qubit_type = ::ket::control<qubit_type>;
+            std::array<control_qubit_type, 0u> const control_qubits{};
+            ::ket::gate::fused::runtime::ranges::exponential_pauli_x_coeff(
+              parallel_policy, thread_index,
               first, fused_index_wo_qubits,
               unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
               phase_coefficient, target_qubits, control_qubits);
@@ -466,6 +566,23 @@ namespace ket
               conj(phase_coefficient), target_qubits, control_qubits);
           }
 
+          template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename QubitsRange1, typename QubitsRange2, typename Complex, typename QubitsRange3, typename ControlQubitsRange>
+          inline auto adj_exponential_pauli_x_coeff(
+            ParallelPolicy const parallel_policy, int const thread_index,
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            QubitsRange1 const& unsorted_fused_qubits, QubitsRange2 const& sorted_fused_qubits_with_sentinel,
+            Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+            QubitsRange3 const& target_qubits, ControlQubitsRange const& control_qubits)
+          -> void
+          {
+            using std::conj;
+            ::ket::gate::fused::runtime::ranges::exponential_pauli_x_coeff(
+              parallel_policy, thread_index,
+              first, fused_index_wo_qubits,
+              unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
+              conj(phase_coefficient), target_qubits, control_qubits);
+          }
+
           template <typename RandomAccessIterator, typename StateInteger, typename QubitsRange1, typename QubitsRange2, typename Complex, typename QubitsRange3>
           inline auto adj_exponential_pauli_x_coeff(
             RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
@@ -476,6 +593,23 @@ namespace ket
           {
             using std::conj;
             ::ket::gate::fused::runtime::ranges::exponential_pauli_x_coeff(
+              first, fused_index_wo_qubits,
+              unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
+              conj(phase_coefficient), target_qubits);
+          }
+
+          template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename QubitsRange1, typename QubitsRange2, typename Complex, typename QubitsRange3>
+          inline auto adj_exponential_pauli_x_coeff(
+            ParallelPolicy const parallel_policy, int const thread_index,
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            QubitsRange1 const& unsorted_fused_qubits, QubitsRange2 const& sorted_fused_qubits_with_sentinel,
+            Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+            QubitsRange3 const& target_qubits)
+          -> void
+          {
+            using std::conj;
+            ::ket::gate::fused::runtime::ranges::exponential_pauli_x_coeff(
+              parallel_policy, thread_index,
               first, fused_index_wo_qubits,
               unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
               conj(phase_coefficient), target_qubits);
@@ -648,6 +782,23 @@ namespace ket
               ::ket::utility::exp_i<complex_type>(phase), target_qubits, control_qubits);
           }
 
+          template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename QubitsRange1, typename QubitsRange2, typename Real, typename QubitsRange3, typename ControlQubitsRange>
+          inline auto exponential_pauli_x(
+            ParallelPolicy const parallel_policy, int const thread_index,
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            QubitsRange1 const& unsorted_fused_qubits, QubitsRange2 const& sorted_fused_qubits_with_sentinel,
+            Real const phase,
+            QubitsRange3 const& target_qubits, ControlQubitsRange const& control_qubits)
+          -> void
+          {
+            using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+            ::ket::gate::fused::runtime::ranges::exponential_pauli_x_coeff(
+              parallel_policy, thread_index,
+              first, fused_index_wo_qubits,
+              unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
+              ::ket::utility::exp_i<complex_type>(phase), target_qubits, control_qubits);
+          }
+
           template <typename RandomAccessIterator, typename StateInteger, typename QubitsRange1, typename QubitsRange2, typename Real, typename QubitsRange3>
           inline auto exponential_pauli_x(
             RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
@@ -658,6 +809,23 @@ namespace ket
           {
             using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
             ::ket::gate::fused::runtime::ranges::exponential_pauli_x_coeff(
+              first, fused_index_wo_qubits,
+              unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
+              ::ket::utility::exp_i<complex_type>(phase), target_qubits);
+          }
+
+          template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename QubitsRange1, typename QubitsRange2, typename Real, typename QubitsRange3>
+          inline auto exponential_pauli_x(
+            ParallelPolicy const parallel_policy, int const thread_index,
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            QubitsRange1 const& unsorted_fused_qubits, QubitsRange2 const& sorted_fused_qubits_with_sentinel,
+            Real const phase,
+            QubitsRange3 const& target_qubits)
+          -> void
+          {
+            using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+            ::ket::gate::fused::runtime::ranges::exponential_pauli_x_coeff(
+              parallel_policy, thread_index,
               first, fused_index_wo_qubits,
               unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
               ::ket::utility::exp_i<complex_type>(phase), target_qubits);
@@ -678,6 +846,23 @@ namespace ket
               ::ket::utility::exp_i<complex_type>(phase), target_qubits, control_qubits);
           }
 
+          template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename QubitsRange1, typename QubitsRange2, typename Real, typename QubitsRange3, typename ControlQubitsRange>
+          inline auto adj_exponential_pauli_x(
+            ParallelPolicy const parallel_policy, int const thread_index,
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            QubitsRange1 const& unsorted_fused_qubits, QubitsRange2 const& sorted_fused_qubits_with_sentinel,
+            Real const phase,
+            QubitsRange3 const& target_qubits, ControlQubitsRange const& control_qubits)
+          -> void
+          {
+            using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+            ::ket::gate::fused::runtime::ranges::adj_exponential_pauli_x_coeff(
+              parallel_policy, thread_index,
+              first, fused_index_wo_qubits,
+              unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
+              ::ket::utility::exp_i<complex_type>(phase), target_qubits, control_qubits);
+          }
+
           template <typename RandomAccessIterator, typename StateInteger, typename QubitsRange1, typename QubitsRange2, typename Real, typename QubitsRange3>
           inline auto adj_exponential_pauli_x(
             RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
@@ -688,6 +873,23 @@ namespace ket
           {
             using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
             ::ket::gate::fused::runtime::ranges::adj_exponential_pauli_x_coeff(
+              first, fused_index_wo_qubits,
+              unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
+              ::ket::utility::exp_i<complex_type>(phase), target_qubits);
+          }
+
+          template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename QubitsRange1, typename QubitsRange2, typename Real, typename QubitsRange3>
+          inline auto adj_exponential_pauli_x(
+            ParallelPolicy const parallel_policy, int const thread_index,
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            QubitsRange1 const& unsorted_fused_qubits, QubitsRange2 const& sorted_fused_qubits_with_sentinel,
+            Real const phase,
+            QubitsRange3 const& target_qubits)
+          -> void
+          {
+            using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+            ::ket::gate::fused::runtime::ranges::adj_exponential_pauli_x_coeff(
+              parallel_policy, thread_index,
               first, fused_index_wo_qubits,
               unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
               ::ket::utility::exp_i<complex_type>(phase), target_qubits);
@@ -1081,6 +1283,87 @@ namespace ket
                   [](control_qubit_type const control_qubit) { return control_qubit.qubit(); })));
           }
 
+          template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename StateIntegersRange1, typename StateIntegersRange2, typename Complex, typename QubitsRange, typename ControlQubitsRange>
+          inline auto exponential_pauli_x_coeff(
+            ParallelPolicy const parallel_policy, int const thread_index,
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            StateIntegersRange1 const& fused_qubit_masks, StateIntegersRange2 const& fused_index_masks,
+            Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+            QubitsRange const& target_qubits, ControlQubitsRange const& control_qubits)
+          -> void
+          {
+            using qubit_type = ::ket::utility::meta::range_value_t<QubitsRange>;
+            using control_qubit_type = ::ket::control<qubit_type>;
+            static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
+            static_assert(std::is_same<StateInteger, ::ket::meta::state_integer_t<qubit_type>>::value, "The state_integer_type of the value_type of QubitsRange should be the same as StateInteger");
+            using bit_integer_type = ::ket::meta::bit_integer_t<qubit_type>;
+            static_assert(std::is_unsigned<bit_integer_type>::value, "The bit_integer_type of the value_type of QubitsRange should be unsigned");
+            static_assert(std::is_same< ::ket::utility::meta::range_value_t<ControlQubitsRange>, control_qubit_type >::value, "The value_type of ControlQubitsRange should be the same as the value_type of QubitsRange");
+
+            using std::begin;
+            using std::end;
+            auto const num_target_qubits = static_cast<bit_integer_type>(end(target_qubits) - begin(target_qubits));
+            auto const num_control_qubits = static_cast<bit_integer_type>(end(control_qubits) - begin(control_qubits));
+            auto const num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
+            auto const half_num_target_indices = num_target_indices / std::size_t{2u};
+            auto const num_fused_qubits = static_cast<bit_integer_type>(end(fused_qubit_masks) - begin(fused_qubit_masks));
+            assert(static_cast<bit_integer_type>(end(fused_index_masks) - begin(fused_index_masks)) == num_fused_qubits + bit_integer_type{1u});
+            assert(num_target_qubits + num_control_qubits <= num_fused_qubits);
+
+            assert(::ket::utility::runtime::ranges::all_in_state_vector(num_fused_qubits, target_qubits));
+            assert(::ket::utility::runtime::ranges::all_in_state_vector(num_fused_qubits, control_qubits));
+
+            static_assert(
+              std::is_same<Complex, typename std::iterator_traits<RandomAccessIterator>::value_type>::value,
+              "Complex should be the same to value_type of RandomAccessRange");
+
+            using std::real;
+            using std::imag;
+            auto const cos_theta = real(phase_coefficient);
+            auto const i_sin_theta = ::ket::utility::imaginary_unit<Complex>() * imag(phase_coefficient);
+
+            ::ket::gate::fused::runtime::ranges::gate(
+              parallel_policy, thread_index, first, num_fused_qubits,
+              [fused_index_wo_qubits, &fused_qubit_masks, &fused_index_masks,
+               num_target_qubits, num_control_qubits, num_target_indices, half_num_target_indices, cos_theta, &i_sin_theta](
+                auto const first, StateInteger const operated_index_wo_qubits,
+                auto const& operated_qubit_masks, auto const& operated_index_masks)
+              {
+                // 0b1...10...0u
+                auto const base_index = ((std::size_t{1u} << num_control_qubits) - std::size_t{1u}) << num_target_qubits;
+
+                for (auto i = std::size_t{0u}; i < half_num_target_indices; ++i)
+                {
+                  auto const iter1
+                    = first
+                      + ::ket::gate::utility::ranges::index_with_qubits(
+                          fused_index_wo_qubits,
+                          ::ket::gate::utility::ranges::index_with_qubits(
+                            operated_index_wo_qubits, base_index + i,
+                            operated_qubit_masks, operated_index_masks),
+                          fused_qubit_masks, fused_index_masks);
+                  auto const iter2
+                    = first
+                      + ::ket::gate::utility::ranges::index_with_qubits(
+                          fused_index_wo_qubits,
+                          ::ket::gate::utility::ranges::index_with_qubits(
+                            operated_index_wo_qubits, base_index + (num_target_indices - std::size_t{1u} - i),
+                            operated_qubit_masks, operated_index_masks),
+                          fused_qubit_masks, fused_index_masks);
+                  auto const value1 = *iter1;
+
+                  *iter1 *= cos_theta;
+                  *iter1 += *iter2 * i_sin_theta;
+                  *iter2 *= cos_theta;
+                  *iter2 += value1 * i_sin_theta;
+                }
+              },
+              boost::join(
+                target_qubits,
+                control_qubits | boost::adaptors::transformed(
+                  [](control_qubit_type const control_qubit) { return control_qubit.qubit(); })));
+          }
+
           template <typename RandomAccessIterator, typename StateInteger, typename StateIntegersRange1, typename StateIntegersRange2, typename Complex, typename QubitsRange>
           inline auto exponential_pauli_x_coeff(
             RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
@@ -1093,6 +1376,24 @@ namespace ket
             using control_qubit_type = ::ket::control<qubit_type>;
             std::array<control_qubit_type, 0u> const control_qubits{};
             ::ket::gate::fused::runtime::ranges::exponential_pauli_x_coeff(
+              first, fused_index_wo_qubits, fused_qubit_masks, fused_index_masks,
+              phase_coefficient, target_qubits, control_qubits);
+          }
+
+          template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename StateIntegersRange1, typename StateIntegersRange2, typename Complex, typename QubitsRange>
+          inline auto exponential_pauli_x_coeff(
+            ParallelPolicy const parallel_policy, int const thread_index,
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            StateIntegersRange1 const& fused_qubit_masks, StateIntegersRange2 const& fused_index_masks,
+            Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+            QubitsRange const& target_qubits)
+          -> void
+          {
+            using qubit_type = ::ket::utility::meta::range_value_t<QubitsRange>;
+            using control_qubit_type = ::ket::control<qubit_type>;
+            std::array<control_qubit_type, 0u> const control_qubits{};
+            ::ket::gate::fused::runtime::ranges::exponential_pauli_x_coeff(
+              parallel_policy, thread_index,
               first, fused_index_wo_qubits, fused_qubit_masks, fused_index_masks,
               phase_coefficient, target_qubits, control_qubits);
           }
@@ -1111,6 +1412,22 @@ namespace ket
               conj(phase_coefficient), target_qubits, control_qubits);
           }
 
+          template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename StateIntegersRange1, typename StateIntegersRange2, typename Complex, typename QubitsRange, typename ControlQubitsRange>
+          inline auto adj_exponential_pauli_x_coeff(
+            ParallelPolicy const parallel_policy, int const thread_index,
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            StateIntegersRange1 const& fused_qubit_masks, StateIntegersRange2 const& fused_index_masks,
+            Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+            QubitsRange const& target_qubits, ControlQubitsRange const& control_qubits)
+          -> void
+          {
+            using std::conj;
+            ::ket::gate::fused::runtime::ranges::exponential_pauli_x_coeff(
+              parallel_policy, thread_index,
+              first, fused_index_wo_qubits, fused_qubit_masks, fused_index_masks,
+              conj(phase_coefficient), target_qubits, control_qubits);
+          }
+
           template <typename RandomAccessIterator, typename StateInteger, typename StateIntegersRange1, typename StateIntegersRange2, typename Complex, typename QubitsRange>
           inline auto adj_exponential_pauli_x_coeff(
             RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
@@ -1121,6 +1438,22 @@ namespace ket
           {
             using std::conj;
             ::ket::gate::fused::runtime::ranges::exponential_pauli_x_coeff(
+              first, fused_index_wo_qubits, fused_qubit_masks, fused_index_masks,
+              conj(phase_coefficient), target_qubits);
+          }
+
+          template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename StateIntegersRange1, typename StateIntegersRange2, typename Complex, typename QubitsRange>
+          inline auto adj_exponential_pauli_x_coeff(
+            ParallelPolicy const parallel_policy, int const thread_index,
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            StateIntegersRange1 const& fused_qubit_masks, StateIntegersRange2 const& fused_index_masks,
+            Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
+            QubitsRange const& target_qubits)
+          -> void
+          {
+            using std::conj;
+            ::ket::gate::fused::runtime::ranges::exponential_pauli_x_coeff(
+              parallel_policy, thread_index,
               first, fused_index_wo_qubits, fused_qubit_masks, fused_index_masks,
               conj(phase_coefficient), target_qubits);
           }
@@ -1292,6 +1625,23 @@ namespace ket
               ::ket::utility::exp_i<complex_type>(phase), target_qubits, control_qubits);
           }
 
+          template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename StateIntegersRange1, typename StateIntegersRange2, typename Real, typename QubitsRange, typename ControlQubitsRange>
+          inline auto exponential_pauli_x(
+            ParallelPolicy const parallel_policy, int const thread_index,
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            StateIntegersRange1 const& fused_qubit_masks, StateIntegersRange2 const& fused_index_masks,
+            Real const phase,
+            QubitsRange const& target_qubits, ControlQubitsRange const& control_qubits)
+          -> void
+          {
+            using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+            ::ket::gate::fused::runtime::ranges::exponential_pauli_x_coeff(
+              parallel_policy, thread_index,
+              first, fused_index_wo_qubits,
+              fused_qubit_masks, fused_index_masks,
+              ::ket::utility::exp_i<complex_type>(phase), target_qubits, control_qubits);
+          }
+
           template <typename RandomAccessIterator, typename StateInteger, typename StateIntegersRange1, typename StateIntegersRange2, typename Real, typename QubitsRange>
           inline auto exponential_pauli_x(
             RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
@@ -1302,6 +1652,23 @@ namespace ket
           {
             using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
             ::ket::gate::fused::runtime::ranges::exponential_pauli_x_coeff(
+              first, fused_index_wo_qubits,
+              fused_qubit_masks, fused_index_masks,
+              ::ket::utility::exp_i<complex_type>(phase), target_qubits);
+          }
+
+          template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename StateIntegersRange1, typename StateIntegersRange2, typename Real, typename QubitsRange>
+          inline auto exponential_pauli_x(
+            ParallelPolicy const parallel_policy, int const thread_index,
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            StateIntegersRange1 const& fused_qubit_masks, StateIntegersRange2 const& fused_index_masks,
+            Real const phase,
+            QubitsRange const& target_qubits)
+          -> void
+          {
+            using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+            ::ket::gate::fused::runtime::ranges::exponential_pauli_x_coeff(
+              parallel_policy, thread_index,
               first, fused_index_wo_qubits,
               fused_qubit_masks, fused_index_masks,
               ::ket::utility::exp_i<complex_type>(phase), target_qubits);
@@ -1322,6 +1689,23 @@ namespace ket
               ::ket::utility::exp_i<complex_type>(phase), target_qubits, control_qubits);
           }
 
+          template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename StateIntegersRange1, typename StateIntegersRange2, typename Real, typename QubitsRange, typename ControlQubitsRange>
+          inline auto adj_exponential_pauli_x(
+            ParallelPolicy const parallel_policy, int const thread_index,
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            StateIntegersRange1 const& fused_qubit_masks, StateIntegersRange2 const& fused_index_masks,
+            Real const phase,
+            QubitsRange const& target_qubits, ControlQubitsRange const& control_qubits)
+          -> void
+          {
+            using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+            ::ket::gate::fused::runtime::ranges::adj_exponential_pauli_x_coeff(
+              parallel_policy, thread_index,
+              first, fused_index_wo_qubits,
+              fused_qubit_masks, fused_index_masks,
+              ::ket::utility::exp_i<complex_type>(phase), target_qubits, control_qubits);
+          }
+
           template <typename RandomAccessIterator, typename StateInteger, typename StateIntegersRange1, typename StateIntegersRange2, typename Real, typename QubitsRange>
           inline auto adj_exponential_pauli_x(
             RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
@@ -1332,6 +1716,23 @@ namespace ket
           {
             using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
             ::ket::gate::fused::runtime::ranges::adj_exponential_pauli_x_coeff(
+              first, fused_index_wo_qubits,
+              fused_qubit_masks, fused_index_masks,
+              ::ket::utility::exp_i<complex_type>(phase), target_qubits);
+          }
+
+          template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename StateIntegersRange1, typename StateIntegersRange2, typename Real, typename QubitsRange>
+          inline auto adj_exponential_pauli_x(
+            ParallelPolicy const parallel_policy, int const thread_index,
+            RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
+            StateIntegersRange1 const& fused_qubit_masks, StateIntegersRange2 const& fused_index_masks,
+            Real const phase,
+            QubitsRange const& target_qubits)
+          -> void
+          {
+            using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
+            ::ket::gate::fused::runtime::ranges::adj_exponential_pauli_x_coeff(
+              parallel_policy, thread_index,
               first, fused_index_wo_qubits,
               fused_qubit_masks, fused_index_masks,
               ::ket::utility::exp_i<complex_type>(phase), target_qubits);

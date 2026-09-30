@@ -2,12 +2,15 @@
 # define BRA_FUSED_GATE_FUSED_GATE_HPP
 
 # include <cassert>
+# include <iterator>
 # include <type_traits>
 # include <vector>
 
-# include <boost/optional.hpp>
 # include <boost/range/begin.hpp>
 # include <boost/range/end.hpp>
+
+# include <ket/utility/loop_n.hpp>
+# include <ket/utility/parallel/loop_n.hpp>
 
 # include <bra/types.hpp>
 
@@ -17,12 +20,25 @@ namespace bra
   namespace fused_gate
   {
     enum class cez_qubit_state : int { not_global, global_zero, global_one };
+    enum class control_qubit_state : int { zero, one };
+
+    struct phase_shift_term
+    {
+      ::bra::complex_type phase_coefficient;
+      ::bra::state_integer_type control_mask;
+    };
 
     template <typename Iterator>
     class fused_gate
     {
+      using parallel_policy_type = ::ket::utility::policy::parallel<unsigned int>;
+      using executor_type = ::ket::utility::dispatch::execute<parallel_policy_type>;
+
+      bool is_enabled_;
+      ::bra::state_integer_type unit_control_qubit_mask_;
+
      public:
-      fused_gate() = default;
+      fused_gate() : is_enabled_{true}, unit_control_qubit_mask_{0u} { }
       virtual ~fused_gate() = default;
 
       fused_gate(fused_gate const&) = delete;
@@ -30,15 +46,61 @@ namespace bra
       fused_gate(fused_gate&&) = delete;
       fused_gate& operator=(fused_gate&&) = delete;
 
+      auto append_phase_shift_term(
+        std::vector< ::bra::fused_gate::phase_shift_term >& phase_shift_terms,
+        std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+        ::bra::state_integer_type const unit_qubit_value) const -> bool
+      {
+        if (not do_is_phase_shift_batchable())
+          return false;
+        if (is_enabled_ and (unit_qubit_value bitand unit_control_qubit_mask_) == unit_control_qubit_mask_)
+          do_append_phase_shift_term(phase_shift_terms, to_qubit_index_in_fused_gates);
+        return true;
+      }
+
+      auto get_hadamard_target(
+        ::bra::bit_integer_type& target_qubit,
+        std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+        ::bra::state_integer_type const unit_qubit_value) const -> bool
+      {
+        if (not is_enabled_ or (unit_qubit_value bitand unit_control_qubit_mask_) != unit_control_qubit_mask_)
+          return false;
+        return do_get_hadamard_target(target_qubit, to_qubit_index_in_fused_gates);
+      }
+
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
       auto call(
         Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
         std::vector< ::bra::qubit_type > const& unsorted_fused_qubits,
         std::vector< ::bra::qubit_type > const& sorted_fused_qubits_with_sentinel,
-        std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void
+        std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+        ::bra::state_integer_type const unit_qubit_value = ::bra::state_integer_type{0u}) const -> void
       {
         assert(sorted_fused_qubits_with_sentinel.size() == unsorted_fused_qubits.size() + std::size_t{1u});
-        do_call(first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel, to_qubit_index_in_fused_gates);
+        if (not is_enabled_ or (unit_qubit_value bitand unit_control_qubit_mask_) != unit_control_qubit_mask_)
+          return;
+
+        do_call(first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel, to_qubit_index_in_fused_gates, unit_qubit_value);
+      }
+
+      auto call_in_execute(
+        parallel_policy_type const parallel_policy, executor_type& executor, int const thread_index,
+        Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
+        std::vector< ::bra::qubit_type > const& unsorted_fused_qubits,
+        std::vector< ::bra::qubit_type > const& sorted_fused_qubits_with_sentinel,
+        std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+        ::bra::state_integer_type const unit_qubit_value = ::bra::state_integer_type{0u}) const -> void
+      {
+        assert(sorted_fused_qubits_with_sentinel.size() == unsorted_fused_qubits.size() + std::size_t{1u});
+        if (not is_enabled_ or (unit_qubit_value bitand unit_control_qubit_mask_) != unit_control_qubit_mask_)
+          return;
+
+        do_call_in_execute(
+          parallel_policy, thread_index,
+          first, fused_index_wo_qubits,
+          unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
+          to_qubit_index_in_fused_gates, unit_qubit_value);
+        ::ket::utility::barrier(parallel_policy, executor);
       }
 
       template <typename UnsortedFusedQubitsRange, typename SortedFusedQubitsWithSentinelRange>
@@ -46,7 +108,8 @@ namespace bra
         Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
         UnsortedFusedQubitsRange const& unsorted_fused_qubits,
         SortedFusedQubitsWithSentinelRange const& sorted_fused_qubits_with_sentinel,
-        std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const
+        std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+        ::bra::state_integer_type const unit_qubit_value = ::bra::state_integer_type{0u}) const
       -> typename std::enable_if<
            not std::is_same<typename std::decay<UnsortedFusedQubitsRange>::type, std::vector< ::bra::qubit_type >>::value
            or not std::is_same<typename std::decay<SortedFusedQubitsWithSentinelRange>::type, std::vector< ::bra::qubit_type >>::value>::type
@@ -60,37 +123,132 @@ namespace bra
         call(
           first, fused_index_wo_qubits,
           unsorted_fused_qubits_vector, sorted_fused_qubits_with_sentinel_vector,
-          to_qubit_index_in_fused_gates);
+          to_qubit_index_in_fused_gates, unit_qubit_value);
+      }
+
+      template <typename UnsortedFusedQubitsRange, typename SortedFusedQubitsWithSentinelRange>
+      auto call_in_execute(
+        parallel_policy_type const parallel_policy, executor_type& executor, int const thread_index,
+        Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
+        UnsortedFusedQubitsRange const& unsorted_fused_qubits,
+        SortedFusedQubitsWithSentinelRange const& sorted_fused_qubits_with_sentinel,
+        std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+        ::bra::state_integer_type const unit_qubit_value = ::bra::state_integer_type{0u}) const
+      -> typename std::enable_if<
+           not std::is_same<typename std::decay<UnsortedFusedQubitsRange>::type, std::vector< ::bra::qubit_type >>::value
+           or not std::is_same<typename std::decay<SortedFusedQubitsWithSentinelRange>::type, std::vector< ::bra::qubit_type >>::value>::type
+      {
+        auto const unsorted_fused_qubits_vector
+          = std::vector< ::bra::qubit_type >{boost::begin(unsorted_fused_qubits), boost::end(unsorted_fused_qubits)};
+        auto const sorted_fused_qubits_with_sentinel_vector
+          = std::vector< ::bra::qubit_type >{
+              boost::begin(sorted_fused_qubits_with_sentinel), boost::end(sorted_fused_qubits_with_sentinel)};
+
+        call_in_execute(
+          parallel_policy, executor, thread_index,
+          first, fused_index_wo_qubits,
+          unsorted_fused_qubits_vector, sorted_fused_qubits_with_sentinel_vector,
+          to_qubit_index_in_fused_gates, unit_qubit_value);
       }
 # else // KET_USE_BIT_MASKS_EXPLICITLY
       auto call(
         Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
         std::vector< ::bra::state_integer_type > const& qubit_masks,
         std::vector< ::bra::state_integer_type > const& index_masks,
-        std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void
+        std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+        ::bra::state_integer_type const unit_qubit_value = ::bra::state_integer_type{0u}) const -> void
       {
         assert(index_masks.size() == qubit_masks.size() + std::size_t{1u});
-        do_call(first, fused_index_wo_qubits, qubit_masks, index_masks, to_qubit_index_in_fused_gates);
+        if (not is_enabled_ or (unit_qubit_value bitand unit_control_qubit_mask_) != unit_control_qubit_mask_)
+          return;
+
+        do_call(first, fused_index_wo_qubits, qubit_masks, index_masks, to_qubit_index_in_fused_gates, unit_qubit_value);
+      }
+
+      auto call_in_execute(
+        parallel_policy_type const parallel_policy, executor_type& executor, int const thread_index,
+        Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
+        std::vector< ::bra::state_integer_type > const& qubit_masks,
+        std::vector< ::bra::state_integer_type > const& index_masks,
+        std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+        ::bra::state_integer_type const unit_qubit_value = ::bra::state_integer_type{0u}) const -> void
+      {
+        assert(index_masks.size() == qubit_masks.size() + std::size_t{1u});
+        if (not is_enabled_ or (unit_qubit_value bitand unit_control_qubit_mask_) != unit_control_qubit_mask_)
+          return;
+
+        do_call_in_execute(
+          parallel_policy, thread_index,
+          first, fused_index_wo_qubits, qubit_masks, index_masks,
+          to_qubit_index_in_fused_gates, unit_qubit_value);
+        ::ket::utility::barrier(parallel_policy, executor);
       }
 # endif // KET_USE_BIT_MASKS_EXPLICITLY
+
+      // Masks refer to bit positions within the unit-qubit value passed to call().
+      auto disable_unit_control_qubits(
+        std::vector< ::bra::control_qubit_type > const& control_qubits,
+        std::vector< ::bra::state_integer_type > const& unit_qubit_masks)
+      -> void
+      {
+        assert(control_qubits.size() == unit_qubit_masks.size());
+        auto mask_iter = unit_qubit_masks.begin();
+        for (auto iter = control_qubits.begin(); iter != control_qubits.end(); ++iter, ++mask_iter)
+        {
+          assert(*mask_iter != ::bra::state_integer_type{0u});
+          assert((*mask_iter bitand (*mask_iter - ::bra::state_integer_type{1u})) == ::bra::state_integer_type{0u});
+          if (do_disable_control_qubits(iter, std::next(iter)))
+            unit_control_qubit_mask_ |= *mask_iter;
+        }
+      }
 
       auto disable_control_qubits(
         typename std::vector< ::bra::qubit_type >::const_iterator const first,
         typename std::vector< ::bra::qubit_type >::const_iterator const last)
-      -> void
-      { do_disable_control_qubits(first, last); }
+      -> bool
+      { return do_disable_control_qubits(first, last); }
 
       auto disable_control_qubits(
         typename std::vector< ::bra::control_qubit_type >::const_iterator const first,
         typename std::vector< ::bra::control_qubit_type >::const_iterator const last)
+      -> bool
+      { return do_disable_control_qubits(first, last); }
+
+      auto disable_control_qubits(
+        typename std::vector< ::bra::control_qubit_type >::const_iterator first,
+        typename std::vector< ::bra::control_qubit_type >::const_iterator const last,
+        typename std::vector< ::bra::fused_gate::control_qubit_state >::const_iterator control_qubit_state_first)
       -> void
-      { do_disable_control_qubits(first, last); }
+      {
+        for (; first != last; ++first, ++control_qubit_state_first)
+        {
+          auto const next = std::next(first);
+          auto const is_control_used = do_disable_control_qubits(first, next);
+          if (is_control_used and *control_qubit_state_first == ::bra::fused_gate::control_qubit_state::zero)
+            is_enabled_ = false;
+        }
+      }
+
+      auto disable_control_qubits(
+        typename std::vector< ::bra::qubit_type >::const_iterator first,
+        typename std::vector< ::bra::qubit_type >::const_iterator const last,
+        typename std::vector< ::bra::fused_gate::cez_qubit_state >::const_iterator qubit_state_first)
+      -> void
+      {
+        for (; first != last; ++first, ++qubit_state_first)
+        {
+          assert(*qubit_state_first != ::bra::fused_gate::cez_qubit_state::not_global);
+          auto const is_control_used = do_disable_control_qubits(first, std::next(first));
+          if (is_control_used and *qubit_state_first == ::bra::fused_gate::cez_qubit_state::global_zero)
+            is_enabled_ = false;
+        }
+      }
 
       auto disable_cez_global_qubits(
         typename std::vector< ::bra::qubit_type >::const_iterator const first,
         typename std::vector< ::bra::qubit_type >::const_iterator const last)
-      -> void
-      { do_disable_control_qubits(first, last); }
+      -> bool
+      { return do_disable_control_qubits(first, last); }
 
       auto modify_cez(
         typename std::vector< ::bra::qubit_type >::const_iterator const first,
@@ -99,44 +257,115 @@ namespace bra
       -> void
       { do_modify_cez(first, last, cez_qubit_state_first); }
 
-      auto maybe_phase_shiftize_ez(
+      auto modify_unit_ez(
         typename std::vector< ::bra::qubit_type >::const_iterator const first,
-        typename std::vector< ::bra::qubit_type >::const_iterator const last)
-      -> boost::optional<std::pair< ::bra::control_qubit_type, ::bra::real_type >>
-      { return do_maybe_phase_shiftize_ez(first, last); }
+        typename std::vector< ::bra::qubit_type >::const_iterator const last,
+        typename std::vector< ::bra::state_integer_type >::const_iterator const unit_qubit_mask_first)
+      -> void
+      { do_modify_unit_ez(first, last, unit_qubit_mask_first); }
+
+      auto modify_unit_cez(
+        typename std::vector< ::bra::qubit_type >::const_iterator const first,
+        typename std::vector< ::bra::qubit_type >::const_iterator const last,
+        typename std::vector< ::bra::state_integer_type >::const_iterator const unit_qubit_mask_first)
+      -> void
+      { do_modify_unit_cez(first, last, unit_qubit_mask_first); }
 
      private:
+      virtual auto do_get_hadamard_target(
+        ::bra::bit_integer_type&,
+        std::vector< ::bra::bit_integer_type > const&) const -> bool
+      { return false; }
+
+      virtual auto do_is_phase_shift_batchable() const noexcept -> bool { return false; }
+      virtual auto do_append_phase_shift_term(
+        std::vector< ::bra::fused_gate::phase_shift_term >&,
+        std::vector< ::bra::bit_integer_type > const&) const -> void
+      { }
+
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
       virtual auto do_call(
         Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
         std::vector< ::bra::qubit_type > const& unsorted_fused_qubits,
         std::vector< ::bra::qubit_type > const& sorted_fused_qubits_with_sentinel,
         std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void = 0;
+
+      virtual auto do_call(
+        Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
+        std::vector< ::bra::qubit_type > const& unsorted_fused_qubits,
+        std::vector< ::bra::qubit_type > const& sorted_fused_qubits_with_sentinel,
+        std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+        ::bra::state_integer_type const unit_qubit_value) const -> void
+      { do_call(first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel, to_qubit_index_in_fused_gates); }
+
+      virtual auto do_call_in_execute(
+        parallel_policy_type const, int const thread_index,
+        Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
+        std::vector< ::bra::qubit_type > const& unsorted_fused_qubits,
+        std::vector< ::bra::qubit_type > const& sorted_fused_qubits_with_sentinel,
+        std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+        ::bra::state_integer_type const unit_qubit_value) const -> void
+      {
+        if (thread_index == 0)
+          do_call(
+            first, fused_index_wo_qubits,
+            unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
+            to_qubit_index_in_fused_gates, unit_qubit_value);
+      }
 # else // KET_USE_BIT_MASKS_EXPLICITLY
       virtual auto do_call(
         Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
         std::vector< ::bra::state_integer_type > const& qubit_masks,
         std::vector< ::bra::state_integer_type > const& index_masks,
         std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates) const -> void = 0;
+
+      virtual auto do_call(
+        Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
+        std::vector< ::bra::state_integer_type > const& qubit_masks,
+        std::vector< ::bra::state_integer_type > const& index_masks,
+        std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+        ::bra::state_integer_type const unit_qubit_value) const -> void
+      { do_call(first, fused_index_wo_qubits, qubit_masks, index_masks, to_qubit_index_in_fused_gates); }
+
+      virtual auto do_call_in_execute(
+        parallel_policy_type const, int const thread_index,
+        Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
+        std::vector< ::bra::state_integer_type > const& qubit_masks,
+        std::vector< ::bra::state_integer_type > const& index_masks,
+        std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+        ::bra::state_integer_type const unit_qubit_value) const -> void
+      {
+        if (thread_index == 0)
+          do_call(
+            first, fused_index_wo_qubits, qubit_masks, index_masks,
+            to_qubit_index_in_fused_gates, unit_qubit_value);
+      }
 # endif // KET_USE_BIT_MASKS_EXPLICITLY
 
       virtual auto do_disable_control_qubits(
         typename std::vector< ::bra::qubit_type >::const_iterator const first,
-        typename std::vector< ::bra::qubit_type >::const_iterator const last) -> void;
+        typename std::vector< ::bra::qubit_type >::const_iterator const last) -> bool;
 
       virtual auto do_disable_control_qubits(
         typename std::vector< ::bra::control_qubit_type >::const_iterator const first,
-        typename std::vector< ::bra::control_qubit_type >::const_iterator const last) -> void;
+        typename std::vector< ::bra::control_qubit_type >::const_iterator const last) -> bool;
 
       virtual auto do_modify_cez(
         typename std::vector< ::bra::qubit_type >::const_iterator const first,
         typename std::vector< ::bra::qubit_type >::const_iterator const last,
         typename std::vector< ::bra::fused_gate::cez_qubit_state >::const_iterator const cez_qubit_state_first) -> void;
 
-      virtual auto do_maybe_phase_shiftize_ez(
+      virtual auto do_modify_unit_ez(
         typename std::vector< ::bra::qubit_type >::const_iterator const first,
-        typename std::vector< ::bra::qubit_type >::const_iterator const last)
-      -> boost::optional<std::pair< ::bra::control_qubit_type, ::bra::real_type >>;
+        typename std::vector< ::bra::qubit_type >::const_iterator const last,
+        typename std::vector< ::bra::state_integer_type >::const_iterator const unit_qubit_mask_first)
+      -> void;
+
+      virtual auto do_modify_unit_cez(
+        typename std::vector< ::bra::qubit_type >::const_iterator const first,
+        typename std::vector< ::bra::qubit_type >::const_iterator const last,
+        typename std::vector< ::bra::state_integer_type >::const_iterator const unit_qubit_mask_first)
+      -> void;
     }; // class fused_gate<Iterator>
   } // namespace fused_gate
 } // namespace bra

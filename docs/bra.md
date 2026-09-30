@@ -86,11 +86,12 @@ https://github.com/jhpc-quantum/RIKEN-braket/blob/ec5460b24455de307949ad1289752a
 *bra* can be used in the following way:
 
 ```bash
-$ ./bin/bra --file <path> --threads <threads> --seed <seed>
+$ ./bin/bra --file <path> --threads <threads> --num-cache-qubits <cache-qubits> --seed <seed>
 ```
 
 * `--file <path>`: specifies the path of "quantum assembler" file. If this option is omitted, "quantum assembler" code is read from the standard input. Therefore `./bin/bra < <path>` and `/path/to/script_generating_my_excellent_quantum_circuit | ./bin/bra` are OK.
 * `--threads <threads>`: specifies the number of threads. The default value is `1` if this option is omitted.
+* `--num-cache-qubits <cache-qubits>`: specifies the number of on-cache qubits used by gate fusion. The default value is `KET_DEFAULT_NUM_ON_CACHE_QUBITS` (or `16` if the macro is not defined). A hardware-cache-sized value enables cache-efficient fusion. For MPI simulations, specifying the number of local qubits allows a larger fusion block to reduce communication; fusion falls back to the non-cache algorithm when its number of operated qubits is greater than or equal to this value.
 * `--seed <seed>`: specifies the initial seed of the random number generator. You can omit this option, too.
 
 ### MPI version
@@ -98,7 +99,7 @@ $ ./bin/bra --file <path> --threads <threads> --seed <seed>
 There are additional options other than ones of the nompi version of *bra*.
 
 ```bash
-$ mpiexec -n <processes> ./bin/bra --file <path> --threads <threads> --seed <seed> --mode <mode> --unit-qubits <unit-qubits> --unit-processes <unit-processes> --page-qubits <page-qubits>
+$ mpiexec -n <processes> ./bin/bra --file <path> --threads <threads> --num-cache-qubits <cache-qubits> --seed <seed> --mode <mode> --unit-qubits <unit-qubits> --unit-processes <unit-processes> --page-qubits <page-qubits>
 ```
 
 ## Quantum assembler
@@ -165,7 +166,7 @@ The instruction set supported by *bra* is as follows.
 * `M i`: projective measurement on qubit $i$. Its result is assigned to `:OUTCOME` AND `:OUTCOME:i`.
 * `CIRCUITS n`: specifies the number of quantum circuits. This should be placed before the `QUBITS` instruction. If this `CIRCUITS` instruction is omitted, the number of circuits is assumed to be 1.
 * `QUBITS n`: specifies the number of qubits. This should be placed before any insstructions except for the `CIRCUITS` instruction.
-* `BIT ASSIGNMENT i j k...`: specifies the initial permutation of qubits. The number of qubits specified as arguments of this instruction must be equal to the number of qubits specified in the `QUBITS n` instruction.
+* `BIT ASSIGNMENT i j k...`: specifies the initial permutation of qubits by listing the logical qubit at each permuted position, from the least significant local position to the most significant global position. The number of qubits specified as arguments of this instruction must be equal to the number of qubits specified in the `QUBITS n` instruction.
 * `SHORBOX nx G y`
 * `CLEAR i`: projects the state of qubit $i$ to $\ket{0}$.
 * `SET i`: projects the state of qubit $i$ to $\ket{1}$.
@@ -186,4 +187,3 @@ The instruction set supported by *bra* is as follows.
 * `PRINT var [...]`/`PRINTLN var [...]`: prints classical variables `var`, `...` with single-space separators.
 
 [^1]: To be more precise, `EXPECTATION H ...` calculates $\bra{\Psi} (H \ket{\Psi})$ for given operator $H$ and state $\ket{\Psi}$. It becomes the expectation value of $H$ if $H$ is Hermitian.
-

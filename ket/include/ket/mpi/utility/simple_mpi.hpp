@@ -645,6 +645,9 @@ namespace ket
                 [&permutation, least_global_permutated_qubit](qubit_type const qubit)
                 { return permutation[qubit] >= least_global_permutated_qubit; });
 
+              if (global_operated_qubits.empty())
+                return;
+
               auto permutated_global_operated_qubits = std::vector<permutated_qubit_type>{};
               permutated_global_operated_qubits.reserve(global_operated_qubits.size());
               std::transform(
@@ -735,6 +738,9 @@ namespace ket
                 std::back_inserter(global_operated_qubits), std::back_inserter(local_operated_qubits),
                 [&permutation, least_global_permutated_qubit](qubit_type const qubit)
                 { return permutation[qubit] >= least_global_permutated_qubit; });
+
+              if (global_operated_qubits.empty())
+                return;
 
               auto permutated_global_operated_qubits = std::vector<permutated_qubit_type>{};
               permutated_global_operated_qubits.reserve(global_operated_qubits.size());

@@ -54,6 +54,23 @@ namespace ket
     {
       namespace local
       {
+        namespace runtime
+        {
+          template <typename Function, typename UnitQubitValue>
+          inline auto bind_unit_qubit_value(Function& function, UnitQubitValue const unit_qubit_value)
+          {
+            return [&function, unit_qubit_value](
+              auto const first, auto const index_wo_qubits, auto const& qubits_or_masks,
+              auto const& sorted_qubits_or_masks, int const thread_index)
+            {
+              ::ket::gate::runtime::gate_detail::call_function(
+                ::ket::gate::runtime::gate_detail::priority_tag<1>{}, function,
+                first, index_wo_qubits, qubits_or_masks, sorted_qubits_or_masks,
+                thread_index, unit_qubit_value);
+            };
+          }
+        } // namespace runtime
+
 # ifndef KET_ENABLE_CACHE_AWARE_GATE_FUNCTION
         namespace nopage
         {
@@ -177,13 +194,13 @@ namespace ket
             {
               using permutated_qubit_type = ::ket::utility::meta::range_value_t<PermutatedQubitsRange>;
               using permutated_control_qubit_type = ::ket::utility::meta::range_value_t<PermutatedControlQubitsRange>;
-              return ::ket::mpi::utility::for_each_local_range(
+              return ::ket::mpi::utility::for_each_local_range_with_unit_qubit_value(
                 mpi_policy, local_state, communicator, environment, unit_control_qubit_mask,
                 [parallel_policy, &function, &permutated_qubits, &permutated_control_qubits](
-                  auto const first, auto const last)
+                  auto const first, auto const last, auto const unit_qubit_value)
                 {
                   ::ket::gate::runtime::nocache::qubit_ranges::gate(
-                    parallel_policy, first, last, function,
+                    parallel_policy, first, last, ::ket::mpi::gate::local::runtime::bind_unit_qubit_value(function, unit_qubit_value),
                     boost::join(
                       permutated_qubits | boost::adaptors::transformed(
                         [](permutated_qubit_type const permutated_qubit) { return permutated_qubit.qubit(); }),
@@ -206,12 +223,12 @@ namespace ket
             -> RandomAccessRange&
             {
               using permutated_qubit_type = ::ket::utility::meta::range_value_t<PermutatedQubitsRange>;
-              return ::ket::mpi::utility::for_each_local_range(
+              return ::ket::mpi::utility::for_each_local_range_with_unit_qubit_value(
                 mpi_policy, local_state, communicator, environment,
-                [parallel_policy, &function, &permutated_qubits](auto const first, auto const last)
+                [parallel_policy, &function, &permutated_qubits](auto const first, auto const last, auto const unit_qubit_value)
                 {
                   ::ket::gate::runtime::nocache::qubit_ranges::gate(
-                    parallel_policy, first, last, function,
+                    parallel_policy, first, last, ::ket::mpi::gate::local::runtime::bind_unit_qubit_value(function, unit_qubit_value),
                     permutated_qubits | boost::adaptors::transformed(
                       [](permutated_qubit_type const permutated_qubit) { return permutated_qubit.qubit(); }));
                 });
@@ -250,7 +267,9 @@ namespace ket
                 using permutated_control_qubit_type = ::ket::utility::meta::range_value_t<PermutatedControlQubitsRange>;
                 auto const first_in_data_block = first + data_block_index * data_block_size;
                 ::ket::gate::runtime::nocache::qubit_ranges::gate(
-                  parallel_policy, first_in_data_block, first_in_data_block + data_block_size, function,
+                  parallel_policy, first_in_data_block, first_in_data_block + data_block_size,
+                  ::ket::mpi::gate::local::runtime::bind_unit_qubit_value(
+                    function, ::ket::mpi::utility::policy::unit_qubit_value(mpi_policy, data_block_index, rank_in_unit)),
                   boost::join(
                     permutated_qubits | boost::adaptors::transformed(
                       [](permutated_qubit_type const permutated_qubit) { return permutated_qubit.qubit(); }),
@@ -288,7 +307,9 @@ namespace ket
                 using permutated_qubit_type = ::ket::utility::meta::range_value_t<PermutatedQubitsRange>;
                 auto const first_in_data_block = first + data_block_index * data_block_size;
                 ::ket::gate::runtime::nocache::qubit_ranges::gate(
-                  parallel_policy, first_in_data_block, first_in_data_block + data_block_size, function,
+                  parallel_policy, first_in_data_block, first_in_data_block + data_block_size,
+                  ::ket::mpi::gate::local::runtime::bind_unit_qubit_value(
+                    function, ::ket::mpi::utility::policy::unit_qubit_value(mpi_policy, data_block_index, rank_in_unit)),
                   permutated_qubits | boost::adaptors::transformed(
                     [](permutated_qubit_type const permutated_qubit) { return permutated_qubit.qubit(); }));
               }
@@ -1161,9 +1182,9 @@ namespace ket
 
             if (::ket::utility::all_in_state_vector(num_on_cache_qubits, permutated_qubit.qubit(), permutated_qubits.qubit()...))
             {
-              // ....|..ppzzzzzz (num. qubits <= num. on-cache qubits)
+              // ....|..ppzzzzzz (num. local qubits <= num. on-cache qubits)
               //         ^   ^   <- operated qubits
-              if (::ket::mpi::utility::policy::num_qubits(mpi_policy, local_state, communicator, environment) <= num_on_cache_qubits)
+              if (::ket::mpi::utility::policy::num_local_qubits(mpi_policy, local_state, communicator, environment) <= num_on_cache_qubits)
                 return ::ket::mpi::gate::local::page::all_on_cache::small::gate(
                   mpi_policy, parallel_policy, local_state, buffer, communicator, environment, unit_control_qubit_mask,
                   std::forward<Function>(function), permutated_qubit, permutated_qubits...);
@@ -1390,12 +1411,13 @@ namespace ket
                   sorted_qubits_with_sentinel.push_back(qubit_type{num_on_cache_qubits});
                   std::sort(begin(sorted_qubits_with_sentinel), std::prev(end(sorted_qubits_with_sentinel)));
 
-                  return ::ket::mpi::utility::for_each_local_range(
+                  return ::ket::mpi::utility::for_each_local_range_with_unit_qubit_value(
                     mpi_policy, local_state, communicator, environment, unit_control_qubit_mask,
-                    [parallel_policy, &unsorted_qubits, &sorted_qubits_with_sentinel, &function](auto const first, auto const last)
+                    [parallel_policy, &unsorted_qubits, &sorted_qubits_with_sentinel, &function](
+                      auto const first, auto const last, auto const unit_qubit_value)
                     {
                       ::ket::gate::runtime::gate_detail::qubit_ranges::gate(
-                        parallel_policy, first, last, unsorted_qubits, sorted_qubits_with_sentinel, function);
+                        parallel_policy, first, last, unsorted_qubits, sorted_qubits_with_sentinel, function, unit_qubit_value);
                     });
 #   else // KET_USE_BIT_MASKS_EXPLICITLY
                   auto qubit_masks = std::vector<StateInteger>{};
@@ -1405,12 +1427,13 @@ namespace ket
                   index_masks.reserve(num_operated_qubits + BitInteger{1u});
                   ::ket::gate::gate_detail::runtime::ranges::make_index_masks(unsorted_qubits, std::back_inserter(index_masks));
 
-                  return ::ket::mpi::utility::for_each_local_range(
+                  return ::ket::mpi::utility::for_each_local_range_with_unit_qubit_value(
                     mpi_policy, local_state, communicator, environment, unit_control_qubit_mask,
-                    [parallel_policy, &qubit_masks, &index_masks, &function](auto const first, auto const last)
+                    [parallel_policy, &qubit_masks, &index_masks, &function](
+                      auto const first, auto const last, auto const unit_qubit_value)
                     {
                       ::ket::gate::runtime::gate_detail::qubit_ranges::gate(
-                        parallel_policy, first, last, qubit_masks, index_masks, function);
+                        parallel_policy, first, last, qubit_masks, index_masks, function, unit_qubit_value);
                     });
 #   endif // KET_USE_BIT_MASKS_EXPLICITLY
                 }
@@ -1449,12 +1472,13 @@ namespace ket
                   sorted_qubits_with_sentinel.push_back(qubit_type{num_on_cache_qubits});
                   std::sort(begin(sorted_qubits_with_sentinel), std::prev(end(sorted_qubits_with_sentinel)));
 
-                  return ::ket::mpi::utility::for_each_local_range(
+                  return ::ket::mpi::utility::for_each_local_range_with_unit_qubit_value(
                     mpi_policy, local_state, communicator, environment,
-                    [parallel_policy, &unsorted_qubits, &sorted_qubits_with_sentinel, &function](auto const first, auto const last)
+                    [parallel_policy, &unsorted_qubits, &sorted_qubits_with_sentinel, &function](
+                      auto const first, auto const last, auto const unit_qubit_value)
                     {
                       ::ket::gate::runtime::gate_detail::qubit_ranges::gate(
-                        parallel_policy, first, last, unsorted_qubits, sorted_qubits_with_sentinel, function);
+                        parallel_policy, first, last, unsorted_qubits, sorted_qubits_with_sentinel, function, unit_qubit_value);
                     });
 #   else // KET_USE_BIT_MASKS_EXPLICITLY
                   auto qubit_masks = std::vector<state_integer_type>{};
@@ -1464,12 +1488,13 @@ namespace ket
                   index_masks.reserve(num_operated_qubits + BitInteger{1u});
                   ::ket::gate::gate_detail::runtime::ranges::make_index_masks(unsorted_qubits, std::back_inserter(index_masks));
 
-                  return ::ket::mpi::utility::for_each_local_range(
+                  return ::ket::mpi::utility::for_each_local_range_with_unit_qubit_value(
                     mpi_policy, local_state, communicator, environment,
-                    [parallel_policy, &qubit_masks, &index_masks, &function](auto const first, auto const last)
+                    [parallel_policy, &qubit_masks, &index_masks, &function](
+                      auto const first, auto const last, auto const unit_qubit_value)
                     {
                       ::ket::gate::runtime::gate_detail::qubit_ranges::gate(
-                        parallel_policy, first, last, qubit_masks, index_masks, function);
+                        parallel_policy, first, last, qubit_masks, index_masks, function, unit_qubit_value);
                     });
 #   endif // KET_USE_BIT_MASKS_EXPLICITLY
                 }
@@ -1522,14 +1547,14 @@ namespace ket
                 sorted_qubits_with_sentinel.push_back(qubit_type{num_on_cache_qubits});
                 std::sort(begin(sorted_qubits_with_sentinel), std::prev(end(sorted_qubits_with_sentinel)));
 
-                return ::ket::mpi::utility::for_each_local_range(
+                return ::ket::mpi::utility::for_each_local_range_with_unit_qubit_value(
                   mpi_policy, local_state, communicator, environment, unit_control_qubit_mask,
-                  [parallel_policy, &unsorted_qubits, &sorted_qubits_with_sentinel, &function, cache_size](auto const first, auto const last)
+                  [parallel_policy, &unsorted_qubits, &sorted_qubits_with_sentinel, &function, cache_size](auto const first, auto const last, auto const unit_qubit_value)
                   {
                     for (auto iter = first; iter < last; iter += cache_size)
                       ::ket::gate::runtime::gate_detail::ranges::gate_n(
                         parallel_policy, iter, cache_size,
-                        unsorted_qubits, sorted_qubits_with_sentinel, function);
+                        unsorted_qubits, sorted_qubits_with_sentinel, ::ket::mpi::gate::local::runtime::bind_unit_qubit_value(function, unit_qubit_value));
                   });
 #   else // KET_USE_BIT_MASKS_EXPLICITLY
                 auto qubit_masks = std::vector<StateInteger>{};
@@ -1539,14 +1564,14 @@ namespace ket
                 index_masks.reserve(num_operated_qubits + BitInteger{1u});
                 ::ket::gate::gate_detail::runtime::ranges::make_index_masks(unsorted_qubits, std::back_inserter(index_masks));
 
-                return ::ket::mpi::utility::for_each_local_range(
+                return ::ket::mpi::utility::for_each_local_range_with_unit_qubit_value(
                   mpi_policy, local_state, communicator, environment, unit_control_qubit_mask,
-                  [parallel_policy, &qubit_masks, &index_masks, &function, cache_size](auto const first, auto const last)
+                  [parallel_policy, &qubit_masks, &index_masks, &function, cache_size](auto const first, auto const last, auto const unit_qubit_value)
                   {
                     for (auto iter = first; iter < last; iter += cache_size)
                       ::ket::gate::runtime::gate_detail::ranges::gate_n(
                         parallel_policy, iter, cache_size,
-                        qubit_masks, index_masks, function);
+                        qubit_masks, index_masks, ::ket::mpi::gate::local::runtime::bind_unit_qubit_value(function, unit_qubit_value));
                   });
 #   endif // KET_USE_BIT_MASKS_EXPLICITLY
               }
@@ -1587,14 +1612,14 @@ namespace ket
                 sorted_qubits_with_sentinel.push_back(qubit_type{num_on_cache_qubits});
                 std::sort(begin(sorted_qubits_with_sentinel), std::prev(end(sorted_qubits_with_sentinel)));
 
-                return ::ket::mpi::utility::for_each_local_range(
+                return ::ket::mpi::utility::for_each_local_range_with_unit_qubit_value(
                   mpi_policy, local_state, communicator, environment,
-                  [parallel_policy, &unsorted_qubits, &sorted_qubits_with_sentinel, &function, cache_size](auto const first, auto const last)
+                  [parallel_policy, &unsorted_qubits, &sorted_qubits_with_sentinel, &function, cache_size](auto const first, auto const last, auto const unit_qubit_value)
                   {
                     for (auto iter = first; iter < last; iter += cache_size)
                       ::ket::gate::runtime::gate_detail::ranges::gate_n(
                         parallel_policy, iter, cache_size,
-                        unsorted_qubits, sorted_qubits_with_sentinel, function);
+                        unsorted_qubits, sorted_qubits_with_sentinel, ::ket::mpi::gate::local::runtime::bind_unit_qubit_value(function, unit_qubit_value));
                   });
 #   else // KET_USE_BIT_MASKS_EXPLICITLY
                 auto qubit_masks = std::vector<state_integer_type>{};
@@ -1604,14 +1629,14 @@ namespace ket
                 index_masks.reserve(num_operated_qubits + BitInteger{1u});
                 ::ket::gate::gate_detail::runtime::ranges::make_index_masks(unsorted_qubits, std::back_inserter(index_masks));
 
-                return ::ket::mpi::utility::for_each_local_range(
+                return ::ket::mpi::utility::for_each_local_range_with_unit_qubit_value(
                   mpi_policy, local_state, communicator, environment,
-                  [parallel_policy, &qubit_masks, &index_masks, &function, cache_size](auto const first, auto const last)
+                  [parallel_policy, &qubit_masks, &index_masks, &function, cache_size](auto const first, auto const last, auto const unit_qubit_value)
                   {
                     for (auto iter = first; iter < last; iter += cache_size)
                       ::ket::gate::runtime::gate_detail::ranges::gate_n(
                         parallel_policy, iter, cache_size,
-                        qubit_masks, index_masks, function);
+                        qubit_masks, index_masks, ::ket::mpi::gate::local::runtime::bind_unit_qubit_value(function, unit_qubit_value));
                   });
 #   endif // KET_USE_BIT_MASKS_EXPLICITLY
               }
@@ -1638,15 +1663,15 @@ namespace ket
                 PermutatedQubitsRange const& permutated_qubits, PermutatedControlQubitsRange const& permutated_control_qubits)
               -> RandomAccessRange&
               {
-                return ::ket::mpi::utility::for_each_local_range(
+                return ::ket::mpi::utility::for_each_local_range_with_unit_qubit_value(
                   mpi_policy, local_state, communicator, environment, unit_control_qubit_mask,
                   [parallel_policy, &function, num_on_cache_qubits, &permutated_qubits, &permutated_control_qubits](
-                    auto const first, auto const last)
+                    auto const first, auto const last, auto const unit_qubit_value)
                   {
                     using permutated_qubit_type = ::ket::utility::meta::range_value_t<PermutatedQubitsRange>;
                     using permutated_control_qubit_type = ::ket::utility::meta::range_value_t<PermutatedControlQubitsRange>;
                     ::ket::gate::runtime::cache::none_on_cache::qubit_ranges::gate(
-                      parallel_policy, first, last, function, num_on_cache_qubits,
+                      parallel_policy, first, last, ::ket::mpi::gate::local::runtime::bind_unit_qubit_value(function, unit_qubit_value), num_on_cache_qubits,
                       boost::join(
                         permutated_qubits | boost::adaptors::transformed(
                           [](permutated_qubit_type const permutated_qubit) { return permutated_qubit.qubit(); }),
@@ -1668,14 +1693,14 @@ namespace ket
                 PermutatedQubitsRange const& permutated_qubits)
               -> RandomAccessRange&
               {
-                return ::ket::mpi::utility::for_each_local_range(
+                return ::ket::mpi::utility::for_each_local_range_with_unit_qubit_value(
                   mpi_policy, local_state, communicator, environment,
                   [parallel_policy, &function, num_on_cache_qubits, &permutated_qubits](
-                    auto const first, auto const last)
+                    auto const first, auto const last, auto const unit_qubit_value)
                   {
                     using permutated_qubit_type = ::ket::utility::meta::range_value_t<PermutatedQubitsRange>;
                     ::ket::gate::runtime::cache::none_on_cache::qubit_ranges::gate(
-                      parallel_policy, first, last, function, num_on_cache_qubits,
+                      parallel_policy, first, last, ::ket::mpi::gate::local::runtime::bind_unit_qubit_value(function, unit_qubit_value), num_on_cache_qubits,
                       permutated_qubits | boost::adaptors::transformed(
                         [](permutated_qubit_type const permutated_qubit) { return permutated_qubit.qubit(); }));
                   });
@@ -1702,15 +1727,15 @@ namespace ket
                 PermutatedQubitsRange const& permutated_qubits, PermutatedControlQubitsRange const& permutated_control_qubits)
               -> RandomAccessRange&
               {
-                return ::ket::mpi::utility::for_each_local_range(
+                return ::ket::mpi::utility::for_each_local_range_with_unit_qubit_value(
                   mpi_policy, local_state, communicator, environment, unit_control_qubit_mask,
                   [parallel_policy, &function, num_on_cache_qubits, &permutated_qubits, &permutated_control_qubits](
-                    auto const first, auto const last)
+                    auto const first, auto const last, auto const unit_qubit_value)
                   {
                     using permutated_qubit_type = ::ket::utility::meta::range_value_t<PermutatedQubitsRange>;
                     using permutated_control_qubit_type = ::ket::utility::meta::range_value_t<PermutatedControlQubitsRange>;
                     ::ket::gate::runtime::cache::some_on_cache::qubit_ranges::gate(
-                      parallel_policy, first, last, function, num_on_cache_qubits,
+                      parallel_policy, first, last, ::ket::mpi::gate::local::runtime::bind_unit_qubit_value(function, unit_qubit_value), num_on_cache_qubits,
                       boost::join(
                         permutated_qubits | boost::adaptors::transformed(
                           [](permutated_qubit_type const permutated_qubit) { return permutated_qubit.qubit(); }),
@@ -1732,14 +1757,14 @@ namespace ket
                 PermutatedQubitsRange const& permutated_qubits)
               -> RandomAccessRange&
               {
-                return ::ket::mpi::utility::for_each_local_range(
+                return ::ket::mpi::utility::for_each_local_range_with_unit_qubit_value(
                   mpi_policy, local_state, communicator, environment,
                   [parallel_policy, &function, num_on_cache_qubits, &permutated_qubits](
-                    auto const first, auto const last)
+                    auto const first, auto const last, auto const unit_qubit_value)
                   {
                     using permutated_qubit_type = ::ket::utility::meta::range_value_t<PermutatedQubitsRange>;
                     ::ket::gate::runtime::cache::some_on_cache::qubit_ranges::gate(
-                      parallel_policy, first, last, function, num_on_cache_qubits,
+                      parallel_policy, first, last, ::ket::mpi::gate::local::runtime::bind_unit_qubit_value(function, unit_qubit_value), num_on_cache_qubits,
                       permutated_qubits | boost::adaptors::transformed(
                         [](permutated_qubit_type const permutated_qubit) { return permutated_qubit.qubit(); }));
                   });
@@ -1781,17 +1806,17 @@ namespace ket
                 {
                   auto const buffer_first = ::ket::mpi::utility::buffer_begin(local_state, buffer);
 
-                  return ::ket::mpi::utility::for_each_local_range(
+                  return ::ket::mpi::utility::for_each_local_range_with_unit_qubit_value(
                     mpi_policy, local_state, communicator, environment, unit_control_qubit_mask,
                     [parallel_policy, &function, &permutated_qubits, &permutated_control_qubits, buffer_first, cache_size](
-                      auto const first, auto const last)
+                      auto const first, auto const last, auto const unit_qubit_value)
                     {
                       using permutated_qubit_type = ::ket::utility::meta::range_value_t<PermutatedQubitsRange>;
                       using permutated_control_qubit_type = ::ket::utility::meta::range_value_t<PermutatedControlQubitsRange>;
                       ::ket::gate::runtime::cache::none_on_cache::qubit_ranges::gate(
                         parallel_policy,
                         first, last, buffer_first, buffer_first + cache_size,
-                        function,
+                        ::ket::mpi::gate::local::runtime::bind_unit_qubit_value(function, unit_qubit_value),
                         boost::join(
                           permutated_qubits | boost::adaptors::transformed(
                             [](permutated_qubit_type const permutated_qubit) { return permutated_qubit.qubit(); }),
@@ -1805,10 +1830,10 @@ namespace ket
                   std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >{}.swap(buffer);
                 buffer.resize(cache_size);
 
-                return ::ket::mpi::utility::for_each_local_range(
+                return ::ket::mpi::utility::for_each_local_range_with_unit_qubit_value(
                   mpi_policy, local_state, communicator, environment, unit_control_qubit_mask,
                   [parallel_policy, &buffer, &function, &permutated_qubits, &permutated_control_qubits](
-                    auto const first, auto const last)
+                    auto const first, auto const last, auto const unit_qubit_value)
                   {
                     using permutated_qubit_type = ::ket::utility::meta::range_value_t<PermutatedQubitsRange>;
                     using permutated_control_qubit_type = ::ket::utility::meta::range_value_t<PermutatedControlQubitsRange>;
@@ -1816,7 +1841,7 @@ namespace ket
                     using std::end;
                     ::ket::gate::runtime::cache::none_on_cache::qubit_ranges::gate(
                       parallel_policy, first, last, begin(buffer), end(buffer),
-                      function,
+                      ::ket::mpi::gate::local::runtime::bind_unit_qubit_value(function, unit_qubit_value),
                       boost::join(
                         permutated_qubits | boost::adaptors::transformed(
                           [](permutated_qubit_type const permutated_qubit) { return permutated_qubit.qubit(); }),
@@ -1851,15 +1876,15 @@ namespace ket
                 {
                   auto const buffer_first = ::ket::mpi::utility::buffer_begin(local_state, buffer);
 
-                  return ::ket::mpi::utility::for_each_local_range(
+                  return ::ket::mpi::utility::for_each_local_range_with_unit_qubit_value(
                     mpi_policy, local_state, communicator, environment,
-                    [parallel_policy, &function, &permutated_qubits, buffer_first, cache_size](auto const first, auto const last)
+                    [parallel_policy, &function, &permutated_qubits, buffer_first, cache_size](auto const first, auto const last, auto const unit_qubit_value)
                     {
                       using permutated_qubit_type = ::ket::utility::meta::range_value_t<PermutatedQubitsRange>;
                       ::ket::gate::runtime::cache::none_on_cache::qubit_ranges::gate(
                         parallel_policy,
                         first, last, buffer_first, buffer_first + cache_size,
-                        function,
+                        ::ket::mpi::gate::local::runtime::bind_unit_qubit_value(function, unit_qubit_value),
                         permutated_qubits | boost::adaptors::transformed(
                           [](permutated_qubit_type const permutated_qubit) { return permutated_qubit.qubit(); }));
                     });
@@ -1870,16 +1895,16 @@ namespace ket
                   std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >{}.swap(buffer);
                 buffer.resize(cache_size);
 
-                return ::ket::mpi::utility::for_each_local_range(
+                return ::ket::mpi::utility::for_each_local_range_with_unit_qubit_value(
                   mpi_policy, local_state, communicator, environment,
-                  [parallel_policy, &buffer, &function, &permutated_qubits](auto const first, auto const last)
+                  [parallel_policy, &buffer, &function, &permutated_qubits](auto const first, auto const last, auto const unit_qubit_value)
                   {
                     using permutated_qubit_type = ::ket::utility::meta::range_value_t<PermutatedQubitsRange>;
                     using std::begin;
                     using std::end;
                     ::ket::gate::runtime::cache::none_on_cache::qubit_ranges::gate(
                       parallel_policy, first, last, begin(buffer), end(buffer),
-                      function,
+                      ::ket::mpi::gate::local::runtime::bind_unit_qubit_value(function, unit_qubit_value),
                       permutated_qubits | boost::adaptors::transformed(
                         [](permutated_qubit_type const permutated_qubit) { return permutated_qubit.qubit(); }));
                   });
@@ -1922,17 +1947,17 @@ namespace ket
                 {
                   auto const buffer_first = ::ket::mpi::utility::buffer_begin(local_state, buffer);
 
-                  return ::ket::mpi::utility::for_each_local_range(
+                  return ::ket::mpi::utility::for_each_local_range_with_unit_qubit_value(
                     mpi_policy, local_state, communicator, environment, unit_control_qubit_mask,
                     [parallel_policy, &function, &permutated_qubits, &permutated_control_qubits, buffer_first, cache_size](
-                      auto const first, auto const last)
+                      auto const first, auto const last, auto const unit_qubit_value)
                     {
                       using permutated_qubit_type = ::ket::utility::meta::range_value_t<PermutatedQubitsRange>;
                       using permutated_control_qubit_type = ::ket::utility::meta::range_value_t<PermutatedControlQubitsRange>;
                       ::ket::gate::runtime::cache::some_on_cache::qubit_ranges::gate(
                         parallel_policy,
                         first, last, buffer_first, buffer_first + cache_size,
-                        function,
+                        ::ket::mpi::gate::local::runtime::bind_unit_qubit_value(function, unit_qubit_value),
                         boost::join(
                           permutated_qubits | boost::adaptors::transformed(
                             [](permutated_qubit_type const permutated_qubit) { return permutated_qubit.qubit(); }),
@@ -1946,10 +1971,10 @@ namespace ket
                   std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >{}.swap(buffer);
                 buffer.resize(cache_size);
 
-                return ::ket::mpi::utility::for_each_local_range(
+                return ::ket::mpi::utility::for_each_local_range_with_unit_qubit_value(
                   mpi_policy, local_state, communicator, environment, unit_control_qubit_mask,
                   [parallel_policy, &buffer, &function, &permutated_qubits, &permutated_control_qubits](
-                    auto const first, auto const last)
+                    auto const first, auto const last, auto const unit_qubit_value)
                   {
                     using permutated_qubit_type = ::ket::utility::meta::range_value_t<PermutatedQubitsRange>;
                     using permutated_control_qubit_type = ::ket::utility::meta::range_value_t<PermutatedControlQubitsRange>;
@@ -1957,7 +1982,7 @@ namespace ket
                     using std::end;
                     ::ket::gate::runtime::cache::some_on_cache::qubit_ranges::gate(
                       parallel_policy, first, last, begin(buffer), end(buffer),
-                      function,
+                      ::ket::mpi::gate::local::runtime::bind_unit_qubit_value(function, unit_qubit_value),
                       boost::join(
                         permutated_qubits | boost::adaptors::transformed(
                           [](permutated_qubit_type const permutated_qubit) { return permutated_qubit.qubit(); }),
@@ -1993,16 +2018,16 @@ namespace ket
                 {
                   auto const buffer_first = ::ket::mpi::utility::buffer_begin(local_state, buffer);
 
-                  return ::ket::mpi::utility::for_each_local_range(
+                  return ::ket::mpi::utility::for_each_local_range_with_unit_qubit_value(
                     mpi_policy, local_state, communicator, environment,
                     [parallel_policy, &function, &permutated_qubits, buffer_first, cache_size](
-                      auto const first, auto const last)
+                      auto const first, auto const last, auto const unit_qubit_value)
                     {
                       using permutated_qubit_type = ::ket::utility::meta::range_value_t<PermutatedQubitsRange>;
                       ::ket::gate::runtime::cache::some_on_cache::qubit_ranges::gate(
                         parallel_policy,
                         first, last, buffer_first, buffer_first + cache_size,
-                        function,
+                        ::ket::mpi::gate::local::runtime::bind_unit_qubit_value(function, unit_qubit_value),
                         permutated_qubits | boost::adaptors::transformed(
                           [](permutated_qubit_type const permutated_qubit) { return permutated_qubit.qubit(); }));
                     });
@@ -2013,17 +2038,17 @@ namespace ket
                   std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >{}.swap(buffer);
                 buffer.resize(cache_size);
 
-                return ::ket::mpi::utility::for_each_local_range(
+                return ::ket::mpi::utility::for_each_local_range_with_unit_qubit_value(
                   mpi_policy, local_state, communicator, environment,
                   [parallel_policy, &buffer, &function, &permutated_qubits](
-                    auto const first, auto const last)
+                    auto const first, auto const last, auto const unit_qubit_value)
                   {
                     using permutated_qubit_type = ::ket::utility::meta::range_value_t<PermutatedQubitsRange>;
                     using std::begin;
                     using std::end;
                     ::ket::gate::runtime::cache::some_on_cache::qubit_ranges::gate(
                       parallel_policy, first, last, begin(buffer), end(buffer),
-                      function,
+                      ::ket::mpi::gate::local::runtime::bind_unit_qubit_value(function, unit_qubit_value),
                       permutated_qubits | boost::adaptors::transformed(
                         [](permutated_qubit_type const permutated_qubit) { return permutated_qubit.qubit(); }));
                   });
@@ -2227,7 +2252,8 @@ namespace ket
                     ::ket::gate::runtime::gate_detail::ranges::gate_n(
                       parallel_policy,
                       first + data_block_index * data_block_size, data_block_size,
-                      unsorted_qubits, sorted_qubits_with_sentinel, std::forward<Function>(function));
+                      unsorted_qubits, sorted_qubits_with_sentinel, ::ket::mpi::gate::local::runtime::bind_unit_qubit_value(
+                        function, ::ket::mpi::utility::policy::unit_qubit_value(mpi_policy, data_block_index, rank_in_unit)));
                   }
 #   else // KET_USE_BIT_MASKS_EXPLICITLY
                   auto qubit_masks = std::vector<StateInteger>{};
@@ -2246,7 +2272,8 @@ namespace ket
                     ::ket::gate::runtime::gate_detail::ranges::gate_n(
                       parallel_policy,
                       first + data_block_index * data_block_size, data_block_size,
-                      qubit_masks, index_masks, std::forward<Function>(function));
+                      qubit_masks, index_masks, ::ket::mpi::gate::local::runtime::bind_unit_qubit_value(
+                        function, ::ket::mpi::utility::policy::unit_qubit_value(mpi_policy, data_block_index, rank_in_unit)));
                   }
 #   endif // KET_USE_BIT_MASKS_EXPLICITLY
 
@@ -2297,7 +2324,8 @@ namespace ket
                     ::ket::gate::runtime::gate_detail::ranges::gate_n(
                       parallel_policy,
                       first + data_block_index * data_block_size, data_block_size,
-                      unsorted_qubits, sorted_qubits_with_sentinel, std::forward<Function>(function));
+                      unsorted_qubits, sorted_qubits_with_sentinel, ::ket::mpi::gate::local::runtime::bind_unit_qubit_value(
+                        function, ::ket::mpi::utility::policy::unit_qubit_value(mpi_policy, data_block_index, rank_in_unit)));
 #   else // KET_USE_BIT_MASKS_EXPLICITLY
                   auto qubit_masks = std::vector<state_integer_type>{};
                   qubit_masks.reserve(num_operated_qubits);
@@ -2311,7 +2339,8 @@ namespace ket
                     ::ket::gate::runtime::gate_detail::ranges::gate_n(
                       parallel_policy,
                       first + data_block_index * data_block_size, data_block_size,
-                      qubit_masks, index_masks, std::forward<Function>(function));
+                      qubit_masks, index_masks, ::ket::mpi::gate::local::runtime::bind_unit_qubit_value(
+                        function, ::ket::mpi::utility::policy::unit_qubit_value(mpi_policy, data_block_index, rank_in_unit)));
 #   endif // KET_USE_BIT_MASKS_EXPLICITLY
 
                   return local_state;
@@ -2349,7 +2378,8 @@ namespace ket
                   using permutated_control_qubit_type = ::ket::utility::meta::range_value_t<PermutatedControlQubitsRange>;
                   ::ket::gate::runtime::cache::all_on_cache::qubit_ranges::gate(
                     parallel_policy, first_in_data_block, first_in_data_block + data_block_size,
-                    std::forward<Function>(function), num_on_cache_qubits,
+                    ::ket::mpi::gate::local::runtime::bind_unit_qubit_value(
+                      function, ::ket::mpi::utility::policy::unit_qubit_value(mpi_policy, data_block_index, rank_in_unit)), num_on_cache_qubits,
                     boost::join(
                       permutated_qubits | boost::adaptors::transformed(
                         [](permutated_qubit_type const permutated_qubit) { return permutated_qubit.qubit(); }),
@@ -2386,7 +2416,8 @@ namespace ket
                   auto const first_in_data_block = first + data_block_index * data_block_size;
                   ::ket::gate::runtime::cache::all_on_cache::qubit_ranges::gate(
                     parallel_policy, first_in_data_block, first_in_data_block + data_block_size,
-                    std::forward<Function>(function), num_on_cache_qubits,
+                    ::ket::mpi::gate::local::runtime::bind_unit_qubit_value(
+                      function, ::ket::mpi::utility::policy::unit_qubit_value(mpi_policy, data_block_index, rank_in_unit)), num_on_cache_qubits,
                     permutated_qubits | boost::adaptors::transformed(
                       [](permutated_qubit_type const permutated_qubit) { return permutated_qubit.qubit(); }));
                 }
@@ -2428,7 +2459,8 @@ namespace ket
                   using permutated_control_qubit_type = ::ket::utility::meta::range_value_t<PermutatedControlQubitsRange>;
                   ::ket::gate::runtime::cache::none_on_cache::qubit_ranges::gate(
                     parallel_policy, first_in_data_block, first_in_data_block + data_block_size,
-                    std::forward<Function>(function), num_on_cache_qubits,
+                    ::ket::mpi::gate::local::runtime::bind_unit_qubit_value(
+                      function, ::ket::mpi::utility::policy::unit_qubit_value(mpi_policy, data_block_index, rank_in_unit)), num_on_cache_qubits,
                     boost::join(
                       permutated_qubits | boost::adaptors::transformed(
                         [](permutated_qubit_type const permutated_qubit) { return permutated_qubit.qubit(); }),
@@ -2465,7 +2497,8 @@ namespace ket
                   auto const first_in_data_block = first + data_block_index * data_block_size;
                   ::ket::gate::runtime::cache::none_on_cache::qubit_ranges::gate(
                     parallel_policy, first_in_data_block, first_in_data_block + data_block_size,
-                    std::forward<Function>(function), num_on_cache_qubits,
+                    ::ket::mpi::gate::local::runtime::bind_unit_qubit_value(
+                      function, ::ket::mpi::utility::policy::unit_qubit_value(mpi_policy, data_block_index, rank_in_unit)), num_on_cache_qubits,
                     permutated_qubits | boost::adaptors::transformed(
                       [](permutated_qubit_type const permutated_qubit) { return permutated_qubit.qubit(); }));
                 }
@@ -2507,7 +2540,8 @@ namespace ket
                   using permutated_control_qubit_type = ::ket::utility::meta::range_value_t<PermutatedControlQubitsRange>;
                   ::ket::gate::runtime::cache::some_on_cache::qubit_ranges::gate(
                     parallel_policy, first_in_data_block, first_in_data_block + data_block_size,
-                    std::forward<Function>(function), num_on_cache_qubits,
+                    ::ket::mpi::gate::local::runtime::bind_unit_qubit_value(
+                      function, ::ket::mpi::utility::policy::unit_qubit_value(mpi_policy, data_block_index, rank_in_unit)), num_on_cache_qubits,
                     boost::join(
                       permutated_qubits | boost::adaptors::transformed(
                         [](permutated_qubit_type const permutated_qubit) { return permutated_qubit.qubit(); }),
@@ -2544,7 +2578,8 @@ namespace ket
                   auto const first_in_data_block = first + data_block_index * data_block_size;
                   ::ket::gate::runtime::cache::some_on_cache::qubit_ranges::gate(
                     parallel_policy, first_in_data_block, first_in_data_block + data_block_size,
-                    std::forward<Function>(function), num_on_cache_qubits,
+                    ::ket::mpi::gate::local::runtime::bind_unit_qubit_value(
+                      function, ::ket::mpi::utility::policy::unit_qubit_value(mpi_policy, data_block_index, rank_in_unit)), num_on_cache_qubits,
                     permutated_qubits | boost::adaptors::transformed(
                       [](permutated_qubit_type const permutated_qubit) { return permutated_qubit.qubit(); }));
                 }
@@ -2602,7 +2637,8 @@ namespace ket
                   ::ket::mpi::gate::page::runtime::gate(
                     parallel_policy,
                     local_state, buffer_range, data_block_index,
-                    std::forward<Function>(function), permutated_qubits, permutated_control_qubits);
+                    ::ket::mpi::gate::local::runtime::bind_unit_qubit_value(
+                      function, ::ket::mpi::utility::policy::unit_qubit_value(mpi_policy, data_block_index, rank_in_unit)), permutated_qubits, permutated_control_qubits);
                 }
 
                 return local_state;
@@ -2617,7 +2653,8 @@ namespace ket
                 ::ket::mpi::gate::page::runtime::gate(
                   parallel_policy,
                   local_state, buffer, data_block_index,
-                  std::forward<Function>(function), permutated_qubits, permutated_control_qubits);
+                  ::ket::mpi::gate::local::runtime::bind_unit_qubit_value(
+                    function, ::ket::mpi::utility::policy::unit_qubit_value(mpi_policy, data_block_index, rank_in_unit)), permutated_qubits, permutated_control_qubits);
 
               return local_state;
             }
@@ -2673,7 +2710,8 @@ namespace ket
                   ::ket::mpi::gate::page::runtime::gate(
                     parallel_policy,
                     local_state, buffer_range, data_block_index,
-                    std::forward<Function>(function), permutated_qubits, permutated_control_qubits);
+                    ::ket::mpi::gate::local::runtime::bind_unit_qubit_value(
+                      function, ::ket::mpi::utility::policy::unit_qubit_value(mpi_policy, data_block_index, rank_in_unit)), permutated_qubits, permutated_control_qubits);
                 }
 
                 return local_state;
@@ -2688,7 +2726,8 @@ namespace ket
                 ::ket::mpi::gate::page::runtime::gate(
                   parallel_policy,
                   local_state, buffer, data_block_index,
-                  std::forward<Function>(function), permutated_qubits, permutated_control_qubits);
+                  ::ket::mpi::gate::local::runtime::bind_unit_qubit_value(
+                    function, ::ket::mpi::utility::policy::unit_qubit_value(mpi_policy, data_block_index, rank_in_unit)), permutated_qubits, permutated_control_qubits);
 
               return local_state;
             }
@@ -2721,6 +2760,28 @@ namespace ket
               [](permutated_control_qubit_type const permutated_control_qubit) { return permutated_control_qubit.qubit(); });
 
             auto const cache_size = ::ket::utility::integer_exp2<StateInteger>(num_on_cache_qubits);
+            using std::begin;
+            using std::end;
+            auto const num_operated_qubits
+              = static_cast<BitInteger>(
+                  std::distance(begin(permutated_qubits), end(permutated_qubits))
+                  + std::distance(begin(permutated_control_qubits), end(permutated_control_qubits)));
+            if (num_operated_qubits >= num_on_cache_qubits)
+            {
+              if (::ket::mpi::page::runtime::ranges::none_on_page(local_state, permutated_qubits, permutated_control_qubits))
+              {
+                auto const data_block_size
+                  = static_cast<StateInteger>(::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment));
+                auto const num_local_qubits = ::ket::utility::integer_log2<BitInteger>(data_block_size);
+                return ::ket::mpi::gate::local::runtime::nopage::all_on_cache::small::gate(
+                  mpi_policy, parallel_policy, local_state, buffer, communicator, environment, unit_control_qubit_mask,
+                  std::forward<Function>(function), num_local_qubits, permutated_qubits, permutated_control_qubits);
+              }
+
+              return ::ket::mpi::gate::local::runtime::page::all_on_cache::small::gate(
+                mpi_policy, parallel_policy, local_state, buffer, communicator, environment, unit_control_qubit_mask,
+                std::forward<Function>(function), num_on_cache_qubits, permutated_qubits, permutated_control_qubits);
+            }
 
             // xxxx|yyyy|zzzzzz: local qubits
             // * xxxx: off-cache qubits
@@ -2780,9 +2841,9 @@ namespace ket
             //         ^^   ^     ^   <- operated qubits
             if (::ket::utility::runtime::ranges::all_in_state_vector(num_on_cache_qubits, qubits, control_qubits))
             {
-              // ....|..ppzzzzzz (num. qubits <= num. on-cache qubits)
+              // ....|..ppzzzzzz (num. local qubits <= num. on-cache qubits)
               //         ^   ^   <- operated qubits
-              if (::ket::mpi::utility::policy::num_qubits(mpi_policy, local_state, communicator, environment) <= num_on_cache_qubits)
+              if (::ket::mpi::utility::policy::num_local_qubits(mpi_policy, local_state, communicator, environment) <= num_on_cache_qubits)
                 return ::ket::mpi::gate::local::runtime::page::all_on_cache::small::gate(
                   mpi_policy, parallel_policy, local_state, buffer, communicator, environment, unit_control_qubit_mask,
                   std::forward<Function>(function), num_on_cache_qubits, permutated_qubits, permutated_control_qubits);
@@ -2822,6 +2883,26 @@ namespace ket
               [](permutated_qubit_type const permutated_qubit) { return permutated_qubit.qubit(); });
 
             auto const cache_size = ::ket::utility::integer_exp2<state_integer_type>(num_on_cache_qubits);
+            using std::begin;
+            using std::end;
+            auto const num_operated_qubits
+              = static_cast<BitInteger>(std::distance(begin(permutated_qubits), end(permutated_qubits)));
+            if (num_operated_qubits >= num_on_cache_qubits)
+            {
+              if (::ket::mpi::page::runtime::ranges::none_on_page(local_state, permutated_qubits))
+              {
+                auto const data_block_size
+                  = static_cast<state_integer_type>(::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment));
+                auto const num_local_qubits = ::ket::utility::integer_log2<BitInteger>(data_block_size);
+                return ::ket::mpi::gate::local::runtime::nopage::all_on_cache::small::gate(
+                  mpi_policy, parallel_policy, local_state, buffer, communicator, environment,
+                  std::forward<Function>(function), num_local_qubits, permutated_qubits);
+              }
+
+              return ::ket::mpi::gate::local::runtime::page::all_on_cache::small::gate(
+                mpi_policy, parallel_policy, local_state, buffer, communicator, environment,
+                std::forward<Function>(function), num_on_cache_qubits, permutated_qubits);
+            }
 
             // xxxx|yyyy|zzzzzz: local qubits
             // * xxxx: off-cache qubits
@@ -2881,9 +2962,9 @@ namespace ket
             //         ^^   ^     ^   <- operated qubits
             if (::ket::utility::runtime::ranges::all_in_state_vector(num_on_cache_qubits, qubits))
             {
-              // ....|..ppzzzzzz (num. qubits <= num. on-cache qubits)
+              // ....|..ppzzzzzz (num. local qubits <= num. on-cache qubits)
               //         ^   ^   <- operated qubits
-              if (::ket::mpi::utility::policy::num_qubits(mpi_policy, local_state, communicator, environment) <= num_on_cache_qubits)
+              if (::ket::mpi::utility::policy::num_local_qubits(mpi_policy, local_state, communicator, environment) <= num_on_cache_qubits)
                 return ::ket::mpi::gate::local::runtime::page::all_on_cache::small::gate(
                   mpi_policy, parallel_policy, local_state, buffer, communicator, environment,
                   std::forward<Function>(function), num_on_cache_qubits, permutated_qubits);
@@ -3012,6 +3093,7 @@ namespace ket
             std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
             yampi::communicator const& communicator, yampi::environment const& environment,
             StateInteger const unit_control_qubit_mask, auto&&... permutated_qubits)
+          -> RandomAccessRange&
           {
             return ::ket::mpi::gate::local::gate(
               mpi_policy, parallel_policy, local_state, buffer, communicator, environment, unit_control_qubit_mask,
@@ -3050,6 +3132,7 @@ namespace ket
             std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
             yampi::communicator const& communicator, yampi::environment const& environment,
             StateInteger const unit_control_qubit_mask, auto&&... permutated_qubits)
+          -> RandomAccessRange&
           {
             return ::ket::mpi::gate::local::gate(
               mpi_policy, parallel_policy, local_state, buffer, communicator, environment, unit_control_qubit_mask,
@@ -3062,6 +3145,74 @@ namespace ket
       {
         namespace ranges
         {
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename Function>
+          inline auto gate(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>&,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >&,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Function&& function, BitInteger const)
+          -> RandomAccessRange&
+          {
+            ::ket::mpi::utility::log_with_time_guard<char> print{"Gate", environment};
+
+# ifndef KET_USE_BIT_MASKS_EXPLICITLY
+            auto unsorted_qubits = std::vector< ::ket::qubit<StateInteger, BitInteger> >{};
+
+            return ::ket::mpi::utility::for_each_local_range_with_unit_qubit_value(
+              mpi_policy, local_state, communicator, environment,
+              [parallel_policy, &function, &unsorted_qubits](
+                auto const first, auto const last, auto const unit_qubit_value)
+              {
+                auto const sorted_qubits_with_sentinel
+                  = std::vector< ::ket::qubit<StateInteger, BitInteger> >{
+                      ::ket::qubit<StateInteger, BitInteger>{
+                        ::ket::utility::integer_log2<BitInteger>(static_cast<StateInteger>(last - first))}};
+                ::ket::gate::runtime::gate_detail::qubit_ranges::gate(
+                  parallel_policy, first, last,
+                  unsorted_qubits, sorted_qubits_with_sentinel, function, unit_qubit_value);
+              });
+# else // KET_USE_BIT_MASKS_EXPLICITLY
+            auto qubit_masks = std::vector<StateInteger>{};
+            auto index_masks = std::vector<StateInteger>{compl StateInteger{0u}};
+
+            return ::ket::mpi::utility::for_each_local_range_with_unit_qubit_value(
+              mpi_policy, local_state, communicator, environment,
+              [parallel_policy, &function, &qubit_masks, &index_masks](
+                auto const first, auto const last, auto const unit_qubit_value)
+              {
+                ::ket::gate::runtime::gate_detail::qubit_ranges::gate(
+                  parallel_policy, first, last,
+                  qubit_masks, index_masks, function, unit_qubit_value);
+              });
+# endif // KET_USE_BIT_MASKS_EXPLICITLY
+          }
+
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename DerivedDatatype,
+            typename Function>
+          inline auto gate(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::datatype_base<DerivedDatatype> const&,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Function&& function, BitInteger const num_on_cache_qubits)
+          -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::runtime::ranges::gate(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment,
+              std::forward<Function>(function), num_on_cache_qubits);
+          }
+
           template <
             typename MpiPolicy, typename ParallelPolicy,
             typename RandomAccessRange, typename StateInteger, typename BitInteger,
@@ -3091,11 +3242,37 @@ namespace ket
                 yampi::communicator const& communicator, yampi::environment const& environment,
                 StateInteger const unit_control_qubit_mask,
                 auto const& permutated_qubits, auto const& permutated_control_qubits)
+              -> RandomAccessRange&
               {
                 return ::ket::mpi::gate::local::runtime::gate(
                   mpi_policy, parallel_policy, local_state, buffer, communicator, environment, unit_control_qubit_mask,
                   function, num_on_cache_qubits, permutated_qubits, permutated_control_qubits);
               }, qubits, control_qubits);
+          }
+
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator,
+            typename Function>
+          inline auto gate(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Function&& function)
+          -> RandomAccessRange&
+          {
+#   ifndef KET_DEFAULT_NUM_ON_CACHE_QUBITS
+#     define KET_DEFAULT_NUM_ON_CACHE_QUBITS 16
+#   endif // KET_DEFAULT_NUM_ON_CACHE_QUBITS
+          constexpr auto num_on_cache_qubits = BitInteger{KET_DEFAULT_NUM_ON_CACHE_QUBITS};
+
+            return ::ket::mpi::gate::runtime::ranges::gate(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment,
+              std::forward<Function>(function), num_on_cache_qubits);
           }
 
           template <
@@ -3126,10 +3303,53 @@ namespace ket
                 std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
                 yampi::communicator const& communicator, yampi::environment const& environment,
                 auto const& permutated_qubits)
+              -> RandomAccessRange&
               {
                 return ::ket::mpi::gate::local::runtime::gate(
                   mpi_policy, parallel_policy, local_state, buffer, communicator, environment,
                   function, num_on_cache_qubits, permutated_qubits);
+              }, qubits);
+          }
+
+          // preparation_function may reorder or remove qubits after interchange,
+          // but every resulting qubit must have been present in the input range.
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator,
+            typename Function, typename QubitsRange, typename PreparationFunction>
+          inline auto gate_with_preparation(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Function&& function, BitInteger const num_on_cache_qubits,
+            QubitsRange& qubits, PreparationFunction&& preparation_function)
+          -> RandomAccessRange&
+          {
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::runtime::append_qubits_string(std::string("Gate"), qubits),
+              environment};
+
+            return ::ket::mpi::utility::runtime::ranges::apply_local_gate(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment,
+              [&function, num_on_cache_qubits, &permutation, &qubits, &preparation_function](
+                MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+                RandomAccessRange& local_state,
+                std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+                yampi::communicator const& communicator, yampi::environment const& environment,
+                auto const&)
+              -> RandomAccessRange&
+              {
+                preparation_function();
+                using qubit_type = ::ket::utility::meta::range_value_t<QubitsRange>;
+                return ::ket::mpi::gate::local::runtime::gate(
+                  mpi_policy, parallel_policy, local_state, buffer, communicator, environment,
+                  function, num_on_cache_qubits,
+                  qubits | boost::adaptors::transformed(
+                    [&permutation](qubit_type const qubit) { return permutation[qubit]; }));
               }, qubits);
           }
 
@@ -3163,11 +3383,38 @@ namespace ket
                 yampi::communicator const& communicator, yampi::environment const& environment,
                 StateInteger const unit_control_qubit_mask,
                 auto const& permutated_qubits, auto const& permutated_control_qubits)
+              -> RandomAccessRange&
               {
                 return ::ket::mpi::gate::local::runtime::gate(
                   mpi_policy, parallel_policy, local_state, buffer, communicator, environment, unit_control_qubit_mask,
                   function, num_on_cache_qubits, permutated_qubits, permutated_control_qubits);
               }, qubits, control_qubits);
+          }
+
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator, typename DerivedDatatype,
+            typename Function>
+          inline auto gate(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::datatype_base<DerivedDatatype> const& datatype,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Function&& function)
+          -> RandomAccessRange&
+          {
+#   ifndef KET_DEFAULT_NUM_ON_CACHE_QUBITS
+#     define KET_DEFAULT_NUM_ON_CACHE_QUBITS 16
+#   endif // KET_DEFAULT_NUM_ON_CACHE_QUBITS
+          constexpr auto num_on_cache_qubits = BitInteger{KET_DEFAULT_NUM_ON_CACHE_QUBITS};
+
+            return ::ket::mpi::gate::runtime::ranges::gate(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment,
+              std::forward<Function>(function), num_on_cache_qubits);
           }
 
           template <
@@ -3199,6 +3446,7 @@ namespace ket
                 std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
                 yampi::communicator const& communicator, yampi::environment const& environment,
                 auto const& permutated_qubits)
+              -> RandomAccessRange&
               {
                 return ::ket::mpi::gate::local::runtime::gate(
                   mpi_policy, parallel_policy, local_state, buffer, communicator, environment,
@@ -3258,6 +3506,34 @@ namespace ket
               mpi_policy, parallel_policy,
               local_state, permutation, buffer, communicator, environment,
               std::forward<Function>(function), num_on_cache_qubits, qubits);
+          }
+
+          template <
+            typename MpiPolicy, typename ParallelPolicy,
+            typename RandomAccessRange, typename StateInteger, typename BitInteger,
+            typename Allocator, typename BufferAllocator,
+            typename Function, typename QubitsRange, typename PreparationFunction>
+          inline auto gate_with_preparation(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Function&& function, QubitsRange& qubits, PreparationFunction&& preparation_function)
+          -> RandomAccessRange&
+          {
+            using qubit_type = ::ket::utility::meta::range_value_t<QubitsRange>;
+            using bit_integer_type = ::ket::meta::bit_integer_t<qubit_type>;
+#   ifndef KET_DEFAULT_NUM_ON_CACHE_QUBITS
+#     define KET_DEFAULT_NUM_ON_CACHE_QUBITS 16
+#   endif // KET_DEFAULT_NUM_ON_CACHE_QUBITS
+            constexpr auto num_on_cache_qubits = bit_integer_type{KET_DEFAULT_NUM_ON_CACHE_QUBITS};
+
+            return ::ket::mpi::gate::runtime::ranges::gate_with_preparation(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment,
+              std::forward<Function>(function), num_on_cache_qubits, qubits,
+              std::forward<PreparationFunction>(preparation_function));
           }
 
           template <
@@ -3316,6 +3592,86 @@ namespace ket
               std::forward<Function>(function), num_on_cache_qubits, qubits);
           }
         } // namespace ranges
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename Function>
+        inline auto gate(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          Function&& function, BitInteger const num_on_cache_qubits)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::ranges::gate(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, communicator, environment,
+            std::forward<Function>(function), num_on_cache_qubits);
+        }
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename DerivedDatatype,
+          typename Function>
+        inline auto gate(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          Function&& function, BitInteger const num_on_cache_qubits)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::ranges::gate(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, datatype, communicator, environment,
+            std::forward<Function>(function), num_on_cache_qubits);
+        }
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename Function>
+        inline auto gate(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          Function&& function)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::ranges::gate(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, communicator, environment,
+            std::forward<Function>(function));
+        }
+
+        template <
+          typename MpiPolicy, typename ParallelPolicy,
+          typename RandomAccessRange, typename StateInteger, typename BitInteger,
+          typename Allocator, typename BufferAllocator, typename DerivedDatatype,
+          typename Function>
+        inline auto gate(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          Function&& function)
+        -> RandomAccessRange&
+        {
+          return ::ket::mpi::gate::runtime::ranges::gate(
+            mpi_policy, parallel_policy,
+            local_state, permutation, buffer, datatype, communicator, environment,
+            std::forward<Function>(function));
+        }
 
         template <
           typename MpiPolicy, typename ParallelPolicy,

@@ -478,6 +478,9 @@ namespace ket
                 [&permutation, least_unit_permutated_qubit](qubit_type const qubit)
                 { return permutation[qubit] >= least_unit_permutated_qubit; });
 
+              if (nonlocal_operated_qubits.empty())
+                return;
+
               auto permutated_nonlocal_operated_qubits = std::vector<permutated_qubit_type>{};
               permutated_nonlocal_operated_qubits.reserve(nonlocal_operated_qubits.size());
               std::transform(
@@ -574,6 +577,9 @@ namespace ket
                 std::back_inserter(nonlocal_operated_qubits), std::back_inserter(local_operated_qubits),
                 [&permutation, least_unit_permutated_qubit](qubit_type const qubit)
                 { return permutation[qubit] >= least_unit_permutated_qubit; });
+
+              if (nonlocal_operated_qubits.empty())
+                return;
 
               auto permutated_nonlocal_operated_qubits = std::vector<permutated_qubit_type>{};
               permutated_nonlocal_operated_qubits.reserve(nonlocal_operated_qubits.size());

@@ -118,6 +118,7 @@ namespace bra
       int const root_circuit_index, int const num_elements);
 
     ket::utility::policy::parallel<unsigned int> parallel_policy_;
+    unsigned int num_on_cache_qubits_;
 
     using data_type = ::bra::data_type;
     data_type data_;
@@ -142,7 +143,8 @@ namespace bra
     nompi_state(
       ::bra::state::state_integer_type const initial_integer,
       unsigned int const total_num_qubits,
-      unsigned int const num_threads, ::bra::state::seed_type const seed,
+      unsigned int const num_threads, unsigned int const num_on_cache_qubits,
+      ::bra::state::seed_type const seed,
       bool const is_depolarizing_channel,
       ::bra::real_type const depolarizing_px,
       ::bra::real_type const depolarizing_py,

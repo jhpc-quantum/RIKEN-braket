@@ -40,6 +40,27 @@ namespace bra
         first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
         target_qubits);
     }
+
+    template <typename Iterator>
+    auto fused_adj_sqrt_pauli_zz<Iterator>::do_call_in_execute(
+      ::ket::utility::policy::parallel<unsigned int> const parallel_policy, int const thread_index,
+      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
+      std::vector< ::bra::qubit_type > const& unsorted_fused_qubits,
+      std::vector< ::bra::qubit_type > const& sorted_fused_qubits_with_sentinel,
+      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+      ::bra::state_integer_type const) const -> void
+    {
+      if (unsorted_fused_qubits.size() < std::size_t{2u})
+        throw std::runtime_error{"fused_adj_sqrt_pauli_zz requires at least two fused qubits"};
+
+      std::array< ::bra::qubit_type, 2u > const target_qubits{{
+        static_cast< ::bra::qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(qubit1_)]),
+        static_cast< ::bra::qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(qubit2_)])}};
+      ::ket::gate::fused::runtime::ranges::adj_sqrt_pauli_z(
+        parallel_policy, thread_index,
+        first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
+        target_qubits);
+    }
 #else // KET_USE_BIT_MASKS_EXPLICITLY
     template <typename Iterator>
     auto fused_adj_sqrt_pauli_zz<Iterator>::do_call(
@@ -55,6 +76,27 @@ namespace bra
         static_cast< ::bra::qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(qubit1_)]),
         static_cast< ::bra::qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(qubit2_)])}};
       ::ket::gate::fused::runtime::ranges::adj_sqrt_pauli_z(
+        first, fused_index_wo_qubits, qubit_masks, index_masks,
+        target_qubits);
+    }
+
+    template <typename Iterator>
+    auto fused_adj_sqrt_pauli_zz<Iterator>::do_call_in_execute(
+      ::ket::utility::policy::parallel<unsigned int> const parallel_policy, int const thread_index,
+      Iterator const first, ::bra::state_integer_type const fused_index_wo_qubits,
+      std::vector< ::bra::state_integer_type > const& qubit_masks,
+      std::vector< ::bra::state_integer_type > const& index_masks,
+      std::vector< ::bra::bit_integer_type > const& to_qubit_index_in_fused_gates,
+      ::bra::state_integer_type const) const -> void
+    {
+      if (qubit_masks.size() < std::size_t{2u})
+        throw std::runtime_error{"fused_adj_sqrt_pauli_zz requires at least two fused qubits"};
+
+      std::array< ::bra::qubit_type, 2u > const target_qubits{{
+        static_cast< ::bra::qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(qubit1_)]),
+        static_cast< ::bra::qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(qubit2_)])}};
+      ::ket::gate::fused::runtime::ranges::adj_sqrt_pauli_z(
+        parallel_policy, thread_index,
         first, fused_index_wo_qubits, qubit_masks, index_masks,
         target_qubits);
     }

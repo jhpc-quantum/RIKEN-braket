@@ -10,6 +10,7 @@
 # include <bra/state.hpp>
 # include <bra/simple_mpi_state.hpp>
 # include <bra/paged_simple_mpi_state.hpp>
+# include <bra/utility/make_state.hpp>
 
 
 namespace bra
@@ -20,6 +21,7 @@ namespace bra
     ::bra::state::bit_integer_type const num_local_qubits,
     ::bra::state::bit_integer_type const total_num_qubits,
     unsigned int const num_threads_per_process,
+    unsigned int const num_on_cache_qubits,
     ::bra::state::seed_type const seed,
     bool const is_depolarizing_channel,
     ::bra::real_type const depolarizing_px,
@@ -36,30 +38,21 @@ namespace bra
     std::vector<yampi::intercommunicator> const& intercommunicators,
     yampi::environment const& environment)
   {
-# ifndef BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
     if (num_page_qubits == 0u)
-      return std::unique_ptr< ::bra::state >{
-        new ::bra::simple_mpi_state{
-          initial_integer, num_local_qubits, total_num_qubits,
-          num_threads_per_process, seed,
-          is_depolarizing_channel, depolarizing_px, depolarizing_py, depolarizing_pz, uses_depolarizing_seed, depolarizing_seed,
-          circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment}};
-# else // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
-    if (num_page_qubits == 0u)
-      return std::unique_ptr< ::bra::state >{
-        new ::bra::simple_mpi_state{
-          initial_integer, num_local_qubits, total_num_qubits,
-          num_threads_per_process, seed,
-          is_depolarizing_channel, depolarizing_px, depolarizing_py, depolarizing_pz, uses_depolarizing_seed, depolarizing_seed,
-          num_elements_in_buffer, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment}};
-# endif // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
-
-    return std::unique_ptr< ::bra::state >{
-      new ::bra::paged_simple_mpi_state{
-        initial_integer, num_local_qubits, total_num_qubits, num_page_qubits,
-        num_threads_per_process, seed,
+      return ::bra::utility::make_state< ::bra::simple_mpi_state >(
+        initial_integer, num_local_qubits, total_num_qubits,
+        num_threads_per_process, num_on_cache_qubits, seed,
         is_depolarizing_channel, depolarizing_px, depolarizing_py, depolarizing_pz, uses_depolarizing_seed, depolarizing_seed,
-        circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment}};
+# ifdef BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
+        num_elements_in_buffer,
+# endif // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
+        circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment);
+
+    return ::bra::utility::make_state< ::bra::paged_simple_mpi_state >(
+      initial_integer, num_local_qubits, total_num_qubits, num_page_qubits,
+      num_threads_per_process, num_on_cache_qubits, seed,
+      is_depolarizing_channel, depolarizing_px, depolarizing_py, depolarizing_pz, uses_depolarizing_seed, depolarizing_seed,
+      circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment);
   }
 
   std::unique_ptr< ::bra::state > make_simple_mpi_state(
@@ -68,6 +61,7 @@ namespace bra
     ::bra::state::bit_integer_type const num_local_qubits,
     std::vector< ::bra::state::permutated_qubit_type > const& initial_permutation,
     unsigned int const num_threads_per_process,
+    unsigned int const num_on_cache_qubits,
     ::bra::state::seed_type const seed,
     bool const is_depolarizing_channel,
     ::bra::real_type const depolarizing_px,
@@ -84,30 +78,21 @@ namespace bra
     std::vector<yampi::intercommunicator> const& intercommunicators,
     yampi::environment const& environment)
   {
-# ifndef BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
     if (num_page_qubits == 0u)
-      return std::unique_ptr< ::bra::state >{
-        new ::bra::simple_mpi_state{
-          initial_integer, num_local_qubits, initial_permutation,
-          num_threads_per_process, seed,
-          is_depolarizing_channel, depolarizing_px, depolarizing_py, depolarizing_pz, uses_depolarizing_seed, depolarizing_seed,
-          circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment}};
-# else // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
-    if (num_page_qubits == 0u)
-      return std::unique_ptr< ::bra::state >{
-        new ::bra::simple_mpi_state{
-          initial_integer, num_local_qubits, initial_permutation,
-          num_threads_per_process, seed,
-          is_depolarizing_channel, depolarizing_px, depolarizing_py, depolarizing_pz, uses_depolarizing_seed, depolarizing_seed,
-          num_elements_in_buffer, circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment}};
-# endif // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
-
-    return std::unique_ptr< ::bra::state >{
-      new ::bra::paged_simple_mpi_state{
-        initial_integer, num_local_qubits, initial_permutation, num_page_qubits,
-        num_threads_per_process, seed,
+      return ::bra::utility::make_state< ::bra::simple_mpi_state >(
+        initial_integer, num_local_qubits, initial_permutation,
+        num_threads_per_process, num_on_cache_qubits, seed,
         is_depolarizing_channel, depolarizing_px, depolarizing_py, depolarizing_pz, uses_depolarizing_seed, depolarizing_seed,
-        circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment}};
+# ifdef BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
+        num_elements_in_buffer,
+# endif // BRAKET_ENABLE_MULTIPLE_USES_OF_BUFFER_FOR_ONE_DATA_TRANSFER_IF_NO_PAGE_EXISTS
+        circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment);
+
+    return ::bra::utility::make_state< ::bra::paged_simple_mpi_state >(
+      initial_integer, num_local_qubits, initial_permutation, num_page_qubits,
+      num_threads_per_process, num_on_cache_qubits, seed,
+      is_depolarizing_channel, depolarizing_px, depolarizing_py, depolarizing_pz, uses_depolarizing_seed, depolarizing_seed,
+      circuit_communicator, intercircuit_communicator, circuit_index, intercommunicators, environment);
   }
 } // namespace bra
 

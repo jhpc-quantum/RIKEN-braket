@@ -17,6 +17,7 @@
 # include <boost/range/join.hpp>
 
 # include <ket/control.hpp>
+# include <ket/mpi/gate/detail/global_phase_runtime.hpp>
 # include <ket/gate/phase_shift.hpp>
 # include <ket/mpi/gate/detail/append_qubits_string.hpp>
 # include <ket/mpi/gate/detail/assert_all_qubits_are_local.hpp>
@@ -158,6 +159,195 @@ namespace ket
               });
           }
         } // namespace local
+
+        // U1 with no qubits is a global phase.
+        template <typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename Complex>
+        inline auto phase_shift_coeff(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          Complex const& phase_coefficient)
+        -> RandomAccessRange&
+        { return ::ket::mpi::gate::runtime::global_phase_coeff(mpi_policy, parallel_policy, local_state, permutation, buffer, communicator, environment, phase_coefficient); }
+
+        template <typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Complex>
+        inline auto phase_shift_coeff(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          Complex const& phase_coefficient)
+        -> RandomAccessRange&
+        { return ::ket::mpi::gate::runtime::global_phase_coeff(mpi_policy, parallel_policy, local_state, permutation, buffer, datatype, communicator, environment, phase_coefficient); }
+
+        template <typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename Real>
+        inline auto phase_shift(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          Real const phase)
+        -> RandomAccessRange&
+        { return ::ket::mpi::gate::runtime::global_phase(mpi_policy, parallel_policy, local_state, permutation, buffer, communicator, environment, phase); }
+
+        template <typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Real>
+        inline auto phase_shift(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          Real const phase)
+        -> RandomAccessRange&
+        { return ::ket::mpi::gate::runtime::global_phase(mpi_policy, parallel_policy, local_state, permutation, buffer, datatype, communicator, environment, phase); }
+
+        template <typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename Complex>
+        inline auto adj_phase_shift_coeff(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          Complex const& phase_coefficient)
+        -> RandomAccessRange&
+        { return ::ket::mpi::gate::runtime::adj_global_phase_coeff(mpi_policy, parallel_policy, local_state, permutation, buffer, communicator, environment, phase_coefficient); }
+
+        template <typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Complex>
+        inline auto adj_phase_shift_coeff(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          Complex const& phase_coefficient)
+        -> RandomAccessRange&
+        { return ::ket::mpi::gate::runtime::adj_global_phase_coeff(mpi_policy, parallel_policy, local_state, permutation, buffer, datatype, communicator, environment, phase_coefficient); }
+
+        template <typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename Real>
+        inline auto adj_phase_shift(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          Real const phase)
+        -> RandomAccessRange&
+        { return ::ket::mpi::gate::runtime::adj_global_phase(mpi_policy, parallel_policy, local_state, permutation, buffer, communicator, environment, phase); }
+
+        template <typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Real>
+        inline auto adj_phase_shift(
+          MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+          RandomAccessRange& local_state,
+          ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+          std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+          yampi::datatype_base<DerivedDatatype> const& datatype,
+          yampi::communicator const& communicator, yampi::environment const& environment,
+          Real const phase)
+        -> RandomAccessRange&
+        { return ::ket::mpi::gate::runtime::adj_global_phase(mpi_policy, parallel_policy, local_state, permutation, buffer, datatype, communicator, environment, phase); }
+
+        namespace ranges
+        {
+          // U1 with no qubits is a global phase.
+          template <typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename Complex>
+          inline auto phase_shift_coeff(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Complex const& phase_coefficient)
+          -> RandomAccessRange&
+          { return ::ket::mpi::gate::runtime::ranges::global_phase_coeff(mpi_policy, parallel_policy, local_state, permutation, buffer, communicator, environment, phase_coefficient); }
+
+          template <typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Complex>
+          inline auto phase_shift_coeff(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::datatype_base<DerivedDatatype> const& datatype,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Complex const& phase_coefficient)
+          -> RandomAccessRange&
+          { return ::ket::mpi::gate::runtime::ranges::global_phase_coeff(mpi_policy, parallel_policy, local_state, permutation, buffer, datatype, communicator, environment, phase_coefficient); }
+
+          template <typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename Real>
+          inline auto phase_shift(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Real const phase)
+          -> RandomAccessRange&
+          { return ::ket::mpi::gate::runtime::ranges::global_phase(mpi_policy, parallel_policy, local_state, permutation, buffer, communicator, environment, phase); }
+
+          template <typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Real>
+          inline auto phase_shift(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::datatype_base<DerivedDatatype> const& datatype,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Real const phase)
+          -> RandomAccessRange&
+          { return ::ket::mpi::gate::runtime::ranges::global_phase(mpi_policy, parallel_policy, local_state, permutation, buffer, datatype, communicator, environment, phase); }
+
+          template <typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename Complex>
+          inline auto adj_phase_shift_coeff(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Complex const& phase_coefficient)
+          -> RandomAccessRange&
+          { return ::ket::mpi::gate::runtime::ranges::adj_global_phase_coeff(mpi_policy, parallel_policy, local_state, permutation, buffer, communicator, environment, phase_coefficient); }
+
+          template <typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Complex>
+          inline auto adj_phase_shift_coeff(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::datatype_base<DerivedDatatype> const& datatype,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Complex const& phase_coefficient)
+          -> RandomAccessRange&
+          { return ::ket::mpi::gate::runtime::ranges::adj_global_phase_coeff(mpi_policy, parallel_policy, local_state, permutation, buffer, datatype, communicator, environment, phase_coefficient); }
+
+          template <typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename Real>
+          inline auto adj_phase_shift(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Real const phase)
+          -> RandomAccessRange&
+          { return ::ket::mpi::gate::runtime::ranges::adj_global_phase(mpi_policy, parallel_policy, local_state, permutation, buffer, communicator, environment, phase); }
+
+          template <typename MpiPolicy, typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger, typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Real>
+          inline auto adj_phase_shift(
+            MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
+            RandomAccessRange& local_state,
+            ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
+            std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
+            yampi::datatype_base<DerivedDatatype> const& datatype,
+            yampi::communicator const& communicator, yampi::environment const& environment,
+            Real const phase)
+          -> RandomAccessRange&
+          { return ::ket::mpi::gate::runtime::ranges::adj_global_phase(mpi_policy, parallel_policy, local_state, permutation, buffer, datatype, communicator, environment, phase); }
+        } // namespace ranges
 
         namespace phase_shift_detail
         {

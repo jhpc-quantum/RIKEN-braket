@@ -18,6 +18,7 @@
 
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
+# include <ket/gate/global_phase.hpp>
 # include <ket/gate/gate.hpp>
 # include <ket/gate/utility/index_with_qubits.hpp>
 # include <ket/utility/loop_n.hpp>
@@ -36,26 +37,14 @@ namespace ket
   {
     // phase_shift_coeff
     // Case 1: the first argument of qubits is ket::control<ket::qubit<S, B>>
+    // U1 with no qubits is a global phase.
     template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex>
     inline auto phase_shift_coeff(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Complex const& phase_coefficient) // exp(i theta) = cos(theta) + i sin(theta)
     -> void
-    {
-      static_assert(
-        std::is_same<Complex, typename std::iterator_traits<RandomAccessIterator>::value_type>::value,
-        "Complex must be the same to value_type of RandomAccessIterator");
-
-      assert(
-        ::ket::utility::integer_exp2<std::uint64_t>(::ket::utility::integer_log2<std::size_t>(last - first))
-        == static_cast<std::uint64_t>(last - first));
-
-      ::ket::utility::loop_n(
-        parallel_policy, static_cast<std::uint64_t>(last - first),
-        [first, &phase_coefficient](std::uint64_t const index, int const)
-        { *(first + index) *= phase_coefficient; });
-    }
+    { ::ket::gate::global_phase_coeff(parallel_policy, first, last, phase_coefficient); }
 
     // U1_i(theta)
     // U1_1(theta) (a_0 |0> + a_1 |1>) = a_0 |0> + e^{i theta} a_1 |1>
@@ -1986,6 +1975,39 @@ namespace ket
         }
       } // namespace ranges
 
+      // U1 with no qubits is a global phase.
+      template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex>
+      inline auto phase_shift_coeff(
+        ParallelPolicy const parallel_policy,
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Complex const& phase_coefficient) // exp(i theta) = cos(theta) + i sin(theta)
+      -> void
+      { ::ket::gate::runtime::global_phase_coeff(parallel_policy, first, last, phase_coefficient); }
+
+      template <typename RandomAccessIterator, typename Complex>
+      inline auto phase_shift_coeff(
+        RandomAccessIterator const first, RandomAccessIterator const last,
+        Complex const& phase_coefficient) // exp(i theta) = cos(theta) + i sin(theta)
+      -> void
+      { ::ket::gate::runtime::phase_shift_coeff(::ket::utility::policy::make_sequential(), first, last, phase_coefficient); }
+
+      namespace ranges
+      {
+        template <typename ParallelPolicy, typename RandomAccessRange, typename Complex>
+        inline auto phase_shift_coeff(
+          ParallelPolicy const parallel_policy, RandomAccessRange& state,
+          Complex const& phase_coefficient) // exp(i theta) = cos(theta) + i sin(theta)
+        -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
+        { return ::ket::gate::runtime::ranges::global_phase_coeff(parallel_policy, state, phase_coefficient); }
+
+        template <typename RandomAccessRange, typename Complex>
+        inline auto phase_shift_coeff(
+          RandomAccessRange& state,
+          Complex const& phase_coefficient) // exp(i theta) = cos(theta) + i sin(theta)
+        -> RandomAccessRange&
+        { return ::ket::gate::runtime::ranges::phase_shift_coeff(::ket::utility::policy::make_sequential(), state, phase_coefficient); }
+      } // namespace ranges
+
       // Case 2: the first argument of qubits is ket::qubit<S, B>
       // C...CU1_{tc...c'}(theta) or CnU1_{tc...c'}(theta)
       namespace qubit_ranges
@@ -2344,6 +2366,31 @@ namespace ket
 
       // phase_shift
       // Case 1: the first argument of qubits is ket::control<ket::qubit<S, B>>
+      // U1 with no qubits is a global phase.
+      template <typename ParallelPolicy, typename RandomAccessIterator, typename Real>
+      inline auto phase_shift(
+        ParallelPolicy const parallel_policy,
+        RandomAccessIterator const first, RandomAccessIterator const last, Real const phase)
+      -> void
+      { ::ket::gate::runtime::global_phase(parallel_policy, first, last, phase); }
+
+      template <typename RandomAccessIterator, typename Real>
+      inline auto phase_shift(RandomAccessIterator const first, RandomAccessIterator const last, Real const phase)
+      -> void
+      { ::ket::gate::runtime::phase_shift(::ket::utility::policy::make_sequential(), first, last, phase); }
+
+      namespace ranges
+      {
+        template <typename ParallelPolicy, typename RandomAccessRange, typename Real>
+        inline auto phase_shift(ParallelPolicy const parallel_policy, RandomAccessRange& state, Real const phase)
+        -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
+        { return ::ket::gate::runtime::ranges::global_phase(parallel_policy, state, phase); }
+
+        template <typename RandomAccessRange, typename Real>
+        inline auto phase_shift(RandomAccessRange& state, Real const phase) -> RandomAccessRange&
+        { return ::ket::gate::runtime::ranges::phase_shift(::ket::utility::policy::make_sequential(), state, phase); }
+      } // namespace ranges
+
       namespace qubit_ranges
       {
         template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename ControlQubitsRange>
@@ -2436,6 +2483,31 @@ namespace ket
         -> void
         { ::ket::gate::runtime::qubit_ranges::phase_shift(first, last, -phase, control_qubits); }
       } // namespace qubit_ranges
+
+      // U1+ with no qubits is an adjoint global phase.
+      template <typename ParallelPolicy, typename RandomAccessIterator, typename Real>
+      inline auto adj_phase_shift(
+        ParallelPolicy const parallel_policy,
+        RandomAccessIterator const first, RandomAccessIterator const last, Real const phase)
+      -> void
+      { ::ket::gate::runtime::global_phase(parallel_policy, first, last, -phase); }
+
+      template <typename RandomAccessIterator, typename Real>
+      inline auto adj_phase_shift(RandomAccessIterator const first, RandomAccessIterator const last, Real const phase)
+      -> void
+      { ::ket::gate::runtime::adj_phase_shift(::ket::utility::policy::make_sequential(), first, last, phase); }
+
+      namespace ranges
+      {
+        template <typename ParallelPolicy, typename RandomAccessRange, typename Real>
+        inline auto adj_phase_shift(ParallelPolicy const parallel_policy, RandomAccessRange& state, Real const phase)
+        -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
+        { return ::ket::gate::runtime::ranges::global_phase(parallel_policy, state, -phase); }
+
+        template <typename RandomAccessRange, typename Real>
+        inline auto adj_phase_shift(RandomAccessRange& state, Real const phase) -> RandomAccessRange&
+        { return ::ket::gate::runtime::ranges::adj_phase_shift(::ket::utility::policy::make_sequential(), state, phase); }
+      } // namespace ranges
 
       template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename ControlQubitIterator>
       inline auto adj_phase_shift(

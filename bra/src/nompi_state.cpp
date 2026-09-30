@@ -102,7 +102,8 @@ namespace bra
   nompi_state::nompi_state(
     ::bra::state::state_integer_type const initial_integer,
     unsigned int const total_num_qubits,
-    unsigned int num_threads, ::bra::state::seed_type const seed,
+    unsigned int num_threads, unsigned int const num_on_cache_qubits,
+    ::bra::state::seed_type const seed,
     bool const is_depolarizing_channel,
     ::bra::real_type const depolarizing_px,
     ::bra::real_type const depolarizing_py,
@@ -112,6 +113,7 @@ namespace bra
     int const circuit_index)
     : ::bra::state{total_num_qubits, seed, is_depolarizing_channel, depolarizing_px, depolarizing_py, depolarizing_pz, uses_depolarizing_seed, depolarizing_seed, circuit_index},
       parallel_policy_{num_threads},
+      num_on_cache_qubits_{num_on_cache_qubits},
       data_{make_initial_data(initial_integer, total_num_qubits)},
       fused_gates_{},
       is_waiting_{false}
@@ -120,7 +122,8 @@ namespace bra
   nompi_state::nompi_state(
     ::bra::state::state_integer_type const initial_integer,
     unsigned int const total_num_qubits,
-    unsigned int num_threads, ::bra::state::seed_type const seed,
+    unsigned int num_threads, unsigned int const num_on_cache_qubits,
+    ::bra::state::seed_type const seed,
     bool const is_depolarizing_channel,
     ::bra::real_type const depolarizing_px,
     ::bra::real_type const depolarizing_py,
@@ -130,6 +133,7 @@ namespace bra
     int const circuit_index)
     : ::bra::state{total_num_qubits, seed, is_depolarizing_channel, depolarizing_px, depolarizing_py, depolarizing_pz, uses_depolarizing_seed, depolarizing_seed, circuit_index},
       parallel_policy_{num_threads},
+      num_on_cache_qubits_{num_on_cache_qubits},
       data_{make_initial_data(initial_integer, total_num_qubits)},
       fused_gates_{},
       cache_aware_fused_gates_{},
@@ -142,7 +146,8 @@ namespace bra
   nompi_state::nompi_state(
     ::bra::state::state_integer_type const initial_integer,
     unsigned int const total_num_qubits,
-    unsigned int num_threads, ::bra::state::seed_type const seed,
+    unsigned int num_threads, unsigned int const num_on_cache_qubits,
+    ::bra::state::seed_type const seed,
     bool const is_depolarizing_channel,
     ::bra::real_type const depolarizing_px,
     ::bra::real_type const depolarizing_py,
@@ -152,6 +157,7 @@ namespace bra
     int const circuit_index)
     : ::bra::state{total_num_qubits, seed, is_depolarizing_channel, depolarizing_px, depolarizing_py, depolarizing_pz, uses_depolarizing_seed, depolarizing_seed, circuit_index},
       parallel_policy_{num_threads},
+      num_on_cache_qubits_{num_on_cache_qubits},
       data_{make_initial_data(initial_integer, total_num_qubits)},
       on_cache_data_{::ket::utility::integer_exp2< ::bra::state_integer_type >(KET_DEFAULT_NUM_ON_CACHE_QUBITS)},
       fused_gates_{},
@@ -1348,7 +1354,8 @@ namespace bra
           fused_gates_, cache_aware_fused_gates_, to_qubit_index_in_fused_gates};
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
 
-    ket::gate::runtime::ranges::gate(parallel_policy_, data_, call_fused_gates, operated_qubits);
+    ket::gate::runtime::ranges::gate(
+      parallel_policy_, data_, call_fused_gates, num_on_cache_qubits_, operated_qubits);
 
     fused_gates_.clear();
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)

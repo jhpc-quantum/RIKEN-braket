@@ -40,6 +40,7 @@
 #include <ket/qubit.hpp>
 #include <ket/utility/exp_i.hpp>
 #include <ket/utility/loop_n.hpp>
+#include <ket/utility/parallel/loop_n.hpp>
 
 namespace
 {
@@ -77,6 +78,12 @@ namespace
     result.push_back(4_q);
     return result;
   }
+
+  auto permuted_fused_qubits() -> fused_qubits_type
+  { return fused_qubits_type{2_q, 0_q, 3_q, 1_q}; }
+
+  auto permuted_fused_qubits_with_sentinel() -> fused_qubits_type
+  { return fused_qubits_type{0_q, 1_q, 2_q, 3_q, 4_q}; }
 #else
   using fused_qubits_type = std::vector<state_integer_type>;
 
@@ -91,6 +98,22 @@ namespace
   auto fused_qubits_with_sentinel() -> fused_qubits_type
   {
     auto const qubits = std::vector<qubit_type>{0_q, 1_q, 2_q, 3_q};
+    auto result = fused_qubits_type{};
+    ket::gate::gate_detail::runtime::ranges::make_index_masks(qubits, std::back_inserter(result));
+    return result;
+  }
+
+  auto permuted_fused_qubits() -> fused_qubits_type
+  {
+    auto const qubits = std::vector<qubit_type>{2_q, 0_q, 3_q, 1_q};
+    auto result = fused_qubits_type{};
+    ket::gate::gate_detail::runtime::ranges::make_qubit_masks(qubits, std::back_inserter(result));
+    return result;
+  }
+
+  auto permuted_fused_qubits_with_sentinel() -> fused_qubits_type
+  {
+    auto const qubits = std::vector<qubit_type>{2_q, 0_q, 3_q, 1_q};
     auto result = fused_qubits_type{};
     ket::gate::gate_detail::runtime::ranges::make_index_masks(qubits, std::back_inserter(result));
     return result;
@@ -116,6 +139,25 @@ namespace
     auto reference_state = state;
     auto const unsorted_fused_qubits = fused_qubits();
     auto const sorted_fused_qubits_with_sentinel = fused_qubits_with_sentinel();
+
+    fused_operation(state, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);
+    reference_operation(reference_state);
+
+    auto const error = max_error(state, reference_state);
+    if (error < 1e-12)
+      return true;
+
+    std::cerr << name << " failed: max error = " << error << '\n';
+    return false;
+  }
+
+  template <typename FusedOperation, typename ReferenceOperation>
+  auto run_permuted_case(std::string const& name, FusedOperation const& fused_operation, ReferenceOperation const& reference_operation) -> bool
+  {
+    auto state = initial_state();
+    auto reference_state = state;
+    auto const unsorted_fused_qubits = permuted_fused_qubits();
+    auto const sorted_fused_qubits_with_sentinel = permuted_fused_qubits_with_sentinel();
 
     fused_operation(state, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);
     reference_operation(reference_state);
@@ -170,6 +212,30 @@ int main()
     { ket::gate::runtime::ranges::phase_shift_coeff(ket::utility::policy::make_sequential(), state, ket::utility::exp_i<complex_type>(0.375), 3_q, make_controls({0_cq})); }));
 
   run(run_case(
+    "fused::runtime::ranges::phase_shift_coeff with two controls",
+    [](auto& state, auto const& unsorted, auto const& sorted)
+    { ket::gate::fused::runtime::ranges::phase_shift_coeff(state.begin(), state_integer_type{0u}, unsorted, sorted, ket::utility::exp_i<complex_type>(0.375), make_controls({0_cq, 3_cq})); },
+    [](auto& state)
+    { ket::gate::runtime::ranges::phase_shift_coeff(ket::utility::policy::make_sequential(), state, ket::utility::exp_i<complex_type>(0.375), make_controls({0_cq, 3_cq})); }));
+
+  run(run_case(
+    "fused::runtime::ranges::phase_shift_coeff with two controls and inner-loop parallelism",
+    [](auto& state, auto const& unsorted, auto const& sorted)
+    {
+      auto const parallel_policy = ket::utility::policy::make_parallel(4u);
+      ket::utility::execute(
+        parallel_policy,
+        [&](int const thread_index, auto&)
+        {
+          ket::gate::fused::runtime::ranges::phase_shift_coeff(
+            parallel_policy, thread_index, state.begin(), state_integer_type{0u}, unsorted, sorted,
+            ket::utility::exp_i<complex_type>(0.375), make_controls({0_cq, 3_cq}));
+        });
+    },
+    [](auto& state)
+    { ket::gate::runtime::ranges::phase_shift_coeff(ket::utility::policy::make_sequential(), state, ket::utility::exp_i<complex_type>(0.375), make_controls({0_cq, 3_cq})); }));
+
+  run(run_case(
     "fused::runtime::ranges::controlled_v",
     [](auto& state, auto const& unsorted, auto const& sorted)
     { ket::gate::fused::runtime::ranges::controlled_v(state.begin(), state_integer_type{0u}, unsorted, sorted, 0.25, 3_q, make_controls({0_cq, 1_cq})); },
@@ -189,6 +255,44 @@ int main()
     { ket::gate::fused::runtime::ranges::swap(state.begin(), state_integer_type{0u}, unsorted, sorted, 0_q, 3_q, make_controls({1_cq})); },
     [](auto& state)
     { ket::gate::runtime::ranges::swap(ket::utility::policy::make_sequential(), state, 0_q, 3_q, make_controls({1_cq})); }));
+
+  run(run_case(
+    "fused::runtime::ranges::swap without controls",
+    [](auto& state, auto const& unsorted, auto const& sorted)
+    { ket::gate::fused::runtime::ranges::swap(state.begin(), state_integer_type{0u}, unsorted, sorted, 0_q, 3_q); },
+    [](auto& state)
+    { ket::gate::runtime::ranges::swap(ket::utility::policy::make_sequential(), state, 0_q, 3_q, std::vector<control_qubit_type>{}); }));
+
+  run(run_case(
+    "fused::runtime::ranges::swap without controls and with inner-loop parallelism",
+    [](auto& state, auto const& unsorted, auto const& sorted)
+    {
+      auto const parallel_policy = ket::utility::policy::make_parallel(4u);
+      ket::utility::execute(
+        parallel_policy,
+        [&](int const thread_index, auto&)
+        {
+          ket::gate::fused::runtime::ranges::swap(
+            parallel_policy, thread_index, state.begin(), state_integer_type{0u},
+            unsorted, sorted, 0_q, 3_q);
+        });
+    },
+    [](auto& state)
+    { ket::gate::runtime::ranges::swap(ket::utility::policy::make_sequential(), state, 0_q, 3_q, std::vector<control_qubit_type>{}); }));
+
+  run(run_permuted_case(
+    "fused::runtime::ranges::swap with a permuted fused mapping",
+    [](auto& state, auto const& unsorted, auto const& sorted)
+    { ket::gate::fused::runtime::ranges::swap(state.begin(), state_integer_type{0u}, unsorted, sorted, 0_q, 3_q, make_controls({1_cq})); },
+    [](auto& state)
+    { ket::gate::runtime::ranges::swap(ket::utility::policy::make_sequential(), state, 2_q, 1_q, make_controls({0_cq})); }));
+
+  run(run_permuted_case(
+    "fused::runtime::ranges::swap without controls and with a permuted fused mapping",
+    [](auto& state, auto const& unsorted, auto const& sorted)
+    { ket::gate::fused::runtime::ranges::swap(state.begin(), state_integer_type{0u}, unsorted, sorted, 0_q, 3_q); },
+    [](auto& state)
+    { ket::gate::runtime::ranges::swap(ket::utility::policy::make_sequential(), state, 2_q, 1_q, std::vector<control_qubit_type>{}); }));
 
   run(run_case(
     "fused::runtime::ranges::x_rotation_half_pi",
