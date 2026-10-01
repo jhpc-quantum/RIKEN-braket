@@ -1304,6 +1304,12 @@ namespace bra
     return *this;
   }
 
+  state& state::global_phase(boost::variant<real_type, std::string> const& phase)
+  {
+    do_global_phase(boost::apply_visitor(real_visitor{*this}, phase));
+    return *this;
+  }
+
   state& state::u1(
     boost::variant<real_type, std::string> const& phase,
     control_qubit_type const control_qubit)

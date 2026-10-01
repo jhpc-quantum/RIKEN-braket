@@ -369,6 +369,7 @@ namespace bra
     void add_adj_s(columns_type const& columns);
     void add_t(columns_type const& columns);
     void add_adj_t(columns_type const& columns);
+    void add_global_phase(columns_type const& columns);
     void add_u1(columns_type const& columns);
     void add_adj_u1(columns_type const& columns);
     void add_u2(columns_type const& columns);

@@ -122,7 +122,6 @@ class WrongConstantVariableException(QASM2QCXError):
         return 'Wrong constant variable'
 
 class QASM2QCXConverter(visitor.QASMVisitor):
-    # TODO: implement gphase(\gamma)
     default_gates_qcx_map: dict[str, str] = {'U': 'U3'}
 
     stdgates_qcx_map: dict[str, str] = {
@@ -770,7 +769,23 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__release_temporary_variable(temporary_variable)
 
     def visit_QuantumPhase(self, statement: ast.QuantumPhase) -> None:
-        raise UnsupportedOpenQASMError('gphase')
+        if self.__is_initialization_process:
+            return
+        if statement.modifiers:
+            raise UnsupportedOpenQASMError('modifiers on gphase')
+        if statement.qubits:
+            raise UnsupportedOpenQASMError('qubit operands on gphase')
+
+        self.__expression_kind = ExpressionKind.ARITHMETIC
+        self.visit(statement.argument)
+        self.__expression_kind = None
+
+        if self.__value_type in (ValueType.BIT, ValueType.COMPLEX):
+            raise WrongParameterTypeException(self.__value)
+
+        self.__qcx_lines.append(f'PHASE {self.__value}')
+        if self.__value_kind == ValueKind.TEMPORARY:
+            self.__release_temporary_variable(str(self.__value))
 
     def visit_QuantumGateDefinition(self, statement: ast.QuantumGateDefinition) -> None:
         raise UnsupportedOpenQASMError('gate definition')

@@ -731,6 +731,7 @@ namespace bra
     state& adj_sqrt_pauli_zz(qubit_type const qubit1, qubit_type const qubit2);
     state& sqrt_pauli_zn(std::vector<qubit_type> const& qubits);
     state& adj_sqrt_pauli_zn(std::vector<qubit_type> const& qubits);
+    state& global_phase(boost::variant<real_type, std::string> const& phase);
     state& u1(
       boost::variant<real_type, std::string> const& phase,
       control_qubit_type const control_qubit);
@@ -1071,6 +1072,7 @@ namespace bra
     virtual void do_adj_sqrt_pauli_zz(qubit_type const qubit1, qubit_type const qubit2) = 0;
     virtual void do_sqrt_pauli_zn(std::vector<qubit_type> const& qubits) = 0;
     virtual void do_adj_sqrt_pauli_zn(std::vector<qubit_type> const& qubits) = 0;
+    virtual void do_global_phase(real_type const phase) = 0;
     virtual void do_u1(real_type const phase, control_qubit_type const control_qubit) = 0;
     virtual void do_adj_u1(real_type const phase, control_qubit_type const control_qubit) = 0;
     virtual void do_u2(

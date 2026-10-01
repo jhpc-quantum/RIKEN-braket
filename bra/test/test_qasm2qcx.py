@@ -135,6 +135,31 @@ class GateConversionTests(unittest.TestCase):
 
         self.assertEqual(convert(source), ["QUBITS 1", "I 0"])
 
+    def test_converts_global_phase(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            qubit q;
+            gphase(pi);
+        """
+
+        self.assertEqual(
+            convert(source),
+            ["QUBITS 1", "PHASE :PI"],
+        )
+
+    def test_converts_runtime_global_phase(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            float theta = 1.0;
+            qubit q;
+            gphase(theta + 0.5);
+        """
+
+        lines = convert(source)
+        self.assertIn("LET QASM2QCX_REAL_0 := THETA31", lines)
+        self.assertIn("LET QASM2QCX_REAL_0 += 0.5", lines)
+        self.assertEqual(lines[-1], "PHASE QASM2QCX_REAL_0")
+
     def test_converts_cu_with_openqasm_phase_convention(self) -> None:
         source = """
             OPENQASM 3.0;

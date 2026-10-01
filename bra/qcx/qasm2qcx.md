@@ -47,6 +47,8 @@ errors rather than silently omitted.
 
 OpenQASM rotation angles are converted to the half-turn convention used by
 the QCX `EX`, `EY`, `EZ`, `CEX`, `CEY`, and `CEZ` operations.
+OpenQASM `gphase(angle)` is emitted as the QCX global-phase instruction
+`PHASE angle`.
 
 ## Not yet in scope
 
@@ -54,7 +56,6 @@ The current prototype does not reliably support:
 
 - reset, barriers, delays, or classical control flow;
 - user-defined gates or gate modifiers;
-- `gphase`;
 - index ranges, discrete index sets, or dynamically computed qubit indices;
 - booleans or multidimensional arrays;
 - comparisons, logical operations, or classical functions; or
