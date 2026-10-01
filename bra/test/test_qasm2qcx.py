@@ -393,9 +393,7 @@ class ClassicalScalarTests(unittest.TestCase):
             convert(source)
 
 
-class KnownDefectTests(unittest.TestCase):
-
-    @unittest.expectedFailure
+class MeasurementAndBitTests(unittest.TestCase):
     def test_converts_single_qubit_measurement(self) -> None:
         source = """
             OPENQASM 3.0;
@@ -407,6 +405,135 @@ class KnownDefectTests(unittest.TestCase):
             convert(source),
             ["QUBITS 1", "VAR C1 INT", "M 0", "LET C1 := :OUTCOME"],
         )
+
+    def test_converts_register_measurement(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            qubit[2] q;
+            bit[2] c = measure q;
+        """
+
+        self.assertEqual(
+            convert(source),
+            [
+                "QUBITS 2",
+                "VAR C1 INT 2",
+                "M 0",
+                "LET C1:0 := :OUTCOME",
+                "M 1",
+                "LET C1:1 := :OUTCOME",
+            ],
+        )
+
+    def test_converts_indexed_measurement_assignment(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            qubit[2] q;
+            bit[2] c;
+            c[1] = measure q[0];
+        """
+
+        self.assertEqual(
+            convert(source),
+            [
+                "QUBITS 2",
+                "VAR C1 INT 2",
+                "M 0",
+                "LET C1:1 := :OUTCOME",
+            ],
+        )
+
+    def test_converts_measurement_without_target(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            qubit[2] q;
+            measure q;
+        """
+
+        self.assertEqual(convert(source), ["QUBITS 2", "M 0", "M 1"])
+
+    def test_initializes_and_copies_bit_values(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            bit scalar = 1;
+            bit[3] source = "101";
+            bit[3] destination = source;
+            destination[1] = source[0];
+        """
+
+        self.assertEqual(
+            convert(source),
+            [
+                "QUBITS 0",
+                "VAR SCALAR63 INT",
+                "LET SCALAR63 := 1",
+                "VAR SOURCE63 INT 3",
+                "LET SOURCE63:0 := 1",
+                "LET SOURCE63:1 := 0",
+                "LET SOURCE63:2 := 1",
+                "VAR DESTINATION2047 INT 3",
+                "LET DESTINATION2047:0 := SOURCE63:0",
+                "LET DESTINATION2047:1 := SOURCE63:1",
+                "LET DESTINATION2047:2 := SOURCE63:2",
+                "LET DESTINATION2047:1 := SOURCE63:0",
+            ],
+        )
+
+    def test_accepts_constant_bit_register_size(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            const uint width = 2;
+            bit[width] c;
+        """
+
+        self.assertEqual(convert(source), ["QUBITS 0", "VAR C1 INT 2"])
+
+    def test_rejects_measurement_size_mismatch(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            qubit[2] q;
+            bit[1] c = measure q;
+        """
+
+        with self.assertRaisesRegex(
+                qasm2qcx.MeasurementSizeMismatchException,
+                "2 qubit.*1 bit"):
+            convert(source)
+
+    def test_rejects_mixed_scalar_and_register_measurement(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            qubit[1] q;
+            bit c = measure q;
+        """
+
+        with self.assertRaisesRegex(
+                qasm2qcx.InvalidBitOperandException,
+                "both be scalars or both be complete registers"):
+            convert(source)
+
+    def test_rejects_non_bit_measurement_target(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            qubit q;
+            int result = measure q;
+        """
+
+        with self.assertRaisesRegex(
+                qasm2qcx.InvalidBitOperandException, "not a bit variable"):
+            convert(source)
+
+    def test_rejects_out_of_range_bit_index(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            qubit q;
+            bit[2] c;
+            c[2] = measure q;
+        """
+
+        with self.assertRaisesRegex(
+                qasm2qcx.InvalidBitOperandException, "outside variable"):
+            convert(source)
 
 
 if __name__ == "__main__":

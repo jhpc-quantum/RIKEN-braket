@@ -27,12 +27,17 @@ The converter currently covers:
 - equal-sized whole-register gate broadcasting;
 - scalar `int`, `uint`, `float`, and `complex` arithmetic;
 - scalar constants, variables, assignments, and numeric casts; and
+- scalar and register `bit` values, including bit-string initialization;
+- projective measurement of individual qubits and complete registers; and
 - scalar expressions used as gate parameters.
 
 QCX has no unsigned integer type, so OpenQASM `uint` values are represented by
 QCX `INT`, just like OpenQASM `int`. Consequently, unsigned ranges and
 wraparound behavior are not preserved. Declared integer and floating-point
 widths are also accepted but are not enforced by QCX.
+OpenQASM `bit` values are represented by QCX `INT` variables whose elements
+are restricted to zero or one by the converter. A measurement is emitted as a
+QCX `M` operation followed immediately by assignment from `:OUTCOME`.
 
 The built-in constants `pi`, `tau`, and `euler` are available in scalar
 expressions. Runtime expressions preserve `pi` and `tau` as the native QCX
@@ -47,14 +52,13 @@ the QCX `EX`, `EY`, `EZ`, `CEX`, `CEY`, and `CEZ` operations.
 
 The current prototype does not reliably support:
 
-- measurement, reset, barriers, delays, or classical control flow;
+- reset, barriers, delays, or classical control flow;
 - user-defined gates or gate modifiers;
 - `gphase`, `cu`, or `id`;
 - index ranges, discrete index sets, or dynamically computed qubit indices;
-- bit strings, booleans, or multidimensional arrays;
+- booleans or multidimensional arrays;
 - comparisons, logical operations, or classical functions; or
 - arithmetic operators other than `+`, `-`, `*`, and `/`.
 
 The characterization tests in `bra/test/test_qasm2qcx.py` define the working
-baseline. Measurement remains marked as an expected failure for a later
-integration stage.
+baseline.
