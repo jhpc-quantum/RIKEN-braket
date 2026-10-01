@@ -51,6 +51,20 @@ Each command corresponds to:
 
 The results are output to `stdout`, and the detailed log is written to `stderr`.
 
+### Converting OpenQASM 3 programs
+
+The experimental `qasm2qcx.py` converter translates the supported OpenQASM 3
+subset into QCX input for *bra*:
+
+```bash
+$ python3 -m pip install -r bra/qcx/requirements.txt
+$ python3 bra/qcx/qasm2qcx.py circuit.qasm > circuit.qcx
+$ bra/bin/bra --file circuit.qcx
+```
+
+See the [converter documentation](bra/qcx/qasm2qcx.md) for its supported
+features and current limitations.
+
 ## Using *ket*
 
 ```cpp:test.cpp
@@ -98,4 +112,3 @@ int main(int argc, char* argv[])
 ```bash
 $ mpiCC -I${HOME}/RIKEN-braket/ket/include -I${HOME}/RIKEN-braket/yampi/include -DKET_PRINT_LOG -DNDEBUG -O3 test.cpp
 ```
-

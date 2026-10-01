@@ -61,6 +61,14 @@ class InvalidBitOperandException(QASM2QCXError):
         return self.message
 
 
+class InvalidDeclarationException(QASM2QCXError):
+    def __init__(self, message: str) -> None:
+        self.message = message
+
+    def __str__(self) -> str:
+        return self.message
+
+
 class MeasurementSizeMismatchException(QASM2QCXError):
     def __init__(self, num_qubits: int, num_bits: int) -> None:
         self.num_qubits = num_qubits
@@ -161,9 +169,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__sized_bit_variables: set[str] = set()
         self.__complex_variable_name_size_map: dict[str, int] = {}
 
-        self.__const_int_variable_name_values_map: dict[str, [int]] = {}
-        self.__const_float_variable_name_values_map: dict[str, [float]] = {}
-        self.__const_complex_variable_name_values_map: dict[str, [complex]] = {}
+        self.__const_int_variable_name_values_map: dict[str, list[int]] = {}
+        self.__const_float_variable_name_values_map: dict[str, list[float]] = {}
+        self.__const_complex_variable_name_values_map: dict[str, list[complex]] = {}
 
         self.__is_stdgates_included: bool = False
         self.__quantum_registers: dict[str, int] = {}
@@ -288,6 +296,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.visit(expression.expression)
         if self.__value is None or self.__value_type is None or self.__value_kind is None:
             raise UninitializedValueException
+        if self.__value_type == ValueType.BIT:
+            raise UnsupportedOpenQASMError('unary arithmetic on bit values')
 
         if expression.op != ast.UnaryOperator['-']:
             raise UnsupportedOpenQASMError(f'unary operator {expression.op.name}')
@@ -480,22 +490,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__value_type = ValueType.COMPLEX
         self.__value_kind = ValueKind.LITERAL
 
-    # TODO
-    # def visit_BooleanLiteral(self, expression: ast.BooleanLiteral):
-    #    pass
-
-    # TODO
-    # def visit_BitstringLiteral(self, expression: ast.BitstringLiteral):
-    #    pass
-
-    # TODO
-    # def visit_StringLiteral(self, expression: ast.StringLiteral):
-    #    pass
-
-    # TODO
-    # def visit_ArrayLiteral(self, expression: ast.ArrayLiteral):
-    #    pass
-
     def visit_Include(self, statement: ast.Include) -> None:
         if not self.__is_initialization_process:
             return
@@ -519,10 +513,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.visit(statement.size)
         self.__expression_kind = None
         if self.__value_kind != ValueKind.LITERAL or self.__value_type != ValueType.INT:
-            raise InvalidQubitOperandException(
+            raise InvalidDeclarationException(
                 f'Qubit register {register_name} must have a constant integer size')
         if self.__value <= 0:
-            raise InvalidQubitOperandException(
+            raise InvalidDeclarationException(
                 f'Qubit register {register_name} must have a positive size')
         self.__quantum_registers[register_name] = int(self.__value)
         self.__sized_quantum_registers.add(register_name)
@@ -548,7 +542,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UnsupportedOpenQASMError('multidimensional qubit indexing')
 
         indices = qubit.indices[0]
-        if not isinstance(indices, list) or len(indices) != 1:
+        if (not isinstance(indices, list) or len(indices) != 1
+                or isinstance(
+                    indices[0], (ast.RangeDefinition, ast.DiscreteSet))):
             raise UnsupportedOpenQASMError('qubit index ranges or discrete index sets')
         if not isinstance(indices[0], ast.IntegerLiteral):
             raise UnsupportedOpenQASMError('non-literal qubit index')
@@ -589,7 +585,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UnsupportedOpenQASMError('multidimensional bit indexing')
 
         indices = bit.indices[0]
-        if not isinstance(indices, list) or len(indices) != 1:
+        if (not isinstance(indices, list) or len(indices) != 1
+                or isinstance(
+                    indices[0], (ast.RangeDefinition, ast.DiscreteSet))):
             raise UnsupportedOpenQASMError('bit index ranges or discrete index sets')
         if not isinstance(indices[0], ast.IntegerLiteral):
             raise UnsupportedOpenQASMError('non-literal bit index')
@@ -638,7 +636,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__qcx_lines.append(
                     f'LET {target_names[index]} := :OUTCOME')
 
-    def __convert_parameter(self, parameter: (str, ValueType, ValueKind), qcx_name: str) -> (str, ValueKind):
+    def __convert_parameter(
+            self, parameter: tuple[str | int | float | complex, ValueType, ValueKind],
+            qcx_name: str) -> tuple[str, ValueKind]:
         if qcx_name not in ['EX', 'EY', 'EZ', 'CEX', 'CEY', 'CEZ']:
             return str(parameter[0]), parameter[2]
 
@@ -720,7 +720,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if len(indices) not in (1, loop_size):
                 raise WrongBroadcastingException
 
-        parameters: [(str, ValueType, ValueKind)] = []
+        parameters: list[
+            tuple[str | int | float | complex, ValueType, ValueKind]
+        ] = []
         for argument in statement.arguments:
             self.__expression_kind = ExpressionKind.ARITHMETIC
             self.visit(argument)
@@ -934,7 +936,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __make_constant_variable(self, variable_name: str, variable_type, num_elements: int = 1) -> None:
         if num_elements <= 0:
-            raise #TODO
+            raise InvalidDeclarationException(
+                f'Constant {variable_name} must have a positive size')
 
         match variable_type:
             case ast.IntType() | ast.UintType():
@@ -1030,7 +1033,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __declare_classical_variable(self, variable_type, variable_name, num_elements = 1) -> None:
         if num_elements <= 0:
-            raise # TODO
+            raise InvalidDeclarationException(
+                f'Classical variable {variable_name} must have a positive size')
 
         match variable_type:
             case ast.IntType() | ast.UintType():
@@ -1056,47 +1060,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     f'VAR {variable_name} INT'
                     + (f' {num_elements}' if num_elements > 1 else ''))
 
-            #case ast.AngleType():
-            #    if variable_name in self.__angle_variable_name_size_map:
-            #        raise WrongClassicalDeclarationException(variable_name)
-
-            #    if variable_type.size is None:
-            #        self.__angle_variable_name_size_map[variable_name] = 64
-            #    else:
-            #        array_size = int(variable_type.size)
-            #        self.__angle_variable_name_size_map[variable_name] = array_size
-            #    self.__qcx_lines.append(f'VAR {variable_name} INT' + (f' {num_elements}' if num_elements > 1 else ''))
-
-            #case ast.BitType():
-            #    if variable_name in self.__bit_variable_name_size_map:
-            #        raise WrongClassicalDeclarationException(variable_name)
-
-            #    if variable_type.size is None:
-            #        self.__bit_variable_name_size_map[variable_name] = 1
-            #        self.__qcx_lines.append(f'VAR {variable_name} INT {num_elements}')
-            #    else:
-            #        self.__expression_kind = ExpressionKind.ARITHMETIC
-            #        self.visit(statement.size)
-            #        self.__expression_kind = None
-
-            #        if self.__value_type != ValueType.INT:
-            #            raise
-
-            #        self.__qcx_lines.append(f'VAR {variable_name} INT {num_elements}')
-
-            #        if parameter[2] == ValueKind.TEMPORARY:
-            #            self.__release_temporary_variable(parameter[0])
-
-            #    self.__bit_variable_name_size_map[variable_name] = 1
-            #    self.__qcx_lines.append(f'VAR {variable_name} INT {}' + (f' {num_elements}' if num_elements > 1 else ''))
-
-            #case ast.BoolType():
-            #    if variable_name in self.__bool_variable_name_size_map:
-            #        raise WrongClassicalDeclarationException(variable_name)
-
-            #    self.__int_variable_name_size_map[variable_name] = 1
-            #    self.__qcx_lines.append(f'VAR {variable_name} INT' + (f' {num_elements}' if num_elements > 1 else ''))
-
             case ast.ComplexType():
                 if variable_name in self.__complex_variable_name_size_map:
                     raise WrongClassicalDeclarationException(variable_name)
@@ -1113,10 +1076,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__expression_kind = None
         if (self.__value_kind != ValueKind.LITERAL
                 or self.__value_type != ValueType.INT):
-            raise InvalidBitOperandException(
+            raise InvalidDeclarationException(
                 f'Bit variable {variable_name} must have a constant integer size')
         if self.__value <= 0:
-            raise InvalidBitOperandException(
+            raise InvalidDeclarationException(
                 f'Bit variable {variable_name} must have a positive size')
         return int(self.__value)
 
@@ -1269,7 +1232,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if isinstance(statement.lvalue, ast.IndexedIdentifier):
             raise UnsupportedOpenQASMError('indexed classical assignment')
 
-        # TODO: %= and other operations
         if statement.op == ast.AssignmentOperator['=']:
             operator = ':='
         elif statement.op == ast.AssignmentOperator['+=']:

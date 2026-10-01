@@ -328,6 +328,49 @@ class GateConversionTests(unittest.TestCase):
         with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, "reset"):
             convert(source)
 
+    def test_rejects_qubit_index_range(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            include "stdgates.inc";
+            qubit[2] q;
+            x q[0:1];
+        """
+
+        with self.assertRaisesRegex(
+                qasm2qcx.UnsupportedOpenQASMError, "qubit index ranges"):
+            convert(source)
+
+    def test_rejects_global_phase_modifier(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            qubit q;
+            ctrl @ gphase(pi) q;
+        """
+
+        with self.assertRaisesRegex(
+                qasm2qcx.UnsupportedOpenQASMError, "modifiers on gphase"):
+            convert(source)
+
+    def test_rejects_bit_global_phase_parameter(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            bit phase;
+            gphase(phase);
+        """
+
+        with self.assertRaises(qasm2qcx.WrongParameterTypeException):
+            convert(source)
+
+    def test_rejects_nonpositive_qubit_register_size(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            qubit[0] q;
+        """
+
+        with self.assertRaisesRegex(
+                qasm2qcx.InvalidDeclarationException, "positive size"):
+            convert(source)
+
 
 class ClassicalScalarTests(unittest.TestCase):
     def test_maps_uint_to_qcx_int(self) -> None:
@@ -457,6 +500,28 @@ class ClassicalScalarTests(unittest.TestCase):
         with self.assertRaisesRegex(qasm2qcx.NoVariableNameException, "MISSING"):
             convert(source)
 
+    def test_rejects_classical_array(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            array[int[32], 2] values;
+        """
+
+        with self.assertRaisesRegex(
+                qasm2qcx.UnsupportedOpenQASMError, "classical array"):
+            convert(source)
+
+    def test_rejects_unary_arithmetic_on_bit(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            bit value;
+            int result = -value;
+        """
+
+        with self.assertRaisesRegex(
+                qasm2qcx.UnsupportedOpenQASMError,
+                "unary arithmetic on bit values"):
+            convert(source)
+
 
 class MeasurementAndBitTests(unittest.TestCase):
     def test_converts_single_qubit_measurement(self) -> None:
@@ -552,6 +617,16 @@ class MeasurementAndBitTests(unittest.TestCase):
         """
 
         self.assertEqual(convert(source), ["QUBITS 0", "VAR C1 INT 2"])
+
+    def test_rejects_nonpositive_bit_register_size(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            bit[0] c;
+        """
+
+        with self.assertRaisesRegex(
+                qasm2qcx.InvalidDeclarationException, "positive size"):
+            convert(source)
 
     def test_rejects_measurement_size_mismatch(self) -> None:
         source = """
