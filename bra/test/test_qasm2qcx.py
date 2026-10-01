@@ -430,6 +430,32 @@ class GateConversionTests(unittest.TestCase):
                 qasm2qcx.UnsupportedOpenQASMError, "gate x"):
             convert(source)
 
+    def test_requires_stdgates_include_before_gate_use(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            qubit q;
+            x q;
+            include "stdgates.inc";
+        """
+
+        with self.assertRaisesRegex(
+                qasm2qcx.UnsupportedOpenQASMError, "gate x"):
+            convert(source)
+
+    def test_enables_stdgates_at_include_position(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            qubit q;
+            U(0, 0, 0) q;
+            include "stdgates.inc";
+            x q;
+        """
+
+        self.assertEqual(
+            convert(source),
+            ["QUBITS 1", "PHASE 0.0", "U3 0 0 0 0", "X 0"],
+        )
+
     def test_rejects_unsupported_quantum_statement(self) -> None:
         source = """
             OPENQASM 3.0;

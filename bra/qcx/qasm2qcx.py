@@ -491,12 +491,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__value_kind = ValueKind.LITERAL
 
     def visit_Include(self, statement: ast.Include) -> None:
-        if not self.__is_initialization_process:
-            return
-
         if statement.filename != 'stdgates.inc':
             raise UnsupportedOpenQASMError(f'include "{statement.filename}"')
-        self.__is_stdgates_included = True
+        if not self.__is_initialization_process:
+            self.__is_stdgates_included = True
 
     def visit_QubitDeclaration(self, statement: ast.QubitDeclaration) -> None:
         if not self.__is_initialization_process:
