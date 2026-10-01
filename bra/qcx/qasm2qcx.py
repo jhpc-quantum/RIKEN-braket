@@ -636,32 +636,40 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__qcx_lines.append(
                     f'LET {target_names[index]} := :OUTCOME')
 
+    @staticmethod
+    def __angle_operand(
+            parameter: tuple[
+                str | int | float | complex, ValueType, ValueKind]) -> str:
+        value, value_type, value_kind = parameter
+        if value_type == ValueType.INT and value_kind != ValueKind.LITERAL:
+            return f':REAL:{value}'
+        return str(value)
+
     def __convert_parameter(
             self, parameter: tuple[str | int | float | complex, ValueType, ValueKind],
-            qcx_name: str) -> tuple[str, ValueKind]:
+            qcx_name: str) -> tuple[str, set[str]]:
+        operand = self.__angle_operand(parameter)
+        temporaries = (
+            {str(parameter[0])}
+            if parameter[2] == ValueKind.TEMPORARY else set())
+
         if qcx_name not in ['EX', 'EY', 'EZ', 'CEX', 'CEY', 'CEZ']:
-            return str(parameter[0]), parameter[2]
+            return operand, temporaries
 
         if parameter[2] == ValueKind.LITERAL:
-            return str(-0.5 * float(parameter[0])), ValueKind.LITERAL
+            return str(-0.5 * float(parameter[0])), set()
 
         if parameter[1] == ValueType.FLOAT:
             if parameter[2] == ValueKind.TEMPORARY:
                 self.__qcx_lines.append(f'LET {parameter[0]} *= -0.5')
-                return parameter[0], ValueKind.TEMPORARY
+                return str(parameter[0]), temporaries
 
-            temporary_variable: str = self.__add_new_temporary_variable(parameter[1])
-            self.__qcx_lines.append(f'LET {temporary_variable} := {parameter[0]}')
-            self.__qcx_lines.append(f'LET {temporary_variable} *= -0.5')
-        else:
-            temporary_variable: str = self.__add_new_temporary_variable(parameter[1])
-            self.__qcx_lines.append(f'LET {temporary_variable} := :REAL:{parameter[0]}')
-            self.__qcx_lines.append(f'LET {temporary_variable} *= -0.5')
+        temporary_variable = self.__add_new_temporary_variable(ValueType.FLOAT)
+        self.__qcx_lines.append(f'LET {temporary_variable} := {operand}')
+        self.__qcx_lines.append(f'LET {temporary_variable} *= -0.5')
+        temporaries.add(temporary_variable)
 
-        if parameter[2] == ValueKind.TEMPORARY:
-            self.__release_temporary_variable(parameter[0])
-
-        return temporary_variable, ValueKind.TEMPORARY
+        return temporary_variable, temporaries
 
     def __cu_control_phase(
             self, parameters: list[tuple[str | int | float, ValueType, ValueKind]],
@@ -736,10 +744,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         converted_parameters: list[str] = []
         temporary_variables: set[str] = set()
         for parameter in parameters:
-            converted_parameter, value_kind = self.__convert_parameter(parameter, qcx_gate_name)
+            converted_parameter, parameter_temporaries = self.__convert_parameter(
+                parameter, qcx_gate_name)
             converted_parameters.append(converted_parameter)
-            if value_kind == ValueKind.TEMPORARY:
-                temporary_variables.add(converted_parameter)
+            temporary_variables.update(parameter_temporaries)
 
         cu_control_phase: str | None = None
         if qasm_gate_name == 'cu':
@@ -785,7 +793,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.__value_type in (ValueType.BIT, ValueType.COMPLEX):
             raise WrongParameterTypeException(self.__value)
 
-        self.__qcx_lines.append(f'PHASE {self.__value}')
+        phase = self.__angle_operand(
+            (self.__value, self.__value_type, self.__value_kind))
+        self.__qcx_lines.append(f'PHASE {phase}')
         if self.__value_kind == ValueKind.TEMPORARY:
             self.__release_temporary_variable(str(self.__value))
 

@@ -160,6 +160,76 @@ class GateConversionTests(unittest.TestCase):
         self.assertIn("LET QASM2QCX_REAL_0 += 0.5", lines)
         self.assertEqual(lines[-1], "PHASE QASM2QCX_REAL_0")
 
+    def test_promotes_runtime_integer_global_phase(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            int theta = 1;
+            qubit q;
+            gphase(theta);
+        """
+
+        self.assertEqual(convert(source)[-1], "PHASE :REAL:THETA31")
+
+    def test_promotes_runtime_integer_gate_parameters(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            include "stdgates.inc";
+            int theta = 1;
+            int phi = 2;
+            int lambda = 3;
+            int gamma = 4;
+            qubit[2] q;
+            p(theta) q[0];
+            u3(theta, phi, lambda) q[0];
+            cp(theta) q[0], q[1];
+            cu(theta, phi, lambda, gamma) q[0], q[1];
+        """
+
+        lines = convert(source)
+        self.assertIn("U1 0 :REAL:THETA31", lines)
+        self.assertIn(
+            "U3 0 :REAL:THETA31 :REAL:PHI7 :REAL:LAMBDA63", lines)
+        self.assertIn("CU1 0 1 :REAL:THETA31", lines)
+        self.assertIn("LET QASM2QCX_REAL_0 := :REAL:THETA31", lines)
+        self.assertIn("LET QASM2QCX_REAL_0 += :REAL:PHI7", lines)
+        self.assertIn("LET QASM2QCX_REAL_0 += :REAL:LAMBDA63", lines)
+        self.assertIn("LET QASM2QCX_REAL_0 += :REAL:GAMMA31", lines)
+        self.assertEqual(
+            lines[-1],
+            "CU3 0 1 :REAL:THETA31 :REAL:PHI7 :REAL:LAMBDA63",
+        )
+
+    def test_converts_runtime_integer_rotation_through_real_temporary(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            include "stdgates.inc";
+            int theta = 1;
+            qubit q;
+            rx(theta) q;
+        """
+
+        self.assertEqual(
+            convert(source)[-4:],
+            [
+                "VAR QASM2QCX_REAL_0 REAL",
+                "LET QASM2QCX_REAL_0 := :REAL:THETA31",
+                "LET QASM2QCX_REAL_0 *= -0.5",
+                "EX 0 QASM2QCX_REAL_0",
+            ],
+        )
+
+    def test_promotes_runtime_integer_expression_gate_parameter(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            include "stdgates.inc";
+            int theta = 1;
+            qubit q;
+            p(theta + 1) q;
+        """
+
+        lines = convert(source)
+        self.assertEqual(lines[-1], "U1 0 :REAL:QASM2QCX_INT_0")
+
     def test_converts_cu_with_openqasm_phase_convention(self) -> None:
         source = """
             OPENQASM 3.0;
