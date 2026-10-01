@@ -264,6 +264,135 @@ class GateConversionTests(unittest.TestCase):
             convert(source)
 
 
+class ClassicalScalarTests(unittest.TestCase):
+    def test_maps_uint_to_qcx_int(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            uint[8] value = 3;
+            value += 2;
+            float promoted = value;
+            qubit q;
+        """
+
+        self.assertEqual(
+            convert(source),
+            [
+                "QUBITS 1",
+                "VAR VALUE31 INT",
+                "LET VALUE31 := 3",
+                "LET VALUE31 += 2",
+                "VAR PROMOTED255 REAL",
+                "LET PROMOTED255 := :REAL:VALUE31",
+            ],
+        )
+
+    def test_emits_valid_complex_literal_operations(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            complex[float[64]] value = 1.0 + 2.0im;
+            value *= 2;
+            qubit q;
+        """
+
+        lines = convert(source)
+        self.assertIn("VAR VALUE31 COMPLEX", lines)
+        self.assertIn("LET QASM2QCX_COMPLEX_0 := :COMPLEX:1.0", lines)
+        self.assertIn("LET QASM2QCX_COMPLEX_1 := :I", lines)
+        self.assertIn("LET QASM2QCX_COMPLEX_1 *= :COMPLEX:2.0", lines)
+        self.assertIn("LET VALUE31 := QASM2QCX_COMPLEX_0", lines)
+        self.assertEqual(lines[-1], "LET VALUE31 *= :COMPLEX:2.0")
+        self.assertTrue(all("j" not in line for line in lines))
+
+    def test_promotes_int_and_float_to_complex(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            int integer = 2;
+            float real = integer;
+            complex number = real;
+            qubit q;
+        """
+
+        lines = convert(source)
+        self.assertIn("LET REAL15 := :REAL:INTEGER127", lines)
+        self.assertIn("LET NUMBER63 := :COMPLEX:REAL15", lines)
+
+    def test_rejects_narrowing_implicit_cast(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            float real = 2.5;
+            int integer = real;
+            qubit q;
+        """
+
+        with self.assertRaises(qasm2qcx.NoImplicitCastException):
+            convert(source)
+
+    def test_supports_explicit_numeric_casts(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            float real = 2.5;
+            int integer = int(real);
+            uint unsigned = uint(real);
+            complex number = complex(real);
+            qubit q;
+        """
+
+        lines = convert(source)
+        self.assertIn("LET QASM2QCX_INT_0 := :INT:REAL15", lines)
+        self.assertIn("LET INTEGER127 := QASM2QCX_INT_0", lines)
+        self.assertIn("LET UNSIGNED255 := QASM2QCX_INT_0", lines)
+        self.assertIn("LET QASM2QCX_COMPLEX_0 := :COMPLEX:REAL15", lines)
+        self.assertIn("LET NUMBER63 := QASM2QCX_COMPLEX_0", lines)
+
+    def test_uses_typed_constant_values(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            include "stdgates.inc";
+            const uint count = 3;
+            const float theta = count / 2.0;
+            qubit q;
+            p(theta) q;
+        """
+
+        self.assertEqual(convert(source), ["QUBITS 1", "U1 0 1.5"])
+
+    def test_integer_constant_division_truncates_toward_zero(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            const int positive = 3 / 2;
+            const int negative = -3 / 2;
+            int positive_result = positive;
+            int negative_result = negative;
+            qubit q;
+        """
+
+        lines = convert(source)
+        self.assertIn("LET POSITIVE_RESULT32703 := 1", lines)
+        self.assertIn("LET NEGATIVE_RESULT32703 := -1", lines)
+
+    def test_rejects_duplicate_identifier(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            int value;
+            float value;
+            qubit q;
+        """
+
+        with self.assertRaisesRegex(
+                qasm2qcx.DuplicateIdentifierException, "value"):
+            convert(source)
+
+    def test_rejects_undeclared_variable(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            missing = 1;
+            qubit q;
+        """
+
+        with self.assertRaisesRegex(qasm2qcx.NoVariableNameException, "MISSING"):
+            convert(source)
+
+
 class KnownDefectTests(unittest.TestCase):
 
     @unittest.expectedFailure
