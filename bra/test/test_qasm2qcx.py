@@ -125,7 +125,7 @@ class GateConversionTests(unittest.TestCase):
             ["QUBITS 1", f"U1 0 {3.141592653589793 / 2}"],
         )
 
-    def test_does_not_silently_drop_unsupported_gate(self) -> None:
+    def test_converts_identity_gate(self) -> None:
         source = """
             OPENQASM 3.0;
             include "stdgates.inc";
@@ -133,9 +133,49 @@ class GateConversionTests(unittest.TestCase):
             id q;
         """
 
-        with self.assertRaisesRegex(
-                qasm2qcx.UnsupportedOpenQASMError, "gate id"):
-            convert(source)
+        self.assertEqual(convert(source), ["QUBITS 1", "I 0"])
+
+    def test_converts_cu_with_openqasm_phase_convention(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            include "stdgates.inc";
+            qubit[2] q;
+            cu(1, 2, 3, 4) q[0], q[1];
+        """
+
+        self.assertEqual(
+            convert(source),
+            ["QUBITS 2", "U1 0 7.0", "CU3 0 1 1 2 3"],
+        )
+
+    def test_reuses_runtime_cu_phase_when_broadcasting(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            include "stdgates.inc";
+            float theta = 1.0;
+            float phi = 2.0;
+            float lambda = 3.0;
+            float gamma = 4.0;
+            qubit[2] control;
+            qubit[2] target;
+            cu(theta, phi, lambda, gamma) control, target;
+        """
+
+        lines = convert(source)
+        self.assertIn("LET QASM2QCX_REAL_0 := THETA31", lines)
+        self.assertIn("LET QASM2QCX_REAL_0 += PHI7", lines)
+        self.assertIn("LET QASM2QCX_REAL_0 += LAMBDA63", lines)
+        self.assertIn("LET QASM2QCX_REAL_0 /= 2.0", lines)
+        self.assertIn("LET QASM2QCX_REAL_0 += GAMMA31", lines)
+        self.assertEqual(
+            lines[-4:],
+            [
+                "U1 0 QASM2QCX_REAL_0",
+                "CU3 0 2 THETA31 PHI7 LAMBDA63",
+                "U1 1 QASM2QCX_REAL_0",
+                "CU3 1 3 THETA31 PHI7 LAMBDA63",
+            ],
+        )
 
     def test_converts_all_u_gate_parameters(self) -> None:
         source = """

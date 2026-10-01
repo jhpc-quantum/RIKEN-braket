@@ -54,7 +54,7 @@ The current prototype does not reliably support:
 
 - reset, barriers, delays, or classical control flow;
 - user-defined gates or gate modifiers;
-- `gphase`, `cu`, or `id`;
+- `gphase`;
 - index ranges, discrete index sets, or dynamically computed qubit indices;
 - booleans or multidimensional arrays;
 - comparisons, logical operations, or classical functions; or

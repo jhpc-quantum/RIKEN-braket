@@ -125,23 +125,25 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     # TODO: implement gphase(\gamma)
     default_gates_qcx_map: dict[str, str] = {'U': 'U3'}
 
-    # TODO: implement cu(\theta, \phi, \lambda, \gamma) and id
     stdgates_qcx_map: dict[str, str] = {
             'p': 'U1', 'phase': 'U1', 'u1': 'U1', 'u2': 'U2', 'u3': 'U3',
-            'x': 'X', 'y': 'Y', 'z': 'Z', 'h': 'H', 's': 'S', 'sdg': 'S+', 't': 'T', 'tdg': 'T+',
+            'x': 'X', 'y': 'Y', 'z': 'Z', 'h': 'H', 'id': 'I',
+            's': 'S', 'sdg': 'S+', 't': 'T', 'tdg': 'T+',
             'sx': 'SX', 'rx': 'EX', 'ry': 'EY', 'rz': 'EZ',
             'cx': 'CX', 'CX': 'CX', 'cy': 'CY', 'cz': 'CZ', 'cp': 'CU1', 'cphase': 'CU1',
-            'crx': 'CEX', 'cry': 'CEY', 'crz': 'CEZ', 'ch': 'CH', 'swap': 'SWAP', 'ccx': 'CCX', 'cswap': 'CSWAP'}
+            'crx': 'CEX', 'cry': 'CEY', 'crz': 'CEZ', 'ch': 'CH',
+            'cu': 'CU3', 'swap': 'SWAP', 'ccx': 'CCX', 'cswap': 'CSWAP'}
 
     gate_signatures: dict[str, tuple[int, int]] = {
             'U': (3, 1),
             'p': (1, 1), 'phase': (1, 1), 'u1': (1, 1), 'u2': (2, 1), 'u3': (3, 1),
-            'x': (0, 1), 'y': (0, 1), 'z': (0, 1), 'h': (0, 1), 's': (0, 1),
+            'x': (0, 1), 'y': (0, 1), 'z': (0, 1), 'h': (0, 1), 'id': (0, 1),
+            's': (0, 1),
             'sdg': (0, 1), 't': (0, 1), 'tdg': (0, 1), 'sx': (0, 1),
             'rx': (1, 1), 'ry': (1, 1), 'rz': (1, 1),
             'cx': (0, 2), 'CX': (0, 2), 'cy': (0, 2), 'cz': (0, 2),
             'cp': (1, 2), 'cphase': (1, 2), 'crx': (1, 2), 'cry': (1, 2),
-            'crz': (1, 2), 'ch': (0, 2), 'swap': (0, 2),
+            'crz': (1, 2), 'ch': (0, 2), 'cu': (4, 2), 'swap': (0, 2),
             'ccx': (0, 3), 'cswap': (0, 3)}
 
     def __init__(self, qasm_ast_root: ast.Program) -> None:
@@ -662,6 +664,31 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
         return temporary_variable, ValueKind.TEMPORARY
 
+    def __cu_control_phase(
+            self, parameters: list[tuple[str | int | float, ValueType, ValueKind]],
+            converted_parameters: list[str]) -> tuple[str, ValueKind]:
+        # QCX CU3 uses the OpenQASM 2 u3 convention.  Since
+        # u3(theta, phi, lambda) = exp(-i (theta + phi + lambda) / 2)
+        # U(theta, phi, lambda), cu needs this additional control phase.
+        theta, phi, lambda_, gamma = parameters
+        if all(parameter[2] == ValueKind.LITERAL for parameter in parameters):
+            phase = (
+                float(gamma[0])
+                + (float(theta[0]) + float(phi[0]) + float(lambda_[0])) / 2.0)
+            return str(phase), ValueKind.LITERAL
+
+        temporary = self.__add_new_temporary_variable(ValueType.FLOAT)
+        self.__qcx_lines.append(
+            f'LET {temporary} := {converted_parameters[0]}')
+        self.__qcx_lines.append(
+            f'LET {temporary} += {converted_parameters[1]}')
+        self.__qcx_lines.append(
+            f'LET {temporary} += {converted_parameters[2]}')
+        self.__qcx_lines.append(f'LET {temporary} /= 2.0')
+        self.__qcx_lines.append(
+            f'LET {temporary} += {converted_parameters[3]}')
+        return temporary, ValueKind.TEMPORARY
+
     def visit_QuantumGate(self, statement: ast.QuantumGate) -> None:
         if self.__is_initialization_process:
             return
@@ -713,6 +740,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if value_kind == ValueKind.TEMPORARY:
                 temporary_variables.add(converted_parameter)
 
+        cu_control_phase: str | None = None
+        if qasm_gate_name == 'cu':
+            cu_control_phase, value_kind = self.__cu_control_phase(
+                parameters, converted_parameters)
+            if value_kind == ValueKind.TEMPORARY:
+                temporary_variables.add(cu_control_phase)
+
         for index in range(loop_size):
             qubit_indices = []
             for qubit, indices in zip(statement.qubits, operand_indices):
@@ -720,10 +754,17 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 register_index = indices[0] if len(indices) == 1 else indices[index]
                 qubit_indices.append(str(self.__to_qubit_index(register_name, register_index)))
 
-            qcx_line = f'{qcx_gate_name} {" ".join(qubit_indices)}'
-            if converted_parameters:
-                qcx_line += f' {" ".join(converted_parameters)}'
-            self.__qcx_lines.append(qcx_line)
+            if qasm_gate_name == 'cu':
+                self.__qcx_lines.append(
+                    f'U1 {qubit_indices[0]} {cu_control_phase}')
+                self.__qcx_lines.append(
+                    f'CU3 {" ".join(qubit_indices)} '
+                    f'{" ".join(converted_parameters[:3])}')
+            else:
+                qcx_line = f'{qcx_gate_name} {" ".join(qubit_indices)}'
+                if converted_parameters:
+                    qcx_line += f' {" ".join(converted_parameters)}'
+                self.__qcx_lines.append(qcx_line)
 
         for temporary_variable in temporary_variables:
             self.__release_temporary_variable(temporary_variable)

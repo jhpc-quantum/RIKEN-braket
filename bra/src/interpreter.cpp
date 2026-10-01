@@ -1613,7 +1613,7 @@ namespace bra
     if (std::isdigit(static_cast<unsigned char>(phase2_string.front())) or phase2_string.front() == '+' or phase2_string.front() == '-' or phase2_string.front() == '.')
       phase2 = boost::lexical_cast< ::bra::real_type >(phase2_string);
     else
-      phase2 = phase1_string;
+      phase2 = phase2_string;
     auto const phase3_string = *++iter;
     if (std::isdigit(static_cast<unsigned char>(phase3_string.front())) or phase3_string.front() == '+' or phase3_string.front() == '-' or phase3_string.front() == '.')
       phase3 = boost::lexical_cast< ::bra::real_type >(phase3_string);
@@ -1658,7 +1658,7 @@ namespace bra
     if (std::isdigit(static_cast<unsigned char>(phase2_string.front())) or phase2_string.front() == '+' or phase2_string.front() == '-' or phase2_string.front() == '.')
       phase2 = boost::lexical_cast< ::bra::real_type >(phase2_string);
     else
-      phase2 = phase1_string;
+      phase2 = phase2_string;
     auto const phase3_string = *iter;
     if (std::isdigit(static_cast<unsigned char>(phase3_string.front())) or phase3_string.front() == '+' or phase3_string.front() == '-' or phase3_string.front() == '.')
       phase3 = boost::lexical_cast< ::bra::real_type >(phase3_string);
