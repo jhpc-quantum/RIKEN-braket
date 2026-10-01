@@ -290,7 +290,49 @@ class GateConversionTests(unittest.TestCase):
                 "U1 0 0.1",
                 "U2 0 0.2 0.3",
                 "U3 0 0.4 0.5 0.6",
+                "PHASE 1.2",
                 "U3 0 0.7 0.8 0.9",
+            ],
+        )
+
+    def test_converts_runtime_builtin_u_global_phase(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            float theta = 0.1;
+            int phi = 1;
+            float lambda = 0.3;
+            qubit q;
+            U(theta, phi, lambda) q;
+        """
+
+        lines = convert(source)
+        self.assertIn("LET QASM2QCX_REAL_0 := THETA31", lines)
+        self.assertIn("LET QASM2QCX_REAL_0 += :REAL:PHI7", lines)
+        self.assertIn("LET QASM2QCX_REAL_0 += LAMBDA63", lines)
+        self.assertIn("LET QASM2QCX_REAL_0 /= 2.0", lines)
+        self.assertEqual(
+            lines[-2:],
+            [
+                "PHASE QASM2QCX_REAL_0",
+                "U3 0 THETA31 :REAL:PHI7 LAMBDA63",
+            ],
+        )
+
+    def test_repeats_builtin_u_global_phase_when_broadcasting(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            qubit[2] q;
+            U(1, 2, 3) q;
+        """
+
+        self.assertEqual(
+            convert(source),
+            [
+                "QUBITS 2",
+                "PHASE 3.0",
+                "U3 0 1 2 3",
+                "PHASE 3.0",
+                "U3 1 1 2 3",
             ],
         )
 

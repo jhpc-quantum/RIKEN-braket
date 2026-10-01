@@ -696,6 +696,27 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             f'LET {temporary} += {converted_parameters[3]}')
         return temporary, ValueKind.TEMPORARY
 
+    def __u_global_phase(
+            self, parameters: list[
+                tuple[str | int | float, ValueType, ValueKind]],
+            converted_parameters: list[str]) -> tuple[str, ValueKind]:
+        # QCX U3 uses the OpenQASM 2 u3 convention.  Since
+        # u3(theta, phi, lambda) = exp(-i (theta + phi + lambda) / 2)
+        # U(theta, phi, lambda), U needs this additional global phase.
+        if all(parameter[2] == ValueKind.LITERAL for parameter in parameters):
+            phase = sum(float(parameter[0]) for parameter in parameters) / 2.0
+            return str(phase), ValueKind.LITERAL
+
+        temporary = self.__add_new_temporary_variable(ValueType.FLOAT)
+        self.__qcx_lines.append(
+            f'LET {temporary} := {converted_parameters[0]}')
+        self.__qcx_lines.append(
+            f'LET {temporary} += {converted_parameters[1]}')
+        self.__qcx_lines.append(
+            f'LET {temporary} += {converted_parameters[2]}')
+        self.__qcx_lines.append(f'LET {temporary} /= 2.0')
+        return temporary, ValueKind.TEMPORARY
+
     def visit_QuantumGate(self, statement: ast.QuantumGate) -> None:
         if self.__is_initialization_process:
             return
@@ -756,6 +777,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if value_kind == ValueKind.TEMPORARY:
                 temporary_variables.add(cu_control_phase)
 
+        u_global_phase: str | None = None
+        if qasm_gate_name == 'U':
+            u_global_phase, value_kind = self.__u_global_phase(
+                parameters, converted_parameters)
+            if value_kind == ValueKind.TEMPORARY:
+                temporary_variables.add(u_global_phase)
+
         for index in range(loop_size):
             qubit_indices = []
             for qubit, indices in zip(statement.qubits, operand_indices):
@@ -770,6 +798,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     f'CU3 {" ".join(qubit_indices)} '
                     f'{" ".join(converted_parameters[:3])}')
             else:
+                if u_global_phase is not None:
+                    self.__qcx_lines.append(f'PHASE {u_global_phase}')
                 qcx_line = f'{qcx_gate_name} {" ".join(qubit_indices)}'
                 if converted_parameters:
                     qcx_line += f' {" ".join(converted_parameters)}'
