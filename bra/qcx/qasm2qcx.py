@@ -69,6 +69,14 @@ class InvalidDeclarationException(QASM2QCXError):
         return self.message
 
 
+class InvalidPragmaException(QASM2QCXError):
+    def __init__(self, message: str) -> None:
+        self.message = message
+
+    def __str__(self) -> str:
+        return self.message
+
+
 class MeasurementSizeMismatchException(QASM2QCXError):
     def __init__(self, num_qubits: int, num_bits: int) -> None:
         self.num_qubits = num_qubits
@@ -178,6 +186,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__quantum_registers: dict[str, int] = {}
         self.__sized_quantum_registers: set[str] = set()
         self.__declared_quantum_registers: set[str] = set()
+        self.__amplitude_indices: list[int] | None = None
 
         self.__is_initialization_process = True
         self.visit(qasm_ast_root)
@@ -198,6 +207,27 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
         self.__current += 1
         return self.__qcx_lines[self.__current - 1]
+
+    def visit_Program(self, program: ast.Program) -> None:
+        for statement in program.statements:
+            self.visit(statement)
+
+        if self.__is_initialization_process:
+            if self.__amplitude_indices is None:
+                return
+
+            num_qubits = sum(self.__quantum_registers.values())
+            for index in self.__amplitude_indices:
+                if index.bit_length() > num_qubits:
+                    raise InvalidPragmaException(
+                        f'Amplitude index {index} is outside the state vector '
+                        f'for {num_qubits} qubit(s)')
+            return
+
+        if self.__amplitude_indices is not None:
+            suffix = ''.join(
+                f' {index}' for index in self.__amplitude_indices)
+            self.__qcx_lines.append(f'DO AMPLITUDES{suffix}')
 
     def __type_of(self, identifier_name: str) -> ValueType:
         if identifier_name in self.__bit_variable_name_size_map:
@@ -906,7 +936,27 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         raise UnsupportedOpenQASMError('input/output declaration')
 
     def visit_Pragma(self, statement: ast.Pragma) -> None:
-        raise UnsupportedOpenQASMError('pragma')
+        if not self.__is_initialization_process:
+            return
+
+        arguments = statement.command.split()
+        if not arguments or arguments[0] != 'riken_braket.amplitudes':
+            raise UnsupportedOpenQASMError(f'pragma {statement.command}')
+        if self.__amplitude_indices is not None:
+            raise InvalidPragmaException(
+                'The riken_braket.amplitudes pragma may appear only once')
+
+        indices: list[int] = []
+        for argument in arguments[1:]:
+            if not argument.isascii() or not argument.isdecimal():
+                raise InvalidPragmaException(
+                    f'Invalid amplitude index: {argument}')
+            index = int(argument)
+            if index in indices:
+                raise InvalidPragmaException(
+                    f'Duplicate amplitude index: {index}')
+            indices.append(index)
+        self.__amplitude_indices = indices
 
     def visit_SubroutineDefinition(self, statement: ast.SubroutineDefinition) -> None:
         raise UnsupportedOpenQASMError('subroutine definition')
