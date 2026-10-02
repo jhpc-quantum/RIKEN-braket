@@ -833,6 +833,69 @@ class AmplitudePragmaTests(unittest.TestCase):
             convert(source)
 
 
+class BarrierTests(unittest.TestCase):
+    def test_accepts_barrier_without_operands(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            include "stdgates.inc";
+            qubit q;
+            x q;
+            barrier;
+            h q;
+        """
+
+        self.assertEqual(convert(source), ["QUBITS 1", "X 0", "H 0"])
+
+    def test_accepts_supported_barrier_operands(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            include "stdgates.inc";
+            qubit scalar;
+            qubit[2] register;
+            x scalar;
+            barrier scalar, register, register[1];
+            h register[0];
+        """
+
+        self.assertEqual(convert(source), ["QUBITS 3", "X 0", "H 1"])
+
+    def test_requires_barrier_qubits_to_be_declared(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            barrier q;
+            qubit q;
+        """
+
+        with self.assertRaisesRegex(
+                qasm2qcx.InvalidQubitOperandException, "not declared"):
+            convert(source)
+
+    def test_rejects_out_of_range_barrier_index(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            qubit[2] q;
+            barrier q[2];
+        """
+
+        with self.assertRaisesRegex(
+                qasm2qcx.InvalidQubitOperandException, "outside register"):
+            convert(source)
+
+    def test_rejects_unsupported_barrier_indices(self) -> None:
+        sources = [
+            "OPENQASM 3.0; qubit[2] q; barrier q[0:1];",
+            "OPENQASM 3.0; qubit[2] q; barrier q[{0, 1}];",
+            "OPENQASM 3.0; const int index = 0; qubit q; barrier q[index];",
+        ]
+
+        for source in sources:
+            with self.subTest(source=source):
+                with self.assertRaisesRegex(
+                        qasm2qcx.UnsupportedOpenQASMError,
+                        "qubit index ranges|non-literal qubit index"):
+                    convert(source)
+
+
 class MeasurementAndBitTests(unittest.TestCase):
     def test_converts_single_qubit_measurement(self) -> None:
         source = """
