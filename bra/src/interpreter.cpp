@@ -116,6 +116,7 @@
 #include <bra/gate/adj_exponential_swap.hpp>
 #include <bra/gate/toffoli.hpp>
 #include <bra/gate/projective_measurement.hpp>
+#include <bra/gate/reset.hpp>
 #include <bra/gate/amplitudes.hpp>
 #include <bra/gate/measurement.hpp>
 #include <bra/gate/generate_events.hpp>
@@ -647,6 +648,8 @@ namespace bra
         add_toffoli(columns);
       else if (mnemonic == "M")
         add_m(columns);
+      else if (mnemonic == "RESET")
+        add_reset(columns);
       else if (mnemonic == "SHORBOX")
         add_shor_box(columns);
       else if (mnemonic == "BEGIN") // BEGIN MEASUREMENT/LEARNING MACHINE/FUSION/CIRCUIT
@@ -3234,6 +3237,15 @@ namespace bra
 #else // BRA_NO_MPI
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::projective_measurement >(read_target(columns)));
 #endif // BRA_NO_MPI
+  }
+
+  void interpreter::add_reset(interpreter::columns_type const& columns)
+  {
+#ifndef BRA_NO_MPI
+    circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::reset >(read_target(columns), root_));
+#else
+    circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::reset >(read_target(columns)));
+#endif
   }
 
   void interpreter::add_shor_box(interpreter::columns_type const& columns)

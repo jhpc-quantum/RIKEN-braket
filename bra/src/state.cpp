@@ -1803,6 +1803,16 @@ namespace bra
     return *this;
   }
 
+  state& state::reset(qubit_type const qubit, yampi::rank const root)
+  {
+    if (is_in_fusion_)
+      throw ::bra::unsupported_fused_gate_error{"RESET"};
+
+    do_reset(qubit, root);
+    apply_noise(qubit);
+    return *this;
+  }
+
   state& state::measurement(yampi::rank const root, int const precision)
   {
     if (is_in_fusion_)
@@ -1984,6 +1994,16 @@ namespace bra
     last_outcomes_[static_cast<bit_integer_type>(qubit)]
       = do_projective_measurement(qubit);
     last_measured_qubit_ = qubit;
+    return *this;
+  }
+
+  state& state::reset(qubit_type const qubit)
+  {
+    if (is_in_fusion_)
+      throw ::bra::unsupported_fused_gate_error{"RESET"};
+
+    do_reset(qubit);
+    apply_noise(qubit);
     return *this;
   }
 

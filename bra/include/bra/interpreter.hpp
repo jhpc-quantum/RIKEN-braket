@@ -412,6 +412,7 @@ namespace bra
     void add_adj_eswap(columns_type const& columns);
     void add_toffoli(columns_type const& columns);
     void add_m(columns_type const& columns);
+    void add_reset(columns_type const& columns);
     void add_shor_box(columns_type const& columns);
     void add_expectation_value(columns_type const& columns);
     void add_inner_product(columns_type const& columns);
