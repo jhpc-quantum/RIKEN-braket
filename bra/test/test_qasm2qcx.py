@@ -651,6 +651,36 @@ class ClassicalScalarTests(unittest.TestCase):
 
         self.assertEqual(convert(source), ["QUBITS 1", "U1 0 1.5"])
 
+    def test_rejects_constant_use_before_declaration(self) -> None:
+        sources = [
+            """
+                OPENQASM 3.0;
+                qubit q;
+                U(theta, 0, 0) q;
+                const float theta = 1.0;
+            """,
+            """
+                OPENQASM 3.0;
+                float value = theta;
+                const float theta = 1.0;
+            """,
+            """
+                OPENQASM 3.0;
+                bit[width] value;
+                const uint width = 2;
+            """,
+            """
+                OPENQASM 3.0;
+                gphase(theta);
+                const float theta = 1.0;
+            """,
+        ]
+
+        for source in sources:
+            with self.subTest(source=source):
+                with self.assertRaises(qasm2qcx.NoVariableNameException):
+                    convert(source)
+
     def test_integer_constant_division_truncates_toward_zero(self) -> None:
         source = """
             OPENQASM 3.0;

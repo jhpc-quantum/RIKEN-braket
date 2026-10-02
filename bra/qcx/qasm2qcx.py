@@ -172,6 +172,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__const_int_variable_name_values_map: dict[str, list[int]] = {}
         self.__const_float_variable_name_values_map: dict[str, list[float]] = {}
         self.__const_complex_variable_name_values_map: dict[str, list[complex]] = {}
+        self.__declared_constant_variables: set[str] = set()
 
         self.__is_stdgates_included: bool = False
         self.__quantum_registers: dict[str, int] = {}
@@ -254,6 +255,18 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def visit_Identifier(self, expression: ast.Identifier) -> None:
         if self.__expression_kind is None:
             return
+
+        is_user_constant = any(
+            expression.name in constant_values
+            for constant_values in (
+                self.__const_int_variable_name_values_map,
+                self.__const_float_variable_name_values_map,
+                self.__const_complex_variable_name_values_map,
+            )
+        )
+        if (is_user_constant and not self.__is_initialization_process
+                and expression.name not in self.__declared_constant_variables):
+            raise NoVariableNameException(expression.name)
 
         builtin_constants = {
             'pi': (math.pi, ':PI'),
@@ -1052,6 +1065,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def visit_ConstantDeclaration(self, statement: ast.ConstantDeclaration) -> None:
         if not self.__is_initialization_process:
+            self.__declared_constant_variables.add(statement.identifier.name)
             return
 
         variable_type = statement.type
