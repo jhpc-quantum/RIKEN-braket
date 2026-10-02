@@ -79,6 +79,7 @@
 #include <bra/gate/adj_s_gate.hpp>
 #include <bra/gate/t_gate.hpp>
 #include <bra/gate/adj_t_gate.hpp>
+#include <bra/gate/global_phase.hpp>
 #include <bra/gate/u1.hpp>
 #include <bra/gate/adj_u1.hpp>
 #include <bra/gate/u2.hpp>
@@ -548,6 +549,8 @@ namespace bra
         add_t(columns);
       else if (mnemonic == "T+")
         add_adj_t(columns);
+      else if (mnemonic == "PHASE")
+        add_global_phase(columns);
       else if (mnemonic == "U1")
         add_u1(columns);
       else if (mnemonic == "U1+")
@@ -1613,7 +1616,7 @@ namespace bra
     if (std::isdigit(static_cast<unsigned char>(phase2_string.front())) or phase2_string.front() == '+' or phase2_string.front() == '-' or phase2_string.front() == '.')
       phase2 = boost::lexical_cast< ::bra::real_type >(phase2_string);
     else
-      phase2 = phase1_string;
+      phase2 = phase2_string;
     auto const phase3_string = *++iter;
     if (std::isdigit(static_cast<unsigned char>(phase3_string.front())) or phase3_string.front() == '+' or phase3_string.front() == '-' or phase3_string.front() == '.')
       phase3 = boost::lexical_cast< ::bra::real_type >(phase3_string);
@@ -1658,7 +1661,7 @@ namespace bra
     if (std::isdigit(static_cast<unsigned char>(phase2_string.front())) or phase2_string.front() == '+' or phase2_string.front() == '-' or phase2_string.front() == '.')
       phase2 = boost::lexical_cast< ::bra::real_type >(phase2_string);
     else
-      phase2 = phase1_string;
+      phase2 = phase2_string;
     auto const phase3_string = *iter;
     if (std::isdigit(static_cast<unsigned char>(phase3_string.front())) or phase3_string.front() == '+' or phase3_string.front() == '-' or phase3_string.front() == '.')
       phase3 = boost::lexical_cast< ::bra::real_type >(phase3_string);
@@ -2674,6 +2677,21 @@ namespace bra
 
   void interpreter::add_adj_t(interpreter::columns_type const& columns)
   { circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::adj_t_gate >(read_control(columns))); }
+
+  void interpreter::add_global_phase(interpreter::columns_type const& columns)
+  {
+    if (boost::size(columns) != 2u)
+      throw wrong_mnemonics_error{columns};
+
+    auto phase = boost::variant<real_type, std::string>{};
+    auto const& phase_string = columns[1u];
+    if (std::isdigit(static_cast<unsigned char>(phase_string.front())) or phase_string.front() == '+' or phase_string.front() == '-' or phase_string.front() == '.')
+      phase = boost::lexical_cast< ::bra::real_type >(phase_string);
+    else
+      phase = phase_string;
+
+    circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::global_phase >(phase));
+  }
 
   void interpreter::add_u1(interpreter::columns_type const& columns)
   {

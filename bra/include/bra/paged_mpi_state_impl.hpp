@@ -44,6 +44,7 @@
 # include <ket/mpi/gate/sqrt_pauli_x.hpp>
 # include <ket/mpi/gate/sqrt_pauli_y.hpp>
 # include <ket/mpi/gate/sqrt_pauli_z.hpp>
+# include <ket/mpi/gate/global_phase.hpp>
 # include <ket/mpi/gate/phase_shift.hpp>
 # include <ket/mpi/gate/x_rotation_half_pi.hpp>
 # include <ket/mpi/gate/y_rotation_half_pi.hpp>
@@ -70,6 +71,7 @@
 # include <bra/state.hpp>
 # include <bra/types.hpp>
 # include <bra/fused_gate.hpp>
+# include <bra/fused_gate/fused_global_phase.hpp>
 # include <bra/fused_gate/detail/apply_fused_gates.hpp>
 # include <bra/fused_gate/detail/in_execute_fused_gate_caller.hpp>
 # include <bra/utility/closest_floating_point_of.hpp>
@@ -843,6 +845,26 @@ namespace bra
     ket::mpi::gate::runtime::ranges::adj_sqrt_pauli_z(
       mpi_policy_, parallel_policy_,
       data_, permutation_, buffer_, circuit_communicator_, environment_, qubits);
+  }
+
+  template <typename MpiPolicy>
+  void paged_mpi_state<MpiPolicy>::do_global_phase(real_type const phase)
+  {
+    if (is_in_fusion_)
+    {
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_global_phase<fused_gate_iterator> >(phase));
+# if !defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) || (defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR))
+      paged_fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_global_phase<paged_fused_gate_iterator> >(phase));
+# endif
+# if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
+      cache_aware_fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_global_phase<cache_aware_fused_gate_iterator> >(phase));
+      cache_aware_paged_fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_global_phase<cache_aware_paged_fused_gate_iterator> >(phase));
+# endif
+    }
+    else
+      ket::mpi::gate::runtime::ranges::global_phase(
+        mpi_policy_, parallel_policy_, data_, permutation_, buffer_,
+        circuit_communicator_, environment_, phase);
   }
 
   template <typename MpiPolicy>

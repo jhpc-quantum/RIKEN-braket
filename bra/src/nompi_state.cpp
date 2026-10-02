@@ -23,6 +23,7 @@
 # include <ket/gate/sqrt_pauli_x.hpp>
 # include <ket/gate/sqrt_pauli_y.hpp>
 # include <ket/gate/sqrt_pauli_z.hpp>
+# include <ket/gate/global_phase.hpp>
 # include <ket/gate/phase_shift.hpp>
 # include <ket/gate/x_rotation_half_pi.hpp>
 # include <ket/gate/y_rotation_half_pi.hpp>
@@ -52,6 +53,7 @@
 # include <bra/state.hpp>
 # include <bra/types.hpp>
 # include <bra/fused_gate.hpp>
+# include <bra/fused_gate/fused_global_phase.hpp>
 # include <bra/utility/closest_floating_point_of.hpp>
 
 namespace bra
@@ -628,6 +630,19 @@ namespace bra
     assert(qubits.size() > 2u);
 
     ket::gate::runtime::ranges::adj_sqrt_pauli_z(parallel_policy_, data_, qubits);
+  }
+
+  void nompi_state::do_global_phase(real_type const phase)
+  {
+    if (is_in_fusion_)
+    {
+      fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_global_phase<fused_gate_iterator> >(phase));
+# if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
+      cache_aware_fused_gates_.push_back(std::make_unique< ::bra::fused_gate::fused_global_phase<cache_aware_fused_gate_iterator> >(phase));
+# endif
+    }
+    else
+      ket::gate::runtime::ranges::global_phase(parallel_policy_, data_, phase);
   }
 
   void nompi_state::do_u1(real_type const phase, control_qubit_type const control_qubit)
