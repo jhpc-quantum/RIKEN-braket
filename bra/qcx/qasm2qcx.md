@@ -26,10 +26,11 @@ The converter currently covers:
 - a single literal index or a complete qubit register as a gate operand;
 - equal-sized whole-register gate broadcasting;
 - scalar `int`, `uint`, `float`, and `complex` arithmetic;
-- scalar constants, variables, assignments, and numeric casts; and
+- scalar constants, variables, assignments, and numeric casts;
 - scalar and register `bit` values, including bit-string initialization;
-- projective measurement of individual qubits and complete registers; and
-- scalar expressions used as gate parameters.
+- projective measurement of individual qubits and complete registers;
+- scalar expressions used as gate parameters; and
+- final-state amplitude output through a namespaced pragma.
 
 QCX has no unsigned integer type, so OpenQASM `uint` values are represented by
 QCX `INT`, just like OpenQASM `int`. Consequently, unsigned ranges and
@@ -49,6 +50,27 @@ OpenQASM rotation angles are converted to the half-turn convention used by
 the QCX `EX`, `EY`, `EZ`, `CEX`, `CEY`, and `CEZ` operations.
 OpenQASM `gphase(angle)` is emitted as the QCX global-phase instruction
 `PHASE angle`.
+
+## Amplitude output
+
+The RIKEN-braket-specific `riken_braket.amplitudes` pragma requests that the
+generated QCX program print the final state-vector amplitudes:
+
+```qasm
+pragma riken_braket.amplitudes
+```
+
+Optional nonnegative decimal basis-state indices restrict the output to
+selected amplitudes:
+
+```qasm
+pragma riken_braket.amplitudes 0 3 7
+```
+
+The pragma may appear anywhere in the OpenQASM program, but it may appear only
+once. The converter always emits the corresponding `DO AMPLITUDES` instruction
+after all circuit operations. Indices must be unique and within the state
+vector defined by the program's qubit declarations.
 
 ## Not yet in scope
 

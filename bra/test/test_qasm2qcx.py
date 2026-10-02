@@ -740,6 +740,99 @@ class ClassicalScalarTests(unittest.TestCase):
             convert(source)
 
 
+class AmplitudePragmaTests(unittest.TestCase):
+    def test_outputs_all_final_amplitudes(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            pragma riken_braket.amplitudes
+            include "stdgates.inc";
+            qubit q;
+            h q;
+        """
+
+        self.assertEqual(
+            convert(source),
+            ["QUBITS 1", "H 0", "DO AMPLITUDES"],
+        )
+
+    def test_outputs_selected_final_amplitudes(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            include "stdgates.inc";
+            qubit[2] q;
+            h q[0];
+            pragma riken_braket.amplitudes 0 3
+            x q[1];
+        """
+
+        self.assertEqual(
+            convert(source),
+            ["QUBITS 2", "H 0", "X 1", "DO AMPLITUDES 0 3"],
+        )
+
+    def test_rejects_invalid_amplitude_indices(self) -> None:
+        commands = [
+            "riken_braket.amplitudes -1",
+            "riken_braket.amplitudes 1.0",
+            "riken_braket.amplitudes index",
+        ]
+
+        for command in commands:
+            with self.subTest(command=command):
+                source = f"OPENQASM 3.0;\npragma {command}\nqubit q;"
+                with self.assertRaisesRegex(
+                        qasm2qcx.InvalidPragmaException,
+                        "Invalid amplitude index"):
+                    convert(source)
+
+    def test_rejects_duplicate_amplitude_indices(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            pragma riken_braket.amplitudes 0 0
+            qubit q;
+        """
+
+        with self.assertRaisesRegex(
+                qasm2qcx.InvalidPragmaException,
+                "Duplicate amplitude index"):
+            convert(source)
+
+    def test_rejects_out_of_range_amplitude_index(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            pragma riken_braket.amplitudes 4
+            qubit[2] q;
+        """
+
+        with self.assertRaisesRegex(
+                qasm2qcx.InvalidPragmaException, "outside the state vector"):
+            convert(source)
+
+    def test_rejects_multiple_amplitudes_pragmas(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            pragma riken_braket.amplitudes
+            qubit q;
+            pragma riken_braket.amplitudes 0
+        """
+
+        with self.assertRaisesRegex(
+                qasm2qcx.InvalidPragmaException, "may appear only once"):
+            convert(source)
+
+    def test_rejects_unsupported_pragma(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            pragma another_implementation.option
+            qubit q;
+        """
+
+        with self.assertRaisesRegex(
+                qasm2qcx.UnsupportedOpenQASMError,
+                "another_implementation.option"):
+            convert(source)
+
+
 class MeasurementAndBitTests(unittest.TestCase):
     def test_converts_single_qubit_measurement(self) -> None:
         source = """
