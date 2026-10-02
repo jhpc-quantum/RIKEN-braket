@@ -509,10 +509,10 @@ class GateConversionTests(unittest.TestCase):
         source = """
             OPENQASM 3.0;
             qubit q;
-            reset q;
+            delay[1ns] q;
         """
 
-        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, "reset"):
+        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, "delay"):
             convert(source)
 
     def test_rejects_qubit_index_range(self) -> None:
@@ -886,6 +886,75 @@ class BarrierTests(unittest.TestCase):
             "OPENQASM 3.0; qubit[2] q; barrier q[0:1];",
             "OPENQASM 3.0; qubit[2] q; barrier q[{0, 1}];",
             "OPENQASM 3.0; const int index = 0; qubit q; barrier q[index];",
+        ]
+
+        for source in sources:
+            with self.subTest(source=source):
+                with self.assertRaisesRegex(
+                        qasm2qcx.UnsupportedOpenQASMError,
+                        "qubit index ranges|non-literal qubit index"):
+                    convert(source)
+
+
+class ResetTests(unittest.TestCase):
+    def test_converts_single_qubit_reset(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            qubit q;
+            reset q;
+        """
+
+        self.assertEqual(convert(source), ["QUBITS 1", "RESET 0"])
+
+    def test_converts_register_reset(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            qubit scalar;
+            qubit[3] register;
+            reset register;
+        """
+
+        self.assertEqual(
+            convert(source),
+            ["QUBITS 4", "RESET 1", "RESET 2", "RESET 3"],
+        )
+
+    def test_converts_indexed_reset(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            qubit[3] q;
+            reset q[1];
+        """
+
+        self.assertEqual(convert(source), ["QUBITS 3", "RESET 1"])
+
+    def test_requires_reset_qubits_to_be_declared(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            reset q;
+            qubit q;
+        """
+
+        with self.assertRaisesRegex(
+                qasm2qcx.InvalidQubitOperandException, "not declared"):
+            convert(source)
+
+    def test_rejects_out_of_range_reset_index(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            qubit[2] q;
+            reset q[2];
+        """
+
+        with self.assertRaisesRegex(
+                qasm2qcx.InvalidQubitOperandException, "outside register"):
+            convert(source)
+
+    def test_rejects_unsupported_reset_indices(self) -> None:
+        sources = [
+            "OPENQASM 3.0; qubit[2] q; reset q[0:1];",
+            "OPENQASM 3.0; qubit[2] q; reset q[{0, 1}];",
+            "OPENQASM 3.0; const int index = 0; qubit q; reset q[index];",
         ]
 
         for source in sources:
