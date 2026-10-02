@@ -69,6 +69,32 @@ class WorkingBaselineTests(unittest.TestCase):
         with self.assertRaises(qasm2qcx.WrongBroadcastingException):
             convert(source)
 
+    def test_rejects_size_one_register_broadcasting(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            include "stdgates.inc";
+            qubit[1] a;
+            qubit[2] b;
+            cx a, b;
+        """
+
+        with self.assertRaises(qasm2qcx.WrongBroadcastingException):
+            convert(source)
+
+    def test_broadcasts_indexed_size_one_register_as_scalar(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            include "stdgates.inc";
+            qubit[1] a;
+            qubit[2] b;
+            cx a[0], b;
+        """
+
+        self.assertEqual(
+            convert(source),
+            ["QUBITS 3", "CX 0 1", "CX 0 2"],
+        )
+
 
 class GateConversionTests(unittest.TestCase):
     def test_converts_phase_gate_parameter(self) -> None:
@@ -456,6 +482,29 @@ class GateConversionTests(unittest.TestCase):
             ["QUBITS 1", "PHASE 0.0", "U3 0 0 0 0", "X 0"],
         )
 
+    def test_requires_qubit_declaration_before_use(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            include "stdgates.inc";
+            x q;
+            qubit q;
+        """
+
+        with self.assertRaisesRegex(
+                qasm2qcx.InvalidQubitOperandException, "not declared"):
+            convert(source)
+
+    def test_requires_qubit_declaration_before_measurement(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            measure q;
+            qubit q;
+        """
+
+        with self.assertRaisesRegex(
+                qasm2qcx.InvalidQubitOperandException, "not declared"):
+            convert(source)
+
     def test_rejects_unsupported_quantum_statement(self) -> None:
         source = """
             OPENQASM 3.0;
@@ -746,6 +795,57 @@ class MeasurementAndBitTests(unittest.TestCase):
                 "LET DESTINATION2047:1 := SOURCE63:0",
             ],
         )
+
+    def test_rejects_scalar_and_register_bit_copies(self) -> None:
+        sources = [
+            """
+                OPENQASM 3.0;
+                bit[1] source = "1";
+                bit target = source;
+            """,
+            """
+                OPENQASM 3.0;
+                bit source = 1;
+                bit[1] target = source;
+            """,
+            """
+                OPENQASM 3.0;
+                bit[1] source = "1";
+                bit[1] target;
+                target = source[0];
+            """,
+        ]
+
+        for source in sources:
+            with self.subTest(source=source):
+                with self.assertRaisesRegex(
+                        qasm2qcx.InvalidBitOperandException,
+                        "both be scalars or both be complete registers|scalar bit"):
+                    convert(source)
+
+    def test_rejects_bit_literals_for_wrong_target_kind(self) -> None:
+        sources = [
+            'OPENQASM 3.0; bit target = "1";',
+            'OPENQASM 3.0; bit[1] target = 1;',
+        ]
+
+        for source in sources:
+            with self.subTest(source=source):
+                with self.assertRaises(qasm2qcx.InvalidBitOperandException):
+                    convert(source)
+
+    def test_accepts_scalar_and_size_one_register_bit_forms(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            bit scalar = 1;
+            bit[1] register = "1";
+            bit scalar_copy = register[0];
+            bit[1] register_copy = register;
+        """
+
+        lines = convert(source)
+        self.assertIn("LET SCALAR_COPY2031 := REGISTER255", lines)
+        self.assertIn("LET REGISTER_COPY8175 := REGISTER255", lines)
 
     def test_accepts_constant_bit_register_size(self) -> None:
         source = """

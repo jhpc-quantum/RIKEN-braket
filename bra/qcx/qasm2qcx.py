@@ -176,6 +176,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__is_stdgates_included: bool = False
         self.__quantum_registers: dict[str, int] = {}
         self.__sized_quantum_registers: set[str] = set()
+        self.__declared_quantum_registers: set[str] = set()
 
         self.__is_initialization_process = True
         self.visit(qasm_ast_root)
@@ -498,6 +499,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def visit_QubitDeclaration(self, statement: ast.QubitDeclaration) -> None:
         if not self.__is_initialization_process:
+            self.__declared_quantum_registers.add(statement.qubit.name)
             return
 
         register_name = statement.qubit.name
@@ -527,13 +529,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self, qubit: ast.Identifier | ast.IndexedIdentifier) -> list[int]:
         if isinstance(qubit, ast.Identifier):
             register_name = qubit.name
-            if register_name not in self.__quantum_registers:
+            if register_name not in self.__declared_quantum_registers:
                 raise InvalidQubitOperandException(
                     f'Qubit register {register_name} is not declared')
             return list(range(self.__quantum_registers[register_name]))
 
         register_name = qubit.name.name
-        if register_name not in self.__quantum_registers:
+        if register_name not in self.__declared_quantum_registers:
             raise InvalidQubitOperandException(
                 f'Qubit register {register_name} is not declared')
         if len(qubit.indices) != 1:
@@ -742,6 +744,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         operand_indices = [
             self.__qubit_operand_indices(qubit) for qubit in statement.qubits
         ]
+        register_sizes = [
+            len(indices)
+            for qubit, indices in zip(statement.qubits, operand_indices)
+            if (isinstance(qubit, ast.Identifier)
+                and qubit.name in self.__sized_quantum_registers)
+        ]
+        if len(set(register_sizes)) > 1:
+            raise WrongBroadcastingException
         loop_size = max(map(len, operand_indices), default=1)
         for indices in operand_indices:
             if len(indices) not in (1, loop_size):
@@ -1130,8 +1140,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__qcx_bit_name(variable_name, target_size, index)
             for index in target_indices
         ]
+        target_is_register = (
+            isinstance(target, ast.Identifier)
+            and variable_name in self.__sized_bit_variables)
 
         if isinstance(expression, ast.BitstringLiteral):
+            if not target_is_register:
+                raise InvalidBitOperandException(
+                    'A bit-string value requires a bit-register target')
             if expression.width != len(target_names):
                 raise InvalidBitOperandException(
                     f'Bit-string width {expression.width} does not match target '
@@ -1141,13 +1157,19 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 for index in range(expression.width)
             ]
         elif isinstance(expression, ast.IntegerLiteral):
-            if len(target_names) != 1 or expression.value not in (0, 1):
+            if target_is_register or expression.value not in (0, 1):
                 raise InvalidBitOperandException(
-                    'An integer bit initializer must be 0 or 1 and target one bit')
+                    'An integer bit initializer must be 0 or 1 and target a '
+                    'scalar bit')
             values = [expression.value]
         elif isinstance(expression, ast.Identifier):
             source_name, source_indices = self.__bit_operand(
                 expression, role='Bit source')
+            source_is_register = source_name in self.__sized_bit_variables
+            if source_is_register != target_is_register:
+                raise InvalidBitOperandException(
+                    'Bit assignment operands must both be scalars or both be '
+                    'complete registers')
             if len(source_indices) != len(target_names):
                 raise InvalidBitOperandException(
                     f'Bit source has size {len(source_indices)}, but target has '
@@ -1164,9 +1186,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     or not isinstance(expression.index[0], ast.IntegerLiteral)):
                 raise UnsupportedOpenQASMError(
                     'bit index ranges or non-literal bit indices')
-            if len(target_names) != 1:
+            if target_is_register:
                 raise InvalidBitOperandException(
-                    'An indexed bit source must target one bit')
+                    'An indexed bit source must target a scalar bit')
 
             source_name = self.__capitalize_variable_name(
                 expression.collection.name)
