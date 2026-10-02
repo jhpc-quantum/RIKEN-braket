@@ -29,6 +29,7 @@ The converter currently covers:
 - scalar constants, variables, assignments, and numeric casts;
 - scalar and register `bit` values, including bit-string initialization;
 - projective measurement of individual qubits and complete registers;
+- OpenQASM barriers as ordering-only operations;
 - scalar expressions used as gate parameters; and
 - final-state amplitude output through a namespaced pragma.
 
@@ -50,6 +51,12 @@ OpenQASM rotation angles are converted to the half-turn convention used by
 the QCX `EX`, `EY`, `EZ`, `CEX`, `CEY`, and `CEZ` operations.
 OpenQASM `gphase(angle)` is emitted as the QCX global-phase instruction
 `PHASE angle`.
+
+OpenQASM barriers are accepted for scalar qubits, complete qubit registers,
+and qubits selected by a single literal index. A barrier without operands is
+also accepted. Because the converter preserves source order and does not
+optimize or reorder operations, barriers emit no QCX instruction; their
+explicit operands are nevertheless validated.
 
 ## Amplitude output
 
@@ -76,7 +83,7 @@ vector defined by the program's qubit declarations.
 
 The current prototype does not reliably support:
 
-- reset, barriers, delays, or classical control flow;
+- reset, delays, or classical control flow;
 - user-defined gates or gate modifiers;
 - index ranges, discrete index sets, or dynamically computed qubit indices;
 - booleans or multidimensional arrays;

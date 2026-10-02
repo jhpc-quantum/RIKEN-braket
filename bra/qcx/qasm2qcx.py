@@ -893,7 +893,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         raise UnsupportedOpenQASMError('reset')
 
     def visit_QuantumBarrier(self, statement: ast.QuantumBarrier) -> None:
-        raise UnsupportedOpenQASMError('barrier')
+        if self.__is_initialization_process:
+            return
+
+        # QCX execution preserves source order, so the OpenQASM ordering
+        # constraint requires no emitted instruction.  Still validate every
+        # explicit operand just as gates and measurements do.
+        for qubit in statement.qubits:
+            self.__qubit_operand_indices(qubit)
 
     def visit_DelayInstruction(self, statement: ast.DelayInstruction) -> None:
         raise UnsupportedOpenQASMError('delay')
