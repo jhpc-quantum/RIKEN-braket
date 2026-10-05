@@ -37,6 +37,7 @@ The converter currently covers:
 - OpenQASM barriers as ordering-only operations;
 - `if`, `else if`, and `else` control flow with comparisons and logical
   conditions;
+- compile-time unrolling of constant integer-range `for` loops;
 - scalar expressions used as gate parameters; and
 - final-state amplitude output through a namespaced pragma.
 
@@ -238,7 +239,8 @@ if (outcome == 0) {
 The converter lowers structured branches to generated QCX labels, `JUMP`, and
 `JUMPIF` instructions. Nested `if` statements and `else if` chains receive
 distinct generated labels. Branch bodies may contain supported gates,
-measurements, resets, assignments, barriers, and nested branches.
+measurements, resets, assignments, barriers, nested branches, and supported
+constant-range `for` loops.
 
 Comparison and logical expressions also produce Boolean values, following the
 [OpenQASM classical instruction rules](https://openqasm.com/language/classical.html#comparison-boolean-instructions).
@@ -293,7 +295,89 @@ such as `&`, `|`, `^`, and `~` are not yet supported.
 Direct integer, floating-point, or complex conditions are also
 rejected; use a supported explicit comparison instead for integer and
 floating-point values. Variables used by a branch must be declared outside it;
-block-local declarations and lexical scopes are also not yet supported.
+general block-local declarations are not yet supported. The scoped iteration
+variables described below are an exception.
+
+## Constant-range for loops
+
+The converter supports `for int name in [start:stop]` and
+`for int name in [start:step:stop]`, with either a single-statement or braced
+body. Bounds and steps must evaluate to integers during conversion: literals,
+previously declared constants, supported constant expressions and explicit
+integer casts are accepted. Nested bounds may also use outer iteration values.
+Runtime variables are not constant bounds, even when initialized with a literal.
+Only `int` iteration variables are supported; `uint` constants may still appear
+in bounds under the converter's existing INT-backed representation.
+Declared integer widths retain the limitations described above.
+
+Following the [OpenQASM range-loop rules](https://openqasm.com/versions/3.0/language/classical.html#for-loops),
+the step defaults to one and the stop is inclusive when reached. Negative steps
+are supported. A range whose direction does not match its step is empty, and a
+zero step is rejected. Both bounds must be present.
+
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+
+qubit[4] q;
+for int i in [0:3] {
+    h q[i];
+}
+```
+
+This generates `H 0`, `H 1`, `H 2`, and `H 3` after `QUBITS 4`. The converter
+unrolls loops without adding QCX loop instructions or runtime iterator storage.
+Within a loop, static qubit and bit indices may use constant expressions such
+as `q[2 * i + j]`, including supported range and discrete-set selections.
+Runtime-dependent indices remain unsupported.
+
+Loop bodies may contain supported gates, global phase, measurement, reset,
+barriers, assignments to existing variables, conditionals, and nested loops.
+Iterator reads are integer literals in supported expression contexts, including
+gate parameters and comparisons. Operations on runtime variables remain runtime
+QCX operations; unrolling does not evaluate measurement outcomes or choose
+runtime branches. Computations remain inside their original branches, with
+distinct generated labels and safe temporary reuse.
+
+```qasm
+int total = 0;
+for int i in [1:3] {
+    for int j in [0:i] {
+        total += i + j;
+    }
+}
+// total is 30 after execution.
+```
+
+The iterator is visible only within its body. It may shadow an outer variable,
+constant, or iterator, and the outer binding is restored afterward. Bounds are
+evaluated before binding the new iterator, so a shadowing inner loop can use the
+outer value in its bounds. These rules follow
+[OpenQASM scoping](https://openqasm.com/versions/3.0/language/scope.html).
+As an explicit subset restriction, assignments or measurements into any active
+iterator are rejected, although OpenQASM itself permits modifying iterators.
+General local declarations, `break`, `continue`, `while`, and iteration over
+sets or arrays remain unsupported.
+
+Empty loops emit no body instructions. Structural checks still reject
+unsupported body statements, operators, gate syntax, and iterator writes.
+Independent nested bounds are validated; checks that require an outer iterator's
+value are deferred until an actual iteration. No fictitious iteration value is
+used to execute body arithmetic or check an iterator-dependent index.
+
+To bound expansion, the converter checks these limits:
+
+- 10,000 total loop iterations, including outer and inner iterations and
+  sequential loops;
+- 100,000 statements visited inside expanded bodies, including conditionals
+  and nested loop headers; and
+- 1,000,000 accumulated QCX lines, checked while converting loop bodies.
+
+The budgets apply across a conversion, not separately to each loop. Initialization
+and emission check independent copies of the budgets, so the two passes do not
+charge each iteration twice. Runtime-skipped branches still consume expansion
+budgets because their instructions must be generated. Exceeding a limit produces
+a converter error rather than silently truncating the loop.
 
 ## Amplitude output
 
@@ -320,7 +404,8 @@ vector defined by the program's qubit declarations.
 
 The current prototype does not reliably support:
 
-- delays, loops, or `switch` statements;
+- delays, `while` loops, runtime-dependent `for` ranges, iteration over sets
+  or arrays, `break`, `continue`, or `switch` statements;
 - user-defined gates or gate modifiers;
 - dynamically computed indices, ranges with omitted bounds, or
   multidimensional indexing;
@@ -343,6 +428,10 @@ future work.
 for signed operands, nested expressions, operand preservation, short-circuiting,
 compound assignments, self-references, and temporary reuse.
 
+`bra/test/qasm2qcx_for_loop_numerical.py` verifies unrolled quantum operations,
+measurement and reset, runtime classical accumulation, conditions, nested loops,
+outer-dependent bounds, shadowing, and skipped runtime division.
+
 Run the converter and numerical tests from the repository root:
 
 ```console
@@ -350,4 +439,5 @@ python3 -m unittest bra/test/test_qasm2qcx.py
 python3 bra/test/jumpif_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_if_else_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_integer_remainder_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_for_loop_numerical.py --bra bra/bin/bra
 ```

@@ -2,6 +2,7 @@ import sys
 import itertools
 import math
 import enum
+import dataclasses
 
 import openqasm3.parser
 import openqasm3.ast as ast
@@ -77,6 +78,14 @@ class InvalidPragmaException(QASM2QCXError):
         return self.message
 
 
+class InvalidLoopRangeException(QASM2QCXError):
+    def __init__(self, message: str) -> None:
+        self.message = message
+
+    def __str__(self) -> str:
+        return self.message
+
+
 class MeasurementSizeMismatchException(QASM2QCXError):
     def __init__(self, num_qubits: int, num_bits: int) -> None:
         self.num_qubits = num_qubits
@@ -145,6 +154,9 @@ class WrongConstantVariableException(QASM2QCXError):
         return 'Wrong constant variable'
 
 class QASM2QCXConverter(visitor.QASMVisitor):
+    MAX_LOOP_ITERATIONS = 10000
+    MAX_EXPANDED_LOOP_STATEMENTS = 100000
+    MAX_LOOP_OUTPUT_LINES = 1000000
     default_gates_qcx_map: dict[str, str] = {'U': 'U3'}
 
     stdgates_qcx_map: dict[str, str] = {
@@ -201,10 +213,17 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__branch_depth: int = 0
         self.__boolean_expression_index: int = 0
         self.__evaluate_constant: bool = True
+        self.__loop_bindings: list[dict[str, int]] = []
+        self.__loop_iterations = 0
+        self.__expanded_loop_statements = 0
 
         self.__is_initialization_process = True
         self.visit(qasm_ast_root)
         self.__is_initialization_process = False
+        # Both passes traverse loops, but each checks the same independent
+        # conversion-wide budget rather than charging the source twice.
+        self.__loop_iterations = 0
+        self.__expanded_loop_statements = 0
 
         self.__quantum_register_names: list[str] = list(self.__quantum_registers.keys())
         self.__first_qubit_indices: list[int] = list(itertools.accumulate(self.__quantum_registers.values(), initial=0))
@@ -221,6 +240,20 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
         self.__current += 1
         return self.__qcx_lines[self.__current - 1]
+
+    def visit(self, node: ast.QASMNode, context=None):
+        inside_loop = bool(self.__loop_bindings)
+        if inside_loop and isinstance(node, ast.Statement):
+            self.__expanded_loop_statements += 1
+            if self.__expanded_loop_statements > self.MAX_EXPANDED_LOOP_STATEMENTS:
+                raise InvalidLoopRangeException(
+                    f'For-loop expansion exceeds {self.MAX_EXPANDED_LOOP_STATEMENTS} statements')
+        result = super().visit(node, context)
+        if (inside_loop and not self.__is_initialization_process
+                and len(self.__qcx_lines) > self.MAX_LOOP_OUTPUT_LINES):
+            raise InvalidLoopRangeException(
+                f'For-loop output exceeds {self.MAX_LOOP_OUTPUT_LINES} QCX lines')
+        return result
 
     def visit_Program(self, program: ast.Program) -> None:
         for statement in program.statements:
@@ -244,6 +277,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__qcx_lines.append(f'DO AMPLITUDES{suffix}')
 
     def __type_of(self, identifier_name: str) -> ValueType:
+        if any(identifier_name == self.__capitalize_variable_name(name)
+               for scope in self.__loop_bindings for name in scope):
+            raise UnsupportedOpenQASMError('indexed or register use of a for-loop iterator')
         if identifier_name in self.__bool_variable_names:
             return ValueType.BOOL
         elif identifier_name in self.__bit_variable_name_size_map:
@@ -301,6 +337,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def visit_Identifier(self, expression: ast.Identifier) -> None:
         if self.__expression_kind is None:
             return
+
+        for scope in reversed(self.__loop_bindings):
+            if expression.name in scope:
+                self.__value = scope[expression.name]
+                self.__value_type = ValueType.INT
+                self.__value_kind = ValueKind.LITERAL
+                return
 
         is_user_constant = any(
             expression.name in constant_values
@@ -656,14 +699,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         quantum_register_index = self.__quantum_register_names.index(quantum_register_name)
         return self.__first_qubit_indices[quantum_register_index] + index
 
-    @staticmethod
-    def __literal_index(expression: ast.Expression, kind: str) -> int:
+    def __literal_index(self, expression: ast.Expression, kind: str) -> int:
         if isinstance(expression, ast.IntegerLiteral):
             return expression.value
         if (isinstance(expression, ast.UnaryExpression)
                 and expression.op == ast.UnaryOperator['-']
                 and isinstance(expression.expression, ast.IntegerLiteral)):
             return -expression.expression.value
+        if self.__loop_bindings:
+            return self.__constant_loop_integer(expression, f'{kind} index')
         raise UnsupportedOpenQASMError(f'non-literal {kind} index')
 
     def __index_selection(
@@ -724,6 +768,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __qubit_operand_indices(
             self, qubit: ast.Identifier | ast.IndexedIdentifier
             ) -> tuple[list[int], bool]:
+        if any(self.__operand_name(qubit) in scope for scope in self.__loop_bindings):
+            raise InvalidQubitOperandException('For-loop iterator is not a qubit operand')
         if isinstance(qubit, ast.Identifier):
             register_name = qubit.name
             if register_name not in self.__declared_quantum_registers:
@@ -1377,8 +1423,176 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.__branch_depth == 0:
             self.__hoist_temporary_declarations(previous_temporaries)
 
+    def __constant_loop_integer(self, expression: ast.Expression, part: str) -> int:
+        # Range evaluation must not inherit skipped-expression state or disturb
+        # the expression being converted by the enclosing visitor.
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        try:
+            self.__expression_kind = ExpressionKind.CONST_ARITHMETIC
+            self.__value = self.__value_type = self.__value_kind = None
+            self.__evaluate_constant = True
+            self.visit(expression)
+            if self.__value_type != ValueType.INT or self.__value_kind != ValueKind.LITERAL:
+                raise InvalidLoopRangeException(
+                    f'For-loop range {part} must be a constant integer')
+            return int(self.__value)
+        finally:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+
+    def __loop_range(self, statement: ast.ForInLoop) -> range:
+        self.__validate_loop_header(statement)
+        bounds = statement.set_declaration
+        start = self.__constant_loop_integer(bounds.start, 'start')
+        end = self.__constant_loop_integer(bounds.end, 'end')
+        step = (1 if bounds.step is None
+                else self.__constant_loop_integer(bounds.step, 'step'))
+        if step == 0:
+            raise InvalidLoopRangeException('For-loop range step cannot be zero')
+        # OpenQASM includes the end when reachable; Python excludes the stop.
+        # Keep this lazy so a huge range cannot allocate a huge intermediate list.
+        return range(start, end + (1 if step > 0 else -1), step)
+
+    @staticmethod
+    def __validate_loop_header(statement: ast.ForInLoop) -> None:
+        if not isinstance(statement.type, ast.IntType):
+            raise UnsupportedOpenQASMError('for-loop iteration type other than int')
+        bounds = statement.set_declaration
+        if not isinstance(bounds, ast.RangeDefinition):
+            raise UnsupportedOpenQASMError('for-loop iteration other than a constant range')
+        if bounds.start is None or bounds.end is None:
+            raise InvalidLoopRangeException('For-loop range requires both bounds')
+
+    def __validate_loop_syntax(self, node: ast.QASMNode) -> None:
+        # Structural checks never evaluate an expression. In particular, an
+        # empty loop must not silently accept an unsupported operator/function,
+        # nor execute arithmetic or inspect an out-of-range iteration value.
+        if isinstance(node, ast.Expression) and not isinstance(node, (
+                ast.Identifier, ast.IntegerLiteral, ast.FloatLiteral,
+                ast.ImaginaryLiteral, ast.BooleanLiteral, ast.BitstringLiteral,
+                ast.UnaryExpression, ast.BinaryExpression, ast.Cast, ast.IndexExpression)):
+            raise UnsupportedOpenQASMError(f'for-loop expression {type(node).__name__}')
+        if isinstance(node, ast.BinaryExpression) and node.op.name not in (
+                '+', '-', '*', '/', '%', '==', '!=', '<', '<=', '>', '>=', '&&', '||'):
+            raise UnsupportedOpenQASMError(f'binary operator {node.op.name}')
+        if isinstance(node, ast.UnaryExpression) and node.op.name not in ('-', '!'):
+            raise UnsupportedOpenQASMError(f'unary operator {node.op.name}')
+        if isinstance(node, ast.Cast) and not isinstance(node.type, (
+                ast.IntType, ast.UintType, ast.FloatType, ast.ComplexType, ast.BoolType, ast.BitType)):
+            raise UnsupportedOpenQASMError(f'for-loop cast {type(node.type).__name__}')
+        for field in dataclasses.fields(node):
+            value = getattr(node, field.name)
+            if isinstance(value, ast.QASMNode):
+                self.__validate_loop_syntax(value)
+            elif isinstance(value, list):
+                self.__validate_loop_syntax_list(value)
+
+    def __validate_loop_syntax_list(self, values: list) -> None:
+        for value in values:
+            if isinstance(value, ast.QASMNode):
+                self.__validate_loop_syntax(value)
+            elif isinstance(value, list):
+                self.__validate_loop_syntax_list(value)
+
+    def __loop_bound_names(self, node: ast.QASMNode) -> set[str]:
+        if isinstance(node, ast.Identifier):
+            return {node.name}
+        names: set[str] = set()
+        for field in dataclasses.fields(node):
+            value = getattr(node, field.name)
+            if isinstance(value, ast.QASMNode):
+                names.update(self.__loop_bound_names(value))
+            elif isinstance(value, list):
+                for element in value:
+                    if isinstance(element, ast.QASMNode):
+                        names.update(self.__loop_bound_names(element))
+        return names
+
+    def __validate_nested_loop_bounds(self, statement: ast.ForInLoop, iterators: set[str]) -> None:
+        # Outer iterator values may not exist for an empty outer loop. Validate
+        # names and independent bounds now; defer value-dependent checks until
+        # an actual iteration, rather than fabricating an outer value.
+        bounds = statement.set_declaration
+        constants = (set(self.__const_int_variable_name_values_map)
+                     | set(self.__const_float_variable_name_values_map)
+                     | set(self.__const_complex_variable_name_values_map)
+                     | set(self.__const_bool_variable_values_map))
+        for expression, part in ((bounds.start, 'start'), (bounds.end, 'end'),
+                                 (bounds.step, 'step')):
+            if expression is None:
+                continue
+            names = self.__loop_bound_names(expression)
+            for name in names - iterators - constants - {'pi', 'tau', 'euler'}:
+                raise NoVariableNameException(name)
+            if not names & iterators:
+                value = self.__constant_loop_integer(expression, part)
+                if part == 'step' and value == 0:
+                    raise InvalidLoopRangeException('For-loop range step cannot be zero')
+
+    def __validate_loop_body(self, statements: list[ast.Statement], iterators: set[str]) -> None:
+        # Validate even an empty iteration range, without executing its body.
+        supported = (ast.QuantumGate, ast.QuantumPhase,
+                     ast.QuantumMeasurementStatement, ast.QuantumReset,
+                     ast.QuantumBarrier, ast.ClassicalAssignment,
+                     ast.BranchingStatement, ast.ForInLoop)
+        for child in statements:
+            if isinstance(child, (ast.ClassicalDeclaration, ast.ConstantDeclaration,
+                                  ast.QubitDeclaration)):
+                raise UnsupportedOpenQASMError('block-local declaration')
+            if not isinstance(child, supported):
+                raise UnsupportedOpenQASMError(f'for-loop body {type(child).__name__}')
+            target = (child.lvalue if isinstance(child, ast.ClassicalAssignment)
+                      else child.target if isinstance(child, ast.QuantumMeasurementStatement)
+                      else None)
+            if target is not None and self.__operand_name(target) in iterators:
+                raise UnsupportedOpenQASMError('assignment to a for-loop iterator')
+            if isinstance(child, ast.ClassicalAssignment) and child.op.name not in (
+                    '=', '+=', '-=', '*=', '/=', '%='):
+                raise UnsupportedOpenQASMError(f'assignment operator {child.op.name}')
+            if isinstance(child, ast.QuantumGate):
+                if child.modifiers or child.duration is not None:
+                    raise UnsupportedOpenQASMError('gate modifiers or duration in a for loop')
+                if child.name.name not in self.gate_signatures:
+                    raise UnsupportedOpenQASMError(f'gate {child.name.name}')
+                if (not self.__is_initialization_process
+                        and child.name.name not in self.default_gates_qcx_map
+                        and not self.__is_stdgates_included):
+                    raise UnsupportedOpenQASMError(f'gate {child.name.name}')
+                parameters, qubits = self.gate_signatures[child.name.name]
+                if len(child.arguments) != parameters or len(child.qubits) != qubits:
+                    raise WrongGateArityException(child.name.name, parameters, qubits,
+                                                  len(child.arguments), len(child.qubits))
+            if isinstance(child, ast.QuantumPhase) and (child.modifiers or child.qubits):
+                raise UnsupportedOpenQASMError('modifiers or qubit operands on gphase')
+            if isinstance(child, ast.BranchingStatement):
+                self.__validate_loop_body(child.if_block, iterators)
+                self.__validate_loop_body(child.else_block, iterators)
+            if isinstance(child, ast.ForInLoop):
+                self.__validate_loop_header(child)
+                self.__validate_nested_loop_bounds(child, iterators)
+                self.__validate_loop_body(child.block, iterators | {child.identifier.name})
+
     def visit_ForInLoop(self, statement: ast.ForInLoop) -> None:
-        raise UnsupportedOpenQASMError('for loop')
+        values = self.__loop_range(statement)
+        self.__validate_loop_body(statement.block,
+                                  {name for scope in self.__loop_bindings for name in scope}
+                                  | {statement.identifier.name})
+        self.__validate_loop_syntax(statement)
+        distance = (values.stop - values.start) * (1 if values.step > 0 else -1)
+        stride = abs(values.step)
+        count = max(0, (distance + stride - 1) // stride)
+        if count > self.MAX_LOOP_ITERATIONS - self.__loop_iterations:
+            raise InvalidLoopRangeException(
+                f'For-loop expansion exceeds {self.MAX_LOOP_ITERATIONS} iterations')
+        self.__loop_iterations += count
+        for value in values:
+            self.__loop_bindings.append({statement.identifier.name: value})
+            try:
+                for child in statement.block:
+                    self.visit(child)
+            finally:
+                self.__loop_bindings.pop()
 
     def visit_WhileLoop(self, statement: ast.WhileLoop) -> None:
         raise UnsupportedOpenQASMError('while loop')
