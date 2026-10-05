@@ -346,6 +346,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__value = self.__capitalize_variable_name(expression.name)
             self.__value_type = self.__type_of(self.__value)
             self.__value_kind = ValueKind.LVALUE
+            if (self.__value_type == ValueType.BIT
+                    and self.__value in self.__sized_bit_variables):
+                raise UnsupportedOpenQASMError('whole bit register in scalar expression')
 
     def visit_UnaryExpression(self, expression: ast.UnaryExpression) -> None:
         if self.__expression_kind is None:
@@ -396,13 +399,18 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __converted_operand(
             self, value: str | int | float | complex, value_type: ValueType,
             value_kind: ValueKind, result_type: ValueType) -> tuple[str, set[str]]:
-        # Boolean storage is INT in QCX, but that must not silently enable
-        # numeric conversions.  Cross-type Boolean conversions are handled
-        # separately from the arithmetic promotion rules.
-        if ValueType.BOOL in (value_type, result_type):
-            if value_type != result_type:
-                raise NoImplicitCastException
-            return str(value), set()
+        if result_type == ValueType.BOOL:
+            if value_type in (ValueType.BOOL, ValueType.BIT):
+                return str(value), set()
+            if (value_type == ValueType.INT and value_kind == ValueKind.LITERAL
+                    and value in (0, 1)):
+                return str(int(value)), set()
+            raise NoImplicitCastException
+        if value_type == ValueType.BOOL:
+            if result_type in (ValueType.INT, ValueType.BIT):
+                return str(value), set()
+            # Boolean-to-numeric promotion preserves its canonical 0/1 value.
+            value_type = ValueType.INT
         if value_kind == ValueKind.LITERAL:
             if result_type == ValueType.BIT:
                 if value_type not in (ValueType.INT, ValueType.BIT) or value not in (0, 1):
@@ -1056,10 +1064,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if ValueType.COMPLEX in (lhs_type, rhs_type):
             raise UnsupportedOpenQASMError('comparison of complex values')
         if ValueType.BOOL in (lhs_type, rhs_type):
-            if (lhs_type != rhs_type or operator not in (
+            if (lhs_type not in (ValueType.BOOL, ValueType.BIT)
+                    or rhs_type not in (ValueType.BOOL, ValueType.BIT)
+                    or operator not in (
                     ast.BinaryOperator['=='], ast.BinaryOperator['!='])):
                 raise UnsupportedOpenQASMError(
-                    'Boolean comparison requires two Booleans and == or !=')
+                    'Boolean comparison requires Boolean/scalar bit operands and == or !=')
         numeric_lhs_type = (
             ValueType.INT if lhs_type in (ValueType.BIT, ValueType.BOOL) else lhs_type)
         numeric_rhs_type = (
@@ -1128,6 +1138,26 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __emit_condition(
             self, condition: ast.Expression, true_label: str,
             false_label: str) -> None:
+        if isinstance(condition, ast.Cast) and isinstance(condition.type, ast.BoolType):
+            value, value_type, value_kind = self.__condition_operand(condition.argument)
+            if value_type not in (ValueType.BOOL, ValueType.BIT, ValueType.INT, ValueType.FLOAT):
+                raise UnsupportedOpenQASMError('cast to bool from complex or unsupported type')
+            if value_kind == ValueKind.LITERAL:
+                self.__qcx_lines.append(f'JUMP {true_label if value != 0 else false_label}')
+                return
+            temporaries_to_release = set()
+            if value_kind == ValueKind.TEMPORARY:
+                temporaries_to_release.add(str(value))
+            if not isinstance(value, str) or not value[0].isalpha():
+                temporary = self.__add_new_temporary_variable(value_type)
+                self.__qcx_lines.append(f'LET {temporary} := {value}')
+                temporaries_to_release.add(temporary)
+                value = temporary
+            self.__qcx_lines.append(f'JUMPIF {true_label} {value} \\= 0')
+            self.__qcx_lines.append(f'JUMP {false_label}')
+            for temporary in temporaries_to_release:
+                self.__release_temporary_variable(temporary)
+            return
         if isinstance(condition, ast.UnaryExpression):
             if condition.op != ast.UnaryOperator['!']:
                 raise UnsupportedOpenQASMError(
@@ -1155,7 +1185,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return
 
         if not isinstance(condition, (
-                ast.Identifier, ast.IndexExpression, ast.BooleanLiteral)):
+                ast.Identifier, ast.IndexExpression, ast.BooleanLiteral, ast.Cast)):
             raise UnsupportedOpenQASMError(
                 'non-comparison branching condition')
 
@@ -1173,9 +1203,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return
         self.__qcx_lines.append(f'JUMPIF {true_label} {value} \\= 0')
         self.__qcx_lines.append(f'JUMP {false_label}')
+        if value_kind == ValueKind.TEMPORARY:
+            self.__release_temporary_variable(str(value))
 
     def __visit_boolean_expression(
-            self, expression: ast.UnaryExpression | ast.BinaryExpression) -> None:
+            self, expression: ast.Expression) -> None:
         if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
             self.__evaluate_boolean_constant(expression)
             return
@@ -1204,7 +1236,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self, expression: ast.UnaryExpression | ast.BinaryExpression) -> None:
         if isinstance(expression, ast.UnaryExpression):
             self.visit(expression.expression)
-            if self.__value_type != ValueType.BOOL:
+            if self.__value_type not in (ValueType.BOOL, ValueType.BIT):
                 raise NoImplicitCastException
             self.__value = int(not self.__value) if self.__evaluate_constant else 0
         else:
@@ -1225,7 +1257,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__evaluate_constant = evaluate
             rhs_value, rhs_type = self.__value, self.__value_type
             if logical:
-                if lhs_type != ValueType.BOOL or rhs_type != ValueType.BOOL:
+                if (lhs_type not in (ValueType.BOOL, ValueType.BIT)
+                        or rhs_type not in (ValueType.BOOL, ValueType.BIT)):
                     raise NoImplicitCastException
                 value = (lhs_value and rhs_value if expression.op == ast.BinaryOperator['&&']
                          else lhs_value or rhs_value)
@@ -1381,6 +1414,25 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.__expression_kind is None:
             return
 
+        if isinstance(expression.type, ast.BoolType):
+            if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
+                self.visit(expression.argument)
+                if self.__value_type not in (ValueType.BOOL, ValueType.BIT, ValueType.INT, ValueType.FLOAT):
+                    raise UnsupportedOpenQASMError('cast to bool from complex or unsupported type')
+                self.__value = int(self.__value != 0) if self.__evaluate_constant else 0
+                self.__value_type = ValueType.BOOL
+                self.__value_kind = ValueKind.LITERAL
+            else:
+                self.__visit_boolean_expression(expression)
+            return
+        if isinstance(expression.type, ast.BitType):
+            if expression.type.size is not None:
+                raise UnsupportedOpenQASMError('cast to bit register')
+            self.visit(expression.argument)
+            if self.__value_type not in (ValueType.BOOL, ValueType.BIT):
+                raise UnsupportedOpenQASMError('scalar bit cast requires a Boolean or scalar bit')
+            self.__value_type = ValueType.BIT
+            return
         if isinstance(expression.type, (ast.IntType, ast.UintType)):
             target_type = ValueType.INT
             cast_name = 'INT'
@@ -1399,7 +1451,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UninitializedValueException
 
         if self.__value_type == ValueType.BOOL:
-            raise UnsupportedOpenQASMError('numeric cast from Boolean')
+            self.__value_type = ValueType.INT
         if self.__value_kind == ValueKind.LITERAL:
             if target_type == ValueType.INT:
                 self.__value = int(complex(self.__value).real)
@@ -1437,7 +1489,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         raise UnsupportedOpenQASMError('function call')
 
     def visit_IndexExpression(self, expression: ast.IndexExpression) -> None:
-        raise UnsupportedOpenQASMError('index expression')
+        if self.__expression_kind is None:
+            return
+        if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
+            raise NoConstantExpressionException
+        self.__value, self.__value_type, self.__value_kind = self.__condition_operand(expression)
 
     def visit_SizeOf(self, expression: ast.SizeOf) -> None:
         raise UnsupportedOpenQASMError('sizeof expression')
@@ -1479,12 +1535,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __set_constant_variable(self, variable_name: str, variable_type) -> None:
         if isinstance(variable_type, ast.BoolType):
-            if self.__value_type != ValueType.BOOL:
+            if (self.__value_type not in (ValueType.BOOL, ValueType.BIT)
+                    and not (self.__value_type == ValueType.INT and self.__value in (0, 1))):
                 raise NoImplicitCastException
             self.__const_bool_variable_values_map[variable_name] = int(self.__value)
             return
         if self.__value_type == ValueType.BOOL:
-            raise NoImplicitCastException
+            self.__value_type = ValueType.INT
         match variable_type:
             case ast.IntType() | ast.UintType():
                 if variable_name not in self.__const_int_variable_name_values_map:
@@ -1615,6 +1672,23 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             for index in target_indices
         ]
 
+        boolean_identifier = isinstance(expression, ast.Identifier) and (
+            self.__capitalize_variable_name(expression.name) in self.__bool_variable_names
+            or expression.name in self.__const_bool_variable_values_map)
+        if not target_is_register and (boolean_identifier or not isinstance(
+                expression, (ast.Identifier, ast.IndexExpression,
+                             ast.IntegerLiteral, ast.BitstringLiteral))):
+            previous_expression_kind = self.__expression_kind
+            self.__expression_kind = ExpressionKind.ARITHMETIC
+            try:
+                self.visit(expression)
+            finally:
+                self.__expression_kind = previous_expression_kind
+            if self.__value_type not in (ValueType.BOOL, ValueType.BIT):
+                raise InvalidBitOperandException('Scalar bit assignment requires a bit or Boolean value')
+            self.__emit_assignment(target_names[0], ':=', ValueType.BIT,
+                                   self.__value, self.__value_type, self.__value_kind)
+            return
         if isinstance(expression, ast.BitstringLiteral):
             if not target_is_register:
                 raise InvalidBitOperandException(

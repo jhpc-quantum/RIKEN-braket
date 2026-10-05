@@ -52,10 +52,34 @@ and bits. Boolean literals, constants, and variables can initialize or be
 assigned to Boolean variables and can be used directly in branching conditions.
 Comparison and logical expressions can also initialize or be assigned to Boolean
 variables. Boolean constant expressions are evaluated during conversion.
-Boolean arrays and conversions between Boolean and other types are not yet
-supported. Variables declared without initializers have no defined OpenQASM
+Boolean and scalar bit values can be assigned to one another, including single
+indexed elements of bit registers. Integer constant values zero and one are also
+accepted as Boolean initializers and assignment values. Boolean values can be
+assigned to `int`, `uint`, `float`, and `complex` variables as zero or one.
+Variables declared without initializers have no defined OpenQASM
 value; initialize them before use, as specified in the
 [OpenQASM variable rules](https://openqasm.com/language/types.html#variables).
+
+The supported Boolean-related explicit casts are:
+
+- `bool(...)` from `bool`, scalar `bit`, `int`, `uint`, or `float`;
+- `bit(...)` from a Boolean or scalar bit; and
+- `int(...)`, `uint(...)`, `float(...)`, and `complex(...)` from a Boolean.
+
+Numeric-to-Boolean casts test whether the value is nonzero; they do not first
+truncate floating-point values to integers. For example, `bool(-0.25)` is true.
+General numeric-to-Boolean assignments require an explicit `bool(...)` cast.
+Boolean casts can also be used directly in conditions and inside logical
+expressions, preserving short-circuit evaluation. These rules follow the
+supported subset of the
+[OpenQASM casting rules](https://openqasm.com/language/types.html#casting-specifics).
+
+Whole-register casts, including `bool(register)` when `register` is a `bit[1]`
+register, and `bit[n](...)` casts are not yet supported. Complex-to-Boolean casts,
+Boolean arithmetic, and mixed
+Boolean/numeric comparisons remain unsupported; explicitly cast Boolean values
+to a numeric type before using them in these operations. Boolean arrays and
+block-local declarations remain unsupported.
 
 OpenQASM `reset` accepts scalar qubits and qubit-register selections. A
 register reset is expanded to one QCX `RESET` instruction per selected qubit.
@@ -116,8 +140,8 @@ not-equal operator `\=`.
 Conditions can compare scalar `int`, `uint`, `float`, and `bit` expressions.
 A statically indexed element of a bit register is also accepted. Compatible
 integer and floating-point operands are promoted when necessary. Complex
-values and complete multi-element bit registers cannot be compared.
-Two Boolean operands can be compared using `==` or `!=`.
+values and complete bit registers cannot be compared.
+Boolean and scalar bit operands can be compared with one another using `==` or `!=`.
 
 A scalar `bit`, a statically indexed element of a bit register, or a Boolean
 literal, constant, or variable can also be used directly as a condition:
@@ -184,9 +208,10 @@ overwritten until the complete expression has been evaluated. Logical AND and
 OR retain short-circuit evaluation, including in constant expressions. Skipped
 operands are still checked for valid names and supported types.
 
-Boolean gate parameters, assignment of Boolean expressions to non-Boolean
-variables, and bitwise operators such as `&`, `|`, `^`, and `~` are not yet
-supported.
+Boolean expressions can also be assigned to scalar bits, indexed bit elements,
+and numeric variables using the supported conversions described above.
+Boolean gate parameters require an explicit numeric cast. Bitwise operators
+such as `&`, `|`, `^`, and `~` are not yet supported.
 Direct integer, floating-point, or complex conditions are also
 rejected; use a supported explicit comparison instead for integer and
 floating-point values. Variables used by a branch must be declared outside it;
@@ -221,7 +246,8 @@ The current prototype does not reliably support:
 - user-defined gates or gate modifiers;
 - dynamically computed indices, ranges with omitted bounds, or
   multidimensional indexing;
-- general classical arrays, Boolean casts, or block-local declarations;
+- general classical arrays, whole-register casts, complex-to-Boolean casts,
+  Boolean arithmetic, mixed Boolean/numeric comparisons, or block-local declarations;
 - bitwise operations or classical functions; or
 - arithmetic operators other than `+`, `-`, `*`, and `/`.
 

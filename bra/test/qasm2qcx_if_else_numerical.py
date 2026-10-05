@@ -227,6 +227,50 @@ def main() -> None:
         if (result == (1 < 2)) { result = !result; }'''
     check_program(arguments.bra, source, ('RESULT63',), ['0'])
 
+    for declaration, values in (
+            ('int', (-7, 0, 7)), ('uint', (0, 7)),
+            ('float', (-0.25, -0.0, 0.0, 0.25))):
+        for value in values:
+            source = f'''OPENQASM 3.0; {declaration} value = {value};
+                bool result = bool(value); int branch = 0;
+                if (bool(value)) {{ branch = 1; }}
+                result = !bool(value);'''
+            check_program(arguments.bra, source, ('RESULT63', 'BRANCH63'),
+                          [str(int(value == 0)), str(int(value != 0))])
+
+    for value in (False, True):
+        source = f'''OPENQASM 3.0; bool a = {str(value).lower()};
+            bit b = a; bool c = b; bit[2] flags = "00";
+            flags[0] = c; flags[1] = !c; c = flags[1];
+            b = bool(flags[0]); a = bit(c);'''
+        check_program(arguments.bra, source,
+                      ('A1', 'B1', 'C1', 'FLAGS31:0', 'FLAGS31:1'),
+                      [str(int(not value)), str(int(value)), str(int(not value)),
+                       str(int(value)), str(int(not value))])
+
+        source = f'''OPENQASM 3.0; bool a = {str(value).lower()};
+            int n = int(a); uint u = uint(a); float f = float(a);
+            complex z = complex(a); int real_value = int(f);
+            int complex_value = int(z); int implicit = a;
+            float promoted = a; complex widened = a;
+            bool result = bool(int(a));'''
+        check_program(arguments.bra, source,
+                      ('N1', 'U1', 'REAL_VALUE991', 'COMPLEX_VALUE8159',
+                       'IMPLICIT255', 'RESULT63'), [str(int(value))] * 6)
+
+    source = '''OPENQASM 3.0; bool result = bool(pi);
+        int n = 0; int divisor = 0;
+        result = result && !bool(n + 0.0);
+        if (bool(tau)) { result = result || bool(1 / divisor); }
+        n = n + 1;'''
+    check_program(arguments.bra, source, ('RESULT63', 'N1'), ['1', '1'])
+
+    source = '''OPENQASM 3.0; bool a = false; int divisor = 0;
+        bool result = bool(divisor) && bool(1 / divisor);
+        if (a) { result = bool(1 / divisor); }
+        result = !bool(divisor + 0.0); divisor = divisor + 1;'''
+    check_program(arguments.bra, source, ('RESULT63', 'DIVISOR127'), ['1', '1'])
+
 
 if __name__ == "__main__":
     main()

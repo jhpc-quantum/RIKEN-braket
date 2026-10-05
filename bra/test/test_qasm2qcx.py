@@ -160,16 +160,11 @@ class BooleanStorageTests(unittest.TestCase):
         with self.assertRaises(qasm2qcx.NoVariableNameException):
             convert('OPENQASM 3.0; const bool yes = true; yes = false;')
 
-    def test_rejects_implicit_boolean_numeric_conversions_for_now(self) -> None:
+    def test_rejects_numeric_to_boolean_without_explicit_cast(self) -> None:
         for source in (
-                'bool a = 1;', 'bool a = 1.0;', 'bool a = 1.0im;',
-                'int a = true;', 'float a = false;', 'complex a = true;',
-                'bool a = true; int b = a;',
-                'bool a = true; float b = a;',
-                'bool a = true; complex b = a;',
+                'bool a = 2;', 'bool a = 1.0;', 'bool a = 1.0im;',
                 'bool a = true; int b = 1; a = b;',
-                'const bool a = 1;', 'const int a = true;',
-                'const float a = false;', 'const complex a = true;'):
+                'const bool a = 2;', 'const bool a = 1.0;'):
             with self.subTest(source=source):
                 with self.assertRaises(qasm2qcx.NoImplicitCastException):
                     convert('OPENQASM 3.0; ' + source)
@@ -178,8 +173,7 @@ class BooleanStorageTests(unittest.TestCase):
         for statement in (
                 'a += true;', 'a -= false;', 'a *= true;', 'a /= true;',
                 'a = -a;', 'a[0] = false;', 'if (a > false) {}',
-                'if (a == 1) {}', 'if (a == b) {}',
-                'int c = int(a);', 'bool c = bool(1);'):
+                'if (a == 1) {}'):
             with self.subTest(statement=statement):
                 with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
                     convert('OPENQASM 3.0; bool a = true; bit b = 0; '
@@ -320,8 +314,7 @@ class BooleanExpressionTests(unittest.TestCase):
                 'bool c = flags && a;', 'bool c = flags[0:0] && a;',
                 'bool c = a & a;', 'bool c = ~a;',
                 'bool c = a == n;', 'bool c = z == z;',
-                'int c = n > 0;', 'float c = a && a;',
-                'complex c = !a;', 'a += n > 0;'):
+                'a += n > 0;'):
             with self.subTest(statement=statement):
                 with self.assertRaises(qasm2qcx.QASM2QCXError):
                     convert('''OPENQASM 3.0; bool a = true; int n = 1;
@@ -333,6 +326,136 @@ class BooleanExpressionTests(unittest.TestCase):
                 with self.assertRaises(qasm2qcx.WrongParameterTypeException):
                     convert('''OPENQASM 3.0; include "stdgates.inc";
                         qubit q; bool a = true; int n = 1;''' + statement)
+
+
+class BooleanConversionTests(unittest.TestCase):
+    def test_scalar_boolean_bit_interchange(self) -> None:
+        self.assertEqual(convert('''OPENQASM 3.0;
+            bool a = true; bit b = a; bool c = b;
+            a = b; b = c; b = false;'''), [
+                'QUBITS 0', 'VAR A1 INT', 'LET A1 := 1',
+                'VAR B1 INT', 'LET B1 := A1', 'VAR C1 INT', 'LET C1 := B1',
+                'LET A1 := B1', 'LET B1 := C1', 'LET B1 := 0',
+            ])
+
+    def test_indexed_bit_boolean_interchange(self) -> None:
+        lines = convert('''OPENQASM 3.0; bit[2] flags = "01";
+            bool a = flags[0]; a = flags[1]; flags[0] = a;
+            flags[1] = true; flags[0] = !flags[1];''')
+        self.assertIn('LET A1 := FLAGS31:0', lines)
+        self.assertIn('LET A1 := FLAGS31:1', lines)
+        self.assertIn('LET FLAGS31:0 := A1', lines)
+        self.assertIn('LET FLAGS31:1 := 1', lines)
+        self.assertEqual(lines[-1], 'LET FLAGS31:0 := QASM2QCX_INT_0')
+
+    def test_accepts_zero_one_as_boolean_initializers_and_constants(self) -> None:
+        self.assertEqual(convert('''OPENQASM 3.0;
+            const bool yes = 1; const bool no = 0;
+            bool a = 1; a = 0; bit b = yes; b = no;'''), [
+                'QUBITS 0', 'VAR A1 INT', 'LET A1 := 1', 'LET A1 := 0',
+                'VAR B1 INT', 'LET B1 := 1', 'LET B1 := 0',
+            ])
+
+    def test_numeric_boolean_cast_constants(self) -> None:
+        for expression, expected in (
+                ('bool(0)', 0), ('bool(7)', 1), ('bool(-7)', 1),
+                ('bool(0.0)', 0), ('bool(-0.0)', 0), ('bool(0.25)', 1),
+                ('bool(-0.25)', 1), ('bool(true)', 1), ('bool(false)', 0),
+                ('bool(bit(true))', 1), ('bool(int(false))', 0),
+                ('!bit(true)', 0), ('bit(true) && true', 1),
+                ('bit(false) || true', 1)):
+            with self.subTest(expression=expression):
+                self.assertEqual(convert(f'''OPENQASM 3.0;
+                    const bool value = {expression}; bool a = value;'''), [
+                        'QUBITS 0', 'VAR A1 INT', f'LET A1 := {expected}',
+                    ])
+
+    def test_boolean_cast_in_condition_and_numeric_assignment(self) -> None:
+        lines = convert('''OPENQASM 3.0; int n = -2; float f = -0.25;
+            bool a = bool(n); a = bool(f);
+            if (bool(n) && !bool(f)) { a = false; }''')
+        self.assertIn('JUMPIF QASM2QCX_BOOL_TRUE_0 N1 \\= 0', lines)
+        self.assertIn('JUMPIF QASM2QCX_BOOL_TRUE_1 F1 \\= 0', lines)
+        self.assertIn('JUMPIF QASM2QCX_CONDITION_0 N1 \\= 0', lines)
+        self.assertIn('JUMPIF QASM2QCX_END_IF_0 F1 \\= 0', lines)
+
+    def test_boolean_cast_materializes_native_constants(self) -> None:
+        lines = convert('OPENQASM 3.0; bool a = bool(pi); if (bool(tau)) {}')
+        self.assertIn('LET QASM2QCX_REAL_0 := :PI', lines)
+        self.assertIn('JUMPIF QASM2QCX_BOOL_TRUE_0 QASM2QCX_REAL_0 \\= 0', lines)
+        self.assertIn('LET QASM2QCX_REAL_0 := :TWO_PI', lines)
+        self.assertIn('JUMPIF QASM2QCX_IF_0 QASM2QCX_REAL_0 \\= 0', lines)
+
+    def test_numeric_casts_and_promotions_from_boolean(self) -> None:
+        lines = convert('''OPENQASM 3.0; bool a = true;
+            int n = int(a); uint u = uint(a); float f = float(a);
+            complex z = complex(a); n = a; f = a; z = a;''')
+        self.assertIn('LET N1 := A1', lines)
+        self.assertIn('LET U1 := A1', lines)
+        self.assertIn('LET QASM2QCX_REAL_0 := :REAL:A1', lines)
+        self.assertIn('LET QASM2QCX_COMPLEX_0 := :COMPLEX:A1', lines)
+        self.assertIn('LET F1 := :REAL:A1', lines)
+        self.assertIn('LET Z1 := :COMPLEX:A1', lines)
+
+    def test_numeric_constant_promotions_from_boolean(self) -> None:
+        self.assertEqual(convert('''OPENQASM 3.0;
+            const bool yes = true; const int n = yes;
+            const uint u = false; const float f = yes; const complex z = yes;
+            int a = n; uint b = u; float c = f; complex d = z;'''), [
+                'QUBITS 0', 'VAR A1 INT', 'LET A1 := 1',
+                'VAR B1 INT', 'LET B1 := 0', 'VAR C1 REAL', 'LET C1 := 1.0',
+                'VAR D1 COMPLEX', 'LET D1 := :COMPLEX:1.0',
+            ])
+
+    def test_boolean_bit_cast_and_equality(self) -> None:
+        lines = convert('''OPENQASM 3.0; bool a = true; bit b = bit(a);
+            bool c = bool(b); if (a == b) { b = !b; }
+            c = b != a;''')
+        self.assertIn('LET B1 := A1', lines)
+        self.assertIn('JUMPIF QASM2QCX_IF_0 A1 == B1', lines)
+        self.assertIn('JUMPIF QASM2QCX_BOOL_TRUE_2 B1 \\= A1', lines)
+
+    def test_scalar_bit_accepts_boolean_expression_values(self) -> None:
+        for expression in ('!a', 'a && a', 'n > 0', 'bool(n)', 'bit(a)'):
+            with self.subTest(expression=expression):
+                lines = convert('OPENQASM 3.0; bool a = true; int n = 1; '
+                                f'bit b = {expression};')
+                self.assertTrue(lines[-1].startswith('LET B1 := '))
+
+    def test_constant_casts_preserve_short_circuit_validation(self) -> None:
+        self.assertEqual(convert('''OPENQASM 3.0;
+            const bool yes = true || bool(1 / 0);
+            const bool no = false && bool(1 / 0);
+            bool a = yes; a = no;'''), [
+                'QUBITS 0', 'VAR A1 INT', 'LET A1 := 1', 'LET A1 := 0',
+            ])
+        for expression in ('true || bool(missing)', 'false && bool(1.0im)'):
+            with self.subTest(expression=expression):
+                with self.assertRaises(qasm2qcx.QASM2QCXError):
+                    convert(f'OPENQASM 3.0; const bool a = {expression};')
+
+    def test_cast_temporaries_are_released_after_conditions(self) -> None:
+        for condition in ('bool(!a)', 'bit(!a)', 'bool(int(!a))'):
+            with self.subTest(condition=condition):
+                lines = convert('OPENQASM 3.0; bool a = true; '
+                                f'if ({condition}) {{}} if ({condition}) {{}}')
+                self.assertEqual([line for line in lines
+                                  if line.startswith('VAR QASM2QCX_')], [
+                    'VAR QASM2QCX_INT_0 INT',
+                ])
+
+    def test_rejects_unsupported_casts_and_whole_register_conversions(self) -> None:
+        for statement in (
+                'bool a = bool(1.0im);', 'bool a = bool(z);',
+                'bool a = bool(flags);', 'bool a = flags;',
+                'bool a = bool(flags[0:0]);', 'bool a = bool(flags[{0}]);',
+                'bool a = bool(flags[index]);', 'bit[1] copy = true;',
+                'bit[1] copy = bit[1](true);', 'bit a = bit(2);',
+                'bit a = bit(0.25);', 'bool a = bool(n[0]);'):
+            with self.subTest(statement=statement):
+                with self.assertRaises(qasm2qcx.QASM2QCXError):
+                    convert('''OPENQASM 3.0; bit[1] flags = "1";
+                        complex z = 1.0im; int index = 0; int n = 0;''' + statement)
 
 
 class StaticIndexingTests(unittest.TestCase):
@@ -1283,13 +1406,11 @@ class BranchingTests(unittest.TestCase):
     def test_rejects_unsupported_logical_operands_and_value_expressions(self) -> None:
         for statement in (
                 "if (a && n) {}", "if (n || a) {}", "if (a & a) {}",
-                "if (~a) {}", "a = !a;"):
+                "if (~a) {}"):
             with self.subTest(statement=statement):
                 with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
                     convert('OPENQASM 3.0; bit a = 1; int n = 1; '
                             + statement)
-        with self.assertRaises(qasm2qcx.NoImplicitCastException):
-            convert('OPENQASM 3.0; bit a = 1; int n = 1; n = a && a;')
 
     def test_rejects_unsupported_direct_index_selections(self) -> None:
         for condition in ("flags[0:0]", "flags[{0}]", "flags[index]"):
