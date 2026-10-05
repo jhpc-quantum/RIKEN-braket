@@ -1014,6 +1014,42 @@ class BranchingTests(unittest.TestCase):
                         convert(f'OPENQASM 3.0; {declaration} '
                                 f'if ({condition}) {{}}')
 
+    def test_lowers_short_circuit_destinations(self) -> None:
+        for operator, lhs_true, lhs_false in (
+                ("&&", "QASM2QCX_CONDITION_0", "QASM2QCX_END_IF_0"),
+                ("||", "QASM2QCX_IF_0", "QASM2QCX_CONDITION_0")):
+            with self.subTest(operator=operator):
+                lines = convert(f'''OPENQASM 3.0; bit a; bit b;
+                    if (a {operator} b) {{}}''')
+                self.assertEqual(lines[3:8], [
+                    f"JUMPIF {lhs_true} A1 \\= 0", f"JUMP {lhs_false}",
+                    "@QASM2QCX_CONDITION_0",
+                    "JUMPIF QASM2QCX_IF_0 B1 \\= 0",
+                    "JUMP QASM2QCX_END_IF_0",
+                ])
+
+    def test_nested_logical_conditions_have_unique_resolved_labels(self) -> None:
+        lines = convert('''OPENQASM 3.0; bit a; bit b; int n = 1;
+            if (!(a || b) && n > 0) {
+                if (a || (b && n == 1)) { n = 2; }
+            } else if (a && b) { n = 3; }''')
+        labels = [line[1:] for line in lines if line.startswith("@")]
+        targets = [line.split()[1] for line in lines
+                   if line.startswith(("JUMP ", "JUMPIF "))]
+        self.assertEqual(len(labels), len(set(labels)))
+        self.assertEqual(sum(label.startswith("QASM2QCX_CONDITION_")
+                             for label in labels), 5)
+        self.assertTrue(set(targets) <= set(labels))
+
+    def test_rejects_unsupported_logical_operands_and_value_expressions(self) -> None:
+        for statement in (
+                "if (a && n) {}", "if (n || a) {}", "if (a & a) {}",
+                "if (~a) {}", "n = a && a;", "a = !a;"):
+            with self.subTest(statement=statement):
+                with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                    convert('OPENQASM 3.0; bit a = 1; int n = 1; '
+                            + statement)
+
     def test_rejects_unsupported_direct_index_selections(self) -> None:
         for condition in ("flags[0:0]", "flags[{0}]", "flags[index]"):
             with self.subTest(condition=condition):

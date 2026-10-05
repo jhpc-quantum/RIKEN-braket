@@ -188,6 +188,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__declared_quantum_registers: set[str] = set()
         self.__amplitude_indices: list[int] | None = None
         self.__branch_index: int = 0
+        self.__condition_index: int = 0
+        self.__branch_depth: int = 0
 
         self.__is_initialization_process = True
         self.visit(qasm_ast_root)
@@ -1088,6 +1090,19 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return
 
         if isinstance(condition, ast.BinaryExpression):
+            if condition.op in (
+                    ast.BinaryOperator['&&'], ast.BinaryOperator['||']):
+                rhs_label = f'QASM2QCX_CONDITION_{self.__condition_index}'
+                self.__condition_index += 1
+                if condition.op == ast.BinaryOperator['&&']:
+                    self.__emit_condition(
+                        condition.lhs, rhs_label, false_label)
+                else:
+                    self.__emit_condition(
+                        condition.lhs, true_label, rhs_label)
+                self.__qcx_lines.append(f'@{rhs_label}')
+                self.__emit_condition(condition.rhs, true_label, false_label)
+                return
             self.__emit_comparison_condition(
                 condition, true_label, false_label)
             return
@@ -1123,6 +1138,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return
 
         branch_index = self.__branch_index
+        previous_temporaries = self.__declared_temporary_variables.copy()
+        self.__branch_depth += 1
         self.__branch_index += 1
         if_label = f'QASM2QCX_IF_{branch_index}'
         else_label = f'QASM2QCX_ELSE_{branch_index}'
@@ -1140,6 +1157,24 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             for child_statement in statement.else_block:
                 self.visit(child_statement)
         self.__qcx_lines.append(f'@{end_label}')
+        self.__branch_depth -= 1
+        if self.__branch_depth == 0:
+            # Temporary storage must exist even when its first expression is
+            # skipped.  Only declarations move; computations stay inside the
+            # branch or RHS where they are evaluated.
+            new_temporaries = (
+                self.__declared_temporary_variables - previous_temporaries)
+            declarations = [
+                line for line in self.__qcx_lines
+                if line.startswith('VAR ')
+                and line.split()[1] in new_temporaries
+            ]
+            declaration_set = set(declarations)
+            self.__qcx_lines = [
+                line for line in self.__qcx_lines
+                if line not in declaration_set
+            ]
+            self.__qcx_lines[1:1] = declarations
 
     def visit_ForInLoop(self, statement: ast.ForInLoop) -> None:
         raise UnsupportedOpenQASMError('for loop')
