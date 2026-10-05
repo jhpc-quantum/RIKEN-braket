@@ -1010,8 +1010,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 'bit-register conditional operand')
         return self.__value, self.__value_type, self.__value_kind
 
-    def __emit_comparison_jump(
-            self, label: str, condition: ast.Expression) -> None:
+    def __emit_comparison_condition(
+            self, condition: ast.Expression, true_label: str,
+            false_label: str) -> None:
         if not isinstance(condition, ast.BinaryExpression):
             raise UnsupportedOpenQASMError(
                 'non-comparison branching condition')
@@ -1069,8 +1070,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             comparison_lhs = lhs
 
         self.__qcx_lines.append(
-            f'JUMPIF {label} {comparison_lhs} '
+            f'JUMPIF {true_label} {comparison_lhs} '
             f'{operators[condition.op]} {rhs}')
+        self.__qcx_lines.append(f'JUMP {false_label}')
         for temporary in temporaries_to_release:
             self.__release_temporary_variable(temporary)
 
@@ -1091,15 +1093,20 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         branch_index = self.__branch_index
         self.__branch_index += 1
         if_label = f'QASM2QCX_IF_{branch_index}'
+        else_label = f'QASM2QCX_ELSE_{branch_index}'
         end_label = f'QASM2QCX_END_IF_{branch_index}'
 
-        self.__emit_comparison_jump(if_label, statement.condition)
-        for child_statement in statement.else_block:
-            self.visit(child_statement)
-        self.__qcx_lines.append(f'JUMP {end_label}')
+        false_label = else_label if statement.else_block else end_label
+        self.__emit_comparison_condition(
+            statement.condition, if_label, false_label)
         self.__qcx_lines.append(f'@{if_label}')
         for child_statement in statement.if_block:
             self.visit(child_statement)
+        if statement.else_block:
+            self.__qcx_lines.append(f'JUMP {end_label}')
+            self.__qcx_lines.append(f'@{else_label}')
+            for child_statement in statement.else_block:
+                self.visit(child_statement)
         self.__qcx_lines.append(f'@{end_label}')
 
     def visit_ForInLoop(self, statement: ast.ForInLoop) -> None:
