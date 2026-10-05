@@ -34,6 +34,7 @@
 # include <ket/gate/exponential_swap.hpp>
 # include <ket/gate/toffoli.hpp>
 # include <ket/gate/projective_measurement.hpp>
+# include <ket/gate/reset.hpp>
 # include <ket/gate/clear.hpp>
 # include <ket/gate/set.hpp>
 # if defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
@@ -1122,6 +1123,9 @@ namespace bra
 
   ::ket::gate::outcome nompi_state::do_projective_measurement(qubit_type const qubit)
   { return ket::gate::ranges::projective_measurement(parallel_policy_, data_, random_number_generator_, qubit); }
+
+  void nompi_state::do_reset(qubit_type const qubit)
+  { ket::gate::ranges::reset(parallel_policy_, data_, random_number_generator_, qubit); }
 
   void nompi_state::do_expectation_values()
   { maybe_expectation_values_ = ket::ranges::all_spin_expectation_values<qubit_type>(parallel_policy_, data_); }

@@ -60,6 +60,7 @@
 #   include <ket/mpi/gate/exponential_swap.hpp>
 #   include <ket/mpi/gate/toffoli.hpp>
 #   include <ket/mpi/gate/projective_measurement.hpp>
+#   include <ket/mpi/gate/reset.hpp>
 #   include <ket/mpi/gate/clear.hpp>
 #   include <ket/mpi/gate/set.hpp>
 #   include <ket/mpi/all_spin_expectation_values.hpp>
@@ -1284,6 +1285,15 @@ namespace bra
     return ket::mpi::gate::projective_measurement(
       mpi_policy_, parallel_policy_,
       data_, permutation_, buffer_, root, circuit_communicator_, environment_, random_number_generator_, qubit);
+  }
+
+  template <typename MpiPolicy>
+  void nonpage_mpi_state<MpiPolicy>::do_reset(
+    qubit_type const qubit, yampi::rank const root)
+  {
+    ket::mpi::gate::reset(
+      mpi_policy_, parallel_policy_, data_, permutation_, buffer_, root,
+      circuit_communicator_, environment_, random_number_generator_, qubit);
   }
 
   template <typename MpiPolicy>

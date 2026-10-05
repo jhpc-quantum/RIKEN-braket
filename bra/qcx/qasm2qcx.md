@@ -29,6 +29,7 @@ The converter currently covers:
 - scalar constants, variables, assignments, and numeric casts;
 - scalar and register `bit` values, including bit-string initialization;
 - projective measurement of individual qubits and complete registers;
+- reset of individual qubits and complete registers;
 - OpenQASM barriers as ordering-only operations;
 - scalar expressions used as gate parameters; and
 - final-state amplitude output through a namespaced pragma.
@@ -40,6 +41,11 @@ widths are also accepted but are not enforced by QCX.
 OpenQASM `bit` values are represented by QCX `INT` variables whose elements
 are restricted to zero or one by the converter. A measurement is emitted as a
 QCX `M` operation followed immediately by assignment from `:OUTCOME`.
+
+OpenQASM `reset` accepts a scalar qubit, a qubit selected by a single literal
+index, or a complete qubit register. A complete-register reset is expanded to
+one QCX `RESET` instruction per qubit. Reset is nonunitary and therefore cannot
+be used inside a QCX gate-fusion block.
 
 The built-in constants `pi`, `tau`, and `euler` are available in scalar
 expressions. Runtime expressions preserve `pi` and `tau` as the native QCX
@@ -83,7 +89,7 @@ vector defined by the program's qubit declarations.
 
 The current prototype does not reliably support:
 
-- reset, delays, or classical control flow;
+- delays or classical control flow;
 - user-defined gates or gate modifiers;
 - index ranges, discrete index sets, or dynamically computed qubit indices;
 - booleans or multidimensional arrays;

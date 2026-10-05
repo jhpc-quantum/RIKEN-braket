@@ -890,7 +890,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__emit_measurement(statement.measure, statement.target)
 
     def visit_QuantumReset(self, statement: ast.QuantumReset) -> None:
-        raise UnsupportedOpenQASMError('reset')
+        if self.__is_initialization_process:
+            return
+
+        for qubit_index in self.__flattened_qubit_operand(statement.qubits):
+            self.__qcx_lines.append(f'RESET {qubit_index}')
 
     def visit_QuantumBarrier(self, statement: ast.QuantumBarrier) -> None:
         if self.__is_initialization_process:

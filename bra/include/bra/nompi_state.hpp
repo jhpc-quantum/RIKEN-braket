@@ -284,6 +284,7 @@ namespace bra
       control_qubit_type const control_qubit2) override;
 
     ket::gate::outcome do_projective_measurement(qubit_type const qubit) override;
+    void do_reset(qubit_type const qubit) override;
     void do_expectation_values() override;
     void do_amplitudes(std::vector< ::bra::state_integer_type > const& amplitude_indices) override;
     void do_measure() override;
