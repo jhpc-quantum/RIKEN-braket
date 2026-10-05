@@ -133,6 +133,13 @@ class NoConstantExpressionException(QASM2QCXError):
     def __str__(self):
         return 'No constant expression'
 
+class ZeroDivisorException(QASM2QCXError):
+    def __init__(self, operator: str) -> None:
+        self.operator = operator
+
+    def __str__(self):
+        return f'Constant {self.operator} expression divisor must not be zero'
+
 class WrongConstantVariableException(QASM2QCXError):
     def __str__(self):
         return 'Wrong constant variable'
@@ -493,38 +500,47 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         lhs_value_kind = self.__value_kind
         lhs_value = self.__value
 
+        is_remainder = expression.op == ast.BinaryOperator['%']
+        if is_remainder:
+            if lhs_value_type != ValueType.INT or rhs_value_type != ValueType.INT:
+                raise UnsupportedOpenQASMError('integer remainder requires int or uint operands')
+
         operators = {
             ast.BinaryOperator['+']: '+=',
             ast.BinaryOperator['-']: '-=',
             ast.BinaryOperator['*']: '*=',
             ast.BinaryOperator['/']: '/=',
         }
-        if expression.op not in operators:
+        if expression.op not in operators and not is_remainder:
             raise UnsupportedOpenQASMError(f'binary operator {expression.op.name}')
 
         result_type = self.__promoted_type(lhs_value_type, rhs_value_type)
         # A runtime expression may occur in a short-circuited operand. Do not
-        # raise during folding for a division that QCX might never execute.
+        # raise during folding for a division/remainder QCX might never execute.
         defer_division = (self.__expression_kind == ExpressionKind.ARITHMETIC
-                          and expression.op == ast.BinaryOperator['/']
+                          and expression.op in (ast.BinaryOperator['/'], ast.BinaryOperator['%'])
                           and rhs_value == 0)
         if (lhs_value_kind == ValueKind.LITERAL and rhs_value_kind == ValueKind.LITERAL
                 and not defer_division):
             def divide(lhs, rhs):
+                if rhs == 0:
+                    raise ZeroDivisorException('/')
                 if result_type != ValueType.INT:
                     return lhs / rhs
 
-                # OpenQASM integer division truncates toward zero, as does the
-                # QCX integer operation.  Python's // rounds toward negative
-                # infinity, so calculate the sign separately.
-                quotient = abs(lhs) // abs(rhs)
-                return -quotient if (lhs < 0) != (rhs < 0) else quotient
+                return self.__integer_quotient(lhs, rhs)
+
+            def remainder(lhs, rhs):
+                if rhs == 0:
+                    raise ZeroDivisorException('%')
+                return lhs - self.__integer_quotient(lhs, rhs) * rhs
 
             operations = {
                 ast.BinaryOperator['+']: lambda lhs, rhs: lhs + rhs,
                 ast.BinaryOperator['-']: lambda lhs, rhs: lhs - rhs,
                 ast.BinaryOperator['*']: lambda lhs, rhs: lhs * rhs,
                 ast.BinaryOperator['/']: divide,
+                ast.BinaryOperator['%']: remainder,
             }
             self.__value = (operations[expression.op](lhs_value, rhs_value)
                             if self.__evaluate_constant else 0)
@@ -541,9 +557,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             lhs_value, lhs_value_type, lhs_value_kind, result_type)
         rhs, rhs_materialized_temporaries = self.__converted_operand(
             rhs_value, rhs_value_type, rhs_value_kind, result_type)
-        result = self.__add_new_temporary_variable(result_type)
-        self.__qcx_lines.append(f'LET {result} := {lhs}')
-        self.__qcx_lines.append(f'LET {result} {operators[expression.op]} {rhs}')
+        if is_remainder:
+            result = self.__emit_integer_remainder(lhs, rhs)
+        else:
+            result = self.__add_new_temporary_variable(result_type)
+            self.__qcx_lines.append(f'LET {result} := {lhs}')
+            self.__qcx_lines.append(f'LET {result} {operators[expression.op]} {rhs}')
 
         temporaries_to_release = (
             lhs_materialized_temporaries | rhs_materialized_temporaries)
@@ -557,6 +576,27 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__value = result
         self.__value_type = result_type
         self.__value_kind = ValueKind.TEMPORARY
+
+    @staticmethod
+    def __integer_quotient(lhs: int, rhs: int) -> int:
+        # Match truncation toward zero without converting to float or using
+        # Python's floor division on signed operands. Remainder uses the same
+        # quotient so that lhs == quotient * rhs + remainder.
+        quotient = abs(lhs) // abs(rhs)
+        return -quotient if (lhs < 0) != (rhs < 0) else quotient
+
+    def __emit_integer_remainder(self, lhs: str, rhs: str) -> str:
+        # Keep both operands live throughout the calculation. In particular,
+        # neither the quotient nor the result may alias an operand temporary.
+        result = self.__add_new_temporary_variable(ValueType.INT)
+        quotient = self.__add_new_temporary_variable(ValueType.INT)
+        self.__qcx_lines.extend([
+            f'LET {result} := {lhs}', f'LET {quotient} := {lhs}',
+            f'LET {quotient} /= {rhs}', f'LET {quotient} *= {rhs}',
+            f'LET {result} -= {quotient}',
+        ])
+        self.__release_temporary_variable(quotient)
+        return result
 
     def visit_IntegerLiteral(self, expression: ast.IntegerLiteral) -> None:
         if self.__expression_kind is None:
@@ -1843,6 +1883,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 and statement.op != ast.AssignmentOperator['=']):
             raise UnsupportedOpenQASMError(
                 f'Boolean assignment operator {statement.op.name}')
+        expression = statement.rvalue
         if statement.op == ast.AssignmentOperator['=']:
             operator = ':='
         elif statement.op == ast.AssignmentOperator['+=']:
@@ -1853,12 +1894,20 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             operator = '*='
         elif statement.op == ast.AssignmentOperator['/=']:
             operator = '/='
+        elif statement.op == ast.AssignmentOperator['%=']:
+            if variable_type != ValueType.INT:
+                raise UnsupportedOpenQASMError('integer remainder assignment requires an int or uint target')
+            # Reuse expression lowering and assign only its completed result;
+            # the destination may also occur anywhere in the RHS expression.
+            operator = ':='
+            expression = ast.BinaryExpression(
+                ast.BinaryOperator['%'], statement.lvalue, statement.rvalue)
         else:
             raise UnsupportedOpenQASMError(
                 f'assignment operator {statement.op.name}')
 
         self.__expression_kind = ExpressionKind.ARITHMETIC
-        self.visit(statement.rvalue)
+        self.visit(expression)
         self.__expression_kind = None
         if (self.__value is None or self.__value_type is None
                 or self.__value_kind is None):
