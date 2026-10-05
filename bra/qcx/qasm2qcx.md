@@ -27,7 +27,7 @@ The converter currently covers:
   qubit registers as gate operands;
 - equal-sized register-selection gate broadcasting;
 - scalar `int`, `uint`, `float`, and `complex` arithmetic;
-- constant integer remainder expressions using `%`;
+- integer remainder expressions using `%`;
 - scalar constants, variables, assignments, and numeric casts;
 - scalar and register `bit` values, including bit-string initialization;
 - scalar `bool` variables and constants, Boolean literals, and expression
@@ -48,17 +48,19 @@ OpenQASM `bit` values are represented by QCX `INT` variables whose elements
 are restricted to zero or one by the converter. A measurement is emitted as a
 QCX `M` operation followed immediately by assignment from `:OUTCOME`.
 
-### Constant integer remainder
+### Integer remainder
 
-The `%` operator is currently supported when both operands are integer
-constant values, including literal expressions, named constants, and supported
-explicit integer casts. It follows the converter's truncation-toward-zero
-integer division convention:
+The `%` operator supports scalar `int` and INT-backed `uint` operands, including
+literal expressions, named constants, variables, and supported explicit integer
+casts. It follows the converter's truncation-toward-zero integer division
+convention:
 
 ```qasm
 const int negative = -7 % 3; // -1
 const int positive = 7 % -3; // 1
 int value = 7 % 3;          // folded to 1 during conversion
+int divisor = 3;
+value = value % divisor;    // evaluated by QCX at runtime
 ```
 
 The remainder is computed as `a - (a / b) * b`, so a nonzero remainder has
@@ -66,14 +68,21 @@ the sign of the dividend. Constant evaluation uses integer calculations without
 floating-point conversion. `uint` uses the existing INT-backed representation;
 declared widths and unsigned wraparound are not enforced.
 
+Runtime remainder is lowered to existing QCX integer division, multiplication,
+and subtraction instructions. Temporaries preserve both operands until the
+complete result is available. Computations remain in their original branches
+and short-circuit operands; only temporary declarations may be moved earlier.
+
 Evaluated constant `/` and `%` expressions with zero divisors produce
 converter-specific errors, reported by the command-line tool without a Python
 traceback. Skipped operands of constant Boolean expressions are still validated
 without performing the arithmetic. Runtime division remains deferred to QCX;
-this converter-side validation does not add runtime zero-divisor checks to `bra`.
+this converter-side validation does not add runtime zero-divisor or overflow
+checks to `bra`. Literal zero-divisor `/` and `%` operations in runtime
+expressions are also deferred so short-circuited operands can skip them.
 Non-integer remainder operands are
-rejected unless explicitly cast to an integer type first. Runtime `%` expressions
-and `%=` assignments are not yet supported.
+rejected unless explicitly cast to an integer type first. `%=` assignments are
+not yet supported.
 
 ### Boolean values and conversions
 
@@ -312,8 +321,8 @@ The current prototype does not reliably support:
   Boolean arithmetic, mixed Boolean/numeric comparisons, or block-local
   declarations;
 - bitwise operations or classical functions; or
-- runtime `%` expressions, `%=` assignments, and arithmetic operators other
-  than `+`, `-`, `*`, `/`, and constant integer `%`.
+- `%=` assignments and arithmetic operators other than `+`, `-`, `*`, `/`,
+  and integer `%`.
 
 The characterization tests in `bra/test/test_qasm2qcx.py` define the working
 baseline. `bra/test/qasm2qcx_if_else_numerical.py` additionally converts and
@@ -324,10 +333,15 @@ It also executes the complete Boolean example above. These tests cover the
 converter's supported Boolean subset; the limitations above remain explicit
 future work.
 
+`bra/test/qasm2qcx_integer_remainder_numerical.py` verifies runtime remainder
+for signed operands, nested expressions, operand preservation, short-circuiting,
+and temporary reuse.
+
 Run the converter and numerical tests from the repository root:
 
 ```console
 python3 -m unittest bra/test/test_qasm2qcx.py
 python3 bra/test/jumpif_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_if_else_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_integer_remainder_numerical.py --bra bra/bin/bra
 ```

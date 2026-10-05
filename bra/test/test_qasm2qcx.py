@@ -78,8 +78,7 @@ class IntegerRemainderConstantTests(unittest.TestCase):
                 'const int value = 7 % 0;', 'const int value = 0 % 0;',
                 'const int zero = 0; const int value = -7 % zero;',
                 'const int value = 7 % (3 - 3);',
-                'const bool value = true && 7 % 0 == 0;',
-                'int value = 7 % 0;'):
+                'const bool value = true && 7 % 0 == 0;'):
             with self.subTest(source=source):
                 with self.assertRaisesRegex(qasm2qcx.ZeroDivisorException,
                                             'divisor must not be zero'):
@@ -113,12 +112,77 @@ class IntegerRemainderConstantTests(unittest.TestCase):
                                             'requires int or uint operands'):
                     convert(f'OPENQASM 3.0; {declaration} int value = a % 3;')
 
-    def test_runtime_remainder_and_compound_assignment_remain_unsupported(self) -> None:
-        for statement in ('int value = a % 3;', 'int value = 7 % a;',
-                          'int value = a % a;', 'a %= 3;'):
-            with self.subTest(statement=statement):
-                with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
-                    convert('OPENQASM 3.0; int a = 7; ' + statement)
+    def test_compound_assignment_remains_unsupported(self) -> None:
+        with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+            convert('OPENQASM 3.0; int a = 7; a %= 3;')
+
+
+class IntegerRemainderRuntimeTests(unittest.TestCase):
+    def test_emits_remainder_using_existing_qcx_operations(self) -> None:
+        self.assertEqual(convert('OPENQASM 3.0; int a = 7; int b = 3; int result = a % b;'), [
+            'QUBITS 0', 'VAR A1 INT', 'LET A1 := 7', 'VAR B1 INT', 'LET B1 := 3',
+            'VAR RESULT63 INT', 'VAR QASM2QCX_INT_0 INT', 'VAR QASM2QCX_INT_1 INT',
+            'LET QASM2QCX_INT_0 := A1', 'LET QASM2QCX_INT_1 := A1',
+            'LET QASM2QCX_INT_1 /= B1', 'LET QASM2QCX_INT_1 *= B1',
+            'LET QASM2QCX_INT_0 -= QASM2QCX_INT_1', 'LET RESULT63 := QASM2QCX_INT_0',
+        ])
+
+    def test_does_not_modify_source_operands(self) -> None:
+        lines = convert('OPENQASM 3.0; int a = 7; int b = 3; int result = a % b;')
+        self.assertEqual([line for line in lines if line.startswith('LET A1 ')], ['LET A1 := 7'])
+        self.assertEqual([line for line in lines if line.startswith('LET B1 ')], ['LET B1 := 3'])
+
+    def test_accepts_mixed_integer_operands_and_casts(self) -> None:
+        for expression in ('a % 3', '7 % b', 'a % b', 'a % a',
+                           '(a + 1) % (b - 1)', '(a % b) % b',
+                           'a % (b % a)', 'int(f) % uint(b)'):
+            with self.subTest(expression=expression):
+                lines = convert('OPENQASM 3.0; int a = 7; uint b = 3; float f = 7.5; '
+                                f'int result = {expression};')
+                self.assertTrue(lines[-1].startswith('LET RESULT63 := QASM2QCX_INT_'))
+                self.assertFalse(any('%=' in line for line in lines))
+
+    def test_self_assignment_is_emitted_after_complete_remainder(self) -> None:
+        lines = convert('OPENQASM 3.0; int a = 7; a = a % a;')
+        self.assertEqual(lines[-2:], [
+            'LET QASM2QCX_INT_0 -= QASM2QCX_INT_1', 'LET A1 := QASM2QCX_INT_0',
+        ])
+
+    def test_reuses_remainder_temporaries(self) -> None:
+        lines = convert('OPENQASM 3.0; int a = 7; int b = 3; '
+                        'int result = a % b; result = b % a; result = a + b;')
+        self.assertEqual([line for line in lines if line.startswith('VAR QASM2QCX_')], [
+            'VAR QASM2QCX_INT_0 INT', 'VAR QASM2QCX_INT_1 INT',
+        ])
+
+    def test_avoids_reserved_source_names(self) -> None:
+        lines = convert('OPENQASM 3.0; int a = 7; int result = a % 3; '
+                        'int QASM2QCX_INT_ = 9;')
+        self.assertIn('LET RESULT63 := QASM2QCX_INT_1', lines)
+        self.assertIn('LET QASM2QCX_INT_1 -= QASM2QCX_INT_2', lines)
+        self.assertEqual([line for line in lines if line.startswith('LET QASM2QCX_INT_0 ')],
+                         ['LET QASM2QCX_INT_0 := 9'])
+
+    def test_zero_divisor_runtime_operations_remain_inside_short_circuit_rhs(self) -> None:
+        for expression in ('a && 7 % 0 == 0', '!a || bool(7 % 0)',
+                           'a && 7 % divisor == 0', 'a && divisor % 0 == 0'):
+            with self.subTest(expression=expression):
+                lines = convert('OPENQASM 3.0; bool a = false; int divisor = 0; '
+                                f'bool result = {expression}; divisor = divisor + 1;')
+                rhs_start = lines.index('@QASM2QCX_CONDITION_0')
+                division = next(i for i, line in enumerate(lines) if ' /= ' in line)
+                self.assertLess(rhs_start, division)
+                first_jump = next(i for i, line in enumerate(lines) if line.startswith('JUMP'))
+                self.assertTrue(all(i < first_jump for i, line in enumerate(lines)
+                                    if line.startswith('VAR QASM2QCX_')))
+
+    def test_skipped_runtime_remainder_operands_are_validated(self) -> None:
+        for expression in ('a && 7 % missing == 0', 'a && 7.0 % 0 == 0',
+                           'a && b % 3 == 0'):
+            with self.subTest(expression=expression):
+                with self.assertRaises(qasm2qcx.QASM2QCXError):
+                    convert('OPENQASM 3.0; bool a = false; bit b = 1; '
+                            f'bool result = {expression};')
 
 
 class ConstantZeroDivisorTests(unittest.TestCase):
