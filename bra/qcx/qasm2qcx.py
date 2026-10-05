@@ -187,6 +187,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__sized_quantum_registers: set[str] = set()
         self.__declared_quantum_registers: set[str] = set()
         self.__amplitude_indices: list[int] | None = None
+        self.__branch_index: int = 0
 
         self.__is_initialization_process = True
         self.visit(qasm_ast_root)
@@ -965,8 +966,129 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def visit_AliasStatement(self, statement: ast.AliasStatement) -> None:
         raise UnsupportedOpenQASMError('alias')
 
+    def __condition_operand(
+            self, expression: ast.Expression
+            ) -> tuple[str | int | float | complex, ValueType, ValueKind]:
+        if isinstance(expression, ast.IndexExpression):
+            if not isinstance(expression.collection, ast.Identifier):
+                raise UnsupportedOpenQASMError(
+                    'multidimensional conditional indexing')
+
+            source_name = expression.collection.name
+            variable_name = self.__capitalize_variable_name(source_name)
+            if self.__type_of(variable_name) != ValueType.BIT:
+                raise UnsupportedOpenQASMError(
+                    'indexed non-bit conditional operand')
+
+            size = self.__bit_variable_name_size_map[variable_name]
+            indices, is_register = self.__index_selection(
+                expression.index, size, 'bit',
+                f'variable {source_name}[{size}]',
+                InvalidBitOperandException)
+            if is_register or len(indices) != 1:
+                raise UnsupportedOpenQASMError(
+                    'bit-register conditional operand')
+            return (
+                self.__qcx_bit_name(variable_name, size, indices[0]),
+                ValueType.BIT,
+                ValueKind.LVALUE,
+            )
+
+        self.__expression_kind = ExpressionKind.ARITHMETIC
+        try:
+            self.visit(expression)
+        finally:
+            self.__expression_kind = None
+        if (self.__value is None or self.__value_type is None
+                or self.__value_kind is None):
+            raise UninitializedValueException
+
+        if (isinstance(expression, ast.Identifier)
+                and self.__value_type == ValueType.BIT
+                and self.__bit_variable_name_size_map[str(self.__value)] > 1):
+            raise UnsupportedOpenQASMError(
+                'bit-register conditional operand')
+        return self.__value, self.__value_type, self.__value_kind
+
+    def __emit_comparison_jump(
+            self, label: str, condition: ast.Expression) -> None:
+        if not isinstance(condition, ast.BinaryExpression):
+            raise UnsupportedOpenQASMError(
+                'non-comparison branching condition')
+
+        operators = {
+            ast.BinaryOperator['==']: '==',
+            ast.BinaryOperator['!=']: '\\=',
+            ast.BinaryOperator['>']: '>',
+            ast.BinaryOperator['<']: '<',
+            ast.BinaryOperator['>=']: '>=',
+            ast.BinaryOperator['<=']: '<=',
+        }
+        if condition.op not in operators:
+            raise UnsupportedOpenQASMError(
+                f'branching condition operator {condition.op.name}')
+
+        rhs_value, rhs_type, rhs_kind = self.__condition_operand(
+            condition.rhs)
+        lhs_value, lhs_type, lhs_kind = self.__condition_operand(
+            condition.lhs)
+
+        if ValueType.COMPLEX in (lhs_type, rhs_type):
+            raise UnsupportedOpenQASMError(
+                'comparison of complex values')
+
+        numeric_lhs_type = (
+            ValueType.INT if lhs_type == ValueType.BIT else lhs_type)
+        numeric_rhs_type = (
+            ValueType.INT if rhs_type == ValueType.BIT else rhs_type)
+        result_type = self.__promoted_type(
+            numeric_lhs_type, numeric_rhs_type)
+
+        lhs, lhs_materialized_temporaries = self.__converted_operand(
+            lhs_value, numeric_lhs_type, lhs_kind, result_type)
+        rhs, rhs_materialized_temporaries = self.__converted_operand(
+            rhs_value, numeric_rhs_type, rhs_kind, result_type)
+
+        temporaries_to_release = (
+            lhs_materialized_temporaries | rhs_materialized_temporaries)
+        for value, value_kind in (
+                (lhs_value, lhs_kind), (rhs_value, rhs_kind)):
+            if value_kind == ValueKind.TEMPORARY:
+                temporaries_to_release.add(str(value))
+
+        if lhs_kind == ValueKind.LITERAL or numeric_lhs_type != result_type:
+            comparison_lhs = self.__add_new_temporary_variable(result_type)
+            self.__qcx_lines.append(f'LET {comparison_lhs} := {lhs}')
+            temporaries_to_release.add(comparison_lhs)
+        else:
+            comparison_lhs = lhs
+
+        self.__qcx_lines.append(
+            f'JUMPIF {label} {comparison_lhs} '
+            f'{operators[condition.op]} {rhs}')
+        for temporary in temporaries_to_release:
+            self.__release_temporary_variable(temporary)
+
     def visit_BranchingStatement(self, statement: ast.BranchingStatement) -> None:
-        raise UnsupportedOpenQASMError('branching statement')
+        if self.__is_initialization_process:
+            for block in (statement.if_block, statement.else_block):
+                for child_statement in block:
+                    self.visit(child_statement)
+            return
+
+        branch_index = self.__branch_index
+        self.__branch_index += 1
+        if_label = f'QASM2QCX_IF_{branch_index}'
+        end_label = f'QASM2QCX_END_IF_{branch_index}'
+
+        self.__emit_comparison_jump(if_label, statement.condition)
+        for child_statement in statement.else_block:
+            self.visit(child_statement)
+        self.__qcx_lines.append(f'JUMP {end_label}')
+        self.__qcx_lines.append(f'@{if_label}')
+        for child_statement in statement.if_block:
+            self.visit(child_statement)
+        self.__qcx_lines.append(f'@{end_label}')
 
     def visit_ForInLoop(self, statement: ast.ForInLoop) -> None:
         raise UnsupportedOpenQASMError('for loop')
