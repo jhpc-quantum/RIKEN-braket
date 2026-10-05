@@ -973,6 +973,69 @@ class BranchingTests(unittest.TestCase):
                 "non-comparison branching condition"):
             convert(source)
 
+    def test_lowers_nested_if_and_else_if_with_unique_labels(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            int value = 1;
+            int result = 0;
+            if (value == 1) {
+                if (result == 0) {
+                    result = 1;
+                }
+            } else if (value == 2) {
+                result = 2;
+            } else {
+                result = 3;
+            }
+        """
+
+        lines = convert(source)
+        jumpif_targets = [
+            line.split()[1]
+            for line in lines
+            if line.startswith("JUMPIF ")
+        ]
+        jump_targets = [
+            line.split()[1]
+            for line in lines
+            if line.startswith("JUMP ")
+        ]
+        labels = {
+            line[1:]
+            for line in lines
+            if line.startswith("@")
+        }
+
+        self.assertEqual(len(jumpif_targets), 3)
+        self.assertEqual(len(set(jumpif_targets)), 3)
+        self.assertTrue(set(jumpif_targets + jump_targets) <= labels)
+
+    def test_lowers_measurement_controlled_gate(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            include "stdgates.inc";
+            qubit[2] q;
+            bit outcome = measure q[0];
+            if (outcome == 0) {
+                x q[1];
+            }
+        """
+
+        self.assertEqual(
+            convert(source),
+            [
+                "QUBITS 2",
+                "VAR OUTCOME127 INT",
+                "M 0",
+                "LET OUTCOME127 := :OUTCOME",
+                "JUMPIF QASM2QCX_IF_0 OUTCOME127 == 0",
+                "JUMP QASM2QCX_END_IF_0",
+                "@QASM2QCX_IF_0",
+                "X 1",
+                "@QASM2QCX_END_IF_0",
+            ],
+        )
+
 
 class AmplitudePragmaTests(unittest.TestCase):
     def test_outputs_all_final_amplitudes(self) -> None:
