@@ -46,6 +46,11 @@ def main() -> None:
                     int result = {expression};'''
                 check_program(arguments.bra, source, ('RESULT63', 'A1', 'B1'),
                               [str(expected), str(lhs), str(rhs)])
+            for operand in ('b', f'({rhs})'):
+                source = f'''OPENQASM 3.0; int a = {lhs}; int b = {rhs};
+                    a %= {operand};'''
+                check_program(arguments.bra, source, ('A1', 'B1'),
+                              [str(expected), str(rhs)])
 
     for expression, expected in (
             ('(a + 1) % (b + 1)', 0), ('a % (b % a)', 1),
@@ -81,6 +86,22 @@ def main() -> None:
         int result = 0;
         if (ready && n % 2 != 0) { result = 1; }'''
     check_program(arguments.bra, source, ('RESULT63', 'READY31'), ['1', '1'])
+
+    for operand, expected in (
+            ('a', 0), ('a - b', 3), ('(a % b) + 1', 1), ('int(f)', 1)):
+        source = f'''OPENQASM 3.0; int a = 7; uint b = 3; float f = 3.5;
+            a %= {operand};'''
+        check_program(arguments.bra, source, ('A1', 'B1'), [str(expected), '3'])
+
+    source = '''OPENQASM 3.0; uint a = 7; int b = 3;
+        a %= b; b %= a; a += 2;'''
+    check_program(arguments.bra, source, ('A1', 'B1'), ['3', '0'])
+
+    source = '''OPENQASM 3.0; int a = 7;
+        if (false) { a %= 0; }
+        a %= 3;
+        if (true) { a %= 1; } else { a %= 0; }'''
+    check_program(arguments.bra, source, ('A1',), ['0'])
 
 
 if __name__ == "__main__":

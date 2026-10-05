@@ -1883,6 +1883,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 and statement.op != ast.AssignmentOperator['=']):
             raise UnsupportedOpenQASMError(
                 f'Boolean assignment operator {statement.op.name}')
+        expression = statement.rvalue
         if statement.op == ast.AssignmentOperator['=']:
             operator = ':='
         elif statement.op == ast.AssignmentOperator['+=']:
@@ -1893,12 +1894,20 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             operator = '*='
         elif statement.op == ast.AssignmentOperator['/=']:
             operator = '/='
+        elif statement.op == ast.AssignmentOperator['%=']:
+            if variable_type != ValueType.INT:
+                raise UnsupportedOpenQASMError('integer remainder assignment requires an int or uint target')
+            # Reuse expression lowering and assign only its completed result;
+            # the destination may also occur anywhere in the RHS expression.
+            operator = ':='
+            expression = ast.BinaryExpression(
+                ast.BinaryOperator['%'], statement.lvalue, statement.rvalue)
         else:
             raise UnsupportedOpenQASMError(
                 f'assignment operator {statement.op.name}')
 
         self.__expression_kind = ExpressionKind.ARITHMETIC
-        self.visit(statement.rvalue)
+        self.visit(expression)
         self.__expression_kind = None
         if (self.__value is None or self.__value_type is None
                 or self.__value_kind is None):
