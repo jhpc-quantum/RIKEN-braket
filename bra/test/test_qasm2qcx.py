@@ -405,6 +405,21 @@ class ConstantForLoopExpansionTests(unittest.TestCase):
                 converter.visit(loop)
         self.assertEqual(converter._QASM2QCXConverter__loop_bindings, [])
 
+    def test_cli_reports_range_and_expansion_errors_without_partial_output(self) -> None:
+        for source, message in (
+                ('OPENQASM 3.0; for int i in [0:0:1] {}',
+                 'For-loop range step cannot be zero'),
+                ('OPENQASM 3.0; for int i in [0:10000] {}',
+                 'For-loop expansion exceeds 10000 iterations'),
+                ('OPENQASM 3.0; for int i in [0:1] { i = 0; }',
+                 'Unsupported OpenQASM construct: assignment to a for-loop iterator')):
+            with self.subTest(source=source):
+                with patch('builtins.open', mock_open(read_data=source)), patch('builtins.print') as output:
+                    with self.assertRaises(SystemExit) as error:
+                        qasm2qcx.main(['loop.qasm'])
+                self.assertEqual(str(error.exception), f'qasm2qcx.py: {message}')
+                output.assert_not_called()
+
 
 class IntegerRemainderConstantTests(unittest.TestCase):
     def test_signed_remainder_uses_dividend_sign(self) -> None:

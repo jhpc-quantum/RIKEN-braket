@@ -110,6 +110,13 @@ def main() -> None:
         }'''
     check_program(arguments.bra, source, ('SUM7',), ['54'])
 
+    # Complete classical example from bra/qcx/qasm2qcx.md.
+    source = '''OPENQASM 3.0; int total = 0;
+        for int i in [1:3] {
+            for int j in [0:i] { total += i + j; }
+        }'''
+    check_program(arguments.bra, source, ('TOTAL31',), ['30'])
+
 
 if __name__ == '__main__':
     main()
