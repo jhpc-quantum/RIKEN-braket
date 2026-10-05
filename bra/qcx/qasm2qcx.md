@@ -32,7 +32,8 @@ The converter currently covers:
 - projective measurement of individual qubits and register selections;
 - reset of individual qubits and register selections;
 - OpenQASM barriers as ordering-only operations;
-- comparison-based `if`, `else if`, and `else` control flow;
+- `if`, `else if`, and `else` control flow with comparisons and logical
+  conditions;
 - scalar expressions used as gate parameters; and
 - final-state amplitude output through a namespaced pragma.
 
@@ -94,14 +95,40 @@ range, or an out-of-bounds index is rejected during conversion.
 
 ## Classical control flow
 
-The converter supports `if`/`else` statements with an explicit comparison as
-their condition. The supported comparison operators are `==`, `!=`, `>`, `<`,
-`>=`, and `<=`. OpenQASM `!=` is emitted as the QCX not-equal operator `\=`.
+The converter supports `if`/`else` statements with comparisons, direct scalar
+bit conditions, and logical operators. The supported comparison operators are
+`==`, `!=`, `>`, `<`, `>=`, and `<=`. OpenQASM `!=` is emitted as the QCX
+not-equal operator `\=`.
 
 Conditions can compare scalar `int`, `uint`, `float`, and `bit` expressions.
 A statically indexed element of a bit register is also accepted. Compatible
 integer and floating-point operands are promoted when necessary. Complex
 values and complete multi-element bit registers cannot be compared.
+
+A scalar `bit` or a statically indexed element of a bit register can also be
+used directly as a condition: zero is false and one is true. Logical negation
+`!` and logical combinations `&&` and `||` can be applied recursively to these
+conditions and supported comparisons. Parentheses can group conditions.
+
+Logical AND and OR use short-circuit evaluation from left to right: `&&` skips
+its right operand when the left operand is false, and `||` skips its right
+operand when the left operand is true. For example:
+
+```qasm
+if (ready && count > 0) {
+    x q;
+}
+if (!(flags[0] || flags[1])) {
+    reset q;
+}
+```
+
+Here `ready` is a scalar bit, `flags` is a bit register, and `count` is an
+integer variable, all declared before these statements. A whole bit register,
+including `bit[1]`, is distinct from a scalar bit and cannot be used directly
+as a condition; select its element explicitly, as in `flags[0]`. Direct scalar
+bit conditions follow the rules in the
+[OpenQASM live specification](https://openqasm.com/language/types.html#classical-bits-and-registers).
 
 For example, a measurement result can control later operations:
 
@@ -124,10 +151,12 @@ The converter lowers structured branches to generated QCX labels, `JUMP`, and
 distinct generated labels. Branch bodies may contain supported gates,
 measurements, resets, assignments, barriers, and nested branches.
 
-The condition must currently be a single explicit comparison. Conditions such
-as `if (flag)`, logical combinations using `&&` or `||`, logical negation, and
-comparisons of complex values or complete multi-element bit registers are not
-yet supported. Variables used by a branch must be declared outside it;
+Logical expressions are currently supported only as branching conditions.
+Boolean declarations and literals, logical expressions in assignments or gate
+parameters, and bitwise operators such as `&`, `|`, `^`, and `~` are not yet
+supported. Direct integer, floating-point, or complex conditions are also
+rejected; use a supported explicit comparison instead for integer and
+floating-point values. Variables used by a branch must be declared outside it;
 block-local declarations and lexical scopes are also not yet supported.
 
 ## Amplitude output
@@ -160,10 +189,19 @@ The current prototype does not reliably support:
 - dynamically computed indices, ranges with omitted bounds, or
   multidimensional indexing;
 - general classical arrays, booleans, or block-local declarations;
-- non-comparison branching conditions, logical operations, or classical
-  functions; or
+- logical expressions outside branching conditions, bitwise operations, or
+  classical functions; or
 - arithmetic operators other than `+`, `-`, `*`, and `/`.
 
 The characterization tests in `bra/test/test_qasm2qcx.py` define the working
 baseline. `bra/test/qasm2qcx_if_else_numerical.py` additionally converts and
-executes a deterministic measurement-controlled program with `bra`.
+executes deterministic measurement-controlled programs with `bra`, verifies
+logical truth tables, and checks short-circuit evaluation and temporary reuse.
+
+Run the converter and numerical tests from the repository root:
+
+```console
+python3 -m unittest bra/test/test_qasm2qcx.py
+python3 bra/test/jumpif_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_if_else_numerical.py --bra bra/bin/bra
+```
