@@ -70,6 +70,10 @@ namespace bra
               : "";
   }
 
+  integer_zero_divisor_error::integer_zero_divisor_error(std::string const& lhs_variable_name, std::string const& rhs_literal_or_variable_name)
+    : std::runtime_error{"integer division by zero in LET " + lhs_variable_name + " /= " + rhs_literal_or_variable_name}
+  { }
+
   wrong_comparison_argument_error::wrong_comparison_argument_error(std::string const& lhs_variable_name, ::bra::compare_operation_type const op, std::string const& rhs_literal_or_variable_name)
     : std::runtime_error{(std::string{"\""} + lhs_variable_name + " " + to_string(op) + " " + rhs_literal_or_variable_name + "\" is a wrong argument").c_str()}
   { }
@@ -461,7 +465,11 @@ namespace bra
       else if (op == ::bra::assign_operation_type::multiplies_assign)
         int_variables_.at(variable_name)[index] *= rhs_value;
       else if (op == ::bra::assign_operation_type::divides_assign)
+      {
+        if (rhs_value == int_type{0})
+          throw ::bra::integer_zero_divisor_error{lhs_variable_name, rhs_literal_or_variable_name};
         int_variables_.at(variable_name)[index] /= rhs_value;
+      }
     }
     else if (pauli_string_space_variables_.find(variable_name) != end(pauli_string_space_variables_))
     {

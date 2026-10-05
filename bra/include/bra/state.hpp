@@ -78,6 +78,13 @@ namespace bra
     std::string to_string(::bra::assign_operation_type const op);
   }; // class wrong_assignment_argument_error
 
+  class integer_zero_divisor_error
+    : public std::runtime_error
+  {
+   public:
+    integer_zero_divisor_error(std::string const& lhs_variable_name, std::string const& rhs_literal_or_variable_name);
+  }; // class integer_zero_divisor_error
+
   class wrong_comparison_argument_error
     : public std::runtime_error
   {
