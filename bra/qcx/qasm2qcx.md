@@ -29,7 +29,7 @@ The converter currently covers:
 - scalar `int`, `uint`, `float`, and `complex` arithmetic;
 - scalar constants, variables, assignments, and numeric casts;
 - scalar and register `bit` values, including bit-string initialization;
-- scalar `bool` variables and constants, Boolean literals, and simple assignments;
+- scalar `bool` variables and constants, Boolean literals, and expression assignments;
 - projective measurement of individual qubits and register selections;
 - reset of individual qubits and register selections;
 - OpenQASM barriers as ordering-only operations;
@@ -50,6 +50,8 @@ OpenQASM scalar `bool` variables also use QCX `INT` storage: `false` is zero
 and `true` is one. The converter tracks Boolean types separately from integers
 and bits. Boolean literals, constants, and variables can initialize or be
 assigned to Boolean variables and can be used directly in branching conditions.
+Comparison and logical expressions can also initialize or be assigned to Boolean
+variables. Boolean constant expressions are evaluated during conversion.
 Boolean arrays and conversions between Boolean and other types are not yet
 supported. Variables declared without initializers have no defined OpenQASM
 value; initialize them before use, as specified in the
@@ -106,7 +108,8 @@ range, or an out-of-bounds index is rejected during conversion.
 ## Classical control flow
 
 The converter supports `if`/`else` statements with comparisons, direct scalar
-bit and Boolean conditions, and logical operators. The supported comparison operators are
+bit and Boolean conditions, and logical operators. The supported comparison
+operators are
 `==`, `!=`, `>`, `<`, `>=`, and `<=`. OpenQASM `!=` is emitted as the QCX
 not-equal operator `\=`.
 
@@ -135,8 +138,8 @@ if (!(flags[0] || flags[1])) {
 }
 ```
 
-Here `ready` is a scalar bit or Boolean, `flags` is a bit register, and `count` is an
-integer variable, all declared before these statements. A whole bit register,
+Here `ready` is a scalar bit or Boolean, `flags` is a bit register, and `count`
+is an integer variable, all declared before these statements. A whole bit register,
 including `bit[1]`, is distinct from a scalar bit and cannot be used directly
 as a condition; select its element explicitly, as in `flags[0]`. Direct scalar
 bit conditions follow the rules in the
@@ -163,9 +166,27 @@ The converter lowers structured branches to generated QCX labels, `JUMP`, and
 distinct generated labels. Branch bodies may contain supported gates,
 measurements, resets, assignments, barriers, and nested branches.
 
-Logical expressions are currently supported only as branching conditions.
-Logical and comparison expressions in assignments, Boolean gate parameters,
-and bitwise operators such as `&`, `|`, `^`, and `~` are not yet supported.
+Comparison and logical expressions also produce Boolean values, following the
+[OpenQASM classical instruction rules](https://openqasm.com/language/classical.html#comparison-boolean-instructions).
+They can initialize Boolean variables and constants or be assigned to Boolean
+variables. For example:
+
+```qasm
+const bool enabled = 2 > 1;
+int count = 1;
+bool ready = enabled && count > 0;
+ready = !ready;
+```
+
+Runtime expressions are lowered to branches assigning zero or one to a
+temporary, followed by assignment to the destination. The destination is not
+overwritten until the complete expression has been evaluated. Logical AND and
+OR retain short-circuit evaluation, including in constant expressions. Skipped
+operands are still checked for valid names and supported types.
+
+Boolean gate parameters, assignment of Boolean expressions to non-Boolean
+variables, and bitwise operators such as `&`, `|`, `^`, and `~` are not yet
+supported.
 Direct integer, floating-point, or complex conditions are also
 rejected; use a supported explicit comparison instead for integer and
 floating-point values. Variables used by a branch must be declared outside it;
@@ -201,8 +222,7 @@ The current prototype does not reliably support:
 - dynamically computed indices, ranges with omitted bounds, or
   multidimensional indexing;
 - general classical arrays, Boolean casts, or block-local declarations;
-- logical expressions outside branching conditions, bitwise operations, or
-  classical functions; or
+- bitwise operations or classical functions; or
 - arithmetic operators other than `+`, `-`, `*`, and `/`.
 
 The characterization tests in `bra/test/test_qasm2qcx.py` define the working

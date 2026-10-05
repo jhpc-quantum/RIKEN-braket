@@ -176,7 +176,6 @@ class BooleanStorageTests(unittest.TestCase):
 
     def test_rejects_unsupported_boolean_value_operations(self) -> None:
         for statement in (
-                'a = !a;', 'a = a && a;', 'a = a || a;', 'a = a == a;',
                 'a += true;', 'a -= false;', 'a *= true;', 'a /= true;',
                 'a = -a;', 'a[0] = false;', 'if (a > false) {}',
                 'if (a == 1) {}', 'if (a == b) {}',
@@ -218,6 +217,122 @@ class BooleanStorageTests(unittest.TestCase):
             with self.subTest(source=source):
                 with self.assertRaises(qasm2qcx.DuplicateIdentifierException):
                     convert('OPENQASM 3.0; ' + source)
+
+
+class BooleanExpressionTests(unittest.TestCase):
+    def test_materializes_comparison_as_zero_or_one(self) -> None:
+        self.assertEqual(convert('''OPENQASM 3.0;
+            int n = 1; bool a = n > 0;'''), [
+                'QUBITS 0', 'VAR QASM2QCX_INT_0 INT',
+                'VAR N1 INT', 'LET N1 := 1', 'VAR A1 INT',
+                'JUMPIF QASM2QCX_BOOL_TRUE_0 N1 > 0',
+                'JUMP QASM2QCX_BOOL_FALSE_0', '@QASM2QCX_BOOL_TRUE_0',
+                'LET QASM2QCX_INT_0 := 1', 'JUMP QASM2QCX_BOOL_END_0',
+                '@QASM2QCX_BOOL_FALSE_0', 'LET QASM2QCX_INT_0 := 0',
+                '@QASM2QCX_BOOL_END_0', 'LET A1 := QASM2QCX_INT_0',
+            ])
+
+    def test_materializes_all_comparisons_and_logical_operators(self) -> None:
+        for expression in (
+                'n == 1', 'n != 1', 'n < 1', 'n <= 1', 'n > 1', 'n >= 1',
+                '!a', '!!a', 'a && b', 'a || b',
+                '(n > 0 && !a) || b', '(a || b) == !a',
+                'flags[0] != flags[1]', '!flags[0]',
+                'flags[0] && n > 0'):
+            with self.subTest(expression=expression):
+                lines = convert('''OPENQASM 3.0; int n = 1;
+                    bool a = true; bool b = false; bit[2] flags = "01";
+                    bool result; result = ''' + expression + ';')
+                self.assertTrue(lines[-1].startswith('LET RESULT63 := QASM2QCX_INT_'))
+                labels = [line[1:] for line in lines if line.startswith('@')]
+                targets = [line.split()[1] for line in lines
+                           if line.startswith(('JUMP ', 'JUMPIF '))]
+                self.assertEqual(len(labels), len(set(labels)))
+                self.assertTrue(set(targets) <= set(labels))
+
+    def test_self_referencing_assignment_writes_destination_after_join(self) -> None:
+        lines = convert('OPENQASM 3.0; bool a = true; a = !a;')
+        self.assertIn('JUMPIF QASM2QCX_BOOL_FALSE_0 A1 \\= 0', lines)
+        self.assertEqual(lines[-2:], [
+            '@QASM2QCX_BOOL_END_0', 'LET A1 := QASM2QCX_INT_0',
+        ])
+        self.assertEqual([line for line in lines if line.startswith('LET A1 ')], [
+            'LET A1 := 1', 'LET A1 := QASM2QCX_INT_0',
+        ])
+
+    def test_short_circuit_destinations_in_value_expressions(self) -> None:
+        for operator, true_target, false_target in (
+                ('&&', 'QASM2QCX_CONDITION_0', 'QASM2QCX_BOOL_FALSE_0'),
+                ('||', 'QASM2QCX_BOOL_TRUE_0', 'QASM2QCX_CONDITION_0')):
+            with self.subTest(operator=operator):
+                lines = convert(f'''OPENQASM 3.0; bool a = true;
+                    int divisor = 0; bool result = a {operator} 1 / divisor > 0;''')
+                index = lines.index(f'JUMPIF {true_target} A1 \\= 0')
+                self.assertEqual(lines[index + 1], f'JUMP {false_target}')
+                self.assertLess(lines.index('@QASM2QCX_CONDITION_0'),
+                                next(i for i, line in enumerate(lines)
+                                     if line.startswith('LET ') and ' /= ' in line))
+
+    def test_nested_values_keep_live_temporaries_distinct_and_declared_once(self) -> None:
+        lines = convert('''OPENQASM 3.0; int n = 1; bool a = true;
+            bool result = (n > 0) == (a || n < 0);
+            result = !result; n = n + 1;''')
+        declarations = [line for line in lines if line.startswith('VAR QASM2QCX_')]
+        self.assertEqual(len(declarations), len(set(declarations)))
+        self.assertGreaterEqual(len(declarations), 3)
+        first_jump = next(i for i, line in enumerate(lines) if line.startswith('JUMP'))
+        self.assertTrue(all(lines.index(line) < first_jump for line in declarations))
+
+    def test_respects_reserved_temporary_names(self) -> None:
+        lines = convert('''OPENQASM 3.0; bool a = true; bool b = !a;
+            int QASM2QCX_INT_ = 7;''')
+        self.assertIn('VAR QASM2QCX_INT_1 INT', lines)
+        self.assertIn('LET B1 := QASM2QCX_INT_1', lines)
+
+    def test_folds_boolean_constant_expressions_without_runtime_code(self) -> None:
+        self.assertEqual(convert('''OPENQASM 3.0;
+            const int n = 2; const bool positive = n > 0;
+            const bool yes = positive && !(n < 1);
+            const bool no = !yes || n / 2 != 1;
+            bool a = yes; a = no;'''), [
+                'QUBITS 0', 'VAR A1 INT', 'LET A1 := 1', 'LET A1 := 0',
+            ])
+
+    def test_constant_boolean_short_circuit_skips_arithmetic_not_validation(self) -> None:
+        for expression, expected in (
+                ('false && 1 / 0 > 0', 0), ('true || 1 / 0 > 0', 1),
+                ('!(false && 1 / 0 > 0)', 1),
+                ('true || (false && 1 / 0 > 0)', 1)):
+            with self.subTest(expression=expression):
+                self.assertEqual(convert(f'''OPENQASM 3.0;
+                    const bool value = {expression}; bool a = value;'''), [
+                        'QUBITS 0', 'VAR A1 INT', f'LET A1 := {expected}',
+                    ])
+        for expression in ('true || missing', 'false && missing',
+                           'true || 1', 'false && 1', 'true || (1.0im == 0)'):
+            with self.subTest(expression=expression):
+                with self.assertRaises(qasm2qcx.QASM2QCXError):
+                    convert(f'OPENQASM 3.0; const bool value = {expression};')
+
+    def test_invalid_value_operands_and_targets_are_rejected(self) -> None:
+        for statement in (
+                'bool c = a && n;', 'bool c = !n;',
+                'bool c = flags && a;', 'bool c = flags[0:0] && a;',
+                'bool c = a & a;', 'bool c = ~a;',
+                'bool c = a == n;', 'bool c = z == z;',
+                'int c = n > 0;', 'float c = a && a;',
+                'complex c = !a;', 'a += n > 0;'):
+            with self.subTest(statement=statement):
+                with self.assertRaises(qasm2qcx.QASM2QCXError):
+                    convert('''OPENQASM 3.0; bool a = true; int n = 1;
+                        bit[1] flags = "1"; complex z = 0.0im;''' + statement)
+
+    def test_boolean_value_gate_parameters_are_rejected(self) -> None:
+        for statement in ('rx(!a) q;', 'rx(n > 0) q;', 'gphase(a && a);'):
+            with self.subTest(statement=statement):
+                with self.assertRaises(qasm2qcx.WrongParameterTypeException):
+                    convert('''OPENQASM 3.0; include "stdgates.inc";
+                        qubit q; bool a = true; int n = 1;''' + statement)
 
 
 class StaticIndexingTests(unittest.TestCase):
@@ -1168,11 +1283,13 @@ class BranchingTests(unittest.TestCase):
     def test_rejects_unsupported_logical_operands_and_value_expressions(self) -> None:
         for statement in (
                 "if (a && n) {}", "if (n || a) {}", "if (a & a) {}",
-                "if (~a) {}", "n = a && a;", "a = !a;"):
+                "if (~a) {}", "a = !a;"):
             with self.subTest(statement=statement):
                 with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
                     convert('OPENQASM 3.0; bit a = 1; int n = 1; '
                             + statement)
+        with self.assertRaises(qasm2qcx.NoImplicitCastException):
+            convert('OPENQASM 3.0; bit a = 1; int n = 1; n = a && a;')
 
     def test_rejects_unsupported_direct_index_selections(self) -> None:
         for condition in ("flags[0:0]", "flags[{0}]", "flags[index]"):

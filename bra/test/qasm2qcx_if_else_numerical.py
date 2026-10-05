@@ -167,6 +167,66 @@ def main() -> None:
         check_program(arguments.bra, source, ("RESULT63", "DIVISOR127"),
                       [expected, "1"])
 
+    # The same truth tables must hold when a condition produces a value.
+    for a in (False, True):
+        for b in (False, True):
+            for expression, truth in (
+                    ('!a', not a), ('!!a', a),
+                    ('a && b', a and b), ('a || b', a or b),
+                    ('!(a && b)', not (a and b)),
+                    ('a || b && !a', a or (b and not a)),
+                    ('(a || b) == !a', (a or b) == (not a)),
+                    ('(a == b) != (a && b)', (a == b) != (a and b)),
+                    ('flags[0] && !flags[1]', a and not b)):
+                source = f'''OPENQASM 3.0;
+                    bool a = {str(a).lower()}; bool b = {str(b).lower()};
+                    bit[2] flags = "{int(b)}{int(a)}";
+                    bool result = {expression}; bool copy = false;
+                    copy = result; result = !result;'''
+                check_program(arguments.bra, source, ('COPY15', 'RESULT63'),
+                              [str(int(bool(truth))), str(int(not truth))])
+
+    for n in (-1, 0, 1):
+        for expression, truth in (
+                ('n == 0', n == 0), ('n != 0', n != 0),
+                ('n < 0', n < 0), ('n <= 0', n <= 0),
+                ('n > 0', n > 0), ('n >= 0', n >= 0),
+                ('n + 1 >= 0.5', n + 1 >= 0.5),
+                ('0 < n + 1', 0 < n + 1),
+                ('(n > 0) == (n < 0)', (n > 0) == (n < 0))):
+            source = f'''OPENQASM 3.0; int n = {n};
+                bool result = {expression};'''
+            check_program(arguments.bra, source, ('RESULT63',),
+                          [str(int(truth))])
+
+    source = '''OPENQASM 3.0; bool a = true; bool b = false;
+        a = !a; b = !b; a = a || b; b = a && !b;'''
+    check_program(arguments.bra, source, ('A1', 'B1'), ['1', '0'])
+
+    for expression, expected in (
+            ('a && 1 / divisor > 0', '0'),
+            ('!a || 1 / divisor > 0', '1'),
+            ('(a && 1 / divisor > 0) == false', '1'),
+            ('!(a && 1 / divisor > 0)', '1')):
+        source = f'''OPENQASM 3.0; bool a = false; int divisor = 0;
+            bool result = {expression}; divisor = divisor + 1;'''
+        check_program(arguments.bra, source, ('RESULT63', 'DIVISOR127'),
+                      [expected, '1'])
+
+    # The first Boolean-value temporary can be introduced in a skipped body;
+    # a later expression must still be able to reuse its storage safely.
+    source = '''OPENQASM 3.0; bool a = false; bool result = true;
+        int divisor = 0;
+        if (a) { result = a && 1 / divisor > 0; }
+        result = !a; divisor = divisor + 1;'''
+    check_program(arguments.bra, source, ('RESULT63', 'DIVISOR127'), ['1', '1'])
+
+    source = '''OPENQASM 3.0; const bool yes = 2 > 1 && !false;
+        const bool no = false && 1 / 0 > 0;
+        bool result = yes && !no;
+        if (result == (1 < 2)) { result = !result; }'''
+    check_program(arguments.bra, source, ('RESULT63',), ['0'])
+
 
 if __name__ == "__main__":
     main()
