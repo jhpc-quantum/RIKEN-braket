@@ -214,6 +214,25 @@ class BooleanStorageTests(unittest.TestCase):
 
 
 class BooleanExpressionTests(unittest.TestCase):
+    def test_runtime_short_circuit_defers_literal_division_by_zero(self) -> None:
+        for expression in ('false && 1 / 0 > 0', 'true || bool(1 / 0)',
+                           'a && 1 / 0 > 0', '!a || bool(1.0 / 0.0)'):
+            with self.subTest(expression=expression):
+                lines = convert('OPENQASM 3.0; bool a = false; '
+                                f'bool result = {expression};')
+                divisions = [i for i, line in enumerate(lines) if ' /= ' in line]
+                self.assertEqual(len(divisions), 1)
+                self.assertLess(lines.index('@QASM2QCX_CONDITION_0'), divisions[0])
+
+    def test_skipped_runtime_boolean_operands_are_still_validated(self) -> None:
+        for expression in ('false && missing', 'true || missing',
+                           'false && 1', 'true || bool(1.0im)',
+                           'false && flags', 'true || flags[0:0]'):
+            with self.subTest(expression=expression):
+                with self.assertRaises(qasm2qcx.QASM2QCXError):
+                    convert('OPENQASM 3.0; bit[1] flags = "1"; '
+                            f'bool result = {expression};')
+
     def test_materializes_comparison_as_zero_or_one(self) -> None:
         self.assertEqual(convert('''OPENQASM 3.0;
             int n = 1; bool a = n > 0;'''), [

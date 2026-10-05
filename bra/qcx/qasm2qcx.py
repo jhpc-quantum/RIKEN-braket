@@ -503,7 +503,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UnsupportedOpenQASMError(f'binary operator {expression.op.name}')
 
         result_type = self.__promoted_type(lhs_value_type, rhs_value_type)
-        if lhs_value_kind == ValueKind.LITERAL and rhs_value_kind == ValueKind.LITERAL:
+        # A runtime expression may occur in a short-circuited operand. Do not
+        # raise during folding for a division that QCX might never execute.
+        defer_division = (self.__expression_kind == ExpressionKind.ARITHMETIC
+                          and expression.op == ast.BinaryOperator['/']
+                          and rhs_value == 0)
+        if (lhs_value_kind == ValueKind.LITERAL and rhs_value_kind == ValueKind.LITERAL
+                and not defer_division):
             def divide(lhs, rhs):
                 if result_type != ValueType.INT:
                     return lhs / rhs

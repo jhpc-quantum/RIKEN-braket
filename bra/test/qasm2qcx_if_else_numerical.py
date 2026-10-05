@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Exercise converted OpenQASM measurement-controlled branches.
+"""Exercise converted OpenQASM branches, Boolean values, and conversions.
 
 Example:
   python3 bra/test/qasm2qcx_if_else_numerical.py --bra bra/bin/bra
@@ -220,6 +220,27 @@ def main() -> None:
         if (a) { result = a && 1 / divisor > 0; }
         result = !a; divisor = divisor + 1;'''
     check_program(arguments.bra, source, ('RESULT63', 'DIVISOR127'), ['1', '1'])
+
+    for expression, expected in (
+            ('false && 1 / 0 > 0', '0'), ('true || bool(1 / 0)', '1'),
+            ('a && 1 / 0 > 0', '0'), ('!a || bool(1.0 / 0.0)', '1')):
+        source = f'''OPENQASM 3.0; bool a = false;
+            bool result = {expression}; int n = 1;
+            n = n + 1;'''
+        check_program(arguments.bra, source, ('RESULT63', 'N1'), [expected, '2'])
+
+    source = '''OPENQASM 3.0; include "stdgates.inc";
+        qubit[2] q; bit[2] outcomes;
+        x q[0]; outcomes = measure q;
+        bool ready = outcomes[0] && !outcomes[1];
+        int count = 2; bool enabled = bool(count);
+        bool proceed = ready && enabled;
+        if (proceed) { x q[1]; } else { reset q[1]; }
+        outcomes[1] = measure q[1];
+        ready = !ready; outcomes[0] = ready;'''
+    check_program(arguments.bra, source,
+                  ('READY31', 'PROCEED127', 'OUTCOMES255:0', 'OUTCOMES255:1'),
+                  ['0', '1', '0', '1'])
 
     source = '''OPENQASM 3.0; const bool yes = 2 > 1 && !false;
         const bool no = false && 1 / 0 > 0;
