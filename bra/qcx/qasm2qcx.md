@@ -83,8 +83,9 @@ Evaluated constant `/` and `%` expressions with zero divisors produce
 converter-specific errors, reported by the command-line tool without a Python
 traceback. Skipped operands of constant Boolean expressions are still validated
 without performing the arithmetic. Runtime division remains deferred to QCX;
-this converter-side validation does not add runtime zero-divisor or overflow
-checks to `bra`. Literal zero-divisor `/` and `%` operations in runtime
+`bra` checks integer zero divisors when the division instruction executes and
+throws `bra::integer_zero_divisor_error`. Integer overflow remains unchecked.
+Literal zero-divisor `/` and `%` operations in runtime
 expressions are also deferred so short-circuited operands can skip them.
 Non-integer remainder operands are
 rejected unless explicitly cast to an integer type first. Indexed classical
