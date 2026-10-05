@@ -133,6 +133,13 @@ class NoConstantExpressionException(QASM2QCXError):
     def __str__(self):
         return 'No constant expression'
 
+class ZeroDivisorException(QASM2QCXError):
+    def __init__(self, operator: str) -> None:
+        self.operator = operator
+
+    def __str__(self):
+        return f'Constant {self.operator} expression divisor must not be zero'
+
 class WrongConstantVariableException(QASM2QCXError):
     def __str__(self):
         return 'Wrong constant variable'
@@ -493,6 +500,24 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         lhs_value_kind = self.__value_kind
         lhs_value = self.__value
 
+        if expression.op == ast.BinaryOperator['%']:
+            if lhs_value_type != ValueType.INT or rhs_value_type != ValueType.INT:
+                raise UnsupportedOpenQASMError('integer remainder requires int or uint operands')
+            if lhs_value_kind != ValueKind.LITERAL or rhs_value_kind != ValueKind.LITERAL:
+                raise UnsupportedOpenQASMError('runtime integer remainder')
+            if not self.__evaluate_constant:
+                # Validate skipped constant operands without performing the
+                # arithmetic, just as for short-circuited constant division.
+                self.__value = 0
+            else:
+                if rhs_value == 0:
+                    raise ZeroDivisorException('%')
+                quotient = self.__integer_quotient(lhs_value, rhs_value)
+                self.__value = lhs_value - quotient * rhs_value
+            self.__value_type = ValueType.INT
+            self.__value_kind = ValueKind.LITERAL
+            return
+
         operators = {
             ast.BinaryOperator['+']: '+=',
             ast.BinaryOperator['-']: '-=',
@@ -511,14 +536,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if (lhs_value_kind == ValueKind.LITERAL and rhs_value_kind == ValueKind.LITERAL
                 and not defer_division):
             def divide(lhs, rhs):
+                if rhs == 0:
+                    raise ZeroDivisorException('/')
                 if result_type != ValueType.INT:
                     return lhs / rhs
 
-                # OpenQASM integer division truncates toward zero, as does the
-                # QCX integer operation.  Python's // rounds toward negative
-                # infinity, so calculate the sign separately.
-                quotient = abs(lhs) // abs(rhs)
-                return -quotient if (lhs < 0) != (rhs < 0) else quotient
+                return self.__integer_quotient(lhs, rhs)
 
             operations = {
                 ast.BinaryOperator['+']: lambda lhs, rhs: lhs + rhs,
@@ -557,6 +580,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__value = result
         self.__value_type = result_type
         self.__value_kind = ValueKind.TEMPORARY
+
+    @staticmethod
+    def __integer_quotient(lhs: int, rhs: int) -> int:
+        # Match truncation toward zero without converting to float or using
+        # Python's floor division on signed operands. Remainder uses the same
+        # quotient so that lhs == quotient * rhs + remainder.
+        quotient = abs(lhs) // abs(rhs)
+        return -quotient if (lhs < 0) != (rhs < 0) else quotient
 
     def visit_IntegerLiteral(self, expression: ast.IntegerLiteral) -> None:
         if self.__expression_kind is None:

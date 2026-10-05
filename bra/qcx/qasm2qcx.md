@@ -27,6 +27,7 @@ The converter currently covers:
   qubit registers as gate operands;
 - equal-sized register-selection gate broadcasting;
 - scalar `int`, `uint`, `float`, and `complex` arithmetic;
+- constant integer remainder expressions using `%`;
 - scalar constants, variables, assignments, and numeric casts;
 - scalar and register `bit` values, including bit-string initialization;
 - scalar `bool` variables and constants, Boolean literals, and expression
@@ -46,6 +47,33 @@ widths are also accepted but are not enforced by QCX.
 OpenQASM `bit` values are represented by QCX `INT` variables whose elements
 are restricted to zero or one by the converter. A measurement is emitted as a
 QCX `M` operation followed immediately by assignment from `:OUTCOME`.
+
+### Constant integer remainder
+
+The `%` operator is currently supported when both operands are integer
+constant values, including literal expressions, named constants, and supported
+explicit integer casts. It follows the converter's truncation-toward-zero
+integer division convention:
+
+```qasm
+const int negative = -7 % 3; // -1
+const int positive = 7 % -3; // 1
+int value = 7 % 3;          // folded to 1 during conversion
+```
+
+The remainder is computed as `a - (a / b) * b`, so a nonzero remainder has
+the sign of the dividend. Constant evaluation uses integer calculations without
+floating-point conversion. `uint` uses the existing INT-backed representation;
+declared widths and unsigned wraparound are not enforced.
+
+Evaluated constant `/` and `%` expressions with zero divisors produce
+converter-specific errors, reported by the command-line tool without a Python
+traceback. Skipped operands of constant Boolean expressions are still validated
+without performing the arithmetic. Runtime division remains deferred to QCX;
+this converter-side validation does not add runtime zero-divisor checks to `bra`.
+Non-integer remainder operands are
+rejected unless explicitly cast to an integer type first. Runtime `%` expressions
+and `%=` assignments are not yet supported.
 
 ### Boolean values and conversions
 
@@ -284,7 +312,8 @@ The current prototype does not reliably support:
   Boolean arithmetic, mixed Boolean/numeric comparisons, or block-local
   declarations;
 - bitwise operations or classical functions; or
-- arithmetic operators other than `+`, `-`, `*`, and `/`.
+- runtime `%` expressions, `%=` assignments, and arithmetic operators other
+  than `+`, `-`, `*`, `/`, and constant integer `%`.
 
 The characterization tests in `bra/test/test_qasm2qcx.py` define the working
 baseline. `bra/test/qasm2qcx_if_else_numerical.py` additionally converts and

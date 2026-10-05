@@ -3,6 +3,7 @@
 import importlib.util
 from pathlib import Path
 import unittest
+from unittest.mock import mock_open, patch
 
 
 CONVERTER_PATH = Path(__file__).parents[1] / "qcx" / "qasm2qcx.py"
@@ -13,6 +14,150 @@ SPEC.loader.exec_module(qasm2qcx)
 
 def convert(source: str) -> list[str]:
     return qasm2qcx.convert(source)
+
+
+class IntegerRemainderConstantTests(unittest.TestCase):
+    def test_signed_remainder_uses_dividend_sign(self) -> None:
+        for lhs in (-7, -6, -2, -1, 0, 1, 2, 6, 7):
+            for rhs in (-3, -1, 1, 3):
+                with self.subTest(lhs=lhs, rhs=rhs):
+                    expected = abs(lhs) % abs(rhs)
+                    if lhs < 0:
+                        expected = -expected
+                    self.assertEqual(convert(f'''OPENQASM 3.0;
+                        const int value = {lhs} % {rhs}; int result = value;'''), [
+                            'QUBITS 0', 'VAR RESULT63 INT',
+                            f'LET RESULT63 := {expected}',
+                        ])
+
+    def test_preserves_precision_for_large_constant_integers(self) -> None:
+        magnitude = 2**100 + 17
+        for lhs in (magnitude, -magnitude):
+            for rhs in (7, -7):
+                with self.subTest(lhs=lhs, rhs=rhs):
+                    expected = abs(lhs) % abs(rhs) * (-1 if lhs < 0 else 1)
+                    self.assertEqual(convert(f'''OPENQASM 3.0;
+                        const int value = {lhs} % {rhs}; int result = value;''')[-1],
+                                     f'LET RESULT63 := {expected}')
+
+    def test_nested_expressions_and_precedence(self) -> None:
+        for expression, expected in (
+                ('2 + 7 % 3 * 4', 6), ('(2 + 7) % 4', 1),
+                ('20 % 6 % 3', 2), ('(-7 % 3) * 4', -4),
+                ('7 % (5 % 3)', 1), ('(7 / 2) % 2', 1)):
+            with self.subTest(expression=expression):
+                self.assertEqual(convert(f'''OPENQASM 3.0;
+                    const int value = {expression}; int result = value;''')[-1],
+                                 f'LET RESULT63 := {expected}')
+
+    def test_uint_and_mixed_integer_constants(self) -> None:
+        self.assertEqual(convert('''OPENQASM 3.0;
+            const uint a = 7; const int b = 3;
+            const uint value = a % b; uint result = value;'''), [
+                'QUBITS 0', 'VAR RESULT63 INT', 'LET RESULT63 := 1',
+            ])
+
+    def test_folds_literal_remainder_and_explicit_integer_casts(self) -> None:
+        self.assertEqual(convert('''OPENQASM 3.0;
+            int a = -7 % 3; int b = int(7.5) % uint(3.5); a = 7 % -3;'''), [
+                'QUBITS 0', 'VAR A1 INT', 'LET A1 := -1',
+                'VAR B1 INT', 'LET B1 := 1', 'LET A1 := 1',
+            ])
+
+    def test_remainder_in_constant_sizes_and_boolean_constants(self) -> None:
+        self.assertEqual(convert('''OPENQASM 3.0;
+            const uint size = 7 % 4; qubit[size] q;
+            const bool yes = -7 % 3 == -1; bool result = yes;
+            bit[7 % 4] flags;'''), [
+                'QUBITS 3', 'VAR RESULT63 INT', 'LET RESULT63 := 1',
+                'VAR FLAGS31 INT 3',
+            ])
+
+    def test_evaluated_zero_divisor_has_a_conversion_error(self) -> None:
+        for source in (
+                'const int value = 7 % 0;', 'const int value = 0 % 0;',
+                'const int zero = 0; const int value = -7 % zero;',
+                'const int value = 7 % (3 - 3);',
+                'const bool value = true && 7 % 0 == 0;',
+                'int value = 7 % 0;'):
+            with self.subTest(source=source):
+                with self.assertRaisesRegex(qasm2qcx.ZeroDivisorException,
+                                            'divisor must not be zero'):
+                    convert('OPENQASM 3.0; ' + source)
+
+    def test_skipped_constant_remainder_checks_types_without_evaluation(self) -> None:
+        for expression, expected in (
+                ('false && 7 % 0 == 0', 0), ('true || 7 % 0 == 0', 1),
+                ('!(false && 7 % 0 == 0)', 1)):
+            with self.subTest(expression=expression):
+                self.assertEqual(convert(f'''OPENQASM 3.0;
+                    const bool value = {expression}; bool result = value;'''), [
+                        'QUBITS 0', 'VAR RESULT63 INT', f'LET RESULT63 := {expected}',
+                    ])
+        for expression in ('true || 7 % missing == 0', 'false && 7.0 % 0 == 0'):
+            with self.subTest(expression=expression):
+                with self.assertRaises(qasm2qcx.QASM2QCXError):
+                    convert(f'OPENQASM 3.0; const bool value = {expression};')
+
+    def test_rejects_non_integer_operands(self) -> None:
+        for expression in ('7.0 % 3', '7 % 3.0', '7.0im % 3',
+                           'true % 3', '7 % false', 'bit(true) % 3'):
+            with self.subTest(expression=expression):
+                with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError,
+                                            'requires int or uint operands'):
+                    convert(f'OPENQASM 3.0; const int value = {expression};')
+        for declaration in ('float a = 7.0;', 'complex a = 7.0im;',
+                            'bool a = true;', 'bit a = 1;'):
+            with self.subTest(declaration=declaration):
+                with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError,
+                                            'requires int or uint operands'):
+                    convert(f'OPENQASM 3.0; {declaration} int value = a % 3;')
+
+    def test_runtime_remainder_and_compound_assignment_remain_unsupported(self) -> None:
+        for statement in ('int value = a % 3;', 'int value = 7 % a;',
+                          'int value = a % a;', 'a %= 3;'):
+            with self.subTest(statement=statement):
+                with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                    convert('OPENQASM 3.0; int a = 7; ' + statement)
+
+
+class ConstantZeroDivisorTests(unittest.TestCase):
+    def test_constant_division_reports_converter_error_for_all_numeric_types(self) -> None:
+        for source in (
+                'const int value = 7 / 0;', 'const uint value = 7 / 0;',
+                'const float value = 7.0 / 0.0;',
+                'const complex value = 7.0im / 0.0im;',
+                'const int zero = 0; const int value = -7 / zero;',
+                'const int value = 7 / (3 - 3);',
+                'const bool value = true && 7 / 0 > 0;'):
+            with self.subTest(source=source):
+                with self.assertRaisesRegex(qasm2qcx.ZeroDivisorException,
+                                            'Constant / expression divisor must not be zero'):
+                    convert('OPENQASM 3.0; ' + source)
+
+    def test_skipped_constant_division_still_checks_names_and_types(self) -> None:
+        for expression, expected in (
+                ('false && 7 / 0 > 0', 0), ('true || bool(7.0 / 0.0)', 1),
+                ('!(false && bool(7 / 0))', 1)):
+            with self.subTest(expression=expression):
+                self.assertEqual(convert(f'''OPENQASM 3.0;
+                    const bool value = {expression}; bool result = value;'''), [
+                        'QUBITS 0', 'VAR RESULT63 INT', f'LET RESULT63 := {expected}',
+                    ])
+        for expression in ('true || bool(7 / missing)', 'false && bool(true / 0)'):
+            with self.subTest(expression=expression):
+                with self.assertRaises(qasm2qcx.QASM2QCXError):
+                    convert(f'OPENQASM 3.0; const bool value = {expression};')
+
+    def test_cli_reports_both_zero_divisor_errors_without_traceback(self) -> None:
+        for operator in ('/', '%'):
+            with self.subTest(operator=operator):
+                source = f'OPENQASM 3.0; const int value = 7 {operator} 0;'
+                with patch('builtins.open', mock_open(read_data=source)):
+                    with self.assertRaises(SystemExit) as caught:
+                        qasm2qcx.main(['zero.qasm'])
+                self.assertEqual(str(caught.exception),
+                                 f'qasm2qcx.py: Constant {operator} expression divisor must not be zero')
 
 
 class WorkingBaselineTests(unittest.TestCase):
