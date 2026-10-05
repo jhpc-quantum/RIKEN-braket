@@ -1076,6 +1076,38 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         for temporary in temporaries_to_release:
             self.__release_temporary_variable(temporary)
 
+    def __emit_condition(
+            self, condition: ast.Expression, true_label: str,
+            false_label: str) -> None:
+        if isinstance(condition, ast.UnaryExpression):
+            if condition.op != ast.UnaryOperator['!']:
+                raise UnsupportedOpenQASMError(
+                    f'branching condition unary operator {condition.op.name}')
+            self.__emit_condition(
+                condition.expression, false_label, true_label)
+            return
+
+        if isinstance(condition, ast.BinaryExpression):
+            self.__emit_comparison_condition(
+                condition, true_label, false_label)
+            return
+
+        if not isinstance(condition, (ast.Identifier, ast.IndexExpression)):
+            raise UnsupportedOpenQASMError(
+                'non-comparison branching condition')
+
+        value, value_type, _ = self.__condition_operand(condition)
+        if value_type != ValueType.BIT:
+            raise UnsupportedOpenQASMError(
+                'direct branching condition must be a scalar bit')
+        if (isinstance(condition, ast.Identifier)
+                and value in self.__sized_bit_variables):
+            raise UnsupportedOpenQASMError(
+                'bit-register conditional operand')
+
+        self.__qcx_lines.append(f'JUMPIF {true_label} {value} \\= 0')
+        self.__qcx_lines.append(f'JUMP {false_label}')
+
     def visit_BranchingStatement(self, statement: ast.BranchingStatement) -> None:
         if self.__is_initialization_process:
             for block in (statement.if_block, statement.else_block):
@@ -1097,7 +1129,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         end_label = f'QASM2QCX_END_IF_{branch_index}'
 
         false_label = else_label if statement.else_block else end_label
-        self.__emit_comparison_condition(
+        self.__emit_condition(
             statement.condition, if_label, false_label)
         self.__qcx_lines.append(f'@{if_label}')
         for child_statement in statement.if_block:

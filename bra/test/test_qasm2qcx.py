@@ -979,17 +979,47 @@ class BranchingTests(unittest.TestCase):
         self.assertIn(
             "JUMPIF QASM2QCX_IF_1 QASM2QCX_REAL_0 > 6.0", lines)
 
-    def test_rejects_non_comparison_condition(self) -> None:
+    def test_lowers_direct_scalar_bit_condition(self) -> None:
         source = """
             OPENQASM 3.0;
             bit condition = 1;
             if (condition) {}
         """
 
-        with self.assertRaisesRegex(
-                qasm2qcx.UnsupportedOpenQASMError,
-                "non-comparison branching condition"):
-            convert(source)
+        self.assertEqual(convert(source), [
+            "QUBITS 0", "VAR CONDITION511 INT", "LET CONDITION511 := 1",
+            "JUMPIF QASM2QCX_IF_0 CONDITION511 \\= 0",
+            "JUMP QASM2QCX_END_IF_0", "@QASM2QCX_IF_0",
+            "@QASM2QCX_END_IF_0",
+        ])
+
+    def test_lowers_indexed_bit_and_negation(self) -> None:
+        lines = convert('''OPENQASM 3.0; bit[1] flags = "1";
+            if (!flags[0]) {} else { flags[0] = 0; }
+            if (!!flags[0]) {}
+            if (!(flags[0] == 1)) {}''')
+        self.assertIn("JUMPIF QASM2QCX_ELSE_0 FLAGS31 \\= 0", lines)
+        self.assertIn("JUMP QASM2QCX_IF_0", lines)
+        self.assertIn("JUMPIF QASM2QCX_IF_1 FLAGS31 \\= 0", lines)
+        self.assertIn("JUMPIF QASM2QCX_END_IF_2 FLAGS31 == 1", lines)
+
+    def test_rejects_direct_non_bit_conditions(self) -> None:
+        for declaration in (
+                "int value = 1;", "float value = 1.0;",
+                "complex value = 1.0;", 'bit[1] value = "1";',
+                'bit[2] value = "01";'):
+            for condition in ("value", "!value"):
+                with self.subTest(declaration=declaration, condition=condition):
+                    with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                        convert(f'OPENQASM 3.0; {declaration} '
+                                f'if ({condition}) {{}}')
+
+    def test_rejects_unsupported_direct_index_selections(self) -> None:
+        for condition in ("flags[0:0]", "flags[{0}]", "flags[index]"):
+            with self.subTest(condition=condition):
+                with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                    convert('OPENQASM 3.0; bit[2] flags; int index = 0; '
+                            f'if ({condition}) {{}}')
 
     def test_lowers_nested_if_and_else_if_with_unique_labels(self) -> None:
         source = """

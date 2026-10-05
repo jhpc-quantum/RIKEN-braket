@@ -29,7 +29,7 @@ x q[0];
 outcomes[0] = measure q[0];
 outcomes[1] = measure q[1];
 
-if (outcomes[0] == 1) {
+if (outcomes[0]) {
     result += 1;
     if (outcomes[1] == 0) {
         result += 2;
@@ -40,13 +40,19 @@ if (outcomes[0] == 1) {
     result += 1000;
 }
 
-if (outcomes[1] == 1) {
+if (outcomes[1]) {
     result += 100;
 } else {
     result += 4;
 }
 
-if (result == 7) {
+if (!outcomes[1]) {
+    result += 8;
+} else {
+    result += 100;
+}
+
+if (result == 15) {
     x q[1];
 }
 outcomes[1] = measure q[1];
@@ -69,7 +75,7 @@ def main() -> None:
         stderr=subprocess.PIPE,
     )
     output_lines = [line.strip() for line in result.stdout.splitlines()]
-    if output_lines != ["7", "1"]:
+    if output_lines != ["15", "1"]:
         raise RuntimeError(
             "qasm2qcx if/else numerical test failed\n"
             f"stdout:\n{result.stdout}\n"
