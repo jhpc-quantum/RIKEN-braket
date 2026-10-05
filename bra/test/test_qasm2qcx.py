@@ -16,6 +16,126 @@ def convert(source: str) -> list[str]:
     return qasm2qcx.convert(source)
 
 
+class ConstantForLoopRangeTests(unittest.TestCase):
+    @staticmethod
+    def evaluate_range(bounds: str, prefix: str = '', iteration_type: str = 'int') -> range:
+        # Stage 1 tests range evaluation independently of the pending unroller.
+        program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3.0; ' + prefix)
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        statement = qasm2qcx.openqasm3.parser.parse(
+            f'OPENQASM 3.0; for {iteration_type} i in {bounds} {{}}').statements[0]
+        return converter._QASM2QCXConverter__loop_range(statement)
+
+    def test_inclusive_ranges_and_default_step(self) -> None:
+        for bounds, expected in (
+                ('[0:3]', [0, 1, 2, 3]), ('[-2:1]', [-2, -1, 0, 1]),
+                ('[2:2]', [2]), ('[0:2:5]', [0, 2, 4]),
+                ('[0:2:4]', [0, 2, 4]), ('[3:-1:0]', [3, 2, 1, 0]),
+                ('[5:-2:0]', [5, 3, 1]), ('[2:-3:2]', [2])):
+            with self.subTest(bounds=bounds):
+                self.assertEqual(list(self.evaluate_range(bounds)), expected)
+
+    def test_direction_mismatch_produces_empty_range(self) -> None:
+        for bounds in ('[3:0]', '[0:-1:3]', '[3:2:0]'):
+            with self.subTest(bounds=bounds):
+                self.assertEqual(list(self.evaluate_range(bounds)), [])
+
+    def test_constant_expressions_named_constants_and_integer_casts(self) -> None:
+        prefix = 'const int lower = -2; const uint upper = 5; const int step = 2;'
+        self.assertEqual(list(self.evaluate_range('[lower + 1:step:upper % 4 + 2]', prefix)),
+                         [-1, 1, 3])
+        self.assertEqual(list(self.evaluate_range('[int(0.5):uint(2.5)]')), [0, 1, 2])
+        self.assertEqual(list(self.evaluate_range('[0:2]', iteration_type='int[32]')),
+                         [0, 1, 2])
+
+    def test_large_range_is_lazy_and_preserves_integer_precision(self) -> None:
+        magnitude = 2**100
+        values = self.evaluate_range(f'[-{magnitude}:{magnitude}]')
+        self.assertIsInstance(values, range)
+        self.assertEqual(values.start, -magnitude)
+        self.assertEqual(values.stop, magnitude + 1)
+        self.assertEqual(values[0], -magnitude)
+
+    def test_rejects_zero_steps_even_for_empty_ranges(self) -> None:
+        for bounds in ('[0:0:3]', '[3:0:0]', '[0:2 - 2:3]'):
+            with self.subTest(bounds=bounds):
+                with self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException,
+                                            'step cannot be zero'):
+                    self.evaluate_range(bounds)
+
+    def test_rejects_non_integer_bounds_and_steps(self) -> None:
+        for bounds in ('[0.0:3]', '[0:3.0]', '[0:1.0:3]', '[false:3]',
+                       '[0:true:3]', '[0:3.0im]', '[0:bit(true):3]'):
+            with self.subTest(bounds=bounds):
+                with self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException,
+                                            'must be a constant integer'):
+                    self.evaluate_range(bounds)
+
+    def test_rejects_missing_bounds(self) -> None:
+        program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3.0;')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        for start, end in ((None, qasm2qcx.ast.IntegerLiteral(3)),
+                           (qasm2qcx.ast.IntegerLiteral(0), None), (None, None)):
+            statement = qasm2qcx.ast.ForInLoop(
+                qasm2qcx.ast.IntType(), qasm2qcx.ast.Identifier('i'),
+                qasm2qcx.ast.RangeDefinition(start, end, None), [])
+            with self.subTest(start=start, end=end):
+                with self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException,
+                                            'requires both bounds'):
+                    converter._QASM2QCXConverter__loop_range(statement)
+
+    def test_rejects_runtime_dependent_and_unknown_bounds(self) -> None:
+        for bounds in ('[0:n]', '[n:3]', '[0:n:3]', '[0:n + 1]', '[0:missing]'):
+            with self.subTest(bounds=bounds):
+                with self.assertRaises(qasm2qcx.QASM2QCXError):
+                    self.evaluate_range(bounds, 'int n = 3;')
+
+    def test_rejects_other_iteration_types_and_sources(self) -> None:
+        for iteration_type in ('uint', 'float', 'bool', 'bit'):
+            with self.subTest(iteration_type=iteration_type):
+                with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError,
+                                            'iteration type other than int'):
+                    self.evaluate_range('[0:3]', iteration_type=iteration_type)
+        for bounds in ('{0, 1, 2}', 'items'):
+            with self.subTest(bounds=bounds):
+                with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError,
+                                            'iteration other than a constant range'):
+                    self.evaluate_range(bounds)
+
+    def test_zero_divisors_retain_constant_expression_diagnostics(self) -> None:
+        for bounds in ('[0:3 / 0]', '[0:3 % 0]', '[0:1 / 0:3]'):
+            with self.subTest(bounds=bounds):
+                with self.assertRaises(qasm2qcx.ZeroDivisorException):
+                    self.evaluate_range(bounds)
+
+    def test_validation_runs_before_unrolling_rejection(self) -> None:
+        with self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'step cannot be zero'):
+            convert('OPENQASM 3.0; for int i in [0:0:3] {}')
+        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError,
+                                    'unrolling not yet implemented'):
+            convert('OPENQASM 3.0; const int n = 3; for int i in [0:n] {}')
+
+    def test_range_evaluation_restores_enclosing_expression_state_on_success_and_error(self) -> None:
+        converter = qasm2qcx.QASM2QCXConverter(
+            qasm2qcx.openqasm3.parser.parse('OPENQASM 3.0;'))
+        fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+        original = (qasm2qcx.ExpressionKind.ARITHMETIC, 'SENTINEL',
+                    qasm2qcx.ValueType.FLOAT, qasm2qcx.ValueKind.LVALUE, False)
+        for field, value in zip(fields, original):
+            setattr(converter, '_QASM2QCXConverter__' + field, value)
+        for bounds in ('[1:3]', '[0:3 / 0]'):
+            statement = qasm2qcx.openqasm3.parser.parse(
+                f'OPENQASM 3.0; for int i in {bounds} {{}}').statements[0]
+            try:
+                converter._QASM2QCXConverter__loop_range(statement)
+            except qasm2qcx.ZeroDivisorException:
+                pass
+            self.assertEqual(tuple(getattr(converter, '_QASM2QCXConverter__' + field)
+                                   for field in fields), original)
+        self.assertEqual(list(converter), ['QUBITS 0'])
+
+
 class IntegerRemainderConstantTests(unittest.TestCase):
     def test_signed_remainder_uses_dividend_sign(self) -> None:
         for lhs in (-7, -6, -2, -1, 0, 1, 2, 6, 7):

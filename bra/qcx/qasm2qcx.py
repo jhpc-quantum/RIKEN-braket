@@ -77,6 +77,14 @@ class InvalidPragmaException(QASM2QCXError):
         return self.message
 
 
+class InvalidLoopRangeException(QASM2QCXError):
+    def __init__(self, message: str) -> None:
+        self.message = message
+
+    def __str__(self) -> str:
+        return self.message
+
+
 class MeasurementSizeMismatchException(QASM2QCXError):
     def __init__(self, num_qubits: int, num_bits: int) -> None:
         self.num_qubits = num_qubits
@@ -1377,8 +1385,45 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.__branch_depth == 0:
             self.__hoist_temporary_declarations(previous_temporaries)
 
+    def __constant_loop_integer(self, expression: ast.Expression, part: str) -> int:
+        # Range evaluation must not inherit skipped-expression state or disturb
+        # the expression being converted by the enclosing visitor.
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        try:
+            self.__expression_kind = ExpressionKind.CONST_ARITHMETIC
+            self.__value = self.__value_type = self.__value_kind = None
+            self.__evaluate_constant = True
+            self.visit(expression)
+            if self.__value_type != ValueType.INT or self.__value_kind != ValueKind.LITERAL:
+                raise InvalidLoopRangeException(
+                    f'For-loop range {part} must be a constant integer')
+            return int(self.__value)
+        finally:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+
+    def __loop_range(self, statement: ast.ForInLoop) -> range:
+        if not isinstance(statement.type, ast.IntType):
+            raise UnsupportedOpenQASMError('for-loop iteration type other than int')
+        bounds = statement.set_declaration
+        if not isinstance(bounds, ast.RangeDefinition):
+            raise UnsupportedOpenQASMError('for-loop iteration other than a constant range')
+        if bounds.start is None or bounds.end is None:
+            raise InvalidLoopRangeException('For-loop range requires both bounds')
+        start = self.__constant_loop_integer(bounds.start, 'start')
+        end = self.__constant_loop_integer(bounds.end, 'end')
+        step = (1 if bounds.step is None
+                else self.__constant_loop_integer(bounds.step, 'step'))
+        if step == 0:
+            raise InvalidLoopRangeException('For-loop range step cannot be zero')
+        # OpenQASM includes the end when reachable; Python excludes the stop.
+        # Keep this lazy so a huge range cannot allocate a huge intermediate list.
+        return range(start, end + (1 if step > 0 else -1), step)
+
     def visit_ForInLoop(self, statement: ast.ForInLoop) -> None:
-        raise UnsupportedOpenQASMError('for loop')
+        self.__loop_range(statement)
+        raise UnsupportedOpenQASMError('for loop (unrolling not yet implemented)')
 
     def visit_WhileLoop(self, statement: ast.WhileLoop) -> None:
         raise UnsupportedOpenQASMError('while loop')
