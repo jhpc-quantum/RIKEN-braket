@@ -961,6 +961,22 @@ class BranchingTests(unittest.TestCase):
         self.assertIn(
             "JUMPIF QASM2QCX_IF_0 QASM2QCX_REAL_0 < 2.5", lines)
 
+    def test_materializes_native_constant_on_left_side(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            if (pi > 3.0) {}
+            if (tau > 6.0) {}
+        """
+
+        lines = convert(source)
+        self.assertIn("VAR QASM2QCX_REAL_0 REAL", lines)
+        self.assertIn("LET QASM2QCX_REAL_0 := :PI", lines)
+        self.assertIn(
+            "JUMPIF QASM2QCX_IF_0 QASM2QCX_REAL_0 > 3.0", lines)
+        self.assertIn("LET QASM2QCX_REAL_0 := :TWO_PI", lines)
+        self.assertIn(
+            "JUMPIF QASM2QCX_IF_1 QASM2QCX_REAL_0 > 6.0", lines)
+
     def test_rejects_non_comparison_condition(self) -> None:
         source = """
             OPENQASM 3.0;
@@ -1035,6 +1051,26 @@ class BranchingTests(unittest.TestCase):
                 "@QASM2QCX_END_IF_0",
             ],
         )
+
+    def test_rejects_block_local_declarations(self) -> None:
+        declarations = (
+            "int local = 1;",
+            "const int local = 1;",
+        )
+
+        for declaration in declarations:
+            source = f"""
+                OPENQASM 3.0;
+                int selector = 0;
+                if (selector == 0) {{
+                    {declaration}
+                }}
+            """
+            with self.subTest(declaration=declaration):
+                with self.assertRaisesRegex(
+                        qasm2qcx.UnsupportedOpenQASMError,
+                        "block-local declaration"):
+                    convert(source)
 
 
 class AmplitudePragmaTests(unittest.TestCase):

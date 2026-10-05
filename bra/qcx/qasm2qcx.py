@@ -1056,7 +1056,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if value_kind == ValueKind.TEMPORARY:
                 temporaries_to_release.add(str(value))
 
-        if lhs_kind == ValueKind.LITERAL or numeric_lhs_type != result_type:
+        # QCX JUMPIF requires its left operand to name a variable.  Native
+        # symbols such as :PI are valid values, but must first be assigned to
+        # a temporary when they occur on the left side of a comparison.
+        lhs_is_variable = isinstance(lhs, str) and lhs[0].isalpha()
+        if (not lhs_is_variable or lhs_kind == ValueKind.LITERAL
+                or numeric_lhs_type != result_type):
             comparison_lhs = self.__add_new_temporary_variable(result_type)
             self.__qcx_lines.append(f'LET {comparison_lhs} := {lhs}')
             temporaries_to_release.add(comparison_lhs)
@@ -1073,6 +1078,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.__is_initialization_process:
             for block in (statement.if_block, statement.else_block):
                 for child_statement in block:
+                    if isinstance(
+                            child_statement,
+                            (ast.ClassicalDeclaration,
+                             ast.ConstantDeclaration,
+                             ast.QubitDeclaration)):
+                        raise UnsupportedOpenQASMError(
+                            'block-local declaration')
                     self.visit(child_statement)
             return
 
