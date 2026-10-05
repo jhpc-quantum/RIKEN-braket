@@ -164,6 +164,7 @@ The instruction set supported by *bra* is as follows.
 * `DO AMPLITUDES [n1 n2 ...]`: prints the amplitudes of the state vector. Indices can be specified by `n1`, `n2`, ..., while all amplitudes are outputed if no indices are specified.
 * `GENERATE EVENTS n seed`: computes the probabilities of each of the basis states and exits. It generates $n$ events by using random number generator with the initial seed `seed` and prints out the states according to these probabilites.
 * `M i`: projective measurement on qubit $i$. Its result is assigned to `:OUTCOME` AND `:OUTCOME:i`.
+* `RESET i`: resets qubit $i$ to $\ket{0}$ by projective measurement followed by a Pauli $X$ operation when the outcome is one. The internal measurement result is not assigned to `:OUTCOME`. Because reset is nonunitary, it cannot be used inside a gate-fusion block.
 * `CIRCUITS n`: specifies the number of quantum circuits. This should be placed before the `QUBITS` instruction. If this `CIRCUITS` instruction is omitted, the number of circuits is assumed to be 1.
 * `QUBITS n`: specifies the number of qubits. This should be placed before any insstructions except for the `CIRCUITS` instruction.
 * `BIT ASSIGNMENT i j k...`: specifies the initial permutation of qubits by listing the logical qubit at each permuted position, from the least significant local position to the most significant global position. The number of qubits specified as arguments of this instruction must be equal to the number of qubits specified in the `QUBITS n` instruction.
