@@ -876,6 +876,203 @@ class ClassicalScalarTests(unittest.TestCase):
             convert(source)
 
 
+class BranchingTests(unittest.TestCase):
+    def test_lowers_comparison_condition_and_if_else(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            int value = 2;
+            int result = 0;
+            if (value != 0) {
+                result = 1;
+            } else {
+                result = 2;
+            }
+        """
+
+        self.assertEqual(
+            convert(source),
+            [
+                "QUBITS 0",
+                "VAR VALUE31 INT",
+                "LET VALUE31 := 2",
+                "VAR RESULT63 INT",
+                "LET RESULT63 := 0",
+                "JUMPIF QASM2QCX_IF_0 VALUE31 \\= 0",
+                "LET RESULT63 := 2",
+                "JUMP QASM2QCX_END_IF_0",
+                "@QASM2QCX_IF_0",
+                "LET RESULT63 := 1",
+                "@QASM2QCX_END_IF_0",
+            ],
+        )
+
+    def test_lowers_all_comparison_operators(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            int value = 2;
+            if (value == 2) {}
+            if (value != 2) {}
+            if (value > 2) {}
+            if (value < 2) {}
+            if (value >= 2) {}
+            if (value <= 2) {}
+        """
+
+        jumpif_lines = [
+            line for line in convert(source) if line.startswith("JUMPIF")
+        ]
+        self.assertEqual(
+            jumpif_lines,
+            [
+                "JUMPIF QASM2QCX_IF_0 VALUE31 == 2",
+                "JUMPIF QASM2QCX_IF_1 VALUE31 \\= 2",
+                "JUMPIF QASM2QCX_IF_2 VALUE31 > 2",
+                "JUMPIF QASM2QCX_IF_3 VALUE31 < 2",
+                "JUMPIF QASM2QCX_IF_4 VALUE31 >= 2",
+                "JUMPIF QASM2QCX_IF_5 VALUE31 <= 2",
+            ],
+        )
+
+    def test_lowers_indexed_bit_condition(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            bit[2] flags = "10";
+            int result = 0;
+            if (flags[1] == 1) {
+                result = 1;
+            }
+        """
+
+        lines = convert(source)
+        self.assertIn(
+            "JUMPIF QASM2QCX_IF_0 FLAGS31:1 == 1", lines)
+
+    def test_promotes_int_operand_for_float_comparison(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            int value = 2;
+            if (value < 2.5) {}
+        """
+
+        lines = convert(source)
+        self.assertIn("VAR QASM2QCX_REAL_0 REAL", lines)
+        self.assertIn(
+            "LET QASM2QCX_REAL_0 := :REAL:VALUE31", lines)
+        self.assertIn(
+            "JUMPIF QASM2QCX_IF_0 QASM2QCX_REAL_0 < 2.5", lines)
+
+    def test_materializes_native_constant_on_left_side(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            if (pi > 3.0) {}
+            if (tau > 6.0) {}
+        """
+
+        lines = convert(source)
+        self.assertIn("VAR QASM2QCX_REAL_0 REAL", lines)
+        self.assertIn("LET QASM2QCX_REAL_0 := :PI", lines)
+        self.assertIn(
+            "JUMPIF QASM2QCX_IF_0 QASM2QCX_REAL_0 > 3.0", lines)
+        self.assertIn("LET QASM2QCX_REAL_0 := :TWO_PI", lines)
+        self.assertIn(
+            "JUMPIF QASM2QCX_IF_1 QASM2QCX_REAL_0 > 6.0", lines)
+
+    def test_rejects_non_comparison_condition(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            bit condition = 1;
+            if (condition) {}
+        """
+
+        with self.assertRaisesRegex(
+                qasm2qcx.UnsupportedOpenQASMError,
+                "non-comparison branching condition"):
+            convert(source)
+
+    def test_lowers_nested_if_and_else_if_with_unique_labels(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            int value = 1;
+            int result = 0;
+            if (value == 1) {
+                if (result == 0) {
+                    result = 1;
+                }
+            } else if (value == 2) {
+                result = 2;
+            } else {
+                result = 3;
+            }
+        """
+
+        lines = convert(source)
+        jumpif_targets = [
+            line.split()[1]
+            for line in lines
+            if line.startswith("JUMPIF ")
+        ]
+        jump_targets = [
+            line.split()[1]
+            for line in lines
+            if line.startswith("JUMP ")
+        ]
+        labels = {
+            line[1:]
+            for line in lines
+            if line.startswith("@")
+        }
+
+        self.assertEqual(len(jumpif_targets), 3)
+        self.assertEqual(len(set(jumpif_targets)), 3)
+        self.assertTrue(set(jumpif_targets + jump_targets) <= labels)
+
+    def test_lowers_measurement_controlled_gate(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            include "stdgates.inc";
+            qubit[2] q;
+            bit outcome = measure q[0];
+            if (outcome == 0) {
+                x q[1];
+            }
+        """
+
+        self.assertEqual(
+            convert(source),
+            [
+                "QUBITS 2",
+                "VAR OUTCOME127 INT",
+                "M 0",
+                "LET OUTCOME127 := :OUTCOME",
+                "JUMPIF QASM2QCX_IF_0 OUTCOME127 == 0",
+                "JUMP QASM2QCX_END_IF_0",
+                "@QASM2QCX_IF_0",
+                "X 1",
+                "@QASM2QCX_END_IF_0",
+            ],
+        )
+
+    def test_rejects_block_local_declarations(self) -> None:
+        declarations = (
+            "int local = 1;",
+            "const int local = 1;",
+        )
+
+        for declaration in declarations:
+            source = f"""
+                OPENQASM 3.0;
+                int selector = 0;
+                if (selector == 0) {{
+                    {declaration}
+                }}
+            """
+            with self.subTest(declaration=declaration):
+                with self.assertRaisesRegex(
+                        qasm2qcx.UnsupportedOpenQASMError,
+                        "block-local declaration"):
+                    convert(source)
+
+
 class AmplitudePragmaTests(unittest.TestCase):
     def test_outputs_all_final_amplitudes(self) -> None:
         source = """
