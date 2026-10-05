@@ -96,6 +96,144 @@ class WorkingBaselineTests(unittest.TestCase):
         )
 
 
+class StaticIndexingTests(unittest.TestCase):
+    def test_converts_inclusive_and_stepped_qubit_ranges(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            include "stdgates.inc";
+            qubit[5] q;
+            x q[1:3];
+            y q[0:2:4];
+            z q[4:-2:0];
+        """
+
+        self.assertEqual(
+            convert(source),
+            [
+                "QUBITS 5",
+                "X 1", "X 2", "X 3",
+                "Y 0", "Y 2", "Y 4",
+                "Z 4", "Z 2", "Z 0",
+            ],
+        )
+
+    def test_converts_negative_qubit_indices(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            qubit[5] q;
+            reset q[-1];
+            reset q[-3:-1];
+            reset q[{-1, -3}];
+        """
+
+        self.assertEqual(
+            convert(source),
+            [
+                "QUBITS 5",
+                "RESET 4",
+                "RESET 2", "RESET 3", "RESET 4",
+                "RESET 4", "RESET 2",
+            ],
+        )
+
+    def test_preserves_discrete_set_order_and_repeated_indices(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            include "stdgates.inc";
+            qubit[4] q;
+            x q[{3, 1, 3}];
+        """
+
+        self.assertEqual(
+            convert(source), ["QUBITS 4", "X 3", "X 1", "X 3"])
+
+    def test_broadcasts_compatible_selected_registers(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            include "stdgates.inc";
+            qubit[3] a;
+            qubit[3] b;
+            cx a[{0, 2}], b[1:2];
+            cx a[1], b[{2, 0}];
+        """
+
+        self.assertEqual(
+            convert(source),
+            ["QUBITS 6", "CX 0 4", "CX 2 5", "CX 1 5", "CX 1 3"],
+        )
+
+    def test_rejects_one_element_register_selection_broadcasting(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            include "stdgates.inc";
+            qubit[2] a;
+            qubit[2] b;
+            cx a[0:0], b;
+        """
+
+        with self.assertRaises(qasm2qcx.WrongBroadcastingException):
+            convert(source)
+
+    def test_converts_selected_measurement_and_bit_copy(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            qubit[4] q;
+            bit[4] source = "0101";
+            bit[4] target;
+            target[{3, 1}] = source[0:2:2];
+            target[{2, 0}] = measure q[{3, 1}];
+        """
+
+        self.assertEqual(
+            convert(source),
+            [
+                "QUBITS 4",
+                "VAR SOURCE63 INT 4",
+                "LET SOURCE63:0 := 1",
+                "LET SOURCE63:1 := 0",
+                "LET SOURCE63:2 := 1",
+                "LET SOURCE63:3 := 0",
+                "VAR TARGET63 INT 4",
+                "LET TARGET63:3 := SOURCE63:0",
+                "LET TARGET63:1 := SOURCE63:2",
+                "M 3",
+                "LET TARGET63:2 := :OUTCOME",
+                "M 1",
+                "LET TARGET63:0 := :OUTCOME",
+            ],
+        )
+
+    def test_rejects_invalid_qubit_ranges(self) -> None:
+        cases = [
+            ("q[0:0:3]", qasm2qcx.InvalidQubitOperandException, "step cannot be zero"),
+            ("q[3:1]", qasm2qcx.InvalidQubitOperandException, "range is empty"),
+            ("q[0:4]", qasm2qcx.InvalidQubitOperandException, "outside register"),
+            ("q[-5]", qasm2qcx.InvalidQubitOperandException, "outside register"),
+            ("q[:3]", qasm2qcx.UnsupportedOpenQASMError, "omitted bound"),
+            ("q[1:]", qasm2qcx.UnsupportedOpenQASMError, "omitted bound"),
+        ]
+
+        for operand, exception, message in cases:
+            source = f"OPENQASM 3.0; qubit[4] q; reset {operand};"
+            with self.subTest(operand=operand):
+                with self.assertRaisesRegex(exception, message):
+                    convert(source)
+
+    def test_rejects_dynamic_and_multidimensional_indices(self) -> None:
+        sources = [
+            "OPENQASM 3.0; const int i = 1; qubit[3] q; reset q[i:2];",
+            "OPENQASM 3.0; const int i = 1; qubit[3] q; reset q[{0, i}];",
+            "OPENQASM 3.0; qubit[3] q; reset q[0, 1];",
+        ]
+
+        for source in sources:
+            with self.subTest(source=source):
+                with self.assertRaisesRegex(
+                        qasm2qcx.UnsupportedOpenQASMError,
+                        "non-literal qubit index|multidimensional qubit indexing"):
+                    convert(source)
+
+
 class GateConversionTests(unittest.TestCase):
     def test_converts_phase_gate_parameter(self) -> None:
         source = """
@@ -515,7 +653,7 @@ class GateConversionTests(unittest.TestCase):
         with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, "delay"):
             convert(source)
 
-    def test_rejects_qubit_index_range(self) -> None:
+    def test_converts_qubit_index_range(self) -> None:
         source = """
             OPENQASM 3.0;
             include "stdgates.inc";
@@ -523,9 +661,7 @@ class GateConversionTests(unittest.TestCase):
             x q[0:1];
         """
 
-        with self.assertRaisesRegex(
-                qasm2qcx.UnsupportedOpenQASMError, "qubit index ranges"):
-            convert(source)
+        self.assertEqual(convert(source), ["QUBITS 2", "X 0", "X 1"])
 
     def test_rejects_global_phase_modifier(self) -> None:
         source = """
@@ -881,18 +1017,26 @@ class BarrierTests(unittest.TestCase):
                 qasm2qcx.InvalidQubitOperandException, "outside register"):
             convert(source)
 
-    def test_rejects_unsupported_barrier_indices(self) -> None:
+    def test_accepts_static_barrier_selections(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            qubit[3] q;
+            barrier q[0:2], q[{2, 0}];
+        """
+
+        self.assertEqual(convert(source), ["QUBITS 3"])
+
+    def test_rejects_dynamic_barrier_indices(self) -> None:
         sources = [
-            "OPENQASM 3.0; qubit[2] q; barrier q[0:1];",
-            "OPENQASM 3.0; qubit[2] q; barrier q[{0, 1}];",
             "OPENQASM 3.0; const int index = 0; qubit q; barrier q[index];",
+            "OPENQASM 3.0; const int index = 0; qubit[2] q; barrier q[0:index];",
         ]
 
         for source in sources:
             with self.subTest(source=source):
                 with self.assertRaisesRegex(
                         qasm2qcx.UnsupportedOpenQASMError,
-                        "qubit index ranges|non-literal qubit index"):
+                        "non-literal qubit index"):
                     convert(source)
 
 
@@ -950,18 +1094,30 @@ class ResetTests(unittest.TestCase):
                 qasm2qcx.InvalidQubitOperandException, "outside register"):
             convert(source)
 
-    def test_rejects_unsupported_reset_indices(self) -> None:
+    def test_converts_static_reset_selections(self) -> None:
+        source = """
+            OPENQASM 3.0;
+            qubit[3] q;
+            reset q[0:2];
+            reset q[{2, 0}];
+        """
+
+        self.assertEqual(
+            convert(source),
+            ["QUBITS 3", "RESET 0", "RESET 1", "RESET 2", "RESET 2", "RESET 0"],
+        )
+
+    def test_rejects_dynamic_reset_indices(self) -> None:
         sources = [
-            "OPENQASM 3.0; qubit[2] q; reset q[0:1];",
-            "OPENQASM 3.0; qubit[2] q; reset q[{0, 1}];",
             "OPENQASM 3.0; const int index = 0; qubit q; reset q[index];",
+            "OPENQASM 3.0; const int index = 0; qubit[2] q; reset q[{0, index}];",
         ]
 
         for source in sources:
             with self.subTest(source=source):
                 with self.assertRaisesRegex(
                         qasm2qcx.UnsupportedOpenQASMError,
-                        "qubit index ranges|non-literal qubit index"):
+                        "non-literal qubit index"):
                     convert(source)
 
 
@@ -1075,7 +1231,7 @@ class MeasurementAndBitTests(unittest.TestCase):
             with self.subTest(source=source):
                 with self.assertRaisesRegex(
                         qasm2qcx.InvalidBitOperandException,
-                        "both be scalars or both be complete registers|scalar bit"):
+                        "both be scalars or both be registers|scalar bit"):
                     convert(source)
 
     def test_rejects_bit_literals_for_wrong_target_kind(self) -> None:
@@ -1142,7 +1298,7 @@ class MeasurementAndBitTests(unittest.TestCase):
 
         with self.assertRaisesRegex(
                 qasm2qcx.InvalidBitOperandException,
-                "both be scalars or both be complete registers"):
+                "both be scalars or both be registers"):
             convert(source)
 
     def test_rejects_non_bit_measurement_target(self) -> None:
