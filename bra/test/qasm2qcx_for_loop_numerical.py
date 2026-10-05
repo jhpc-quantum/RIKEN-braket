@@ -68,6 +68,48 @@ def main() -> None:
         sum += i;'''
     check_program(arguments.bra, source, ('SUM7', 'VALUE31'), ['10', '4'])
 
+    source = '''OPENQASM 3.0; int sum = 0;
+        for int i in [0:2] {
+            for int j in [0:i] { sum += i * 10 + j; }
+        }'''
+    check_program(arguments.bra, source, ('SUM7',), ['84'])
+
+    source = '''OPENQASM 3.0; const int i = 9; int sum = 0;
+        for int i in [1:2] {
+            sum += i;
+            for int i in [0:i] { sum += i; }
+            sum += i;
+        }
+        sum += i;'''
+    check_program(arguments.bra, source, ('SUM7',), ['19'])
+
+    source = '''OPENQASM 3.0; include "stdgates.inc";
+        qubit[4] q; bit[4] flags; int sum = 0;
+        for int i in [0:1] {
+            for int j in [0:1] {
+                x q[2 * i + j];
+                flags[2 * i + j] = measure q[2 * i + j];
+                if (flags[2 * i + j]) { sum += 2 * i + j + 1; }
+            }
+        }'''
+    check_program(arguments.bra, source,
+                  ('FLAGS31:0', 'FLAGS31:1', 'FLAGS31:2', 'FLAGS31:3', 'SUM7'),
+                  ['1', '1', '1', '1', '10'])
+
+    source = '''OPENQASM 3.0; bool ready = false; int value = 7; int sum = 0;
+        if (ready) {
+            for int i in [0:1] { for int j in [0:1] { sum += value / j; } }
+        }
+        for int i in [0:1] { for int j in [1:2] { sum += value % j; } }
+        sum += value;'''
+    check_program(arguments.bra, source, ('SUM7',), ['9'])
+
+    source = '''OPENQASM 3.0; int sum = 0;
+        for int i in [2:-1:0] {
+            for int j in [i:-1:1] { sum += i * 10 + j; }
+        }'''
+    check_program(arguments.bra, source, ('SUM7',), ['54'])
+
 
 if __name__ == '__main__':
     main()
