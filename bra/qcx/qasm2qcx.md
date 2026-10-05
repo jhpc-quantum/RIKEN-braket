@@ -29,6 +29,8 @@ The converter currently covers:
 - scalar `int`, `uint`, `float`, and `complex` arithmetic;
 - scalar constants, variables, assignments, and numeric casts;
 - scalar and register `bit` values, including bit-string initialization;
+- scalar `bool` variables and constants, Boolean literals, and expression
+  assignments;
 - projective measurement of individual qubits and register selections;
 - reset of individual qubits and register selections;
 - OpenQASM barriers as ordering-only operations;
@@ -44,6 +46,45 @@ widths are also accepted but are not enforced by QCX.
 OpenQASM `bit` values are represented by QCX `INT` variables whose elements
 are restricted to zero or one by the converter. A measurement is emitted as a
 QCX `M` operation followed immediately by assignment from `:OUTCOME`.
+
+### Boolean values and conversions
+
+OpenQASM scalar `bool` variables also use QCX `INT` storage: `false` is zero
+and `true` is one. The converter tracks Boolean types separately from integers
+and bits. Boolean literals, constants, and variables can initialize or be
+assigned to Boolean variables and can be used directly in branching conditions.
+Comparison and logical expressions can also initialize or be assigned to Boolean
+variables. Boolean constant expressions are evaluated during conversion.
+Boolean and scalar bit values can be assigned to one another, including single
+indexed elements of bit registers. Integer constant values zero and one are also
+accepted as Boolean initializers and assignment values. Boolean values can be
+assigned to `int`, `uint`, `float`, and `complex` variables as zero or one.
+Variables declared without initializers have no defined OpenQASM
+value; initialize them before use, as specified in the
+[OpenQASM variable rules](https://openqasm.com/language/types.html#variables).
+
+The supported Boolean-related explicit casts are:
+
+- `bool(...)` from `bool`, scalar `bit`, `int`, `uint`, or `float`;
+- `bit(...)` from a Boolean or scalar bit; and
+- `int(...)`, `uint(...)`, `float(...)`, and `complex(...)` from a Boolean.
+
+Numeric-to-Boolean casts test whether the value is nonzero; they do not first
+truncate floating-point values to integers. For example, `bool(-0.25)` is true.
+General numeric-to-Boolean assignments require an explicit `bool(...)` cast.
+Boolean casts can also be used directly in conditions and inside logical
+expressions, preserving short-circuit evaluation. These rules follow the
+supported subset of the
+[OpenQASM casting rules](https://openqasm.com/language/types.html#casting-specifics).
+
+Whole-register casts, including `bool(register)` when `register` is a `bit[1]`
+register, and `bit[n](...)` casts are not yet supported. Complex-to-Boolean casts,
+Boolean arithmetic, and mixed Boolean/numeric comparisons remain unsupported;
+explicitly cast Boolean values
+to a numeric type before using them in these operations. Boolean arrays and
+block-local declarations remain unsupported.
+
+### Quantum instructions and gate parameters
 
 OpenQASM `reset` accepts scalar qubits and qubit-register selections. A
 register reset is expanded to one QCX `RESET` instruction per selected qubit.
@@ -96,17 +137,20 @@ range, or an out-of-bounds index is rejected during conversion.
 ## Classical control flow
 
 The converter supports `if`/`else` statements with comparisons, direct scalar
-bit conditions, and logical operators. The supported comparison operators are
-`==`, `!=`, `>`, `<`, `>=`, and `<=`. OpenQASM `!=` is emitted as the QCX
+bit and Boolean conditions, and logical operators. The supported comparison
+operators are `==`, `!=`, `>`, `<`, `>=`, and `<=`. OpenQASM `!=` is emitted as the QCX
 not-equal operator `\=`.
 
 Conditions can compare scalar `int`, `uint`, `float`, and `bit` expressions.
 A statically indexed element of a bit register is also accepted. Compatible
 integer and floating-point operands are promoted when necessary. Complex
-values and complete multi-element bit registers cannot be compared.
+values and complete bit registers cannot be compared.
+Boolean and scalar bit operands can be compared with one another using `==`
+or `!=`.
 
-A scalar `bit` or a statically indexed element of a bit register can also be
-used directly as a condition: zero is false and one is true. Logical negation
+A scalar `bit`, a statically indexed element of a bit register, or a Boolean
+literal, constant, or variable can also be used directly as a condition:
+zero is false and one is true. Logical negation
 `!` and logical combinations `&&` and `||` can be applied recursively to these
 conditions and supported comparisons. Parentheses can group conditions.
 
@@ -123,8 +167,9 @@ if (!(flags[0] || flags[1])) {
 }
 ```
 
-Here `ready` is a scalar bit, `flags` is a bit register, and `count` is an
-integer variable, all declared before these statements. A whole bit register,
+Here `ready` is a scalar bit or Boolean, `flags` is a bit register, and `count`
+is an integer variable, all declared before these statements. A whole bit
+register,
 including `bit[1]`, is distinct from a scalar bit and cannot be used directly
 as a condition; select its element explicitly, as in `flags[0]`. Direct scalar
 bit conditions follow the rules in the
@@ -151,10 +196,57 @@ The converter lowers structured branches to generated QCX labels, `JUMP`, and
 distinct generated labels. Branch bodies may contain supported gates,
 measurements, resets, assignments, barriers, and nested branches.
 
-Logical expressions are currently supported only as branching conditions.
-Boolean declarations and literals, logical expressions in assignments or gate
-parameters, and bitwise operators such as `&`, `|`, `^`, and `~` are not yet
-supported. Direct integer, floating-point, or complex conditions are also
+Comparison and logical expressions also produce Boolean values, following the
+[OpenQASM classical instruction rules](https://openqasm.com/language/classical.html#comparison-boolean-instructions).
+They can initialize Boolean variables and constants or be assigned to Boolean
+variables. For example:
+
+```qasm
+const bool enabled = 2 > 1;
+int count = 1;
+bool ready = enabled && count > 0;
+ready = !ready;
+```
+
+Runtime expressions are lowered to branches assigning zero or one to a
+temporary, followed by assignment to the destination. The destination is not
+overwritten until the complete expression has been evaluated. Logical AND and
+OR retain short-circuit evaluation, including in constant expressions. Skipped
+operands are still checked for valid names and supported types.
+
+Here is a complete example combining measurement, Boolean expression values,
+an explicit numeric-to-Boolean cast, conditional gates, and bit assignments:
+
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+
+qubit[2] q;
+bit[2] outcomes;
+x q[0];
+outcomes = measure q;
+
+bool ready = outcomes[0] && !outcomes[1];
+int count = 2;
+bool enabled = bool(count);
+bool proceed = ready && enabled;
+if (proceed) {
+    x q[1];
+} else {
+    reset q[1];
+}
+outcomes[1] = measure q[1];
+ready = !ready;
+outcomes[0] = ready;
+```
+
+The final values are `ready = false`, `proceed = true`, and `outcomes = "10"`.
+
+Boolean expressions can also be assigned to scalar bits, indexed bit elements,
+and numeric variables using the supported conversions described above.
+Boolean gate parameters require an explicit numeric cast. Bitwise operators
+such as `&`, `|`, `^`, and `~` are not yet supported.
+Direct integer, floating-point, or complex conditions are also
 rejected; use a supported explicit comparison instead for integer and
 floating-point values. Variables used by a branch must be declared outside it;
 block-local declarations and lexical scopes are also not yet supported.
@@ -188,15 +280,20 @@ The current prototype does not reliably support:
 - user-defined gates or gate modifiers;
 - dynamically computed indices, ranges with omitted bounds, or
   multidimensional indexing;
-- general classical arrays, booleans, or block-local declarations;
-- logical expressions outside branching conditions, bitwise operations, or
-  classical functions; or
+- general classical arrays, whole-register casts, complex-to-Boolean casts,
+  Boolean arithmetic, mixed Boolean/numeric comparisons, or block-local
+  declarations;
+- bitwise operations or classical functions; or
 - arithmetic operators other than `+`, `-`, `*`, and `/`.
 
 The characterization tests in `bra/test/test_qasm2qcx.py` define the working
 baseline. `bra/test/qasm2qcx_if_else_numerical.py` additionally converts and
 executes deterministic measurement-controlled programs with `bra`, verifies
-logical truth tables, and checks short-circuit evaluation and temporary reuse.
+logical truth tables for conditions and values, and checks Boolean conversions,
+self-referencing assignments, short-circuit evaluation, and temporary reuse.
+It also executes the complete Boolean example above. These tests cover the
+converter's supported Boolean subset; the limitations above remain explicit
+future work.
 
 Run the converter and numerical tests from the repository root:
 
