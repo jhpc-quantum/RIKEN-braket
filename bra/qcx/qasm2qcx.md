@@ -29,6 +29,7 @@ The converter currently covers:
 - scalar `int`, `uint`, `float`, and `complex` arithmetic;
 - scalar constants, variables, assignments, and numeric casts;
 - scalar and register `bit` values, including bit-string initialization;
+- scalar `bool` variables and constants, Boolean literals, and simple assignments;
 - projective measurement of individual qubits and register selections;
 - reset of individual qubits and register selections;
 - OpenQASM barriers as ordering-only operations;
@@ -44,6 +45,15 @@ widths are also accepted but are not enforced by QCX.
 OpenQASM `bit` values are represented by QCX `INT` variables whose elements
 are restricted to zero or one by the converter. A measurement is emitted as a
 QCX `M` operation followed immediately by assignment from `:OUTCOME`.
+
+OpenQASM scalar `bool` variables also use QCX `INT` storage: `false` is zero
+and `true` is one. The converter tracks Boolean types separately from integers
+and bits. Boolean literals, constants, and variables can initialize or be
+assigned to Boolean variables and can be used directly in branching conditions.
+Boolean arrays and conversions between Boolean and other types are not yet
+supported. Variables declared without initializers have no defined OpenQASM
+value; initialize them before use, as specified in the
+[OpenQASM variable rules](https://openqasm.com/language/types.html#variables).
 
 OpenQASM `reset` accepts scalar qubits and qubit-register selections. A
 register reset is expanded to one QCX `RESET` instruction per selected qubit.
@@ -96,7 +106,7 @@ range, or an out-of-bounds index is rejected during conversion.
 ## Classical control flow
 
 The converter supports `if`/`else` statements with comparisons, direct scalar
-bit conditions, and logical operators. The supported comparison operators are
+bit and Boolean conditions, and logical operators. The supported comparison operators are
 `==`, `!=`, `>`, `<`, `>=`, and `<=`. OpenQASM `!=` is emitted as the QCX
 not-equal operator `\=`.
 
@@ -104,9 +114,11 @@ Conditions can compare scalar `int`, `uint`, `float`, and `bit` expressions.
 A statically indexed element of a bit register is also accepted. Compatible
 integer and floating-point operands are promoted when necessary. Complex
 values and complete multi-element bit registers cannot be compared.
+Two Boolean operands can be compared using `==` or `!=`.
 
-A scalar `bit` or a statically indexed element of a bit register can also be
-used directly as a condition: zero is false and one is true. Logical negation
+A scalar `bit`, a statically indexed element of a bit register, or a Boolean
+literal, constant, or variable can also be used directly as a condition:
+zero is false and one is true. Logical negation
 `!` and logical combinations `&&` and `||` can be applied recursively to these
 conditions and supported comparisons. Parentheses can group conditions.
 
@@ -123,7 +135,7 @@ if (!(flags[0] || flags[1])) {
 }
 ```
 
-Here `ready` is a scalar bit, `flags` is a bit register, and `count` is an
+Here `ready` is a scalar bit or Boolean, `flags` is a bit register, and `count` is an
 integer variable, all declared before these statements. A whole bit register,
 including `bit[1]`, is distinct from a scalar bit and cannot be used directly
 as a condition; select its element explicitly, as in `flags[0]`. Direct scalar
@@ -152,9 +164,9 @@ distinct generated labels. Branch bodies may contain supported gates,
 measurements, resets, assignments, barriers, and nested branches.
 
 Logical expressions are currently supported only as branching conditions.
-Boolean declarations and literals, logical expressions in assignments or gate
-parameters, and bitwise operators such as `&`, `|`, `^`, and `~` are not yet
-supported. Direct integer, floating-point, or complex conditions are also
+Logical and comparison expressions in assignments, Boolean gate parameters,
+and bitwise operators such as `&`, `|`, `^`, and `~` are not yet supported.
+Direct integer, floating-point, or complex conditions are also
 rejected; use a supported explicit comparison instead for integer and
 floating-point values. Variables used by a branch must be declared outside it;
 block-local declarations and lexical scopes are also not yet supported.
@@ -188,7 +200,7 @@ The current prototype does not reliably support:
 - user-defined gates or gate modifiers;
 - dynamically computed indices, ranges with omitted bounds, or
   multidimensional indexing;
-- general classical arrays, booleans, or block-local declarations;
+- general classical arrays, Boolean casts, or block-local declarations;
 - logical expressions outside branching conditions, bitwise operations, or
   classical functions; or
 - arithmetic operators other than `+`, `-`, `*`, and `/`.

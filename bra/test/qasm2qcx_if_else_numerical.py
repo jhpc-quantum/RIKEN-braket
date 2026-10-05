@@ -126,6 +126,47 @@ def main() -> None:
         result = divisor + 1;'''
     check_program(arguments.bra, source, ("RESULT63",), ["1"])
 
+    # Boolean variables use integer storage, but retain Boolean semantics.
+    for a in (False, True):
+        for b in (False, True):
+            for condition, truth in (
+                    ("a", a), ("!a", not a),
+                    ("a && b", a and b), ("a || b", a or b),
+                    ("a == b", a == b), ("true != a", not a),
+                    ("a && !bit_value", a and not b)):
+                source = f'''OPENQASM 3.0;
+                    bool a = {str(a).lower()}; bool b = {str(b).lower()};
+                    bit bit_value = {int(b)}; int result = 0;
+                    if ({condition}) {{ result = 1; }}
+                    else {{ result = 2; }}'''
+                check_program(arguments.bra, source, ("RESULT63",),
+                              ["1" if truth else "2"])
+
+    source = '''OPENQASM 3.0;
+        const bool yes = true; const bool no = false;
+        const bool alias = yes; bool a = alias; bool b;
+        int result = 0;
+        b = a; a = no;
+        if (b && !a) { result = 1; a = yes; }
+        if (a) { result += 2; }
+        if (!no) { result += 4; }
+        if (false) { result = 100; }
+        if (true) { result += 8; }'''
+    check_program(arguments.bra, source, ("A1", "B1", "RESULT63"),
+                  ["1", "1", "15"])
+
+    for condition, expected in (
+            ("false && 1 / divisor > 0", "2"),
+            ("true || 1 / divisor > 0", "1"),
+            ("a && 1 / divisor > 0", "2"),
+            ("!a || 1 / divisor > 0", "1")):
+        source = f'''OPENQASM 3.0; bool a = false; int divisor = 0;
+            int result = 0;
+            if ({condition}) {{ result = 1; }} else {{ result = 2; }}
+            divisor = divisor + 1;'''
+        check_program(arguments.bra, source, ("RESULT63", "DIVISOR127"),
+                      [expected, "1"])
+
 
 if __name__ == "__main__":
     main()
