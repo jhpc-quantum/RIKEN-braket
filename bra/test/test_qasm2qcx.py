@@ -109,12 +109,11 @@ class ConstantForLoopRangeTests(unittest.TestCase):
                 with self.assertRaises(qasm2qcx.ZeroDivisorException):
                     self.evaluate_range(bounds)
 
-    def test_validation_runs_before_unrolling_rejection(self) -> None:
+    def test_validation_runs_during_conversion(self) -> None:
         with self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'step cannot be zero'):
             convert('OPENQASM 3.0; for int i in [0:0:3] {}')
-        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError,
-                                    'unrolling not yet implemented'):
-            convert('OPENQASM 3.0; const int n = 3; for int i in [0:n] {}')
+        self.assertEqual(convert('OPENQASM 3.0; const int n = 3; for int i in [0:n] {}'),
+                         ['QUBITS 0'])
 
     def test_range_evaluation_restores_enclosing_expression_state_on_success_and_error(self) -> None:
         converter = qasm2qcx.QASM2QCXConverter(
@@ -134,6 +133,129 @@ class ConstantForLoopRangeTests(unittest.TestCase):
             self.assertEqual(tuple(getattr(converter, '_QASM2QCXConverter__' + field)
                                    for field in fields), original)
         self.assertEqual(list(converter), ['QUBITS 0'])
+
+
+class ConstantForLoopUnrollingTests(unittest.TestCase):
+    def test_unrolls_gate_indices_in_order(self) -> None:
+        self.assertEqual(convert('''OPENQASM 3.0; include "stdgates.inc";
+            qubit[4] q; for int i in [0:3] { h q[i]; }'''),
+                         ['QUBITS 4', 'H 0', 'H 1', 'H 2', 'H 3'])
+        self.assertEqual(convert('''OPENQASM 3.0; include "stdgates.inc";
+            qubit[4] q; for int i in [3:-2:0] x q[i];'''),
+                         ['QUBITS 4', 'X 3', 'X 1'])
+
+    def test_iterator_reads_in_arithmetic_and_gate_parameters(self) -> None:
+        loop = '''OPENQASM 3.0; include "stdgates.inc"; qubit[4] q; int sum = 0;
+            for int i in [0:3] { sum += i * 2; rx(i * pi / 4) q[i]; }'''
+        explicit = '''OPENQASM 3.0; include "stdgates.inc"; qubit[4] q; int sum = 0;
+            sum += 0 * 2; rx(0 * pi / 4) q[0];
+            sum += 1 * 2; rx(1 * pi / 4) q[1];
+            sum += 2 * 2; rx(2 * pi / 4) q[2];
+            sum += 3 * 2; rx(3 * pi / 4) q[3];'''
+        self.assertEqual(convert(loop), convert(explicit))
+
+    def test_constant_index_arithmetic_and_register_selections(self) -> None:
+        self.assertEqual(convert('''OPENQASM 3.0; include "stdgates.inc"; qubit[4] q;
+            for int i in [0:1] { h q[i * 2:i * 2 + 1]; }'''),
+                         ['QUBITS 4', 'H 0', 'H 1', 'H 2', 'H 3'])
+
+    def test_shadowing_restores_outer_variables_and_constants(self) -> None:
+        for declaration in ('int i = 9;', 'const int i = 9;', 'float i = 9.0;'):
+            with self.subTest(declaration=declaration):
+                prefix = 'OPENQASM 3.0; ' + declaration + ' int sum = 0; '
+                self.assertEqual(convert(prefix + 'for int i in [0:2] { sum += i; } sum += int(i);'),
+                                 convert(prefix + 'sum += 0; sum += 1; sum += 2; sum += int(i);'))
+
+    def test_iterator_is_not_visible_after_loop_or_to_its_own_bounds(self) -> None:
+        for source in ('for int i in [0:2] {} int sum = i;',
+                       'for int i in [0:i] {}'):
+            with self.subTest(source=source):
+                with self.assertRaises(qasm2qcx.NoVariableNameException):
+                    convert('OPENQASM 3.0; ' + source)
+        self.assertEqual(convert('OPENQASM 3.0; for int i in [0:2] {} int i = 7;'),
+                         ['QUBITS 0', 'VAR I1 INT', 'LET I1 := 7'])
+
+    def test_named_bounds_and_empty_range(self) -> None:
+        prefix = 'OPENQASM 3.0; const int n = 3; int sum = 0; '
+        self.assertEqual(convert(prefix + 'for int i in [n:-1:1] { sum += i; }'),
+                         convert(prefix + 'sum += 3; sum += 2; sum += 1;'))
+        self.assertEqual(convert(prefix + 'for int i in [3:1] { sum += i; }'),
+                         convert(prefix))
+
+    def test_iterator_reads_in_conditional_and_bit_indices(self) -> None:
+        prefix = 'OPENQASM 3.0; bit[2] flags = "10"; int sum = 0; '
+        self.assertEqual(convert(prefix + '''for int i in [0:1] {
+            if (flags[i] && i == 0) { sum += i + 1; } else { sum += 2; }
+        }'''), convert(prefix + '''
+            if (flags[0] && 0 == 0) { sum += 0 + 1; } else { sum += 2; }
+            if (flags[1] && 1 == 0) { sum += 1 + 1; } else { sum += 2; }'''))
+
+    def test_measurement_reset_barrier_and_bit_assignments(self) -> None:
+        prefix = 'OPENQASM 3.0; qubit[2] q; bit[2] flags; '
+        self.assertEqual(convert(prefix + '''for int i in [0:1] {
+            flags[i] = 1; flags[i] = measure q[i]; barrier q[i]; reset q[i];
+        }'''), convert(prefix + '''
+            flags[0] = 1; flags[0] = measure q[0]; barrier q[0]; reset q[0];
+            flags[1] = 1; flags[1] = measure q[1]; barrier q[1]; reset q[1];'''))
+
+    def test_iterator_writes_are_rejected_including_empty_ranges(self) -> None:
+        for bounds in ('[0:1]', '[1:0]'):
+            for body in ('i = 1;', 'i += 1;', 'i[0] = 1;', 'i = measure q;',
+                         'if (false) { i = 1; }'):
+                with self.subTest(bounds=bounds, body=body):
+                    with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError,
+                                                'assignment to a for-loop iterator'):
+                        convert(f'OPENQASM 3.0; qubit q; for int i in {bounds} {{ {body} }}')
+
+    def test_unsupported_bodies_rejected_even_when_empty(self) -> None:
+        for body in ('int local = 0;', 'const int local = 0;', 'qubit local;',
+                     'break;', 'continue;', 'while (false) {}',
+                     'for int j in [0:1] {}', 'pragma riken_braket.amplitudes\n'):
+            with self.subTest(body=body):
+                with self.assertRaises((qasm2qcx.UnsupportedOpenQASMError,
+                                        qasm2qcx.openqasm3.parser.QASM3ParsingError)):
+                    convert('OPENQASM 3.0; for int i in [1:0] { ' + body + ' }')
+
+    def test_iterator_cannot_refer_to_shadowed_qubit_or_bit_register(self) -> None:
+        for declaration, body in (('qubit i;', 'reset i;'),
+                                  ('qubit[2] i;', 'reset i[0];'),
+                                  ('bit[2] i;', 'if (i[0]) {}'),
+                                  ('bit i; bit other;', 'other = i;')):
+            with self.subTest(declaration=declaration, body=body):
+                with self.assertRaises(qasm2qcx.QASM2QCXError):
+                    convert(f'OPENQASM 3.0; {declaration} for int i in [0:1] {{ {body} }}')
+
+    def test_basic_expansion_safeguard_handles_huge_ranges(self) -> None:
+        for bounds in ('[0:10000]', '[10000:-1:0]', f'[0:{2**100}]'):
+            with self.subTest(bounds=bounds):
+                with self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException,
+                                            'exceeds 10000 iterations'):
+                    convert(f'OPENQASM 3.0; for int i in {bounds} {{}}')
+
+    def test_loop_inside_runtime_branch_keeps_operations_in_branch(self) -> None:
+        prefix = 'OPENQASM 3.0; bool ready = false; int value = 7; int sum = 0; '
+        loop = 'if (ready) { for int i in [0:2] { sum += value % (i + 1); } } sum += value;'
+        expanded = '''if (ready) {
+            sum += value % (0 + 1); sum += value % (1 + 1); sum += value % (2 + 1);
+        } sum += value;'''
+        self.assertEqual(convert(prefix + loop), convert(prefix + expanded))
+
+    def test_iteration_scope_is_restored_after_body_failure(self) -> None:
+        program = qasm2qcx.openqasm3.parser.parse('''OPENQASM 3.0;
+            qubit q; int i = 9;''')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        loop = qasm2qcx.openqasm3.parser.parse('''OPENQASM 3.0;
+            for int i in [0:1] { reset missing; }''').statements[0]
+        with self.assertRaises(qasm2qcx.InvalidQubitOperandException):
+            converter.visit(loop)
+        self.assertEqual(converter._QASM2QCXConverter__loop_bindings, [])
+        converter.visit(qasm2qcx.openqasm3.parser.parse('OPENQASM 3.0; i += 1;'))
+        self.assertEqual(list(converter)[-1], 'LET I1 += 1')
+
+    def test_forward_named_bounds_are_rejected_in_initialization_pass(self) -> None:
+        with self.assertRaises(qasm2qcx.NoVariableNameException):
+            convert('OPENQASM 3.0; for int i in [0:n] {} const int n = 2;')
 
 
 class IntegerRemainderConstantTests(unittest.TestCase):

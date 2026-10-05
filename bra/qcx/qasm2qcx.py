@@ -209,6 +209,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__branch_depth: int = 0
         self.__boolean_expression_index: int = 0
         self.__evaluate_constant: bool = True
+        self.__loop_bindings: list[dict[str, int]] = []
 
         self.__is_initialization_process = True
         self.visit(qasm_ast_root)
@@ -252,6 +253,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__qcx_lines.append(f'DO AMPLITUDES{suffix}')
 
     def __type_of(self, identifier_name: str) -> ValueType:
+        if any(identifier_name == self.__capitalize_variable_name(name)
+               for scope in self.__loop_bindings for name in scope):
+            raise UnsupportedOpenQASMError('indexed or register use of a for-loop iterator')
         if identifier_name in self.__bool_variable_names:
             return ValueType.BOOL
         elif identifier_name in self.__bit_variable_name_size_map:
@@ -309,6 +313,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def visit_Identifier(self, expression: ast.Identifier) -> None:
         if self.__expression_kind is None:
             return
+
+        for scope in reversed(self.__loop_bindings):
+            if expression.name in scope:
+                self.__value = scope[expression.name]
+                self.__value_type = ValueType.INT
+                self.__value_kind = ValueKind.LITERAL
+                return
 
         is_user_constant = any(
             expression.name in constant_values
@@ -664,14 +675,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         quantum_register_index = self.__quantum_register_names.index(quantum_register_name)
         return self.__first_qubit_indices[quantum_register_index] + index
 
-    @staticmethod
-    def __literal_index(expression: ast.Expression, kind: str) -> int:
+    def __literal_index(self, expression: ast.Expression, kind: str) -> int:
         if isinstance(expression, ast.IntegerLiteral):
             return expression.value
         if (isinstance(expression, ast.UnaryExpression)
                 and expression.op == ast.UnaryOperator['-']
                 and isinstance(expression.expression, ast.IntegerLiteral)):
             return -expression.expression.value
+        if self.__loop_bindings:
+            return self.__constant_loop_integer(expression, f'{kind} index')
         raise UnsupportedOpenQASMError(f'non-literal {kind} index')
 
     def __index_selection(
@@ -732,6 +744,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __qubit_operand_indices(
             self, qubit: ast.Identifier | ast.IndexedIdentifier
             ) -> tuple[list[int], bool]:
+        if any(self.__operand_name(qubit) in scope for scope in self.__loop_bindings):
+            raise InvalidQubitOperandException('For-loop iterator is not a qubit operand')
         if isinstance(qubit, ast.Identifier):
             register_name = qubit.name
             if register_name not in self.__declared_quantum_registers:
@@ -1421,9 +1435,48 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # Keep this lazy so a huge range cannot allocate a huge intermediate list.
         return range(start, end + (1 if step > 0 else -1), step)
 
+    def __validate_loop_body(self, statements: list[ast.Statement], iterator: str) -> None:
+        # Validate even an empty iteration range, without executing its body.
+        supported = (ast.QuantumGate, ast.QuantumPhase,
+                     ast.QuantumMeasurementStatement, ast.QuantumReset,
+                     ast.QuantumBarrier, ast.ClassicalAssignment,
+                     ast.BranchingStatement)
+        for child in statements:
+            if isinstance(child, (ast.ClassicalDeclaration, ast.ConstantDeclaration,
+                                  ast.QubitDeclaration)):
+                raise UnsupportedOpenQASMError('block-local declaration')
+            if not isinstance(child, supported):
+                raise UnsupportedOpenQASMError(f'for-loop body {type(child).__name__}')
+            target = (child.lvalue if isinstance(child, ast.ClassicalAssignment)
+                      else child.target if isinstance(child, ast.QuantumMeasurementStatement)
+                      else None)
+            if target is not None and self.__operand_name(target) == iterator:
+                raise UnsupportedOpenQASMError('assignment to a for-loop iterator')
+            if isinstance(child, ast.BranchingStatement):
+                self.__validate_loop_body(child.if_block, iterator)
+                self.__validate_loop_body(child.else_block, iterator)
+
     def visit_ForInLoop(self, statement: ast.ForInLoop) -> None:
-        self.__loop_range(statement)
-        raise UnsupportedOpenQASMError('for loop (unrolling not yet implemented)')
+        values = self.__loop_range(statement)
+        self.__validate_loop_body(statement.block, statement.identifier.name)
+        # A per-loop safeguard is necessary even before Stage 3 adds an
+        # aggregate expansion budget for nested loops.
+        distance = (values.stop - values.start) * (1 if values.step > 0 else -1)
+        stride = abs(values.step)
+        count = max(0, (distance + stride - 1) // stride)
+        if count > 10000:
+            raise InvalidLoopRangeException('For-loop expansion exceeds 10000 iterations')
+        if self.__is_initialization_process:
+            for child in statement.block:
+                self.visit(child)
+            return
+        for value in values:
+            self.__loop_bindings.append({statement.identifier.name: value})
+            try:
+                for child in statement.block:
+                    self.visit(child)
+            finally:
+                self.__loop_bindings.pop()
 
     def visit_WhileLoop(self, statement: ast.WhileLoop) -> None:
         raise UnsupportedOpenQASMError('while loop')
