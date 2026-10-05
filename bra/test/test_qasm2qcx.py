@@ -898,10 +898,12 @@ class BranchingTests(unittest.TestCase):
                 "VAR RESULT63 INT",
                 "LET RESULT63 := 0",
                 "JUMPIF QASM2QCX_IF_0 VALUE31 \\= 0",
-                "LET RESULT63 := 2",
-                "JUMP QASM2QCX_END_IF_0",
+                "JUMP QASM2QCX_ELSE_0",
                 "@QASM2QCX_IF_0",
                 "LET RESULT63 := 1",
+                "JUMP QASM2QCX_END_IF_0",
+                "@QASM2QCX_ELSE_0",
+                "LET RESULT63 := 2",
                 "@QASM2QCX_END_IF_0",
             ],
         )
@@ -977,17 +979,83 @@ class BranchingTests(unittest.TestCase):
         self.assertIn(
             "JUMPIF QASM2QCX_IF_1 QASM2QCX_REAL_0 > 6.0", lines)
 
-    def test_rejects_non_comparison_condition(self) -> None:
+    def test_lowers_direct_scalar_bit_condition(self) -> None:
         source = """
             OPENQASM 3.0;
             bit condition = 1;
             if (condition) {}
         """
 
-        with self.assertRaisesRegex(
-                qasm2qcx.UnsupportedOpenQASMError,
-                "non-comparison branching condition"):
-            convert(source)
+        self.assertEqual(convert(source), [
+            "QUBITS 0", "VAR CONDITION511 INT", "LET CONDITION511 := 1",
+            "JUMPIF QASM2QCX_IF_0 CONDITION511 \\= 0",
+            "JUMP QASM2QCX_END_IF_0", "@QASM2QCX_IF_0",
+            "@QASM2QCX_END_IF_0",
+        ])
+
+    def test_lowers_indexed_bit_and_negation(self) -> None:
+        lines = convert('''OPENQASM 3.0; bit[1] flags = "1";
+            if (!flags[0]) {} else { flags[0] = 0; }
+            if (!!flags[0]) {}
+            if (!(flags[0] == 1)) {}''')
+        self.assertIn("JUMPIF QASM2QCX_ELSE_0 FLAGS31 \\= 0", lines)
+        self.assertIn("JUMP QASM2QCX_IF_0", lines)
+        self.assertIn("JUMPIF QASM2QCX_IF_1 FLAGS31 \\= 0", lines)
+        self.assertIn("JUMPIF QASM2QCX_END_IF_2 FLAGS31 == 1", lines)
+
+    def test_rejects_direct_non_bit_conditions(self) -> None:
+        for declaration in (
+                "int value = 1;", "float value = 1.0;",
+                "complex value = 1.0;", 'bit[1] value = "1";',
+                'bit[2] value = "01";'):
+            for condition in ("value", "!value"):
+                with self.subTest(declaration=declaration, condition=condition):
+                    with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                        convert(f'OPENQASM 3.0; {declaration} '
+                                f'if ({condition}) {{}}')
+
+    def test_lowers_short_circuit_destinations(self) -> None:
+        for operator, lhs_true, lhs_false in (
+                ("&&", "QASM2QCX_CONDITION_0", "QASM2QCX_END_IF_0"),
+                ("||", "QASM2QCX_IF_0", "QASM2QCX_CONDITION_0")):
+            with self.subTest(operator=operator):
+                lines = convert(f'''OPENQASM 3.0; bit a; bit b;
+                    if (a {operator} b) {{}}''')
+                self.assertEqual(lines[3:8], [
+                    f"JUMPIF {lhs_true} A1 \\= 0", f"JUMP {lhs_false}",
+                    "@QASM2QCX_CONDITION_0",
+                    "JUMPIF QASM2QCX_IF_0 B1 \\= 0",
+                    "JUMP QASM2QCX_END_IF_0",
+                ])
+
+    def test_nested_logical_conditions_have_unique_resolved_labels(self) -> None:
+        lines = convert('''OPENQASM 3.0; bit a; bit b; int n = 1;
+            if (!(a || b) && n > 0) {
+                if (a || (b && n == 1)) { n = 2; }
+            } else if (a && b) { n = 3; }''')
+        labels = [line[1:] for line in lines if line.startswith("@")]
+        targets = [line.split()[1] for line in lines
+                   if line.startswith(("JUMP ", "JUMPIF "))]
+        self.assertEqual(len(labels), len(set(labels)))
+        self.assertEqual(sum(label.startswith("QASM2QCX_CONDITION_")
+                             for label in labels), 5)
+        self.assertTrue(set(targets) <= set(labels))
+
+    def test_rejects_unsupported_logical_operands_and_value_expressions(self) -> None:
+        for statement in (
+                "if (a && n) {}", "if (n || a) {}", "if (a & a) {}",
+                "if (~a) {}", "n = a && a;", "a = !a;"):
+            with self.subTest(statement=statement):
+                with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                    convert('OPENQASM 3.0; bit a = 1; int n = 1; '
+                            + statement)
+
+    def test_rejects_unsupported_direct_index_selections(self) -> None:
+        for condition in ("flags[0:0]", "flags[{0}]", "flags[index]"):
+            with self.subTest(condition=condition):
+                with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                    convert('OPENQASM 3.0; bit[2] flags; int index = 0; '
+                            f'if ({condition}) {{}}')
 
     def test_lowers_nested_if_and_else_if_with_unique_labels(self) -> None:
         source = """
