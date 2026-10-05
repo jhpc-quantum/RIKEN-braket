@@ -568,14 +568,83 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         quantum_register_index = self.__quantum_register_names.index(quantum_register_name)
         return self.__first_qubit_indices[quantum_register_index] + index
 
+    @staticmethod
+    def __literal_index(expression: ast.Expression, kind: str) -> int:
+        if isinstance(expression, ast.IntegerLiteral):
+            return expression.value
+        if (isinstance(expression, ast.UnaryExpression)
+                and expression.op == ast.UnaryOperator['-']
+                and isinstance(expression.expression, ast.IntegerLiteral)):
+            return -expression.expression.value
+        raise UnsupportedOpenQASMError(f'non-literal {kind} index')
+
+    def __index_selection(
+            self, index, size: int, kind: str, container: str,
+            invalid_operand_exception: type[QASM2QCXError]
+            ) -> tuple[list[int], bool]:
+        if isinstance(index, ast.DiscreteSet):
+            raw_indices = [
+                self.__literal_index(value, kind) for value in index.values
+            ]
+            is_register = True
+        elif isinstance(index, list):
+            if len(index) != 1:
+                raise UnsupportedOpenQASMError(
+                    f'multidimensional {kind} indexing')
+
+            selector = index[0]
+            if isinstance(selector, ast.RangeDefinition):
+                if selector.start is None or selector.end is None:
+                    raise UnsupportedOpenQASMError(
+                        f'{kind} range with omitted bound')
+                start = self.__literal_index(selector.start, kind)
+                end = self.__literal_index(selector.end, kind)
+                step = (
+                    1 if selector.step is None
+                    else self.__literal_index(selector.step, kind))
+                if step == 0:
+                    raise invalid_operand_exception(
+                        f'{kind.capitalize()} range step cannot be zero')
+                stop = end + (1 if step > 0 else -1)
+                raw_indices = list(range(start, stop, step))
+                if not raw_indices:
+                    raise invalid_operand_exception(
+                        f'{kind.capitalize()} range is empty')
+                is_register = True
+            else:
+                raw_indices = [self.__literal_index(selector, kind)]
+                is_register = False
+        else:
+            raise UnsupportedOpenQASMError(
+                f'multidimensional {kind} indexing')
+
+        if not raw_indices:
+            raise invalid_operand_exception(
+                f'{kind.capitalize()} index set is empty')
+
+        result = []
+        for index_value in raw_indices:
+            normalized_index = (
+                index_value if index_value >= 0 else size + index_value)
+            if normalized_index < 0 or normalized_index >= size:
+                raise invalid_operand_exception(
+                    f'{kind.capitalize()} index {index_value} is outside '
+                    f'{container}')
+            result.append(normalized_index)
+        return result, is_register
+
     def __qubit_operand_indices(
-            self, qubit: ast.Identifier | ast.IndexedIdentifier) -> list[int]:
+            self, qubit: ast.Identifier | ast.IndexedIdentifier
+            ) -> tuple[list[int], bool]:
         if isinstance(qubit, ast.Identifier):
             register_name = qubit.name
             if register_name not in self.__declared_quantum_registers:
                 raise InvalidQubitOperandException(
                     f'Qubit register {register_name} is not declared')
-            return list(range(self.__quantum_registers[register_name]))
+            return (
+                list(range(self.__quantum_registers[register_name])),
+                register_name in self.__sized_quantum_registers,
+            )
 
         register_name = qubit.name.name
         if register_name not in self.__declared_quantum_registers:
@@ -584,37 +653,33 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if len(qubit.indices) != 1:
             raise UnsupportedOpenQASMError('multidimensional qubit indexing')
 
-        indices = qubit.indices[0]
-        if (not isinstance(indices, list) or len(indices) != 1
-                or isinstance(
-                    indices[0], (ast.RangeDefinition, ast.DiscreteSet))):
-            raise UnsupportedOpenQASMError('qubit index ranges or discrete index sets')
-        if not isinstance(indices[0], ast.IntegerLiteral):
-            raise UnsupportedOpenQASMError('non-literal qubit index')
-
-        index = indices[0].value
         register_size = self.__quantum_registers[register_name]
-        if index < 0 or index >= register_size:
-            raise InvalidQubitOperandException(
-                f'Qubit index {index} is outside register {register_name}[{register_size}]')
-        return [index]
+        return self.__index_selection(
+            qubit.indices[0], register_size, 'qubit',
+            f'register {register_name}[{register_size}]',
+            InvalidQubitOperandException)
 
     @staticmethod
     def __operand_name(operand: ast.Identifier | ast.IndexedIdentifier) -> str:
         return operand.name if isinstance(operand, ast.Identifier) else operand.name.name
 
     def __flattened_qubit_operand(
-            self, qubit: ast.Identifier | ast.IndexedIdentifier) -> list[int]:
+            self, qubit: ast.Identifier | ast.IndexedIdentifier
+            ) -> tuple[list[int], bool]:
         register_name = self.__operand_name(qubit)
-        return [
-            self.__to_qubit_index(register_name, index)
-            for index in self.__qubit_operand_indices(qubit)
-        ]
+        indices, is_register = self.__qubit_operand_indices(qubit)
+        return (
+            [
+                self.__to_qubit_index(register_name, index)
+                for index in indices
+            ],
+            is_register,
+        )
 
     def __bit_operand(
             self, bit: ast.Identifier | ast.IndexedIdentifier, *,
             role: str = 'Bit operand'
-            ) -> tuple[str, list[int]]:
+            ) -> tuple[str, list[int], bool]:
         source_name = self.__operand_name(bit)
         variable_name = self.__capitalize_variable_name(source_name)
         if self.__type_of(variable_name) != ValueType.BIT:
@@ -623,23 +688,17 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
         size = self.__bit_variable_name_size_map[variable_name]
         if isinstance(bit, ast.Identifier):
-            return variable_name, list(range(size))
+            return (
+                variable_name, list(range(size)),
+                variable_name in self.__sized_bit_variables,
+            )
         if len(bit.indices) != 1:
             raise UnsupportedOpenQASMError('multidimensional bit indexing')
 
-        indices = bit.indices[0]
-        if (not isinstance(indices, list) or len(indices) != 1
-                or isinstance(
-                    indices[0], (ast.RangeDefinition, ast.DiscreteSet))):
-            raise UnsupportedOpenQASMError('bit index ranges or discrete index sets')
-        if not isinstance(indices[0], ast.IntegerLiteral):
-            raise UnsupportedOpenQASMError('non-literal bit index')
-
-        index = indices[0].value
-        if index < 0 or index >= size:
-            raise InvalidBitOperandException(
-                f'Bit index {index} is outside variable {source_name}[{size}]')
-        return variable_name, [index]
+        indices, is_register = self.__index_selection(
+            bit.indices[0], size, 'bit',
+            f'variable {source_name}[{size}]', InvalidBitOperandException)
+        return variable_name, indices, is_register
 
     @staticmethod
     def __qcx_bit_name(variable_name: str, size: int, index: int) -> str:
@@ -648,22 +707,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __emit_measurement(
             self, measurement: ast.QuantumMeasurement,
             target: ast.Identifier | ast.IndexedIdentifier | None) -> None:
-        qubit_indices = self.__flattened_qubit_operand(measurement.qubit)
+        qubit_indices, qubit_is_register = self.__flattened_qubit_operand(
+            measurement.qubit)
 
         target_names: list[str] | None = None
         if target is not None:
-            variable_name, bit_indices = self.__bit_operand(
+            variable_name, bit_indices, target_is_register = self.__bit_operand(
                 target, role='Measurement target')
-            qubit_is_register = (
-                isinstance(measurement.qubit, ast.Identifier)
-                and measurement.qubit.name in self.__sized_quantum_registers)
-            target_is_register = (
-                isinstance(target, ast.Identifier)
-                and variable_name in self.__sized_bit_variables)
             if qubit_is_register != target_is_register:
                 raise InvalidBitOperandException(
-                    'Measurement operands must both be scalars or both be '
-                    'complete registers')
+                    'Measurement operands must both be scalars or both be registers')
             if len(qubit_indices) != len(bit_indices):
                 raise MeasurementSizeMismatchException(
                     len(qubit_indices), len(bit_indices))
@@ -784,21 +837,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 qasm_gate_name, expected_parameters, expected_qubits,
                 len(statement.arguments), len(statement.qubits))
 
-        operand_indices = [
+        operands = [
             self.__qubit_operand_indices(qubit) for qubit in statement.qubits
         ]
         register_sizes = [
             len(indices)
-            for qubit, indices in zip(statement.qubits, operand_indices)
-            if (isinstance(qubit, ast.Identifier)
-                and qubit.name in self.__sized_quantum_registers)
+            for indices, is_register in operands if is_register
         ]
         if len(set(register_sizes)) > 1:
             raise WrongBroadcastingException
-        loop_size = max(map(len, operand_indices), default=1)
-        for indices in operand_indices:
-            if len(indices) not in (1, loop_size):
-                raise WrongBroadcastingException
+        loop_size = register_sizes[0] if register_sizes else 1
 
         parameters: list[
             tuple[str | int | float | complex, ValueType, ValueKind]
@@ -837,9 +885,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
         for index in range(loop_size):
             qubit_indices = []
-            for qubit, indices in zip(statement.qubits, operand_indices):
+            for qubit, (indices, is_register) in zip(
+                    statement.qubits, operands):
                 register_name = qubit.name if isinstance(qubit, ast.Identifier) else qubit.name.name
-                register_index = indices[0] if len(indices) == 1 else indices[index]
+                register_index = indices[index] if is_register else indices[0]
                 qubit_indices.append(str(self.__to_qubit_index(register_name, register_index)))
 
             if qasm_gate_name == 'cu':
@@ -893,7 +942,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.__is_initialization_process:
             return
 
-        for qubit_index in self.__flattened_qubit_operand(statement.qubits):
+        qubit_indices, _ = self.__flattened_qubit_operand(statement.qubits)
+        for qubit_index in qubit_indices:
             self.__qcx_lines.append(f'RESET {qubit_index}')
 
     def visit_QuantumBarrier(self, statement: ast.QuantumBarrier) -> None:
@@ -1209,15 +1259,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __emit_bit_expression_assignment(
             self, target: ast.Identifier | ast.IndexedIdentifier,
             expression: ast.Expression) -> None:
-        variable_name, target_indices = self.__bit_operand(target)
+        variable_name, target_indices, target_is_register = self.__bit_operand(
+            target)
         target_size = self.__bit_variable_name_size_map[variable_name]
         target_names = [
             self.__qcx_bit_name(variable_name, target_size, index)
             for index in target_indices
         ]
-        target_is_register = (
-            isinstance(target, ast.Identifier)
-            and variable_name in self.__sized_bit_variables)
 
         if isinstance(expression, ast.BitstringLiteral):
             if not target_is_register:
@@ -1238,13 +1286,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     'scalar bit')
             values = [expression.value]
         elif isinstance(expression, ast.Identifier):
-            source_name, source_indices = self.__bit_operand(
+            source_name, source_indices, source_is_register = self.__bit_operand(
                 expression, role='Bit source')
-            source_is_register = source_name in self.__sized_bit_variables
             if source_is_register != target_is_register:
                 raise InvalidBitOperandException(
-                    'Bit assignment operands must both be scalars or both be '
-                    'complete registers')
+                    'Bit assignment operands must both be scalars or both be registers')
             if len(source_indices) != len(target_names):
                 raise InvalidBitOperandException(
                     f'Bit source has size {len(source_indices)}, but target has '
@@ -1255,31 +1301,29 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 for index in source_indices
             ]
         elif isinstance(expression, ast.IndexExpression):
-            if (not isinstance(expression.collection, ast.Identifier)
-                    or not isinstance(expression.index, list)
-                    or len(expression.index) != 1
-                    or not isinstance(expression.index[0], ast.IntegerLiteral)):
-                raise UnsupportedOpenQASMError(
-                    'bit index ranges or non-literal bit indices')
-            if target_is_register:
-                raise InvalidBitOperandException(
-                    'An indexed bit source must target a scalar bit')
+            if not isinstance(expression.collection, ast.Identifier):
+                raise UnsupportedOpenQASMError('multidimensional bit indexing')
 
-            source_name = self.__capitalize_variable_name(
-                expression.collection.name)
+            source_identifier = expression.collection.name
+            source_name = self.__capitalize_variable_name(source_identifier)
             if self.__type_of(source_name) != ValueType.BIT:
                 raise InvalidBitOperandException(
-                    f'Bit source {expression.collection.name} is not a bit '
-                    'variable')
+                    f'Bit source {source_identifier} is not a bit variable')
             source_size = self.__bit_variable_name_size_map[source_name]
-            source_index = expression.index[0].value
-            if source_index < 0 or source_index >= source_size:
+            source_indices, source_is_register = self.__index_selection(
+                expression.index, source_size, 'bit',
+                f'variable {source_identifier}[{source_size}]',
+                InvalidBitOperandException)
+            if source_is_register != target_is_register:
                 raise InvalidBitOperandException(
-                    f'Bit index {source_index} is outside variable '
-                    f'{expression.collection.name}[{source_size}]')
+                    'Bit assignment operands must both be scalars or both be registers')
+            if len(source_indices) != len(target_names):
+                raise InvalidBitOperandException(
+                    f'Bit source has size {len(source_indices)}, but target has '
+                    f'size {len(target_names)}')
             values = [
-                self.__qcx_bit_name(
-                    source_name, source_size, source_index)
+                self.__qcx_bit_name(source_name, source_size, source_index)
+                for source_index in source_indices
             ]
         else:
             raise UnsupportedOpenQASMError(
