@@ -601,7 +601,7 @@ namespace bra
                and real_variables_.at(variable_name)[index] <= rhs_value)
           maybe_label_ = label;
     }
-    else if (int_variables_.find(lhs_variable_name) != end(int_variables_))
+    else if (int_variables_.find(variable_name) != end(int_variables_))
     {
       auto const rhs_value = to_int(rhs_literal_or_variable_name);
       if (op == ::bra::compare_operation_type::equal_to
