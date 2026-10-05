@@ -23,13 +23,14 @@ The converter currently covers:
 
 - OpenQASM 3 qubit declarations;
 - `stdgates.inc` gates that have direct QCX equivalents;
-- a single literal index or a complete qubit register as a gate operand;
-- equal-sized whole-register gate broadcasting;
+- literal indices, static index ranges, discrete index sets, and complete
+  qubit registers as gate operands;
+- equal-sized register-selection gate broadcasting;
 - scalar `int`, `uint`, `float`, and `complex` arithmetic;
 - scalar constants, variables, assignments, and numeric casts;
 - scalar and register `bit` values, including bit-string initialization;
-- projective measurement of individual qubits and complete registers;
-- reset of individual qubits and complete registers;
+- projective measurement of individual qubits and register selections;
+- reset of individual qubits and register selections;
 - OpenQASM barriers as ordering-only operations;
 - scalar expressions used as gate parameters; and
 - final-state amplitude output through a namespaced pragma.
@@ -42,10 +43,10 @@ OpenQASM `bit` values are represented by QCX `INT` variables whose elements
 are restricted to zero or one by the converter. A measurement is emitted as a
 QCX `M` operation followed immediately by assignment from `:OUTCOME`.
 
-OpenQASM `reset` accepts a scalar qubit, a qubit selected by a single literal
-index, or a complete qubit register. A complete-register reset is expanded to
-one QCX `RESET` instruction per qubit. Reset is nonunitary and therefore cannot
-be used inside a QCX gate-fusion block.
+OpenQASM `reset` accepts scalar qubits and qubit-register selections. A
+register reset is expanded to one QCX `RESET` instruction per selected qubit.
+Reset is nonunitary and therefore cannot be used inside a QCX gate-fusion
+block.
 
 The built-in constants `pi`, `tau`, and `euler` are available in scalar
 expressions. Runtime expressions preserve `pi` and `tau` as the native QCX
@@ -58,11 +59,37 @@ the QCX `EX`, `EY`, `EZ`, `CEX`, `CEY`, and `CEZ` operations.
 OpenQASM `gphase(angle)` is emitted as the QCX global-phase instruction
 `PHASE angle`.
 
-OpenQASM barriers are accepted for scalar qubits, complete qubit registers,
-and qubits selected by a single literal index. A barrier without operands is
-also accepted. Because the converter preserves source order and does not
-optimize or reorder operations, barriers emit no QCX instruction; their
-explicit operands are nevertheless validated.
+OpenQASM barriers accept scalar qubits and qubit-register selections. A
+barrier without operands is also accepted. Because the converter preserves
+source order and does not optimize or reorder operations, barriers emit no QCX
+instruction; their explicit operands are nevertheless validated.
+
+## Static indexing
+
+Qubit and bit registers can be selected with literal indices, inclusive
+ranges, and discrete index sets:
+
+```qasm
+x q[2];
+x q[1:3];
+x q[0:2:6];
+x q[6:-2:0];
+x q[{0, 3, 5}];
+```
+
+The three-part range syntax is `start:step:end`; the step defaults to one when
+omitted. Endpoints are inclusive, and negative indices count from the end of
+the register. Selection order and repeated discrete indices are preserved.
+
+Ranges and discrete sets are register operands even when they select only one
+element. Consequently, all register operands in a broadcast gate must select
+the same number of qubits. Scalar indexed operands can broadcast across those
+register selections. Measurement requires both operands to be scalars or both
+to be equal-sized register selections.
+
+Single indices, range bounds, range steps, and discrete indices must be signed
+integer literals. Both range bounds must be present. A zero step, an empty
+range, or an out-of-bounds index is rejected during conversion.
 
 ## Amplitude output
 
@@ -91,8 +118,9 @@ The current prototype does not reliably support:
 
 - delays or classical control flow;
 - user-defined gates or gate modifiers;
-- index ranges, discrete index sets, or dynamically computed qubit indices;
-- booleans or multidimensional arrays;
+- dynamically computed indices, ranges with omitted bounds, or
+  multidimensional indexing;
+- general classical arrays or booleans;
 - comparisons, logical operations, or classical functions; or
 - arithmetic operators other than `+`, `-`, `*`, and `/`.
 
