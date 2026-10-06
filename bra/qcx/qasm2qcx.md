@@ -39,6 +39,8 @@ The converter currently covers:
   conditions;
 - compile-time unrolling of constant integer-range and integer-set `for` loops,
   including `break` and `continue`;
+- runtime-bound integer-range `for` loops with constant unit steps, including
+  nested loops, `break`, and `continue`;
 - runtime `while` loops, including nested loops, `break`, and `continue`;
 - scalar expressions used as gate parameters; and
 - final-state amplitude output through a namespaced pragma.
@@ -242,7 +244,7 @@ The converter lowers structured branches to generated QCX labels, `JUMP`, and
 `JUMPIF` instructions. Nested `if` statements and `else if` chains receive
 distinct generated labels. Branch bodies may contain supported gates,
 measurements, resets, assignments, barriers, nested branches, and supported
-constant-range `for` loops.
+`for` and `while` loops.
 
 Comparison and logical expressions also produce Boolean values, following the
 [OpenQASM classical instruction rules](https://openqasm.com/language/classical.html#comparison-boolean-instructions).
@@ -309,7 +311,8 @@ The converter supports `for int name in [start:stop]` and
 body. Bounds and steps must evaluate to integers during conversion: literals,
 previously declared constants, supported constant expressions and explicit
 integer casts are accepted. Nested bounds may also use outer iteration values.
-Runtime variables are not constant bounds, even when initialized with a literal.
+Runtime variables are not constant bounds, even when initialized with a literal;
+such ranges use the runtime lowering described below instead of unrolling.
 Only `int` iteration variables are supported; `uint` constants may still appear
 in bounds under the converter's existing INT-backed representation.
 Declared integer widths retain the limitations described above.
@@ -476,6 +479,89 @@ a converter error rather than silently truncating the loop.
 The same budgets apply to range and set loops; repeated set elements each count
 as an iteration. A `break` does not reduce the generated iteration count.
 
+## Runtime-bound for loops
+
+The converter supports `for int name in [start:stop]` and
+`for int name in [start:step:stop]` when either bound depends on a runtime
+variable or an enclosing runtime iterator. Both bounds must be present and have
+integer type. Scalar `int` and INT-backed `uint` variables, supported integer
+arithmetic, and explicit integer casts are accepted. Floating-point, Boolean,
+and scalar bit operands require an explicit integer cast; statically indexed
+bit-register elements are also accepted through a cast. Whole bit registers
+are not integer bounds.
+
+The step must evaluate during conversion to `1` or `-1`; an omitted step is `1`.
+Runtime steps and other constant strides are unsupported for runtime-bound
+ranges. Fully constant ranges still use unrolling and retain support for any
+nonzero integer step. A runtime variable remains a runtime dependency even if
+its initializer is a literal.
+
+```qasm
+OPENQASM 3.0;
+int first = 1;
+int last = 3;
+int total = 0;
+for int i in [first:last] {
+    total += i;
+    last = 0;
+}
+// total is 6: the captured stop remains 3 despite assignments to last.
+```
+
+The start and stop are evaluated once, in that order, on each entry to the loop,
+before binding the new iterator. Mutating their source variables in the body
+does not change the captured range. The stop is inclusive, and a range whose
+direction does not match its step executes zero iterations. A nested loop can
+use its outer iterator in either bound, including when the inner iterator
+shadows the outer name. The outer binding is restored after the inner loop.
+
+The body is generated once using existing QCX labels, `LET`, `JUMP`, and
+`JUMPIF`. Private integer storage holds the iterator and captured stop for the
+whole loop, independently of expression temporaries and nested loops. An entry
+check skips empty ranges. After each iteration, an endpoint check exits before
+incrementing or decrementing at the last value, avoiding iterator advancement
+overflow at QCX's integer endpoints. This is not a general arithmetic overflow
+check: declared widths and unsigned semantics retain their existing limitations.
+
+Bodies support the same statements as constant loops. The iterator is a scoped,
+read-only runtime integer usable in arithmetic, gate parameters, and conditions.
+Assignments and measurements into active iterators remain rejected. Runtime
+iterators cannot supply static indices, constant-set elements, or range steps;
+dynamic indexing and runtime-valued sets remain unsupported. Constant range and
+set loops and runtime `while` loops may be nested in either direction.
+
+`break` exits the nearest loop. In a runtime-bound `for`, `continue` jumps to
+the endpoint check and iterator advancement, rather than reevaluating the
+bounds. For example:
+
+```qasm
+int last = 5;
+int total = 0;
+for int i in [0:last] {
+    if (i == 2) { continue; }
+    if (i == 4) { break; }
+    total += i;
+}
+// total is 4 after execution: 0 + 1 + 3.
+```
+
+Bodies are converted and validated even if the runtime range is empty or a
+transfer makes later statements unreachable. Temporary declarations may move
+before control flow, but computations remain at their original positions.
+Runtime computations in bound expressions, including integer division and
+remainder, remain at loop entry; body computations remain on the paths that
+reach them. A skipped branch or outer runtime loop therefore skips generated
+nested-bound computations too. Integer zero divisors are checked by `bra` when
+the division executes. Conversion-time constant validation still applies to
+fully constant ranges and independent constant bounds of nested loops; those
+checks are not suppressed by a runtime-skipped path.
+
+Runtime iteration counts do not consume the constant-loop expansion budgets,
+and there is no runtime iteration limit. Constant loops nested in a runtime
+loop are expanded once per generated instance and still consume the budgets.
+A runtime loop nested in an expanded constant loop contributes its generated
+statements and instructions to the enclosing expansion budgets.
+
 ## Runtime while loops
 
 The converter supports `while (condition)` with either a single-statement or
@@ -529,8 +615,8 @@ while (!outcome) {
 // The loop terminates after two iterations with outcome equal to 1.
 ```
 
-General block-local declarations, runtime-dependent indexing, runtime-dependent
-`for` ranges or set elements, and writes to active `for` iterators remain
+General block-local declarations, runtime-dependent indexing, runtime-valued
+set elements, and writes to active `for` iterators remain
 unsupported. A `while` body is still converted and validated even when its
 condition is literally false or a transfer makes later statements unreachable. Conversion-time
 constant evaluation still applies; skipped runtime computations are not executed.
@@ -570,8 +656,9 @@ vector defined by the program's qubit declarations.
 
 The current prototype does not reliably support:
 
-- delays, runtime-dependent `for` ranges or set elements, iteration over arrays,
-  bit registers, or aliases, or `switch` statements;
+- delays, runtime range steps or nonunit steps in runtime-bound ranges,
+  runtime-valued set elements, iteration over arrays, bit registers, or aliases,
+  or `switch` statements;
 - user-defined gates or gate modifiers;
 - dynamically computed indices, ranges with omitted bounds, or
   multidimensional indexing;
@@ -610,6 +697,12 @@ measurement-controlled termination and transfers, mixed nested loops, iterator
 shadowing, and temporary reuse. Transfer results are also checked against Python
 reference loops. Each numerical program execution has a timeout.
 
+`bra/test/qasm2qcx_runtime_for_numerical.py` verifies ascending, descending,
+singleton, and empty runtime ranges against Python reference values, captured
+bounds, arithmetic and casted bounds, repeated entry, iterator shadowing,
+mixed nesting, nearest-loop transfers, measurement-controlled exits, gate
+parameters, skipped arithmetic, temporary reuse, and QCX integer endpoints.
+
 Run the converter and numerical tests from the repository root:
 
 ```console
@@ -619,4 +712,5 @@ python3 bra/test/qasm2qcx_if_else_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_integer_remainder_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_for_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_while_loop_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_runtime_for_numerical.py --bra bra/bin/bra
 ```
