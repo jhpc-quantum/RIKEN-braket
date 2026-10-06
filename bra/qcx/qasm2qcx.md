@@ -29,6 +29,7 @@ The converter currently covers:
 - scalar `int`, `uint`, `float`, and `complex` arithmetic;
 - integer remainder expressions and compound assignments using `%` and `%=`;
 - scalar constants, variables, assignments, and numeric casts;
+- fixed-size, one-dimensional `int` arrays with static element reads and writes;
 - scalar and register `bit` values, including bit-string initialization;
 - scalar `bool` variables and constants, Boolean literals, and expression
   assignments;
@@ -42,6 +43,7 @@ The converter currently covers:
 - integer-range `for` loops with runtime-valued bounds or steps,
   including nested loops, `break`, and `continue`;
 - integer-set `for` loops with runtime-valued elements captured at loop entry;
+- runtime iteration over one-dimensional `int` arrays;
 - runtime `while` loops, including nested loops, `break`, and `continue`;
 - scalar expressions used as gate parameters; and
 - final-state amplitude output through a namespaced pragma.
@@ -94,8 +96,52 @@ throws `bra::integer_zero_divisor_error`. Integer overflow remains unchecked.
 Literal zero-divisor `/` and `%` operations in runtime
 expressions are also deferred so short-circuited operands can skip them.
 Non-integer remainder operands are
-rejected unless explicitly cast to an integer type first. Indexed classical
-integer assignment targets remain unsupported.
+rejected unless explicitly cast to an integer type first. Statically indexed
+integer-array elements also support `%` and `%=`.
+
+### One-dimensional integer arrays
+
+The converter supports top-level `array[int, N]` declarations, including sized
+integer base types such as `array[int[8], N]`. The size must be a positive
+compile-time integer within the host-derived QCX `INT` range described under
+runtime-bound loops. Integer literals, previously declared constants, supported
+constant arithmetic, and explicit integer casts can supply the size. It is
+resolved in declaration scope and does not change when a later iterator shadows
+a dimension constant. Declared element widths are not enforced.
+
+```qasm
+OPENQASM 3.0;
+const int N = 3;
+int seed = 2;
+array[int, N] values = {seed, seed + 1, int(4.5)};
+values[-1] += values[0];
+values[1] %= 2;
+// values now contains 2, 1, 6.
+```
+
+An initializer must be a flat array literal with exactly `N` integer-valued
+elements. Elements may use supported runtime expressions and explicit integer
+casts; their computations execute in source order at the declaration's
+position. Arrays without initializers are accepted, but their OpenQASM values
+are undefined until assigned. Do not rely on the backend's initial storage
+contents.
+
+Individual elements can appear wherever a supported scalar integer expression
+is accepted, including arithmetic, comparisons, casts, gate parameters, and
+range bounds, steps, or set elements. Element assignments support `=`, `+=`,
+`-=`, `*=`, `/=`, and `%=` with the converter's existing integer assignment
+conversions. `%=` preserves the original target while evaluating its operands.
+
+An element index must be a compile-time integer expression. Previously declared
+constants and constant-loop iterator values are accepted, but runtime variables
+and runtime iterators are not. Indices must lie in `[-N, N - 1]`; negative
+indices count from the end. Even a one-element array requires explicit indexing
+when used as a scalar. Qubit and bit-register selection rules below remain
+unchanged.
+
+Multidimensional arrays, non-`int` arrays (including `uint` arrays), slices,
+dynamic element indices, whole-array arithmetic or assignments, array-copy
+initializers, aliases, and block-local array declarations remain unsupported.
 
 ### Boolean values and conversions
 
@@ -192,8 +238,8 @@ operators are `==`, `!=`, `>`, `<`, `>=`, and `<=`. OpenQASM `!=` is emitted as 
 not-equal operator `\=`.
 
 Conditions can compare scalar `int`, `uint`, `float`, and `bit` expressions.
-A statically indexed element of a bit register is also accepted. Compatible
-integer and floating-point operands are promoted when necessary. Complex
+A statically indexed element of a bit register or integer array is also accepted.
+Compatible integer and floating-point operands are promoted when necessary. Complex
 values and complete bit registers cannot be compared.
 Boolean and scalar bit operands can be compared with one another using `==`
 or `!=`.
@@ -383,7 +429,8 @@ Runtime variables are not constant elements, even when initialized with a
 literal; sets containing them use the runtime-valued lowering described below.
 Non-integer elements require a supported explicit integer cast;
 implicit conversion of floating-point, Boolean, or complex elements is not
-supported. Iteration over arrays, bit registers, or aliases remains unsupported.
+supported. Integer-array iteration uses the runtime lowering described below;
+bit-register and alias iteration remain unsupported.
 The installed parser requires a nonempty set in
 source code: the spelling `{}` is rejected. An empty discrete-set AST supplied
 directly to the converter emits no body instructions but still validates its
@@ -417,7 +464,8 @@ inner loop can use the outer value in its bounds or elements. These rules follow
 [OpenQASM scoping](https://openqasm.com/versions/3.0/language/scope.html).
 As an explicit subset restriction, assignments or measurements into any active
 iterator are rejected, although OpenQASM itself permits modifying iterators.
-General local declarations and iteration over arrays remain unsupported.
+General local declarations remain unsupported. Integer-array iteration is
+described below.
 Runtime `while` loops may also appear inside a `for` body, as described below.
 
 ### Break and continue
@@ -482,7 +530,8 @@ a converter error rather than silently truncating the loop.
 The same budgets apply to constant range and set loops and to the generated
 body copies of runtime-valued set loops; repeated set elements each count as an
 expanded iteration. A `break` does not reduce the generated iteration count.
-Runtime-bound range loops do not expand their runtime iteration count.
+Runtime-bound range and integer-array loops do not expand their runtime
+iteration count.
 
 ## Runtime-bound for loops
 
@@ -701,8 +750,66 @@ whether or not it executes. Nested generated statements and instructions also
 count, even when their iterator is runtime-valued or shadows an outer iterator.
 Runtime reentry into an already generated loop does not charge additional
 conversion-time iterations. Integer widths and unsigned semantics retain the
-converter's existing limitations. Array, bit-register, and alias iteration
-remain unsupported; the parser still rejects an empty source set `{}`.
+converter's existing limitations. Integer-array iteration is described below;
+bit-register and alias iteration remain unsupported. The parser still rejects
+an empty source set `{}`.
+
+## Integer-array for loops
+
+The converter supports `for int name in values` when `values` is a previously
+declared one-dimensional integer array. Elements are visited in increasing
+index order, including repeated values. Only `int` iterators are supported.
+
+```qasm
+OPENQASM 3.0;
+array[int, 3] values = {1, 3, 5};
+int total = 0;
+for int value in values {
+    total += value;
+    values[1] = 10;
+}
+// total is 16: the visited values are 1, 10, 5.
+```
+
+The converter uses live element reads: at the start of each iteration,
+the current element is copied into private iterator storage. A body write to a
+future element affects its later visit; a write to the current element does not
+change the iterator's copied value. This is the converter's explicit mutation
+policy. The [OpenQASM array-loop rules](https://openqasm.com/versions/3.0/language/classical.html#for-loops)
+specify index order and a non-reference iterator but do not explicitly settle
+whether the iterable's values are snapshotted at entry.
+
+In contrast, `for int value in {values[0], values[1]}` captures both element
+values before executing its first body, using runtime-valued set lowering.
+Reentering an array loop starts again at element zero and reads the array's
+then-current contents. The array's size remains fixed.
+
+The iterator is scoped to the body and may shadow a source variable, constant,
+array, or outer iterator. The outer binding is restored afterward. The source array is
+resolved before binding the iterator, so `for int values in values` is accepted.
+As with other supported loops, iterator writes and measurements into active
+iterators are rejected. Runtime iterators cannot be used as static indices;
+explicitly indexing with a constant outer iterator remains supported.
+
+Bodies support the same statements as other loops, including nested range,
+set, array, and `while` loops. `break` exits the nearest loop; `continue` proceeds
+to its next element. Runtime computations remain in their original branches
+and bodies, while temporary declarations may move before control flow.
+Bodies remain validated even when skipped at runtime or after an unconditional
+transfer.
+
+The body is generated once using existing QCX `VAR`, `LET`, labels, `JUMP`, and
+`JUMPIF` instructions. Private integer storage holds the current index and the
+copied iterator value; QCX's existing indexed operands read the source array.
+No new bra instruction is required. A final-index check occurs before advancing,
+so loop-control arithmetic stays within QCX `INT` for an accepted array size.
+This does not add general overflow checks or enforce declared integer widths.
+
+Runtime array iteration counts do not consume expansion budgets. Nested
+constant or set-loop body copies still consume their usual budgets, and an
+array loop inside an expanded loop contributes its generated statements and
+instructions. Iteration over slices, non-`int` arrays, bit registers, aliases,
+or arbitrary array expressions remains unsupported.
 
 ## Runtime while loops
 
@@ -798,12 +905,13 @@ vector defined by the program's qubit declarations.
 
 The current prototype does not reliably support:
 
-- delays, iteration over arrays, bit registers, or aliases,
+- delays, iteration over non-`int` arrays, bit registers, or aliases,
   or `switch` statements;
 - user-defined gates or gate modifiers;
 - dynamically computed indices, ranges with omitted bounds, or
   multidimensional indexing;
-- general classical arrays, whole-register casts, complex-to-Boolean casts,
+- classical arrays beyond the one-dimensional `int` subset above,
+  whole-register casts, complex-to-Boolean casts,
   Boolean arithmetic, mixed Boolean/numeric comparisons, or block-local
   declarations;
 - bitwise operations or classical functions; or
@@ -821,6 +929,16 @@ future work.
 `bra/test/qasm2qcx_integer_remainder_numerical.py` verifies runtime remainder
 for signed operands, nested expressions, operand preservation, short-circuiting,
 compound assignments, self-references, and temporary reuse.
+
+`bra/test/qasm2qcx_integer_array_numerical.py` verifies declarations and runtime
+initializers, static and negative element indices, compound assignments, live
+reads versus set snapshots, dimension-constant shadowing, repeated entry,
+mixed nesting, measurement-controlled transfers, gate parameters, skipped and
+executed zero-divisor operations, temporary reuse, and QCX integer endpoints.
+Mutation and position-based `break`/`continue` results are checked against
+explicit Python reference loops. Unit tests additionally cover invalid sizes,
+indices and initializers, unsupported array operations, singleton arrays,
+storage cleanup, and expansion budgets.
 
 `bra/test/qasm2qcx_for_loop_numerical.py` verifies unrolled quantum operations,
 measurement and reset, runtime classical accumulation, conditions, nested loops,
