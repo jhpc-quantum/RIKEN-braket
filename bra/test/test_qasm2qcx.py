@@ -209,9 +209,10 @@ class RuntimeForLoweringTests(unittest.TestCase):
                          convert(prefix + 'total += 0; total += 2; total += 4;'))
 
     def test_runtime_steps_unknown_names_and_invalid_types_rejected(self) -> None:
-        prefix = 'OPENQASM 3.0; int limit = 3; int step = 1; float f = 2.5; bool ready = true; '
+        prefix = ('OPENQASM 3.0; int limit = 3; int step = 1; float f = 2.5; '
+                  'bool ready = true; complex value = 1.0im; ')
         for bounds in ('[0:2:limit]', '[0:-2:limit]', '[0:step:limit]', '[0:missing]',
-                       '[0:f]', '[ready:limit]', '[0:int(1.0im)]', '[0:limit + missing]'):
+                       '[0:f]', '[ready:limit]', '[0:int(value)]', '[0:limit + missing]'):
             with self.subTest(bounds=bounds):
                 with self.assertRaises(qasm2qcx.QASM2QCXError):
                     convert(prefix + f'for int i in {bounds} {{}}')
@@ -266,6 +267,49 @@ class RuntimeForLoweringTests(unittest.TestCase):
 
 
 class RuntimeForRegressionTests(unittest.TestCase):
+    def test_constant_complex_numeric_casts_preserve_unrolled_ranges(self) -> None:
+        prefix = 'OPENQASM 3.0; const complex value = 2.0 + 3.0im; int total = 0; '
+        for bounds, values in (
+                ('[0:int(1.0im)]', (0,)),
+                ('[int(value):int(value) + 1]', (2, 3)),
+                ('[0:int(float(value))]', (0, 1, 2)),
+                ('[0:uint(value)]', (0, 1, 2)),
+                ('[int(-value):-1:0]', ()),
+                ('[0:int(value):4]', (0, 2, 4))):
+            with self.subTest(bounds=bounds):
+                self.assertEqual(convert(prefix + f'for int i in {bounds} {{ total += i; }}'),
+                                 convert(prefix + ''.join(f'total += {i};' for i in values)))
+
+    def test_constant_complex_casts_work_in_nested_and_runtime_bounds(self) -> None:
+        lines = convert('''OPENQASM 3.0; int total = 0;
+            for int i in {1, 2} {
+                for int j in [0:int(complex(i) + 1.0im)] { total += j; }
+            }''')
+        self.assertEqual(lines, convert('OPENQASM 3.0; int total = 0; '
+                                       'total += 0; total += 1; '
+                                       'total += 0; total += 1; total += 2;'))
+        lines = convert('OPENQASM 3.0; int limit = 2; '
+                        'for int i in [int(1.0im):limit] {}')
+        self.assertIn('LET QASM2QCX_INT_0 := 0', lines)
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+        # Independent bound validation must also accept these casts when an
+        # empty outer loop never supplies an iteration value.
+        prefix = 'OPENQASM 3.0; int limit = 2; '
+        self.assertEqual(convert(prefix + 'for int i in [1:0] '
+                                 '{ for int j in [int(1.0im):limit] {} }'), convert(prefix))
+
+    def test_runtime_complex_and_constant_complex_boolean_casts_still_rejected(self) -> None:
+        for prefix, bound in (
+                ('complex value = 1.0im;', 'int(value)'),
+                ('complex value = 1.0im;', 'int(float(value))'),
+                ('', 'int(bool(1.0im))'), ('', 'int(bit(1.0im))')):
+            with self.subTest(bound=bound):
+                with self.assertRaises(qasm2qcx.QASM2QCXError):
+                    convert(f'OPENQASM 3.0; {prefix} for int i in [0:{bound}] {{}}')
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            convert('OPENQASM 3.0; int limit = 2; '
+                    'for int i in [0:limit] { for int j in [0:int(complex(i))] {} }')
+
     def test_range_expression_analysis_preserves_types_dependencies_and_state(self) -> None:
         program = qasm2qcx.openqasm3.parser.parse('''OPENQASM 3.0;
             const int count = 2; int limit = 3; float fraction = 1.5;
@@ -286,6 +330,8 @@ class RuntimeForRegressionTests(unittest.TestCase):
                 ('int(!ready || flag)', qasm2qcx.ValueType.INT, True),
                 ('int(limit >= count)', qasm2qcx.ValueType.INT, True),
                 ('int(pi)', qasm2qcx.ValueType.INT, False),
+                ('int(1.0im)', qasm2qcx.ValueType.INT, False),
+                ('int(float(2.0 + 1.0im))', qasm2qcx.ValueType.INT, False),
                 ('limit % count', qasm2qcx.ValueType.INT, True)):
             with self.subTest(expression=source):
                 expression = qasm2qcx.openqasm3.parser.parse(

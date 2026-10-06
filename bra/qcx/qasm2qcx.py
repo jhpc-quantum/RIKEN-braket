@@ -1569,7 +1569,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         operand_type, runtime = self.__range_expression_info(expression.argument, iterators)
         target_type = self.__source_value_type(expression.type)
         if operand_type == ValueType.COMPLEX and target_type != ValueType.COMPLEX:
-            raise NoImplicitCastException
+            # Constant numeric casts already extract the real component in
+            # visit_Cast. Preserve that behavior without permitting casts of
+            # runtime complex operands or complex-to-Boolean/bit conversions.
+            if runtime or target_type not in (ValueType.INT, ValueType.FLOAT):
+                raise NoImplicitCastException
         if target_type == ValueType.BIT and (
                 operand_type not in (ValueType.BIT, ValueType.BOOL)
                 or expression.type.size is not None):

@@ -84,6 +84,8 @@ def main() -> None:
             ('bool ready = true; int last = 2;', '[int(!ready):last]', '3'),
             ('bit[2] flags = "01"; int last = 2;', '[int(flags[0]):last]', '3'),
             ('int first = 0; int last = 2;', '[int(first < last):last]', '3'),
+            ('const complex first = 2.0 + 1.0im; int last = 3;',
+             '[int(first):last]', '5'),
             ('const int stride = 1; int last = -1;', '[2:-stride:last]', '2')):
         check_program(arguments.bra, declarations + f'''int total = 0;
             for int i in {bounds} {{ total += i; }}''', ('TOTAL31',), [expected])
