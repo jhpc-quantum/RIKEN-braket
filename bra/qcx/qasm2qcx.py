@@ -65,6 +65,14 @@ class InvalidBitOperandException(QASM2QCXError):
         return self.message
 
 
+class InvalidArrayOperandException(QASM2QCXError):
+    def __init__(self, message: str) -> None:
+        self.message = message
+
+    def __str__(self) -> str:
+        return self.message
+
+
 class InvalidDeclarationException(QASM2QCXError):
     def __init__(self, message: str) -> None:
         self.message = message
@@ -215,6 +223,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__classical_source_types: dict[str, ast.QASMNode] = {}
 
         self.__int_variable_name_size_map: dict[str, int] = {}
+        self.__integer_array_names: set[str] = set()
         self.__float_variable_name_size_map: dict[str, int] = {}
         self.__bit_variable_name_size_map: dict[str, int] = {}
         self.__bool_variable_names: set[str] = set()
@@ -439,6 +448,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise NoVariableNameException(expression.name)
 
             self.__value = self.__capitalize_variable_name(expression.name)
+            if self.__value in self.__integer_array_names:
+                raise UnsupportedOpenQASMError('whole integer array in scalar expression')
             self.__value_type = self.__type_of(self.__value)
             self.__value_kind = ValueKind.LVALUE
             if (self.__value_type == ValueType.BIT
@@ -1154,6 +1165,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
             source_name = expression.collection.name
             variable_name = self.__capitalize_variable_name(source_name)
+            if variable_name in self.__integer_array_names:
+                return self.__integer_array_operand(expression), ValueType.INT, ValueKind.LVALUE
             if self.__type_of(variable_name) != ValueType.BIT:
                 raise UnsupportedOpenQASMError(
                     'indexed non-bit conditional operand')
@@ -1633,6 +1646,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 or any(name in scope for scope in self.__loop_bindings)):
             raise UnsupportedOpenQASMError('indexed use of a for-loop iterator')
         variable_type = self.__classical_source_types.get(name)
+        if isinstance(variable_type, ast.ArrayType) and isinstance(variable_type.base_type, ast.IntType):
+            return ValueType.INT, True
         if not isinstance(variable_type, ast.BitType):
             raise UnsupportedOpenQASMError('indexed non-bit loop operand')
         return ValueType.BIT, True
@@ -1697,7 +1712,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if not isinstance(statement.type, ast.IntType):
             raise UnsupportedOpenQASMError('for-loop iteration type other than int')
         bounds = statement.set_declaration
-        if not isinstance(bounds, (ast.RangeDefinition, ast.DiscreteSet)):
+        if not isinstance(bounds, (ast.RangeDefinition, ast.DiscreteSet, ast.Identifier)):
             raise UnsupportedOpenQASMError('for-loop iteration other than a constant range or integer set')
         if isinstance(bounds, ast.RangeDefinition) and (bounds.start is None or bounds.end is None):
             raise InvalidLoopRangeException('For-loop range requires both bounds')
@@ -1752,6 +1767,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # names and independent iteration values now; defer value-dependent checks until
         # an actual iteration, rather than fabricating an outer value.
         bounds = statement.set_declaration
+        if isinstance(bounds, ast.Identifier):
+            self.__array_loop_info(bounds, iterators)
+            return
         is_set = isinstance(bounds, ast.DiscreteSet)
         expressions = ([(value, f'element {index}') for index, value in enumerate(bounds.values)]
                        if is_set else [(bounds.start, 'start'), (bounds.end, 'end'),
@@ -1876,6 +1894,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def visit_ForInLoop(self, statement: ast.ForInLoop) -> None:
         self.__validate_loop_header(statement)
         source = statement.set_declaration
+        if isinstance(source, ast.Identifier):
+            self.__visit_array_for(statement)
+            return
         if isinstance(source, ast.DiscreteSet) and self.__set_has_runtime_elements(source):
             self.__visit_runtime_set(statement)
             return
@@ -1917,6 +1938,60 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # declarations; calculations must stay behind their original jumps.
             self.__hoist_temporary_declarations(previous_temporaries)
             self.__check_loop_output_limit()
+
+    def __array_loop_info(self, source: ast.Identifier, iterators: set[str] | None = None) -> tuple[str, int]:
+        name = source.name
+        if ((iterators is not None and name in iterators)
+                or any(name in scope for scope in self.__loop_bindings)):
+            raise UnsupportedOpenQASMError('iteration over a scalar for-loop iterator')
+        variable_type = self.__classical_source_types.get(name)
+        if variable_type is None:
+            raise NoVariableNameException(name)
+        if not isinstance(variable_type, ast.ArrayType):
+            raise UnsupportedOpenQASMError('for-loop identifier other than an integer array')
+        variable_name = self.__capitalize_variable_name(name)
+        if not self.__is_initialization_process and variable_name not in self.__integer_array_names:
+            raise NoVariableNameException(name)
+        return variable_name, self.__integer_array_size(variable_type, name)
+
+    def __visit_array_for(self, statement: ast.ForInLoop) -> None:
+        variable_name, size = self.__array_loop_info(statement.set_declaration)
+        self.__validate_loop_body(statement.block,
+                                  {name for scope in self.__loop_bindings for name in scope}
+                                  | {statement.identifier.name})
+        self.__validate_loop_syntax(statement)
+        loop_index = self.__loop_index
+        self.__loop_index += 1
+        body_label = f'QASM2QCX_LOOP_{loop_index}_BODY'
+        next_label = f'QASM2QCX_LOOP_{loop_index}_NEXT'
+        end_label = f'QASM2QCX_LOOP_{loop_index}_END'
+        if self.__is_initialization_process:
+            binding = _RuntimeIteratorBinding(f'QASM2QCX_LOOP_{loop_index}_ITERATOR')
+            with self.__iterator_binding(statement.identifier.name, binding), self.__loop_context(end_label, next_label):
+                for child in statement.block:
+                    self.visit(child)
+            return
+
+        previous_temporaries = self.__declared_temporary_variables.copy()
+        iterator = self.__add_new_temporary_variable(ValueType.INT)
+        index = self.__add_new_temporary_variable(ValueType.INT)
+        try:
+            self.__qcx_lines.extend([f'LET {index} := 0', f'@{body_label}',
+                                    f'LET {iterator} := {variable_name}:{index}'])
+            # Read the current element on each iteration, not a loop-entry
+            # snapshot. Keep its copied value and index reserved across the body.
+            with self.__iterator_binding(statement.identifier.name, _RuntimeIteratorBinding(iterator)), \
+                    self.__loop_context(end_label, next_label):
+                for child in statement.block:
+                    self.visit(child)
+            self.__qcx_lines.extend([f'@{next_label}', f'JUMPIF {end_label} {index} == {size - 1}',
+                                    f'LET {index} += 1', f'JUMP {body_label}', f'@{end_label}'])
+            self.__hoist_temporary_declarations(previous_temporaries)
+            if self.__inside_expanded_loop():
+                self.__check_loop_output_limit()
+        finally:
+            self.__release_temporary_variable(index)
+            self.__release_temporary_variable(iterator)
 
     def __visit_runtime_set(self, statement: ast.ForInLoop) -> None:
         self.__validate_loop_body(statement.block,
@@ -2553,6 +2628,88 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         for target_name, value in zip(target_names, values):
             self.__qcx_lines.append(f'LET {target_name} := {value}')
 
+    def __integer_array_operand(self, expression: ast.IndexExpression | ast.IndexedIdentifier) -> str:
+        if isinstance(expression, ast.IndexExpression):
+            if not isinstance(expression.collection, ast.Identifier):
+                raise UnsupportedOpenQASMError('multidimensional integer array indexing')
+            name, selectors = expression.collection.name, expression.index
+        else:
+            if len(expression.indices) != 1:
+                raise UnsupportedOpenQASMError('multidimensional integer array indexing')
+            name, selectors = expression.name.name, expression.indices[0]
+        variable_name = self.__capitalize_variable_name(name)
+        self.__type_of(variable_name)  # Reject an active iterator shadowing the array.
+        if variable_name not in self.__integer_array_names:
+            raise UnsupportedOpenQASMError('indexed non-array integer operand')
+        if not isinstance(selectors, list) or len(selectors) != 1 or not isinstance(selectors[0], ast.Expression):
+            raise UnsupportedOpenQASMError('integer array slice or multidimensional selection')
+        if isinstance(selectors[0], (ast.RangeDefinition, ast.DiscreteSet)):
+            raise UnsupportedOpenQASMError('integer array slice or multidimensional selection')
+        value_type, runtime = self.__loop_expression_info(selectors[0])
+        if runtime:
+            raise UnsupportedOpenQASMError('runtime integer array index')
+        if value_type != ValueType.INT:
+            raise InvalidArrayOperandException(f'Integer array {name} index must be a constant integer')
+        index = self.__constant_loop_integer(selectors[0], 'array index')
+        size = self.__int_variable_name_size_map[variable_name]
+        if not -size <= index < size:
+            raise InvalidArrayOperandException(f'Integer array {name} index {index} is outside [-{size}, {size - 1}]')
+        return f'{variable_name}:{index if index >= 0 else index + size}'
+
+    def __integer_array_size(self, variable_type: ast.ArrayType, variable_name: str) -> int:
+        if len(variable_type.dimensions) != 1:
+            raise UnsupportedOpenQASMError('multidimensional classical array')
+        if not isinstance(variable_type.base_type, ast.IntType):
+            raise UnsupportedOpenQASMError('non-int classical array')
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        try:
+            value_type, runtime = self.__loop_expression_info(variable_type.dimensions[0])
+            if value_type != ValueType.INT or runtime:
+                raise InvalidDeclarationException(
+                    f'Integer array {variable_name} must have a constant integer size')
+            self.__expression_kind = ExpressionKind.CONST_ARITHMETIC
+            self.__value = self.__value_type = self.__value_kind = None
+            self.__evaluate_constant = True
+            self.visit(variable_type.dimensions[0])
+            if self.__value_kind != ValueKind.LITERAL or self.__value_type != ValueType.INT:
+                raise InvalidDeclarationException(
+                    f'Integer array {variable_name} must have a constant integer size')
+            size = int(self.__value)
+            if not 1 <= size <= self.QCX_INT_MAX:
+                raise InvalidDeclarationException(
+                    f'Integer array {variable_name} size must be in [1, {self.QCX_INT_MAX}]')
+            return size
+        finally:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+
+    def __declare_integer_array(self, statement: ast.ClassicalDeclaration, variable_name: str) -> None:
+        size = self.__integer_array_size(statement.type, statement.identifier.name)
+        initializer = statement.init_expression
+        if initializer is not None:
+            if not isinstance(initializer, ast.ArrayLiteral):
+                raise UnsupportedOpenQASMError('integer array initializer other than an array literal')
+            if len(initializer.values) != size:
+                raise InvalidDeclarationException(
+                    f'Integer array {statement.identifier.name} initializer has '
+                    f'{len(initializer.values)} elements; expected {size}')
+            if any(isinstance(value, ast.ArrayLiteral) for value in initializer.values):
+                raise UnsupportedOpenQASMError('nested integer array initializer')
+        self.__declare_classical_variable(statement.type.base_type, variable_name, size)
+        self.__integer_array_names.add(variable_name)
+        if initializer is None:
+            return
+        for index, expression in enumerate(initializer.values):
+            value, value_type, value_kind = self.__condition_operand(expression)
+            if value_type != ValueType.INT:
+                if value_kind == ValueKind.TEMPORARY:
+                    self.__release_temporary_variable(str(value))
+                raise InvalidDeclarationException(
+                    f'Integer array {statement.identifier.name} initializer element {index} must be an integer')
+            self.__emit_assignment(f'{variable_name}:{index}', ':=', ValueType.INT,
+                                   value, value_type, value_kind)
+
     def visit_ClassicalDeclaration(self, statement: ast.ClassicalDeclaration) -> None:
         if self.__is_initialization_process:
             self.__register_source_identifier(statement.identifier.name)
@@ -2565,7 +2722,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         variable_name = self.__capitalize_variable_name(statement.identifier.name)
 
         if isinstance(variable_type, ast.ArrayType):
-            raise UnsupportedOpenQASMError('classical array')
+            self.__declare_integer_array(statement, variable_name)
+            return
         if not isinstance(
                 variable_type,
                 (ast.IntType, ast.UintType, ast.FloatType, ast.BitType,
@@ -2621,6 +2779,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         source_name = self.__operand_name(statement.lvalue)
         variable_name: str = self.__capitalize_variable_name(source_name)
         variable_type: ValueType = self.__type_of(variable_name)
+        array_element = variable_name in self.__integer_array_names
+        if array_element:
+            if not isinstance(statement.lvalue, ast.IndexedIdentifier):
+                raise UnsupportedOpenQASMError('whole integer array assignment')
+            variable_name = self.__integer_array_operand(statement.lvalue)
 
         if variable_type == ValueType.BIT:
             if statement.op != ast.AssignmentOperator['=']:
@@ -2630,7 +2793,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 statement.lvalue, statement.rvalue)
             return
 
-        if isinstance(statement.lvalue, ast.IndexedIdentifier):
+        if isinstance(statement.lvalue, ast.IndexedIdentifier) and not array_element:
             raise UnsupportedOpenQASMError('indexed classical assignment')
 
         if (variable_type == ValueType.BOOL
@@ -2654,8 +2817,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # Reuse expression lowering and assign only its completed result;
             # the destination may also occur anywhere in the RHS expression.
             operator = ':='
-            expression = ast.BinaryExpression(
-                ast.BinaryOperator['%'], statement.lvalue, statement.rvalue)
+            lhs = (ast.IndexExpression(ast.Identifier(source_name), statement.lvalue.indices[0])
+                   if array_element else statement.lvalue)
+            expression = ast.BinaryExpression(ast.BinaryOperator['%'], lhs, statement.rvalue)
         else:
             raise UnsupportedOpenQASMError(
                 f'assignment operator {statement.op.name}')
