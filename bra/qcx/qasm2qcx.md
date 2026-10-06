@@ -41,6 +41,7 @@ The converter currently covers:
   including `break` and `continue`;
 - runtime-bound integer-range `for` loops with constant unit steps, including
   nested loops, `break`, and `continue`;
+- integer-set `for` loops with runtime-valued elements captured at loop entry;
 - runtime `while` loops, including nested loops, `break`, and `continue`;
 - scalar expressions used as gate parameters; and
 - final-state amplitude output through a namespaced pragma.
@@ -378,10 +379,11 @@ for int i in {first, first + 1} {
 ```
 
 Runtime variables are not constant elements, even when initialized with a
-literal. Non-integer elements require a supported explicit integer cast;
+literal; sets containing them use the runtime-valued lowering described below.
+Non-integer elements require a supported explicit integer cast;
 implicit conversion of floating-point, Boolean, or complex elements is not
-supported. Runtime-valued sets and iteration over arrays, bit registers, or
-aliases remain unsupported. The installed parser requires a nonempty set in
+supported. Iteration over arrays, bit registers, or aliases remains unsupported.
+The installed parser requires a nonempty set in
 source code: the spelling `{}` is rejected. An empty discrete-set AST supplied
 directly to the converter emits no body instructions but still validates its
 body structurally.
@@ -476,8 +478,10 @@ and emission check independent copies of the budgets, so the two passes do not
 charge each iteration twice. Runtime-skipped branches still consume expansion
 budgets because their instructions must be generated. Exceeding a limit produces
 a converter error rather than silently truncating the loop.
-The same budgets apply to range and set loops; repeated set elements each count
-as an iteration. A `break` does not reduce the generated iteration count.
+The same budgets apply to constant range and set loops and to the generated
+body copies of runtime-valued set loops; repeated set elements each count as an
+expanded iteration. A `break` does not reduce the generated iteration count.
+Runtime-bound range loops do not expand their runtime iteration count.
 
 ## Runtime-bound for loops
 
@@ -526,9 +530,10 @@ check: declared widths and unsigned semantics retain their existing limitations.
 Bodies support the same statements as constant loops. The iterator is a scoped,
 read-only runtime integer usable in arithmetic, gate parameters, and conditions.
 Assignments and measurements into active iterators remain rejected. Runtime
-iterators cannot supply static indices, constant-set elements, or range steps;
-dynamic indexing and runtime-valued sets remain unsupported. Constant range and
-set loops and runtime `while` loops may be nested in either direction.
+iterators cannot supply static indices or range steps. Using a runtime iterator
+in a set element selects runtime-valued set lowering.
+Dynamic indexing remains unsupported. Constant range and set loops,
+runtime-valued set loops, and runtime `while` loops may be nested in either direction.
 
 `break` exits the nearest loop. In a runtime-bound `for`, `continue` jumps to
 the endpoint check and iterator advancement, rather than reevaluating the
@@ -561,6 +566,74 @@ and there is no runtime iteration limit. Constant loops nested in a runtime
 loop are expanded once per generated instance and still consume the budgets.
 A runtime loop nested in an expanded constant loop contributes its generated
 statements and instructions to the enclosing expansion budgets.
+
+## Runtime-valued integer-set for loops
+
+The converter supports `for int name in {value, ...}` when one or more elements
+depend on a runtime variable or an enclosing runtime iterator. Elements must
+have integer type: scalar `int`, INT-backed `uint`, supported integer arithmetic,
+and supported explicit integer casts are accepted. Floating-point, Boolean,
+and scalar bit values require integer casts; statically indexed bit-register
+elements may also be cast. Whole-register casts and runtime complex-to-integer
+casts remain unsupported. Existing constant numeric casts retain their behavior.
+
+```qasm
+OPENQASM 3.0;
+int first = 1;
+int last = 3;
+int total = 0;
+for int i in {first, last, first + 1, first} {
+    total += i;
+    first = 9;
+    last = 9;
+}
+// total is 7: the captured elements are 1, 3, 2, 1, in that order.
+```
+
+All elements are evaluated and captured once, in source order, on each entry
+to the loop, before binding its iterator or executing any body instruction.
+The body cannot change the captured values by modifying their source variables.
+Duplicate elements are distinct iterations and are neither sorted nor removed.
+Even an unconditional `break` in the first body does not skip evaluation of
+later elements. For example, an executed runtime zero divisor in a later
+element still produces a `bra` error before the first body runs.
+
+The set's element count is fixed in the source. The converter emits one body
+copy per element using existing QCX `LET`, labels, and `JUMP` instructions.
+Private storage holds every captured element and the runtime iterator throughout
+loop execution. The converter reserves this storage while generating the body
+copies, so expression temporaries and nested loops cannot reuse live captures.
+No new bra instruction or runtime array indexing is needed.
+Fully constant sets continue to use the existing constant-iterator unrolling.
+
+The iterator is scoped to the body and may shadow a source variable, constant,
+or outer iterator. Element expressions use the outer binding, and that binding
+is restored after the loop. The iterator is a read-only runtime integer usable
+in arithmetic, conditions, and gate parameters, but not in static indices or
+constant range steps. General block-local declarations remain unsupported.
+
+`break` exits the nearest loop; `continue` skips the rest of the current element's
+body and proceeds to the next captured element. Each body copy has its own
+continuation label, including when values are duplicated. Nesting with constant
+range/set loops, runtime-bound ranges, other runtime-valued sets, and `while`
+loops is supported. Nested element expressions may use outer runtime iterators.
+
+Temporary declarations may move before control flow, but element computations
+remain at loop entry and body computations remain in their original positions.
+Skipped branches, empty outer runtime ranges, and earlier transfers can skip
+generated capture computations. Logical element expressions preserve
+short-circuit evaluation. Conversion-time validation still applies, including
+independent constant elements of nested loops; an invalid constant expression
+is not silently treated as a runtime value. Bodies and later elements remain
+validated even after unconditional transfers.
+
+Every generated body copy consumes the expansion budgets described above,
+whether or not it executes. Nested generated statements and instructions also
+count, even when their iterator is runtime-valued or shadows an outer iterator.
+Runtime reentry into an already generated loop does not charge additional
+conversion-time iterations. Integer widths and unsigned semantics retain the
+converter's existing limitations. Array, bit-register, and alias iteration
+remain unsupported; the parser still rejects an empty source set `{}`.
 
 ## Runtime while loops
 
@@ -615,8 +688,8 @@ while (!outcome) {
 // The loop terminates after two iterations with outcome equal to 1.
 ```
 
-General block-local declarations, runtime-dependent indexing, runtime-valued
-set elements, and writes to active `for` iterators remain
+General block-local declarations, runtime-dependent indexing, and writes to
+active `for` iterators remain
 unsupported. A `while` body is still converted and validated even when its
 condition is literally false or a transfer makes later statements unreachable. Conversion-time
 constant evaluation still applies; skipped runtime computations are not executed.
@@ -657,7 +730,7 @@ vector defined by the program's qubit declarations.
 The current prototype does not reliably support:
 
 - delays, runtime range steps or nonunit steps in runtime-bound ranges,
-  runtime-valued set elements, iteration over arrays, bit registers, or aliases,
+  iteration over arrays, bit registers, or aliases,
   or `switch` statements;
 - user-defined gates or gate modifiers;
 - dynamically computed indices, ranges with omitted bounds, or
@@ -703,6 +776,14 @@ bounds, arithmetic and casted bounds, repeated entry, iterator shadowing,
 mixed nesting, nearest-loop transfers, measurement-controlled exits, gate
 parameters, skipped arithmetic, temporary reuse, and QCX integer endpoints.
 
+`bra/test/qasm2qcx_runtime_set_numerical.py` verifies source order, duplicates,
+capture-before-body behavior, repeated entry, casts, shadowing, mixed nesting,
+nearest-loop transfers, short-circuit expressions, skipped capture and body
+arithmetic, storage reuse, measurement-controlled exits, gate parameters, and
+QCX integer endpoints. Transfer results are checked against Python reference
+loops. A deliberate runtime-error test verifies that a later zero-divisor
+element is evaluated even when the first body contains `break`.
+
 Run the converter and numerical tests from the repository root:
 
 ```console
@@ -713,4 +794,6 @@ python3 bra/test/qasm2qcx_integer_remainder_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_for_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_while_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_for_numerical.py --bra bra/bin/bra
+ulimit -c 0
+python3 bra/test/qasm2qcx_runtime_set_numerical.py --bra bra/bin/bra
 ```
