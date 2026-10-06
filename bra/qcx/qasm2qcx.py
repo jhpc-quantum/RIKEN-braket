@@ -1548,23 +1548,18 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 if part == 'step' and value == 0:
                     raise InvalidLoopRangeException('For-loop range step cannot be zero')
 
-    def __validate_loop_body(
-            self, statements: list[ast.Statement], iterators: set[str], *,
-            allow_while: bool = False) -> None:
+    def __validate_loop_body(self, statements: list[ast.Statement], iterators: set[str]) -> None:
         # Validate without executing the body, including zero-iteration loops.
-        # While syntax is available to shared validation before its runtime
-        # lowering is enabled by the loop visitors.
         supported = (ast.QuantumGate, ast.QuantumPhase,
                      ast.QuantumMeasurementStatement, ast.QuantumReset,
                      ast.QuantumBarrier, ast.ClassicalAssignment,
-                     ast.BranchingStatement, ast.ForInLoop,
+                     ast.BranchingStatement, ast.ForInLoop, ast.WhileLoop,
                      ast.BreakStatement, ast.ContinueStatement)
         for child in statements:
             if isinstance(child, (ast.ClassicalDeclaration, ast.ConstantDeclaration,
                                   ast.QubitDeclaration)):
                 raise UnsupportedOpenQASMError('block-local declaration')
-            if not isinstance(child, supported) and not (
-                    allow_while and isinstance(child, ast.WhileLoop)):
+            if not isinstance(child, supported):
                 raise UnsupportedOpenQASMError(f'loop body {type(child).__name__}')
             target = (child.lvalue if isinstance(child, ast.ClassicalAssignment)
                       else child.target if isinstance(child, ast.QuantumMeasurementStatement)
@@ -1590,16 +1585,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if isinstance(child, ast.QuantumPhase) and (child.modifiers or child.qubits):
                 raise UnsupportedOpenQASMError('modifiers or qubit operands on gphase')
             if isinstance(child, ast.BranchingStatement):
-                self.__validate_loop_body(child.if_block, iterators, allow_while=allow_while)
-                self.__validate_loop_body(child.else_block, iterators, allow_while=allow_while)
+                self.__validate_loop_body(child.if_block, iterators)
+                self.__validate_loop_body(child.else_block, iterators)
             if isinstance(child, ast.ForInLoop):
                 self.__validate_loop_header(child)
                 self.__validate_nested_loop_bounds(child, iterators)
-                self.__validate_loop_body(child.block, iterators | {child.identifier.name},
-                                          allow_while=allow_while)
+                self.__validate_loop_body(child.block, iterators | {child.identifier.name})
             if isinstance(child, ast.WhileLoop):
                 self.__validate_loop_syntax(child.while_condition)
-                self.__validate_loop_body(child.block, iterators, allow_while=allow_while)
+                self.__validate_loop_body(child.block, iterators)
 
     @contextlib.contextmanager
     def __loop_context(self, break_label: str, continue_label: str) -> Iterator[_LoopContext]:
@@ -1663,7 +1657,35 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__check_loop_output_limit()
 
     def visit_WhileLoop(self, statement: ast.WhileLoop) -> None:
-        raise UnsupportedOpenQASMError('while loop')
+        self.__validate_loop_body(statement.block,
+                                  {name for scope in self.__loop_bindings for name in scope})
+        self.__validate_loop_syntax(statement)
+        loop_index = self.__loop_index
+        self.__loop_index += 1
+        condition_label = f'QASM2QCX_LOOP_{loop_index}_CONDITION'
+        body_label = f'QASM2QCX_LOOP_{loop_index}_BODY'
+        end_label = f'QASM2QCX_LOOP_{loop_index}_END'
+        with self.__loop_context(end_label, condition_label):
+            if self.__is_initialization_process:
+                # Discover and validate the body once, without executing or
+                # unrolling this runtime loop (even for a literal condition).
+                for child in statement.block:
+                    self.visit(child)
+                return
+
+            previous_temporaries = self.__declared_temporary_variables.copy()
+            self.__qcx_lines.append(f'@{condition_label}')
+            self.__emit_condition(statement.while_condition, body_label, end_label)
+            self.__qcx_lines.append(f'@{body_label}')
+            for child in statement.block:
+                self.visit(child)
+            self.__qcx_lines.append(f'JUMP {condition_label}')
+            self.__qcx_lines.append(f'@{end_label}')
+            # The body can execute zero times, or a transfer can skip a
+            # temporary's first use. Only its storage declaration moves.
+            self.__hoist_temporary_declarations(previous_temporaries)
+            if self.__loop_bindings:
+                self.__check_loop_output_limit()
 
     def visit_SwitchStatement(self, statement: ast.SwitchStatement) -> None:
         raise UnsupportedOpenQASMError('switch statement')
@@ -1718,13 +1740,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def visit_BreakStatement(self, statement: ast.BreakStatement) -> None:
         if not self.__loop_contexts:
-            raise UnsupportedOpenQASMError('break outside a supported for loop')
+            raise UnsupportedOpenQASMError('break outside a supported loop')
         if not self.__is_initialization_process:
             self.__qcx_lines.append(f'JUMP {self.__loop_contexts[-1].break_label}')
 
     def visit_ContinueStatement(self, statement: ast.ContinueStatement) -> None:
         if not self.__loop_contexts:
-            raise UnsupportedOpenQASMError('continue outside a supported for loop')
+            raise UnsupportedOpenQASMError('continue outside a supported loop')
         if not self.__is_initialization_process:
             self.__qcx_lines.append(f'JUMP {self.__loop_contexts[-1].continue_label}')
 
