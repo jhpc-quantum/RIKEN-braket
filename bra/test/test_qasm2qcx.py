@@ -336,7 +336,7 @@ class RuntimeForRegressionTests(unittest.TestCase):
             with self.subTest(expression=source):
                 expression = qasm2qcx.openqasm3.parser.parse(
                     f'OPENQASM 3.0; int result = {source};').statements[0].init_expression
-                self.assertEqual(converter._QASM2QCXConverter__range_expression_info(expression),
+                self.assertEqual(converter._QASM2QCXConverter__loop_expression_info(expression),
                                  (value_type, runtime))
                 self.assertEqual(converter._QASM2QCXConverter__qcx_lines, lines)
                 self.assertEqual((converter._QASM2QCXConverter__value,
@@ -1102,6 +1102,139 @@ class ConstantForIterationInfrastructureTests(unittest.TestCase):
                 patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_LOOP_ITERATIONS', 2):
             with self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'exceeds 2 iterations'):
                 convert('OPENQASM 3.0; for int i in [0:0] { break; }')
+
+
+class RuntimeSetInfrastructureTests(unittest.TestCase):
+    @staticmethod
+    def converter():
+        program = qasm2qcx.openqasm3.parser.parse('''OPENQASM 3.0;
+            const int count = 2; const complex value = 2.0 + 1.0im;
+            int first = 1; uint last = 3; float fraction = 1.5;
+            bool ready = true; bit flag = 1; bit[2] flags = "01";''')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        return converter
+
+    @staticmethod
+    def source(elements):
+        return qasm2qcx.openqasm3.parser.parse(
+            f'OPENQASM 3.0; for int i in {elements} {{}}').statements[0].set_declaration
+
+    def test_constant_runtime_and_mixed_element_classification(self) -> None:
+        converter = self.converter()
+        for elements, runtime in (
+                ('{0, -2, count, count + 1}', False),
+                ('{int(value), int(float(value)), uint(1.5)}', False),
+                ('{first}', True), ('{first, first, last}', True),
+                ('{0, first + count, count}', True),
+                ('{int(fraction), int(ready), int(flag), int(flags[0])}', True),
+                ('{int(first < last), int(!ready || flag)}', True)):
+            with self.subTest(elements=elements):
+                self.assertEqual(converter._QASM2QCXConverter__set_has_runtime_elements(
+                    self.source(elements)), runtime)
+
+    def test_classification_does_not_evaluate_division_or_remainder(self) -> None:
+        converter = self.converter()
+        for elements, runtime in (('{1 / 0, 1 % 0}', False),
+                                   ('{first / 0, first % 0}', True),
+                                   ('{first, 1 / 0}', True)):
+            with self.subTest(elements=elements):
+                self.assertEqual(converter._QASM2QCXConverter__set_has_runtime_elements(
+                    self.source(elements)), runtime)
+
+    def test_all_elements_are_validated_after_a_runtime_dependency(self) -> None:
+        converter = self.converter()
+        for elements, error in (
+                ('{first, missing}', qasm2qcx.NoVariableNameException),
+                ('{first, 1.5}', qasm2qcx.InvalidLoopRangeException),
+                ('{first, ready}', qasm2qcx.InvalidLoopRangeException),
+                ('{first, flags}', qasm2qcx.UnsupportedOpenQASMError),
+                ('{first, 2 ** 3}', qasm2qcx.UnsupportedOpenQASMError)):
+            with self.subTest(elements=elements):
+                with self.assertRaises(error):
+                    converter._QASM2QCXConverter__set_has_runtime_elements(self.source(elements))
+        with self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'element 2'):
+            converter._QASM2QCXConverter__set_has_runtime_elements(self.source('{first, first, 1.5}'))
+
+    def test_invalid_types_casts_and_operators_are_rejected(self) -> None:
+        converter = self.converter()
+        for element in ('fraction', 'ready', 'flag', 'flags[0]', '1.0im', 'pi',
+                        'int(complex(first))', 'int(bool(value))', 'int(bit(first))',
+                        'int(bit[2](ready))', 'int(first & last)', 'int(~first)',
+                        'int(!first)', 'int(fraction % 2)', 'sin(1.0)'):
+            with self.subTest(element=element):
+                with self.assertRaises(qasm2qcx.QASM2QCXError):
+                    converter._QASM2QCXConverter__set_has_runtime_elements(
+                        self.source('{' + element + '}'))
+
+    def test_nearest_iterator_binding_determines_dependency(self) -> None:
+        converter = self.converter()
+        bind = converter._QASM2QCXConverter__iterator_binding
+        source = self.source('{first, first + 1}')
+        inspect = converter._QASM2QCXConverter__set_has_runtime_elements
+        self.assertTrue(inspect(source))
+        with bind('first', 7):
+            self.assertFalse(inspect(source))
+            with bind('first', qasm2qcx._RuntimeIteratorBinding('PRIVATE_ITERATOR')):
+                self.assertTrue(inspect(source))
+                with bind('first', 9):
+                    self.assertFalse(inspect(source))
+                self.assertTrue(inspect(source))
+            self.assertFalse(inspect(source))
+        self.assertTrue(inspect(source))
+        self.assertEqual(converter._QASM2QCXConverter__loop_bindings, [])
+
+    def test_structural_iterator_names_require_no_invented_values(self) -> None:
+        converter = self.converter()
+        inspect = converter._QASM2QCXConverter__set_has_runtime_elements
+        self.assertFalse(inspect(self.source('{i, 1 / i}'), {'i'}))
+        self.assertTrue(inspect(self.source('{i, first}'), {'i'}))
+        with self.assertRaises(qasm2qcx.NoVariableNameException):
+            inspect(self.source('{i, missing}'), {'i'})
+
+    def test_empty_set_and_duplicate_source_elements_are_preserved(self) -> None:
+        converter = self.converter()
+        source = qasm2qcx.ast.DiscreteSet([])
+        self.assertFalse(converter._QASM2QCXConverter__set_has_runtime_elements(source))
+        source = self.source('{first, 0, first}')
+        before = list(source.values)
+        self.assertTrue(converter._QASM2QCXConverter__set_has_runtime_elements(source))
+        self.assertEqual(source.values, before)
+        self.assertEqual(len(source.values), 3)
+
+    def test_expression_and_storage_state_unchanged_on_success_and_failure(self) -> None:
+        converter = self.converter()
+        fields = ('expression_kind', 'value', 'value_type', 'value_kind',
+                  'evaluate_constant', 'loop_iterations', 'expanded_loop_statements')
+        before = tuple(getattr(converter, '_QASM2QCXConverter__' + field) for field in fields)
+        lines = converter._QASM2QCXConverter__qcx_lines.copy()
+        declarations = converter._QASM2QCXConverter__declared_temporary_variables.copy()
+        storage = converter._QASM2QCXConverter__used_temporary_variables.copy()
+        for elements in ('{first + 1, int(fraction)}', '{first, missing}', '{first, ready}'):
+            with self.subTest(elements=elements):
+                if elements == '{first + 1, int(fraction)}':
+                    converter._QASM2QCXConverter__set_has_runtime_elements(self.source(elements))
+                else:
+                    with self.assertRaises(qasm2qcx.QASM2QCXError):
+                        converter._QASM2QCXConverter__set_has_runtime_elements(self.source(elements))
+                self.assertEqual(tuple(getattr(converter, '_QASM2QCXConverter__' + field)
+                                       for field in fields), before)
+                self.assertEqual(converter._QASM2QCXConverter__qcx_lines, lines)
+                self.assertEqual(converter._QASM2QCXConverter__declared_temporary_variables, declarations)
+                self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, storage)
+
+    def test_runtime_sets_remain_disabled_in_stage_one(self) -> None:
+        for elements in ('{first}', '{0, first, first}', '{first + 1}'):
+            with self.subTest(elements=elements):
+                with self.assertRaises(qasm2qcx.NoConstantExpressionException):
+                    convert(f'OPENQASM 3.0; int first = 1; for int i in {elements} {{}}')
+
+    def test_constant_set_numeric_casts_keep_existing_output(self) -> None:
+        prefix = 'OPENQASM 3.0; const complex value = 2.0 + 1.0im; int total = 0; '
+        self.assertEqual(convert(prefix + '''for int i in {
+            int(value), int(1.0im), uint(value), int(float(value)), int(true)} {
+            total += i;
+        }'''), convert(prefix + 'total += 2; total += 0; total += 2; total += 2; total += 1;'))
 
 
 class ConstantForSetLoweringTests(unittest.TestCase):

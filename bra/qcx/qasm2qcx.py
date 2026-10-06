@@ -1499,6 +1499,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__validate_loop_header(statement)
         source = statement.set_declaration
         if isinstance(source, ast.DiscreteSet):
+            if self.__set_has_runtime_elements(source):
+                # Runtime-set lowering is added separately. For now retain
+                # the constant-only contract after inspecting every element.
+                raise NoConstantExpressionException
             # This is an ordered sequence, not a Python set: repeated values
             # represent distinct iterations and retain their original positions.
             return tuple(self.__constant_loop_integer(value, f'element {index}', kind='set')
@@ -1513,15 +1517,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 ((ast.BoolType,), ValueType.BOOL), ((ast.BitType,), ValueType.BIT)):
             if isinstance(variable_type, types):
                 return value_type
-        raise UnsupportedOpenQASMError('non-scalar range operand')
+        raise UnsupportedOpenQASMError('non-scalar loop operand')
 
-    def __range_expression_info(
+    def __loop_expression_info(
             self, expression: ast.Expression, iterators: set[str] | None = None
             ) -> tuple[ValueType, bool]:
         # Inspect types and dependency without evaluating values or emitting
         # instructions. Unknown names are errors, not a runtime fallback.
         if isinstance(expression, ast.Identifier):
-            return self.__range_identifier_info(expression, iterators)
+            return self.__loop_identifier_info(expression, iterators)
         for literal, value_type in ((ast.IntegerLiteral, ValueType.INT),
                                     (ast.FloatLiteral, ValueType.FLOAT),
                                     (ast.ImaginaryLiteral, ValueType.COMPLEX),
@@ -1529,16 +1533,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if isinstance(expression, literal):
                 return value_type, False
         if isinstance(expression, ast.Cast):
-            return self.__range_cast_info(expression, iterators)
+            return self.__loop_cast_info(expression, iterators)
         if isinstance(expression, ast.UnaryExpression):
-            return self.__range_unary_info(expression, iterators)
+            return self.__loop_unary_info(expression, iterators)
         if isinstance(expression, ast.BinaryExpression):
-            return self.__range_binary_info(expression, iterators)
+            return self.__loop_binary_info(expression, iterators)
         if isinstance(expression, ast.IndexExpression) and isinstance(expression.collection, ast.Identifier):
-            return self.__range_index_info(expression, iterators)
-        raise UnsupportedOpenQASMError(f'range expression {type(expression).__name__}')
+            return self.__loop_index_info(expression, iterators)
+        raise UnsupportedOpenQASMError(f'loop expression {type(expression).__name__}')
 
-    def __range_identifier_info(
+    def __loop_identifier_info(
             self, expression: ast.Identifier, iterators: set[str] | None
             ) -> tuple[ValueType, bool]:
         name = expression.name
@@ -1560,13 +1564,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise NoVariableNameException(name)
         variable_type = self.__classical_source_types[name]
         if isinstance(variable_type, ast.BitType) and variable_type.size is not None:
-            raise UnsupportedOpenQASMError('whole bit register in range expression')
+            raise UnsupportedOpenQASMError('whole bit register in loop expression')
         return self.__source_value_type(variable_type), True
 
-    def __range_cast_info(
+    def __loop_cast_info(
             self, expression: ast.Cast, iterators: set[str] | None
             ) -> tuple[ValueType, bool]:
-        operand_type, runtime = self.__range_expression_info(expression.argument, iterators)
+        operand_type, runtime = self.__loop_expression_info(expression.argument, iterators)
         target_type = self.__source_value_type(expression.type)
         if operand_type == ValueType.COMPLEX and target_type != ValueType.COMPLEX:
             # Constant numeric casts already extract the real component in
@@ -1577,32 +1581,32 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if target_type == ValueType.BIT and (
                 operand_type not in (ValueType.BIT, ValueType.BOOL)
                 or expression.type.size is not None):
-            raise UnsupportedOpenQASMError('unsupported bit cast in range expression')
+            raise UnsupportedOpenQASMError('unsupported bit cast in loop expression')
         return target_type, runtime
 
-    def __range_unary_info(
+    def __loop_unary_info(
             self, expression: ast.UnaryExpression, iterators: set[str] | None
             ) -> tuple[ValueType, bool]:
-        value_type, runtime = self.__range_expression_info(expression.expression, iterators)
+        value_type, runtime = self.__loop_expression_info(expression.expression, iterators)
         if expression.op.name == '!':
             if value_type not in (ValueType.BIT, ValueType.BOOL):
-                raise UnsupportedOpenQASMError('non-Boolean logical range operand')
+                raise UnsupportedOpenQASMError('non-Boolean logical loop operand')
             return ValueType.BOOL, runtime
         if expression.op.name != '-' or value_type not in (
                 ValueType.INT, ValueType.FLOAT, ValueType.COMPLEX):
-            raise UnsupportedOpenQASMError('unsupported unary range expression')
+            raise UnsupportedOpenQASMError('unsupported unary loop expression')
         return value_type, runtime
 
-    def __range_binary_info(
+    def __loop_binary_info(
             self, expression: ast.BinaryExpression, iterators: set[str] | None
             ) -> tuple[ValueType, bool]:
-        lhs_type, lhs_runtime = self.__range_expression_info(expression.lhs, iterators)
-        rhs_type, rhs_runtime = self.__range_expression_info(expression.rhs, iterators)
+        lhs_type, lhs_runtime = self.__loop_expression_info(expression.lhs, iterators)
+        rhs_type, rhs_runtime = self.__loop_expression_info(expression.rhs, iterators)
         runtime = lhs_runtime or rhs_runtime
         if expression.op.name in ('&&', '||'):
             if (lhs_type not in (ValueType.BIT, ValueType.BOOL)
                     or rhs_type not in (ValueType.BIT, ValueType.BOOL)):
-                raise UnsupportedOpenQASMError('non-Boolean logical range operand')
+                raise UnsupportedOpenQASMError('non-Boolean logical loop operand')
             return ValueType.BOOL, runtime
         if expression.op.name in ('==', '!=', '<', '<=', '>', '>='):
             self.__comparison_types(lhs_type, rhs_type, expression.op)
@@ -1611,10 +1615,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UnsupportedOpenQASMError(f'binary operator {expression.op.name}')
         result_type = self.__promoted_type(lhs_type, rhs_type)
         if expression.op.name == '%' and result_type != ValueType.INT:
-            raise UnsupportedOpenQASMError('non-integer remainder in range expression')
+            raise UnsupportedOpenQASMError('non-integer remainder in loop expression')
         return result_type, runtime
 
-    def __range_index_info(
+    def __loop_index_info(
             self, expression: ast.IndexExpression, iterators: set[str] | None
             ) -> tuple[ValueType, bool]:
         name = expression.collection.name
@@ -1623,8 +1627,22 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UnsupportedOpenQASMError('indexed use of a for-loop iterator')
         variable_type = self.__classical_source_types.get(name)
         if not isinstance(variable_type, ast.BitType):
-            raise UnsupportedOpenQASMError('indexed non-bit range operand')
+            raise UnsupportedOpenQASMError('indexed non-bit loop operand')
         return ValueType.BIT, True
+
+    def __set_has_runtime_elements(
+            self, source: ast.DiscreteSet, iterators: set[str] | None = None
+            ) -> bool:
+        # Inspect every element, including those after the first runtime
+        # dependency. This never evaluates arithmetic or emits instructions.
+        runtime = False
+        for index, expression in enumerate(source.values):
+            value_type, dependency = self.__loop_expression_info(expression, iterators)
+            if value_type != ValueType.INT:
+                raise InvalidLoopRangeException(
+                    f'For-loop set element {index} must be an integer')
+            runtime |= dependency
+        return runtime
 
     def __runtime_range_step(self, statement: ast.ForInLoop) -> int | None:
         bounds = statement.set_declaration
@@ -1632,7 +1650,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return None
         runtime = False
         for expression in (bounds.start, bounds.end):
-            value_type, dependency = self.__range_expression_info(expression)
+            value_type, dependency = self.__loop_expression_info(expression)
             if value_type != ValueType.INT:
                 raise InvalidLoopRangeException('For-loop range bounds must be integers')
             runtime |= dependency
@@ -1731,7 +1749,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             for name in names - iterators - constants - {'pi', 'tau', 'euler'} - allowed_runtime:
                 raise NoVariableNameException(name)
             if not is_set and part != 'step':
-                value_type, runtime = self.__range_expression_info(expression, iterators)
+                value_type, runtime = self.__loop_expression_info(expression, iterators)
                 if value_type != ValueType.INT:
                     raise InvalidLoopRangeException('For-loop range bounds must be integers')
                 if runtime:
