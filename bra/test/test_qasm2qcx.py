@@ -147,11 +147,122 @@ class RuntimeIteratorInfrastructureTests(unittest.TestCase):
                         converter.visit(statement)
                 self.assertEqual(converter._QASM2QCXConverter__loop_bindings, [])
 
-    def test_runtime_ranges_remain_unsupported_until_lowering_is_implemented(self) -> None:
+    def test_runtime_range_bounds_now_use_runtime_lowering(self) -> None:
         for bounds in ('[0:limit]', '[limit:3]', '[0:-1:limit]'):
             with self.subTest(bounds=bounds):
+                lines = convert(f'OPENQASM 3.0; int limit = 2; for int i in {bounds} {{}}')
+                self.assertIn('@QASM2QCX_LOOP_0_NEXT', lines)
+                ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+
+class RuntimeForLoweringTests(unittest.TestCase):
+    def test_capture_entry_check_and_endpoint_guard(self) -> None:
+        lines = convert('OPENQASM 3.0; int limit = 3; int total = 0; for int i in [0:limit] { total += i; }')
+        capture = lines.index('LET QASM2QCX_INT_1 := LIMIT31')
+        self.assertEqual(lines[capture - 1:], [
+            'LET QASM2QCX_INT_0 := 0', 'LET QASM2QCX_INT_1 := LIMIT31',
+            'JUMPIF QASM2QCX_LOOP_0_END QASM2QCX_INT_0 > QASM2QCX_INT_1',
+            '@QASM2QCX_LOOP_0_BODY', 'LET TOTAL31 += QASM2QCX_INT_0',
+            '@QASM2QCX_LOOP_0_NEXT', 'JUMPIF QASM2QCX_LOOP_0_END QASM2QCX_INT_0 == QASM2QCX_INT_1',
+            'LET QASM2QCX_INT_0 += 1', 'JUMP QASM2QCX_LOOP_0_BODY', '@QASM2QCX_LOOP_0_END'])
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_descending_guard_precedes_decrement(self) -> None:
+        lines = convert('OPENQASM 3.0; int limit = 0; for int i in [3:-1:limit] { continue; }')
+        self.assertIn('JUMPIF QASM2QCX_LOOP_0_END QASM2QCX_INT_0 < QASM2QCX_INT_1', lines)
+        guard = lines.index('JUMPIF QASM2QCX_LOOP_0_END QASM2QCX_INT_0 == QASM2QCX_INT_1')
+        self.assertEqual(lines[guard + 1], 'LET QASM2QCX_INT_0 -= 1')
+        self.assertIn('JUMP QASM2QCX_LOOP_0_NEXT', lines)
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_bound_capture_is_before_iterator_shadowing(self) -> None:
+        lines = convert('OPENQASM 3.0; int i = 1; int total = 0; for int i in [i:i + 2] { total += i; }')
+        self.assertIn('LET QASM2QCX_INT_0 := I1', lines)
+        body = lines.index('@QASM2QCX_LOOP_0_BODY')
+        self.assertTrue(any(' := I1' in line for line in lines[:body]))
+        self.assertEqual(lines[body + 1], 'LET TOTAL31 += QASM2QCX_INT_0')
+
+    def test_explicit_integer_casts_and_int_backed_uint_bounds(self) -> None:
+        for declarations, bounds in (('float first = 0.5; uint last = 3;', '[int(first):last]'),
+                                      ('bit flag = 1; int last = 3;', '[int(flag):last]'),
+                                      ('bit[2] flags = "01"; int last = 3;', '[int(flags[0]):last]')):
+            with self.subTest(bounds=bounds):
+                ForLoopControlLoweringTests.assert_resolved_jumps(
+                    convert('OPENQASM 3.0; ' + declarations + f'for int i in {bounds} {{}}'))
+
+    def test_nested_runtime_loops_hold_distinct_live_storage(self) -> None:
+        lines = convert('''OPENQASM 3.0; int limit = 2; int total = 0;
+            for int i in [0:limit] {
+                for int j in [0:i] { total += i + j; continue; }
+                break;
+            }''')
+        self.assertIn('@QASM2QCX_LOOP_1_NEXT', lines)
+        self.assertIn('JUMP QASM2QCX_LOOP_1_NEXT', lines)
+        self.assertIn('JUMP QASM2QCX_LOOP_0_END', lines)
+        declarations = [line for line in lines if line.startswith('VAR QASM2QCX_INT_')]
+        self.assertGreaterEqual(len(declarations), 5)
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_constant_range_output_and_nonunit_strides_remain_unrolled(self) -> None:
+        prefix = 'OPENQASM 3.0; int total = 0; '
+        self.assertEqual(convert(prefix + 'for int i in [0:2:4] { total += i; }'),
+                         convert(prefix + 'total += 0; total += 2; total += 4;'))
+
+    def test_runtime_steps_unknown_names_and_invalid_types_rejected(self) -> None:
+        prefix = 'OPENQASM 3.0; int limit = 3; int step = 1; float f = 2.5; bool ready = true; '
+        for bounds in ('[0:2:limit]', '[0:-2:limit]', '[0:step:limit]', '[0:missing]',
+                       '[0:f]', '[ready:limit]', '[0:int(1.0im)]', '[0:limit + missing]'):
+            with self.subTest(bounds=bounds):
                 with self.assertRaises(qasm2qcx.QASM2QCXError):
-                    convert(f'OPENQASM 3.0; int limit = 2; for int i in {bounds} {{}}')
+                    convert(prefix + f'for int i in {bounds} {{}}')
+
+    def test_invalid_constant_arithmetic_is_not_reclassified_as_runtime(self) -> None:
+        for bounds in ('[0:1 / 0]', '[0:1 % 0]', '[0:0:3]'):
+            with self.subTest(bounds=bounds):
+                with self.assertRaises(qasm2qcx.QASM2QCXError):
+                    convert('OPENQASM 3.0; for int i in ' + bounds + ' {}')
+
+    def test_empty_outer_still_checks_independent_invalid_runtime_header(self) -> None:
+        for inner in ('for int j in [0:2:limit] {}', 'for int j in [0:f] {}',
+                      'for int j in [0:missing] {}'):
+            with self.subTest(inner=inner):
+                with self.assertRaises(qasm2qcx.QASM2QCXError):
+                    convert('OPENQASM 3.0; int limit = 3; float f = 2.5; for int i in [1:0] { ' + inner + ' }')
+
+    def test_runtime_iterators_cannot_be_indices_set_elements_or_assignment_targets(self) -> None:
+        prefix = 'OPENQASM 3.0; int limit = 3; qubit[4] q; bit[4] flags; '
+        for body in ('reset q[i];', 'flags[i] = 1;', 'i = 1;', 'i = measure q[0];',
+                     'for int j in {i} {}', 'int local;'):
+            with self.subTest(body=body):
+                with self.assertRaises(qasm2qcx.QASM2QCXError):
+                    convert(prefix + 'for int i in [0:limit] { ' + body + ' }')
+
+    def test_zero_iteration_and_transfer_paths_hoist_storage_not_computations(self) -> None:
+        lines = convert('''OPENQASM 3.0; int limit = -1; int value = 7; int total = 0;
+            for int i in [0:limit] { continue; total += value % 0; }
+            total += value + 1;''')
+        entry = next(index for index, line in enumerate(lines) if line.startswith('JUMPIF '))
+        declarations = [index for index, line in enumerate(lines) if line.startswith('VAR QASM2QCX_')]
+        self.assertTrue(all(index < entry for index in declarations))
+        self.assertGreater(next(index for index, line in enumerate(lines) if ' /= ' in line), entry)
+
+    def test_runtime_iterations_do_not_consume_constant_iteration_budget(self) -> None:
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_LOOP_ITERATIONS', 0):
+            convert('OPENQASM 3.0; int limit = 1000000; for int i in [0:limit] {}')
+            with self.assertRaises(qasm2qcx.InvalidLoopRangeException):
+                convert('OPENQASM 3.0; int limit = -1; for int i in [0:limit] { for int j in {1} {} }')
+
+    def test_runtime_loop_resources_restored_after_body_failure(self) -> None:
+        program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3.0; int limit = 3;')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        loop = qasm2qcx.openqasm3.parser.parse(
+            'OPENQASM 3.0; for int i in [0:limit] { reset missing; }').statements[0]
+        with self.assertRaises(qasm2qcx.InvalidQubitOperandException):
+            converter.visit(loop)
+        self.assertEqual(converter._QASM2QCXConverter__loop_bindings, [])
+        self.assertEqual(converter._QASM2QCXConverter__loop_contexts, [])
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
 
 
 class SharedLoopInfrastructureTests(unittest.TestCase):
@@ -421,7 +532,7 @@ class WhileLoopRegressionTests(unittest.TestCase):
         prefix = 'OPENQASM 3.0; qubit[2] q; int n = 0; bit[2] flags; complex c = 1.0im; '
         for statement in ('while (false) { reset q[n]; }',
                           'while (false) { if (flags[n]) { break; } }',
-                          'while (false) { for int i in [0:n] {} }',
+                          'while (false) { for int i in [0:2:n] {} }',
                           'while (false) { for int i in {0, n} {} }',
                           'while (flags) {}', 'while (c) {}', 'while (bool(c)) {}',
                           'while (false) { continue; n = n ** 2; }'):
@@ -1320,12 +1431,19 @@ class ConstantForLoopNestingTests(unittest.TestCase):
                 for int j in [0:1 / i] { x q[j]; }
             }'''), ['QUBITS 1'])
 
-    def test_runtime_and_unknown_inner_bounds_are_rejected_even_when_outer_empty(self) -> None:
-        for bound in ('n', 'n + i', 'missing', 'i + missing'):
+    def test_unknown_inner_bounds_are_rejected_even_when_outer_empty(self) -> None:
+        for bound in ('missing', 'i + missing'):
             with self.subTest(bound=bound):
                 with self.assertRaises(qasm2qcx.NoVariableNameException):
                     convert(f'''OPENQASM 3.0; int n = 3;
                         for int i in [1:0] {{ for int j in [0:{bound}] {{}} }}''')
+
+    def test_runtime_inner_bounds_are_validated_without_expanding_empty_outer(self) -> None:
+        for bound in ('n', 'n + i'):
+            with self.subTest(bound=bound):
+                self.assertEqual(convert(f'''OPENQASM 3.0; int n = 3;
+                    for int i in [1:0] {{ for int j in [0:{bound}] {{}} }}'''),
+                    convert('OPENQASM 3.0; int n = 3;'))
 
     def test_unsupported_nested_ranges_are_rejected_even_when_outer_empty(self) -> None:
         for inner in ('for uint j in [0:1] {}', 'for int j in {0, missing} {}',
