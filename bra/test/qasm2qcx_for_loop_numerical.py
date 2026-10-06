@@ -117,6 +117,33 @@ def main() -> None:
         }'''
     check_program(arguments.bra, source, ('TOTAL31',), ['30'])
 
+    source = '''OPENQASM 3.0; int total = 0;
+        for int i in [0:5] {
+            if (i == 2) { continue; }
+            if (i == 4) { break; }
+            total += i;
+        }'''
+    check_program(arguments.bra, source, ('TOTAL31',), ['4'])
+
+    # The first declarations and the zero-divisor computations are skipped,
+    # but later arithmetic must still be able to reuse the temporary storage.
+    for transfer in ('break;', 'continue;'):
+        source = '''OPENQASM 3.0; int value = 7; int sum = 0;
+            for int i in [0:1] { ''' + transfer + ''' sum += value % 0; }
+            sum += value + 1;'''
+        check_program(arguments.bra, source, ('SUM7', 'VALUE31'), ['8', '7'])
+
+    source = '''OPENQASM 3.0; int sum = 0;
+        for int i in [0:1] {
+            for int j in [0:2] {
+                if (j == 0) { continue; }
+                sum += 10 * i + j;
+                break;
+            }
+            sum += i;
+        }'''
+    check_program(arguments.bra, source, ('SUM7',), ['13'])
+
 
 if __name__ == '__main__':
     main()

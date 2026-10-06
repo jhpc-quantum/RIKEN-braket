@@ -259,11 +259,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise InvalidLoopRangeException(
                     f'For-loop expansion exceeds {self.MAX_EXPANDED_LOOP_STATEMENTS} statements')
         result = super().visit(node, context)
-        if (inside_loop and not self.__is_initialization_process
+        if inside_loop:
+            self.__check_loop_output_limit()
+        return result
+
+    def __check_loop_output_limit(self) -> None:
+        if (not self.__is_initialization_process
                 and len(self.__qcx_lines) > self.MAX_LOOP_OUTPUT_LINES):
             raise InvalidLoopRangeException(
                 f'For-loop output exceeds {self.MAX_LOOP_OUTPUT_LINES} QCX lines')
-        return result
 
     def visit_Program(self, program: ast.Program) -> None:
         for statement in program.statements:
@@ -1545,7 +1549,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         supported = (ast.QuantumGate, ast.QuantumPhase,
                      ast.QuantumMeasurementStatement, ast.QuantumReset,
                      ast.QuantumBarrier, ast.ClassicalAssignment,
-                     ast.BranchingStatement, ast.ForInLoop)
+                     ast.BranchingStatement, ast.ForInLoop,
+                     ast.BreakStatement, ast.ContinueStatement)
         for child in statements:
             if isinstance(child, (ast.ClassicalDeclaration, ast.ConstantDeclaration,
                                   ast.QubitDeclaration)):
@@ -1583,6 +1588,17 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__validate_nested_loop_bounds(child, iterators)
                 self.__validate_loop_body(child.block, iterators | {child.identifier.name})
 
+    def __loop_has_control(self, statements: list[ast.Statement]) -> bool:
+        # Transfers inside nested loops belong to those loops, not this one.
+        for child in statements:
+            if isinstance(child, (ast.BreakStatement, ast.ContinueStatement)):
+                return True
+            if isinstance(child, ast.BranchingStatement) and (
+                    self.__loop_has_control(child.if_block)
+                    or self.__loop_has_control(child.else_block)):
+                return True
+        return False
+
     def visit_ForInLoop(self, statement: ast.ForInLoop) -> None:
         values = self.__loop_range(statement)
         self.__validate_loop_body(statement.block,
@@ -1598,10 +1614,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__loop_iterations += count
         # Allocate one exit target per expanded loop instance and a distinct
         # continuation target per iteration. Ordinary loops do not emit these
-        # unused labels; break/continue lowering will use the innermost frame.
+        # unused labels; break/continue lowering uses the innermost frame.
         loop_index = self.__loop_index
         self.__loop_index += 1
         break_label = f'QASM2QCX_LOOP_{loop_index}_END'
+        emit_control_labels = count > 0 and self.__loop_has_control(statement.block)
+        previous_temporaries = self.__declared_temporary_variables.copy()
         for iteration, value in enumerate(values):
             self.__loop_bindings.append({statement.identifier.name: value})
             self.__loop_contexts.append(_LoopContext(
@@ -1609,9 +1627,19 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             try:
                 for child in statement.block:
                     self.visit(child)
+                if emit_control_labels and not self.__is_initialization_process:
+                    self.__qcx_lines.append(f'@{self.__loop_contexts[-1].continue_label}')
+                    self.__check_loop_output_limit()
             finally:
                 self.__loop_contexts.pop()
                 self.__loop_bindings.pop()
+        if emit_control_labels and not self.__is_initialization_process:
+            self.__qcx_lines.append(f'@{break_label}')
+            # A transfer may skip a temporary's first declaration but a later
+            # iteration or statement can still reuse that storage. Move only
+            # declarations; calculations must stay behind their original jumps.
+            self.__hoist_temporary_declarations(previous_temporaries)
+            self.__check_loop_output_limit()
 
     def visit_WhileLoop(self, statement: ast.WhileLoop) -> None:
         raise UnsupportedOpenQASMError('while loop')
@@ -1668,10 +1696,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         raise UnsupportedOpenQASMError('return statement')
 
     def visit_BreakStatement(self, statement: ast.BreakStatement) -> None:
-        raise UnsupportedOpenQASMError('break statement')
+        if not self.__loop_contexts:
+            raise UnsupportedOpenQASMError('break outside a supported for loop')
+        if not self.__is_initialization_process:
+            self.__qcx_lines.append(f'JUMP {self.__loop_contexts[-1].break_label}')
 
     def visit_ContinueStatement(self, statement: ast.ContinueStatement) -> None:
-        raise UnsupportedOpenQASMError('continue statement')
+        if not self.__loop_contexts:
+            raise UnsupportedOpenQASMError('continue outside a supported for loop')
+        if not self.__is_initialization_process:
+            self.__qcx_lines.append(f'JUMP {self.__loop_contexts[-1].continue_label}')
 
     def visit_EndStatement(self, statement: ast.EndStatement) -> None:
         raise UnsupportedOpenQASMError('end statement')
