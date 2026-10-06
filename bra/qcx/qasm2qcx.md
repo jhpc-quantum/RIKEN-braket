@@ -37,8 +37,8 @@ The converter currently covers:
 - OpenQASM barriers as ordering-only operations;
 - `if`, `else if`, and `else` control flow with comparisons and logical
   conditions;
-- compile-time unrolling of constant integer-range `for` loops, including
-  `break` and `continue`;
+- compile-time unrolling of constant integer-range and integer-set `for` loops,
+  including `break` and `continue`;
 - runtime `while` loops, including nested loops, `break`, and `continue`;
 - scalar expressions used as gate parameters; and
 - final-state amplitude output through a namespaced pragma.
@@ -300,7 +300,9 @@ floating-point values. Variables used by a branch must be declared outside it;
 general block-local declarations are not yet supported. The scoped iteration
 variables described below are an exception.
 
-## Constant-range for loops
+## Constant for loops
+
+### Integer ranges
 
 The converter supports `for int name in [start:stop]` and
 `for int name in [start:step:stop]`, with either a single-statement or braced
@@ -333,6 +335,56 @@ Within a loop, static qubit and bit indices may use constant expressions such
 as `q[2 * i + j]`, including supported range and discrete-set selections.
 Runtime-dependent indices remain unsupported.
 
+### Constant integer sets
+
+The converter also supports `for int name in {value, ...}`, with a
+single-statement or braced body. Each element must evaluate to an integer during
+conversion. Integer literals, previously declared constants, supported constant
+expressions, explicit integer casts, and outer iteration values are accepted.
+As with ranges, only `int` iterators are supported; integer widths and INT-backed
+`uint` values retain their existing limitations.
+
+Elements are visited in the listed order, including duplicates. They are not
+sorted or deduplicated:
+
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+qubit[6] q;
+for int i in {0, 2, 5, 2} {
+    x q[i];
+}
+```
+
+This generates `X 0`, `X 2`, `X 5`, and `X 2` after `QUBITS 6`. Both occurrences
+of `2` are separate iterations, including for `continue` targets and expansion
+accounting. No new QCX instruction or runtime iterator storage is required.
+
+Nested sets may depend on an outer iterator:
+
+```qasm
+OPENQASM 3.0;
+const int first = 2;
+int total = 0;
+for int i in {first, first + 1} {
+    for int j in {i, i + 1} {
+        total += j;
+    }
+}
+// total is 12 after execution: 2 + 3 + 3 + 4.
+```
+
+Runtime variables are not constant elements, even when initialized with a
+literal. Non-integer elements require a supported explicit integer cast;
+implicit conversion of floating-point, Boolean, or complex elements is not
+supported. Runtime-valued sets and iteration over arrays, bit registers, or
+aliases remain unsupported. The installed parser requires a nonempty set in
+source code: the spelling `{}` is rejected. An empty discrete-set AST supplied
+directly to the converter emits no body instructions but still validates its
+body structurally.
+
+### Bodies and iterator scope
+
 Loop bodies may contain supported gates, global phase, measurement, reset,
 barriers, assignments to existing variables, conditionals, nested loops,
 `break`, and `continue`.
@@ -353,13 +405,13 @@ for int i in [1:3] {
 ```
 
 The iterator is visible only within its body. It may shadow an outer variable,
-constant, or iterator, and the outer binding is restored afterward. Bounds are
-evaluated before binding the new iterator, so a shadowing inner loop can use the
-outer value in its bounds. These rules follow
+constant, or iterator, and the outer binding is restored afterward. Bounds and
+set elements are evaluated before binding the new iterator, so a shadowing
+inner loop can use the outer value in its bounds or elements. These rules follow
 [OpenQASM scoping](https://openqasm.com/versions/3.0/language/scope.html).
 As an explicit subset restriction, assignments or measurements into any active
 iterator are rejected, although OpenQASM itself permits modifying iterators.
-General local declarations and iteration over sets or arrays remain unsupported.
+General local declarations and iteration over arrays remain unsupported.
 Runtime `while` loops may also appear inside a `for` body, as described below.
 
 ### Break and continue
@@ -402,9 +454,10 @@ and validation still apply.
 
 Empty loops emit no body instructions. Structural checks still reject
 unsupported body statements, operators, gate syntax, and iterator writes.
-Independent nested bounds are validated; checks that require an outer iterator's
-value are deferred until an actual iteration. No fictitious iteration value is
-used to execute body arithmetic or check an iterator-dependent index.
+Independent nested bounds and set elements are validated; checks that require
+an outer iterator's value are deferred until an actual iteration. No fictitious
+iteration value is used to execute body arithmetic or check an iterator-dependent
+index.
 
 To bound expansion, the converter checks these limits:
 
@@ -420,6 +473,8 @@ and emission check independent copies of the budgets, so the two passes do not
 charge each iteration twice. Runtime-skipped branches still consume expansion
 budgets because their instructions must be generated. Exceeding a limit produces
 a converter error rather than silently truncating the loop.
+The same budgets apply to range and set loops; repeated set elements each count
+as an iteration. A `break` does not reduce the generated iteration count.
 
 ## Runtime while loops
 
@@ -475,9 +530,9 @@ while (!outcome) {
 ```
 
 General block-local declarations, runtime-dependent indexing, runtime-dependent
-`for` ranges, and writes to active `for` iterators remain unsupported. A `while`
-body is still converted and validated even when its condition is literally
-false or a transfer makes later statements unreachable. Conversion-time
+`for` ranges or set elements, and writes to active `for` iterators remain
+unsupported. A `while` body is still converted and validated even when its
+condition is literally false or a transfer makes later statements unreachable. Conversion-time
 constant evaluation still applies; skipped runtime computations are not executed.
 The amplitude-output pragma continues to request output after all operations,
 not at an intermediate loop position.
@@ -515,8 +570,8 @@ vector defined by the program's qubit declarations.
 
 The current prototype does not reliably support:
 
-- delays, runtime-dependent `for` ranges, iteration over sets
-  or arrays, or `switch` statements;
+- delays, runtime-dependent `for` ranges or set elements, iteration over arrays,
+  bit registers, or aliases, or `switch` statements;
 - user-defined gates or gate modifiers;
 - dynamically computed indices, ranges with omitted bounds, or
   multidimensional indexing;
@@ -545,6 +600,9 @@ outer-dependent bounds, shadowing, and skipped runtime division. It also checks
 `break` and `continue` against a Python reference loop across ascending,
 descending, strided, singleton, and empty ranges, plus measurement-controlled
 transfers, nearest-loop targeting, and temporary reuse after skipped operations.
+Set-loop coverage includes nonmonotonic and repeated values, constants and casts,
+outer-dependent elements, mixed nesting, and Python reference checks for
+transfers by iterator value or runtime iteration position.
 
 `bra/test/qasm2qcx_while_loop_numerical.py` verifies runtime condition
 reevaluation, zero and multiple iterations, logical short-circuiting,
