@@ -153,6 +153,13 @@ class WrongConstantVariableException(QASM2QCXError):
     def __str__(self):
         return 'Wrong constant variable'
 
+
+@dataclasses.dataclass(frozen=True)
+class _LoopContext:
+    break_label: str
+    continue_label: str
+
+
 class QASM2QCXConverter(visitor.QASMVisitor):
     MAX_LOOP_ITERATIONS = 10000
     MAX_EXPANDED_LOOP_STATEMENTS = 100000
@@ -214,6 +221,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__boolean_expression_index: int = 0
         self.__evaluate_constant: bool = True
         self.__loop_bindings: list[dict[str, int]] = []
+        self.__loop_contexts: list[_LoopContext] = []
+        self.__loop_index = 0
         self.__loop_iterations = 0
         self.__expanded_loop_statements = 0
 
@@ -224,6 +233,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # conversion-wide budget rather than charging the source twice.
         self.__loop_iterations = 0
         self.__expanded_loop_statements = 0
+        self.__loop_index = 0
 
         self.__quantum_register_names: list[str] = list(self.__quantum_registers.keys())
         self.__first_qubit_indices: list[int] = list(itertools.accumulate(self.__quantum_registers.values(), initial=0))
@@ -1586,12 +1596,21 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise InvalidLoopRangeException(
                 f'For-loop expansion exceeds {self.MAX_LOOP_ITERATIONS} iterations')
         self.__loop_iterations += count
-        for value in values:
+        # Allocate one exit target per expanded loop instance and a distinct
+        # continuation target per iteration. Ordinary loops do not emit these
+        # unused labels; break/continue lowering will use the innermost frame.
+        loop_index = self.__loop_index
+        self.__loop_index += 1
+        break_label = f'QASM2QCX_LOOP_{loop_index}_END'
+        for iteration, value in enumerate(values):
             self.__loop_bindings.append({statement.identifier.name: value})
+            self.__loop_contexts.append(_LoopContext(
+                break_label, f'QASM2QCX_LOOP_{loop_index}_NEXT_{iteration}'))
             try:
                 for child in statement.block:
                     self.visit(child)
             finally:
+                self.__loop_contexts.pop()
                 self.__loop_bindings.pop()
 
     def visit_WhileLoop(self, statement: ast.WhileLoop) -> None:
