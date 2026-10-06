@@ -200,6 +200,93 @@ class IntegerArrayLoopLoweringTests(unittest.TestCase):
         self.assertEqual(convert(prefix + 'for int i in [1:0] { for int j in a {} }'), convert(prefix))
 
 
+class IntegerArrayRegressionTests(unittest.TestCase):
+    def test_array_size_is_fixed_before_dimension_constant_is_shadowed(self) -> None:
+        for outer in ('for int N in values', 'for int N in {0, 3}'):
+            with self.subTest(outer=outer):
+                lines = convert('OPENQASM 3.0; const int N = 2; '
+                                'array[int, N] values = {1, 2}; int total = 0; '
+                                + outer + ' { for int j in values { total += j; } }')
+                self.assertIn('VAR VALUES63 INT 2', lines)
+                guards = [line for line in lines if line.startswith('JUMPIF ')
+                          and '_END ' in line]
+                self.assertTrue(guards)
+                self.assertTrue(all(line.endswith(' == 1') for line in guards))
+
+    def test_codegen_size_and_body_count_do_not_depend_on_array_length(self) -> None:
+        source = ('OPENQASM 3.0; array[int, {size}] values; int total = 0; '
+                  'for int value in values {{ total += value; }}')
+        reference = convert(source.format(size=1))
+        for size in (3, qasm2qcx.QASM2QCXConverter.QCX_INT_MAX):
+            lines = convert(source.format(size=size))
+            self.assertEqual(len(lines), len(reference))
+            self.assertEqual(sum(line.startswith('LET TOTAL31 +=') for line in lines), 1)
+            self.assertIn(f'JUMPIF QASM2QCX_LOOP_0_END QASM2QCX_INT_1 == {size - 1}', lines)
+
+    def test_live_iterator_and_index_storage_are_not_reused_by_nested_arithmetic(self) -> None:
+        lines = convert('OPENQASM 3.0; array[int, 2] a = {1, 2}; int total = 0; '
+                        'for int i in a { total += i % 3; '
+                        'for int j in a { total += j % 3; continue; } }')
+        body = lines.index('@QASM2QCX_LOOP_0_BODY')
+        next_label = lines.index('@QASM2QCX_LOOP_0_NEXT')
+        assignments = [line.split()[1] for line in lines[body + 2:next_label] if line.startswith('LET ')]
+        self.assertNotIn('QASM2QCX_INT_0', assignments)
+        self.assertNotIn('QASM2QCX_INT_1', assignments)
+        self.assertTrue(all(index < body for index, line in enumerate(lines)
+                            if line.startswith('VAR QASM2QCX_')))
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_reserved_source_array_storage_is_not_reused_by_loop_temporaries(self) -> None:
+        lines = convert('OPENQASM 3.0; array[int, 2] QASM2QCX_INT_ = {1, 2}; '
+                        'for int i in QASM2QCX_INT_ {}')
+        self.assertIn('VAR QASM2QCX_INT_0 INT 2', lines)
+        self.assertFalse(any(line.startswith('LET QASM2QCX_INT_0 ') for line in lines))
+        self.assertIn('LET QASM2QCX_INT_1 := QASM2QCX_INT_0:QASM2QCX_INT_2', lines)
+
+    def test_failure_inside_array_body_releases_storage_and_contexts(self) -> None:
+        program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3.0; array[int, 2] a = {1, 2}; '
+                                               'for int i in a { a[3] = 1; }')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        with self.assertRaises(qasm2qcx.InvalidArrayOperandException):
+            converter.visit(program)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertEqual(converter._QASM2QCXConverter__loop_bindings, [])
+        self.assertEqual(converter._QASM2QCXConverter__loop_contexts, [])
+
+    def test_constant_outer_indices_are_supported_but_runtime_array_iterators_are_not_indices(self) -> None:
+        convert('OPENQASM 3.0; array[int, 2] a = {1, 2}; '
+                'for int k in {0, 1} { for int value in a { a[k] += value; } }')
+        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'runtime integer array index'):
+            convert('OPENQASM 3.0; array[int, 2] a = {0, 1}; '
+                    'for int k in a { a[k] = 1; }')
+
+    def test_skipped_bodies_retain_read_only_and_operator_validation(self) -> None:
+        prefix = 'OPENQASM 3.0; array[int, 2] a = {1, 2}; int total = 0; qubit q; '
+        for body in ('continue; i += 1;', 'break; total += 2 ** 3;',
+                     'if (false) { i = measure q; }', 'while (false) { int local; }'):
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                convert(prefix + 'for int i in a { ' + body + ' }')
+
+    def test_array_runtime_iterations_do_not_charge_expansion_budget_but_nested_copies_do(self) -> None:
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_LOOP_ITERATIONS', 0):
+            convert('OPENQASM 3.0; array[int, 1000000] a; for int i in a {}')
+            with self.assertRaises(qasm2qcx.InvalidLoopRangeException):
+                convert('OPENQASM 3.0; array[int, 2] a; '
+                        'for int i in a { for int j in {i} {} }')
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_LOOP_OUTPUT_LINES', 10):
+            with self.assertRaises(qasm2qcx.InvalidLoopRangeException):
+                convert('OPENQASM 3.0; array[int, 2] a; '
+                        'for int k in {0} { for int i in a {} }')
+
+    def test_invalid_index_cli_reports_error_without_partial_output(self) -> None:
+        source = 'OPENQASM 3.0; array[int, 2] a = {1, 2}; for int i in a { a[3] = i; }'
+        with patch('builtins.open', mock_open(read_data=source)), patch('builtins.print') as output:
+            with self.assertRaises(SystemExit) as error:
+                qasm2qcx.main(['array.qasm'])
+        self.assertTrue(str(error.exception).startswith('qasm2qcx.py:'))
+        output.assert_not_called()
+
+
 class RuntimeIteratorInfrastructureTests(unittest.TestCase):
     @staticmethod
     def converter():

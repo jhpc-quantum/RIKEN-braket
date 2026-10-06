@@ -221,6 +221,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__reserved_variable_names: set[str] = set()
         self.__source_identifiers: set[str] = set()
         self.__classical_source_types: dict[str, ast.QASMNode] = {}
+        self.__integer_array_source_sizes: dict[str, int] = {}
 
         self.__int_variable_name_size_map: dict[str, int] = {}
         self.__integer_array_names: set[str] = set()
@@ -1952,7 +1953,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         variable_name = self.__capitalize_variable_name(name)
         if not self.__is_initialization_process and variable_name not in self.__integer_array_names:
             raise NoVariableNameException(name)
-        return variable_name, self.__integer_array_size(variable_type, name)
+        return variable_name, self.__integer_array_source_sizes[name]
 
     def __visit_array_for(self, statement: ast.ForInLoop) -> None:
         variable_name, size = self.__array_loop_info(statement.set_declaration)
@@ -2685,7 +2686,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
              self.__value_kind, self.__evaluate_constant) = previous
 
     def __declare_integer_array(self, statement: ast.ClassicalDeclaration, variable_name: str) -> None:
-        size = self.__integer_array_size(statement.type, statement.identifier.name)
+        size = self.__integer_array_source_sizes[statement.identifier.name]
         initializer = statement.init_expression
         if initializer is not None:
             if not isinstance(initializer, ast.ArrayLiteral):
@@ -2714,6 +2715,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.__is_initialization_process:
             self.__register_source_identifier(statement.identifier.name)
             self.__classical_source_types[statement.identifier.name] = statement.type
+            if isinstance(statement.type, ast.ArrayType):
+                # Resolve dimensions in declaration scope, before loop iterators
+                # can shadow constants referenced by the type expression.
+                self.__integer_array_source_sizes[statement.identifier.name] = self.__integer_array_size(
+                    statement.type, statement.identifier.name)
             self.__reserved_variable_names.add(
                 self.__capitalize_variable_name(statement.identifier.name))
             return
