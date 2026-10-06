@@ -157,8 +157,14 @@ class WrongConstantVariableException(QASM2QCXError):
 
 
 @dataclasses.dataclass(frozen=True)
+class _RuntimeIteratorBinding:
+    # Unlike an unrolled iterator's integer value, this names live QCX storage.
+    storage: str
+
+
+@dataclasses.dataclass(frozen=True)
 class _LoopContext:
-    # Control-flow targets are independent of compile-time iterator bindings.
+    # Control-flow targets are independent of iterator bindings.
     # A for-loop continues at the iteration end; a while-loop at its condition.
     break_label: str
     continue_label: str
@@ -224,7 +230,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__branch_depth: int = 0
         self.__boolean_expression_index: int = 0
         self.__evaluate_constant: bool = True
-        self.__loop_bindings: list[dict[str, int]] = []
+        self.__loop_bindings: list[dict[str, int | _RuntimeIteratorBinding]] = []
         self.__loop_contexts: list[_LoopContext] = []
         self.__loop_index = 0
         self.__loop_iterations = 0
@@ -256,7 +262,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         return self.__qcx_lines[self.__current - 1]
 
     def visit(self, node: ast.QASMNode, context=None):
-        inside_loop = bool(self.__loop_bindings)
+        inside_loop = self.__inside_expanded_loop()
         if inside_loop and isinstance(node, ast.Statement):
             self.__expanded_loop_statements += 1
             if self.__expanded_loop_statements > self.MAX_EXPANDED_LOOP_STATEMENTS:
@@ -266,6 +272,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if inside_loop:
             self.__check_loop_output_limit()
         return result
+
+    def __inside_expanded_loop(self) -> bool:
+        # Runtime iterator scope alone does not represent compile-time body
+        # expansion. An enclosing constant iterator still charges nested code.
+        return any(isinstance(value, int)
+                   for scope in self.__loop_bindings for value in scope.values())
 
     def __check_loop_output_limit(self) -> None:
         if (not self.__is_initialization_process
@@ -358,9 +370,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
         for scope in reversed(self.__loop_bindings):
             if expression.name in scope:
-                self.__value = scope[expression.name]
+                binding = scope[expression.name]
+                if isinstance(binding, _RuntimeIteratorBinding):
+                    if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
+                        raise NoConstantExpressionException
+                    self.__value = binding.storage
+                    self.__value_kind = ValueKind.LVALUE
+                else:
+                    self.__value = binding
+                    self.__value_kind = ValueKind.LITERAL
                 self.__value_type = ValueType.INT
-                self.__value_kind = ValueKind.LITERAL
                 return
 
         is_user_constant = any(
@@ -1623,6 +1642,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__validate_loop_body(child.block, iterators)
 
     @contextlib.contextmanager
+    def __iterator_binding(
+            self, name: str, value: int | _RuntimeIteratorBinding) -> Iterator[None]:
+        self.__loop_bindings.append({name: value})
+        try:
+            yield
+        finally:
+            self.__loop_bindings.pop()
+
+    @contextlib.contextmanager
     def __loop_context(self, break_label: str, continue_label: str) -> Iterator[_LoopContext]:
         frame = _LoopContext(break_label, continue_label)
         self.__loop_contexts.append(frame)
@@ -1662,8 +1690,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         emit_control_labels = count > 0 and self.__loop_has_control(statement.block)
         previous_temporaries = self.__declared_temporary_variables.copy()
         for iteration, value in enumerate(values):
-            self.__loop_bindings.append({statement.identifier.name: value})
-            try:
+            with self.__iterator_binding(statement.identifier.name, value):
                 with self.__loop_context(
                         break_label, f'QASM2QCX_LOOP_{loop_index}_NEXT_{iteration}') as frame:
                     for child in statement.block:
@@ -1671,8 +1698,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     if emit_control_labels and not self.__is_initialization_process:
                         self.__qcx_lines.append(f'@{frame.continue_label}')
                         self.__check_loop_output_limit()
-            finally:
-                self.__loop_bindings.pop()
         if emit_control_labels and not self.__is_initialization_process:
             self.__qcx_lines.append(f'@{break_label}')
             # A transfer may skip a temporary's first declaration but a later
@@ -1709,7 +1734,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # The body can execute zero times, or a transfer can skip a
             # temporary's first use. Only its storage declaration moves.
             self.__hoist_temporary_declarations(previous_temporaries)
-            if self.__loop_bindings:
+            if self.__inside_expanded_loop():
                 self.__check_loop_output_limit()
 
     def visit_SwitchStatement(self, statement: ast.SwitchStatement) -> None:
