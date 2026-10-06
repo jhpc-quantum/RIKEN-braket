@@ -255,6 +255,89 @@ class ForLoopControlLoweringTests(unittest.TestCase):
                 self.assertEqual(converter._QASM2QCXConverter__loop_bindings, [])
 
 
+class ForLoopControlRegressionTests(unittest.TestCase):
+    def test_negative_step_continue_labels_use_iteration_numbers_not_values(self) -> None:
+        lines = convert('''OPENQASM 3.0; int total = 0;
+            for int i in [5:-2:-1] { continue; total += i; }''')
+        self.assertEqual([line for line in lines if line.startswith('JUMP QASM2QCX_LOOP_')],
+                         [f'JUMP QASM2QCX_LOOP_0_NEXT_{i}' for i in range(4)])
+        self.assertEqual([line for line in lines if line.startswith('LET TOTAL31 += ')],
+                         [f'LET TOTAL31 += {i}' for i in (5, 3, 1, -1)])
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_shadowed_iterators_do_not_change_nearest_loop_target(self) -> None:
+        lines = convert('''OPENQASM 3.0; int i = 9; int total = 0;
+            for int i in [1:2] {
+                for int i in [0:i] { if (i == 0) { continue; } break; }
+                if (i == 1) { continue; }
+                total += i;
+            }
+            total += i;''')
+        self.assertIn('JUMP QASM2QCX_LOOP_1_END', lines)
+        self.assertIn('JUMP QASM2QCX_LOOP_2_END', lines)
+        self.assertIn('JUMP QASM2QCX_LOOP_0_NEXT_0', lines)
+        self.assertIn('JUMP QASM2QCX_LOOP_0_NEXT_1', lines)
+        self.assertEqual(lines[-1], 'LET TOTAL31 += I1')
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_measurement_precedes_transfer_and_quantum_operations_remain_after_it(self) -> None:
+        for transfer in ('break', 'continue'):
+            with self.subTest(transfer=transfer):
+                lines = convert('''OPENQASM 3.0; include "stdgates.inc";
+                    qubit q; qubit r; bit outcome;
+                    for int i in [0:0] {
+                        outcome = measure q;
+                        if (outcome) { ''' + transfer + '''; }
+                        x r;
+                    }''')
+                jump = next(index for index, line in enumerate(lines)
+                            if line.startswith('JUMP QASM2QCX_LOOP_'))
+                self.assertLess(lines.index('M 0'), jump)
+                self.assertLess(lines.index('LET OUTCOME127 := :OUTCOME'), jump)
+                self.assertGreater(lines.index('X 1'), jump)
+                ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_mixed_temporary_types_are_declared_before_control_transfers(self) -> None:
+        lines = convert('''OPENQASM 3.0; int value = 7; float f = 1.5;
+            complex c = 1.0im; bool ready = false;
+            for int i in [0:3] {
+                if (i == 0) { continue; }
+                f = f + float(i);
+                c = c + complex(f);
+                ready = value % (i + 1) == 0;
+                if (ready) { break; }
+            }
+            f += float(value + 1); ready = !ready;''')
+        first_jump = next(index for index, line in enumerate(lines) if line.startswith('JUMP'))
+        declarations = [(index, line.split()[2]) for index, line in enumerate(lines)
+                        if line.startswith('VAR QASM2QCX_')]
+        self.assertEqual({kind for _, kind in declarations}, {'INT', 'REAL', 'COMPLEX'})
+        self.assertTrue(all(index < first_jump for index, _ in declarations))
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_break_exit_does_not_skip_following_operations_or_amplitude_output(self) -> None:
+        lines = convert('''OPENQASM 3.0; include "stdgates.inc";
+            pragma riken_braket.amplitudes 0
+            qubit q;
+            for int i in [0:1] { break; x q; }
+            x q;''')
+        self.assertEqual(lines[-2:], ['X 0', 'DO AMPLITUDES 0'])
+        self.assertEqual(lines[-3], '@QASM2QCX_LOOP_0_END')
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_cli_reports_outside_loop_transfers_without_partial_output(self) -> None:
+        for transfer in ('break;', 'continue;'):
+            for statement in (transfer, 'if (true) { ' + transfer + ' }'):
+                with self.subTest(statement=statement):
+                    with patch('builtins.open', mock_open(read_data='OPENQASM 3.0; ' + statement)), \
+                            patch('builtins.print') as output:
+                        with self.assertRaises(SystemExit) as error:
+                            qasm2qcx.main(['loop.qasm'])
+                    self.assertTrue(str(error.exception).startswith('qasm2qcx.py:'))
+                    self.assertIn('outside loop', str(error.exception))
+                    output.assert_not_called()
+
+
 class ConstantForLoopRangeTests(unittest.TestCase):
     @staticmethod
     def evaluate_range(bounds: str, prefix: str = '', iteration_type: str = 'int') -> range:
