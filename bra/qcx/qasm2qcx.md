@@ -39,8 +39,8 @@ The converter currently covers:
   conditions;
 - compile-time unrolling of constant integer-range and integer-set `for` loops,
   including `break` and `continue`;
-- runtime-bound integer-range `for` loops with constant unit steps, including
-  nested loops, `break`, and `continue`;
+- runtime-bound integer-range `for` loops with nonzero constant integer steps,
+  including nested loops, `break`, and `continue`;
 - integer-set `for` loops with runtime-valued elements captured at loop entry;
 - runtime `while` loops, including nested loops, `break`, and `continue`;
 - scalar expressions used as gate parameters; and
@@ -494,11 +494,22 @@ and scalar bit operands require an explicit integer cast; statically indexed
 bit-register elements are also accepted through a cast. Whole bit registers
 are not integer bounds.
 
-The step must evaluate during conversion to `1` or `-1`; an omitted step is `1`.
-Runtime steps and other constant strides are unsupported for runtime-bound
-ranges. Fully constant ranges still use unrolling and retain support for any
-nonzero integer step. A runtime variable remains a runtime dependency even if
-its initializer is a literal.
+The step must evaluate during conversion to a nonzero integer; an omitted step
+is `1`. Positive and negative nonunit steps are supported. Named constants,
+supported constant arithmetic and integer casts, and enclosing constant
+iterators may supply the step. Runtime-valued steps remain unsupported, even
+when their source variable has a literal initializer.
+
+Runtime-range steps must fit QCX `INT`, whose backend representation is C++
+`int`. The converter derives its signed bounds from the host's native C `int`
+through Python's `ctypes`; on a 32-bit `int` host, the accepted range is
+`-2147483648` through `2147483647`, excluding zero. This assumes the generated
+program runs on a backend with a compatible integer representation; different
+target integer widths are not automatically detected. Out-of-range steps
+produce converter-specific errors rather than unrepresentable QCX literals.
+Declared OpenQASM widths do not change these bounds. Fully constant ranges
+still use unrolling and retain their conversion-time integer-step behavior,
+including steps outside the runtime QCX representation.
 
 ```qasm
 OPENQASM 3.0;
@@ -512,20 +523,42 @@ for int i in [first:last] {
 // total is 6: the captured stop remains 3 despite assignments to last.
 ```
 
+For a nonunit step, the stop is included only if reached exactly:
+
+```qasm
+OPENQASM 3.0;
+int first = 1;
+int last = 6;
+int total = 0;
+for int i in [first:2:last] {
+    total += i;
+}
+// total is 9: 1 + 3 + 5. The unaligned stop 6 is not visited.
+```
+
 The start and stop are evaluated once, in that order, on each entry to the loop,
 before binding the new iterator. Mutating their source variables in the body
-does not change the captured range. The stop is inclusive, and a range whose
-direction does not match its step executes zero iterations. A nested loop can
-use its outer iterator in either bound, including when the inner iterator
+does not change the captured range. The stop is inclusive when reached, and a
+range whose direction does not match its step executes zero iterations. A nested
+loop can use its outer iterator in either bound, including when the inner iterator
 shadows the outer name. The outer binding is restored after the inner loop.
 
 The body is generated once using existing QCX labels, `LET`, `JUMP`, and
 `JUMPIF`. Private integer storage holds the iterator and captured stop for the
 whole loop, independently of expression temporaries and nested loops. An entry
-check skips empty ranges. After each iteration, an endpoint check exits before
-incrementing or decrementing at the last value, avoiding iterator advancement
-overflow at QCX's integer endpoints. This is not a general arithmetic overflow
-check: declared widths and unsigned semantics retain their existing limitations.
+check skips empty ranges. After each iteration, an advance guard exits if the
+next value would lie beyond the stop, including when the stop is unaligned.
+Unit steps retain the existing endpoint check and emitted instructions.
+
+For nonunit steps, the guard selects a safe calculation according to the stop's
+sign. It computes `stop - step` only where that subtraction is representable;
+otherwise it computes and checks a representable candidate `iterator + step`.
+The iterator is advanced only when another in-range value exists. Negative
+steps are used directly without negating them, including the minimum signed
+integer. Thus both guard arithmetic and iterator advancement avoid overflow
+for representable bounds and steps. This is not a general arithmetic overflow
+check: calculations producing bounds, body arithmetic, declared widths, and
+unsigned semantics retain their existing limitations.
 
 Bodies support the same statements as constant loops. The iterator is a scoped,
 read-only runtime integer usable in arithmetic, gate parameters, and conditions.
@@ -536,7 +569,7 @@ Dynamic indexing remains unsupported. Constant range and set loops,
 runtime-valued set loops, and runtime `while` loops may be nested in either direction.
 
 `break` exits the nearest loop. In a runtime-bound `for`, `continue` jumps to
-the endpoint check and iterator advancement, rather than reevaluating the
+the advance guard and iterator advancement, rather than reevaluating the
 bounds. For example:
 
 ```qasm
@@ -729,7 +762,7 @@ vector defined by the program's qubit declarations.
 
 The current prototype does not reliably support:
 
-- delays, runtime range steps or nonunit steps in runtime-bound ranges,
+- delays, runtime-valued range steps,
   iteration over arrays, bit registers, or aliases,
   or `switch` statements;
 - user-defined gates or gate modifiers;
@@ -771,10 +804,14 @@ shadowing, and temporary reuse. Transfer results are also checked against Python
 reference loops. Each numerical program execution has a timeout.
 
 `bra/test/qasm2qcx_runtime_for_numerical.py` verifies ascending, descending,
-singleton, and empty runtime ranges against Python reference values, captured
-bounds, arithmetic and casted bounds, repeated entry, iterator shadowing,
-mixed nesting, nearest-loop transfers, measurement-controlled exits, gate
+singleton, and empty runtime ranges with unit and nonunit steps against Python
+reference values, captured bounds, arithmetic and casted bounds, repeated entry,
+iterator shadowing, mixed nesting, nearest-loop transfers, measurement-controlled exits, gate
 parameters, skipped arithmetic, temporary reuse, and QCX integer endpoints.
+Stride coverage includes aligned and unaligned stops, position-based transfers,
+extreme representable steps, repeated entry, and the last visited value.
+Unit tests additionally interpret the emitted advance guard with checked signed
+arithmetic, exhaustively covering a small integer model and native endpoints.
 
 `bra/test/qasm2qcx_runtime_set_numerical.py` verifies source order, duplicates,
 capture-before-body behavior, repeated entry, casts, shadowing, mixed nesting,

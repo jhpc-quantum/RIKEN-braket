@@ -4,6 +4,7 @@ import math
 import enum
 import dataclasses
 import contextlib
+import ctypes
 from collections.abc import Iterator
 
 import openqasm3.parser
@@ -171,6 +172,11 @@ class _LoopContext:
 
 
 class QASM2QCXConverter(visitor.QASMVisitor):
+    # bra::int_type is C++ int. These bounds describe a backend built for the
+    # converter's host; OpenQASM declared widths do not change QCX storage.
+    QCX_INT_MIN = -(1 << (ctypes.sizeof(ctypes.c_int) * 8 - 1))
+    QCX_INT_MAX = (1 << (ctypes.sizeof(ctypes.c_int) * 8 - 1)) - 1
+
     MAX_LOOP_ITERATIONS = 10000
     MAX_EXPANDED_LOOP_STATEMENTS = 100000
     MAX_LOOP_OUTPUT_LINES = 1000000
@@ -1657,9 +1663,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             runtime |= dependency
         if not runtime:
             return None
+        return self.__validated_runtime_range_step(bounds)
+
+    def __validated_runtime_range_step(self, bounds: ast.RangeDefinition) -> int:
         step = 1 if bounds.step is None else self.__constant_loop_integer(bounds.step, 'step')
-        if step not in (1, -1):
-            raise UnsupportedOpenQASMError('runtime range step other than constant 1 or -1')
+        if step == 0:
+            raise InvalidLoopRangeException('For-loop range step cannot be zero')
+        if not self.QCX_INT_MIN <= step <= self.QCX_INT_MAX:
+            raise InvalidLoopRangeException(
+                f'Runtime range step must fit QCX INT '
+                f'[{self.QCX_INT_MIN}, {self.QCX_INT_MAX}]')
         return step
 
     @staticmethod
@@ -1763,9 +1776,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 if part == 'step' and value == 0:
                     raise InvalidLoopRangeException('For-loop range step cannot be zero')
         if runtime_range and (bounds.step is None or not self.__loop_bound_names(bounds.step) & iterators):
-            step = 1 if bounds.step is None else self.__constant_loop_integer(bounds.step, 'step')
-            if step not in (1, -1):
-                raise UnsupportedOpenQASMError('runtime range step other than constant 1 or -1')
+            self.__validated_runtime_range_step(bounds)
 
     def __validate_loop_body(self, statements: list[ast.Statement], iterators: set[str]) -> None:
         # Validate without executing the body, including zero-iteration loops.
@@ -1984,7 +1995,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__qcx_lines.append(f'LET {destination} := {value}')
                 if value_kind == ValueKind.TEMPORARY:
                     self.__release_temporary_variable(str(value))
-            comparison = '>' if step == 1 else '<'
+            comparison = '>' if step > 0 else '<'
             self.__qcx_lines.append(f'JUMPIF {end_label} {iterator} {comparison} {stop}')
             self.__qcx_lines.append(f'@{body_label}')
             with self.__iterator_binding(statement.identifier.name, _RuntimeIteratorBinding(iterator)), \
@@ -1992,11 +2003,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 for child in statement.block:
                     self.visit(child)
             self.__qcx_lines.append(f'@{next_label}')
-            # Stop before advancing at the inclusive endpoint, avoiding overflow
-            # at the largest/smallest representable QCX integer.
-            self.__qcx_lines.append(f'JUMPIF {end_label} {iterator} == {stop}')
-            self.__qcx_lines.append(f'LET {iterator} {"+=" if step == 1 else "-="} 1')
-            self.__qcx_lines.append(f'JUMP {body_label}')
+            self.__emit_runtime_range_next(
+                iterator, stop, step, body_label, end_label,
+                f'QASM2QCX_LOOP_{loop_index}_CANDIDATE')
             self.__qcx_lines.append(f'@{end_label}')
             self.__hoist_temporary_declarations(previous_temporaries)
             if self.__inside_expanded_loop():
@@ -2004,6 +2013,42 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         finally:
             self.__release_temporary_variable(stop)
             self.__release_temporary_variable(iterator)
+
+    def __emit_runtime_range_next(
+            self, iterator: str, stop: str, step: int,
+            body_label: str, end_label: str, candidate_label: str) -> None:
+        if step in (1, -1):
+            # Preserve unit-step output and stop before advancing at an endpoint.
+            self.__qcx_lines.append(f'JUMPIF {end_label} {iterator} == {stop}')
+            self.__qcx_lines.append(f'LET {iterator} {"+=" if step == 1 else "-="} 1')
+            self.__qcx_lines.append(f'JUMP {body_label}')
+            return
+
+        scratch = self.__add_new_temporary_variable(ValueType.INT)
+        try:
+            # The entry check and read-only iterator guarantee iterator <= stop
+            # for positive steps, or iterator >= stop for negative steps.
+            # stop - step is safe for stop >= 0 with a positive step, and for
+            # stop < 0 with a negative step (including QCX_INT_MIN).
+            sign_comparison = '<' if step > 0 else '>='
+            exit_comparison = '>' if step > 0 else '<'
+            self.__qcx_lines.append(f'JUMPIF {candidate_label} {stop} {sign_comparison} 0')
+            self.__qcx_lines.append(f'LET {scratch} := {stop}')
+            self.__qcx_lines.append(f'LET {scratch} -= {step}')
+            self.__qcx_lines.append(f'JUMPIF {end_label} {iterator} {exit_comparison} {scratch}')
+            self.__qcx_lines.append(f'LET {iterator} += {step}')
+            self.__qcx_lines.append(f'JUMP {body_label}')
+            self.__qcx_lines.append(f'@{candidate_label}')
+            # Otherwise iterator is negative for a positive step, or nonnegative
+            # for a negative step, so iterator + step is representable. Compare
+            # that candidate with stop before assigning it to the iterator.
+            self.__qcx_lines.append(f'LET {scratch} := {iterator}')
+            self.__qcx_lines.append(f'LET {scratch} += {step}')
+            self.__qcx_lines.append(f'JUMPIF {end_label} {scratch} {exit_comparison} {stop}')
+            self.__qcx_lines.append(f'LET {iterator} := {scratch}')
+            self.__qcx_lines.append(f'JUMP {body_label}')
+        finally:
+            self.__release_temporary_variable(scratch)
 
     def visit_WhileLoop(self, statement: ast.WhileLoop) -> None:
         self.__validate_loop_body(statement.block,
