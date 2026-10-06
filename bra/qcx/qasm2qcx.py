@@ -1441,8 +1441,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.__branch_depth == 0:
             self.__hoist_temporary_declarations(previous_temporaries)
 
-    def __constant_loop_integer(self, expression: ast.Expression, part: str) -> int:
-        # Range evaluation must not inherit skipped-expression state or disturb
+    def __constant_loop_integer(
+            self, expression: ast.Expression, part: str, *, kind: str = 'range') -> int:
+        # Iteration-value evaluation must not inherit skipped-expression state or disturb
         # the expression being converted by the enclosing visitor.
         previous = (self.__expression_kind, self.__value, self.__value_type,
                     self.__value_kind, self.__evaluate_constant)
@@ -1453,7 +1454,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.visit(expression)
             if self.__value_type != ValueType.INT or self.__value_kind != ValueKind.LITERAL:
                 raise InvalidLoopRangeException(
-                    f'For-loop range {part} must be a constant integer')
+                    f'For-loop {kind} {part} must be a constant integer')
             return int(self.__value)
         finally:
             (self.__expression_kind, self.__value, self.__value_type,
@@ -1462,6 +1463,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __loop_range(self, statement: ast.ForInLoop) -> range:
         self.__validate_loop_header(statement)
         bounds = statement.set_declaration
+        if not isinstance(bounds, ast.RangeDefinition):
+            raise UnsupportedOpenQASMError('for-loop iteration other than a constant range')
         start = self.__constant_loop_integer(bounds.start, 'start')
         end = self.__constant_loop_integer(bounds.end, 'end')
         step = (1 if bounds.step is None
@@ -1473,8 +1476,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         return range(start, end + (1 if step > 0 else -1), step)
 
     def __loop_values(self, statement: ast.ForInLoop) -> range | tuple[int, ...]:
-        # Keep range evaluation separate from the shared body unroller. Other
-        # constant iteration forms can supply ordered values through this path.
+        self.__validate_loop_header(statement)
+        source = statement.set_declaration
+        if isinstance(source, ast.DiscreteSet):
+            # This is an ordered sequence, not a Python set: repeated values
+            # represent distinct iterations and retain their original positions.
+            return tuple(self.__constant_loop_integer(value, f'element {index}', kind='set')
+                         for index, value in enumerate(source.values))
         return self.__loop_range(statement)
 
     @staticmethod
@@ -1493,9 +1501,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if not isinstance(statement.type, ast.IntType):
             raise UnsupportedOpenQASMError('for-loop iteration type other than int')
         bounds = statement.set_declaration
-        if not isinstance(bounds, ast.RangeDefinition):
-            raise UnsupportedOpenQASMError('for-loop iteration other than a constant range')
-        if bounds.start is None or bounds.end is None:
+        if not isinstance(bounds, (ast.RangeDefinition, ast.DiscreteSet)):
+            raise UnsupportedOpenQASMError('for-loop iteration other than a constant range or integer set')
+        if isinstance(bounds, ast.RangeDefinition) and (bounds.start is None or bounds.end is None):
             raise InvalidLoopRangeException('For-loop range requires both bounds')
 
     def __validate_loop_syntax(self, node: ast.QASMNode) -> None:
@@ -1545,22 +1553,25 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __validate_nested_loop_bounds(self, statement: ast.ForInLoop, iterators: set[str]) -> None:
         # Outer iterator values may not exist for an empty outer loop. Validate
-        # names and independent bounds now; defer value-dependent checks until
+        # names and independent iteration values now; defer value-dependent checks until
         # an actual iteration, rather than fabricating an outer value.
         bounds = statement.set_declaration
+        is_set = isinstance(bounds, ast.DiscreteSet)
+        expressions = ([(value, f'element {index}') for index, value in enumerate(bounds.values)]
+                       if is_set else [(bounds.start, 'start'), (bounds.end, 'end'),
+                                       (bounds.step, 'step')])
         constants = (set(self.__const_int_variable_name_values_map)
                      | set(self.__const_float_variable_name_values_map)
                      | set(self.__const_complex_variable_name_values_map)
                      | set(self.__const_bool_variable_values_map))
-        for expression, part in ((bounds.start, 'start'), (bounds.end, 'end'),
-                                 (bounds.step, 'step')):
+        for expression, part in expressions:
             if expression is None:
                 continue
             names = self.__loop_bound_names(expression)
             for name in names - iterators - constants - {'pi', 'tau', 'euler'}:
                 raise NoVariableNameException(name)
             if not names & iterators:
-                value = self.__constant_loop_integer(expression, part)
+                value = self.__constant_loop_integer(expression, part, kind='set' if is_set else 'range')
                 if part == 'step' and value == 0:
                     raise InvalidLoopRangeException('For-loop range step cannot be zero')
 

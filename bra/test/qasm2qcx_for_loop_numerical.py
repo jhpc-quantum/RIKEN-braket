@@ -260,6 +260,64 @@ def main() -> None:
         total += value + 1;'''
     check_program(arguments.bra, source, ('TOTAL31',), ['9'])
 
+    source = '''OPENQASM 3.0; int total = 0; int visits = 0;
+        for int i in {5, -1, 5, 0} { total += i; visits += 1; }'''
+    check_program(arguments.bra, source, ('TOTAL31', 'VISITS63'), ['9', '4'])
+
+    source = '''OPENQASM 3.0; const int n = 3; const uint u = 2; int total = 0;
+        for int i in {n, u - 1, int(3.5)} { total = total * 10 + i; }'''
+    check_program(arguments.bra, source, ('TOTAL31',), ['313'])
+
+    source = '''OPENQASM 3.0; include "stdgates.inc"; qubit[6] q; bit[6] flags;
+        for int i in {0, 2, 2, 5} { x q[i]; }
+        flags = measure q;'''
+    check_program(arguments.bra, source, ('FLAGS31:0', 'FLAGS31:2', 'FLAGS31:5'), ['1', '0', '1'])
+
+    source = '''OPENQASM 3.0; int i = 9; int total = 0;
+        for int i in {2, 3} {
+            for int i in {i, i + 1} { total += i; }
+            total += i;
+        }
+        total += i;'''
+    check_program(arguments.bra, source, ('TOTAL31', 'I1'), ['26', '9'])
+
+    source = '''OPENQASM 3.0; int skip = 2; int stop = 4; int total = 0;
+        for int i in {1, 2, 3, 4, 5} {
+            if (i == skip) { continue; }
+            if (i == stop) { break; }
+            total += i;
+        }'''
+    check_program(arguments.bra, source, ('TOTAL31',), ['4'])
+
+    source = '''OPENQASM 3.0; int n = 0; int total = 0;
+        while (n < 2) {
+            n += 1;
+            for int i in {0, 2, 2} {
+                if (i == 0) { continue; }
+                total += n + i;
+            }
+        }'''
+    check_program(arguments.bra, source, ('N1', 'TOTAL31'), ['2', '14'])
+
+    for transfer in ('break;', 'continue;'):
+        source = '''OPENQASM 3.0; int value = 7; int total = 0;
+            for int i in {2, 2} { ''' + transfer + ''' total += value % 0; }
+            total += value + 1;'''
+        check_program(arguments.bra, source, ('TOTAL31',), ['8'])
+
+    for transfer in ('break', 'continue'):
+        source = '''OPENQASM 3.0; include "stdgates.inc";
+            qubit q; bit outcome = 0; int visits = 0; int total = 0;
+            for int i in {0, 2, 5} {
+                visits += 1; reset q;
+                if (i == 2) { x q; }
+                outcome = measure q;
+                if (outcome) { ''' + transfer + '''; }
+                total += i;
+            }'''
+        expected = ['2', '0', '1'] if transfer == 'break' else ['3', '5', '0']
+        check_program(arguments.bra, source, ('VISITS63', 'TOTAL31', 'OUTCOME127'), expected)
+
 
 if __name__ == '__main__':
     main()
