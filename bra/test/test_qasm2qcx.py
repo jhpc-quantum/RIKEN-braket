@@ -809,6 +809,97 @@ class ConstantForSetLoweringTests(unittest.TestCase):
                 self.assertEqual(list(converter), ['QUBITS 0'])
 
 
+class ConstantForSetRegressionTests(unittest.TestCase):
+    def test_static_range_set_selections_and_bit_indices_use_iterator_values(self) -> None:
+        prefix = 'OPENQASM 3.0; include "stdgates.inc"; qubit[4] q; bit[4] flags; '
+        self.assertEqual(convert(prefix + '''for int i in {1, 0, 1} {
+            x q[i:i + 1]; h q[{i, i + 2}]; flags[i] = 1;
+        }'''), convert(prefix + '''
+            x q[1:2]; h q[{1, 3}]; flags[1] = 1;
+            x q[0:1]; h q[{0, 2}]; flags[0] = 1;
+            x q[1:2]; h q[{1, 3}]; flags[1] = 1;'''))
+
+    def test_all_mixed_nested_loop_jumps_and_duplicate_instances_are_unique(self) -> None:
+        lines = convert('''OPENQASM 3.0; bool ready = false;
+            for int i in {2, 2} {
+                while (ready) {
+                    for int j in {i, i + 1} {
+                        for int k in [0:j] { if (ready) { continue; } break; }
+                        continue;
+                    }
+                    break;
+                }
+                continue;
+            }''')
+        self.assertIn('JUMP QASM2QCX_LOOP_0_NEXT_0', lines)
+        self.assertIn('JUMP QASM2QCX_LOOP_0_NEXT_1', lines)
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_set_evaluation_restores_expression_state_on_success_and_failure(self) -> None:
+        converter = qasm2qcx.QASM2QCXConverter(qasm2qcx.openqasm3.parser.parse('OPENQASM 3.0;'))
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        converter._QASM2QCXConverter__value = 99
+        converter._QASM2QCXConverter__value_type = qasm2qcx.ValueType.INT
+        converter._QASM2QCXConverter__value_kind = qasm2qcx.ValueKind.LITERAL
+        converter._QASM2QCXConverter__evaluate_constant = False
+        fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+        before = tuple(getattr(converter, '_QASM2QCXConverter__' + field) for field in fields)
+        for elements, error in (('{1 + 2, int(2.5), 3}', None),
+                                ('{1 + 2, missing}', qasm2qcx.NoVariableNameException),
+                                ('{1, 2 % 0}', qasm2qcx.ZeroDivisorException)):
+            with self.subTest(elements=elements):
+                loop = qasm2qcx.openqasm3.parser.parse(
+                    'OPENQASM 3.0; for int i in ' + elements + ' {}').statements[0]
+                if error:
+                    with self.assertRaises(error):
+                        converter._QASM2QCXConverter__loop_values(loop)
+                else:
+                    self.assertEqual(converter._QASM2QCXConverter__loop_values(loop), (3, 2, 3))
+                self.assertEqual(tuple(getattr(converter, '_QASM2QCXConverter__' + field)
+                                       for field in fields), before)
+
+    def test_unknown_runtime_names_and_unsupported_syntax_rejected_in_empty_outer_loop(self) -> None:
+        for elements in ('{i + missing}', '{i + n}', '{i, sin(1.0)}', '{i, 2 ** i}'):
+            with self.subTest(elements=elements):
+                with self.assertRaises(qasm2qcx.QASM2QCXError):
+                    convert(f'''OPENQASM 3.0; int n = 2;
+                        for int i in [1:0] {{ for int j in {elements} {{}} }}''')
+
+    def test_skipped_body_still_rejects_invalid_elements_and_iterator_writes(self) -> None:
+        for inner in ('for int j in {i, 1.5} {}', 'for int j in {i, missing} {}',
+                      'for int j in {i, 1 / 0} {}', 'for int j in {i} { i = 1; }'):
+            with self.subTest(inner=inner):
+                with self.assertRaises(qasm2qcx.QASM2QCXError):
+                    convert('OPENQASM 3.0; for int i in {1} { break; ' + inner + ' }')
+
+    def test_nested_set_contexts_restored_after_body_error(self) -> None:
+        converter = qasm2qcx.QASM2QCXConverter(qasm2qcx.openqasm3.parser.parse('OPENQASM 3.0;'))
+        loop = qasm2qcx.openqasm3.parser.parse('''OPENQASM 3.0;
+            for int i in {1, 1} { for int j in {i, i} { reset missing; } }''').statements[0]
+        with self.assertRaises(qasm2qcx.InvalidQubitOperandException):
+            converter.visit(loop)
+        self.assertEqual(converter._QASM2QCXConverter__loop_contexts, [])
+        self.assertEqual(converter._QASM2QCXConverter__loop_bindings, [])
+
+    def test_amplitude_output_is_after_set_loop_exit_and_following_operations(self) -> None:
+        lines = convert('''OPENQASM 3.0; include "stdgates.inc";
+            pragma riken_braket.amplitudes 0
+            qubit q; for int i in {0, 0} { break; x q; } x q;''')
+        self.assertEqual(lines[-3:], ['@QASM2QCX_LOOP_0_END', 'X 0', 'DO AMPLITUDES 0'])
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_cli_invalid_set_element_reports_error_without_partial_output(self) -> None:
+        for elements in ('{0, n}', '{0, 1.5}', '{0, 1 / 0}'):
+            with self.subTest(elements=elements):
+                source = f'OPENQASM 3.0; int n = 1; for int i in {elements} {{}}'
+                with patch('builtins.open', mock_open(read_data=source)), \
+                        patch('builtins.print') as output:
+                    with self.assertRaises(SystemExit) as error:
+                        qasm2qcx.main(['set.qasm'])
+                self.assertTrue(str(error.exception).startswith('qasm2qcx.py:'))
+                output.assert_not_called()
+
+
 class ConstantForLoopRangeTests(unittest.TestCase):
     @staticmethod
     def evaluate_range(bounds: str, prefix: str = '', iteration_type: str = 'int') -> range:

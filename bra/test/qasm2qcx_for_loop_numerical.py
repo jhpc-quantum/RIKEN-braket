@@ -36,7 +36,9 @@ def check_runtime_transfers(bra: pathlib.Path) -> None:
     # targets, both range directions, striding, singleton and empty ranges.
     for bounds, values in (
             ('[0:4]', list(range(5))), ('[4:-1:0]', list(range(4, -1, -1))),
-            ('[5:-2:-1]', [5, 3, 1, -1]), ('[2:2]', [2]), ('[2:1]', [])):
+            ('[5:-2:-1]', [5, 3, 1, -1]), ('[2:2]', [2]), ('[2:1]', []),
+            ('{5, 2, 5, -1}', [5, 2, 5, -1]), ('{-2, 3, 0}', [-2, 3, 0]),
+            ('{2, 2}', [2, 2]), ('{5}', [5])):
         targets = sorted({99, *(values[index] for index in (0, len(values) // 2, -1)
                                  if values)})
         for skip in targets:
@@ -60,6 +62,57 @@ def check_runtime_transfers(bra: pathlib.Path) -> None:
                     total += 100;'''
                 check_program(bra, source, ('TOTAL31', 'VISITS63'),
                               [str(total + 100), str(visits)])
+
+
+def check_set_position_transfers(bra: pathlib.Path) -> None:
+    # Transfer by runtime position, not iterator value, so repeated values can
+    # exercise different continue targets and exits in the same generated loop.
+    for values in ([3, 1, 3, -2], [2, 2], [5]):
+        elements = '{' + ', '.join(map(str, values)) + '}'
+        for skip in (*range(1, len(values) + 1), 99):
+            for stop in (*range(1, len(values) + 1), 99):
+                visits = total = 0
+                for value in values:
+                    visits += 1
+                    if visits == skip:
+                        continue
+                    if visits == stop:
+                        break
+                    total += value
+                source = f'''OPENQASM 3.0; int skip = {skip}; int stop = {stop};
+                    int visits = 0; int total = 0; int i = 9;
+                    for int i in {elements} {{
+                        visits += 1;
+                        if (visits == skip) {{ continue; }}
+                        if (visits == stop) {{ break; }}
+                        total += i;
+                    }}
+                    total += i;'''
+                check_program(bra, source, ('VISITS63', 'TOTAL31', 'I1'),
+                              [str(visits), str(total + 9), '9'])
+
+
+def check_set_measurement_transfers(bra: pathlib.Path) -> None:
+    values = [2, 0, 2, 5]
+    for transfer in ('break', 'continue'):
+        for trigger in (1, 2, 4):
+            source = f'''OPENQASM 3.0; include "stdgates.inc";
+                qubit q; qubit r; bit outcome; bit tail;
+                int visits = 0; int total = 0;
+                for int i in {{2, 0, 2, 5}} {{
+                    visits += 1; reset q;
+                    if (visits == {trigger}) {{ x q; }}
+                    barrier q;
+                    outcome = measure q;
+                    if (outcome) {{ {transfer}; }}
+                    x r; total += i;
+                }}
+                tail = measure r;'''
+            if transfer == 'break':
+                expected = [str(trigger), str(sum(values[:trigger - 1])), '1', str((trigger - 1) % 2)]
+            else:
+                expected = ['4', str(sum(values) - values[trigger - 1]), str(int(trigger == 4)), '1']
+            check_program(bra, source, ('VISITS63', 'TOTAL31', 'OUTCOME127', 'TAIL15'), expected)
 
 
 def check_measurement_transfers(bra: pathlib.Path) -> None:
@@ -200,6 +253,8 @@ def main() -> None:
     check_program(arguments.bra, source, ('SUM7',), ['13'])
 
     check_runtime_transfers(arguments.bra)
+    check_set_position_transfers(arguments.bra)
+    check_set_measurement_transfers(arguments.bra)
     check_measurement_transfers(arguments.bra)
 
     # Inner break, outer continue, and outer break must remain independent.
@@ -317,6 +372,45 @@ def main() -> None:
             }'''
         expected = ['2', '0', '1'] if transfer == 'break' else ['3', '5', '0']
         check_program(arguments.bra, source, ('VISITS63', 'TOTAL31', 'OUTCOME127'), expected)
+
+    source = '''OPENQASM 3.0; int total = 0; int n = 0;
+        for int i in {1, 2, 2, 3} {
+            n = 0;
+            while (n < 3) {
+                n += 1; if (n == 1) { continue; }
+                for int j in {0, i, 0} {
+                    if (j == 0) { continue; }
+                    total += i * 10 + j; break;
+                }
+                break;
+            }
+            if (i == 2) { continue; }
+            if (i == 3) { break; }
+            total += 100;
+        }
+        total += 1;'''
+    check_program(arguments.bra, source, ('TOTAL31',), ['189'])
+
+    # Multiple storage types are reused after the first occurrence is skipped,
+    # then a later duplicate breaks out before subsequent generated iterations.
+    source = '''OPENQASM 3.0; int value = 7; int visits = 0; float f = 1.5;
+        complex c = 1.0im; bool ready = false;
+        for int i in {2, 2, 3, 2} {
+            visits += 1;
+            if (visits == 1) { continue; }
+            f = f + float(i); c = c + complex(f);
+            ready = value % i == 0;
+            if (i == 3) { break; }
+        }
+        f += float(value + 1); ready = !ready;'''
+    check_program(arguments.bra, source, ('VISITS63', 'F1', ':REAL:C1', ':IMAG:C1', 'READY31'),
+                  ['3', '14.5', '10', '1', '1'])
+
+    source = '''OPENQASM 3.0; bool active = false; int value = 7; int total = 0;
+        if (active) { for int i in {2, 2} { total += value % 0; break; } }
+        for int i in {2, 3, 2} { total += value % i; }
+        total += value + 1;'''
+    check_program(arguments.bra, source, ('TOTAL31',), ['11'])
 
 
 if __name__ == '__main__':
