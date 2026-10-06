@@ -35,8 +35,11 @@ def main() -> None:
     parser.add_argument('--bra', required=True, type=pathlib.Path)
     arguments = parser.parse_args()
 
-    for start, stop, step in ((0, 3, 1), (3, 0, -1), (2, 2, 1), (2, 2, -1),
-                              (3, 0, 1), (0, 3, -1)):
+    # Cross zero in both directions, with equal and reversed endpoints too.
+    for start, stop, step in ((start, stop, step)
+                              for start in range(-2, 3)
+                              for stop in range(-2, 3)
+                              for step in (1, -1)):
         values = list(range(start, stop + step, step))
         check_program(arguments.bra, f'''int first = {start}; int last = {stop};
             int visits = 0; int total = 0;
@@ -69,6 +72,59 @@ def main() -> None:
             total += i;
         }''', ('TOTAL31',), ['7'])
 
+    # Arithmetic bound temporaries must not overwrite either captured value.
+    check_program(arguments.bra, '''int first = 7; int last = 3; int total = 0;
+        for int i in [first % last:(last + 1) * 2 / 2] {
+            total += (i + first) % last; first = 100; last = 100;
+        }
+        total += 2;''', ('TOTAL31',), ['13'])
+
+    for declarations, bounds, expected in (
+            ('float first = -1.5; uint last = 2;', '[int(first):last]', '2'),
+            ('bool ready = true; int last = 2;', '[int(!ready):last]', '3'),
+            ('bit[2] flags = "01"; int last = 2;', '[int(flags[0]):last]', '3'),
+            ('int first = 0; int last = 2;', '[int(first < last):last]', '3'),
+            ('const int stride = 1; int last = -1;', '[2:-stride:last]', '2')):
+        check_program(arguments.bra, declarations + f'''int total = 0;
+            for int i in {bounds} {{ total += i; }}''', ('TOTAL31',), [expected])
+
+    # Inner transfers target their nearest loop, not the enclosing runtime for.
+    check_program(arguments.bra, '''int limit = 2; int total = 0; int tick = 0;
+        for int i in [0:limit] {
+            tick = 0;
+            while (tick < 4) {
+                tick += 1; if (tick == 1) { continue; }
+                total += i; if (tick == 3) { break; }
+            }
+            for int j in {1, 1, 2} {
+                if (j == 1) { continue; } total += j; break;
+            }
+            total += 10;
+        }''', ('TOTAL31', 'TICK15'), ['42', '3'])
+
+    # A runtime loop inside an expanded loop captures fresh bounds each entry.
+    check_program(arguments.bra, '''int last = 1; int total = 0;
+        for int k in {1, 2, 3} {
+            for int i in [0:last] { total += i; last += 1; }
+        }''', ('TOTAL31', 'LAST15'), ['35', '15'])
+
+    check_program(arguments.bra, '''int limit = 1; int total = 0; int tick = 0;
+        while (tick < 3) {
+            tick += 1;
+            for int i in [0:limit] { if (i == 0) { continue; } total += tick; break; }
+            limit += 1;
+        }''', ('TOTAL31', 'LIMIT31'), ['6', '4'])
+
+    check_program(arguments.bra, '''int first = 4; int last = 0; int total = 0;
+        for int i in [first:-1:last] {
+            if (i == 3) { continue; } if (i == 1) { break; } total += i;
+        }''', ('TOTAL31',), ['6'])
+
+    # Ordinary source variables with the iterator name are restored afterwards.
+    check_program(arguments.bra, '''bit i = 1; int last = 2; int total = 0;
+        for int i in [int(i):last] { total += i; } total += int(i);''',
+                  ('TOTAL31', 'I1'), ['4', '1'])
+
     check_program(arguments.bra, '''int value = 7; int limit = -1; int total = 0;
         for int i in [0:limit] { total += value % 0; }
         total += value + 1;
@@ -98,10 +154,12 @@ def main() -> None:
     # assuming that the converter's accepted OpenQASM widths are enforced.
     bits = ctypes.sizeof(ctypes.c_int) * 8
     maximum, minimum = 2 ** (bits - 1) - 1, -(2 ** (bits - 1))
-    for start, stop, step in ((maximum - 1, maximum, 1), (minimum + 1, minimum, -1)):
+    for start, stop, step in ((maximum - 1, maximum, 1), (minimum + 1, minimum, -1),
+                              (maximum, maximum, 1), (minimum, minimum, -1),
+                              (maximum, minimum, 1), (minimum, maximum, -1)):
         check_program(arguments.bra, f'''int first = {start}; int last = {stop}; int visits = 0;
             for int i in [first:{step}:last] {{ visits += 1; continue; }}''',
-                      ('VISITS63',), ['2'])
+                      ('VISITS63',), [str(len(range(start, stop + step, step)))])
 
 
 if __name__ == '__main__':
