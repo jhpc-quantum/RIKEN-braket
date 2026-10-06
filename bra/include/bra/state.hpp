@@ -85,6 +85,14 @@ namespace bra
     integer_zero_divisor_error(std::string const& lhs_variable_name, std::string const& rhs_literal_or_variable_name);
   }; // class integer_zero_divisor_error
 
+  class assertion_error
+    : public std::runtime_error
+  {
+   public:
+    assertion_error(std::string const& lhs_variable_name, ::bra::compare_operation_type const op,
+                    std::string const& rhs_literal_or_variable_name, std::string const& evaluated_operands);
+  }; // class assertion_error
+
   class wrong_comparison_argument_error
     : public std::runtime_error
   {
@@ -643,9 +651,15 @@ namespace bra
 
     void invoke_jump_operation(std::string const& label);
     void invoke_jump_operation(std::string const& label, std::string const& lhs_variable_name, ::bra::compare_operation_type const op, std::string const& rhs_literal_or_variable_name);
+    void invoke_assert_operation(std::string const& lhs_variable_name, ::bra::compare_operation_type const op, std::string const& rhs_literal_or_variable_name);
     boost::optional<std::string> const& maybe_label() const { return maybe_label_; }
     void delete_label() { maybe_label_ = boost::none; }
 
+   private:
+    bool evaluate_comparison(std::string const& lhs_variable_name, ::bra::compare_operation_type const op,
+                             std::string const& rhs_literal_or_variable_name, std::string* evaluated_operands = nullptr);
+
+   public:
     auto is_waiting() const -> bool { return do_is_waiting(); }
     ::bra::wait_reason const& wait_reason() const { return wait_reason_; }
     void cancel_waiting() { do_cancel_waiting(); wait_reason_ = ::bra::wait_reason{::bra::wait_reason::no_wait_t{}}; }

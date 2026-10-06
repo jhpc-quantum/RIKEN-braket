@@ -11,6 +11,7 @@
 # include <memory>
 #endif
 #include <stdexcept>
+#include <limits>
 
 #define FMT_HEADER_ONLY
 #include <fmt/core.h>
@@ -42,6 +43,47 @@
 
 namespace bra
 {
+  namespace
+  {
+    std::string comparison_operation_string(::bra::compare_operation_type const op)
+    {
+      switch (op)
+      {
+        case ::bra::compare_operation_type::equal_to: return "==";
+        case ::bra::compare_operation_type::not_equal_to: return "\\=";
+        case ::bra::compare_operation_type::greater: return ">";
+        case ::bra::compare_operation_type::less: return "<";
+        case ::bra::compare_operation_type::greater_equal: return ">=";
+        case ::bra::compare_operation_type::less_equal: return "<=";
+      }
+      return "";
+    }
+
+    template <typename Value>
+    bool compare_values(Value const lhs, ::bra::compare_operation_type const op, Value const rhs,
+                        std::string* const evaluated_operands)
+    {
+      auto matched = false;
+      switch (op)
+      {
+        case ::bra::compare_operation_type::equal_to: matched = lhs == rhs; break;
+        case ::bra::compare_operation_type::not_equal_to: matched = lhs != rhs; break;
+        case ::bra::compare_operation_type::greater: matched = lhs > rhs; break;
+        case ::bra::compare_operation_type::less: matched = lhs < rhs; break;
+        case ::bra::compare_operation_type::greater_equal: matched = lhs >= rhs; break;
+        case ::bra::compare_operation_type::less_equal: matched = lhs <= rhs; break;
+      }
+      if (not matched and evaluated_operands != nullptr)
+      {
+        auto stream = std::ostringstream{};
+        stream << std::setprecision(std::numeric_limits<Value>::max_digits10)
+               << lhs << ' ' << comparison_operation_string(op) << ' ' << rhs;
+        *evaluated_operands = stream.str();
+      }
+      return matched;
+    }
+  } // namespace
+
   too_many_operated_qubits_error::too_many_operated_qubits_error(std::size_t const num_operated_qubits, std::size_t const max_num_operated_qubits)
     : std::runtime_error{std::string{"the number of operated qubits ("}.append(std::to_string(num_operated_qubits)).append(") is larger than its maximum value (").append(std::to_string(max_num_operated_qubits)).append(")").c_str()}
   { }
@@ -72,6 +114,13 @@ namespace bra
 
   integer_zero_divisor_error::integer_zero_divisor_error(std::string const& lhs_variable_name, std::string const& rhs_literal_or_variable_name)
     : std::runtime_error{"integer division by zero in LET " + lhs_variable_name + " /= " + rhs_literal_or_variable_name}
+  { }
+
+  assertion_error::assertion_error(
+    std::string const& lhs_variable_name, ::bra::compare_operation_type const op,
+    std::string const& rhs_literal_or_variable_name, std::string const& evaluated_operands)
+    : std::runtime_error{"assertion failed in ASSERT " + lhs_variable_name + " " + comparison_operation_string(op)
+                         + " " + rhs_literal_or_variable_name + " (evaluated: " + evaluated_operands + ")"}
   { }
 
   wrong_comparison_argument_error::wrong_comparison_argument_error(std::string const& lhs_variable_name, ::bra::compare_operation_type const op, std::string const& rhs_literal_or_variable_name)
@@ -579,8 +628,29 @@ namespace bra
     std::string const& label,
     std::string const& lhs_variable_name, ::bra::compare_operation_type const op, std::string const& rhs_literal_or_variable_name)
   {
+    // Preserve the existing JUMPIF behavior for a non-variable left operand.
     if (not std::isalpha(static_cast<unsigned char>(lhs_variable_name.front())))
       return;
+
+    if (evaluate_comparison(lhs_variable_name, op, rhs_literal_or_variable_name))
+      maybe_label_ = label;
+  }
+
+  void state::invoke_assert_operation(
+    std::string const& lhs_variable_name, ::bra::compare_operation_type const op,
+    std::string const& rhs_literal_or_variable_name)
+  {
+    auto evaluated_operands = std::string{};
+    if (not evaluate_comparison(lhs_variable_name, op, rhs_literal_or_variable_name, &evaluated_operands))
+      throw ::bra::assertion_error{lhs_variable_name, op, rhs_literal_or_variable_name, evaluated_operands};
+  }
+
+  bool state::evaluate_comparison(
+    std::string const& lhs_variable_name, ::bra::compare_operation_type const op,
+    std::string const& rhs_literal_or_variable_name, std::string* const evaluated_operands)
+  {
+    if (lhs_variable_name.empty() or not std::isalpha(static_cast<unsigned char>(lhs_variable_name.front())))
+      throw ::bra::wrong_comparison_argument_error{lhs_variable_name, op, rhs_literal_or_variable_name};
 
     using size_type = std::string::size_type;
     auto const found_index = lhs_variable_name.find(':');
@@ -590,46 +660,12 @@ namespace bra
     if (real_variables_.find(variable_name) != end(real_variables_))
     {
       auto const rhs_value = to_real(rhs_literal_or_variable_name);
-      if (op == ::bra::compare_operation_type::equal_to
-          and real_variables_.at(variable_name)[index] == rhs_value)
-        maybe_label_ = label;
-      else if (op == ::bra::compare_operation_type::not_equal_to
-               and real_variables_.at(variable_name)[index] != rhs_value)
-        maybe_label_ = label;
-      else if (op == ::bra::compare_operation_type::greater
-               and real_variables_.at(variable_name)[index] > rhs_value)
-          maybe_label_ = label;
-      else if (op == ::bra::compare_operation_type::less
-               and real_variables_.at(variable_name)[index] < rhs_value)
-          maybe_label_ = label;
-      else if (op == ::bra::compare_operation_type::greater_equal
-               and real_variables_.at(variable_name)[index] >= rhs_value)
-          maybe_label_ = label;
-      else if (op == ::bra::compare_operation_type::less_equal
-               and real_variables_.at(variable_name)[index] <= rhs_value)
-          maybe_label_ = label;
+      return compare_values(real_variables_.at(variable_name)[index], op, rhs_value, evaluated_operands);
     }
     else if (int_variables_.find(variable_name) != end(int_variables_))
     {
       auto const rhs_value = to_int(rhs_literal_or_variable_name);
-      if (op == ::bra::compare_operation_type::equal_to
-          and int_variables_.at(variable_name)[index] == rhs_value)
-          maybe_label_ = label;
-      else if (op == ::bra::compare_operation_type::not_equal_to
-               and int_variables_.at(variable_name)[index] != rhs_value)
-          maybe_label_ = label;
-      else if (op == ::bra::compare_operation_type::greater
-               and int_variables_.at(variable_name)[index] > rhs_value)
-          maybe_label_ = label;
-      else if (op == ::bra::compare_operation_type::less
-               and int_variables_.at(variable_name)[index] < rhs_value)
-          maybe_label_ = label;
-      else if (op == ::bra::compare_operation_type::greater_equal
-               and int_variables_.at(variable_name)[index] >= rhs_value)
-          maybe_label_ = label;
-      else if (op == ::bra::compare_operation_type::less_equal
-               and int_variables_.at(variable_name)[index] <= rhs_value)
-          maybe_label_ = label;
+      return compare_values(int_variables_.at(variable_name)[index], op, rhs_value, evaluated_operands);
     }
     else
       throw ::bra::wrong_comparison_argument_error{lhs_variable_name, op, rhs_literal_or_variable_name};
