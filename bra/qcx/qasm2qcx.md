@@ -37,7 +37,8 @@ The converter currently covers:
 - OpenQASM barriers as ordering-only operations;
 - `if`, `else if`, and `else` control flow with comparisons and logical
   conditions;
-- compile-time unrolling of constant integer-range `for` loops;
+- compile-time unrolling of constant integer-range `for` loops, including
+  `break` and `continue`;
 - scalar expressions used as gate parameters; and
 - final-state amplitude output through a namespaced pragma.
 
@@ -332,7 +333,8 @@ as `q[2 * i + j]`, including supported range and discrete-set selections.
 Runtime-dependent indices remain unsupported.
 
 Loop bodies may contain supported gates, global phase, measurement, reset,
-barriers, assignments to existing variables, conditionals, and nested loops.
+barriers, assignments to existing variables, conditionals, nested loops,
+`break`, and `continue`.
 Iterator reads are integer literals in supported expression contexts, including
 gate parameters and comparisons. Operations on runtime variables remain runtime
 QCX operations; unrolling does not evaluate measurement outcomes or choose
@@ -356,8 +358,46 @@ outer value in its bounds. These rules follow
 [OpenQASM scoping](https://openqasm.com/versions/3.0/language/scope.html).
 As an explicit subset restriction, assignments or measurements into any active
 iterator are rejected, although OpenQASM itself permits modifying iterators.
-General local declarations, `break`, `continue`, `while`, and iteration over
-sets or arrays remain unsupported.
+General local declarations, `while`, and iteration over sets or arrays remain
+unsupported.
+
+### Break and continue
+
+Within a supported `for` loop, `break;` exits the nearest enclosing loop, and
+`continue;` skips the rest of the current iteration and proceeds to the next
+one. Both statements may appear inside runtime conditionals, including
+conditions based on measurement results. A transfer in an inner loop does not
+exit or continue its outer loop. Transfers outside a supported loop are rejected.
+
+```qasm
+int total = 0;
+int skip = 2;
+int stop = 4;
+for int i in [0:5] {
+    if (i == skip) { continue; }
+    if (i == stop) { break; }
+    total += i;
+}
+// total is 4 after execution: 0 + 1 + 3.
+```
+
+The converter lowers transfers to existing QCX `JUMP` instructions: `break`
+targets a label after all expanded iterations of its loop, while `continue`
+targets a label at the end of the current expanded iteration. Conditions use
+the existing `JUMP`/`JUMPIF` lowering. No new QCX instruction or runtime iterator
+is required, and loops without their own transfers emit no extra loop labels.
+Temporary declarations are moved before control flow when needed so that
+skipping their first use cannot leave later uses undeclared; computations stay
+in their original positions and are skipped at runtime as appropriate.
+
+Transfers do not prune conversion. Later statements and iterations are still
+validated and generated, even after an unconditional `break` or `continue`.
+Unsupported syntax in such statements remains an error, and all expanded
+iterations and statements still count toward the limits below. Runtime-skipped
+operations are not executed by `bra`, but conversion-time constant evaluation
+and validation still apply.
+
+### Validation and expansion limits
 
 Empty loops emit no body instructions. Structural checks still reject
 unsupported body statements, operators, gate syntax, and iterator writes.
@@ -371,7 +411,8 @@ To bound expansion, the converter checks these limits:
   sequential loops;
 - 100,000 statements visited inside expanded bodies, including conditionals
   and nested loop headers; and
-- 1,000,000 accumulated QCX lines, checked while converting loop bodies.
+- 1,000,000 accumulated QCX lines, checked while converting loop bodies and
+  emitting loop-control labels.
 
 The budgets apply across a conversion, not separately to each loop. Initialization
 and emission check independent copies of the budgets, so the two passes do not
@@ -405,7 +446,7 @@ vector defined by the program's qubit declarations.
 The current prototype does not reliably support:
 
 - delays, `while` loops, runtime-dependent `for` ranges, iteration over sets
-  or arrays, `break`, `continue`, or `switch` statements;
+  or arrays, or `switch` statements;
 - user-defined gates or gate modifiers;
 - dynamically computed indices, ranges with omitted bounds, or
   multidimensional indexing;
@@ -430,7 +471,10 @@ compound assignments, self-references, and temporary reuse.
 
 `bra/test/qasm2qcx_for_loop_numerical.py` verifies unrolled quantum operations,
 measurement and reset, runtime classical accumulation, conditions, nested loops,
-outer-dependent bounds, shadowing, and skipped runtime division.
+outer-dependent bounds, shadowing, and skipped runtime division. It also checks
+`break` and `continue` against a Python reference loop across ascending,
+descending, strided, singleton, and empty ranges, plus measurement-controlled
+transfers, nearest-loop targeting, and temporary reuse after skipped operations.
 
 Run the converter and numerical tests from the repository root:
 

@@ -31,6 +31,61 @@ def check_program(bra: pathlib.Path, source: str, outputs: tuple[str, ...],
                            f'stdout:\n{result.stdout}\nstderr:\n{result.stderr}')
 
 
+def check_runtime_transfers(bra: pathlib.Path) -> None:
+    # An independent Python oracle covers first/middle/final transfers, missing
+    # targets, both range directions, striding, singleton and empty ranges.
+    for bounds, values in (
+            ('[0:4]', list(range(5))), ('[4:-1:0]', list(range(4, -1, -1))),
+            ('[5:-2:-1]', [5, 3, 1, -1]), ('[2:2]', [2]), ('[2:1]', [])):
+        targets = sorted({99, *(values[index] for index in (0, len(values) // 2, -1)
+                                 if values)})
+        for skip in targets:
+            for stop in targets:
+                total = visits = 0
+                for value in values:
+                    visits += 1
+                    if value == skip:
+                        continue
+                    if value == stop:
+                        break
+                    total += value
+                source = f'''OPENQASM 3.0; int skip = {skip}; int stop = {stop};
+                    int total = 0; int visits = 0;
+                    for int i in {bounds} {{
+                        visits += 1;
+                        if (i == skip) {{ continue; }}
+                        if (i == stop) {{ break; }}
+                        total += i;
+                    }}
+                    total += 100;'''
+                check_program(bra, source, ('TOTAL31', 'VISITS63'),
+                              [str(total + 100), str(visits)])
+
+
+def check_measurement_transfers(bra: pathlib.Path) -> None:
+    for transfer in ('break', 'continue'):
+        for trigger in (0, 1, 3):
+            source = f'''OPENQASM 3.0; include "stdgates.inc";
+                qubit q; qubit r; bit outcome; bit tail;
+                int sum = 0; int visits = 0;
+                for int i in [0:3] {{
+                    reset q;
+                    if (i == {trigger}) {{ x q; }}
+                    outcome = measure q;
+                    visits += 1;
+                    if (outcome) {{ {transfer}; }}
+                    x r;
+                    sum += i + 1;
+                }}
+                tail = measure r;'''
+            if transfer == 'break':
+                expected = [str(trigger * (trigger + 1) // 2),
+                            str(trigger + 1), '1', str(trigger % 2)]
+            else:
+                expected = [str(10 - trigger - 1), '4', str(int(trigger == 3)), '1']
+            check_program(bra, source, ('SUM7', 'VISITS63', 'OUTCOME127', 'TAIL15'), expected)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument('--bra', required=True, type=pathlib.Path)
@@ -116,6 +171,94 @@ def main() -> None:
             for int j in [0:i] { total += i + j; }
         }'''
     check_program(arguments.bra, source, ('TOTAL31',), ['30'])
+
+    source = '''OPENQASM 3.0; int total = 0;
+        for int i in [0:5] {
+            if (i == 2) { continue; }
+            if (i == 4) { break; }
+            total += i;
+        }'''
+    check_program(arguments.bra, source, ('TOTAL31',), ['4'])
+
+    # The first declarations and the zero-divisor computations are skipped,
+    # but later arithmetic must still be able to reuse the temporary storage.
+    for transfer in ('break;', 'continue;'):
+        source = '''OPENQASM 3.0; int value = 7; int sum = 0;
+            for int i in [0:1] { ''' + transfer + ''' sum += value % 0; }
+            sum += value + 1;'''
+        check_program(arguments.bra, source, ('SUM7', 'VALUE31'), ['8', '7'])
+
+    source = '''OPENQASM 3.0; int sum = 0;
+        for int i in [0:1] {
+            for int j in [0:2] {
+                if (j == 0) { continue; }
+                sum += 10 * i + j;
+                break;
+            }
+            sum += i;
+        }'''
+    check_program(arguments.bra, source, ('SUM7',), ['13'])
+
+    check_runtime_transfers(arguments.bra)
+    check_measurement_transfers(arguments.bra)
+
+    # Inner break, outer continue, and outer break must remain independent.
+    source = '''OPENQASM 3.0; int total = 0;
+        for int i in [0:3] {
+            for int j in [0:2] {
+                if (j == 1) { break; }
+                total += i + j;
+            }
+            if (i == 1) { continue; }
+            if (i == 2) { break; }
+            total += 100;
+        }'''
+    check_program(arguments.bra, source, ('TOTAL31',), ['103'])
+
+    source = '''OPENQASM 3.0; int i = 9; int total = 0;
+        for int i in [1:2] {
+            for int i in [0:i] {
+                if (i == 0) { continue; }
+                if (i == 1) { break; }
+                total += 100;
+            }
+            total += i;
+        }
+        total += i;'''
+    check_program(arguments.bra, source, ('TOTAL31', 'I1'), ['12', '9'])
+
+    # The first iteration skips arithmetic and Boolean value temporaries of
+    # different storage types; a later iteration and code after break reuse them.
+    source = '''OPENQASM 3.0; int value = 7; float f = 1.5;
+        complex c = 1.0im; bool ready = false;
+        for int i in [0:3] {
+            if (i == 0) { continue; }
+            f = f + float(i);
+            c = c + complex(f);
+            ready = value % i == 0;
+            if (ready) { break; }
+        }
+        f += float(value + 1);
+        ready = !ready;'''
+    check_program(arguments.bra, source, ('F1', ':REAL:C1', ':IMAG:C1', 'READY31'),
+                  ['10.5', '2.5', '1', '0'])
+
+    # A whole loop skipped by an enclosing runtime branch still declares the
+    # storage required by later unrolled loops and arithmetic.
+    source = '''OPENQASM 3.0; bool active = false; int value = 7; int total = 0;
+        if (active) {
+            for int i in [0:2] {
+                if (i == 0) { continue; }
+                total += value % i;
+                break;
+            }
+        }
+        for int i in [0:2] {
+            if (i == 0) { continue; }
+            total += value % i;
+        }
+        total += value + 1;'''
+    check_program(arguments.bra, source, ('TOTAL31',), ['9'])
 
 
 if __name__ == '__main__':
