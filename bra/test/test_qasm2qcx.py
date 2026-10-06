@@ -217,6 +217,99 @@ class WhileLoopLoweringTests(unittest.TestCase):
                         convert(source)
 
 
+class WhileLoopRegressionTests(unittest.TestCase):
+    def test_supported_condition_forms_produce_resolved_control_flow(self) -> None:
+        prefix = '''OPENQASM 3.0; bool ready = false; bit flag = 0;
+            bit[2] flags = "00"; int n = 0; float f = 0.0;'''
+        for condition in ('ready', 'flag', 'flags[1]', 'bool(n)', 'bool(f)',
+                          'n < f', '1 < n', '!ready', 'ready || flag && !flags[0]',
+                          'bool(n + 1) && n % 3 == 0'):
+            with self.subTest(condition=condition):
+                ForLoopControlLoweringTests.assert_resolved_jumps(
+                    convert(prefix + f'while ({condition}) {{ break; }}'))
+
+    def test_single_statement_and_braced_body_are_equivalent(self) -> None:
+        prefix = 'OPENQASM 3.0; int n = 0; '
+        self.assertEqual(convert(prefix + 'while (n < 2) n += 1;'),
+                         convert(prefix + 'while (n < 2) { n += 1; }'))
+
+    def test_sequential_mixed_and_expanded_instances_have_unique_labels(self) -> None:
+        lines = convert('''OPENQASM 3.0; int n = 0;
+            while (false) { while (true) { break; } }
+            for int i in [0:1] { while (n < i) { n += 1; continue; } }
+            while (true) { break; }''')
+        labels = [line for line in lines if line.endswith('_CONDITION') and line.startswith('@')]
+        self.assertEqual(labels, [f'@QASM2QCX_LOOP_{index}_CONDITION' for index in (0, 1, 3, 4, 5)])
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_measurement_and_following_quantum_operations_stay_in_body(self) -> None:
+        for transfer in ('break', 'continue'):
+            with self.subTest(transfer=transfer):
+                lines = convert('''OPENQASM 3.0; include "stdgates.inc";
+                    qubit q; qubit r; bit outcome = 0;
+                    while (!outcome) {
+                        reset q; outcome = measure q;
+                        if (outcome) { ''' + transfer + '''; }
+                        x r;
+                    }''')
+                body = lines.index('@QASM2QCX_LOOP_0_BODY')
+                destination = 'END' if transfer == 'break' else 'CONDITION'
+                jump = lines.index(f'JUMP QASM2QCX_LOOP_0_{destination}', body)
+                self.assertLess(body, lines.index('RESET 0'))
+                self.assertLess(lines.index('M 0'), jump)
+                self.assertLess(lines.index('LET OUTCOME127 := :OUTCOME'), jump)
+                self.assertGreater(lines.index('X 1'), jump)
+                ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_mixed_temporary_storage_precedes_loop_but_computations_do_not(self) -> None:
+        lines = convert('''OPENQASM 3.0; int n = 0; int value = 7;
+            float f = 1.5; complex c = 1.0im; bool ready = false;
+            while (n % 3 != 2 && !ready) {
+                n += 1; if (n == 1) { continue; }
+                f = f + float(n); c = c + complex(f);
+                ready = value % n == 0; if (ready) { break; }
+            }
+            f += float(value + 1);''')
+        condition = lines.index('@QASM2QCX_LOOP_0_CONDITION')
+        declarations = [(index, line.split()[2]) for index, line in enumerate(lines)
+                        if line.startswith('VAR QASM2QCX_')]
+        self.assertEqual({kind for _, kind in declarations}, {'INT', 'REAL', 'COMPLEX'})
+        self.assertTrue(all(index < condition for index, _ in declarations))
+        self.assertTrue(all(index > condition for index, line in enumerate(lines)
+                            if line.startswith('LET QASM2QCX_')))
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_runtime_indices_ranges_and_unsupported_types_are_rejected(self) -> None:
+        prefix = 'OPENQASM 3.0; qubit[2] q; int n = 0; bit[2] flags; complex c = 1.0im; '
+        for statement in ('while (false) { reset q[n]; }',
+                          'while (false) { if (flags[n]) { break; } }',
+                          'while (false) { for int i in [0:n] {} }',
+                          'while (false) { for int i in {0, 1} {} }',
+                          'while (flags) {}', 'while (c) {}', 'while (bool(c)) {}',
+                          'while (false) { continue; n = n ** 2; }'):
+            with self.subTest(statement=statement):
+                with self.assertRaises(qasm2qcx.QASM2QCXError):
+                    convert(prefix + statement)
+
+    def test_break_exit_precedes_following_operations_and_final_amplitude_output(self) -> None:
+        lines = convert('''OPENQASM 3.0; include "stdgates.inc";
+            pragma riken_braket.amplitudes 0
+            qubit q; while (true) { break; x q; } x q;''')
+        self.assertEqual(lines[-3:], ['@QASM2QCX_LOOP_0_END', 'X 0', 'DO AMPLITUDES 0'])
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_cli_rejects_invalid_false_body_without_partial_output(self) -> None:
+        for body in ('int local;', 'reset missing;', 'continue; int local;'):
+            with self.subTest(body=body):
+                source = 'OPENQASM 3.0; while (false) { ' + body + ' }'
+                with patch('builtins.open', mock_open(read_data=source)), \
+                        patch('builtins.print') as output:
+                    with self.assertRaises(SystemExit) as error:
+                        qasm2qcx.main(['while.qasm'])
+                self.assertTrue(str(error.exception).startswith('qasm2qcx.py:'))
+                output.assert_not_called()
+
+
 class ForLoopContextTests(unittest.TestCase):
     @staticmethod
     def recording_converter(source: str):
