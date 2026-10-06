@@ -1472,6 +1472,22 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # Keep this lazy so a huge range cannot allocate a huge intermediate list.
         return range(start, end + (1 if step > 0 else -1), step)
 
+    def __loop_values(self, statement: ast.ForInLoop) -> range | tuple[int, ...]:
+        # Keep range evaluation separate from the shared body unroller. Other
+        # constant iteration forms can supply ordered values through this path.
+        return self.__loop_range(statement)
+
+    @staticmethod
+    def __loop_value_count(values: range | tuple[int, ...]) -> int:
+        if isinstance(values, range):
+            # len(range) can overflow for very large bounds. Arithmetic counting
+            # remains exact without materializing values, so budget checks can
+            # report a converter error before expansion begins.
+            distance = (values.stop - values.start) * (1 if values.step > 0 else -1)
+            stride = abs(values.step)
+            return max(0, (distance + stride - 1) // stride)
+        return len(values)
+
     @staticmethod
     def __validate_loop_header(statement: ast.ForInLoop) -> None:
         if not isinstance(statement.type, ast.IntType):
@@ -1616,14 +1632,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         return False
 
     def visit_ForInLoop(self, statement: ast.ForInLoop) -> None:
-        values = self.__loop_range(statement)
+        values = self.__loop_values(statement)
         self.__validate_loop_body(statement.block,
                                   {name for scope in self.__loop_bindings for name in scope}
                                   | {statement.identifier.name})
         self.__validate_loop_syntax(statement)
-        distance = (values.stop - values.start) * (1 if values.step > 0 else -1)
-        stride = abs(values.step)
-        count = max(0, (distance + stride - 1) // stride)
+        count = self.__loop_value_count(values)
         if count > self.MAX_LOOP_ITERATIONS - self.__loop_iterations:
             raise InvalidLoopRangeException(
                 f'For-loop expansion exceeds {self.MAX_LOOP_ITERATIONS} iterations')

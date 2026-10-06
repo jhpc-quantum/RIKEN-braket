@@ -631,6 +631,74 @@ class ForLoopControlRegressionTests(unittest.TestCase):
                     output.assert_not_called()
 
 
+class ConstantForIterationInfrastructureTests(unittest.TestCase):
+    @staticmethod
+    def evaluate_values(bounds: str):
+        converter = qasm2qcx.QASM2QCXConverter(
+            qasm2qcx.openqasm3.parser.parse('OPENQASM 3.0;'))
+        loop = qasm2qcx.openqasm3.parser.parse(
+            f'OPENQASM 3.0; for int i in {bounds} {{}}').statements[0]
+        return converter._QASM2QCXConverter__loop_values(loop)
+
+    def test_range_provider_retains_lazy_ranges(self) -> None:
+        for bounds, expected in (('[0:3]', [0, 1, 2, 3]), ('[5:-2:0]', [5, 3, 1]),
+                                 ('[-2:2:2]', [-2, 0, 2]), ('[1:0]', []), ('[2:2]', [2])):
+            with self.subTest(bounds=bounds):
+                values = self.evaluate_values(bounds)
+                self.assertIsInstance(values, range)
+                self.assertEqual(list(values), expected)
+
+    def test_range_counts_match_python_for_both_directions_and_empty_ranges(self) -> None:
+        count = qasm2qcx.QASM2QCXConverter._QASM2QCXConverter__loop_value_count
+        for start in range(-3, 4):
+            for stop in range(-3, 4):
+                for step in (-3, -2, -1, 1, 2, 3):
+                    with self.subTest(start=start, stop=stop, step=step):
+                        values = range(start, stop, step)
+                        self.assertEqual(count(values), len(values))
+
+    def test_huge_range_counts_do_not_use_len_or_materialize_values(self) -> None:
+        magnitude = 10 ** 100
+        count = qasm2qcx.QASM2QCXConverter._QASM2QCXConverter__loop_value_count
+        for bounds in (f'[-{magnitude}:{magnitude}]', f'[{magnitude}:-1:-{magnitude}]'):
+            with self.subTest(bounds=bounds):
+                values = self.evaluate_values(bounds)
+                self.assertIsInstance(values, range)
+                self.assertEqual(count(values), 2 * magnitude + 1)
+                with self.assertRaises(qasm2qcx.InvalidLoopRangeException):
+                    convert(f'OPENQASM 3.0; for int i in {bounds} {{}}')
+
+    def test_ordered_value_counts_include_duplicates(self) -> None:
+        count = qasm2qcx.QASM2QCXConverter._QASM2QCXConverter__loop_value_count
+        for values in ((), (2,), (5, -1, 5, 0)):
+            with self.subTest(values=values):
+                self.assertEqual(count(values), len(values))
+
+    def test_unroller_uses_provider_values_without_range_specific_attributes(self) -> None:
+        # Inject future ordered values into a valid range AST. This exercises
+        # the shared unroller without enabling set syntax at this stage.
+        with patch.object(qasm2qcx.QASM2QCXConverter, '_QASM2QCXConverter__loop_values',
+                          return_value=(5, -1, 5)):
+            lines = convert('OPENQASM 3.0; int total = 0; for int i in [0:2] { total += i; }')
+        self.assertEqual(lines, ['QUBITS 0', 'VAR TOTAL31 INT', 'LET TOTAL31 := 0',
+                                 'LET TOTAL31 += 5', 'LET TOTAL31 += -1', 'LET TOTAL31 += 5'])
+
+    def test_set_and_array_iteration_remain_unsupported_including_empty_outer_loops(self) -> None:
+        for iteration in ('{0, 2, 5}', 'values'):
+            for source in (f'for int i in {iteration} {{}}',
+                           f'for int j in [1:0] {{ for int i in {iteration} {{}} }}'):
+                with self.subTest(source=source):
+                    with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                        convert('OPENQASM 3.0; ' + source)
+
+    def test_provider_values_still_use_existing_iteration_budget(self) -> None:
+        with patch.object(qasm2qcx.QASM2QCXConverter, '_QASM2QCXConverter__loop_values',
+                          return_value=(5, 5, 5)), \
+                patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_LOOP_ITERATIONS', 2):
+            with self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'exceeds 2 iterations'):
+                convert('OPENQASM 3.0; for int i in [0:0] { break; }')
+
+
 class ConstantForLoopRangeTests(unittest.TestCase):
     @staticmethod
     def evaluate_range(bounds: str, prefix: str = '', iteration_type: str = 'int') -> range:
