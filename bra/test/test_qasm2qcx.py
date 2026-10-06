@@ -230,10 +230,10 @@ class RuntimeForLoweringTests(unittest.TestCase):
                 with self.assertRaises(qasm2qcx.QASM2QCXError):
                     convert('OPENQASM 3.0; int limit = 3; float f = 2.5; for int i in [1:0] { ' + inner + ' }')
 
-    def test_runtime_iterators_cannot_be_indices_set_elements_or_assignment_targets(self) -> None:
+    def test_runtime_iterators_cannot_be_indices_or_assignment_targets(self) -> None:
         prefix = 'OPENQASM 3.0; int limit = 3; qubit[4] q; bit[4] flags; '
         for body in ('reset q[i];', 'flags[i] = 1;', 'i = 1;', 'i = measure q[0];',
-                     'for int j in {i} {}', 'int local;'):
+                     'int local;'):
             with self.subTest(body=body):
                 with self.assertRaises(qasm2qcx.QASM2QCXError):
                     convert(prefix + 'for int i in [0:limit] { ' + body + ' }')
@@ -689,7 +689,7 @@ class WhileLoopRegressionTests(unittest.TestCase):
         for statement in ('while (false) { reset q[n]; }',
                           'while (false) { if (flags[n]) { break; } }',
                           'while (false) { for int i in [0:2:n] {} }',
-                          'while (false) { for int i in {0, n} {} }',
+                          'while (false) { for int i in {0, float(n)} {} }',
                           'while (flags) {}', 'while (c) {}', 'while (bool(c)) {}',
                           'while (false) { continue; n = n ** 2; }'):
             with self.subTest(statement=statement):
@@ -1223,11 +1223,12 @@ class RuntimeSetInfrastructureTests(unittest.TestCase):
                 self.assertEqual(converter._QASM2QCXConverter__declared_temporary_variables, declarations)
                 self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, storage)
 
-    def test_runtime_sets_remain_disabled_in_stage_one(self) -> None:
+    def test_runtime_sets_now_use_runtime_lowering(self) -> None:
         for elements in ('{first}', '{0, first, first}', '{first + 1}'):
             with self.subTest(elements=elements):
-                with self.assertRaises(qasm2qcx.NoConstantExpressionException):
-                    convert(f'OPENQASM 3.0; int first = 1; for int i in {elements} {{}}')
+                lines = convert(f'OPENQASM 3.0; int first = 1; for int i in {elements} {{}}')
+                self.assertIn('@QASM2QCX_LOOP_0_NEXT_0', lines)
+                ForLoopControlLoweringTests.assert_resolved_jumps(lines)
 
     def test_constant_set_numeric_casts_keep_existing_output(self) -> None:
         prefix = 'OPENQASM 3.0; const complex value = 2.0 + 1.0im; int total = 0; '
@@ -1235,6 +1236,116 @@ class RuntimeSetInfrastructureTests(unittest.TestCase):
             int(value), int(1.0im), uint(value), int(float(value)), int(true)} {
             total += i;
         }'''), convert(prefix + 'total += 2; total += 0; total += 2; total += 2; total += 1;'))
+
+
+class RuntimeSetLoweringTests(unittest.TestCase):
+    def test_all_captures_precede_body_and_preserve_duplicates(self) -> None:
+        lines = convert('''OPENQASM 3.0; int first = 1; int total = 0;
+            for int i in {first, 0, first} { first = 9; total += i; continue; }''')
+        start = lines.index('LET QASM2QCX_INT_1 := FIRST31')
+        self.assertEqual(lines[start:start + 4], [
+            'LET QASM2QCX_INT_1 := FIRST31', 'LET QASM2QCX_INT_2 := 0',
+            'LET QASM2QCX_INT_3 := FIRST31', 'LET QASM2QCX_INT_0 := QASM2QCX_INT_1'])
+        self.assertEqual(lines.count('LET TOTAL31 += QASM2QCX_INT_0'), 3)
+        for index in range(3):
+            self.assertIn(f'LET QASM2QCX_INT_0 := QASM2QCX_INT_{index + 1}', lines)
+            self.assertIn(f'JUMP QASM2QCX_LOOP_0_NEXT_{index}', lines)
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_captures_precede_shadowing_and_unconditional_break(self) -> None:
+        lines = convert('''OPENQASM 3.0; int i = 1; int total = 0;
+            for int i in {i, i + 1} { total += i; break; } total += i;''')
+        first_break = lines.index('JUMP QASM2QCX_LOOP_0_END')
+        self.assertLess(lines.index('LET QASM2QCX_INT_1 := I1'), first_break)
+        self.assertLess(lines.index('LET QASM2QCX_INT_2 := QASM2QCX_INT_3'), first_break)
+        self.assertEqual(lines[-1], 'LET TOTAL31 += I1')
+        self.assertEqual(lines.count('JUMP QASM2QCX_LOOP_0_END'), 2)
+
+    def test_nested_sets_and_ranges_keep_live_captures_reserved(self) -> None:
+        lines = convert('''OPENQASM 3.0; int first = 1; int total = 0;
+            for int i in {first, first + 1} {
+                for int j in {i, i + 1} { total += i + j; continue; }
+                for int k in [0:i] { total += k; break; }
+                break;
+            }''')
+        for storage in ('QASM2QCX_INT_1', 'QASM2QCX_INT_2'):
+            assignments = [line for line in lines if line.startswith(f'LET {storage} ')]
+            self.assertEqual(len(assignments), 1)
+        self.assertIn('JUMP QASM2QCX_LOOP_0_END', lines)
+        labels = [line for line in lines if line.startswith('@')]
+        self.assertEqual(len(labels), len(set(labels)))
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_runtime_range_iterator_is_accepted_as_set_element(self) -> None:
+        lines = convert('''OPENQASM 3.0; int last = 2; int total = 0;
+            for int i in [0:last] { for int j in {i, i + 1} { total += j; } }''')
+        self.assertIn('@QASM2QCX_LOOP_1_NEXT_0', lines)
+        self.assertIn('@QASM2QCX_LOOP_1_NEXT_1', lines)
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_casts_and_int_backed_uint_elements(self) -> None:
+        lines = convert('''OPENQASM 3.0; uint first = 1; float fraction = 2.5;
+            bool ready = true; bit[2] flags = "01";
+            for int i in {first, int(fraction), int(ready), int(flags[0]), int(1.0im)} {}''')
+        for index in range(5):
+            self.assertIn(f'@QASM2QCX_LOOP_0_NEXT_{index}', lines)
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_runtime_elements_inside_empty_constant_outer_are_validated_not_emitted(self) -> None:
+        prefix = 'OPENQASM 3.0; int first = 1; '
+        for elements in ('{first, i}', '{first + i, first}'):
+            with self.subTest(elements=elements):
+                self.assertEqual(convert(prefix + 'for int i in [1:0] '
+                                         f'{{ for int j in {elements} {{}} }}'), convert(prefix))
+        for elements in ('{first, missing}', '{first, 1.5}'):
+            with self.subTest(elements=elements):
+                with self.assertRaises(qasm2qcx.QASM2QCXError):
+                    convert(prefix + 'for int i in [1:0] '
+                            f'{{ for int j in {elements} {{}} }}')
+
+    def test_generated_runtime_set_copies_consume_expansion_budgets(self) -> None:
+        for source, budget, maximum in (
+                ('for int i in {first, first, first} { break; }', 'MAX_LOOP_ITERATIONS', 2),
+                ('for int i in {first, first} { continue; break; }', 'MAX_EXPANDED_LOOP_STATEMENTS', 3),
+                ('for int i in {first} {}', 'MAX_LOOP_OUTPUT_LINES', 3),
+                ('for int i in [0:first] { for int j in {i} {} }', 'MAX_LOOP_ITERATIONS', 0)):
+            with self.subTest(budget=budget, source=source):
+                with patch.object(qasm2qcx.QASM2QCXConverter, budget, maximum):
+                    with self.assertRaises(qasm2qcx.InvalidLoopRangeException):
+                        convert('OPENQASM 3.0; int first = 1; ' + source)
+
+    def test_runtime_set_iterators_remain_read_only_and_not_static_indices(self) -> None:
+        for body in ('i = 2;', 'i = measure q[0];', 'reset q[i];',
+                     'flags[i] = 1;', 'int local;', 'for int j in [0:i:first] {}'):
+            with self.subTest(body=body):
+                with self.assertRaises(qasm2qcx.QASM2QCXError):
+                    convert('OPENQASM 3.0; int first = 1; qubit[2] q; bit[2] flags; '
+                            'for int i in {first} { ' + body + ' }')
+
+    def test_resources_and_expansion_scope_restored_after_body_failure(self) -> None:
+        program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3.0; int first = 1;')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        loop = qasm2qcx.openqasm3.parser.parse(
+            'OPENQASM 3.0; for int i in {first, first + 1} { reset missing; }').statements[0]
+        with self.assertRaises(qasm2qcx.InvalidQubitOperandException):
+            converter.visit(loop)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertEqual(converter._QASM2QCXConverter__loop_bindings, [])
+        self.assertEqual(converter._QASM2QCXConverter__loop_contexts, [])
+        self.assertEqual(converter._QASM2QCXConverter__expanded_loop_depth, 0)
+        self.assertFalse(converter._QASM2QCXConverter__inside_expanded_loop())
+
+    def test_skipped_computations_stay_after_control_flow_but_declarations_do_not(self) -> None:
+        lines = convert('''OPENQASM 3.0; int first = 1; int total = 0;
+            if (false) { for int i in {first / 0, first} { total += i; } }
+            for int i in {first, first} { continue; total += first % 0; }
+            total += first + 1;''')
+        branch = lines.index('@QASM2QCX_IF_0')
+        self.assertTrue(all(index < branch for index, line in enumerate(lines)
+                            if line.startswith('VAR QASM2QCX_')))
+        self.assertGreater(next(index for index, line in enumerate(lines) if ' /= ' in line), branch)
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
 
 
 class ConstantForSetLoweringTests(unittest.TestCase):
@@ -1265,7 +1376,7 @@ class ConstantForSetLoweringTests(unittest.TestCase):
             total += 3; total += 4; total += 3; total += i;'''))
 
     def test_empty_outer_validates_independent_elements_without_fabricating_iterator(self) -> None:
-        for elements in ('{1.5, i}', '{missing, i}', '{1 / 0, i}', '{n, i}'):
+        for elements in ('{1.5, i}', '{missing, i}', '{1 / 0, i}'):
             with self.subTest(elements=elements):
                 with self.assertRaises(qasm2qcx.QASM2QCXError):
                     convert(f'OPENQASM 3.0; int n = 1; for int i in [1:0] {{ for int j in {elements} {{}} }}')
@@ -1274,8 +1385,8 @@ class ConstantForSetLoweringTests(unittest.TestCase):
         with self.assertRaises(qasm2qcx.ZeroDivisorException):
             convert('OPENQASM 3.0; for int i in {0} { for int j in {1 / i} {} }')
 
-    def test_runtime_and_non_integer_elements_rejected(self) -> None:
-        for elements in ('{n}', '{n + 1}', '{missing}', '{1.5}', '{true}', '{1.0im}', '{pi}'):
+    def test_unknown_and_non_integer_elements_rejected(self) -> None:
+        for elements in ('{missing}', '{1.5}', '{true}', '{1.0im}', '{pi}'):
             with self.subTest(elements=elements):
                 with self.assertRaises(qasm2qcx.QASM2QCXError):
                     convert(f'OPENQASM 3.0; int n = 1; for int i in {elements} {{}}')
@@ -1396,8 +1507,8 @@ class ConstantForSetRegressionTests(unittest.TestCase):
                 self.assertEqual(tuple(getattr(converter, '_QASM2QCXConverter__' + field)
                                        for field in fields), before)
 
-    def test_unknown_runtime_names_and_unsupported_syntax_rejected_in_empty_outer_loop(self) -> None:
-        for elements in ('{i + missing}', '{i + n}', '{i, sin(1.0)}', '{i, 2 ** i}'):
+    def test_unknown_names_and_unsupported_syntax_rejected_in_empty_outer_loop(self) -> None:
+        for elements in ('{i + missing}', '{i, sin(1.0)}', '{i, 2 ** i}'):
             with self.subTest(elements=elements):
                 with self.assertRaises(qasm2qcx.QASM2QCXError):
                     convert(f'''OPENQASM 3.0; int n = 2;
@@ -1427,7 +1538,7 @@ class ConstantForSetRegressionTests(unittest.TestCase):
         ForLoopControlLoweringTests.assert_resolved_jumps(lines)
 
     def test_cli_invalid_set_element_reports_error_without_partial_output(self) -> None:
-        for elements in ('{0, n}', '{0, 1.5}', '{0, 1 / 0}'):
+        for elements in ('{0, bool(n)}', '{0, 1.5}', '{0, 1 / 0}'):
             with self.subTest(elements=elements):
                 source = f'OPENQASM 3.0; int n = 1; for int i in {elements} {{}}'
                 with patch('builtins.open', mock_open(read_data=source)), \

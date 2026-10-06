@@ -234,6 +234,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__loop_bindings: list[dict[str, int | _RuntimeIteratorBinding]] = []
         self.__loop_contexts: list[_LoopContext] = []
         self.__loop_index = 0
+        self.__expanded_loop_depth = 0
         self.__loop_iterations = 0
         self.__expanded_loop_statements = 0
 
@@ -275,9 +276,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         return result
 
     def __inside_expanded_loop(self) -> bool:
-        # Runtime iterator scope alone does not represent compile-time body
-        # expansion. An enclosing constant iterator still charges nested code.
-        return any(isinstance(value, int)
+        # Runtime ranges emit one body, but runtime-valued sets expand their
+        # fixed element count. An enclosing expansion still charges nested code.
+        return self.__expanded_loop_depth > 0 or any(isinstance(value, int)
                    for scope in self.__loop_bindings for value in scope.values())
 
     def __check_loop_output_limit(self) -> None:
@@ -1500,8 +1501,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         source = statement.set_declaration
         if isinstance(source, ast.DiscreteSet):
             if self.__set_has_runtime_elements(source):
-                # Runtime-set lowering is added separately. For now retain
-                # the constant-only contract after inspecting every element.
+                # This helper evaluates only the constant path; runtime-valued
+                # sets are dispatched separately by visit_ForInLoop.
                 raise NoConstantExpressionException
             # This is an ordered sequence, not a Python set: repeated values
             # represent distinct iterations and retain their original positions.
@@ -1745,15 +1746,17 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if expression is None:
                 continue
             names = self.__loop_bound_names(expression)
-            allowed_runtime = set(self.__classical_source_types) if not is_set and part != 'step' else set()
+            allowed_runtime = set(self.__classical_source_types) if part != 'step' else set()
             for name in names - iterators - constants - {'pi', 'tau', 'euler'} - allowed_runtime:
                 raise NoVariableNameException(name)
-            if not is_set and part != 'step':
+            if part != 'step':
                 value_type, runtime = self.__loop_expression_info(expression, iterators)
                 if value_type != ValueType.INT:
-                    raise InvalidLoopRangeException('For-loop range bounds must be integers')
+                    raise InvalidLoopRangeException(
+                        f'For-loop set {part} must be an integer' if is_set
+                        else 'For-loop range bounds must be integers')
                 if runtime:
-                    runtime_range = True
+                    runtime_range |= not is_set
                     continue
             if not names & iterators:
                 value = self.__constant_loop_integer(expression, part, kind='set' if is_set else 'range')
@@ -1812,6 +1815,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__validate_loop_body(child.block, iterators)
 
     @contextlib.contextmanager
+    def __expanded_loop_scope(self) -> Iterator[None]:
+        # Runtime-valued sets still emit one body copy per source element.
+        # Account for those copies without inventing a constant iterator value.
+        self.__expanded_loop_depth += 1
+        try:
+            yield
+        finally:
+            self.__expanded_loop_depth -= 1
+
+    @contextlib.contextmanager
     def __iterator_binding(
             self, name: str, value: int | _RuntimeIteratorBinding) -> Iterator[None]:
         self.__loop_bindings.append({name: value})
@@ -1842,6 +1855,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def visit_ForInLoop(self, statement: ast.ForInLoop) -> None:
         self.__validate_loop_header(statement)
+        source = statement.set_declaration
+        if isinstance(source, ast.DiscreteSet) and self.__set_has_runtime_elements(source):
+            self.__visit_runtime_set(statement)
+            return
         step = self.__runtime_range_step(statement)
         if step is not None:
             self.__visit_runtime_for(statement, step)
@@ -1880,6 +1897,61 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # declarations; calculations must stay behind their original jumps.
             self.__hoist_temporary_declarations(previous_temporaries)
             self.__check_loop_output_limit()
+
+    def __visit_runtime_set(self, statement: ast.ForInLoop) -> None:
+        self.__validate_loop_body(statement.block,
+                                  {name for scope in self.__loop_bindings for name in scope}
+                                  | {statement.identifier.name})
+        self.__validate_loop_syntax(statement)
+        count = len(statement.set_declaration.values)
+        if count > self.MAX_LOOP_ITERATIONS - self.__loop_iterations:
+            raise InvalidLoopRangeException(
+                f'For-loop expansion exceeds {self.MAX_LOOP_ITERATIONS} iterations')
+        self.__loop_iterations += count
+        loop_index = self.__loop_index
+        self.__loop_index += 1
+        end_label = f'QASM2QCX_LOOP_{loop_index}_END'
+        if self.__is_initialization_process:
+            binding = _RuntimeIteratorBinding(f'QASM2QCX_LOOP_{loop_index}_ITERATOR')
+            with self.__iterator_binding(statement.identifier.name, binding), self.__expanded_loop_scope():
+                for index in range(count):
+                    with self.__loop_context(end_label, f'QASM2QCX_LOOP_{loop_index}_NEXT_{index}'):
+                        for child in statement.block:
+                            self.visit(child)
+            return
+
+        previous_temporaries = self.__declared_temporary_variables.copy()
+        iterator = self.__add_new_temporary_variable(ValueType.INT)
+        captures: list[str] = []
+        try:
+            # Capture every element in source order before the iterator exists
+            # or the first body can mutate an element's source variable.
+            for index, expression in enumerate(statement.set_declaration.values):
+                capture = self.__add_new_temporary_variable(ValueType.INT)
+                captures.append(capture)
+                value, value_type, value_kind = self.__condition_operand(expression)
+                if value_type != ValueType.INT:
+                    raise InvalidLoopRangeException(
+                        f'For-loop set element {index} must be an integer')
+                self.__qcx_lines.append(f'LET {capture} := {value}')
+                if value_kind == ValueKind.TEMPORARY:
+                    self.__release_temporary_variable(str(value))
+            with self.__iterator_binding(statement.identifier.name, _RuntimeIteratorBinding(iterator)), \
+                    self.__expanded_loop_scope():
+                for index, capture in enumerate(captures):
+                    self.__qcx_lines.append(f'LET {iterator} := {capture}')
+                    with self.__loop_context(end_label, f'QASM2QCX_LOOP_{loop_index}_NEXT_{index}') as frame:
+                        for child in statement.block:
+                            self.visit(child)
+                    self.__qcx_lines.append(f'@{frame.continue_label}')
+                    self.__check_loop_output_limit()
+            self.__qcx_lines.append(f'@{end_label}')
+            self.__hoist_temporary_declarations(previous_temporaries)
+            self.__check_loop_output_limit()
+        finally:
+            for capture in reversed(captures):
+                self.__release_temporary_variable(capture)
+            self.__release_temporary_variable(iterator)
 
     def __visit_runtime_for(self, statement: ast.ForInLoop, step: int) -> None:
         self.__validate_loop_body(statement.block,
