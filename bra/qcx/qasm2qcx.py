@@ -1663,10 +1663,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             runtime |= dependency
         if not runtime:
             return None
-        step = self.__validated_runtime_range_step(bounds)
-        if step not in (1, -1):
-            raise UnsupportedOpenQASMError('runtime range step other than constant 1 or -1')
-        return step
+        return self.__validated_runtime_range_step(bounds)
 
     def __validated_runtime_range_step(self, bounds: ast.RangeDefinition) -> int:
         step = 1 if bounds.step is None else self.__constant_loop_integer(bounds.step, 'step')
@@ -1779,9 +1776,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 if part == 'step' and value == 0:
                     raise InvalidLoopRangeException('For-loop range step cannot be zero')
         if runtime_range and (bounds.step is None or not self.__loop_bound_names(bounds.step) & iterators):
-            step = self.__validated_runtime_range_step(bounds)
-            if step not in (1, -1):
-                raise UnsupportedOpenQASMError('runtime range step other than constant 1 or -1')
+            self.__validated_runtime_range_step(bounds)
 
     def __validate_loop_body(self, statements: list[ast.Statement], iterators: set[str]) -> None:
         # Validate without executing the body, including zero-iteration loops.
@@ -2000,7 +1995,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__qcx_lines.append(f'LET {destination} := {value}')
                 if value_kind == ValueKind.TEMPORARY:
                     self.__release_temporary_variable(str(value))
-            comparison = '>' if step == 1 else '<'
+            comparison = '>' if step > 0 else '<'
             self.__qcx_lines.append(f'JUMPIF {end_label} {iterator} {comparison} {stop}')
             self.__qcx_lines.append(f'@{body_label}')
             with self.__iterator_binding(statement.identifier.name, _RuntimeIteratorBinding(iterator)), \

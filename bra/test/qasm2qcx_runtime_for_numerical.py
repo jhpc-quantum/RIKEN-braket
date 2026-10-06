@@ -39,8 +39,8 @@ def main() -> None:
     for start, stop, step in ((start, stop, step)
                               for start in range(-2, 3)
                               for stop in range(-2, 3)
-                              for step in (1, -1)):
-        values = list(range(start, stop + step, step))
+                              for step in (1, -1, 2, -2, 3, -3)):
+        values = list(range(start, stop + (1 if step > 0 else -1), step))
         check_program(arguments.bra, f'''int first = {start}; int last = {stop};
             int visits = 0; int total = 0;
             for int i in [first:{step}:last] {{ visits += 1; total += i; }}''',
@@ -49,6 +49,18 @@ def main() -> None:
     check_program(arguments.bra, '''int first = 1; int last = 3; int total = 0;
         for int i in [first:last] { first = 100; last = -100; total += i; }''',
                   ('TOTAL31', 'FIRST31', 'LAST15'), ['6', '100', '-100'])
+
+    check_program(arguments.bra, '''int first = 1; int last = 6; int total = 0;
+        for int i in [first:2:last] { first = 100; last = -100; total += i; }''',
+                  ('TOTAL31', 'FIRST31', 'LAST15'), ['9', '100', '-100'])
+
+    check_program(arguments.bra, '''int first = 6; int last = -1; int total = 0;
+        for int i in [first:-3:last] { first = -100; last = 100; total += i; }''',
+                  ('TOTAL31', 'FIRST31', 'LAST15'), ['9', '-100', '100'])
+
+    check_program(arguments.bra, '''int first = 7; int last = 2; int total = 0;
+        for int i in [first / 3:2:(last + 2) * 2] { total += i; }
+        total += first % last;''', ('TOTAL31',), ['21'])
 
     check_program(arguments.bra, '''int i = 1; int last = 3; int total = 0;
         for int i in [i:last] { total += i; } total += i;''',
@@ -59,6 +71,43 @@ def main() -> None:
             if (i == 2) { continue; } if (i == 4) { break; }
             total += i;
         }''', ('TOTAL31',), ['4'])
+
+    for first, last, step, skip, stop in ((1, 8, 2, 3, 7), (8, -1, -3, 5, 2)):
+        total, visits = 0, 0
+        for value in range(first, last + (1 if step > 0 else -1), step):
+            visits += 1
+            if value == skip:
+                continue
+            if value == stop:
+                break
+            total += value
+        check_program(arguments.bra, f'''int first = {first}; int last = {last};
+            int total = 0; int visits = 0;
+            for int i in [first:{step}:last] {{
+                visits += 1; if (i == {skip}) {{ continue; }} if (i == {stop}) {{ break; }}
+                total += i;
+            }}''', ('TOTAL31', 'VISITS63'), [str(total), str(visits)])
+
+    check_program(arguments.bra, '''int last = 4; int total = 0;
+        for int i in [0:2:last] {
+            for int j in [i:-3:-2] { total += j; }
+            for int k in {i, i + 1} { total += k; }
+        }''', ('TOTAL31',), [str(sum(sum(range(i, -3, -3)) + i + (i + 1)
+                                   for i in range(0, 5, 2)))])
+
+    check_program(arguments.bra, '''int last = 5; int total = 0;
+        for int stride in {2, -3} {
+            for int i in [0:stride:last] { total += i; }
+        }''', ('TOTAL31',), ['6'])
+
+    check_program(arguments.bra, '''int first = 1; int total = 0;
+        for int i in {first, first + 1} { for int j in [i:2:5] { total += j; } }''',
+                  ('TOTAL31',), ['15'])
+
+    check_program(arguments.bra, '''int first = 1; int last = -1; int total = 0;
+        for int i in [first:2:last] { total += first / 0; }
+        if (false) { for int i in [0:3:last + first / 0] { total += i; } }
+        total += first + 1;''', ('TOTAL31',), ['2'])
 
     check_program(arguments.bra, '''int limit = 2; int total = 0;
         for int i in [1:limit] {
@@ -158,10 +207,18 @@ def main() -> None:
     maximum, minimum = 2 ** (bits - 1) - 1, -(2 ** (bits - 1))
     for start, stop, step in ((maximum - 1, maximum, 1), (minimum + 1, minimum, -1),
                               (maximum, maximum, 1), (minimum, minimum, -1),
-                              (maximum, minimum, 1), (minimum, maximum, -1)):
+                              (maximum, minimum, 1), (minimum, maximum, -1),
+                              (maximum - 3, maximum, 2), (minimum + 3, minimum, -2),
+                              (maximum - 2, maximum, 2), (minimum + 2, minimum, -2),
+                              (maximum, maximum, 2), (minimum, minimum, -2),
+                              (maximum, minimum, 2), (minimum, maximum, -2),
+                              (minimum, maximum, maximum), (maximum, minimum, minimum),
+                              (0, minimum, minimum), (0, maximum, maximum),
+                              (minimum, -1, maximum), (maximum, 0, minimum),
+                              (minimum, 0, maximum), (maximum, -1, minimum)):
         check_program(arguments.bra, f'''int first = {start}; int last = {stop}; int visits = 0;
             for int i in [first:{step}:last] {{ visits += 1; continue; }}''',
-                      ('VISITS63',), [str(len(range(start, stop + step, step)))])
+                      ('VISITS63',), [str(len(range(start, stop + (1 if step > 0 else -1), step)))])
 
 
 if __name__ == '__main__':
