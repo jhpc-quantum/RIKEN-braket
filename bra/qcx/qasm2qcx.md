@@ -39,6 +39,7 @@ The converter currently covers:
   conditions;
 - compile-time unrolling of constant integer-range `for` loops, including
   `break` and `continue`;
+- runtime `while` loops, including nested loops, `break`, and `continue`;
 - scalar expressions used as gate parameters; and
 - final-state amplitude output through a namespaced pragma.
 
@@ -358,8 +359,8 @@ outer value in its bounds. These rules follow
 [OpenQASM scoping](https://openqasm.com/versions/3.0/language/scope.html).
 As an explicit subset restriction, assignments or measurements into any active
 iterator are rejected, although OpenQASM itself permits modifying iterators.
-General local declarations, `while`, and iteration over sets or arrays remain
-unsupported.
+General local declarations and iteration over sets or arrays remain unsupported.
+Runtime `while` loops may also appear inside a `for` body, as described below.
 
 ### Break and continue
 
@@ -407,7 +408,7 @@ used to execute body arithmetic or check an iterator-dependent index.
 
 To bound expansion, the converter checks these limits:
 
-- 10,000 total loop iterations, including outer and inner iterations and
+- 10,000 total expanded `for` iterations, including outer and inner iterations and
   sequential loops;
 - 100,000 statements visited inside expanded bodies, including conditionals
   and nested loop headers; and
@@ -419,6 +420,75 @@ and emission check independent copies of the budgets, so the two passes do not
 charge each iteration twice. Runtime-skipped branches still consume expansion
 budgets because their instructions must be generated. Exceeding a limit produces
 a converter error rather than silently truncating the loop.
+
+## Runtime while loops
+
+The converter supports `while (condition)` with either a single-statement or
+braced body. The condition uses the same supported subset as `if`: scalar
+Boolean or bit values, individual bit-register elements, supported comparisons,
+logical `!`, `&&`, and `||`, and supported explicit Boolean casts. Direct
+integer, floating-point, complex, and whole-bit-register conditions remain
+unsupported. Logical expressions retain short-circuit evaluation.
+
+```qasm
+OPENQASM 3.0;
+int n = 0;
+int total = 0;
+while (n < 6) {
+    n += 1;
+    if (n == 2) { continue; }
+    if (n == 4) { break; }
+    total += n;
+}
+// n is 4 and total is 4 after execution: 1 + 3.
+```
+
+Unlike constant-range `for` loops, a `while` body is generated once and executes
+at runtime. The converter emits a condition label, condition evaluation using
+existing QCX `JUMP`/`JUMPIF` instructions, a body label, a jump back to the
+condition, and an exit label. The condition, including any arithmetic needed to
+compute it, is reevaluated before every iteration. The body executes zero times
+if the initial condition is false.
+
+Nested `while` loops and combinations with supported `for` loops are allowed.
+`break` exits the nearest enclosing loop. In a `while` loop, `continue` jumps
+back to its condition, rather than directly to its body. An inner transfer does
+not affect an outer loop. Bodies may use supported gates, global phase,
+measurement, reset, barriers, assignments to existing variables, and conditionals.
+Temporary declarations are moved before control flow when needed; computations
+remain in their original condition or body positions.
+
+Measurement results can control termination:
+
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+qubit q;
+bit outcome = 0;
+int visits = 0;
+while (!outcome) {
+    visits += 1;
+    if (visits == 2) { x q; }
+    outcome = measure q;
+}
+// The loop terminates after two iterations with outcome equal to 1.
+```
+
+General block-local declarations, runtime-dependent indexing, runtime-dependent
+`for` ranges, and writes to active `for` iterators remain unsupported. A `while`
+body is still converted and validated even when its condition is literally
+false or a transfer makes later statements unreachable. Conversion-time
+constant evaluation still applies; skipped runtime computations are not executed.
+The amplitude-output pragma continues to request output after all operations,
+not at an intermediate loop position.
+
+The expansion limits above concern generated `for` iterations and instructions,
+not the number of runtime `while` iterations. A nested `for` is expanded once
+per generated `while` instance, regardless of how often that instance executes.
+A `while` nested in an expanded `for` contributes its generated statements and
+lines to the enclosing expansion limits. There is no runtime iteration limit
+or automatic infinite-loop detection; users must ensure termination. Final
+amplitude output is reached only if the program terminates.
 
 ## Amplitude output
 
@@ -445,7 +515,7 @@ vector defined by the program's qubit declarations.
 
 The current prototype does not reliably support:
 
-- delays, `while` loops, runtime-dependent `for` ranges, iteration over sets
+- delays, runtime-dependent `for` ranges, iteration over sets
   or arrays, or `switch` statements;
 - user-defined gates or gate modifiers;
 - dynamically computed indices, ranges with omitted bounds, or
@@ -476,6 +546,12 @@ outer-dependent bounds, shadowing, and skipped runtime division. It also checks
 descending, strided, singleton, and empty ranges, plus measurement-controlled
 transfers, nearest-loop targeting, and temporary reuse after skipped operations.
 
+`bra/test/qasm2qcx_while_loop_numerical.py` verifies runtime condition
+reevaluation, zero and multiple iterations, logical short-circuiting,
+measurement-controlled termination and transfers, mixed nested loops, iterator
+shadowing, and temporary reuse. Transfer results are also checked against Python
+reference loops. Each numerical program execution has a timeout.
+
 Run the converter and numerical tests from the repository root:
 
 ```console
@@ -484,4 +560,5 @@ python3 bra/test/jumpif_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_if_else_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_integer_remainder_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_for_loop_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_while_loop_numerical.py --bra bra/bin/bra
 ```

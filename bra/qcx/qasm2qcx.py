@@ -3,6 +3,8 @@ import itertools
 import math
 import enum
 import dataclasses
+import contextlib
+from collections.abc import Iterator
 
 import openqasm3.parser
 import openqasm3.ast as ast
@@ -156,6 +158,8 @@ class WrongConstantVariableException(QASM2QCXError):
 
 @dataclasses.dataclass(frozen=True)
 class _LoopContext:
+    # Control-flow targets are independent of compile-time iterator bindings.
+    # A for-loop continues at the iteration end; a while-loop at its condition.
     break_label: str
     continue_label: str
 
@@ -1486,7 +1490,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 ast.Identifier, ast.IntegerLiteral, ast.FloatLiteral,
                 ast.ImaginaryLiteral, ast.BooleanLiteral, ast.BitstringLiteral,
                 ast.UnaryExpression, ast.BinaryExpression, ast.Cast, ast.IndexExpression)):
-            raise UnsupportedOpenQASMError(f'for-loop expression {type(node).__name__}')
+            raise UnsupportedOpenQASMError(f'loop expression {type(node).__name__}')
         if isinstance(node, ast.BinaryExpression) and node.op.name not in (
                 '+', '-', '*', '/', '%', '==', '!=', '<', '<=', '>', '>=', '&&', '||'):
             raise UnsupportedOpenQASMError(f'binary operator {node.op.name}')
@@ -1494,7 +1498,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UnsupportedOpenQASMError(f'unary operator {node.op.name}')
         if isinstance(node, ast.Cast) and not isinstance(node.type, (
                 ast.IntType, ast.UintType, ast.FloatType, ast.ComplexType, ast.BoolType, ast.BitType)):
-            raise UnsupportedOpenQASMError(f'for-loop cast {type(node.type).__name__}')
+            raise UnsupportedOpenQASMError(f'loop cast {type(node.type).__name__}')
         for field in dataclasses.fields(node):
             value = getattr(node, field.name)
             if isinstance(value, ast.QASMNode):
@@ -1545,18 +1549,18 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     raise InvalidLoopRangeException('For-loop range step cannot be zero')
 
     def __validate_loop_body(self, statements: list[ast.Statement], iterators: set[str]) -> None:
-        # Validate even an empty iteration range, without executing its body.
+        # Validate without executing the body, including zero-iteration loops.
         supported = (ast.QuantumGate, ast.QuantumPhase,
                      ast.QuantumMeasurementStatement, ast.QuantumReset,
                      ast.QuantumBarrier, ast.ClassicalAssignment,
-                     ast.BranchingStatement, ast.ForInLoop,
+                     ast.BranchingStatement, ast.ForInLoop, ast.WhileLoop,
                      ast.BreakStatement, ast.ContinueStatement)
         for child in statements:
             if isinstance(child, (ast.ClassicalDeclaration, ast.ConstantDeclaration,
                                   ast.QubitDeclaration)):
                 raise UnsupportedOpenQASMError('block-local declaration')
             if not isinstance(child, supported):
-                raise UnsupportedOpenQASMError(f'for-loop body {type(child).__name__}')
+                raise UnsupportedOpenQASMError(f'loop body {type(child).__name__}')
             target = (child.lvalue if isinstance(child, ast.ClassicalAssignment)
                       else child.target if isinstance(child, ast.QuantumMeasurementStatement)
                       else None)
@@ -1567,7 +1571,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise UnsupportedOpenQASMError(f'assignment operator {child.op.name}')
             if isinstance(child, ast.QuantumGate):
                 if child.modifiers or child.duration is not None:
-                    raise UnsupportedOpenQASMError('gate modifiers or duration in a for loop')
+                    raise UnsupportedOpenQASMError('gate modifiers or duration in a loop')
                 if child.name.name not in self.gate_signatures:
                     raise UnsupportedOpenQASMError(f'gate {child.name.name}')
                 if (not self.__is_initialization_process
@@ -1587,6 +1591,18 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__validate_loop_header(child)
                 self.__validate_nested_loop_bounds(child, iterators)
                 self.__validate_loop_body(child.block, iterators | {child.identifier.name})
+            if isinstance(child, ast.WhileLoop):
+                self.__validate_loop_syntax(child.while_condition)
+                self.__validate_loop_body(child.block, iterators)
+
+    @contextlib.contextmanager
+    def __loop_context(self, break_label: str, continue_label: str) -> Iterator[_LoopContext]:
+        frame = _LoopContext(break_label, continue_label)
+        self.__loop_contexts.append(frame)
+        try:
+            yield frame
+        finally:
+            self.__loop_contexts.pop()
 
     def __loop_has_control(self, statements: list[ast.Statement]) -> bool:
         # Transfers inside nested loops belong to those loops, not this one.
@@ -1622,16 +1638,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         previous_temporaries = self.__declared_temporary_variables.copy()
         for iteration, value in enumerate(values):
             self.__loop_bindings.append({statement.identifier.name: value})
-            self.__loop_contexts.append(_LoopContext(
-                break_label, f'QASM2QCX_LOOP_{loop_index}_NEXT_{iteration}'))
             try:
-                for child in statement.block:
-                    self.visit(child)
-                if emit_control_labels and not self.__is_initialization_process:
-                    self.__qcx_lines.append(f'@{self.__loop_contexts[-1].continue_label}')
-                    self.__check_loop_output_limit()
+                with self.__loop_context(
+                        break_label, f'QASM2QCX_LOOP_{loop_index}_NEXT_{iteration}') as frame:
+                    for child in statement.block:
+                        self.visit(child)
+                    if emit_control_labels and not self.__is_initialization_process:
+                        self.__qcx_lines.append(f'@{frame.continue_label}')
+                        self.__check_loop_output_limit()
             finally:
-                self.__loop_contexts.pop()
                 self.__loop_bindings.pop()
         if emit_control_labels and not self.__is_initialization_process:
             self.__qcx_lines.append(f'@{break_label}')
@@ -1642,7 +1657,35 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__check_loop_output_limit()
 
     def visit_WhileLoop(self, statement: ast.WhileLoop) -> None:
-        raise UnsupportedOpenQASMError('while loop')
+        self.__validate_loop_body(statement.block,
+                                  {name for scope in self.__loop_bindings for name in scope})
+        self.__validate_loop_syntax(statement)
+        loop_index = self.__loop_index
+        self.__loop_index += 1
+        condition_label = f'QASM2QCX_LOOP_{loop_index}_CONDITION'
+        body_label = f'QASM2QCX_LOOP_{loop_index}_BODY'
+        end_label = f'QASM2QCX_LOOP_{loop_index}_END'
+        with self.__loop_context(end_label, condition_label):
+            if self.__is_initialization_process:
+                # Discover and validate the body once, without executing or
+                # unrolling this runtime loop (even for a literal condition).
+                for child in statement.block:
+                    self.visit(child)
+                return
+
+            previous_temporaries = self.__declared_temporary_variables.copy()
+            self.__qcx_lines.append(f'@{condition_label}')
+            self.__emit_condition(statement.while_condition, body_label, end_label)
+            self.__qcx_lines.append(f'@{body_label}')
+            for child in statement.block:
+                self.visit(child)
+            self.__qcx_lines.append(f'JUMP {condition_label}')
+            self.__qcx_lines.append(f'@{end_label}')
+            # The body can execute zero times, or a transfer can skip a
+            # temporary's first use. Only its storage declaration moves.
+            self.__hoist_temporary_declarations(previous_temporaries)
+            if self.__loop_bindings:
+                self.__check_loop_output_limit()
 
     def visit_SwitchStatement(self, statement: ast.SwitchStatement) -> None:
         raise UnsupportedOpenQASMError('switch statement')
@@ -1697,13 +1740,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def visit_BreakStatement(self, statement: ast.BreakStatement) -> None:
         if not self.__loop_contexts:
-            raise UnsupportedOpenQASMError('break outside a supported for loop')
+            raise UnsupportedOpenQASMError('break outside a supported loop')
         if not self.__is_initialization_process:
             self.__qcx_lines.append(f'JUMP {self.__loop_contexts[-1].break_label}')
 
     def visit_ContinueStatement(self, statement: ast.ContinueStatement) -> None:
         if not self.__loop_contexts:
-            raise UnsupportedOpenQASMError('continue outside a supported for loop')
+            raise UnsupportedOpenQASMError('continue outside a supported loop')
         if not self.__is_initialization_process:
             self.__qcx_lines.append(f'JUMP {self.__loop_contexts[-1].continue_label}')
 
