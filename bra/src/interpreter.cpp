@@ -49,6 +49,7 @@
 #include <bra/gate/println_op.hpp>
 #include <bra/gate/jump_op.hpp>
 #include <bra/gate/jumpif_op.hpp>
+#include <bra/gate/assert_op.hpp>
 #include <bra/gate/i_gate.hpp>
 #include <bra/gate/ic_gate.hpp>
 #include <bra/gate/ii_gate.hpp>
@@ -502,6 +503,8 @@ namespace bra
         add_jump(columns);
       else if (mnemonic == "JUMPIF")
         add_jumpif(columns);
+      else if (mnemonic == "ASSERT")
+        add_assert(columns);
       else if (mnemonic == "I")
         add_i(columns);
       else if (mnemonic == "IC")
@@ -2319,6 +2322,30 @@ namespace bra
 
     circuits_[circuit_index_].push_back(
       std::make_unique< ::bra::gate::jumpif_op >(label, lhs_variable_name, op, rhs_literal_or_variable_name));
+  }
+
+  // ASSERT N \= 0
+  void interpreter::add_assert(interpreter::columns_type const& columns)
+  {
+    if (boost::size(columns) != 4u)
+      throw wrong_mnemonics_error{columns};
+
+    using std::begin;
+    auto iter = begin(columns);
+    auto const lhs_variable_name = boost::algorithm::to_upper_copy(*++iter);
+    auto const op_str = *++iter;
+    auto const rhs_literal_or_variable_name = boost::algorithm::to_upper_copy(*++iter);
+    auto const op
+      = op_str == "==" ? ::bra::compare_operation_type::equal_to
+        : op_str == "\\=" ? ::bra::compare_operation_type::not_equal_to
+        : op_str == ">" ? ::bra::compare_operation_type::greater
+        : op_str == "<" ? ::bra::compare_operation_type::less
+        : op_str == ">=" ? ::bra::compare_operation_type::greater_equal
+        : op_str == "<=" ? ::bra::compare_operation_type::less_equal
+        : throw wrong_mnemonics_error{columns};
+
+    circuits_[circuit_index_].push_back(
+      std::make_unique< ::bra::gate::assert_op >(lhs_variable_name, op, rhs_literal_or_variable_name));
   }
 
   void interpreter::add_i(interpreter::columns_type const& columns)

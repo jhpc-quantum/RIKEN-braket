@@ -39,7 +39,7 @@ The converter currently covers:
   conditions;
 - compile-time unrolling of constant integer-range and integer-set `for` loops,
   including `break` and `continue`;
-- runtime-bound integer-range `for` loops with nonzero constant integer steps,
+- integer-range `for` loops with runtime-valued bounds or steps,
   including nested loops, `break`, and `continue`;
 - integer-set `for` loops with runtime-valued elements captured at loop entry;
 - runtime `while` loops, including nested loops, `break`, and `continue`;
@@ -312,7 +312,8 @@ The converter supports `for int name in [start:stop]` and
 body. Bounds and steps must evaluate to integers during conversion: literals,
 previously declared constants, supported constant expressions and explicit
 integer casts are accepted. Nested bounds may also use outer iteration values.
-Runtime variables are not constant bounds, even when initialized with a literal;
+Runtime variables are not constant bounds or steps, even when initialized with
+a literal;
 such ranges use the runtime lowering described below instead of unrolling.
 Only `int` iteration variables are supported; `uint` constants may still appear
 in bounds under the converter's existing INT-backed representation.
@@ -486,27 +487,29 @@ Runtime-bound range loops do not expand their runtime iteration count.
 ## Runtime-bound for loops
 
 The converter supports `for int name in [start:stop]` and
-`for int name in [start:step:stop]` when either bound depends on a runtime
-variable or an enclosing runtime iterator. Both bounds must be present and have
+`for int name in [start:step:stop]` when either bound or the step depends on a
+runtime variable or an enclosing runtime iterator. Both bounds must be present and have
 integer type. Scalar `int` and INT-backed `uint` variables, supported integer
 arithmetic, and explicit integer casts are accepted. Floating-point, Boolean,
 and scalar bit operands require an explicit integer cast; statically indexed
 bit-register elements are also accepted through a cast. Whole bit registers
-are not integer bounds.
+are not integer range operands. These typing rules apply to start, step, and stop.
 
-The step must evaluate during conversion to a nonzero integer; an omitted step
-is `1`. Positive and negative nonunit steps are supported. Named constants,
-supported constant arithmetic and integer casts, and enclosing constant
-iterators may supply the step. Runtime-valued steps remain unsupported, even
-when their source variable has a literal initializer.
+An omitted step is `1`. Positive and negative integer steps are supported,
+including nonunit steps. Named constants, supported arithmetic and integer
+casts, scalar runtime variables, and enclosing constant or runtime iterators
+may supply the step. A runtime-valued step selects runtime lowering even when
+both bounds are constant. Fully constant ranges continue to use unrolling.
 
-Runtime-range steps must fit QCX `INT`, whose backend representation is C++
-`int`. The converter derives its signed bounds from the host's native C `int`
+Steps used in runtime lowering must fit QCX `INT`, whose backend representation
+is C++ `int`. The converter derives its signed bounds from the host's native C `int`
 through Python's `ctypes`; on a 32-bit `int` host, the accepted range is
 `-2147483648` through `2147483647`, excluding zero. This assumes the generated
 program runs on a backend with a compatible integer representation; different
-target integer widths are not automatically detected. Out-of-range steps
-produce converter-specific errors rather than unrepresentable QCX literals.
+target integer widths are not automatically detected. Out-of-range constant steps
+produce converter-specific errors rather than unrepresentable QCX literals;
+runtime expressions retain the backend's existing integer representation and
+arithmetic limitations.
 Declared OpenQASM widths do not change these bounds. Fully constant ranges
 still use unrolling and retain their conversion-time integer-step behavior,
 including steps outside the runtime QCX representation.
@@ -536,41 +539,73 @@ for int i in [first:2:last] {
 // total is 9: 1 + 3 + 5. The unaligned stop 6 is not visited.
 ```
 
-The start and stop are evaluated once, in that order, on each entry to the loop,
-before binding the new iterator. Mutating their source variables in the body
-does not change the captured range. The stop is inclusive when reached, and a
-range whose direction does not match its step executes zero iterations. A nested
-loop can use its outer iterator in either bound, including when the inner iterator
-shadows the outer name. The outer binding is restored after the inner loop.
+Runtime steps are captured as well as bounds:
 
-The body is generated once using existing QCX labels, `LET`, `JUMP`, and
-`JUMPIF`. Private integer storage holds the iterator and captured stop for the
-whole loop, independently of expression temporaries and nested loops. An entry
-check skips empty ranges. After each iteration, an advance guard exits if the
+```qasm
+OPENQASM 3.0;
+int first = 1;
+int last = 6;
+int stride = 2;
+int total = 0;
+for int i in [first:stride:last] {
+    total += i;
+    stride = 0;
+    last = -100;
+}
+// total is 9: the captured step remains 2 and stop remains 6.
+```
+
+The start, runtime-valued step, and stop are evaluated once in source order on
+each entry to the loop, before binding the new iterator. A constant step is
+evaluated during conversion. Mutating source variables in the body does not
+change the captured range or step. On reentry, including from an enclosing
+`while` loop, all runtime operands are evaluated and captured again. The stop is
+inclusive when reached, and a range whose direction does not match its step
+executes zero iterations. A nested loop can use its outer iterator in either
+bound or the step, including when the inner iterator shadows the outer name.
+The outer binding is restored after the inner loop.
+
+The body is generated once using QCX labels, `LET`, `JUMP`, and `JUMPIF`.
+Private integer storage holds the iterator, captured stop, and runtime-valued
+step for the whole loop, independently of expression temporaries and nested
+loops. For a runtime-valued step, generated `ASSERT captured_step \= 0`
+checks the captured value after evaluating the range operands but before
+testing whether the range is empty. A failed check throws `bra::assertion_error`
+and identifies the comparison and evaluated values; the CLI currently leaves
+this exception uncaught. Zero is therefore an error even for an otherwise empty
+range. Literal and conversion-time constant zero steps remain converter errors.
+Generated programs with runtime-valued steps require a bra version supporting
+`ASSERT`, documented in [bra.md](../../docs/bra.md).
+
+An entry check skips empty ranges. After each iteration, an advance guard exits if the
 next value would lie beyond the stop, including when the stop is unaligned.
-Unit steps retain the existing endpoint check and emitted instructions.
+Conversion-time constant unit steps retain the existing endpoint check and
+emitted instructions. Runtime-valued steps select entry and advance comparisons
+from the captured step's sign; the body is not duplicated for the two directions.
 
-For nonunit steps, the guard selects a safe calculation according to the stop's
-sign. It computes `stop - step` only where that subtraction is representable;
+For nonunit constant steps and runtime-valued steps, the guard selects a safe
+calculation according to the stop's sign. It computes `stop - step` only where
+that subtraction is representable;
 otherwise it computes and checks a representable candidate `iterator + step`.
 The iterator is advanced only when another in-range value exists. Negative
 steps are used directly without negating them, including the minimum signed
 integer. Thus both guard arithmetic and iterator advancement avoid overflow
 for representable bounds and steps. This is not a general arithmetic overflow
-check: calculations producing bounds, body arithmetic, declared widths, and
-unsigned semantics retain their existing limitations.
+check: calculations producing bounds or steps, body arithmetic, declared widths,
+and unsigned semantics retain their existing limitations.
 
 Bodies support the same statements as constant loops. The iterator is a scoped,
 read-only runtime integer usable in arithmetic, gate parameters, and conditions.
 Assignments and measurements into active iterators remain rejected. Runtime
-iterators cannot supply static indices or range steps. Using a runtime iterator
-in a set element selects runtime-valued set lowering.
+iterators cannot supply static indices. Using a runtime iterator in a range step
+selects runtime-step lowering; using one in a set element selects runtime-valued
+set lowering.
 Dynamic indexing remains unsupported. Constant range and set loops,
 runtime-valued set loops, and runtime `while` loops may be nested in either direction.
 
 `break` exits the nearest loop. In a runtime-bound `for`, `continue` jumps to
 the advance guard and iterator advancement, rather than reevaluating the
-bounds. For example:
+bounds or step. For example:
 
 ```qasm
 int last = 5;
@@ -586,13 +621,14 @@ for int i in [0:last] {
 Bodies are converted and validated even if the runtime range is empty or a
 transfer makes later statements unreachable. Temporary declarations may move
 before control flow, but computations remain at their original positions.
-Runtime computations in bound expressions, including integer division and
-remainder, remain at loop entry; body computations remain on the paths that
+Runtime computations in bound and step expressions, including integer division
+and remainder, remain at loop entry; body computations remain on the paths that
 reach them. A skipped branch or outer runtime loop therefore skips generated
-nested-bound computations too. Integer zero divisors are checked by `bra` when
-the division executes. Conversion-time constant validation still applies to
-fully constant ranges and independent constant bounds of nested loops; those
-checks are not suppressed by a runtime-skipped path.
+nested range computations and zero-step assertions too. Integer zero divisors
+are checked by `bra` when the division executes. Conversion-time constant
+validation still applies to fully constant ranges and independent constant
+bounds or steps of nested loops; those checks are not suppressed by a
+runtime-skipped path.
 
 Runtime iteration counts do not consume the constant-loop expansion budgets,
 and there is no runtime iteration limit. Constant loops nested in a runtime
@@ -642,8 +678,8 @@ Fully constant sets continue to use the existing constant-iterator unrolling.
 The iterator is scoped to the body and may shadow a source variable, constant,
 or outer iterator. Element expressions use the outer binding, and that binding
 is restored after the loop. The iterator is a read-only runtime integer usable
-in arithmetic, conditions, and gate parameters, but not in static indices or
-constant range steps. General block-local declarations remain unsupported.
+in arithmetic, conditions, gate parameters, and runtime range bounds or steps,
+but not in static indices. General block-local declarations remain unsupported.
 
 `break` exits the nearest loop; `continue` skips the rest of the current element's
 body and proceeds to the next captured element. Each body copy has its own
@@ -762,8 +798,7 @@ vector defined by the program's qubit declarations.
 
 The current prototype does not reliably support:
 
-- delays, runtime-valued range steps,
-  iteration over arrays, bit registers, or aliases,
+- delays, iteration over arrays, bit registers, or aliases,
   or `switch` statements;
 - user-defined gates or gate modifiers;
 - dynamically computed indices, ranges with omitted bounds, or
@@ -813,6 +848,22 @@ extreme representable steps, repeated entry, and the last visited value.
 Unit tests additionally interpret the emitted advance guard with checked signed
 arithmetic, exhaustively covering a small integer model and native endpoints.
 
+`bra/test/qasm2qcx_runtime_step_numerical.py` verifies runtime-valued steps with
+constant and runtime bounds, captured values, arithmetic and casts, positive and
+negative directions, zero-step errors, repeated entry with changing signs,
+iterator shadowing, mixed nesting, nearest-loop transfers, measurement-controlled
+breaks, skipped arithmetic and assertions, temporary reuse, and native integer
+endpoints. Position-based transfers and extreme-stride endpoint combinations
+are checked against Python reference loops. Unit tests also verify capture
+storage reservation, cleanup after emission failure, and expansion budgets.
+
+`bra/test/assert_numerical.py` checks all six assertion comparisons for integer
+and real operands, indexed values, skipped checks, diagnostics, and malformed
+instructions. `bra/test/assert_state.cpp`, compiled with the same macros as bra
+and linked with non-MPI bra objects excluding `bra.o`, checks that successful
+and failed assertions preserve variables and pending jump state, including in
+release builds.
+
 `bra/test/qasm2qcx_runtime_set_numerical.py` verifies source order, duplicates,
 capture-before-body behavior, repeated entry, casts, shadowing, mixed nesting,
 nearest-loop transfers, short-circuit expressions, skipped capture and body
@@ -825,12 +876,15 @@ Run the converter and numerical tests from the repository root:
 
 ```console
 python3 -m unittest bra/test/test_qasm2qcx.py
+ulimit -c 0
 python3 bra/test/jumpif_numerical.py --bra bra/bin/bra
+python3 bra/test/assert_numerical.py --bra bra/bin/bra
+python3 bra/test/integer_division_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_if_else_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_integer_remainder_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_for_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_while_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_for_numerical.py --bra bra/bin/bra
-ulimit -c 0
+python3 bra/test/qasm2qcx_runtime_step_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_set_numerical.py --bra bra/bin/bra
 ```
