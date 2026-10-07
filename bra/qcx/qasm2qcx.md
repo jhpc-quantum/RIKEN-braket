@@ -45,6 +45,7 @@ The converter currently covers:
   including nested loops, `break`, and `continue`;
 - integer-set `for` loops with runtime-valued elements captured at loop entry;
 - runtime iteration over one-dimensional `int` arrays;
+- runtime iteration over bit registers with scalar `bit` iterators;
 - runtime `while` loops, including nested loops, `break`, and `continue`;
 - scalar expressions used as gate parameters; and
 - final-state amplitude output through a namespaced pragma.
@@ -481,8 +482,8 @@ Runtime variables are not constant elements, even when initialized with a
 literal; sets containing them use the runtime-valued lowering described below.
 Non-integer elements require a supported explicit integer cast;
 implicit conversion of floating-point, Boolean, or complex elements is not
-supported. Integer-array iteration uses the runtime lowering described below;
-bit-register and alias iteration remain unsupported.
+supported. Integer-array and bit-register iteration use the runtime lowering
+described below; alias iteration remains unsupported.
 The installed parser requires a nonempty set in
 source code: the spelling `{}` is rejected. An empty discrete-set AST supplied
 directly to the converter emits no body instructions but still validates its
@@ -516,8 +517,8 @@ inner loop can use the outer value in its bounds or elements. These rules follow
 [OpenQASM scoping](https://openqasm.com/versions/3.0/language/scope.html).
 As an explicit subset restriction, assignments or measurements into any active
 iterator are rejected, although OpenQASM itself permits modifying iterators.
-General local declarations remain unsupported. Integer-array iteration is
-described below.
+General local declarations remain unsupported. Integer-array and bit-register
+iteration are described below.
 Runtime `while` loops may also appear inside a `for` body, as described below.
 
 ### Break and continue
@@ -582,8 +583,8 @@ a converter error rather than silently truncating the loop.
 The same budgets apply to constant range and set loops and to the generated
 body copies of runtime-valued set loops; repeated set elements each count as an
 expanded iteration. A `break` does not reduce the generated iteration count.
-Runtime-bound range and integer-array loops do not expand their runtime
-iteration count.
+Runtime-bound range, integer-array, and bit-register loops do not expand their
+runtime iteration count.
 
 ## Runtime-bound for loops
 
@@ -805,8 +806,8 @@ whether or not it executes. Nested generated statements and instructions also
 count, even when their iterator is runtime-valued or shadows an outer iterator.
 Runtime reentry into an already generated loop does not charge additional
 conversion-time iterations. Integer widths and unsigned semantics retain the
-converter's existing limitations. Integer-array iteration is described below;
-bit-register and alias iteration remain unsupported. The parser still rejects
+converter's existing limitations. Integer-array and bit-register iteration are
+described below; alias iteration remains unsupported. The parser still rejects
 an empty source set `{}`.
 
 ## Integer-array for loops
@@ -864,8 +865,85 @@ This does not add general overflow checks or enforce declared integer widths.
 Runtime array iteration counts do not consume expansion budgets. Nested
 constant or set-loop body copies still consume their usual budgets, and an
 array loop inside an expanded loop contributes its generated statements and
-instructions. Iteration over slices, non-`int` arrays, bit registers, aliases,
-or arbitrary array expressions remains unsupported.
+instructions. Bit-register iteration is described below. Iteration over slices,
+non-`int` arrays, aliases, or arbitrary array expressions remains unsupported.
+
+## Bit-register for loops
+
+The converter supports `for bit name in flags` when `flags` is a previously
+declared `bit[N]` register. Elements are visited in increasing index order,
+including repeated values. Bit zero is the rightmost bit in a source bit string:
+
+```qasm
+OPENQASM 3.0;
+bit[3] flags = "101";
+int total = 0;
+for bit value in flags {
+    if (value) {
+        total += 1;
+    }
+}
+// total is 2 after visits to flags[0], flags[1], and flags[2].
+```
+
+The iterator retains scalar `bit` type even though QCX stores its copied value
+in a private `INT`. It supports direct conditions, logical expressions,
+supported comparisons and casts, and assignments to existing scalar bits,
+statically indexed bit elements, or Boolean variables. Use an explicit numeric
+cast for arithmetic, gate parameters, integer range bounds or steps, integer
+set elements, and integer-array indices, for example `int(value)`.
+
+Bit-register loops require a scalar `bit` iterator. `for int` over a bit register,
+`for bit` over an integer array, and register-valued iterators such as `bit[1]`
+are rejected. A `bit[1]` source is iterable and visits its single element;
+a scalar `bit` source is not iterable. As elsewhere, a scalar bit cannot be
+implicitly broadcast to a whole-register assignment target, including `bit[1]`.
+
+The converter uses the same live-read policy as integer-array loops: each
+iteration copies the current element into the iterator before executing its
+body. Writes or measurements into future source elements affect later visits,
+but changing the current source element does not change its copied iterator.
+
+```qasm
+OPENQASM 3.0;
+bit[3] flags = "111";
+int total = 0;
+for bit value in flags {
+    flags[1] = 0;
+    total += int(value);
+}
+// total is 2: the visited values are 1, 0, 1.
+```
+
+The source is resolved before binding the iterator, so `for bit flags in flags`
+is accepted. The iterator is scoped to its body and may shadow a source variable,
+constant, register, or outer iterator; the outer binding is restored afterward.
+Its type is preserved through mixed bit/integer nesting. Writes and measurements
+into active iterators remain rejected, including on unreachable paths.
+
+Register sizes are resolved in declaration scope and remain fixed when an
+iterator shadows a size constant. A register used for iteration must have a
+positive size that fits the host-derived QCX `INT` range described under
+runtime-bound loops. This assumes a backend with compatible integer storage.
+
+Bodies support the same statements as other loops, including measurement,
+conditional gates, and nested range, set, array, bit-register, and `while` loops.
+`break` exits the nearest loop; `continue` advances to the next register element.
+Computations stay on their original execution paths; skipped branches and
+transfers skip runtime arithmetic and accesses, while conversion-time validation
+still applies.
+
+The body is generated once using existing QCX storage, indexed operands, labels,
+`LET`, `JUMP`, and `JUMPIF`. Private storage holds the current index and copied
+bit value throughout the body. Singleton registers use their existing scalar
+QCX storage. An endpoint check precedes advancement, keeping loop-control
+arithmetic representable for accepted register sizes. No new bra instruction is
+required. Runtime iteration counts do not consume expansion budgets, but nested
+expanded loops and enclosing expansions retain their existing accounting.
+
+Runtime user-supplied qubit or bit-register indices, register slices as iterable
+sources, aliases, general array-type iteration, and block-local declarations
+remain unsupported.
 
 ## Runtime while loops
 
@@ -961,7 +1039,7 @@ vector defined by the program's qubit declarations.
 
 The current prototype does not reliably support:
 
-- delays, iteration over non-`int` arrays, bit registers, or aliases,
+- delays, iteration over non-`int` arrays or aliases,
   or `switch` statements;
 - user-defined gates or gate modifiers;
 - runtime qubit or bit-register indices, ranges with omitted bounds, or
@@ -999,6 +1077,15 @@ nested reads and writes, index capture, signed compound assignments against a
 Python reference model, bounds failures, skipped assertions, mixed control flow,
 casts, indexed initializers, and temporary-storage lifetime. Unit tests interpret
 the emitted normalization guard using checked native integer arithmetic.
+
+`bra/test/qasm2qcx_bit_register_numerical.py` verifies singleton and larger
+registers, bit-string element order, live mutation, casts and conditions,
+scalar assignments, mixed loop nesting and typed shadowing, repeated entry,
+measurement-controlled transfers and source updates, gate parameters, and
+skipped arithmetic and bounds checks. Mutation and position-based transfers
+are checked against 288 explicit Python reference cases. Unit tests additionally
+cover iterator typing, invalid sources and iterator types, storage cleanup,
+reserved names, fixed-size code generation, and expansion budgets.
 
 `bra/test/qasm2qcx_for_loop_numerical.py` verifies unrolled quantum operations,
 measurement and reset, runtime classical accumulation, conditions, nested loops,
