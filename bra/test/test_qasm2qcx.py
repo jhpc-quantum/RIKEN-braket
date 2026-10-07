@@ -319,6 +319,80 @@ class RuntimeIntegerArrayAssignmentTests(unittest.TestCase):
         self.assertIsNone(converter._QASM2QCXConverter__expression_kind)
 
 
+class RuntimeIntegerArrayRegressionTests(unittest.TestCase):
+    def test_normalization_guard_with_checked_native_integer_arithmetic(self) -> None:
+        minimum, maximum = qasm2qcx.QASM2QCXConverter.QCX_INT_MIN, qasm2qcx.QASM2QCXConverter.QCX_INT_MAX
+        for size in (1, 2, 7, maximum):
+            lines = convert(f'OPENQASM 3.0; array[int, {size}] a; int i = 0; int value = a[i];')
+            start = lines.index('ASSERT QASM2QCX_INT_0 >= ' + str(-size))
+            guard = lines[start:start + 5]
+            for original in {minimum, -size - 1, -size, -1, 0, size - 1, size, maximum}:
+                with self.subTest(size=size, original=original):
+                    value, valid = original, True
+                    for line in guard:
+                        words = line.split()
+                        if words[0] == 'ASSERT':
+                            bound = int(words[3])
+                            valid = value >= bound if words[2] == '>=' else value < bound
+                            if not valid:
+                                break
+                        elif words[0] == 'JUMPIF' and value >= int(words[4]):
+                            break
+                        elif words[0] == 'LET':
+                            value += int(words[3])
+                            self.assertTrue(minimum <= value <= maximum)
+                    self.assertEqual(valid, -size <= original < size)
+                    if valid:
+                        self.assertEqual(value, original % size)
+
+    def test_source_temporary_names_are_not_reused_for_index_storage(self) -> None:
+        lines = convert('OPENQASM 3.0; int QASM2QCX_INT_ = -1; '
+                        'array[int, 2] a = {1, 2}; a[QASM2QCX_INT_] += a[QASM2QCX_INT_];')
+        self.assertIn('LET QASM2QCX_INT_1 := QASM2QCX_INT_0', lines)
+        self.assertNotIn('LET QASM2QCX_INT_0 += 2', lines)
+
+    def test_mixed_nested_control_flow_has_unique_resolved_labels(self) -> None:
+        lines = convert('OPENQASM 3.0; array[int, 2] a = {0, 1}; int i = 0; '
+                        'for int k in {0, 1} { while (i < 2) { '
+                        'if (a[i] > 0) { a[i] %= a[i] + 1; } i += 1; } }')
+        labels = [line for line in lines if line.startswith('@')]
+        self.assertEqual(len(labels), len(set(labels)))
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_successful_mixed_index_operations_release_all_storage(self) -> None:
+        program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3.0; array[int, 3] a = {0, 1, 2}; '
+            'int i = 1; bool ok = a[a[i]] == a[i]; '
+            'a[a[i]] += int(ok && a[i] > 0); a[i] %= a[i] % 3 + 1;')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertEqual(converter._QASM2QCXConverter__loop_bindings, [])
+        self.assertEqual(converter._QASM2QCXConverter__loop_contexts, [])
+
+    def test_skipped_accesses_still_validate_index_types_and_operators(self) -> None:
+        prefix = 'OPENQASM 3.0; array[int, 2] a = {0, 1}; float f = 0.5; int i = 0; '
+        for statement in ('if (false) { a[f] = 1; }', 'while (false) { i = a[f]; }',
+                          'if (false) { a[i] ^= 1; }', 'bool ok = false && a[f] == 0;'):
+            with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert(prefix + statement)
+
+    def test_dynamic_quantum_and_bit_indices_and_array_slices_remain_unsupported(self) -> None:
+        prefix = 'OPENQASM 3.0; include "stdgates.inc"; qubit[2] q; bit[2] flags; '
+        prefix += 'array[int, 2] a = {0, 1}; int i = 0; '
+        for statement in ('x q[i];', 'i = int(flags[i]);', 'flags[i] = 1;',
+                          'i = a[i:1];', 'a[i:1] = 1;', 'i = a[i, 0];'):
+            with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert(prefix + statement)
+
+    def test_cli_invalid_index_type_does_not_print_partial_output(self) -> None:
+        source = 'OPENQASM 3.0; array[int, 2] a = {0, 1}; float f = 0.5; int value = a[f];'
+        with patch('builtins.open', mock_open(read_data=source)), patch('builtins.print') as output:
+            with self.assertRaises(SystemExit) as error:
+                qasm2qcx.main(['runtime-array.qasm'])
+        self.assertIn('index must be an integer', str(error.exception))
+        output.assert_not_called()
+
+
 class IntegerArrayRegressionTests(unittest.TestCase):
     def test_array_size_is_fixed_before_dimension_constant_is_shadowed(self) -> None:
         for outer in ('for int N in values', 'for int N in {0, 3}'):

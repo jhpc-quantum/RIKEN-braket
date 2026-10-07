@@ -113,6 +113,59 @@ def main() -> None:
         check_error(bra, f'''array[int, 2] values = {{1, 2}}; int i = 0; int zero = 0;
             values[i] {operation} zero;''', 'integer division by zero in LET')
 
+    # Compare signed assignments against an independent truncation-toward-zero
+    # integer model; Python's // and % use a different negative-operand rule.
+    for initial, rhs, index, operation in (
+            (initial, rhs, index, operation)
+            for initial in ((-7, 3, 5), (7, -3, 0)) for rhs in (-3, 2)
+            for index in range(-3, 3) for operation in ('=', '+=', '-=', '*=', '/=', '%=')):
+        original = initial[index]
+        quotient = (abs(original) // abs(rhs)) * (-1 if (original < 0) != (rhs < 0) else 1)
+        changed = {'=': rhs, '+=': original + rhs, '-=': original - rhs,
+                   '*=': original * rhs, '/=': quotient, '%=': original - quotient * rhs}[operation]
+        expected = list(initial)
+        expected[index] = changed
+        literal = ', '.join(map(str, initial))
+        check_program(bra, f'array[int, 3] values = {{{literal}}}; '
+                      f'int i = {index}; int rhs = {rhs}; values[i] {operation} rhs;',
+                      ('VALUES63:0', 'VALUES63:1', 'VALUES63:2', 'I1'),
+                      [*map(str, expected), str(index)])
+
+    check_program(bra, '''array[int, 3] values = {2, 5, 7}; int i = -1;
+        array[int, 2] copied = {values[i], values[i + 1]};
+        bool same = values[i] == values[i + 1];
+        values[i] += int(!same && values[i] > 0);
+        float f = 1.5; values[i] += int(f + 0.5);''',
+                  ('COPIED63:0', 'COPIED63:1', 'VALUES63:2'), ['7', '2', '10'])
+    check_program(bra, '''array[int, 2] values = {4, 9}; int bad = 2;
+        bool flag = false; int total = values[int(flag && values[bad] > 0)];
+        values[int(!flag || values[bad] > 0)] = total + 1;''',
+                  ('TOTAL31', 'VALUES63:0', 'VALUES63:1'), ['4', '4', '5'])
+    check_program(bra, '''array[int, 3] values = {1, 2, 3}; int first = -3; int last = 2;
+        int tick = 0; int total = 0;
+        while (tick < 2) {
+            for int i in [first:last] {
+                if (i == -1) { continue; }
+                if (i == 2) { break; }
+                values[i] += 1; total += values[i];
+            }
+            tick += 1;
+        }''', ('TOTAL31', 'VALUES63:0', 'VALUES63:1', 'VALUES63:2'), ['32', '5', '6', '3'])
+    check_program(bra, '''include "stdgates.inc"; array[int, 2] values = {2, 5};
+        qubit q; bit flag; x q; flag = measure q;
+        values[int(flag)] += values[int(!flag)];''', ('VALUES63:0', 'VALUES63:1'), ['2', '7'])
+    for index in (qasm2qcx.QASM2QCXConverter.QCX_INT_MIN, qasm2qcx.QASM2QCXConverter.QCX_INT_MAX):
+        for operation in ('=', '%='):
+            check_error(bra, f'array[int, 2] values = {{1, 2}}; int i = {index}; '
+                        f'values[i] {operation} values[0];', 'assertion failed in ASSERT')
+    check_error(bra, '''array[int, 2] values = {-3, 1}; int i = 0;
+        int total = values[values[i]];''', '(evaluated: -3 >= -2)')
+    check_program(bra, '''array[int, 2] values = {1, 2}; int bad = 2; int i = 0;
+        for int k in [1:0] { values[bad] = 1; }
+        for int k in {0, 1} { continue; values[bad] += 1; }
+        while (i < 2) { i += 1; break; values[bad] %= 0; }
+        int total = values[0] + values[1];''', ('TOTAL31',), ['3'])
+
     for outer in ('for int N in values', 'for int N in {0, 3}'):
         check_program(bra, 'const int N = 2; array[int, N] values = {1, 2}; int total = 0; '
                       + outer + ' { for int j in values { total += j; } } '
