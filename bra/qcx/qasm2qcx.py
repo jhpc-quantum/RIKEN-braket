@@ -243,6 +243,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__declared_quantum_registers: set[str] = set()
         self.__amplitude_indices: list[int] | None = None
         self.__branch_index: int = 0
+        self.__array_index: int = 0
         self.__condition_index: int = 0
         self.__branch_depth: int = 0
         self.__boolean_expression_index: int = 0
@@ -1167,7 +1168,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             source_name = expression.collection.name
             variable_name = self.__capitalize_variable_name(source_name)
             if variable_name in self.__integer_array_names:
-                return self.__integer_array_operand(expression), ValueType.INT, ValueKind.LVALUE
+                operand, index = self.__integer_array_access(expression)
+                if index is None:
+                    return operand, ValueType.INT, ValueKind.LVALUE
+                try:
+                    result = self.__add_new_temporary_variable(ValueType.INT)
+                    self.__qcx_lines.append(f'LET {result} := {operand}')
+                    return result, ValueType.INT, ValueKind.TEMPORARY
+                finally:
+                    self.__release_temporary_variable(index)
             if self.__type_of(variable_name) != ValueType.BIT:
                 raise UnsupportedOpenQASMError(
                     'indexed non-bit conditional operand')
@@ -2629,7 +2638,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         for target_name, value in zip(target_names, values):
             self.__qcx_lines.append(f'LET {target_name} := {value}')
 
-    def __integer_array_operand(self, expression: ast.IndexExpression | ast.IndexedIdentifier) -> str:
+    def __integer_array_access(
+            self, expression: ast.IndexExpression | ast.IndexedIdentifier) -> tuple[str, str | None]:
         if isinstance(expression, ast.IndexExpression):
             if not isinstance(expression.collection, ast.Identifier):
                 raise UnsupportedOpenQASMError('multidimensional integer array indexing')
@@ -2647,15 +2657,34 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if isinstance(selectors[0], (ast.RangeDefinition, ast.DiscreteSet)):
             raise UnsupportedOpenQASMError('integer array slice or multidimensional selection')
         value_type, runtime = self.__loop_expression_info(selectors[0])
-        if runtime:
-            raise UnsupportedOpenQASMError('runtime integer array index')
         if value_type != ValueType.INT:
-            raise InvalidArrayOperandException(f'Integer array {name} index must be a constant integer')
-        index = self.__constant_loop_integer(selectors[0], 'array index')
+            raise InvalidArrayOperandException(f'Integer array {name} index must be an integer')
         size = self.__int_variable_name_size_map[variable_name]
+        if runtime:
+            index = self.__capture_array_index(selectors[0], size)
+            return f'{variable_name}:{index}', index
+        index = self.__constant_loop_integer(selectors[0], 'array index')
         if not -size <= index < size:
             raise InvalidArrayOperandException(f'Integer array {name} index {index} is outside [-{size}, {size - 1}]')
-        return f'{variable_name}:{index if index >= 0 else index + size}'
+        return f'{variable_name}:{index if index >= 0 else index + size}', None
+
+    def __capture_array_index(self, expression: ast.Expression, size: int) -> str:
+        value, value_type, value_kind = self.__condition_operand(expression)
+        index = self.__add_new_temporary_variable(ValueType.INT)
+        try:
+            self.__emit_assignment(index, ':=', ValueType.INT, value, value_type, value_kind)
+            label = f'QASM2QCX_ARRAY_INDEX_{self.__array_index}_NONNEGATIVE'
+            self.__array_index += 1
+            # Check the original signed index before adding the size. This
+            # keeps normalization representable, even at native INT endpoints.
+            self.__qcx_lines.extend([
+                f'ASSERT {index} >= {-size}', f'ASSERT {index} < {size}',
+                f'JUMPIF {label} {index} >= 0', f'LET {index} += {size}', f'@{label}',
+            ])
+            return index
+        except Exception:
+            self.__release_temporary_variable(index)
+            raise
 
     def __integer_array_size(self, variable_type: ast.ArrayType, variable_name: str) -> int:
         if len(variable_type.dimensions) != 1:
@@ -2785,11 +2814,17 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         source_name = self.__operand_name(statement.lvalue)
         variable_name: str = self.__capitalize_variable_name(source_name)
         variable_type: ValueType = self.__type_of(variable_name)
-        array_element = variable_name in self.__integer_array_names
-        if array_element:
+        if variable_name in self.__integer_array_names:
             if not isinstance(statement.lvalue, ast.IndexedIdentifier):
                 raise UnsupportedOpenQASMError('whole integer array assignment')
-            variable_name = self.__integer_array_operand(statement.lvalue)
+            operand, index = self.__integer_array_access(statement.lvalue)
+            try:
+                self.__emit_classical_value_assignment(
+                    statement, operand, variable_type, runtime_array=index is not None)
+            finally:
+                if index is not None:
+                    self.__release_temporary_variable(index)
+            return
 
         if variable_type == ValueType.BIT:
             if statement.op != ast.AssignmentOperator['=']:
@@ -2799,9 +2834,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 statement.lvalue, statement.rvalue)
             return
 
-        if isinstance(statement.lvalue, ast.IndexedIdentifier) and not array_element:
+        if isinstance(statement.lvalue, ast.IndexedIdentifier):
             raise UnsupportedOpenQASMError('indexed classical assignment')
 
+        self.__emit_classical_value_assignment(statement, variable_name, variable_type)
+
+    def __emit_classical_value_assignment(
+            self, statement: ast.ClassicalAssignment, variable_name: str,
+            variable_type: ValueType, *, runtime_array: bool = False) -> None:
         if (variable_type == ValueType.BOOL
                 and statement.op != ast.AssignmentOperator['=']):
             raise UnsupportedOpenQASMError(
@@ -2820,25 +2860,46 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         elif statement.op == ast.AssignmentOperator['%=']:
             if variable_type != ValueType.INT:
                 raise UnsupportedOpenQASMError('integer remainder assignment requires an int or uint target')
+            if runtime_array:
+                self.__emit_runtime_array_remainder_assignment(variable_name, statement.rvalue)
+                return
             # Reuse expression lowering and assign only its completed result;
             # the destination may also occur anywhere in the RHS expression.
             operator = ':='
-            lhs = (ast.IndexExpression(ast.Identifier(source_name), statement.lvalue.indices[0])
-                   if array_element else statement.lvalue)
+            lhs = (ast.IndexExpression(statement.lvalue.name, statement.lvalue.indices[0])
+                   if isinstance(statement.lvalue, ast.IndexedIdentifier) else statement.lvalue)
             expression = ast.BinaryExpression(ast.BinaryOperator['%'], lhs, statement.rvalue)
         else:
             raise UnsupportedOpenQASMError(
                 f'assignment operator {statement.op.name}')
 
-        self.__expression_kind = ExpressionKind.ARITHMETIC
-        self.visit(expression)
-        self.__expression_kind = None
+        previous_expression_kind = self.__expression_kind
+        try:
+            self.__expression_kind = ExpressionKind.ARITHMETIC
+            self.visit(expression)
+        finally:
+            self.__expression_kind = previous_expression_kind
         if (self.__value is None or self.__value_type is None
                 or self.__value_kind is None):
             raise UninitializedValueException
         self.__emit_assignment(
             variable_name, operator, variable_type, self.__value,
             self.__value_type, self.__value_kind)
+
+    def __emit_runtime_array_remainder_assignment(
+            self, target: str, expression: ast.Expression) -> None:
+        # The destination index is already captured and reserved. Rebuilding
+        # its AST would evaluate it twice, so read from that exact operand.
+        value, value_type, value_kind = self.__condition_operand(expression)
+        try:
+            if value_type != ValueType.INT:
+                raise UnsupportedOpenQASMError('integer remainder requires int or uint operands')
+            result = self.__emit_integer_remainder(target, str(value))
+            self.__emit_assignment(target, ':=', ValueType.INT,
+                                   result, ValueType.INT, ValueKind.TEMPORARY)
+        finally:
+            if value_kind == ValueKind.TEMPORARY:
+                self.__release_temporary_variable(str(value))
 
 def convert(source: str) -> list[str]:
     """Convert an OpenQASM 3 source string into QCX input lines."""
