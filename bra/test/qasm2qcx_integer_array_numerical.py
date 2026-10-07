@@ -83,6 +83,36 @@ def main() -> None:
     check_error(bra, '''array[int, 2] values = {1, 3}; int zero = 0;
         int total = values[1 / zero];''', 'integer division by zero in LET')
 
+    for operation, expected in (('=', 3), ('+=', 10), ('-=', 4),
+                                ('*=', 21), ('/=', 2), ('%=', 1)):
+        for index in (-2, -1, 0, 1):
+            result = [7, 7]
+            result[index] = expected
+            check_program(bra, f'array[int, 2] values = {{7, 7}}; int i = {index}; '
+                          f'values[i] {operation} 3;',
+                          ('VALUES63:0', 'VALUES63:1', 'I1'), [*map(str, result), str(index)])
+        for index in (-3, 2):
+            check_error(bra, f'array[int, 2] values = {{7, 7}}; int i = {index}; '
+                        f'values[i] {operation} 3;', 'assertion failed in ASSERT')
+
+    check_program(bra, '''array[int, 3] values = {1, 5, 3}; int i = 0;
+        values[values[i]] += values[i] + 2;''', ('VALUES63:0', 'VALUES63:1'), ['1', '8'])
+    check_program(bra, '''array[int, 2] values = {7, 3}; int i = 0;
+        values[i % 2] %= values[i] % 3 + 1;
+        values[i + 1] %= values[i + 1];''', ('VALUES63:0', 'VALUES63:1'), ['1', '0'])
+    check_program(bra, '''array[int, 3] values = {0, 1, 2}; int total = 0;
+        for int i in values { values[i] += 3; total += i; }''',
+                  ('VALUES63:0', 'VALUES63:1', 'VALUES63:2', 'TOTAL31'), ['3', '4', '5', '3'])
+    check_program(bra, '''array[int, 2] values = {1, 2}; int bad = 2; int zero = 0;
+        if (false) { values[bad] = 1 / zero; }
+        while (false) { values[bad] %= 0; }
+        int total = values[0] + values[1];''', ('TOTAL31',), ['3'])
+    check_error(bra, '''array[int, 2] values = {1, 2}; int bad = 2; int zero = 0;
+        values[bad] = 1 / zero;''', 'assertion failed in ASSERT')
+    for operation in ('/=', '%='):
+        check_error(bra, f'''array[int, 2] values = {{1, 2}}; int i = 0; int zero = 0;
+            values[i] {operation} zero;''', 'integer division by zero in LET')
+
     for outer in ('for int N in values', 'for int N in {0, 3}'):
         check_program(bra, 'const int N = 2; array[int, N] values = {1, 2}; int total = 0; '
                       + outer + ' { for int j in values { total += j; } } '
