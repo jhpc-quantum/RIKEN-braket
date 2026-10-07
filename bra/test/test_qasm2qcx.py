@@ -480,6 +480,135 @@ class IntegerArrayRegressionTests(unittest.TestCase):
         output.assert_not_called()
 
 
+class BitIteratorInfrastructureTests(unittest.TestCase):
+    @staticmethod
+    def converter():
+        program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3.0; int value = 9; '
+            'bit out; bool ready; bit[1] singleton; bit[3] flags; qubit q;')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        return converter
+
+    @staticmethod
+    def bit_binding():
+        return qasm2qcx._RuntimeIteratorBinding('PRIVATE_BIT', qasm2qcx.ValueType.BIT)
+
+    def test_bit_identifier_preserves_type_and_runtime_dependency(self) -> None:
+        converter = self.converter()
+        with converter._QASM2QCXConverter__iterator_binding('value', self.bit_binding()):
+            self.assertEqual(RuntimeIteratorInfrastructureTests.identifier_value(converter, 'value'),
+                ('PRIVATE_BIT', qasm2qcx.ValueType.BIT, qasm2qcx.ValueKind.LVALUE))
+            self.assertEqual(converter._QASM2QCXConverter__loop_expression_info(qasm2qcx.ast.Identifier('value')),
+                             (qasm2qcx.ValueType.BIT, True))
+        self.assertEqual(RuntimeIteratorInfrastructureTests.identifier_value(converter, 'value')[1],
+                         qasm2qcx.ValueType.INT)
+
+    def test_direct_bit_conditions_and_scalar_assignments_use_private_storage(self) -> None:
+        converter = self.converter()
+        statements = qasm2qcx.openqasm3.parser.parse('OPENQASM 3.0; '
+            'if (value) { out = value; } ready = value; out = !value;').statements
+        with converter._QASM2QCXConverter__iterator_binding('value', self.bit_binding()):
+            for statement in statements:
+                converter.visit(statement)
+        lines = list(converter)
+        self.assertTrue(any(line.startswith('JUMPIF ') and ' PRIVATE_BIT \\= 0' in line for line in lines))
+        self.assertIn('LET OUT7 := PRIVATE_BIT', lines)
+        self.assertIn('LET READY31 := PRIVATE_BIT', lines)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_supported_bit_casts_and_logical_metadata(self) -> None:
+        converter = self.converter()
+        with converter._QASM2QCXConverter__iterator_binding('value', self.bit_binding()):
+            for target, expected in (('int', qasm2qcx.ValueType.INT), ('uint', qasm2qcx.ValueType.INT),
+                                     ('float', qasm2qcx.ValueType.FLOAT), ('complex', qasm2qcx.ValueType.COMPLEX),
+                                     ('bool', qasm2qcx.ValueType.BOOL), ('bit', qasm2qcx.ValueType.BIT)):
+                expression = qasm2qcx.openqasm3.parser.parse(
+                    f'OPENQASM 3.0; {target} x = {target}(value);').statements[0].init_expression
+                self.assertEqual(converter._QASM2QCXConverter__loop_expression_info(expression), (expected, True))
+                result, result_type, kind = converter._QASM2QCXConverter__condition_operand(expression)
+                self.assertEqual(result_type, expected)
+                if kind == qasm2qcx.ValueKind.TEMPORARY:
+                    converter._QASM2QCXConverter__release_temporary_variable(result)
+            expression = qasm2qcx.openqasm3.parser.parse(
+                'OPENQASM 3.0; bool x = !value || value == true;').statements[0].init_expression
+            self.assertEqual(converter._QASM2QCXConverter__loop_expression_info(expression),
+                             (qasm2qcx.ValueType.BOOL, True))
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_typed_placeholder_validation_preserves_shadowing(self) -> None:
+        converter = self.converter()
+        expression = qasm2qcx.ast.Identifier('value')
+        with converter._QASM2QCXConverter__iterator_binding('value', self.bit_binding()):
+            self.assertEqual(converter._QASM2QCXConverter__loop_expression_info(expression, {'value': qasm2qcx.ValueType.INT}),
+                             (qasm2qcx.ValueType.INT, False))
+            types = converter._QASM2QCXConverter__loop_iterator_types('inner')
+            self.assertEqual(types, {'value': qasm2qcx.ValueType.BIT, 'inner': qasm2qcx.ValueType.INT})
+            statement = qasm2qcx.openqasm3.parser.parse('OPENQASM 3.0; for int i in {value} {}').statements[0]
+            with self.assertRaises(qasm2qcx.InvalidLoopRangeException):
+                converter._QASM2QCXConverter__validate_nested_loop_bounds(statement, types)
+            statement = qasm2qcx.openqasm3.parser.parse('OPENQASM 3.0; for int i in {int(value)} {}').statements[0]
+            converter._QASM2QCXConverter__validate_nested_loop_bounds(statement, types)
+
+    def test_integer_and_bit_bindings_shadow_and_restore(self) -> None:
+        converter = self.converter()
+        bind = converter._QASM2QCXConverter__iterator_binding
+        with bind('value', self.bit_binding()):
+            with bind('value', qasm2qcx._RuntimeIteratorBinding('PRIVATE_INT')):
+                self.assertEqual(RuntimeIteratorInfrastructureTests.identifier_value(converter, 'value')[1],
+                                 qasm2qcx.ValueType.INT)
+            self.assertEqual(RuntimeIteratorInfrastructureTests.identifier_value(converter, 'value')[1],
+                             qasm2qcx.ValueType.BIT)
+            with bind('value', 2):
+                self.assertEqual(RuntimeIteratorInfrastructureTests.identifier_value(converter, 'value'),
+                                 (2, qasm2qcx.ValueType.INT, qasm2qcx.ValueKind.LITERAL))
+        self.assertEqual(converter._QASM2QCXConverter__loop_bindings, [])
+
+    def test_bit_binding_rejects_indexed_use_writes_arithmetic_and_register_copy(self) -> None:
+        for source in ('value = 1;', 'value = measure q;', 'out = value[0];',
+                       'out = -value;', 'value += 1;', 'singleton = value;',
+                       'ready = value + 1;', 'ready = int(value[0]);'):
+            converter = self.converter()
+            statement = qasm2qcx.openqasm3.parser.parse('OPENQASM 3.0; ' + source).statements[0]
+            with converter._QASM2QCXConverter__iterator_binding('value', self.bit_binding()), \
+                    self.assertRaises(qasm2qcx.QASM2QCXError):
+                converter.visit(statement)
+
+    def test_bit_binding_is_not_a_constant(self) -> None:
+        converter = self.converter()
+        with converter._QASM2QCXConverter__iterator_binding('value', self.bit_binding()):
+            with self.assertRaises(qasm2qcx.NoConstantExpressionException):
+                converter._QASM2QCXConverter__constant_loop_integer(qasm2qcx.ast.Identifier('value'), 'start')
+
+    def test_register_size_cache_distinguishes_scalar_and_singleton(self) -> None:
+        program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3.0; const int N = 3; '
+            'bit scalar; bit[1] singleton; bit[N] flags;')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        self.assertEqual(converter._QASM2QCXConverter__bit_register_source_sizes, {'singleton': 1, 'flags': 3})
+        with converter._QASM2QCXConverter__iterator_binding('N', self.bit_binding()):
+            converter.visit(program)
+        self.assertIn('VAR FLAGS31 INT 3', list(converter))
+
+    def test_bit_size_evaluation_restores_state_on_success_and_failure(self) -> None:
+        converter = self.converter()
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        converter._QASM2QCXConverter__value = 17
+        converter._QASM2QCXConverter__evaluate_constant = False
+        fields = ('expression_kind', 'value', 'value_type', 'value_kind', 'evaluate_constant')
+        before = [getattr(converter, '_QASM2QCXConverter__' + field) for field in fields]
+        for size in ('2 + 1', '0', 'missing'):
+            declaration = qasm2qcx.openqasm3.parser.parse(f'OPENQASM 3.0; bit[{size}] flags;').statements[0]
+            if size == '2 + 1':
+                self.assertEqual(converter._QASM2QCXConverter__bit_type_size(declaration.type, 'flags'), 3)
+            else:
+                with self.assertRaises(qasm2qcx.QASM2QCXError):
+                    converter._QASM2QCXConverter__bit_type_size(declaration.type, 'flags')
+            self.assertEqual([getattr(converter, '_QASM2QCXConverter__' + field) for field in fields], before)
+
+    def test_bit_register_loop_lowering_is_still_unsupported_in_stage_one(self) -> None:
+        with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+            convert('OPENQASM 3.0; bit[2] flags = "01"; for bit value in flags {}')
+
+
 class RuntimeIteratorInfrastructureTests(unittest.TestCase):
     @staticmethod
     def converter():

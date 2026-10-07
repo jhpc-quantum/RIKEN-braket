@@ -169,6 +169,7 @@ class WrongConstantVariableException(QASM2QCXError):
 class _RuntimeIteratorBinding:
     # Unlike an unrolled iterator's integer value, this names live QCX storage.
     storage: str
+    value_type: ValueType = ValueType.INT
 
 
 @dataclasses.dataclass(frozen=True)
@@ -222,6 +223,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__source_identifiers: set[str] = set()
         self.__classical_source_types: dict[str, ast.QASMNode] = {}
         self.__integer_array_source_sizes: dict[str, int] = {}
+        self.__bit_register_source_sizes: dict[str, int] = {}
 
         self.__int_variable_name_size_map: dict[str, int] = {}
         self.__integer_array_names: set[str] = set()
@@ -395,10 +397,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                         raise NoConstantExpressionException
                     self.__value = binding.storage
                     self.__value_kind = ValueKind.LVALUE
+                    self.__value_type = binding.value_type
                 else:
                     self.__value = binding
                     self.__value_kind = ValueKind.LITERAL
-                self.__value_type = ValueType.INT
+                    self.__value_type = ValueType.INT
                 return
 
         is_user_constant = any(
@@ -873,6 +876,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             role: str = 'Bit operand'
             ) -> tuple[str, list[int], bool]:
         source_name = self.__operand_name(bit)
+        if role == 'Bit source' and isinstance(bit, ast.Identifier):
+            for scope in reversed(self.__loop_bindings):
+                if source_name in scope:
+                    binding = scope[source_name]
+                    if isinstance(binding, _RuntimeIteratorBinding) and binding.value_type == ValueType.BIT:
+                        return binding.storage, [0], False
+                    raise InvalidBitOperandException(f'{role} {source_name} is not a bit variable')
         variable_name = self.__capitalize_variable_name(source_name)
         if self.__type_of(variable_name) != ValueType.BIT:
             raise InvalidBitOperandException(
@@ -1211,7 +1221,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
         if (isinstance(expression, ast.Identifier)
                 and self.__value_type == ValueType.BIT
-                and self.__bit_variable_name_size_map[str(self.__value)] > 1):
+                and str(self.__value) in self.__sized_bit_variables):
             raise UnsupportedOpenQASMError(
                 'bit-register conditional operand')
         return self.__value, self.__value_type, self.__value_kind
@@ -1550,7 +1560,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         raise UnsupportedOpenQASMError('non-scalar loop operand')
 
     def __loop_expression_info(
-            self, expression: ast.Expression, iterators: set[str] | None = None
+            self, expression: ast.Expression, iterators: set[str] | dict[str, ValueType] | None = None
             ) -> tuple[ValueType, bool]:
         # Inspect types and dependency without evaluating values or emitting
         # instructions. Unknown names are errors, not a runtime fallback.
@@ -1573,14 +1583,17 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         raise UnsupportedOpenQASMError(f'loop expression {type(expression).__name__}')
 
     def __loop_identifier_info(
-            self, expression: ast.Identifier, iterators: set[str] | None
+            self, expression: ast.Identifier, iterators: set[str] | dict[str, ValueType] | None
             ) -> tuple[ValueType, bool]:
         name = expression.name
         if iterators is not None and name in iterators:
-            return ValueType.INT, False
+            value_type = iterators[name] if isinstance(iterators, dict) else ValueType.INT
+            return value_type, value_type == ValueType.BIT
         for scope in reversed(self.__loop_bindings):
             if name in scope:
-                return ValueType.INT, isinstance(scope[name], _RuntimeIteratorBinding)
+                binding = scope[name]
+                return ((binding.value_type, True) if isinstance(binding, _RuntimeIteratorBinding)
+                        else (ValueType.INT, False))
         for constants, value_type in (
                 (self.__const_int_variable_name_values_map, ValueType.INT),
                 (self.__const_float_variable_name_values_map, ValueType.FLOAT),
@@ -1598,7 +1611,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         return self.__source_value_type(variable_type), True
 
     def __loop_cast_info(
-            self, expression: ast.Cast, iterators: set[str] | None
+            self, expression: ast.Cast, iterators: set[str] | dict[str, ValueType] | None
             ) -> tuple[ValueType, bool]:
         operand_type, runtime = self.__loop_expression_info(expression.argument, iterators)
         target_type = self.__source_value_type(expression.type)
@@ -1615,7 +1628,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         return target_type, runtime
 
     def __loop_unary_info(
-            self, expression: ast.UnaryExpression, iterators: set[str] | None
+            self, expression: ast.UnaryExpression, iterators: set[str] | dict[str, ValueType] | None
             ) -> tuple[ValueType, bool]:
         value_type, runtime = self.__loop_expression_info(expression.expression, iterators)
         if expression.op.name == '!':
@@ -1628,7 +1641,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         return value_type, runtime
 
     def __loop_binary_info(
-            self, expression: ast.BinaryExpression, iterators: set[str] | None
+            self, expression: ast.BinaryExpression, iterators: set[str] | dict[str, ValueType] | None
             ) -> tuple[ValueType, bool]:
         lhs_type, lhs_runtime = self.__loop_expression_info(expression.lhs, iterators)
         rhs_type, rhs_runtime = self.__loop_expression_info(expression.rhs, iterators)
@@ -1649,7 +1662,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         return result_type, runtime
 
     def __loop_index_info(
-            self, expression: ast.IndexExpression, iterators: set[str] | None
+            self, expression: ast.IndexExpression, iterators: set[str] | dict[str, ValueType] | None
             ) -> tuple[ValueType, bool]:
         name = expression.collection.name
         if ((iterators is not None and name in iterators)
@@ -1663,7 +1676,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         return ValueType.BIT, True
 
     def __set_has_runtime_elements(
-            self, source: ast.DiscreteSet, iterators: set[str] | None = None
+            self, source: ast.DiscreteSet, iterators: set[str] | dict[str, ValueType] | None = None
             ) -> bool:
         # Inspect every element, including those after the first runtime
         # dependency. This never evaluates arithmetic or emits instructions.
@@ -1772,11 +1785,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                         names.update(self.__loop_bound_names(element))
         return names
 
-    def __validate_nested_loop_bounds(self, statement: ast.ForInLoop, iterators: set[str]) -> None:
+    def __validate_nested_loop_bounds(
+            self, statement: ast.ForInLoop, iterators: set[str] | dict[str, ValueType]) -> None:
         # Outer iterator values may not exist for an empty outer loop. Validate
         # names and independent iteration values now; defer value-dependent checks until
         # an actual iteration, rather than fabricating an outer value.
         bounds = statement.set_declaration
+        iterator_names = set(iterators)
         if isinstance(bounds, ast.Identifier):
             self.__array_loop_info(bounds, iterators)
             return
@@ -1795,7 +1810,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 continue
             names = self.__loop_bound_names(expression)
             allowed_runtime = set(self.__classical_source_types)
-            for name in names - iterators - constants - {'pi', 'tau', 'euler'} - allowed_runtime:
+            for name in names - iterator_names - constants - {'pi', 'tau', 'euler'} - allowed_runtime:
                 raise NoVariableNameException(name)
             value_type, runtime = self.__loop_expression_info(expression, iterators)
             if value_type != ValueType.INT:
@@ -1807,16 +1822,28 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 runtime_range |= not is_set
                 runtime_step |= part == 'step'
                 continue
-            if not names & iterators:
+            if not names & iterator_names:
                 value = self.__constant_loop_integer(expression, part, kind='set' if is_set else 'range')
                 if part == 'step' and value == 0:
                     raise InvalidLoopRangeException('For-loop range step cannot be zero')
         if (runtime_range and not runtime_step
-                and (bounds.step is None or not self.__loop_bound_names(bounds.step) & iterators)):
+                and (bounds.step is None or not self.__loop_bound_names(bounds.step) & iterator_names)):
             self.__validated_runtime_range_step(bounds)
 
-    def __validate_loop_body(self, statements: list[ast.Statement], iterators: set[str]) -> None:
+    def __loop_iterator_types(
+            self, name: str | None = None, value_type: ValueType = ValueType.INT) -> dict[str, ValueType]:
+        types = {source: binding.value_type if isinstance(binding, _RuntimeIteratorBinding) else ValueType.INT
+                 for scope in self.__loop_bindings for source, binding in scope.items()}
+        if name is not None:
+            types[name] = value_type
+        return types
+
+    def __validate_loop_body(
+            self, statements: list[ast.Statement], iterators: set[str] | dict[str, ValueType]) -> None:
         # Validate without executing the body, including zero-iteration loops.
+        if isinstance(iterators, set):
+            active_types = self.__loop_iterator_types()
+            iterators = {name: active_types.get(name, ValueType.INT) for name in iterators}
         supported = (ast.QuantumGate, ast.QuantumPhase,
                      ast.QuantumMeasurementStatement, ast.QuantumReset,
                      ast.QuantumBarrier, ast.ClassicalAssignment,
@@ -1857,7 +1884,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if isinstance(child, ast.ForInLoop):
                 self.__validate_loop_header(child)
                 self.__validate_nested_loop_bounds(child, iterators)
-                self.__validate_loop_body(child.block, iterators | {child.identifier.name})
+                self.__validate_loop_body(child.block, iterators | {
+                    child.identifier.name: self.__source_value_type(child.type)})
             if isinstance(child, ast.WhileLoop):
                 self.__validate_loop_syntax(child.while_condition)
                 self.__validate_loop_body(child.block, iterators)
@@ -1915,9 +1943,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__visit_runtime_for(statement, step)
             return
         values = self.__loop_values(statement)
-        self.__validate_loop_body(statement.block,
-                                  {name for scope in self.__loop_bindings for name in scope}
-                                  | {statement.identifier.name})
+        self.__validate_loop_body(statement.block, self.__loop_iterator_types(statement.identifier.name))
         self.__validate_loop_syntax(statement)
         count = self.__loop_value_count(values)
         if count > self.MAX_LOOP_ITERATIONS - self.__loop_iterations:
@@ -1949,7 +1975,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__hoist_temporary_declarations(previous_temporaries)
             self.__check_loop_output_limit()
 
-    def __array_loop_info(self, source: ast.Identifier, iterators: set[str] | None = None) -> tuple[str, int]:
+    def __array_loop_info(
+            self, source: ast.Identifier, iterators: set[str] | dict[str, ValueType] | None = None) -> tuple[str, int]:
         name = source.name
         if ((iterators is not None and name in iterators)
                 or any(name in scope for scope in self.__loop_bindings)):
@@ -1966,9 +1993,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __visit_array_for(self, statement: ast.ForInLoop) -> None:
         variable_name, size = self.__array_loop_info(statement.set_declaration)
-        self.__validate_loop_body(statement.block,
-                                  {name for scope in self.__loop_bindings for name in scope}
-                                  | {statement.identifier.name})
+        self.__validate_loop_body(statement.block, self.__loop_iterator_types(statement.identifier.name))
         self.__validate_loop_syntax(statement)
         loop_index = self.__loop_index
         self.__loop_index += 1
@@ -2004,9 +2029,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__release_temporary_variable(iterator)
 
     def __visit_runtime_set(self, statement: ast.ForInLoop) -> None:
-        self.__validate_loop_body(statement.block,
-                                  {name for scope in self.__loop_bindings for name in scope}
-                                  | {statement.identifier.name})
+        self.__validate_loop_body(statement.block, self.__loop_iterator_types(statement.identifier.name))
         self.__validate_loop_syntax(statement)
         count = len(statement.set_declaration.values)
         if count > self.MAX_LOOP_ITERATIONS - self.__loop_iterations:
@@ -2059,9 +2082,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__release_temporary_variable(iterator)
 
     def __visit_runtime_for(self, statement: ast.ForInLoop, step: int | ast.Expression) -> None:
-        self.__validate_loop_body(statement.block,
-                                  {name for scope in self.__loop_bindings for name in scope}
-                                  | {statement.identifier.name})
+        self.__validate_loop_body(statement.block, self.__loop_iterator_types(statement.identifier.name))
         self.__validate_loop_syntax(statement)
         loop_index = self.__loop_index
         self.__loop_index += 1
@@ -2532,18 +2553,23 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __bit_type_size(self, variable_type: ast.BitType, variable_name: str) -> int:
         if variable_type.size is None:
             return 1
-
-        self.__expression_kind = ExpressionKind.CONST_ARITHMETIC
-        self.visit(variable_type.size)
-        self.__expression_kind = None
-        if (self.__value_kind != ValueKind.LITERAL
-                or self.__value_type != ValueType.INT):
-            raise InvalidDeclarationException(
-                f'Bit variable {variable_name} must have a constant integer size')
-        if self.__value <= 0:
-            raise InvalidDeclarationException(
-                f'Bit variable {variable_name} must have a positive size')
-        return int(self.__value)
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        try:
+            self.__expression_kind = ExpressionKind.CONST_ARITHMETIC
+            self.__evaluate_constant = True
+            self.visit(variable_type.size)
+            if (self.__value_kind != ValueKind.LITERAL
+                    or self.__value_type != ValueType.INT):
+                raise InvalidDeclarationException(
+                    f'Bit variable {variable_name} must have a constant integer size')
+            if self.__value <= 0:
+                raise InvalidDeclarationException(
+                    f'Bit variable {variable_name} must have a positive size')
+            return int(self.__value)
+        finally:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
 
     def __emit_bit_expression_assignment(
             self, target: ast.Identifier | ast.IndexedIdentifier,
@@ -2601,7 +2627,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise InvalidBitOperandException(
                     f'Bit source has size {len(source_indices)}, but target has '
                     f'size {len(target_names)}')
-            source_size = self.__bit_variable_name_size_map[source_name]
+            source_size = self.__bit_variable_name_size_map.get(source_name, 1)
             values = [
                 self.__qcx_bit_name(source_name, source_size, index)
                 for index in source_indices
@@ -2749,6 +2775,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 # can shadow constants referenced by the type expression.
                 self.__integer_array_source_sizes[statement.identifier.name] = self.__integer_array_size(
                     statement.type, statement.identifier.name)
+            if isinstance(statement.type, ast.BitType) and statement.type.size is not None:
+                # Keep register identity and size in declaration scope, just
+                # as for integer arrays; loop iterators may shadow size constants.
+                self.__bit_register_source_sizes[statement.identifier.name] = self.__bit_type_size(
+                    statement.type, statement.identifier.name)
             self.__reserved_variable_names.add(
                 self.__capitalize_variable_name(statement.identifier.name))
             return
@@ -2766,7 +2797,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UnsupportedOpenQASMError(
                 f'classical type {type(variable_type).__name__}')
         num_elements = (
-            self.__bit_type_size(variable_type, statement.identifier.name)
+            self.__bit_register_source_sizes.get(statement.identifier.name, 1)
             if isinstance(variable_type, ast.BitType) else 1)
         self.__declare_classical_variable(
             variable_type, variable_name, num_elements)
