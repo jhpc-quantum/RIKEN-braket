@@ -680,6 +680,70 @@ class BitRegisterLoopLoweringTests(unittest.TestCase):
         self.assertEqual(converter._QASM2QCXConverter__loop_contexts, [])
 
 
+class BitRegisterLoopRegressionTests(unittest.TestCase):
+    def test_codegen_size_is_independent_of_register_length(self) -> None:
+        template = ('OPENQASM 3.0; bit[{size}] flags; int total = 0; '
+                    'for bit value in flags {{ total += int(value); }}')
+        lengths = [len(convert(template.format(size=size)))
+                   for size in (1, 3, qasm2qcx.QASM2QCXConverter.QCX_INT_MAX)]
+        self.assertEqual(lengths, [lengths[0]] * 3)
+
+    def test_skipped_nested_loops_preserve_bit_iterator_type_validation(self) -> None:
+        prefix = 'OPENQASM 3.0; bit[2] flags = "01"; '
+        for bounds in ('{value}', '[0:value]', '[0:value:2]'):
+            source = 'for int k in [1:0] { for bit value in flags { for int j in ' + bounds + ' {} } }'
+            with self.subTest(bounds=bounds), self.assertRaises(qasm2qcx.InvalidLoopRangeException):
+                convert(prefix + source)
+        convert(prefix + 'for int k in [1:0] { for bit value in flags { for int j in {int(value)} {} } }')
+
+    def test_mixed_type_shadowing_and_jumps_are_valid(self) -> None:
+        lines = convert('OPENQASM 3.0; bit[2] flags = "01"; int total = 0; '
+            'for bit value in flags { for int value in {2, 3} { total += value; } total += int(value); } '
+            'for int value in [0:1] { for bit value in flags { total += int(value); } total += value; }')
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+        labels = [line for line in lines if line.startswith('@')]
+        self.assertEqual(len(labels), len(set(labels)))
+
+    def test_reserved_source_names_and_nested_temporaries_are_not_reused(self) -> None:
+        lines = convert('OPENQASM 3.0; bit[2] QASM2QCX_INT_ = "01"; int total = 0; '
+            'for bit value in QASM2QCX_INT_ { total += int(value) % 2; '
+            'for bit other in QASM2QCX_INT_ { total += int(other && value); } }')
+        self.assertIn('LET QASM2QCX_INT_1 := QASM2QCX_INT_0:QASM2QCX_INT_2', lines)
+        body = lines.index('@QASM2QCX_LOOP_0_BODY')
+        end = lines.index('@QASM2QCX_LOOP_0_NEXT')
+        targets = [line.split()[1] for line in lines[body + 2:end] if line.startswith('LET ')]
+        self.assertNotIn('QASM2QCX_INT_1', targets)
+        self.assertNotIn('QASM2QCX_INT_2', targets)
+        self.assertTrue(all(position < body for position, line in enumerate(lines)
+                            if line.startswith('VAR QASM2QCX_')))
+
+    def test_failed_body_releases_loop_storage_and_context(self) -> None:
+        program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3.0; bit[2] flags = "01"; int total = 0; '
+            'for bit value in flags { total = missing; }')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        with self.assertRaises(qasm2qcx.NoVariableNameException):
+            converter.visit(program)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertEqual(converter._QASM2QCXConverter__loop_bindings, [])
+        self.assertEqual(converter._QASM2QCXConverter__loop_contexts, [])
+
+    def test_skipped_paths_still_reject_iterator_writes_and_invalid_sources(self) -> None:
+        prefix = 'OPENQASM 3.0; bit[2] flags = "01"; qubit q; '
+        for body in ('continue; value = 0;', 'break; value = measure q;',
+                     'if (false) { value = true; }', 'while (false) { for bit v in value {} }'):
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                convert(prefix + 'for bit value in flags { ' + body + ' }')
+
+    def test_runtime_count_does_not_charge_expansion_budget_but_nested_sets_do(self) -> None:
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_LOOP_ITERATIONS', 0):
+            convert('OPENQASM 3.0; bit[2] flags; for bit value in flags {}')
+            with self.assertRaises(qasm2qcx.InvalidLoopRangeException):
+                convert('OPENQASM 3.0; bit[2] flags; for bit value in flags { for int i in {int(value)} {} }')
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_LOOP_OUTPUT_LINES', 10):
+            with self.assertRaises(qasm2qcx.InvalidLoopRangeException):
+                convert('OPENQASM 3.0; bit[2] flags; for int i in {0} { for bit value in flags {} }')
+
+
 class RuntimeIteratorInfrastructureTests(unittest.TestCase):
     @staticmethod
     def converter():
