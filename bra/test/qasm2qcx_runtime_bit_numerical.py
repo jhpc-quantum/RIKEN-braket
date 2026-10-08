@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Execute runtime-indexed bit-register reads with bra."""
+"""Execute runtime-indexed bit-register reads, writes, and measurements with bra."""
 
 import argparse
 import pathlib
@@ -45,7 +45,48 @@ def main() -> None:
         int total = int(ready);''', ('TOTAL31',), ['1'])
     check_error(bra, 'bit[2] flags; int zero = 0; bit out = flags[1 / zero];',
                 'integer division by zero in LET')
-    print('Runtime bit-register read numerical tests passed')
+
+    for size in (1, 2, 3):
+        outputs = (('FLAGS31',) if size == 1
+                   else tuple(f'FLAGS31:{index}' for index in range(size)))
+        for index in range(-size, size):
+            for value in (0, 1):
+                expected = [0] * size
+                expected[index] = value
+                for rhs in (str(value), 'true' if value else 'false'):
+                    check_program(bra, f'bit[{size}] flags; int i = {index}; flags[i] = {rhs};',
+                                  (*outputs, 'I1'), [*map(str, expected), str(index)])
+                for measurement in ('flags[i] = measure q;', 'measure q -> flags[i];'):
+                    check_program(bra, f'''include "stdgates.inc"; qubit q;
+                        bit[{size}] flags; int i = {index}; {'x q;' if value else ''}
+                        {measurement}''', (*outputs, 'I1'), [*map(str, expected), str(index)])
+        for index in (-size - 1, size):
+            for statement in ('flags[i] = true;', 'flags[i] = measure q;',
+                              'measure q -> flags[i];'):
+                check_error(bra, f'qubit q; bit[{size}] flags; int i = {index}; {statement}',
+                            'assertion failed in ASSERT')
+        # Destination checks precede RHS errors, not just the final store.
+        check_error(bra, f'''bit[{size}] flags; int i = {size}; int zero = 0;
+            flags[i] = bool(1 / zero);''', 'assertion failed in ASSERT')
+
+    check_program(bra, '''bit[3] flags = "101"; int i = 0;
+        flags[i + 1] = flags[i];''', ('FLAGS31:0', 'FLAGS31:1', 'FLAGS31:2'), ['1', '1', '1'])
+    check_program(bra, '''bit[3] flags = "001"; int i = 0;
+        flags[int(flags[i])] = flags[i];''', ('FLAGS31:0', 'FLAGS31:1', 'FLAGS31:2'), ['1', '1', '0'])
+    check_program(bra, '''bit[2] flags = "01"; int i = 0; int zero = 0;
+        flags[i] = true || flags[1 / zero]; flags[i + 1] = !flags[i];''',
+                  ('FLAGS31:0', 'FLAGS31:1'), ['1', '0'])
+    check_program(bra, '''bit[2] flags = "01"; array[int, 2] a = {0, 1};
+        for int i in a { flags[i] = !flags[i]; }
+        for bit value in flags { flags[int(value)] = value; }''',
+                  ('FLAGS31:0', 'FLAGS31:1'), ['0', '1'])
+    check_program(bra, '''include "stdgates.inc"; qubit q; x q;
+        bit[2] flags = "01"; int i = 0;
+        flags[int(flags[i])] = measure q;''', ('FLAGS31:0', 'FLAGS31:1'), ['1', '1'])
+    check_program(bra, '''qubit q; bit[2] flags = "01"; int bad = 2;
+        if (false) { flags[bad] = measure q; }
+        while (false) { flags[bad] = true; }''', ('FLAGS31:0', 'FLAGS31:1'), ['1', '0'])
+    print('Runtime bit-register indexing numerical tests passed')
 
 
 if __name__ == '__main__':

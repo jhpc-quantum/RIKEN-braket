@@ -906,33 +906,50 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __qcx_bit_name(variable_name: str, size: int, index: int) -> str:
         return variable_name if size == 1 else f'{variable_name}:{index}'
 
+    @contextlib.contextmanager
+    def __bit_target(
+            self, target: ast.Identifier | ast.IndexedIdentifier, *,
+            role: str = 'Bit operand') -> Iterator[tuple[list[str], bool]]:
+        if isinstance(target, ast.IndexedIdentifier) and len(target.indices) == 1:
+            source_name = target.name.name
+            variable_name = self.__capitalize_variable_name(source_name)
+            if self.__type_of(variable_name) != ValueType.BIT:
+                raise InvalidBitOperandException(f'{role} {source_name} is not a bit variable')
+            size = self.__bit_variable_name_size_map[variable_name]
+            access = self.__runtime_bit_access(target.indices[0], variable_name, size)
+            if access is not None:
+                operand, index = access
+                try:
+                    # Reserve the destination across RHS evaluation or measurement.
+                    yield [operand], False
+                finally:
+                    self.__release_temporary_variable(index)
+                return
+        variable_name, indices, is_register = self.__bit_operand(target, role=role)
+        size = self.__bit_variable_name_size_map[variable_name]
+        yield [self.__qcx_bit_name(variable_name, size, index) for index in indices], is_register
+
     def __emit_measurement(
             self, measurement: ast.QuantumMeasurement,
             target: ast.Identifier | ast.IndexedIdentifier | None) -> None:
         qubit_indices, qubit_is_register = self.__flattened_qubit_operand(
             measurement.qubit)
 
-        target_names: list[str] | None = None
-        if target is not None:
-            variable_name, bit_indices, target_is_register = self.__bit_operand(
-                target, role='Measurement target')
-            if qubit_is_register != target_is_register:
+        target_context = (self.__bit_target(target, role='Measurement target')
+                          if target is not None else contextlib.nullcontext((None, False)))
+        with target_context as (target_names, target_is_register):
+            if target_names is not None and qubit_is_register != target_is_register:
                 raise InvalidBitOperandException(
                     'Measurement operands must both be scalars or both be registers')
-            if len(qubit_indices) != len(bit_indices):
+            if target_names is not None and len(qubit_indices) != len(target_names):
                 raise MeasurementSizeMismatchException(
-                    len(qubit_indices), len(bit_indices))
-            size = self.__bit_variable_name_size_map[variable_name]
-            target_names = [
-                self.__qcx_bit_name(variable_name, size, index)
-                for index in bit_indices
-            ]
+                    len(qubit_indices), len(target_names))
 
-        for index, qubit_index in enumerate(qubit_indices):
-            self.__qcx_lines.append(f'M {qubit_index}')
-            if target_names is not None:
-                self.__qcx_lines.append(
-                    f'LET {target_names[index]} := :OUTCOME')
+            for index, qubit_index in enumerate(qubit_indices):
+                self.__qcx_lines.append(f'M {qubit_index}')
+                if target_names is not None:
+                    self.__qcx_lines.append(
+                        f'LET {target_names[index]} := :OUTCOME')
 
     @staticmethod
     def __angle_operand(
@@ -2595,14 +2612,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __emit_bit_expression_assignment(
             self, target: ast.Identifier | ast.IndexedIdentifier,
             expression: ast.Expression) -> None:
-        variable_name, target_indices, target_is_register = self.__bit_operand(
-            target)
-        target_size = self.__bit_variable_name_size_map[variable_name]
-        target_names = [
-            self.__qcx_bit_name(variable_name, target_size, index)
-            for index in target_indices
-        ]
+        with self.__bit_target(target) as (target_names, target_is_register):
+            self.__emit_bit_value_assignment(target_names, target_is_register, expression)
 
+    def __emit_bit_value_assignment(
+            self, target_names: list[str], target_is_register: bool,
+            expression: ast.Expression) -> None:
         boolean_identifier = isinstance(expression, ast.Identifier) and (
             self.__capitalize_variable_name(expression.name) in self.__bool_variable_names
             or expression.name in self.__const_bool_variable_values_map)
@@ -2698,7 +2713,21 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __runtime_bit_read(
             self, expression: ast.IndexExpression, variable_name: str, size: int
             ) -> tuple[str, ValueType, ValueKind] | None:
-        selectors = expression.index
+        access = self.__runtime_bit_access(expression.index, variable_name, size)
+        if access is None:
+            return None
+        operand, index = access
+        try:
+            result = self.__add_new_temporary_variable(ValueType.INT)
+            self.__qcx_lines.append(f'LET {result} := {operand}')
+            return result, ValueType.BIT, ValueKind.TEMPORARY
+        finally:
+            self.__release_temporary_variable(index)
+
+    def __runtime_bit_access(
+            self, selectors: list[ast.Expression] | ast.DiscreteSet,
+            variable_name: str, size: int
+            ) -> tuple[str, str] | None:
         # Keep static selections (including slices) on their existing path.
         if (not isinstance(selectors, list) or len(selectors) != 1
                 or not isinstance(selectors[0], ast.Expression)
@@ -2715,14 +2744,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise InvalidBitOperandException(
                 f'Runtime-indexed bit register size must be in [1, {self.QCX_INT_MAX}]')
         index = self.__capture_array_index(selectors[0], size)
-        try:
-            # QCX stores bit[1] as a scalar, but its index still needs checking.
-            operand = variable_name if size == 1 else f'{variable_name}:{index}'
-            result = self.__add_new_temporary_variable(ValueType.INT)
-            self.__qcx_lines.append(f'LET {result} := {operand}')
-            return result, ValueType.BIT, ValueKind.TEMPORARY
-        finally:
-            self.__release_temporary_variable(index)
+        # QCX stores bit[1] as a scalar, but its index still needs checking.
+        return (variable_name if size == 1 else f'{variable_name}:{index}'), index
 
     def __integer_array_access(
             self, expression: ast.IndexExpression | ast.IndexedIdentifier) -> tuple[str, str | None]:
