@@ -28,6 +28,8 @@ The converter currently covers:
 - equal-sized register-selection gate broadcasting;
 - scalar `int`, `uint`, `float`, and `complex` arithmetic;
 - integer remainder expressions and compound assignments using `%` and `%=`;
+- scalar integer and bit bitwise expressions (`&`, `|`, `^`, `~`) and
+  compound assignments (`&=`, `|=`, `^=`);
 - scalar constants, variables, assignments, and numeric casts;
 - fixed-size, one-dimensional `int` arrays with static and runtime element
   reads and writes;
@@ -103,6 +105,83 @@ Non-integer remainder operands are
 rejected unless explicitly cast to an integer type first. Indexed
 integer-array elements also support `%` and `%=`.
 
+### Scalar bitwise operators
+
+The supported subset provides `&`, `|`, `^`, and unary `~` for scalar `int`,
+INT-backed `uint`, and scalar bit expressions. Binary operands must either
+both have integer type or both have scalar bit type. Integer results retain
+integer type; bit results retain scalar bit type and remain zero or one.
+Mixing bits and integers requires an explicit cast. Boolean operands require
+an explicit `bit(...)` or integer cast; Boolean variables are not bitwise
+assignment destinations. Floating-point and complex operands require a
+supported explicit integer cast. Whole registers and arrays are not scalar
+operands, including singleton registers.
+
+```qasm
+OPENQASM 3.0;
+const int MASK = 7 & 3;
+int a = -3;
+uint b = 7;
+int c = ~(a & b) | (a ^ b);
+a &= MASK;
+b ^= a;
+// c is -6; a is 1; b is 6.
+```
+
+Integer operations use the backend's native signed, two's-complement `INT`
+representation, including negative values. Literal integer operands, including
+folded constant expressions, must fit the host-derived QCX `INT` range. Integer
+complement flips the native-width bits (`~0` is `-1`); declared `int[n]` and
+`uint[n]` widths remain unenforced. In particular, INT-backed `uint` complement
+may produce a negative value rather than an OpenQASM unsigned-width result.
+Generated programs assume a backend with the same integer representation as
+the converter host. General arithmetic and cast overflow checks remain
+separate work.
+
+Bit complement flips only the single bit: `~bit(false)` is one and
+`~bit(true)` is zero. Scalar bits and individually indexed bit-register
+elements can be used in these expressions, directly in conditions and logical
+expressions, or assigned to scalar bits and Booleans. An integer bitwise result
+still requires a comparison or `bool(...)` cast to become a condition.
+Supported numeric casts allow bitwise results in arithmetic and gate parameters.
+
+```qasm
+OPENQASM 3.0;
+bit[3] flags = "101";
+array[int, 3] positions = {0, 1, 2};
+int i = -1;
+bit selected = ~flags[i];
+flags[i - 1] |= flags[i];
+flags[positions[0]] ^= bit(true);
+bool ready = flags[i] & ~flags[0];
+// selected is 0; flags is "110"; ready is true; i is still -1.
+```
+
+Compound `&=`, `|=`, and `^=` assignments accept scalar `int`, INT-backed
+`uint`, and scalar bit targets, including static and runtime-indexed integer-array
+and bit-register elements. Their RHS must match the target's integer or bit
+type. For example, `flag ^= bit(true)` is accepted, but `flag ^= 1` requires
+that explicit bit conversion. Complete registers, even `bit[1]`, and range or
+discrete-set selections are not compound-assignment targets. Active loop
+iterators remain read-only.
+
+Bitwise binary operands evaluate left to right and are eager: `&` and `|`
+do not short-circuit like `&&` and `||`. Only the surrounding logical
+operators, branches, and loop transfers can skip their evaluation. Literal
+expressions fold during conversion; runtime expressions use private storage
+and the QCX `LET &=`, `|=`, and `^=` operators. Integer complement uses XOR
+with `-1`, while bit complement uses XOR with `1`.
+
+Compound assignments evaluate the complete RHS before modifying the target.
+Runtime destination indices are captured and bounds-checked before the RHS
+and remain reserved until the write; they are not reevaluated. Separate RHS
+accesses retain their own captures and checks. Self-references and overlapping
+accesses read the original target throughout RHS evaluation. Types, names, and
+supported index syntax are validated even in empty loop bodies, without
+evaluating value-dependent bounds or arithmetic there. Shift operators,
+whole-register or whole-array bitwise operations, aliases, and general
+fixed-width integer semantics remain unsupported.
+
 ### One-dimensional integer arrays
 
 The converter supports top-level `array[int, N]` declarations, including sized
@@ -134,7 +213,8 @@ Individual elements can appear wherever a supported scalar integer expression
 is accepted, including arithmetic, comparisons, casts, gate parameters, and
 range bounds, steps, or set elements. Element assignments support `=`, `+=`,
 `-=`, `*=`, `/=`, and `%=` with the converter's existing integer assignment
-conversions. `%=` preserves the original target while evaluating its operands.
+conversions, and `&=`, `|=`, and `^=` with integer RHS operands.
+These operations preserve the original target while evaluating the RHS.
 
 An element index must be an integer expression. Previously declared constants,
 constant-loop iterator values, runtime variables, and runtime iterators are
@@ -222,9 +302,11 @@ bool ready = flags[index] && flags[index - 1];
 An indexed read retains scalar bit semantics, not integer semantics. It can
 appear directly in conditions and logical expressions, or be assigned to a
 scalar bit or Boolean. Use an explicit numeric cast for arithmetic or gate
-parameters. Assignments retain the existing scalar bit rules: bit and Boolean
+parameters. Plain assignments retain the existing scalar bit rules: bit and Boolean
 values are accepted, as are integer literals `0` and `1`; general numeric
-values, whole registers, bit strings, and compound bit assignments are rejected.
+values, whole registers, and bit strings are rejected. Compound `&=`, `|=`, and
+`^=` assignments require a scalar bit RHS as described above; other compound
+bit assignments remain unsupported.
 
 Each executed access evaluates its index once, copies it into private QCX
 `INT` storage, and checks the original value against `[-N, N - 1]` using
@@ -269,7 +351,7 @@ and short-circuit operands skip these runtime operations. Names, types, and
 syntax are still validated during conversion, including on unreachable paths.
 Static indices retain their existing conversion-time checks and QCX output.
 Dynamic ranges and discrete sets, multidimensional indexing, aliases, and
-bitwise operations remain unsupported.
+whole-register bitwise operations remain unsupported.
 
 ### Boolean values and conversions
 
@@ -470,8 +552,9 @@ The final values are `ready = false`, `proceed = true`, and `outcomes = "10"`.
 
 Boolean expressions can also be assigned to scalar bits, indexed bit elements,
 and numeric variables using the supported conversions described above.
-Boolean gate parameters require an explicit numeric cast. Bitwise operators
-such as `&`, `|`, `^`, and `~` are not yet supported.
+Boolean gate parameters require an explicit numeric cast. Scalar bit bitwise
+operators are supported as described above; Boolean bitwise operands require
+an explicit cast.
 Direct integer, floating-point, or complex conditions are also
 rejected; use a supported explicit comparison instead for integer and
 floating-point values. Variables used by a branch must be declared outside it;
@@ -1127,7 +1210,8 @@ The current prototype does not reliably support:
   whole-register casts, complex-to-Boolean casts,
   Boolean arithmetic, mixed Boolean/numeric comparisons, or block-local
   declarations;
-- bitwise operations or classical functions; or
+- shift operators, whole-register or whole-array bitwise operations, direct
+  Boolean bitwise operations, or classical functions; or
 - arithmetic operators other than `+`, `-`, `*`, `/`, and integer `%`.
 
 The characterization tests in `bra/test/test_qasm2qcx.py` define the working
@@ -1138,6 +1222,23 @@ self-referencing assignments, short-circuit evaluation, and temporary reuse.
 It also executes the complete Boolean example above. These tests cover the
 converter's supported Boolean subset; the limitations above remain explicit
 future work.
+
+`bra/test/integer_bitwise_numerical.py` checks bra's three integer bitwise
+assignment operators against Python results, including negative values and
+native endpoints, indexed operands, explicit casts, skipped instructions,
+invalid types, and malformed syntax. `bra/test/integer_bitwise_state.cpp`, linked
+with non-MPI bra objects excluding `bra.o`, checks instruction rendering,
+diagnostics, failed-write preservation, and unchanged pending jump state in
+release builds.
+
+`bra/test/qasm2qcx_bitwise_numerical.py` compares constant-folded and runtime
+integer results, checks scalar bit truth tables and complement masks, and
+exercises both expressions and compound assignments. Coverage includes
+self-references, overlapping indexed operands, singleton storage, index capture,
+native endpoints, casts, precedence, left-to-right eager evaluation,
+short-circuiting, loop nesting, gate parameters, and runtime failures. Unit tests
+additionally cover typing, temporary cleanup, unsupported selections, empty-loop
+validation, and read-only iterators.
 
 `bra/test/qasm2qcx_integer_remainder_numerical.py` verifies runtime remainder
 for signed operands, nested expressions, operand preservation, short-circuiting,
@@ -1234,6 +1335,7 @@ ulimit -c 0
 python3 bra/test/jumpif_numerical.py --bra bra/bin/bra
 python3 bra/test/assert_numerical.py --bra bra/bin/bra
 python3 bra/test/integer_division_numerical.py --bra bra/bin/bra
+python3 bra/test/integer_bitwise_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_if_else_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_integer_remainder_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_for_loop_numerical.py --bra bra/bin/bra
@@ -1244,4 +1346,5 @@ python3 bra/test/qasm2qcx_runtime_set_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_integer_array_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_bit_register_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_bit_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_bitwise_numerical.py --bra bra/bin/bra
 ```

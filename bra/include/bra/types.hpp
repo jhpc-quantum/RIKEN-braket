@@ -3,6 +3,7 @@
 
 # include <cstdint>
 # include <complex>
+# include <limits>
 # include <vector>
 
 # include <ket/qubit.hpp>
@@ -39,6 +40,10 @@ namespace bra
 # endif // BRA_REAL_TYPE
   using complex_type = std::complex<real_type>;
   using int_type = int;
+  static_assert(
+    std::numeric_limits<int_type>::min() == -std::numeric_limits<int_type>::max() - 1
+      and ~int_type{0} == int_type{-1},
+    "bra INT bitwise operations require two's-complement signed integers");
 
   using data_type = std::vector<complex_type>;
 # ifndef BRA_NO_MPI

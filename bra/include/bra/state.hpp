@@ -49,7 +49,10 @@ namespace bra
   { real = 0, complex_ = 1, integer = 2, pauli_string_space = 3 };
 
   enum class assign_operation_type : int
-  { assign = 0, plus_assign = 1, minus_assign = 2, multiplies_assign = 3, divides_assign = 4 };
+  {
+    assign = 0, plus_assign = 1, minus_assign = 2, multiplies_assign = 3, divides_assign = 4,
+    bit_and_assign = 5, bit_or_assign = 6, bit_xor_assign = 7
+  };
 
   enum class compare_operation_type : int
   { equal_to = 0, not_equal_to = 1, greater = 2, less = 3, greater_equal = 4, less_equal = 5 };

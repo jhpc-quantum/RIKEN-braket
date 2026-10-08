@@ -361,7 +361,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __add_new_temporary_variable(self, value_type: ValueType) -> str:
         match value_type:
-            case ValueType.INT | ValueType.BOOL:
+            case ValueType.INT | ValueType.BOOL | ValueType.BIT:
                 type_str = 'INT'
             case ValueType.FLOAT:
                 type_str = 'REAL'
@@ -468,6 +468,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if expression.op == ast.UnaryOperator['!']:
             self.__visit_boolean_expression(expression)
             return
+        if expression.op == ast.UnaryOperator['~']:
+            self.__visit_bitwise_complement(expression.expression)
+            return
         self.visit(expression.expression)
         if self.__value is None or self.__value_type is None or self.__value_kind is None:
             raise UninitializedValueException
@@ -495,6 +498,73 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__release_temporary_variable(operand)
         self.__value = temporary_variable
         self.__value_kind = ValueKind.TEMPORARY
+
+    @staticmethod
+    def __bitwise_type(lhs_type: ValueType, rhs_type: ValueType | None = None) -> ValueType:
+        if lhs_type not in (ValueType.INT, ValueType.BIT) or (
+                rhs_type is not None and rhs_type != lhs_type):
+            raise UnsupportedOpenQASMError(
+                'bitwise operators require matching integer or scalar bit operands')
+        return lhs_type
+
+    def __bitwise_operand(
+            self, expression: ast.Expression
+            ) -> tuple[str | int | float | complex, ValueType, ValueKind]:
+        self.visit(expression)
+        if self.__value is None or self.__value_type is None or self.__value_kind is None:
+            raise UninitializedValueException
+        if (self.__value_kind == ValueKind.LITERAL and self.__value_type == ValueType.INT
+                and not self.QCX_INT_MIN <= self.__value <= self.QCX_INT_MAX):
+            raise UnsupportedOpenQASMError('bitwise integer operand outside QCX INT range')
+        return self.__value, self.__value_type, self.__value_kind
+
+    def __visit_bitwise_complement(self, expression: ast.Expression) -> None:
+        value, value_type, value_kind = self.__bitwise_operand(expression)
+        try:
+            result_type = self.__bitwise_type(value_type)
+            mask = 1 if result_type == ValueType.BIT else -1
+            if value_kind == ValueKind.LITERAL:
+                self.__value = (int(value) ^ mask) if self.__evaluate_constant else 0
+                self.__value_type = result_type
+                self.__value_kind = ValueKind.LITERAL
+                return
+            if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
+                raise NoConstantExpressionException
+            result = self.__add_new_temporary_variable(result_type)
+            self.__qcx_lines.extend([f'LET {result} := {value}', f'LET {result} ^= {mask}'])
+            self.__value, self.__value_type, self.__value_kind = result, result_type, ValueKind.TEMPORARY
+        finally:
+            if value_kind == ValueKind.TEMPORARY:
+                self.__release_temporary_variable(str(value))
+
+    def __visit_bitwise_binary(self, expression: ast.BinaryExpression) -> None:
+        operands = []
+        try:
+            # Evaluate in source order and keep both operand temporaries live.
+            operands.append(self.__bitwise_operand(expression.lhs))
+            operands.append(self.__bitwise_operand(expression.rhs))
+            (lhs, lhs_type, lhs_kind), (rhs, rhs_type, rhs_kind) = operands
+            result_type = self.__bitwise_type(lhs_type, rhs_type)
+            if lhs_kind == rhs_kind == ValueKind.LITERAL:
+                operations = {
+                    '&': lambda lhs, rhs: lhs & rhs,
+                    '|': lambda lhs, rhs: lhs | rhs,
+                    '^': lambda lhs, rhs: lhs ^ rhs,
+                }
+                self.__value = (operations[expression.op.name](int(lhs), int(rhs))
+                                if self.__evaluate_constant else 0)
+                self.__value_type, self.__value_kind = result_type, ValueKind.LITERAL
+                return
+            if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
+                raise NoConstantExpressionException
+            result = self.__add_new_temporary_variable(result_type)
+            self.__qcx_lines.extend([f'LET {result} := {lhs}',
+                                    f'LET {result} {expression.op.name}= {rhs}'])
+            self.__value, self.__value_type, self.__value_kind = result, result_type, ValueKind.TEMPORARY
+        finally:
+            for value, _, kind in operands:
+                if kind == ValueKind.TEMPORARY:
+                    self.__release_temporary_variable(str(value))
 
     @staticmethod
     def __promoted_type(lhs_type: ValueType, rhs_type: ValueType) -> ValueType:
@@ -583,6 +653,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.__expression_kind is None:
             return
 
+        if expression.op.name in ('&', '|', '^'):
+            self.__visit_bitwise_binary(expression)
+            return
         if expression.op in (
                 ast.BinaryOperator['&&'], ast.BinaryOperator['||'],
                 ast.BinaryOperator['=='], ast.BinaryOperator['!='],
@@ -1349,12 +1422,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__release_temporary_variable(temporary)
             return
         if isinstance(condition, ast.UnaryExpression):
-            if condition.op != ast.UnaryOperator['!']:
+            if condition.op == ast.UnaryOperator['!']:
+                self.__emit_condition(
+                    condition.expression, false_label, true_label)
+                return
+            if condition.op != ast.UnaryOperator['~']:
                 raise UnsupportedOpenQASMError(
                     f'branching condition unary operator {condition.op.name}')
-            self.__emit_condition(
-                condition.expression, false_label, true_label)
-            return
 
         if isinstance(condition, ast.BinaryExpression):
             if condition.op in (
@@ -1370,12 +1444,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__qcx_lines.append(f'@{rhs_label}')
                 self.__emit_condition(condition.rhs, true_label, false_label)
                 return
-            self.__emit_comparison_condition(
-                condition, true_label, false_label)
-            return
+            if condition.op.name not in ('&', '|', '^'):
+                self.__emit_comparison_condition(
+                    condition, true_label, false_label)
+                return
 
         if not isinstance(condition, (
-                ast.Identifier, ast.IndexExpression, ast.BooleanLiteral, ast.Cast)):
+                ast.Identifier, ast.IndexExpression, ast.BooleanLiteral, ast.Cast,
+                ast.UnaryExpression, ast.BinaryExpression)):
             raise UnsupportedOpenQASMError(
                 'non-comparison branching condition')
 
@@ -1655,6 +1731,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if value_type not in (ValueType.BIT, ValueType.BOOL):
                 raise UnsupportedOpenQASMError('non-Boolean logical loop operand')
             return ValueType.BOOL, runtime
+        if expression.op.name == '~':
+            return self.__bitwise_type(value_type), runtime
         if expression.op.name != '-' or value_type not in (
                 ValueType.INT, ValueType.FLOAT, ValueType.COMPLEX):
             raise UnsupportedOpenQASMError('unsupported unary loop expression')
@@ -1674,6 +1752,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if expression.op.name in ('==', '!=', '<', '<=', '>', '>='):
             self.__comparison_types(lhs_type, rhs_type, expression.op)
             return ValueType.BOOL, runtime
+        if expression.op.name in ('&', '|', '^'):
+            return self.__bitwise_type(lhs_type, rhs_type), runtime
         if expression.op.name not in ('+', '-', '*', '/', '%'):
             raise UnsupportedOpenQASMError(f'binary operator {expression.op.name}')
         result_type = self.__promoted_type(lhs_type, rhs_type)
@@ -1773,9 +1853,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 ast.UnaryExpression, ast.BinaryExpression, ast.Cast, ast.IndexExpression)):
             raise UnsupportedOpenQASMError(f'loop expression {type(node).__name__}')
         if isinstance(node, ast.BinaryExpression) and node.op.name not in (
-                '+', '-', '*', '/', '%', '==', '!=', '<', '<=', '>', '>=', '&&', '||'):
+                '+', '-', '*', '/', '%', '&', '|', '^',
+                '==', '!=', '<', '<=', '>', '>=', '&&', '||'):
             raise UnsupportedOpenQASMError(f'binary operator {node.op.name}')
-        if isinstance(node, ast.UnaryExpression) and node.op.name not in ('-', '!'):
+        if isinstance(node, ast.UnaryExpression) and node.op.name not in ('-', '!', '~'):
             raise UnsupportedOpenQASMError(f'unary operator {node.op.name}')
         if isinstance(node, ast.Cast) and not isinstance(node.type, (
                 ast.IntType, ast.UintType, ast.FloatType, ast.ComplexType, ast.BoolType, ast.BitType)):
@@ -1878,14 +1959,17 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise UnsupportedOpenQASMError('block-local declaration')
             if not isinstance(child, supported):
                 raise UnsupportedOpenQASMError(f'loop body {type(child).__name__}')
+            self.__validate_bitwise_types(child, iterators)
             target = (child.lvalue if isinstance(child, ast.ClassicalAssignment)
                       else child.target if isinstance(child, ast.QuantumMeasurementStatement)
                       else None)
             if target is not None and self.__operand_name(target) in iterators:
                 raise UnsupportedOpenQASMError('assignment to a for-loop iterator')
             if isinstance(child, ast.ClassicalAssignment) and child.op.name not in (
-                    '=', '+=', '-=', '*=', '/=', '%='):
+                    '=', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^='):
                 raise UnsupportedOpenQASMError(f'assignment operator {child.op.name}')
+            if isinstance(child, ast.ClassicalAssignment) and child.op.name in ('&=', '|=', '^='):
+                self.__validate_bitwise_assignment_types(child, iterators)
             if isinstance(child, ast.QuantumGate):
                 if child.modifiers or child.duration is not None:
                     raise UnsupportedOpenQASMError('gate modifiers or duration in a loop')
@@ -1912,6 +1996,61 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if isinstance(child, ast.WhileLoop):
                 self.__validate_loop_syntax(child.while_condition)
                 self.__validate_loop_body(child.block, iterators)
+
+    def __validate_bitwise_assignment_types(
+            self, statement: ast.ClassicalAssignment, iterators: dict[str, ValueType]) -> None:
+        target = statement.lvalue
+        if isinstance(target, ast.IndexedIdentifier):
+            if (len(target.indices) != 1 or not isinstance(target.indices[0], list)
+                    or len(target.indices[0]) != 1
+                    or not isinstance(target.indices[0][0], ast.Expression)
+                    or isinstance(target.indices[0][0], (ast.RangeDefinition, ast.DiscreteSet))):
+                raise UnsupportedOpenQASMError('bitwise assignment requires a scalar target')
+            target = ast.IndexExpression(target.name, target.indices[0])
+        target_type, _ = self.__loop_expression_info(target, iterators)
+        rhs_type, _ = self.__loop_expression_info(statement.rvalue, iterators)
+        self.__bitwise_type(target_type, rhs_type)
+        self.__validate_bitwise_indices(target, iterators)
+        self.__validate_bitwise_indices(statement.rvalue, iterators)
+
+    def __validate_bitwise_indices(
+            self, expression: ast.Expression, iterators: dict[str, ValueType]) -> None:
+        if isinstance(expression, ast.IndexExpression):
+            selectors = expression.index
+            if (not isinstance(selectors, list) or len(selectors) != 1
+                    or not isinstance(selectors[0], ast.Expression)
+                    or isinstance(selectors[0], (ast.RangeDefinition, ast.DiscreteSet))):
+                raise UnsupportedOpenQASMError('bitwise operand requires a scalar element')
+            index_type, _ = self.__loop_expression_info(selectors[0], iterators)
+            if index_type != ValueType.INT:
+                raise UnsupportedOpenQASMError('bitwise element index must be an integer')
+            self.__validate_bitwise_indices(selectors[0], iterators)
+            return
+        for field in dataclasses.fields(expression):
+            value = getattr(expression, field.name)
+            if isinstance(value, ast.Expression):
+                self.__validate_bitwise_indices(value, iterators)
+
+    def __validate_bitwise_types(
+            self, node: ast.QASMNode | list, iterators: dict[str, ValueType]) -> None:
+        if isinstance(node, list):
+            for element in node:
+                if isinstance(element, (ast.QASMNode, list)):
+                    self.__validate_bitwise_types(element, iterators)
+            return
+        # Nested for bodies need their own typed iterator scope and are checked
+        # by __validate_loop_body. Never invent values for an empty loop.
+        if isinstance(node, ast.ForInLoop):
+            self.__validate_bitwise_types(node.set_declaration, iterators)
+            return
+        if ((isinstance(node, ast.UnaryExpression) and node.op.name == '~')
+                or (isinstance(node, ast.BinaryExpression) and node.op.name in ('&', '|', '^'))):
+            self.__loop_expression_info(node, iterators)
+            self.__validate_bitwise_indices(node, iterators)
+        for field in dataclasses.fields(node):
+            value = getattr(node, field.name)
+            if isinstance(value, (ast.QASMNode, list)):
+                self.__validate_bitwise_types(value, iterators)
 
     @contextlib.contextmanager
     def __expanded_loop_scope(self) -> Iterator[None]:
@@ -2941,6 +3080,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return
 
         if variable_type == ValueType.BIT:
+            if statement.op.name in ('&=', '|=', '^='):
+                with self.__bit_target(statement.lvalue) as (targets, is_register):
+                    if is_register:
+                        raise UnsupportedOpenQASMError('bitwise assignment requires a scalar target')
+                    self.__emit_bitwise_assignment(targets[0], statement.op.name,
+                                                   ValueType.BIT, statement.rvalue)
+                return
             if statement.op != ast.AssignmentOperator['=']:
                 raise UnsupportedOpenQASMError(
                     f'bit assignment operator {statement.op.name}')
@@ -2956,6 +3102,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __emit_classical_value_assignment(
             self, statement: ast.ClassicalAssignment, variable_name: str,
             variable_type: ValueType, *, runtime_array: bool = False) -> None:
+        if statement.op.name in ('&=', '|=', '^='):
+            self.__emit_bitwise_assignment(variable_name, statement.op.name,
+                                           variable_type, statement.rvalue)
+            return
         if (variable_type == ValueType.BOOL
                 and statement.op != ast.AssignmentOperator['=']):
             raise UnsupportedOpenQASMError(
@@ -2999,6 +3149,25 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__emit_assignment(
             variable_name, operator, variable_type, self.__value,
             self.__value_type, self.__value_kind)
+
+    def __emit_bitwise_assignment(
+            self, target: str, operator: str, target_type: ValueType,
+            expression: ast.Expression) -> None:
+        self.__bitwise_type(target_type)
+        previous_expression_kind = self.__expression_kind
+        operand = None
+        try:
+            self.__expression_kind = ExpressionKind.ARITHMETIC
+            operand = self.__bitwise_operand(expression)
+            value, value_type, _ = operand
+            self.__bitwise_type(target_type, value_type)
+            # Evaluate the complete RHS before writing. The caller keeps any
+            # captured destination index reserved throughout this operation.
+            self.__qcx_lines.append(f'LET {target} {operator} {value}')
+        finally:
+            self.__expression_kind = previous_expression_kind
+            if operand is not None and operand[2] == ValueKind.TEMPORARY:
+                self.__release_temporary_variable(str(operand[0]))
 
     def __emit_runtime_array_remainder_assignment(
             self, target: str, expression: ast.Expression) -> None:
