@@ -1192,6 +1192,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     'indexed non-bit conditional operand')
 
             size = self.__bit_variable_name_size_map[variable_name]
+            runtime_read = self.__runtime_bit_read(expression, variable_name, size)
+            if runtime_read is not None:
+                return runtime_read
             previous_expression_kind = self.__expression_kind
             try:
                 indices, is_register = self.__index_selection(
@@ -2660,6 +2663,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise InvalidBitOperandException(
                     f'Bit source {source_identifier} is not a bit variable')
             source_size = self.__bit_variable_name_size_map[source_name]
+            runtime_read = self.__runtime_bit_read(expression, source_name, source_size)
+            if runtime_read is not None:
+                value, value_type, value_kind = runtime_read
+                if target_is_register:
+                    self.__release_temporary_variable(str(value))
+                    raise InvalidBitOperandException(
+                        'Bit assignment operands must both be scalars or both be registers')
+                self.__emit_assignment(target_names[0], ':=', ValueType.BIT,
+                                       value, value_type, value_kind)
+                return
             source_indices, source_is_register = self.__index_selection(
                 expression.index, source_size, 'bit',
                 f'variable {source_identifier}[{source_size}]',
@@ -2681,6 +2694,35 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
         for target_name, value in zip(target_names, values):
             self.__qcx_lines.append(f'LET {target_name} := {value}')
+
+    def __runtime_bit_read(
+            self, expression: ast.IndexExpression, variable_name: str, size: int
+            ) -> tuple[str, ValueType, ValueKind] | None:
+        selectors = expression.index
+        # Keep static selections (including slices) on their existing path.
+        if (not isinstance(selectors, list) or len(selectors) != 1
+                or not isinstance(selectors[0], ast.Expression)
+                or isinstance(selectors[0], (ast.RangeDefinition, ast.DiscreteSet))):
+            return None
+        value_type, runtime = self.__loop_expression_info(selectors[0])
+        if not runtime:
+            return None
+        if value_type != ValueType.INT:
+            raise InvalidBitOperandException('Bit register index must be an integer')
+        if variable_name not in self.__sized_bit_variables:
+            raise InvalidBitOperandException('Runtime indexing requires a bit register')
+        if not 1 <= size <= self.QCX_INT_MAX:
+            raise InvalidBitOperandException(
+                f'Runtime-indexed bit register size must be in [1, {self.QCX_INT_MAX}]')
+        index = self.__capture_array_index(selectors[0], size)
+        try:
+            # QCX stores bit[1] as a scalar, but its index still needs checking.
+            operand = variable_name if size == 1 else f'{variable_name}:{index}'
+            result = self.__add_new_temporary_variable(ValueType.INT)
+            self.__qcx_lines.append(f'LET {result} := {operand}')
+            return result, ValueType.BIT, ValueKind.TEMPORARY
+        finally:
+            self.__release_temporary_variable(index)
 
     def __integer_array_access(
             self, expression: ast.IndexExpression | ast.IndexedIdentifier) -> tuple[str, str | None]:

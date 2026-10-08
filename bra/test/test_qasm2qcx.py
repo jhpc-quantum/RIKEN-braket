@@ -17,6 +17,60 @@ def convert(source: str) -> list[str]:
     return qasm2qcx.convert(source)
 
 
+class RuntimeBitReadTests(unittest.TestCase):
+    def test_bounds_capture_and_bit_semantics(self) -> None:
+        lines = convert('OPENQASM 3.0; bit[3] flags = "101"; int i = -1; '
+                        'bit out = flags[i]; bool ready = flags[i];')
+        checks = [line for line in lines if line.startswith('ASSERT ')]
+        self.assertEqual(len(checks), 4)
+        self.assertTrue(checks[0].endswith(' >= -3'))
+        self.assertTrue(checks[1].endswith(' < 3'))
+        index = checks[0].split()[1]
+        self.assertIn(f'LET {index} := I1', lines)
+        read = next(line for line in lines if line.endswith(f':= FLAGS31:{index}'))
+        self.assertLess(lines.index(checks[1]), lines.index(read))
+        self.assertNotIn('LET I1 += 3', lines)
+        for statement in ('int n = flags[i];', 'float n = flags[i];'):
+            with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert('OPENQASM 3.0; bit[2] flags; int i = 0; ' + statement)
+
+    def test_singleton_uses_scalar_storage_after_bounds_checks(self) -> None:
+        lines = convert('OPENQASM 3.0; bit[1] flags = "1"; int i = -1; bit out = flags[i];')
+        self.assertTrue(any(line.endswith(':= FLAGS31') for line in lines))
+        self.assertFalse(any('FLAGS31:' in line for line in lines))
+        self.assertTrue(any(line.endswith(' >= -1') for line in lines if line.startswith('ASSERT ')))
+
+    def test_static_reads_keep_existing_output(self) -> None:
+        self.assertEqual(convert('OPENQASM 3.0; bit[2] flags = "01"; bit out = flags[0];'),
+                         ['QUBITS 0', 'VAR FLAGS31 INT 2', 'LET FLAGS31:0 := 1',
+                          'LET FLAGS31:1 := 0', 'VAR OUT7 INT', 'LET OUT7 := FLAGS31:0'])
+
+    def test_nested_reads_loop_conditions_and_casts_release_temporaries(self) -> None:
+        program = qasm2qcx.openqasm3.parser.parse('''OPENQASM 3.0;
+            bit[2] flags = "01"; int i = 0; bit out = flags[int(flags[i])];
+            bool ready = bool(flags[i]); array[int, 2] a = {0, 1};
+            out = flags[a[i]];
+            for int j in a { if (flags[j]) { out = flags[j]; } }
+            for bit value in flags { out = flags[int(value)]; }
+            while (false) { if (flags[i]) { break; } }
+            ready = false && flags[i];''')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_invalid_types_scalar_indexing_and_runtime_targets_stay_rejected(self) -> None:
+        prefix = 'OPENQASM 3.0; qubit q; bit scalar; bit[2] flags; int i = 0; float f = 0.5; bool b = true; '
+        for statement in ('bit out = flags[f];', 'bit out = flags[b];',
+                          'bit out = flags[scalar];', 'bit out = scalar[i];',
+                          'flags[i] = 1;', 'flags[i] = measure q;',
+                          'bit[1] out = flags[i];', 'if (false) { if (flags[f]) {} }'):
+            with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert(prefix + statement)
+        maximum = qasm2qcx.QASM2QCXConverter.QCX_INT_MAX
+        with self.assertRaises(qasm2qcx.InvalidBitOperandException):
+            convert(f'OPENQASM 3.0; bit[{maximum + 1}] flags; int i = 0; if (flags[i]) {{}}')
+
+
 class IntegerArrayDeclarationTests(unittest.TestCase):
     def test_declarations_and_initializers_use_qcx_integer_arrays(self) -> None:
         self.assertEqual(convert('OPENQASM 3.0; array[int, 3] values = {1, 3, 5};'),
@@ -379,7 +433,7 @@ class RuntimeIntegerArrayRegressionTests(unittest.TestCase):
     def test_dynamic_quantum_and_bit_indices_and_array_slices_remain_unsupported(self) -> None:
         prefix = 'OPENQASM 3.0; include "stdgates.inc"; qubit[2] q; bit[2] flags; '
         prefix += 'array[int, 2] a = {0, 1}; int i = 0; '
-        for statement in ('x q[i];', 'i = int(flags[i]);', 'flags[i] = 1;',
+        for statement in ('x q[i];', 'flags[i] = 1;',
                           'i = a[i:1];', 'a[i:1] = 1;', 'i = a[i, 0];'):
             with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
                 convert(prefix + statement)
@@ -803,8 +857,7 @@ class RuntimeIteratorInfrastructureTests(unittest.TestCase):
         converter = self.converter()
         with converter._QASM2QCXConverter__iterator_binding(
                 'i', qasm2qcx._RuntimeIteratorBinding('PRIVATE_ITERATOR')):
-            for body in ('reset q[i];', 'reset q[int(i)];', 'flags[i] = 1;',
-                         'if (flags[i]) {}'):
+            for body in ('reset q[i];', 'reset q[int(i)];', 'flags[i] = 1;'):
                 with self.subTest(body=body):
                     statement = qasm2qcx.openqasm3.parser.parse('OPENQASM 3.0; ' + body).statements[0]
                     with self.assertRaises(qasm2qcx.QASM2QCXError):
@@ -1928,7 +1981,6 @@ class WhileLoopRegressionTests(unittest.TestCase):
     def test_runtime_indices_ranges_and_unsupported_types_are_rejected(self) -> None:
         prefix = 'OPENQASM 3.0; qubit[2] q; int n = 0; bit[2] flags; complex c = 1.0im; '
         for statement in ('while (false) { reset q[n]; }',
-                          'while (false) { if (flags[n]) { break; } }',
                           'while (false) { for int i in [0:float(n):n] {} }',
                           'while (false) { for int i in {0, float(n)} {} }',
                           'while (flags) {}', 'while (c) {}', 'while (bool(c)) {}',
@@ -4022,7 +4074,7 @@ class BooleanConversionTests(unittest.TestCase):
                 'bool a = bool(1.0im);', 'bool a = bool(z);',
                 'bool a = bool(flags);', 'bool a = flags;',
                 'bool a = bool(flags[0:0]);', 'bool a = bool(flags[{0}]);',
-                'bool a = bool(flags[index]);', 'bit[1] copy = true;',
+                'bit[1] copy = true;',
                 'bit[1] copy = bit[1](true);', 'bit a = bit(2);',
                 'bit a = bit(0.25);', 'bool a = bool(n[0]);'):
             with self.subTest(statement=statement):
@@ -4986,7 +5038,7 @@ class BranchingTests(unittest.TestCase):
                             + statement)
 
     def test_rejects_unsupported_direct_index_selections(self) -> None:
-        for condition in ("flags[0:0]", "flags[{0}]", "flags[index]"):
+        for condition in ("flags[0:0]", "flags[{0}]"):
             with self.subTest(condition=condition):
                 with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
                     convert('OPENQASM 3.0; bit[2] flags; int index = 0; '
