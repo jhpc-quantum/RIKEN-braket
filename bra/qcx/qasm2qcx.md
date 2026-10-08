@@ -7,12 +7,55 @@ program to the QCX input format understood by `bra`.
 python3 bra/qcx/qasm2qcx.py circuit.qasm > circuit.qcx
 ```
 
+## Environment setup
+
 The converter requires Python 3.10 or newer and the `openqasm3` package with
-its parser support.
+its parser support (`openqasm3[parser]>=1.0,<2`). The test suite has been run
+with Python 3.10.12; newer Python versions have not yet been tested as a matrix.
+Converting a program does not require building `bra`; executing the generated
+QCX does.
+
+The following commands assume a POSIX shell (for example, Bash on Linux) and
+that the current directory is the repository root. Create a virtual environment
+outside the repository to keep installed packages separate from its source:
 
 ```console
-python3 -m pip install -r bra/qcx/requirements.txt
+python3 --version
+python3 -m venv ../qasm2qcx-venv
+. ../qasm2qcx-venv/bin/activate
+python -m pip install -r bra/qcx/requirements.txt
 ```
+
+Check that the first command reports Python 3.10 or newer. If `python3` is an
+older version, use an installed Python 3.10-or-newer interpreter to create the
+environment instead. Choose another environment path if
+`../qasm2qcx-venv` already belongs to another project, and use that path in the
+activation commands as well. If `venv` or its bundled `pip` is unavailable,
+install the corresponding support package for that interpreter using your
+system's package manager, then retry. Dependency installation requires access
+to a package index, or a configured local package mirror.
+
+After activation, `python` and `python -m pip` refer to the same isolated
+environment. Check the parser installation with a minimal OpenQASM program:
+
+```console
+python -c 'import openqasm3; openqasm3.parse("OPENQASM 3.0; qubit q;"); print("Parser OK")'
+python -m unittest bra/test/test_qasm2qcx.py
+```
+
+The first command should print `Parser OK`; the second runs the converter's
+unit tests without requiring a `bra` executable. To convert your input file:
+
+```console
+python bra/qcx/qasm2qcx.py circuit.qasm > circuit.qcx
+```
+
+To execute `circuit.qcx`, build `bra` as described in
+[`docs/bra.md`](../../docs/bra.md). Leave the environment with `deactivate`;
+reactivate it in a later shell using `. ../qasm2qcx-venv/bin/activate` from the
+repository root. Alternatively, invoke `../qasm2qcx-venv/bin/python` directly
+without activation. The converter is invoked from the repository; no separate
+installation of `qasm2qcx.py` is needed.
 
 Python callers can use `qasm2qcx.convert(source)` to obtain the generated QCX
 lines as a list of strings.
