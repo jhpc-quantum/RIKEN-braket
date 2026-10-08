@@ -17,6 +17,92 @@ def convert(source: str) -> list[str]:
     return qasm2qcx.convert(source)
 
 
+class ScalarBitwiseExpressionTests(unittest.TestCase):
+    def test_integer_and_bit_constant_folding(self) -> None:
+        self.assertEqual(convert('''OPENQASM 3.0;
+            const int MASK = 7 & 3; const uint INVERSE = ~MASK;
+            int a = (7 | 8) ^ 3; int b = INVERSE; bit out = ~bit(false);'''),
+                         ['QUBITS 0', 'VAR A1 INT', 'LET A1 := 12',
+                          'VAR B1 INT', 'LET B1 := -4', 'VAR OUT7 INT', 'LET OUT7 := 1'])
+        for op, expected in (('&', 0), ('|', 1), ('^', 1)):
+            self.assertIn(f'LET OUT7 := {expected}', convert(
+                f'OPENQASM 3.0; bit out = bit(true) {op} bit(false);'))
+
+    def test_runtime_integer_lowering_preserves_operands(self) -> None:
+        lines = convert('OPENQASM 3.0; int a = -3; uint b = 7; int c = ~(a & b) | (a ^ b);')
+        self.assertTrue(any(' &= B1' in line for line in lines))
+        self.assertTrue(any(' ^= -1' in line for line in lines))
+        self.assertTrue(any(' ^= B1' in line for line in lines))
+        self.assertTrue(any(' |= QASM2QCX_INT_' in line for line in lines))
+        self.assertEqual([line for line in lines if line.startswith('LET A1 ')], ['LET A1 := -3'])
+        self.assertEqual([line for line in lines if line.startswith('LET B1 ')], ['LET B1 := 7'])
+
+    def test_scalar_bit_results_use_one_bit_complement_and_keep_type(self) -> None:
+        lines = convert('OPENQASM 3.0; bit a = 1; bit b = 0; bit out = ~a ^ b; bool ready = a | b;')
+        self.assertTrue(any(line.endswith(' ^= 1') for line in lines))
+        self.assertFalse(any(line.endswith(' ^= -1') for line in lines))
+        for expression in ('~a', 'a & b', 'a | b', 'a ^ b'):
+            with self.subTest(expression=expression), self.assertRaises(qasm2qcx.NoImplicitCastException):
+                convert('OPENQASM 3.0; bit a = 1; bit b = 0; int c = ' + expression + ';')
+
+    def test_integer_operand_limits_and_suppressed_constant_arithmetic(self) -> None:
+        converter = qasm2qcx.QASM2QCXConverter
+        for value in (converter.QCX_INT_MIN, converter.QCX_INT_MAX):
+            self.assertIn(f'LET A1 := {~value}', convert(f'OPENQASM 3.0; int a = ~({value});'))
+        for value in (converter.QCX_INT_MIN - 1, converter.QCX_INT_MAX + 1):
+            for expression in (f'~({value})', f'({value}) & 0'):
+                with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    convert('OPENQASM 3.0; int a = ' + expression + ';')
+        self.assertIn('LET A1 := 0', convert('''OPENQASM 3.0;
+            const bool SKIP = false && bool(~(1 / 0)); int a = int(SKIP);'''))
+
+    def test_indexed_operands_source_order_and_temporary_cleanup(self) -> None:
+        program = qasm2qcx.openqasm3.parser.parse('''OPENQASM 3.0;
+            array[int, 2] a = {0, 1}; bit[2] flags = "01"; int i = 0;
+            int c = a[i] ^ a[i + 1]; bit out = ~flags[i] | flags[i + 1];
+            flags[i & 1] = flags[i] ^ flags[i + 1];''')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        lines = list(converter)
+        reads = [line for line in lines if ':= A1:QASM2QCX_INT_' in line]
+        self.assertEqual(len(reads), 2)
+        self.assertLess(lines.index(reads[0]), lines.index(reads[1]))
+        # The first access captures i, not i + 1.
+        first_check = next(line for line in lines if line.startswith('ASSERT '))
+        self.assertIn(f'LET {first_check.split()[1]} := I1', lines)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_conditions_loop_headers_and_typed_iterators(self) -> None:
+        lines = convert('''OPENQASM 3.0; bit[2] flags = "01"; bit a = 1; bit b = 0;
+            int n = 1; int total = 0;
+            if (~a | b) { total = 1; }
+            for int i in [0:n & 1] { total += i ^ n; }
+            for int i in {~n, n | 2} { total += i; }
+            for bit value in flags { a = value ^ b; if (~value) { b = a; } }
+            while (a & b) { break; }
+            for int i in [1:0] { total = ~i; }''')
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+        for expression in ('~n', 'n & n', 'n | n', 'n ^ n'):
+            with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert('OPENQASM 3.0; int n = 1; if (' + expression + ') {}')
+
+    def test_unsupported_types_mixing_registers_and_shifts_rejected(self) -> None:
+        prefix = 'OPENQASM 3.0; int n = 1; float f = 1.5; complex z = 1.0im; bool b = true; bit a = 1; bit[1] flags = "1"; '
+        for expression in ('n & f', 'n | z', 'a ^ n', 'a & 1', '~f', '~z', '~b',
+                           'b & b', 'a | b', '~flags', 'flags & flags', 'n << 1', 'n >> 1'):
+            with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert(prefix + 'int out = int(' + expression + ');')
+        for statement in ('n &= 1;', 'a ^= a;', 'flags[0] |= a;',
+                          'if (false) { n = n & f; }', 'bool out = false && bool(n & f);'):
+            with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert(prefix + statement)
+        for statement in ('for int i in [1:0] { n = ~f; }',
+                          'for int i in [1:0] { n = i & a; }',
+                          'for int i in [1:0] { if (false) { n = n ^ b; } }'):
+            with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert(prefix + statement)
+
+
 class RuntimeBitReadTests(unittest.TestCase):
     def test_bounds_capture_and_bit_semantics(self) -> None:
         lines = convert('OPENQASM 3.0; bit[3] flags = "101"; int i = -1; '
@@ -1915,11 +2001,12 @@ class SharedLoopInfrastructureTests(unittest.TestCase):
                     self.validate_while_body(body)
 
     def test_while_condition_syntax_is_checked_without_constant_evaluation(self) -> None:
-        for condition in ('sin(1.0) > 0', '(2 ** 3) > 0', '~1 == 0'):
+        for condition in ('sin(1.0) > 0', '(2 ** 3) > 0'):
             with self.subTest(condition=condition):
                 with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
                     self.validate_while_body('', condition=condition)
         self.validate_while_body('sum += value / 0;', condition='(1 / 0) > 0')
+        self.validate_while_body('', condition='~1 == 0')
 
     def test_context_targets_are_independent_of_iterator_bindings_and_restored(self) -> None:
         converter = qasm2qcx.QASM2QCXConverter(
@@ -2596,7 +2683,7 @@ class RuntimeSetInfrastructureTests(unittest.TestCase):
         converter = self.converter()
         for element in ('fraction', 'ready', 'flag', 'flags[0]', '1.0im', 'pi',
                         'int(complex(first))', 'int(bool(value))', 'int(bit(first))',
-                        'int(bit[2](ready))', 'int(first & last)', 'int(~first)',
+                        'int(bit[2](ready))',
                         'int(!first)', 'int(fraction % 2)', 'sin(1.0)'):
             with self.subTest(element=element):
                 with self.assertRaises(qasm2qcx.QASM2QCXError):
@@ -3402,7 +3489,7 @@ class ConstantForLoopNestingTests(unittest.TestCase):
                         for int i in [1:0] { for int j in [1:0] { ''' + body + ' } }')
 
     def test_unsupported_expressions_and_gates_rejected_even_when_empty(self) -> None:
-        for body in ('sum += 2 ** i;', 'sum &= 1;', 'sum = ~i;',
+        for body in ('sum += 2 ** i;', 'sum &= 1;',
                      'sum = sin(i);', 'unknown q;', 'ctrl @ x q, q;',
                      'x(1) q;', 'gphase(0) q;'):
             with self.subTest(body=body):
@@ -5173,8 +5260,8 @@ class BranchingTests(unittest.TestCase):
 
     def test_rejects_unsupported_logical_operands_and_value_expressions(self) -> None:
         for statement in (
-                "if (a && n) {}", "if (n || a) {}", "if (a & a) {}",
-                "if (~a) {}"):
+                "if (a && n) {}", "if (n || a) {}", "if (a & n) {}",
+                "if (~n) {}"):
             with self.subTest(statement=statement):
                 with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
                     convert('OPENQASM 3.0; bit a = 1; int n = 1; '
