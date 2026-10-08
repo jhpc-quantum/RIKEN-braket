@@ -109,7 +109,13 @@ namespace bra
             ? "*="
             : op == ::bra::assign_operation_type::divides_assign
               ? "/="
-              : "";
+              : op == ::bra::assign_operation_type::bit_and_assign
+                ? "&="
+                : op == ::bra::assign_operation_type::bit_or_assign
+                  ? "|="
+                  : op == ::bra::assign_operation_type::bit_xor_assign
+                    ? "^="
+                    : "";
   }
 
   integer_zero_divisor_error::integer_zero_divisor_error(std::string const& lhs_variable_name, std::string const& rhs_literal_or_variable_name)
@@ -474,6 +480,13 @@ namespace bra
     auto const variable_name = lhs_variable_name.substr(size_type{0u}, found_index);
     auto const index = found_index == std::string::npos ? 0 : to_int(lhs_variable_name.substr(found_index + size_type{1u}));
 
+    auto const is_bitwise
+      = op == ::bra::assign_operation_type::bit_and_assign
+        or op == ::bra::assign_operation_type::bit_or_assign
+        or op == ::bra::assign_operation_type::bit_xor_assign;
+    if (is_bitwise and int_variables_.find(variable_name) == end(int_variables_))
+      throw ::bra::wrong_assignment_argument_error{lhs_variable_name, op, rhs_literal_or_variable_name};
+
     if (real_variables_.find(variable_name) != end(real_variables_))
     {
       auto const rhs_value = to_real(rhs_literal_or_variable_name);
@@ -519,6 +532,12 @@ namespace bra
           throw ::bra::integer_zero_divisor_error{lhs_variable_name, rhs_literal_or_variable_name};
         int_variables_.at(variable_name)[index] /= rhs_value;
       }
+      else if (op == ::bra::assign_operation_type::bit_and_assign)
+        int_variables_.at(variable_name)[index] &= rhs_value;
+      else if (op == ::bra::assign_operation_type::bit_or_assign)
+        int_variables_.at(variable_name)[index] |= rhs_value;
+      else if (op == ::bra::assign_operation_type::bit_xor_assign)
+        int_variables_.at(variable_name)[index] ^= rhs_value;
     }
     else if (pauli_string_space_variables_.find(variable_name) != end(pauli_string_space_variables_))
     {

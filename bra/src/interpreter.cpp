@@ -2044,7 +2044,13 @@ namespace bra
               ? ::bra::assign_operation_type::multiplies_assign
               : op_str == "/="
                 ? ::bra::assign_operation_type::divides_assign
-                : throw 1;
+                : op_str == "&="
+                  ? ::bra::assign_operation_type::bit_and_assign
+                  : op_str == "|="
+                    ? ::bra::assign_operation_type::bit_or_assign
+                    : op_str == "^="
+                      ? ::bra::assign_operation_type::bit_xor_assign
+                      : throw 1;
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::let_op >(lhs_variable_name, op, rhs_literal_or_variable_name));
   }

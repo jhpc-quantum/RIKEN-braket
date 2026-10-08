@@ -53,6 +53,18 @@ namespace bra
         repr_stream
           << std::right
           << std::setw(parameter_width) << "/=";
+      else if (op_ == ::bra::assign_operation_type::bit_and_assign)
+        repr_stream
+          << std::right
+          << std::setw(parameter_width) << "&=";
+      else if (op_ == ::bra::assign_operation_type::bit_or_assign)
+        repr_stream
+          << std::right
+          << std::setw(parameter_width) << "|=";
+      else if (op_ == ::bra::assign_operation_type::bit_xor_assign)
+        repr_stream
+          << std::right
+          << std::setw(parameter_width) << "^=";
       repr_stream
         << std::right
         << std::setw(parameter_width) << rhs_literal_or_variable_name_;
