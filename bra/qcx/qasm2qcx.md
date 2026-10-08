@@ -32,6 +32,8 @@ The converter currently covers:
 - fixed-size, one-dimensional `int` arrays with static and runtime element
   reads and writes;
 - scalar and register `bit` values, including bit-string initialization;
+- runtime-indexed bit-register element reads, assignments, and scalar
+  measurement destinations;
 - scalar `bool` variables and constants, Boolean literals, and expression
   assignments;
 - projective measurement of individual qubits and register selections;
@@ -138,8 +140,8 @@ An element index must be an integer expression. Previously declared constants,
 constant-loop iterator values, runtime variables, and runtime iterators are
 accepted. Indices must lie in `[-N, N - 1]`; negative indices count from the end.
 Even a one-element array requires explicit indexing
-when used as a scalar. Qubit and bit-register selection rules below remain
-unchanged.
+when used as a scalar. Qubit indices remain static; bit-register elements also
+support runtime indices as described below.
 
 Multidimensional arrays, non-`int` arrays (including `uint` arrays), slices,
 whole-array arithmetic or assignments, array-copy initializers, aliases, and
@@ -192,8 +194,82 @@ those runtime operations. For example, `false && values[bad] > 0` does not
 execute the access or its bounds checks. Names, types, and supported syntax are
 still validated during conversion. Static indices retain their existing
 conversion-time bounds checks and generated operands without runtime assertions.
-Runtime qubit and bit-register indexing, slices, and multidimensional accesses
-remain unsupported.
+Runtime qubit indexing, dynamic slices, and multidimensional accesses remain
+unsupported. Runtime bit-register element indexing is described next.
+
+### Runtime bit-register indexing
+
+A declared `bit[N]` register supports single-element reads, `=` assignments,
+and scalar-qubit measurement destinations with runtime integer indices.
+Scalar `int`, INT-backed `uint`, supported integer arithmetic, enclosing integer
+iterators, and integer-array elements can supply an index. Floating-point,
+Boolean, and scalar bit expressions require an explicit integer cast.
+Nested accesses such as `flags[positions[i]]` and `flags[int(flags[i])]` are
+accepted. A scalar `bit` is not a runtime-indexable register; `bit[1]` is, even
+though QCX stores it as a scalar. A runtime-indexed register's positive size
+must fit the host-derived QCX `INT` range described under runtime-bound loops.
+
+```qasm
+OPENQASM 3.0;
+bit[3] flags = "101";
+int index = -1;
+bit selected = flags[index];
+flags[index - 1] = selected;
+bool ready = flags[index] && flags[index - 1];
+// selected is 1; flags is "111"; ready is true; index is still -1.
+```
+
+An indexed read retains scalar bit semantics, not integer semantics. It can
+appear directly in conditions and logical expressions, or be assigned to a
+scalar bit or Boolean. Use an explicit numeric cast for arithmetic or gate
+parameters. Assignments retain the existing scalar bit rules: bit and Boolean
+values are accepted, as are integer literals `0` and `1`; general numeric
+values, whole registers, bit strings, and compound bit assignments are rejected.
+
+Each executed access evaluates its index once, copies it into private QCX
+`INT` storage, and checks the original value against `[-N, N - 1]` using
+`ASSERT`. Negative indices are then normalized by adding `N` to the private
+copy without changing the source variable. Checks precede normalization and
+storage access, including for `bit[1]`, whose valid indices are `-1` and `0`.
+Accepted normalization is representable; general overflow in index arithmetic,
+declared integer widths, and unsigned semantics remain unchecked or unenforced.
+
+Reads copy the selected bit into an expression temporary. Assignment destination
+indices are captured and checked before the RHS, and their private storage
+remains reserved until the write completes. Separate RHS accesses evaluate and
+check their own indices; overlapping reads see the pre-store values.
+
+Both measurement syntaxes accept runtime-indexed destinations:
+
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+qubit q;
+bit[2] outcomes = "00";
+int index = -1;
+x q;
+outcomes[index] = measure q;
+measure q -> outcomes[index + 1];
+// outcomes is "11"; index is still -1.
+```
+
+The destination index is captured, checked, and normalized before QCX `M`.
+An invalid destination therefore fails before measurement. `M` is immediately
+followed by assignment from `:OUTCOME` using the captured destination.
+The source must be a scalar qubit or a statically indexed single qubit, not a
+register selection (even a one-element range). Runtime qubit indices remain
+unsupported.
+
+Executed bounds failures throw `bra::assertion_error`, currently uncaught by
+the bra CLI, with the failed comparison and evaluated values in the diagnostic.
+Generated accesses require a bra version supporting `ASSERT`; no new backend
+instruction is introduced. Index arithmetic, checks, accesses, and measurements
+stay on the paths that reach them: skipped branches, loop bodies, transfers,
+and short-circuit operands skip these runtime operations. Names, types, and
+syntax are still validated during conversion, including on unreachable paths.
+Static indices retain their existing conversion-time checks and QCX output.
+Dynamic ranges and discrete sets, multidimensional indexing, aliases, and
+bitwise operations remain unsupported.
 
 ### Boolean values and conversions
 
@@ -290,15 +366,15 @@ operators are `==`, `!=`, `>`, `<`, `>=`, and `<=`. OpenQASM `!=` is emitted as 
 not-equal operator `\=`.
 
 Conditions can compare scalar `int`, `uint`, `float`, and `bit` expressions.
-A statically indexed bit-register element or an integer-array element with a
-supported static or runtime index is also accepted.
+A bit-register or integer-array element with a supported static or runtime
+index is also accepted.
 Compatible integer and floating-point operands are promoted when necessary. Complex
 values and complete bit registers cannot be compared.
 Boolean and scalar bit operands can be compared with one another using `==`
 or `!=`.
 
-A scalar `bit`, a statically indexed element of a bit register, or a Boolean
-literal, constant, or variable can also be used directly as a condition:
+A scalar `bit`, a statically or runtime-indexed element of a bit register, or a
+Boolean literal, constant, or variable can also be used directly as a condition:
 zero is false and one is true. Logical negation
 `!` and logical combinations `&&` and `||` can be applied recursively to these
 conditions and supported comparisons. Parentheses can group conditions.
@@ -437,7 +513,8 @@ This generates `H 0`, `H 1`, `H 2`, and `H 3` after `QUBITS 4`. The converter
 unrolls loops without adding QCX loop instructions or runtime iterator storage.
 Within a loop, static qubit and bit indices may use constant expressions such
 as `q[2 * i + j]`, including supported range and discrete-set selections.
-Runtime-dependent indices remain unsupported.
+Runtime-dependent qubit indices remain unsupported. Single bit-register elements
+may use runtime indices, including enclosing runtime integer iterators.
 
 ### Constant integer sets
 
@@ -593,8 +670,8 @@ The converter supports `for int name in [start:stop]` and
 runtime variable or an enclosing runtime iterator. Both bounds must be present and have
 integer type. Scalar `int` and INT-backed `uint` variables, supported integer
 arithmetic, and explicit integer casts are accepted. Floating-point, Boolean,
-and scalar bit operands require an explicit integer cast; statically indexed
-bit-register elements are also accepted through a cast. Whole bit registers
+and scalar bit operands require an explicit integer cast; statically or
+runtime-indexed bit-register elements are also accepted through a cast. Whole bit registers
 are not integer range operands. These typing rules apply to start, step, and stop.
 
 An omitted step is `1`. Positive and negative integer steps are supported,
@@ -699,11 +776,11 @@ and unsigned semantics retain their existing limitations.
 Bodies support the same statements as constant loops. The iterator is a scoped,
 read-only runtime integer usable in arithmetic, gate parameters, and conditions.
 Assignments and measurements into active iterators remain rejected. Runtime
-iterators cannot supply static qubit or bit-register indices. Using one in a range step
+iterators cannot supply static qubit indices. Using one in a range step
 selects runtime-step lowering; using one in a set element selects runtime-valued
 set lowering.
-Runtime integer-array indices are supported; runtime qubit and bit-register
-indices remain unsupported. Constant range and set loops,
+Runtime integer-array and single-element bit-register indices are supported;
+runtime qubit indices remain unsupported. Constant range and set loops,
 runtime-valued set loops, and runtime `while` loops may be nested in either direction.
 
 `break` exits the nearest loop. In a runtime-bound `for`, `continue` jumps to
@@ -745,8 +822,8 @@ The converter supports `for int name in {value, ...}` when one or more elements
 depend on a runtime variable or an enclosing runtime iterator. Elements must
 have integer type: scalar `int`, INT-backed `uint`, supported integer arithmetic,
 and supported explicit integer casts are accepted. Floating-point, Boolean,
-and scalar bit values require integer casts; statically indexed bit-register
-elements may also be cast. Whole-register casts and runtime complex-to-integer
+and scalar bit values require integer casts; statically or runtime-indexed
+bit-register elements may also be cast. Whole-register casts and runtime complex-to-integer
 casts remain unsupported. Existing constant numeric casts retain their behavior.
 
 ```qasm
@@ -783,7 +860,8 @@ The iterator is scoped to the body and may shadow a source variable, constant,
 or outer iterator. Element expressions use the outer binding, and that binding
 is restored after the loop. The iterator is a read-only runtime integer usable
 in arithmetic, conditions, gate parameters, and runtime range bounds or steps,
-and integer-array indices, but not in static qubit or bit-register indices.
+and integer-array or single-element bit-register indices, but not in static
+qubit indices.
 General block-local declarations remain unsupported.
 
 `break` exits the nearest loop; `continue` skips the rest of the current element's
@@ -844,8 +922,8 @@ The iterator is scoped to the body and may shadow a source variable, constant,
 array, or outer iterator. The outer binding is restored afterward. The source array is
 resolved before binding the iterator, so `for int values in values` is accepted.
 As with other supported loops, iterator writes and measurements into active
-iterators are rejected. Runtime iterators can index integer-array elements,
-but cannot supply static qubit or bit-register selections. Explicitly indexing
+iterators are rejected. Runtime integer iterators can index integer-array and
+bit-register elements, but cannot supply static qubit selections. Explicitly indexing
 with a constant outer iterator remains supported.
 
 Bodies support the same statements as other loops, including nested range,
@@ -941,8 +1019,9 @@ arithmetic representable for accepted register sizes. No new bra instruction is
 required. Runtime iteration counts do not consume expansion budgets, but nested
 expanded loops and enclosing expansions retain their existing accounting.
 
-Runtime user-supplied qubit or bit-register indices, register slices as iterable
-sources, aliases, general array-type iteration, and block-local declarations
+Bit iterators may index integer-array and bit-register elements through an
+explicit integer cast. Runtime user-supplied qubit indices, register slices as
+iterable sources, aliases, general array-type iteration, and block-local declarations
 remain unsupported.
 
 ## Runtime while loops
@@ -998,7 +1077,7 @@ while (!outcome) {
 // The loop terminates after two iterations with outcome equal to 1.
 ```
 
-General block-local declarations, runtime qubit and bit-register indexing, and
+General block-local declarations, runtime qubit indexing, and
 writes to active `for` iterators remain
 unsupported. A `while` body is still converted and validated even when its
 condition is literally false or a transfer makes later statements unreachable. Conversion-time
@@ -1042,8 +1121,8 @@ The current prototype does not reliably support:
 - delays, iteration over non-`int` arrays or aliases,
   or `switch` statements;
 - user-defined gates or gate modifiers;
-- runtime qubit or bit-register indices, ranges with omitted bounds, or
-  multidimensional indexing;
+- runtime qubit indices, dynamic register ranges or discrete sets, ranges with
+  omitted bounds, or multidimensional indexing;
 - classical arrays beyond the one-dimensional `int` subset above,
   whole-register casts, complex-to-Boolean casts,
   Boolean arithmetic, mixed Boolean/numeric comparisons, or block-local
@@ -1086,6 +1165,16 @@ skipped arithmetic and bounds checks. Mutation and position-based transfers
 are checked against 288 explicit Python reference cases. Unit tests additionally
 cover iterator typing, invalid sources and iterator types, storage cleanup,
 reserved names, fixed-size code generation, and expansion budgets.
+
+`bra/test/qasm2qcx_runtime_bit_numerical.py` verifies runtime reads, assignments,
+both measurement-destination syntaxes, singleton storage, negative indices,
+integer casts, nested bit/integer-array indexing, and short-circuit evaluation.
+Overlapping reads and writes and loop-driven mutations with `break`/`continue`
+are checked against 360 Python reference cases. Failure cases cover bounds,
+native integer endpoints, nested accesses, and index arithmetic. Unit tests
+additionally check bit semantics, capture and measurement ordering, temporary
+reservation and reuse, invalid syntax and unreachable accesses, static-output
+compatibility, register-size limits, and CLI errors without partial output.
 
 `bra/test/qasm2qcx_for_loop_numerical.py` verifies unrolled quantum operations,
 measurement and reset, runtime classical accumulation, conditions, nested loops,
@@ -1152,4 +1241,7 @@ python3 bra/test/qasm2qcx_while_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_for_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_step_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_set_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_integer_array_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_bit_register_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_runtime_bit_numerical.py --bra bra/bin/bra
 ```
