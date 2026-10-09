@@ -12,12 +12,14 @@
 #endif
 #include <stdexcept>
 #include <limits>
+#include <cmath>
 
 #define FMT_HEADER_ONLY
 #include <fmt/core.h>
 
 #include <boost/variant/variant.hpp>
 #include <boost/variant/apply_visitor.hpp>
+#include <boost/math/special_functions/fpclassify.hpp>
 
 #ifndef BRA_NO_MPI
 # include <yampi/rank.hpp>
@@ -45,6 +47,30 @@ namespace bra
 {
   namespace
   {
+    bool is_uint_symbol(std::string const& name)
+    { return name == ":UINT"; }
+
+    ::bra::int_type checked_uint_to_int(::bra::uint_type const value, std::string const& operand)
+    {
+      if (value > static_cast< ::bra::uint_type >(std::numeric_limits< ::bra::int_type >::max()))
+        throw std::out_of_range{"UINT to INT conversion out of range: " + operand};
+      return static_cast< ::bra::int_type >(value);
+    }
+
+    ::bra::uint_type checked_real_to_uint(::bra::real_type const value, std::string const& operand)
+    {
+      // Boost uses representation-based classification under fast-math builds.
+      if (not boost::math::isfinite(value))
+        throw std::out_of_range{"REAL to UINT conversion out of range: " + operand};
+      auto const truncated = std::trunc(value);
+      // The exclusive upper bound is an exactly representable power of two,
+      // unlike UINT_MAX when real_type has fewer significand bits than UINT.
+      auto const limit = std::ldexp(::bra::real_type{1}, std::numeric_limits< ::bra::uint_type >::digits);
+      if (truncated < ::bra::real_type{0} or truncated >= limit)
+        throw std::out_of_range{"REAL to UINT conversion out of range: " + operand};
+      return static_cast< ::bra::uint_type >(truncated);
+    }
+
     std::string comparison_operation_string(::bra::compare_operation_type const op)
     {
       switch (op)
@@ -507,12 +533,25 @@ namespace bra
 
     if (uint_variables_.count(variable_name) != 0u)
     {
-      // Arithmetic, bitwise operations, and casts are added separately.
-      if (op != ::bra::assign_operation_type::assign)
-        throw ::bra::wrong_assignment_argument_error{lhs_variable_name, op, rhs_literal_or_variable_name};
       auto& destination = uint_variables_.at(variable_name).at(index);
       auto const rhs_value = to_uint(rhs_literal_or_variable_name);
-      destination = rhs_value;
+      switch (op)
+      {
+        case ::bra::assign_operation_type::assign: destination = rhs_value; break;
+        case ::bra::assign_operation_type::plus_assign: destination += rhs_value; break;
+        case ::bra::assign_operation_type::minus_assign: destination -= rhs_value; break;
+        case ::bra::assign_operation_type::multiplies_assign: destination *= rhs_value; break;
+        case ::bra::assign_operation_type::divides_assign:
+          if (rhs_value == uint_type{0})
+            throw ::bra::integer_zero_divisor_error{lhs_variable_name, rhs_literal_or_variable_name};
+          destination /= rhs_value;
+          break;
+        case ::bra::assign_operation_type::bit_and_assign: destination &= rhs_value; break;
+        case ::bra::assign_operation_type::bit_or_assign: destination |= rhs_value; break;
+        case ::bra::assign_operation_type::bit_xor_assign: destination ^= rhs_value; break;
+        default:
+          throw ::bra::wrong_assignment_argument_error{lhs_variable_name, op, rhs_literal_or_variable_name};
+      }
       return;
     }
 
@@ -629,6 +668,8 @@ namespace bra
 
         if (is_int_symbol(variable_name))
           oss << to_int(variable_or_literal);
+        else if (is_uint_symbol(variable_name))
+          oss << to_uint(variable_or_literal);
         else if (is_real_symbol(variable_name))
           oss << to_real(variable_or_literal);
         else if (is_complex_symbol(variable_name))
@@ -724,6 +765,12 @@ namespace bra
       auto const rhs_value = to_int(rhs_literal_or_variable_name);
       return compare_values(int_variables_.at(variable_name)[index], op, rhs_value, evaluated_operands);
     }
+    else if (uint_variables_.find(variable_name) != end(uint_variables_))
+    {
+      auto const lhs_value = uint_variables_.at(variable_name).at(index);
+      auto const rhs_value = to_uint(rhs_literal_or_variable_name);
+      return compare_values(lhs_value, op, rhs_value, evaluated_operands);
+    }
     else
       throw ::bra::wrong_comparison_argument_error{lhs_variable_name, op, rhs_literal_or_variable_name};
   }
@@ -782,6 +829,34 @@ namespace bra
   {
     if (colon_separated_string.empty())
       throw std::runtime_error{"empty UINT operand"};
+    if (colon_separated_string == ":UINT")
+      return uint_type{0};
+    if (colon_separated_string.compare(0u, 6u, ":UINT:") == 0)
+    {
+      auto const operand = colon_separated_string.substr(6u);
+      if (operand.empty())
+        throw std::runtime_error{"empty UINT cast operand"};
+      auto const first = operand.front();
+      if (std::isdigit(static_cast<unsigned char>(first)) or first == '+' or first == '-' or first == '.')
+      {
+        auto const start = first == '+' or first == '-' ? 1u : 0u;
+        auto const is_integer = start < operand.size()
+          and operand.find_first_not_of("0123456789", start) == std::string::npos;
+        if (is_integer)
+          return first == '-' ? static_cast<uint_type>(to_int(operand)) : to_uint(operand);
+        return checked_real_to_uint(boost::lexical_cast<real_type>(operand), operand);
+      }
+      auto const name = operand.substr(0u, operand.find(':', first == ':' ? 1u : 0u));
+      if (is_uint_symbol(name) or uint_variables_.count(name) != 0u)
+        return to_uint(operand);
+      if (is_int_symbol(name) or int_variables_.count(name) != 0u)
+        return static_cast<uint_type>(to_int(operand));
+      if (is_real_symbol(name) or real_variables_.count(name) != 0u)
+        return checked_real_to_uint(to_real(operand), operand);
+      if (is_complex_symbol(name) or complex_variables_.count(name) != 0u)
+        return checked_real_to_uint(std::real(to_complex(operand)), operand);
+      throw std::runtime_error{"invalid UINT cast operand: " + operand};
+    }
     auto const first = colon_separated_string.front();
     if (std::isdigit(static_cast<unsigned char>(first)) or first == '+' or first == '-')
     {
@@ -792,6 +867,13 @@ namespace bra
       // lexical_cast checks the native unsigned range without signed narrowing.
       return boost::lexical_cast<uint_type>(colon_separated_string);
     }
+    auto const name = colon_separated_string.substr(0u, colon_separated_string.find(':', first == ':' ? 1u : 0u));
+    if (is_int_symbol(name) or is_real_symbol(name) or is_complex_symbol(name)
+        or int_variables_.count(name) != 0u or real_variables_.count(name) != 0u
+        or complex_variables_.count(name) != 0u or pauli_string_space_variables_.count(name) != 0u)
+      throw std::runtime_error{"UINT operand requires an explicit :UINT: cast: " + colon_separated_string};
+    if (uint_variables_.count(name) == 0u)
+      throw std::runtime_error{"invalid UINT operand: " + colon_separated_string};
     return to_uint_variable(colon_separated_string);
   }
 
@@ -851,6 +933,8 @@ namespace bra
 
         if (is_int_symbol(variable_name))
           return to_int(new_colon_separated_string);
+        else if (is_uint_symbol(variable_name))
+          return checked_uint_to_int(to_uint(new_colon_separated_string), new_colon_separated_string);
         else if (is_real_symbol(variable_name))
           return static_cast<int_type>(to_real(new_colon_separated_string));
         else if (is_complex_symbol(variable_name))
@@ -862,6 +946,8 @@ namespace bra
         using std::end;
         if (int_variables_.find(variable_name) != end(int_variables_))
           return to_int(new_colon_separated_string);
+        else if (uint_variables_.find(variable_name) != end(uint_variables_))
+          return checked_uint_to_int(to_uint(new_colon_separated_string), new_colon_separated_string);
         else if (real_variables_.find(variable_name) != end(real_variables_))
           return static_cast<int>(to_real(new_colon_separated_string));
         else if (complex_variables_.find(variable_name) != end(complex_variables_))
@@ -874,6 +960,9 @@ namespace bra
       throw 1;
     }
 
+    auto const name = colon_separated_string.substr(0u, colon_separated_string.find(':'));
+    if (uint_variables_.count(name) != 0u)
+      throw std::runtime_error{"UINT operand requires an explicit :INT: cast: " + colon_separated_string};
     return to_int_variable(colon_separated_string);
   }
 
@@ -943,6 +1032,8 @@ namespace bra
 
         if (is_int_symbol(variable_name))
           return static_cast<real_type>(to_int(new_colon_separated_string));
+        else if (is_uint_symbol(variable_name))
+          return static_cast<real_type>(to_uint(new_colon_separated_string));
         else if (is_real_symbol(variable_name))
           return to_real(new_colon_separated_string);
         else if (is_complex_symbol(variable_name))
@@ -954,6 +1045,8 @@ namespace bra
         using std::end;
         if (int_variables_.find(variable_name) != end(int_variables_))
           return static_cast<real_type>(to_int(new_colon_separated_string));
+        else if (uint_variables_.find(variable_name) != end(uint_variables_))
+          return static_cast<real_type>(to_uint(new_colon_separated_string));
         else if (real_variables_.find(variable_name) != end(real_variables_))
           return to_real(new_colon_separated_string);
         else if (complex_variables_.find(variable_name) != end(complex_variables_))
@@ -983,6 +1076,11 @@ namespace bra
 
         if (is_int_symbol(variable_name))
           return real_type{0};
+        else if (is_uint_symbol(variable_name))
+        {
+          to_uint(new_colon_separated_string);
+          return real_type{0};
+        }
         else if (is_real_symbol(variable_name))
           return real_type{0};
         else if (is_complex_symbol(variable_name))
@@ -994,6 +1092,11 @@ namespace bra
         using std::end;
         if (int_variables_.find(variable_name) != end(int_variables_))
           return real_type{0};
+        else if (uint_variables_.find(variable_name) != end(uint_variables_))
+        {
+          to_uint(new_colon_separated_string);
+          return real_type{0};
+        }
         else if (real_variables_.find(variable_name) != end(real_variables_))
           return real_type{0};
         else if (complex_variables_.find(variable_name) != end(complex_variables_))
@@ -1066,6 +1169,8 @@ namespace bra
 
         if (is_int_symbol(variable_name))
           return static_cast<complex_type>(to_int(new_colon_separated_string));
+        else if (is_uint_symbol(variable_name))
+          return complex_type{static_cast<real_type>(to_uint(new_colon_separated_string))};
         else if (is_real_symbol(variable_name))
           return static_cast<complex_type>(to_real(new_colon_separated_string));
         else if (is_complex_symbol(variable_name))
@@ -1074,6 +1179,8 @@ namespace bra
         using std::end;
         if (int_variables_.find(variable_name) != end(int_variables_))
           return static_cast<complex_type>(to_int(new_colon_separated_string));
+        else if (uint_variables_.find(variable_name) != end(uint_variables_))
+          return complex_type{static_cast<real_type>(to_uint(new_colon_separated_string))};
         else if (real_variables_.find(variable_name) != end(real_variables_))
           return static_cast<complex_type>(to_real(new_colon_separated_string));
         else if (complex_variables_.find(variable_name) != end(complex_variables_))
