@@ -52,7 +52,7 @@ def check_regressions(bra: pathlib.Path) -> None:
         flags[a[int(flags[i])]] = flags[a[i]] && !flags[int(flags[i])];''', outputs, ['1', '1', '1'])
     check_program(bra, '''bit[3] flags = "101"; float f = -1.5; bool b = true;
         bit out = flags[int(f)]; flags[uint(b)] = out;
-        int total = int(flags[int(b)]) + int(flags[uint(f)]);''',
+        int total = int(flags[int(b)]) + int(flags[int(f)]);''',
                   (*outputs, 'OUT7', 'TOTAL31'), ['1', '1', '1', '1', '2'])
     check_program(bra, '''bit[3] flags = "000"; int first = 0; int last = 2;
         for int i in [first:2:last] { flags[i] = 1; }
