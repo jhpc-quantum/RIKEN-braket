@@ -175,20 +175,111 @@ The instruction set supported by *bra* is as follows.
 * `EXIT`: measures all qubits and terminate execution.
 * `BEGIN FUSION`/`END FUSION`: starts/ends gate fusion.
 * `BEGIN CIRCUIT n`/`END CIRCUIT`: starts/ends description of quantum gates in the quantum circuit with specified circuit index $n$. The index $n$ should be less than the number of quantum circuits specified in the `CIRCUITS` instruction. The gates out of `BEGIN CIRCUIT`/`END CIRCUIT` are assumed to be gates in the quantum circuit $0$.
-* `VAR name type [size]`: declares classical variable/array whose name is `name`, type is `type`, and size is `size`. Possible `type`'s are `INT`, `REAL`, `COMPLEX`, or `PAULISS`. If `size` is not specified, array size is assumed to be 1. Note that classical variable is just an array whose size is 1. In order to get an element of array `XS`, specify such as `XS:0`, which corresponds to `XS[0]` in C/C++. In this quantum assembly language, `A:B:C:D` is for example a valid expression, and corresponding to `A[B[C[D]]]` in C/C++.
-* There are built-in constants/immutable variables; `:INT:x`, `:OUTDOME`, `:OUTCOMES:n` for `INT` type, `:REAL:x`, `:IMAG:x`, `:PI`, `:HALF_PI`, `:TWO_PI`, `:ROOT_TWO`, `:HALF_ROOT_TWO` for `REAL` type, `:COMPLEX:x`, `:I`, `:MINUS_I`, `:RESULT` for `COMPLEX` type, and `:PAULIS:x` for `PAULISS` type. Note that `PAULISS` stands for Pauli string space, whose elements are linear combinations of Pauli strings with complex scalars.
+* `VAR name type [size]`: declares classical variable/array whose name is `name`, type is `type`, and size is `size`. Possible `type`'s are `INT`, `UINT`, `REAL`, `COMPLEX`, or `PAULISS`. If `size` is not specified, array size is assumed to be 1. Note that classical variable is just an array whose size is 1. In order to get an element of array `XS`, specify such as `XS:0`, which corresponds to `XS[0]` in C/C++. In this quantum assembly language, `A:B:C:D` is for example a valid expression, and corresponding to `A[B[C[D]]]` in C/C++.
+* There are built-in constants/immutable variables; `:INT:x`, `:OUTDOME`, `:OUTCOMES:n` for `INT` type, `:UINT:x` for `UINT` type, `:REAL:x`, `:IMAG:x`, `:PI`, `:HALF_PI`, `:TWO_PI`, `:ROOT_TWO`, `:HALF_ROOT_TWO` for `REAL` type, `:COMPLEX:x`, `:I`, `:MINUS_I`, `:RESULT` for `COMPLEX` type, and `:PAULIS:x` for `PAULISS` type. Note that `PAULISS` stands for Pauli string space, whose elements are linear combinations of Pauli strings with complex scalars.
 * `LET lhs op rhs`: applies an operation `op` to `lhs` and `rhs`, and assign the value to `lhs`. Possible `op`'s are `:=`, `+=`, `-=`, `*=`, `/=`, `&=`, `|=`, and `^=`. While only classical variables can be specified to `lhs`, compatible variables and literals can be set to `rhs`.
-  Integer `/=` truncates toward zero. If the evaluated integer divisor is zero, it throws `bra::integer_zero_divisor_error` (a `std::runtime_error`) before modifying the destination. The error message identifies the `LET` instruction. This check occurs only when the instruction executes, so instructions skipped by `JUMP` or `JUMPIF` do not trigger it. Floating-point and complex division behavior is unchanged; integer overflow is not checked.
-  Bitwise AND `&=`, OR `|=`, and XOR `^=` require an `INT` destination, optionally indexed. The RHS accepts integer literals, `INT` variables or indexed elements, integer built-in symbols, and explicit `:INT:...` casts using the existing conversion rules. Bare `REAL`, `COMPLEX`, or `PAULISS` operands are rejected. A non-integer destination throws `bra::wrong_assignment_argument_error`; failed RHS evaluation leaves the destination unchanged. Operands are evaluated only when the instruction executes, so skipped instructions do not trigger these errors.
+  Integer `/=` truncates toward zero. If the evaluated integer divisor is zero, it throws `bra::integer_zero_divisor_error` (a `std::runtime_error`) before modifying the destination. The error message identifies the `LET` instruction. This check occurs only when the instruction executes, so instructions skipped by `JUMP` or `JUMPIF` do not trigger it. Floating-point and complex division behavior is unchanged; signed integer overflow is not checked. Unsigned arithmetic wraps as described below.
+  Bitwise AND `&=`, OR `|=`, and XOR `^=` require an `INT` or `UINT` destination, optionally indexed. For an `INT` destination, the RHS accepts integer literals, `INT` variables or indexed elements, integer built-in symbols, and explicit `:INT:...` casts using the existing conversion rules. For a `UINT` destination, it accepts unsigned integer literals, `UINT` variables or indexed elements, and explicit `:UINT:...` casts. Mixing `INT` and `UINT` operands requires an explicit cast. Bare `REAL`, `COMPLEX`, or `PAULISS` operands are rejected. A non-integer destination throws `bra::wrong_assignment_argument_error`; failed RHS evaluation leaves the destination unchanged. Operands are evaluated only when the instruction executes, so skipped instructions do not trigger these errors.
   `INT` uses native signed C++ `int`; a compile-time check requires two's-complement representation. These bitwise operators support negative values and integer endpoints without arithmetic overflow. They do not enforce a user-selected bit width or add general overflow checks to arithmetic or casts. `LET N ^= -1` complements every integer bit. For a value restricted to zero or one, `LET B ^= 1` flips just its single bit. Shift operators are not supported by `LET`.
 * `@label`: declares label `label`. Do not insert any spaces between `@` and `label`.
-* `JUMP label`/`JUMPIF label lhs op rhs`: jumps to the label `label`. In the case of `JUMPIF`, one can specify a condition to jump by `lhs op rhs`, where possible `op`'s are `==`, `\=`, `>`, `<`, `<=`, and `>=`. The `lhs` operand must be an `INT` or `REAL` variable, optionally with an array index. The `rhs` operand may be a compatible variable, indexed element, literal, or built-in constant. `COMPLEX` comparisons are not supported.
+* `JUMP label`/`JUMPIF label lhs op rhs`: jumps to the label `label`. In the case of `JUMPIF`, one can specify a condition to jump by `lhs op rhs`, where possible `op`'s are `==`, `\=`, `>`, `<`, `<=`, and `>=`. The `lhs` operand must be an `INT`, `UINT`, or `REAL` variable, optionally with an array index. The `rhs` operand may be a compatible variable, indexed element, literal, or built-in constant. `COMPLEX` comparisons are not supported.
 * `EXPECTATION operator q1 q2 q3 q4`: calculates expectation value of `operator` for the present circuit[^1]. This `operator` should be a classical variable of type `PAULISS`, and its length of Pauli string should be equal to the number of qubits specified in this instruction (`q1 q2 q3 q4` in this example). The result of this instruction is assigned to `:RESULT` whose type is `COMPLEX`.
 * `INNERPROD (n | ALL) [operator q1 q2 q3 q4]`: calculates inner product of two or more quantum states.
   - If a non-negative integer `n` is specified, it calculates inner product of the quantum state in the present circuit $k$ and one in the circuit $n$, that is, $\braket{\Psi_n | \Psi_k}$. If `operator` and `qn`'s are specified, the calculated quantity becomes $\bra{\Psi_n} H \ket{\Psi_k}$, where $H$ is a given operator by `operator`. This `operator` should be a classical variable of type `PAULISS`, and its length of Pauli string should be equal to the number of qubits specified in this instruction (`q1 q2 q3 q4` in this example). The result of this instruction is assigned to `:RESULT` whose type is `COMPLEX`.
   - If `ALL` is specified, it calculates inner product of quantum state in the circuit $0$ and one in the present circuit $k$, that is, $\braket{\Psi_k | \Psi_0}$. If `operator` and `qn`'s are specified, the calculated quantity becomes $\bra{\Psi_k} H \ket{\Psi_0}$, where $H$ is a given operator by `operator`. This `operator` should be a classical variable of type `PAULISS`, and its length of Pauli string should be equal to the number of qubits specified in this instruction (`q1 q2 q3 q4` in this example). The result of this instruction is assigned to `:RESULT` whose type is `COMPLEX`.
 * `FIDELITY (n | ALL) [operator q1 q2 q3 q4]`: calculates fidelity of two or more quantum states, or norm of inner product. See the description of `INNERPROD ...` for more detail. Note that the result is assigned to a complex variable `:RESULT` although fidelity itself is actually real.
-* `ASSERT lhs op rhs`: checks a comparison using the same operand types and operators as `JUMPIF`. The `lhs` must be an `INT` or `REAL` variable, optionally indexed; the `rhs` may be a compatible variable, indexed element, literal, or built-in constant. If the comparison is false, it throws `bra::assertion_error` (a `std::runtime_error`) identifying the failed instruction and evaluated operands. A successful assertion does not change classical variables or jump state. Assertions skipped by control flow are not evaluated. This is a runtime instruction and remains enabled in release builds; for example, `ASSERT STEP \= 0` checks that an integer step is nonzero.
+* `ASSERT lhs op rhs`: checks a comparison using the same operand types and operators as `JUMPIF`. The `lhs` must be an `INT`, `UINT`, or `REAL` variable, optionally indexed; the `rhs` may be a compatible variable, indexed element, literal, or built-in constant. If the comparison is false, it throws `bra::assertion_error` (a `std::runtime_error`) identifying the failed instruction and evaluated operands. A successful assertion does not change classical variables or jump state. Assertions skipped by control flow are not evaluated. This is a runtime instruction and remains enabled in release builds; for example, `ASSERT STEP \= 0` checks that an integer step is nonzero.
 * `PRINT var [...]`/`PRINTLN var [...]`: prints classical variables `var`, `...` with single-space separators.
+
+### Unsigned integers
+
+`UINT` uses native C++ `unsigned int`, the unsigned counterpart of `INT` (`int`).
+Its width $W$ is determined by the platform, not by the assembly program; its range is $0$ through $2^W-1$.
+It does not provide arbitrary-width or OpenQASM-sized integers.
+`VAR U UINT [size]` declares a zero-initialized scalar or array with a positive size (one by default).
+A `UINT` declaration cannot reuse a name already declared with any type, and later declarations cannot reuse a `UINT` name.
+`U` refers to element zero; `U:index` selects an element using an `INT` index expression.
+Negative or out-of-range indices throw an exception. A `UINT` index requires an explicit checked cast, for example `U::INT:INDEX`.
+
+Unsigned literals are decimal digits with an optional leading `+`, within the native `UINT` range.
+Bare negative or floating-point literals are not unsigned operands.
+`LET` supports `:=`, `+=`, `-=`, `*=`, `/=`, `&=`, `|=`, and `^=` for `UINT` destinations.
+Addition, subtraction, and multiplication wrap modulo $2^W$; division computes the unsigned integer quotient.
+A zero divisor throws `bra::integer_zero_divisor_error` before changing the destination, as for `INT`.
+Bitwise operations act on all $W$ bits; `LET U ^= :UINT:-1` complements every bit.
+Shift and remainder assignment operators are not provided by `LET`.
+`ASSERT` and `JUMPIF` perform unsigned comparisons when their left operand is a `UINT` variable or indexed element.
+Assignment, arithmetic, and comparison operands do not implicitly mix `INT` and `UINT`.
+`PRINT` and `PRINTLN` print unsigned values in decimal, including values above `INT`'s maximum.
+
+Explicit conversions use the existing colon-prefix syntax:
+
+* `:UINT` is unsigned zero; `:UINT:operand` converts an operand to `UINT`.
+* Converting an `INT` value to `UINT` reduces it modulo $2^W$, so `:UINT:-1` is the native unsigned maximum. Negative integer literals in this conversion must fit `INT`; positive integer literals must fit `UINT`.
+* Converting a `REAL` value truncates toward zero, then requires the result to be in $[0,2^W)$. Non-finite values and out-of-range results throw `std::out_of_range`. Thus `:UINT:3.9` is `3`, `:UINT:-0.9` is `0`, but `:UINT:-1.0` is rejected rather than wrapped.
+* Converting a `COMPLEX` operand uses its real component and applies the same checked floating-point conversion.
+* `:INT:U` requires `U` to fit `INT`; otherwise it throws `std::out_of_range` rather than narrowing or wrapping.
+* `:REAL:U` and `:COMPLEX:U` convert to the configured floating-point type and may lose integer precision. `:IMAG:U` evaluates the unsigned operand and returns zero.
+
+Failed RHS evaluation or conversion leaves the assignment destination unchanged.
+Operands are evaluated only when the instruction executes, so skipped instructions do not trigger conversion or division errors.
+
+For example, this prints `0 3 3` on every supported native integer width:
+
+```text
+QUBITS 0
+VAR U UINT 2
+VAR S INT
+LET U := :UINT:-1
+LET U += 1
+ASSERT U == 0
+LET U:1 := :UINT:3.9
+LET S := :INT:U:1
+PRINTLN U U:1 S
+```
+
+### UINT communication between circuits
+
+Both non-MPI and MPI builds support the following unsigned transfers:
+
+* `SEND destination variable UINT [count]` / `RECEIVE source variable UINT [count]`
+* `BROADCAST root variable UINT [count]`
+* `GATHER root variable UINT [count] [TO destination_variable]`
+* `SCATTER root variable UINT [count] [FROM source_variable]`
+
+Circuit indices are zero-based. The transfer count defaults to one and must be positive.
+Buffers must be declared `UINT` variables; an indexed name selects the beginning of a contiguous range.
+The complete range must fit within the array, or an exception is thrown.
+Transfers preserve every unsigned bit, including values above `INT`'s maximum; they do not cast between types.
+SEND and RECEIVE must agree on peer, type, and count; a transfer to the same circuit is a no-op.
+All circuits must participate in a collective operation with the same root, type, and count.
+
+BROADCAST copies the root's range to each circuit's range.
+GATHER concatenates contributions in circuit-index order; the root's destination must hold `count * CIRCUITS` elements.
+If `TO` is omitted, GATHER operates in place: the root's contribution must already occupy its own block in the full destination range.
+SCATTER distributes blocks in circuit-index order; the root's source must hold `count * CIRCUITS` elements.
+If `FROM` is omitted, SCATTER operates in place and the root keeps its complete source buffer unchanged.
+When `TO` or `FROM` is specified, use a separate, non-overlapping root buffer.
+
+Declare `CIRCUITS` before `QUBITS`. In an MPI launch, use `--file` so that every rank can read the same assembly program.
+The following program prints `7` from circuit one:
+
+```text
+CIRCUITS 2
+QUBITS 2
+BEGIN CIRCUIT 0
+VAR A UINT
+LET A := 7
+SEND 1 A UINT
+END CIRCUIT
+BEGIN CIRCUIT 1
+VAR B UINT
+RECEIVE 0 B UINT
+ASSERT B == 7
+PRINTLN B
+END CIRCUIT
+```
+
+Native `UINT` support is currently a *bra* feature. Mapping OpenQASM `uint` declarations to it in `qasm2qcx.py` is separate work.
 
 [^1]: To be more precise, `EXPECTATION H ...` calculates $\bra{\Psi} (H \ket{\Psi})$ for given operator $H$ and state $\ket{\Psi}$. It becomes the expectation value of $H$ if $H$ is Hermitian.
