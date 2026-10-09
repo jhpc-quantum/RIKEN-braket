@@ -68,6 +68,35 @@ namespace bra
       return static_cast< ::bra::uint_type >(truncated);
     }
 
+    ::bra::int_type checked_signed_left_shift(
+      ::bra::int_type const value, unsigned int const count, std::string const& instruction)
+    {
+      // Shift unsigned magnitudes only. Never negate INT_MIN or convert an
+      // unsigned result above INT_MAX to int, even on an overflowing path.
+      auto const negative = value < ::bra::int_type{0};
+      auto const magnitude = negative ? ::bra::uint_type{0} - static_cast< ::bra::uint_type >(value)
+                                      : static_cast< ::bra::uint_type >(value);
+      auto const minimum_magnitude = ::bra::uint_type{0}
+        - static_cast< ::bra::uint_type >(std::numeric_limits< ::bra::int_type >::min());
+      auto const limit = negative ? minimum_magnitude
+                                 : static_cast< ::bra::uint_type >(std::numeric_limits< ::bra::int_type >::max());
+      if (magnitude > (limit >> count))
+        throw std::overflow_error{"integer left shift overflow in " + instruction};
+      auto const result = magnitude << count;
+      if (not negative)
+        return static_cast< ::bra::int_type >(result);
+      if (result == minimum_magnitude)
+        return std::numeric_limits< ::bra::int_type >::min();
+      return -static_cast< ::bra::int_type >(result);
+    }
+
+    ::bra::int_type signed_right_shift(::bra::int_type const value, unsigned int const count)
+    {
+      // Sign extension without relying on implementation-defined right shift
+      // of a negative signed value. The shifted operand is always nonnegative.
+      return value < ::bra::int_type{0} ? -1 - (-(value + 1) >> count) : value >> count;
+    }
+
     std::string comparison_operation_string(::bra::compare_operation_type const op)
     {
       switch (op)
@@ -138,7 +167,11 @@ namespace bra
                   ? "|="
                   : op == ::bra::assign_operation_type::bit_xor_assign
                     ? "^="
-                    : "";
+                    : op == ::bra::assign_operation_type::left_shift_assign
+                      ? "<<="
+                      : op == ::bra::assign_operation_type::right_shift_assign
+                        ? ">>="
+                        : "";
   }
 
   integer_zero_divisor_error::integer_zero_divisor_error(std::string const& lhs_variable_name, std::string const& rhs_literal_or_variable_name)
@@ -520,13 +553,62 @@ namespace bra
   void state::invoke_assign_operation(
     std::string const& lhs_variable_name, ::bra::assign_operation_type const op, std::string const& rhs_literal_or_variable_name)
   {
-    if (not std::isalpha(static_cast<unsigned char>(lhs_variable_name.front())))
+    if (lhs_variable_name.empty() or not std::isalpha(static_cast<unsigned char>(lhs_variable_name.front())))
       throw ::bra::wrong_assignment_argument_error{lhs_variable_name, op, rhs_literal_or_variable_name};
 
     using size_type = std::string::size_type;
     auto const found_index = lhs_variable_name.find(':');
     auto const variable_name = lhs_variable_name.substr(size_type{0u}, found_index);
     auto const index = found_index == std::string::npos ? 0 : to_int(lhs_variable_name.substr(found_index + size_type{1u}));
+
+    if (op == ::bra::assign_operation_type::left_shift_assign
+        or op == ::bra::assign_operation_type::right_shift_assign)
+    {
+      auto const unsigned_destination = uint_variables_.count(variable_name) != 0u;
+      if (not unsigned_destination and int_variables_.count(variable_name) == 0u)
+        throw ::bra::wrong_assignment_argument_error{lhs_variable_name, op, rhs_literal_or_variable_name};
+      auto const width = unsigned_destination ? std::numeric_limits<uint_type>::digits
+                                              : std::numeric_limits<int_type>::digits + 1;
+      auto const instruction = "LET " + lhs_variable_name
+        + (op == ::bra::assign_operation_type::left_shift_assign ? " <<= " : " >>= ")
+        + rhs_literal_or_variable_name;
+      if (rhs_literal_or_variable_name.empty())
+        throw ::bra::wrong_assignment_argument_error{lhs_variable_name, op, rhs_literal_or_variable_name};
+      auto const first = rhs_literal_or_variable_name.front();
+      auto const rhs_name = rhs_literal_or_variable_name.substr(
+        0u, rhs_literal_or_variable_name.find(':', first == ':' ? 1u : 0u));
+      // Counts have their own integer type, independent of the destination.
+      // In particular, never wrap a negative INT count through a UINT cast.
+      auto const unsigned_count = is_uint_symbol(rhs_name) or uint_variables_.count(rhs_name) != 0u
+        or std::isdigit(static_cast<unsigned char>(first)) or first == '+';
+      auto count = uint_type{0};
+      if (unsigned_count)
+        count = to_uint(rhs_literal_or_variable_name);
+      else
+      {
+        auto const signed_count = to_int(rhs_literal_or_variable_name);
+        if (signed_count < 0)
+          throw std::out_of_range{"negative integer shift count in " + instruction};
+        count = static_cast<uint_type>(signed_count);
+      }
+      if (count >= static_cast<uint_type>(width))
+        throw std::out_of_range{"integer shift count out of range in " + instruction
+                                + " (width " + std::to_string(width) + ")"};
+      if (unsigned_destination)
+      {
+        auto& destination = uint_variables_.at(variable_name).at(index);
+        destination = op == ::bra::assign_operation_type::left_shift_assign
+          ? destination << count : destination >> count;
+      }
+      else
+      {
+        auto& destination = int_variables_.at(variable_name).at(index);
+        destination = op == ::bra::assign_operation_type::left_shift_assign
+          ? checked_signed_left_shift(destination, count, instruction)
+          : signed_right_shift(destination, count);
+      }
+      return;
+    }
 
     if (uint_variables_.count(variable_name) != 0u)
     {

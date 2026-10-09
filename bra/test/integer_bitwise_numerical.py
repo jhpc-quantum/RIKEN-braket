@@ -98,7 +98,7 @@ PRINTLN A
     for value in (0, 1):
         check_program(bra, f'QUBITS 0\nVAR A INT\nLET A := {value}\nLET A ^= 1\nPRINTLN A\n',
                       [str(1 - value)])
-    for op in ('&', '|', '^', '~=', '<<=', '>>='):
+    for op in ('&', '|', '^', '~='):
         check_program(bra, f'QUBITS 0\nVAR A INT\nLET A {op} 1\nPRINTLN A\n', None)
     print('Integer bitwise numerical tests passed')
 

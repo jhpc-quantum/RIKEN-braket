@@ -51,7 +51,8 @@ namespace bra
   enum class assign_operation_type : int
   {
     assign = 0, plus_assign = 1, minus_assign = 2, multiplies_assign = 3, divides_assign = 4,
-    bit_and_assign = 5, bit_or_assign = 6, bit_xor_assign = 7
+    bit_and_assign = 5, bit_or_assign = 6, bit_xor_assign = 7,
+    left_shift_assign = 8, right_shift_assign = 9
   };
 
   enum class compare_operation_type : int
