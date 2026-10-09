@@ -746,7 +746,42 @@ int main(int argc, char* argv[])
           continue;
         }
       }
+      else if (nompi_states[circuit_index].wait_reason().is_send_uint_variable())
+      {
+        auto const other_circuit_index = nompi_states[circuit_index].wait_reason().other_circuit_index();
+        if (not nompi_states.at(other_circuit_index).is_waiting())
+          continue;
+
+        auto const num_elements = nompi_states[circuit_index].wait_reason().num_elements();
+        if (nompi_states[other_circuit_index].wait_reason().is_receive_uint_variable()
+            and nompi_states[other_circuit_index].wait_reason().other_circuit_index() == circuit_index
+            and nompi_states[other_circuit_index].wait_reason().num_elements() == num_elements)
+        {
+          ::bra::send_uint_variable(
+            nompi_states[circuit_index], nompi_states[circuit_index].wait_reason().variable_name(),
+            nompi_states[other_circuit_index], nompi_states[other_circuit_index].wait_reason().variable_name(),
+            num_elements);
+
+          nompi_states[circuit_index].cancel_waiting();
+          nompi_states[other_circuit_index].cancel_waiting();
+
+          continue;
+        }
+      }
     }
+
+    auto const is_broadcast_uint_variable = std::all_of(
+      begin(nompi_states), end(nompi_states),
+      [](::bra::nompi_state const& state)
+      { return state.is_waiting() and state.wait_reason().is_broadcast_uint_variable(); });
+    auto const is_gather_uint_variable = std::all_of(
+      begin(nompi_states), end(nompi_states),
+      [](::bra::nompi_state const& state)
+      { return state.is_waiting() and state.wait_reason().is_gather_uint_variable(); });
+    auto const is_scatter_uint_variable = std::all_of(
+      begin(nompi_states), end(nompi_states),
+      [](::bra::nompi_state const& state)
+      { return state.is_waiting() and state.wait_reason().is_scatter_uint_variable(); });
 
     if (is_inner_product_all)
     {
@@ -844,6 +879,24 @@ int main(int argc, char* argv[])
 
       continue;
     }
+    else if (is_broadcast_uint_variable)
+    {
+      auto variable_names = std::vector<std::string>{};
+      variable_names.reserve(num_circuits);
+      std::transform(
+        begin(nompi_states), end(nompi_states), std::back_inserter(variable_names),
+        [](::bra::nompi_state const& state) { return state.wait_reason().variable_name(); });
+
+      ::bra::broadcast_uint_variable(
+        nompi_states, variable_names,
+        nompi_states.front().wait_reason().root_circuit_index(),
+        nompi_states.front().wait_reason().num_elements());
+
+      for (auto& state: nompi_states)
+        state.cancel_waiting();
+
+      continue;
+    }
     else if (is_gather_real_variable)
     {
       auto variable_names = std::vector<std::string>{};
@@ -907,6 +960,27 @@ int main(int argc, char* argv[])
 
       continue;
     }
+    else if (is_gather_uint_variable)
+    {
+      auto variable_names = std::vector<std::string>{};
+      variable_names.reserve(num_circuits);
+      std::transform(
+        begin(nompi_states), end(nompi_states), std::back_inserter(variable_names),
+        [](::bra::nompi_state const& state) { return state.wait_reason().variable_name(); });
+
+      auto const root_circuit_index = nompi_states.front().wait_reason().root_circuit_index();
+      auto const num_elements = nompi_states.at(root_circuit_index).wait_reason().num_elements();
+      auto const destination_variable_name = nompi_states.at(root_circuit_index).wait_reason().other_variable_name();
+
+      ::bra::gather_uint_variable(
+        nompi_states, variable_names,
+        destination_variable_name, root_circuit_index, num_elements);
+
+      for (auto& state: nompi_states)
+        state.cancel_waiting();
+
+      continue;
+    }
     else if (is_scatter_real_variable)
     {
       auto variable_names = std::vector<std::string>{};
@@ -962,6 +1036,27 @@ int main(int argc, char* argv[])
       auto const source_variable_name = nompi_states[root_circuit_index].wait_reason().other_variable_name();
 
       ::bra::scatter_int_variable(
+        nompi_states, variable_names,
+        source_variable_name, root_circuit_index, num_elements);
+
+      for (auto& state: nompi_states)
+        state.cancel_waiting();
+
+      continue;
+    }
+    else if (is_scatter_uint_variable)
+    {
+      auto variable_names = std::vector<std::string>{};
+      variable_names.reserve(num_circuits);
+      std::transform(
+        begin(nompi_states), end(nompi_states), std::back_inserter(variable_names),
+        [](::bra::nompi_state const& state) { return state.wait_reason().variable_name(); });
+
+      auto const root_circuit_index = nompi_states.front().wait_reason().root_circuit_index();
+      auto const num_elements = nompi_states.at(root_circuit_index).wait_reason().num_elements();
+      auto const source_variable_name = nompi_states.at(root_circuit_index).wait_reason().other_variable_name();
+
+      ::bra::scatter_uint_variable(
         nompi_states, variable_names,
         source_variable_name, root_circuit_index, num_elements);
 

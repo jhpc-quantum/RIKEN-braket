@@ -30,18 +30,28 @@ namespace bra
     auto do_send_real_variable(int const destination_circuit_index, std::string const& variable_name, int const num_elements) const -> void override;
     auto do_send_complex_variable(int const destination_circuit_index, std::string const& variable_name, int const num_elements) const -> void override;
     auto do_send_int_variable(int const destination_circuit_index, std::string const& variable_name, int const num_elements) const -> void override;
+
+    auto do_send_uint_variable(int const destination_circuit_index, std::string const& variable_name, int const num_elements) const -> void override;
     auto do_receive_real_variable(int const source_circuit_index, std::string const& variable_name, int const num_elements) -> void override;
     auto do_receive_complex_variable(int const source_circuit_index, std::string const& variable_name, int const num_elements) -> void override;
     auto do_receive_int_variable(int const source_circuit_index, std::string const& variable_name, int const num_elements) -> void override;
+
+    auto do_receive_uint_variable(int const source_circuit_index, std::string const& variable_name, int const num_elements) -> void override;
     auto do_broadcast_real_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements) -> void override;
     auto do_broadcast_complex_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements) -> void override;
     auto do_broadcast_int_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements) -> void override;
+
+    auto do_broadcast_uint_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements) -> void override;
     auto do_gather_real_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements, std::string const& destination_variable_name) -> void override;
     auto do_gather_complex_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements, std::string const& destination_variable_name) -> void override;
     auto do_gather_int_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements, std::string const& destination_variable_name) -> void override;
+
+    auto do_gather_uint_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements, std::string const& destination_variable_name) -> void override;
     auto do_scatter_real_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements, std::string const& source_variable_name) -> void override;
     auto do_scatter_complex_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements, std::string const& source_variable_name) -> void override;
     auto do_scatter_int_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements, std::string const& source_variable_name) -> void override;
+
+    auto do_scatter_uint_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements, std::string const& source_variable_name) -> void override;
   }; // class mpi_state
 } // namespace bra
 

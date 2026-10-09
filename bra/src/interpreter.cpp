@@ -2008,9 +2008,11 @@ namespace bra
           ? ::bra::variable_type::complex_
           : type_name == "INT"
             ? ::bra::variable_type::integer
-            : type_name == "PAULISS"
-              ? ::bra::variable_type::pauli_string_space
-              : throw 1;
+            : type_name == "UINT"
+              ? ::bra::variable_type::unsigned_integer
+              : type_name == "PAULISS"
+                ? ::bra::variable_type::pauli_string_space
+                : throw 1;
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::var_op >(variable_name, type, num_elements));
   }
@@ -2080,7 +2082,9 @@ namespace bra
           ? ::bra::variable_type::complex_
           : type_name == "INT"
             ? ::bra::variable_type::integer
-            : throw 1;
+            : type_name == "UINT"
+              ? ::bra::variable_type::unsigned_integer
+              : throw 1;
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::send_op >(destination_circuit_index, variable_name, type, num_elements));
   }
@@ -2110,7 +2114,9 @@ namespace bra
           ? ::bra::variable_type::complex_
           : type_name == "INT"
             ? ::bra::variable_type::integer
-            : throw 1;
+            : type_name == "UINT"
+              ? ::bra::variable_type::unsigned_integer
+              : throw 1;
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::receive_op >(source_circuit_index, variable_name, type, num_elements));
   }
@@ -2137,7 +2143,9 @@ namespace bra
           ? ::bra::variable_type::complex_
           : type_name == "INT"
             ? ::bra::variable_type::integer
-            : throw 1;
+            : type_name == "UINT"
+              ? ::bra::variable_type::unsigned_integer
+              : throw 1;
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::broadcast_op >(root_circuit_index, variable_name, type, num_elements));
   }
@@ -2183,7 +2191,9 @@ namespace bra
           ? ::bra::variable_type::complex_
           : type_name == "INT"
             ? ::bra::variable_type::integer
-            : throw 1;
+            : type_name == "UINT"
+              ? ::bra::variable_type::unsigned_integer
+              : throw 1;
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::gather_op >(root_circuit_index, variable_name, type, num_elements, destination_variable_name));
   }
@@ -2229,7 +2239,9 @@ namespace bra
           ? ::bra::variable_type::complex_
           : type_name == "INT"
             ? ::bra::variable_type::integer
-            : throw 1;
+            : type_name == "UINT"
+              ? ::bra::variable_type::unsigned_integer
+              : throw 1;
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::scatter_op >(root_circuit_index, variable_name, type, num_elements, source_variable_name));
   }
