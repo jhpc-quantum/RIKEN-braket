@@ -247,6 +247,68 @@ class NativeUnsignedExpressionTests(unittest.TestCase):
             const bool OFF = false && bool(uint(-1.0)); bool out = OFF;'''))
 
 
+class UnsignedIntegrationTests(unittest.TestCase):
+    def test_runtime_loop_operands_use_checked_signed_captures(self) -> None:
+        for loop in ('for int i in [first:step:last] { total += i; }',
+                     'for int i in {first, last, first} { total += i; }'):
+            lines = convert('OPENQASM 3.0; uint[8] first = 1; uint last = 3; '
+                            'uint step = 1; int total = 0; ' + loop)
+            for name in ('FIRST31', 'LAST15'):
+                self.assertTrue(any(line.startswith('LET QASM2QCX_INT_')
+                                    and line.endswith(f':= :INT:{name}') for line in lines))
+            if '[' in loop:
+                self.assertTrue(any(line.endswith(':= :INT:STEP15') for line in lines))
+
+    def test_constant_unsigned_loop_values_must_fit_signed_iterator(self) -> None:
+        for loop in ('for int i in [U:U] {}', 'for int i in [0:U] {}',
+                     'for int i in [0:U:0] {}', 'for int i in {U} {}',
+                     'for int i in [1:0] { for int j in {U} {} }'):
+            with self.subTest(loop=loop), self.assertRaisesRegex(
+                    qasm2qcx.InvalidLoopRangeException, 'UINT value must fit QCX INT'):
+                convert('OPENQASM 3.0; const uint U = uint(-1); ' + loop)
+        maximum = qasm2qcx.QASM2QCXConverter.QCX_INT_MAX
+        lines = convert(f'OPENQASM 3.0; const uint U = {maximum}; int a = 0; '
+                        'for int i in {U} { a = i; }')
+        self.assertIn(f'LET A1 := {maximum}', lines)
+
+    def test_unsigned_runtime_indices_are_converted_before_bounds_checks(self) -> None:
+        lines = convert('''OPENQASM 3.0; uint i = 1; array[int, 2] a = {4, 5};
+            bit[2] flags = "01"; int out = a[i]; flags[i] = !flags[i];''')
+        captures = [index for index, line in enumerate(lines) if line.endswith(':= :INT:I1')]
+        self.assertEqual(len(captures), 3)
+        for index in captures:
+            self.assertTrue(lines[index + 1].startswith('ASSERT '))
+
+    def test_static_unsigned_bit_indices_and_selections(self) -> None:
+        lines = convert('''OPENQASM 3.0; const uint[8] I = 1; bit[3] flags = "101";
+            bit out = flags[I]; flags[I] = true;
+            bit[2] selected = flags[{uint[8](0), I + 1}];''')
+        self.assertIn('LET OUT7 := FLAGS31:1', lines)
+        self.assertIn('LET FLAGS31:1 := 1', lines)
+        self.assertIn('LET SELECTED255:0 := FLAGS31:0', lines)
+        self.assertIn('LET SELECTED255:1 := FLAGS31:2', lines)
+        with self.assertRaises(qasm2qcx.InvalidBitOperandException):
+            convert('OPENQASM 3.0; bit[2] flags; bit out = flags[uint(-1)];')
+
+    def test_complex_to_uint_cast_in_runtime_index(self) -> None:
+        lines = convert('''OPENQASM 3.0; complex z = 1.5 + 2im;
+            array[int, 2] a = {4, 5}; int out = a[uint(z)];''')
+        self.assertTrue(any(':= :UINT:Z1' in line for line in lines))
+
+    def test_unsigned_quantum_angles_use_real_conversion(self) -> None:
+        lines = convert('''OPENQASM 3.0; include "stdgates.inc"; qubit q;
+            uint theta = 1; rx(theta) q; gphase(theta);''')
+        self.assertIn('LET QASM2QCX_REAL_0 := :REAL:THETA31', lines)
+        self.assertIn('EX 0 QASM2QCX_REAL_0', lines)
+        self.assertIn('PHASE :REAL:THETA31', lines)
+
+    def test_uint_arrays_iterators_and_dynamic_qubits_remain_unsupported(self) -> None:
+        for source in ('array[uint, 2] a;', 'for uint i in [0:1] {}',
+                       'qubit[2] q; uint i = 1; reset q[i];'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                convert('OPENQASM 3.0; ' + source)
+
+
 class ScalarBitwiseExpressionTests(unittest.TestCase):
     def test_integer_and_bit_constant_folding(self) -> None:
         self.assertEqual(convert('''OPENQASM 3.0;

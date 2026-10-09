@@ -43,6 +43,75 @@ def check_width(bra: pathlib.Path, width: int) -> None:
                       [str(value), str(value ^ mask), str((-value) & mask), str(value ^ mask)])
 
 
+def check_integration(bra: pathlib.Path) -> None:
+    for start in range(4):
+        for stop in range(4):
+            for step in (1, 2, 3):
+                values = list(range(start, stop + 1, step))
+                check_program(bra, f'''uint[8] first = {start}; uint last = {stop};
+                    uint[4] step = {step}; int total = 0; int visits = 0;
+                    for int i in [first:step:last] {{ total += i; visits += 1; }}''',
+                              ('TOTAL31', 'VISITS63'), [str(sum(values)), str(len(values))])
+    check_program(bra, '''uint first = 1; uint[8] last = 5; uint step = 2; int total = 0;
+        for int i in [first:step:last] {
+            first = 9; last = 0; step = 1;
+            if (i == 3) { continue; } total += i;
+        }
+        for int i in {first, last, first} { first = 0; total += i; }''',
+                  ('TOTAL31',), ['24'])
+    check_program(bra, '''const uint[8] FIRST = 1; const uint[8] LAST = 5;
+        uint[8] n = 0; int total = 0;
+        for int i in [FIRST:uint[8](2):LAST] { total += i; }
+        for int i in {FIRST, LAST, FIRST} { total += i; }
+        while (n < uint[8](4)) {
+            n += uint[8](1); if (n == uint[8](2)) { continue; }
+            if (n == uint[8](4)) { break; } total += int(n);
+        }''', ('TOTAL31', 'N1'), ['20', '4'])
+    check_program(bra, '''uint[8] i = 1; const uint[8] I = 1;
+        array[int, 3] a = {uint[8](4), i, uint(7)}; bit[3] flags = "101";
+        int out = a[i]; a[i] += uint(3); flags[i] = !flags[I];
+        flags[i] ^= flags[uint[8](2)];
+        i = uint[8](0); a[i] = a[uint[8](2)];
+        complex z = 2.5 + 9im; out += a[uint(z)];''',
+                  ('A1:0', 'A1:1', 'A1:2', 'FLAGS31:1', 'OUT7'), ['7', '4', '7', '0', '8'])
+    check_program(bra, '''uint[8] n = 1; int total = 0; array[int, 2] a = {3, 4};
+        bit[2] flags = "01"; uint bad = uint(-1); uint zero = 0;
+        if (false) {
+            total = a[bad]; flags[bad] = true;
+            for int i in [bad:bad] { total += i; }
+            for int i in {bad, n} { total += i; }
+        }
+        bool ready = true || bool(a[bad]);
+        ready = false && bool(flags[bad]);
+        while (false && bool(n / zero)) { n += uint[8](1); }
+        for int i in [n:n] { if (n == uint[8](1)) { total += i; } }''',
+                  ('TOTAL31', 'N1', 'READY31'), ['1', '1', '0'])
+    check_program(bra, '''uint i = 0; uint all = uint(-1); uint[8] mask = 7;
+        array[int, 1] a = {-1}; a[i] %= all;
+        a[i] = -1; a[i] ^= all; int out = a[i];
+        a[i] = -1; a[i] &= mask; out += a[i];''',
+                  ('A1:0', 'OUT7'), ['7', '7'])
+    check_program(bra, '''include "stdgates.inc"; qubit q; uint theta = 0;
+        uint i = 1; bit[2] flags = "00"; rx(theta) q; gphase(theta);
+        x q; flags[i] = measure q;
+        bit[1] single = "0"; i = 0; single[i] = flags[uint(1)];''',
+                  ('FLAGS31:0', 'FLAGS31:1', 'SINGLE63'), ['0', '1', '1'])
+    maximum = qasm2qcx.QASM2QCXConverter.QCX_INT_MAX
+    check_program(bra, f'''uint start = {maximum}; uint stop = start; uint step = 1;
+        int out = 0; for int i in [start:step:stop] {{ out = i; }}''',
+                  ('OUT7',), [str(maximum)])
+    for source, diagnostic in (
+            ('uint bad = uint(-1); for int i in [bad:bad] {}', 'UINT to INT conversion out of range'),
+            ('uint bad = uint(-1); for int i in {0, bad} {}', 'UINT to INT conversion out of range'),
+            ('uint step = uint(-1); for int i in [0:step:2] {}', 'UINT to INT conversion out of range'),
+            ('uint step = 0; for int i in [0:step:2] {}', 'assertion failed in ASSERT'),
+            ('uint i = uint(-1); array[int, 2] a; int out = a[i];', 'UINT to INT conversion out of range'),
+            ('uint i = uint(-1); bit[2] flags; bit out = flags[i];', 'UINT to INT conversion out of range'),
+            ('uint i = 2; bit[2] flags; bit out = flags[i];', 'assertion failed in ASSERT'),
+            ('uint bad = uint(-1); array[int, 1] a = {bad};', 'UINT to INT conversion out of range')):
+        check_error(bra, source, diagnostic)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument('--bra', required=True, type=pathlib.Path)
@@ -99,6 +168,7 @@ def main() -> None:
             ('uint a = 7; a /= uint(0);', 'integer division by zero in LET'),
             ('uint[8] a = 7; a %= uint[8](0);', 'integer division by zero in LET')):
         check_error(bra, source, diagnostic)
+    check_integration(bra)
     print('qasm2qcx native and narrow UINT numerical tests passed')
 
 

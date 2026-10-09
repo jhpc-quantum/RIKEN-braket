@@ -1026,7 +1026,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 and expression.op == ast.UnaryOperator['-']
                 and isinstance(expression.expression, ast.IntegerLiteral)):
             return -expression.expression.value
-        if self.__loop_bindings:
+        if self.__loop_bindings or kind == 'bit':
             return self.__constant_loop_integer(expression, f'{kind} index')
         raise UnsupportedOpenQASMError(f'non-literal {kind} index')
 
@@ -1793,7 +1793,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__hoist_temporary_declarations(previous_temporaries)
 
     def __constant_loop_integer(
-            self, expression: ast.Expression, part: str, *, kind: str = 'range') -> int:
+            self, expression: ast.Expression, part: str, *, kind: str = 'range',
+            signed_capture: bool = False) -> int:
         # Iteration-value evaluation must not inherit skipped-expression state or disturb
         # the expression being converted by the enclosing visitor.
         previous = (self.__expression_kind, self.__value, self.__value_type,
@@ -1806,6 +1807,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if self.__value_type not in (ValueType.INT, ValueType.UINT) or self.__value_kind != ValueKind.LITERAL:
                 raise InvalidLoopRangeException(
                     f'For-loop {kind} {part} must be a constant integer')
+            if (signed_capture and self.__value_type == ValueType.UINT
+                    and self.__value > self.QCX_INT_MAX):
+                # Runtime loop captures use checked UINT-to-INT conversion.
+                # Expansion must not silently relabel an unrepresentable UINT
+                # as an INT iterator just because its value is constant.
+                raise InvalidLoopRangeException(
+                    f'For-loop {kind} {part} UINT value must fit QCX INT')
             return int(self.__value)
         finally:
             (self.__expression_kind, self.__value, self.__value_type,
@@ -1816,10 +1824,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         bounds = statement.set_declaration
         if not isinstance(bounds, ast.RangeDefinition):
             raise UnsupportedOpenQASMError('for-loop iteration other than a constant range')
-        start = self.__constant_loop_integer(bounds.start, 'start')
-        end = self.__constant_loop_integer(bounds.end, 'end')
+        start = self.__constant_loop_integer(bounds.start, 'start', signed_capture=True)
+        end = self.__constant_loop_integer(bounds.end, 'end', signed_capture=True)
         step = (1 if bounds.step is None
-                else self.__constant_loop_integer(bounds.step, 'step'))
+                else self.__constant_loop_integer(bounds.step, 'step', signed_capture=True))
         if step == 0:
             raise InvalidLoopRangeException('For-loop range step cannot be zero')
         # OpenQASM includes the end when reachable; Python excludes the stop.
@@ -1836,7 +1844,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise NoConstantExpressionException
             # This is an ordered sequence, not a Python set: repeated values
             # represent distinct iterations and retain their original positions.
-            return tuple(self.__constant_loop_integer(value, f'element {index}', kind='set')
+            return tuple(self.__constant_loop_integer(value, f'element {index}', kind='set', signed_capture=True)
                          for index, value in enumerate(source.values))
         return self.__loop_range(statement)
 
@@ -1911,9 +1919,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         target_type = self.__source_value_type(expression.type)
         if operand_type == ValueType.COMPLEX and target_type != ValueType.COMPLEX:
             # Constant numeric casts already extract the real component in
-            # visit_Cast. Preserve that behavior without permitting casts of
-            # runtime complex operands or complex-to-Boolean/bit conversions.
-            if runtime or target_type not in (ValueType.INT, ValueType.UINT, ValueType.FLOAT):
+            # visit_Cast. Native UINT also supports checked conversion of a
+            # runtime complex operand's real component. Other runtime complex
+            # conversions and complex-to-Boolean/bit casts remain unsupported here.
+            if ((runtime and target_type != ValueType.UINT)
+                    or target_type not in (ValueType.INT, ValueType.UINT, ValueType.FLOAT)):
                 raise NoImplicitCastException
         if target_type == ValueType.BIT and (
                 operand_type not in (ValueType.BIT, ValueType.BOOL)
@@ -2126,7 +2136,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 runtime_step |= part == 'step'
                 continue
             if not names & iterator_names:
-                value = self.__constant_loop_integer(expression, part, kind='set' if is_set else 'range')
+                value = self.__constant_loop_integer(
+                    expression, part, kind='set' if is_set else 'range', signed_capture=True)
                 if part == 'step' and value == 0:
                     raise InvalidLoopRangeException('For-loop range step cannot be zero')
         if (runtime_range and not runtime_step
