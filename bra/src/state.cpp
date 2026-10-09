@@ -201,6 +201,7 @@ namespace bra
       real_variables_{},
       complex_variables_{},
       int_variables_{},
+      uint_variables_{},
       pauli_string_space_variables_{}
   {
     found_qubits_.reserve(total_num_qubits_);
@@ -253,6 +254,7 @@ namespace bra
       real_variables_{},
       complex_variables_{},
       int_variables_{},
+      uint_variables_{},
       pauli_string_space_variables_{}
   {
     found_qubits_.reserve(total_num_qubits_);
@@ -305,6 +307,7 @@ namespace bra
       real_variables_{},
       complex_variables_{},
       int_variables_{},
+      uint_variables_{},
       pauli_string_space_variables_{}
   {
     found_qubits_.reserve(total_num_qubits_);
@@ -358,6 +361,7 @@ namespace bra
       real_variables_{},
       complex_variables_{},
       int_variables_{},
+      uint_variables_{},
       pauli_string_space_variables_{}
   {
     found_qubits_.reserve(total_num_qubits_);
@@ -398,6 +402,7 @@ namespace bra
       real_variables_{},
       complex_variables_{},
       int_variables_{},
+      uint_variables_{},
       pauli_string_space_variables_{}
   {
     found_qubits_.reserve(total_num_qubits_);
@@ -407,12 +412,18 @@ namespace bra
 
   void state::generate_new_variable(std::string const& variable_name, ::bra::variable_type const type, int const num_elements)
   {
+    // UINT names must not shadow existing variables of another type.
+    if (uint_variables_.count(variable_name) != 0u)
+      throw std::runtime_error{"variable already declared: " + variable_name};
+
     if (type == ::bra::variable_type::real)
       generate_new_real_variable(variable_name, num_elements);
     else if (type == ::bra::variable_type::complex_)
       generate_new_complex_variable(variable_name, num_elements);
     else if (type == ::bra::variable_type::integer)
       generate_new_int_variable(variable_name, num_elements);
+    else if (type == ::bra::variable_type::unsigned_integer)
+      generate_new_uint_variable(variable_name, num_elements);
     else if (type == ::bra::variable_type::pauli_string_space)
       generate_new_pauli_string_space_variable(variable_name, num_elements);
   }
@@ -456,6 +467,20 @@ namespace bra
     int_variables_[variable_name] = std::vector<int_type>(static_cast<size_type>(num_elements));
   }
 
+  void state::generate_new_uint_variable(std::string const& variable_name, int const num_elements)
+  {
+    if (real_variables_.count(variable_name) != 0u
+        or complex_variables_.count(variable_name) != 0u
+        or int_variables_.count(variable_name) != 0u
+        or pauli_string_space_variables_.count(variable_name) != 0u)
+      throw std::runtime_error{"variable already declared: " + variable_name};
+    if (num_elements <= 0)
+      throw std::runtime_error{"UINT variable size must be positive: " + variable_name};
+
+    using size_type = std::vector<uint_type>::size_type;
+    uint_variables_.emplace(variable_name, std::vector<uint_type>(static_cast<size_type>(num_elements)));
+  }
+
   void state::generate_new_pauli_string_space_variable(std::string const& variable_name, int const num_elements)
   {
     using std::end;
@@ -479,6 +504,17 @@ namespace bra
     auto const found_index = lhs_variable_name.find(':');
     auto const variable_name = lhs_variable_name.substr(size_type{0u}, found_index);
     auto const index = found_index == std::string::npos ? 0 : to_int(lhs_variable_name.substr(found_index + size_type{1u}));
+
+    if (uint_variables_.count(variable_name) != 0u)
+    {
+      // Arithmetic, bitwise operations, and casts are added separately.
+      if (op != ::bra::assign_operation_type::assign)
+        throw ::bra::wrong_assignment_argument_error{lhs_variable_name, op, rhs_literal_or_variable_name};
+      auto& destination = uint_variables_.at(variable_name).at(index);
+      auto const rhs_value = to_uint(rhs_literal_or_variable_name);
+      destination = rhs_value;
+      return;
+    }
 
     auto const is_bitwise
       = op == ::bra::assign_operation_type::bit_and_assign
@@ -606,6 +642,8 @@ namespace bra
       using std::end;
       if (int_variables_.find(variable_name) != end(int_variables_))
         oss << to_int(variable_or_literal);
+      else if (uint_variables_.find(variable_name) != end(uint_variables_))
+        oss << to_uint(variable_or_literal);
       else if (real_variables_.find(variable_name) != end(real_variables_))
         oss << to_real(variable_or_literal);
       else if (complex_variables_.find(variable_name) != end(complex_variables_))
@@ -738,6 +776,37 @@ namespace bra
       do_scatter_complex_variable(root_circuit_index, variable_name, num_elements, source_variable_name);
     else if (type == ::bra::variable_type::integer)
       do_scatter_int_variable(root_circuit_index, variable_name, num_elements, source_variable_name);
+  }
+
+  auto state::to_uint(std::string const& colon_separated_string) const -> uint_type
+  {
+    if (colon_separated_string.empty())
+      throw std::runtime_error{"empty UINT operand"};
+    auto const first = colon_separated_string.front();
+    if (std::isdigit(static_cast<unsigned char>(first)) or first == '+' or first == '-')
+    {
+      auto const digit_start = first == '+' ? std::string::size_type{1u} : std::string::size_type{0u};
+      if (first == '-' or digit_start == colon_separated_string.size()
+          or colon_separated_string.find_first_not_of("0123456789", digit_start) != std::string::npos)
+        throw std::runtime_error{"invalid UINT literal: " + colon_separated_string};
+      // lexical_cast checks the native unsigned range without signed narrowing.
+      return boost::lexical_cast<uint_type>(colon_separated_string);
+    }
+    return to_uint_variable(colon_separated_string);
+  }
+
+  auto state::to_uint_variable(std::string const& colon_separated_string) const -> uint_type const&
+  {
+    auto const found_index = colon_separated_string.find(':');
+    auto const index = found_index == std::string::npos ? 0 : to_int(colon_separated_string.substr(found_index + 1u));
+    return uint_variables_.at(colon_separated_string.substr(0u, found_index)).at(index);
+  }
+
+  auto state::to_uint_variable(std::string const& colon_separated_string) -> uint_type&
+  {
+    auto const found_index = colon_separated_string.find(':');
+    auto const index = found_index == std::string::npos ? 0 : to_int(colon_separated_string.substr(found_index + 1u));
+    return uint_variables_.at(colon_separated_string.substr(0u, found_index)).at(index);
   }
 
   auto state::is_int_symbol(std::string const& symbol_name) const -> bool

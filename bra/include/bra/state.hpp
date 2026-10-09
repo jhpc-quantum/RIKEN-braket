@@ -46,7 +46,7 @@
 namespace bra
 {
   enum class variable_type : int
-  { real = 0, complex_ = 1, integer = 2, pauli_string_space = 3 };
+  { real = 0, complex_ = 1, integer = 2, pauli_string_space = 3, unsigned_integer = 4 };
 
   enum class assign_operation_type : int
   {
@@ -471,6 +471,7 @@ namespace bra
     using real_type = ::bra::real_type;
     using complex_type = ::bra::complex_type;
     using int_type = ::bra::int_type;
+    using uint_type = ::bra::uint_type;
 
     using spin_type = std::array<real_type, 3u>;
     using spins_type = std::vector<spin_type>;
@@ -527,6 +528,9 @@ namespace bra
 
     using int_variables_type = std::unordered_map<std::string, std::vector<int_type>>;
     int_variables_type int_variables_;
+
+    using uint_variables_type = std::unordered_map<std::string, std::vector<uint_type>>;
+    uint_variables_type uint_variables_;
 
     using pauli_string_space_variables_type = std::unordered_map<std::string, std::vector< ::bra::pauli_string_space >>;
     pauli_string_space_variables_type pauli_string_space_variables_;
@@ -640,6 +644,7 @@ namespace bra
     void generate_new_real_variable(std::string const& variable_name, int const num_elements);
     void generate_new_complex_variable(std::string const& variable_name, int const num_elements);
     void generate_new_int_variable(std::string const& variable_name, int const num_elements);
+    void generate_new_uint_variable(std::string const& variable_name, int const num_elements);
     void generate_new_pauli_string_space_variable(std::string const& variable_name, int const num_elements);
 
    public:
@@ -683,6 +688,9 @@ namespace bra
     auto to_int(std::string const& colon_separated_string) const -> int_type;
     auto to_int_variable(std::string const& colon_separated_string) const -> int_type const&;
     auto to_int_variable(std::string const& colon_separated_string) -> int_type&;
+    auto to_uint(std::string const& colon_separated_string) const -> uint_type;
+    auto to_uint_variable(std::string const& colon_separated_string) const -> uint_type const&;
+    auto to_uint_variable(std::string const& colon_separated_string) -> uint_type&;
     auto is_real_symbol(std::string const& symbol_name) const -> bool;
     auto to_real(std::string const& colon_separated_string) const -> real_type;
     auto to_real_variable(std::string const& colon_separated_string) const -> real_type const&;

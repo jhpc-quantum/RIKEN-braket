@@ -2008,9 +2008,11 @@ namespace bra
           ? ::bra::variable_type::complex_
           : type_name == "INT"
             ? ::bra::variable_type::integer
-            : type_name == "PAULISS"
-              ? ::bra::variable_type::pauli_string_space
-              : throw 1;
+            : type_name == "UINT"
+              ? ::bra::variable_type::unsigned_integer
+              : type_name == "PAULISS"
+                ? ::bra::variable_type::pauli_string_space
+                : throw 1;
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::var_op >(variable_name, type, num_elements));
   }

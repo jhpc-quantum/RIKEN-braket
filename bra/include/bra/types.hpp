@@ -40,6 +40,7 @@ namespace bra
 # endif // BRA_REAL_TYPE
   using complex_type = std::complex<real_type>;
   using int_type = int;
+  using uint_type = unsigned int;
   static_assert(
     std::numeric_limits<int_type>::min() == -std::numeric_limits<int_type>::max() - 1
       and ~int_type{0} == int_type{-1},
