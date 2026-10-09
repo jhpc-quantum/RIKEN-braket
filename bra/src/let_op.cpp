@@ -65,6 +65,14 @@ namespace bra
         repr_stream
           << std::right
           << std::setw(parameter_width) << "^=";
+      else if (op_ == ::bra::assign_operation_type::left_shift_assign)
+        repr_stream
+          << std::right
+          << std::setw(parameter_width) << "<<=";
+      else if (op_ == ::bra::assign_operation_type::right_shift_assign)
+        repr_stream
+          << std::right
+          << std::setw(parameter_width) << ">>=";
       repr_stream
         << std::right
         << std::setw(parameter_width) << rhs_literal_or_variable_name_;
