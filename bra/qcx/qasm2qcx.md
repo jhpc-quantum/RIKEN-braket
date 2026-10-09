@@ -75,6 +75,8 @@ The converter currently covers:
 - integer remainder expressions and compound assignments using `%` and `%=`;
 - scalar integer and bit bitwise expressions (`&`, `|`, `^`, `~`) and
   compound assignments (`&=`, `|=`, `^=`);
+- scalar integer shift expressions (`<<`, `>>`) and compound assignments
+  (`<<=`, `>>=`), with checked counts and signed left-shift overflow;
 - scalar constants, variables, assignments, and numeric casts;
 - fixed-size, one-dimensional `int` arrays with static and runtime element
   reads and writes;
@@ -101,8 +103,9 @@ The converter currently covers:
 
 OpenQASM `int` uses QCX `INT`; scalar `uint` uses native QCX `UINT`.
 Narrow `uint[n]` values use the same native storage with explicit masks, as
-described below. Declared signed-integer and floating-point widths are accepted
-but remain unenforced.
+described below. Declared signed-integer and floating-point widths generally
+remain unenforced; shifted signed operands and mixed signed/unsigned operations
+have the explicit width restrictions documented below.
 OpenQASM `bit` values are represented by QCX `INT` variables whose elements
 are restricted to zero or one by the converter. A measurement is emitted as a
 QCX `M` operation followed immediately by assignment from `:OUTCOME`.
@@ -140,17 +143,18 @@ uint[8] negative = -uint[8](1);           // 255
 uint full = uint(-1);                    // native UINT maximum
 ```
 
-Supported operations are `+`, `-`, `*`, `/`, `%`, `&`, `|`, `^`, unary `-`
+Supported operations are `+`, `-`, `*`, `/`, `%`, `&`, `|`, `^`, `<<`, `>>`, unary `-`
 and `~`, comparisons, and the corresponding compound assignments. Unsigned
 division and remainder operate on nonnegative values. Complement flips the
-bits of the unsigned operand's width. General signed-width emulation, shifts,
+bits of the unsigned operand's width. General signed-width emulation,
 UINT arrays, and `for uint` iterators remain unsupported.
 
 For two unsigned operands, the wider width determines the result width.
 When mixing an unsigned operand with native `int`, a narrower unsigned operand
 promotes to `int`, which can represent all its values; a native-width unsigned
 operand instead promotes the signed operand to native `uint`. Arithmetic,
-bitwise operations, and comparisons use the same rules. Bare integer literals
+bitwise operations other than shifts, and comparisons use the same rules. Shifts
+retain the left operand's type and width, independently of the count. Bare integer literals
 have `int` type, so they can change the intermediate result type:
 
 ```qasm
@@ -169,7 +173,7 @@ is also rejected, including at the native width: this converter does not yet
 implement fixed-width signed bit reinterpretation. Unsized `int(unsigned_value)`
 and assignment to QCX `INT` are checked conversions, not bit reinterpretation;
 values above `INT_MAX` produce an error. Compound assignments compute using
-the operand promotion rules before converting and, for narrow UINT targets,
+the operand promotion rules (or the left operand's type for shifts) before converting and, for narrow UINT targets,
 masking the completed result.
 
 Explicit `uint(...)` and `uint[n](...)` casts accept supported integer,
@@ -318,9 +322,71 @@ and remain reserved until the write; they are not reevaluated. Separate RHS
 accesses retain their own captures and checks. Self-references and overlapping
 accesses read the original target throughout RHS evaluation. Types, names, and
 supported index syntax are validated even in empty loop bodies, without
-evaluating value-dependent bounds or arithmetic there. Shift operators,
-whole-register or whole-array bitwise operations, aliases, and general
+evaluating value-dependent bounds or arithmetic there. Whole-register or
+whole-array bitwise operations, aliases, and general
 fixed-width signed integer semantics remain unsupported.
+
+### Scalar integer shifts
+
+`<<` and `>>` accept scalar `int` and `uint` operands, including constants,
+variables, integer-array elements, and supported integer casts. The left
+operand alone determines the result type and width; the count may independently
+be signed or unsigned. Thus `int_value >> uint_count` remains signed, and
+`uint[4](15) << int(1)` remains four-bit unsigned. Boolean, bit, floating-point,
+and complex operands require an explicit integer cast; whole registers and
+arrays are not shift operands.
+
+The supported subset uses these rules, where `k` is the count:
+
+- Counts must satisfy `0 <= k < width`, even when the shifted value is zero.
+  Unsized integers use the host-derived native width `W`; `uint[n]` uses `n`.
+- Unsigned left shifts discard high bits modulo `2**width`; unsigned right
+  shifts fill with zeroes. Every narrow unsigned intermediate is masked.
+- Signed left shifts compute exact multiplication by `2**k`, including for
+  negative values, and reject results outside the native QCX `INT` range.
+- Signed right shifts sign-extend, equivalently dividing by `2**k` and rounding
+  toward negative infinity. For example, `-3 >> 1` is `-2`, not `-1`.
+
+These are the converter's supported count and signed-overflow policies, not
+general fixed-width signed-integer emulation. Non-native signed widths on
+shifted variables, constants, casts, and array elements are rejected rather
+than silently shifted at native width. As with other supported loop operations,
+`int` loop iterators use native signed semantics without enforcing their
+declared width. A count's declared signed width does not change the shifted
+value's width.
+
+```qasm
+OPENQASM 3.0;
+const int NEGATIVE = -3 >> 1;              // -2
+uint[4] a = 15;
+int count = 1;
+uint[4] result = (a << count) >> count;    // 7, not 15
+a <<= count;                             // 14
+int b = -3;
+b >>= uint(1);                           // -2
+array[int, 2] values = {1, 4};
+int i = -1;
+values[i] <<= values[0];                  // values[1] becomes 8
+```
+
+Literal expressions are folded when valid. Invalid evaluated constant counts
+or signed left-shift overflow produce `InvalidShiftException`, reported by
+the CLI without a Python traceback. In runtime expressions, even invalid
+literal shifts emit runtime checks so branches and logical short-circuiting
+can skip them. Native bra checks native-width counts and signed overflow;
+the converter adds `ASSERT` guards for narrow unsigned widths. Native count
+failures throw `std::out_of_range`, signed left-shift overflow throws
+`std::overflow_error`, and narrow-width guard failures throw
+`bra::assertion_error`. The bra CLI currently leaves these exceptions uncaught.
+
+Compound `<<=` and `>>=` support scalar integer destinations and static or
+runtime-indexed `int` array elements. They evaluate the count and complete a
+checked shift in private storage before writing the destination. Destination
+indices are captured and checked once before the RHS; self-references read the
+original value. Active loop iterators remain read-only. Names, types, and index
+syntax are validated in empty loop bodies without evaluating counts or index
+values there. General signed arithmetic and count-expression overflow checks,
+bit/register shifts, UINT arrays, and signed-width emulation remain future work.
 
 ### One-dimensional integer arrays
 
@@ -1368,7 +1434,7 @@ The current prototype does not reliably support:
   whole-register casts, complex-to-Boolean casts,
   Boolean arithmetic, mixed Boolean/numeric comparisons, or block-local
   declarations;
-- shift operators, whole-register or whole-array bitwise operations, direct
+- bit/register shifts, whole-register or whole-array bitwise operations, direct
   Boolean bitwise operations, or classical functions; or
 - arithmetic operators other than `+`, `-`, `*`, `/`, and integer `%`.
 
@@ -1402,6 +1468,22 @@ native endpoints, casts, precedence, left-to-right eager evaluation,
 short-circuiting, loop nesting, gate parameters, and runtime failures. Unit tests
 additionally cover typing, temporary cleanup, unsupported selections, empty-loop
 validation, and read-only iterators.
+
+`bra/test/integer_shift_numerical.py` checks native signed and unsigned shifts
+at every valid count, negative values and endpoints, invalid counts, overflow,
+indexed operands, and skipped errors. `bra/test/integer_shift_state.cpp`, linked
+with non-MPI bra objects excluding `bra.o`, verifies rendering, exception types
+and diagnostics, destination preservation, and unchanged pending jump state in
+release builds. Both the native tests and converter numerical tests have also
+been run with undefined-behavior sanitization of the shift implementation.
+
+`bra/test/qasm2qcx_shift_numerical.py` compares constant folding, expressions,
+and compound assignments against Python results for signed native integers and
+unsigned widths 1, 4, 8, and native width. It checks count-type independence,
+intermediate masks, self-references, captured array indices, loop bounds and
+sets, skipped errors, invalid counts, and signed overflow. Unit tests additionally
+cover type rejection, non-native signed operands, empty-loop validation, and
+temporary cleanup.
 
 `bra/test/qasm2qcx_integer_remainder_numerical.py` verifies runtime remainder
 for signed operands, nested expressions, operand preservation, short-circuiting,
@@ -1509,6 +1591,7 @@ python3 bra/test/jumpif_numerical.py --bra bra/bin/bra
 python3 bra/test/assert_numerical.py --bra bra/bin/bra
 python3 bra/test/integer_division_numerical.py --bra bra/bin/bra
 python3 bra/test/integer_bitwise_numerical.py --bra bra/bin/bra
+python3 bra/test/integer_shift_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_if_else_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_integer_remainder_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_for_loop_numerical.py --bra bra/bin/bra
@@ -1520,5 +1603,6 @@ python3 bra/test/qasm2qcx_integer_array_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_bit_register_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_bit_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_bitwise_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_shift_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_uint_numerical.py --bra bra/bin/bra
 ```

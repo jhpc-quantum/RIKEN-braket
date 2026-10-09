@@ -66,6 +66,11 @@ def main() -> None:
         for int j in {n >> count, n << count} { total += j; }
         while (count < 2) { total >>= count; count += 1; }
         total += a[n >> count];''', ('TOTAL31', 'A1:0', 'A1:1', 'COUNT31'), ['4', '2', '4', '2'])
+    check_program(bra, '''int a = 2; int[8] count = 1;
+        int out = (a << count) << 1; uint mixed = (a << count) + uint(1);
+        const int[8] COUNT = 1; const int F = (2 << COUNT) << 1; int folded = F;
+        for int i in [1:0] { out = (i << count) >> count; }''',
+                  ('OUT7', 'MIXED31', 'FOLDED63'), ['8', '5', '8'])
     for source, diagnostic in (
             ('int a = 1; int n = -1; int out = a << n;', 'negative integer shift count'),
             (f'int a = 1; uint n = {native}; int out = a >> n;', 'integer shift count out of range'),

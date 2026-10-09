@@ -342,6 +342,17 @@ class ScalarShiftExpressionTests(unittest.TestCase):
         literal = convert('OPENQASM 3.0; uint[4] a = 15; uint[4] out = a >> 1;')
         self.assertIn('ASSERT QASM2QCX_INT_0 < 4', literal)
 
+    def test_chained_shift_ignores_count_signed_width(self) -> None:
+        lines = convert('''OPENQASM 3.0; int a = 2; int[8] count = 1;
+            int out = (a << count) << 1; uint mixed = (a << count) + uint(1);
+            for int i in [1:0] { out = (i << count) >> count; }''')
+        self.assertIn('LET QASM2QCX_INT_0 <<= COUNT31', lines)
+        self.assertIn('LET OUT7 := QASM2QCX_INT_1', lines)
+        self.assertIn('LET MIXED31 := QASM2QCX_UINT_0', lines)
+        folded = convert('''OPENQASM 3.0; const int[8] COUNT = 1;
+            const int OUT = (2 << COUNT) << 1; int out = OUT;''')
+        self.assertIn('LET OUT7 := 8', folded)
+
     def test_indexed_operands_evaluate_in_source_order_and_release_temporaries(self) -> None:
         program = qasm2qcx.openqasm3.parse('''OPENQASM 3.0;
             array[int, 2] a = {4, 1}; int i = 0; int out = a[i] << a[i + 1];''')

@@ -717,6 +717,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         elif isinstance(expression, ast.UnaryExpression):
             return self.__native_signed_operand(expression.expression, iterators)
         elif isinstance(expression, ast.BinaryExpression):
+            if expression.op.name in ('<<', '>>'):
+                # Shift counts do not contribute to the result's signed rank.
+                return self.__native_signed_operand(expression.lhs, iterators)
             return (self.__native_signed_operand(expression.lhs, iterators)
                     and self.__native_signed_operand(expression.rhs, iterators))
         if isinstance(source_type, ast.ArrayType):
