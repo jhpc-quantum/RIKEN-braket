@@ -70,6 +70,8 @@ The converter currently covers:
   qubit registers as gate operands;
 - equal-sized register-selection gate broadcasting;
 - scalar `int`, `uint`, `float`, and `complex` arithmetic;
+- native unsigned storage and modulo-width arithmetic for scalar `uint` and
+  supported `uint[n]` widths;
 - integer remainder expressions and compound assignments using `%` and `%=`;
 - scalar integer and bit bitwise expressions (`&`, `|`, `^`, `~`) and
   compound assignments (`&=`, `|=`, `^=`);
@@ -97,17 +99,108 @@ The converter currently covers:
 - scalar expressions used as gate parameters; and
 - final-state amplitude output through a namespaced pragma.
 
-QCX has no unsigned integer type, so OpenQASM `uint` values are represented by
-QCX `INT`, just like OpenQASM `int`. Consequently, unsigned ranges and
-wraparound behavior are not preserved. Declared integer and floating-point
-widths are also accepted but are not enforced by QCX.
+OpenQASM `int` uses QCX `INT`; scalar `uint` uses native QCX `UINT`.
+Narrow `uint[n]` values use the same native storage with explicit masks, as
+described below. Declared signed-integer and floating-point widths are accepted
+but remain unenforced.
 OpenQASM `bit` values are represented by QCX `INT` variables whose elements
 are restricted to zero or one by the converter. A measurement is emitted as a
 QCX `M` operation followed immediately by assignment from `:OUTCOME`.
 
+### Unsigned integers
+
+Scalar variables, constants, and casts support `uint` and `uint[n]`. Unsized
+`uint` uses the backend's native C++ `unsigned int` width, denoted `W` here.
+The converter derives `W` from the host's C `unsigned int` through Python's
+`ctypes`; on a 32-bit unsigned-int host, `uint` ranges from zero through
+`4294967295`. Generated programs require a bra version with native `UINT`
+support and the same signed/unsigned integer representations as the converter
+host; target widths are not detected automatically. See
+[bra.md](../../docs/bra.md) for the native storage and conversion instructions.
+
+A specified width must be a positive compile-time integer with `1 <= n <= W`.
+Previously declared integer constants and supported constant expressions may
+supply it; runtime variables and loop iterators may not. Nonpositive,
+noninteger, runtime-dependent, and oversized widths are rejected, not ignored.
+
+Unsigned assignment, integer-to-unsigned casts, unary negation, and unsigned
+arithmetic normalize modulo `2**n` (or `2**W` for unsized `uint`). Narrow
+values are stored in QCX `UINT` and masked with `LET name &= (2**n - 1)`.
+Masks apply to intermediate unsigned results as well as completed assignments,
+so folding and runtime evaluation agree:
+
+```qasm
+OPENQASM 3.0;
+const uint[8] MASK = ~uint[8](0); // 255
+uint[8] a = MASK;
+uint[8] one = 1;
+uint[8] wrapped = (a + one) / uint[8](2); // 0, not 128
+a += one;                               // 0
+uint[8] negative = -uint[8](1);           // 255
+uint full = uint(-1);                    // native UINT maximum
+```
+
+Supported operations are `+`, `-`, `*`, `/`, `%`, `&`, `|`, `^`, unary `-`
+and `~`, comparisons, and the corresponding compound assignments. Unsigned
+division and remainder operate on nonnegative values. Complement flips the
+bits of the unsigned operand's width. General signed-width emulation, shifts,
+UINT arrays, and `for uint` iterators remain unsupported.
+
+For two unsigned operands, the wider width determines the result width.
+When mixing an unsigned operand with native `int`, a narrower unsigned operand
+promotes to `int`, which can represent all its values; a native-width unsigned
+operand instead promotes the signed operand to native `uint`. Arithmetic,
+bitwise operations, and comparisons use the same rules. Bare integer literals
+have `int` type, so they can change the intermediate result type:
+
+```qasm
+OPENQASM 3.0;
+uint[8] a = 255;
+uint[8] wrapped = (a + uint[8](1)) / uint[8](2); // 0
+uint[8] promoted = (a + 1) / 2;                 // 128
+int n = -1;
+bool narrow = a > n;                          // true: signed comparison
+bool native = uint(-1) == n;                   // true: unsigned comparison
+```
+
+Mixing UINT with an explicitly sized, non-native signed operand is rejected
+because signed-width emulation is not implemented. `int[n](unsigned_value)`
+is also rejected, including at the native width: this converter does not yet
+implement fixed-width signed bit reinterpretation. Unsized `int(unsigned_value)`
+and assignment to QCX `INT` are checked conversions, not bit reinterpretation;
+values above `INT_MAX` produce an error. Compound assignments compute using
+the operand promotion rules before converting and, for narrow UINT targets,
+masking the completed result.
+
+Explicit `uint(...)` and `uint[n](...)` casts accept supported integer,
+Boolean, scalar-bit, floating-point, and complex expressions. Integer casts
+preserve integer precision and normalize to the target width. A floating-point
+cast truncates toward zero, then requires a finite result in the native UINT
+range before applying a narrow-width mask. Complex casts use the real
+component. Thus `uint[8](257.9)` is `1`, `uint(-0.9)` is `0`, and `uint(-1.0)`
+fails. Floating-point and complex assignments to UINT require an explicit
+cast. Casts to `float` or `complex` use native bra conversions; `bool(uint_value)`
+tests for nonzero, but bare UINT conditions remain unsupported.
+
+Invalid conversions in evaluated constant expressions are converter errors.
+In runtime expressions, checks execute only on paths that reach the conversion;
+branches and logical short-circuiting can skip them. Native bra throws
+`std::out_of_range` for an executed out-of-range conversion; its
+CLI currently leaves this exception uncaught. Integer zero-divisor checks also
+remain at the division instruction. Unsigned wraparound is defined by the
+width normalization; this does not add general signed-arithmetic overflow checks.
+
+UINT expressions can supply supported array/bit indices and `for int` range
+bounds, steps, and set elements. Runtime captures convert to QCX `INT` with
+range checks before index assertions or loop execution. Constant UINT loop
+operands must also fit QCX `INT`; expansion never silently retypes an
+unrepresentable unsigned value as an INT iterator. Negative indices and negative
+steps require signed values: unsigned negation wraps, rather than producing a
+negative value. UINT arrays and UINT iterators remain separate future work.
+
 ### Integer remainder
 
-The `%` operator supports scalar `int` and INT-backed `uint` operands, including
+The `%` operator supports scalar `int` and `uint` operands, including
 literal expressions, named constants, variables, and supported explicit integer
 casts. It follows the converter's truncation-toward-zero integer division
 convention:
@@ -121,17 +214,17 @@ value = value % divisor;    // evaluated by QCX at runtime
 value %= divisor;           // computes remainder, then assigns back to value
 ```
 
-The remainder is computed as `a - (a / b) * b`, so a nonzero remainder has
-the sign of the dividend. Constant evaluation uses integer calculations without
-floating-point conversion. `uint` uses the existing INT-backed representation;
-declared widths and unsigned wraparound are not enforced.
+The remainder is computed as `a - (a / b) * b`, so a nonzero signed remainder
+has the sign of the dividend. Unsigned remainder is nonnegative after operand
+promotion. Constant evaluation uses integer calculations without floating-point
+conversion; unsigned widths follow the normalization rules above.
 
 Runtime remainder is lowered to existing QCX integer division, multiplication,
 and subtraction instructions. Temporaries preserve both operands until the
 complete result is available. Computations remain in their original branches
 and short-circuit operands; only temporary declarations may be moved earlier.
 
-`%=` is supported for scalar `int` and INT-backed `uint` variables with integer
+`%=` is supported for scalar `int` and `uint` variables with integer
 right-hand operands. It uses the same lowering as `%`, followed by assignment
 of the completed result back to the target. Self-references such as `a %= a`
 or `a %= (a % b) + 1` therefore read the original target throughout evaluation.
@@ -141,7 +234,8 @@ converter-specific errors, reported by the command-line tool without a Python
 traceback. Skipped operands of constant Boolean expressions are still validated
 without performing the arithmetic. Runtime division remains deferred to QCX;
 `bra` checks integer zero divisors when the division instruction executes and
-throws `bra::integer_zero_divisor_error`. Integer overflow remains unchecked.
+throws `bra::integer_zero_divisor_error`. Signed integer overflow remains unchecked;
+unsigned arithmetic wraps at its supported width.
 Literal zero-divisor `/` and `%` operations in runtime
 expressions are also deferred so short-circuited operands can skip them.
 Non-integer remainder operands are
@@ -151,7 +245,7 @@ integer-array elements also support `%` and `%=`.
 ### Scalar bitwise operators
 
 The supported subset provides `&`, `|`, `^`, and unary `~` for scalar `int`,
-INT-backed `uint`, and scalar bit expressions. Binary operands must either
+`uint`, and scalar bit expressions. Binary operands must either
 both have integer type or both have scalar bit type. Integer results retain
 integer type; bit results retain scalar bit type and remain zero or one.
 Mixing bits and integers requires an explicit cast. Boolean operands require
@@ -164,22 +258,23 @@ operands, including singleton registers.
 OPENQASM 3.0;
 const int MASK = 7 & 3;
 int a = -3;
-uint b = 7;
+int b = 7;
 int c = ~(a & b) | (a ^ b);
 a &= MASK;
 b ^= a;
 // c is -6; a is 1; b is 6.
 ```
 
-Integer operations use the backend's native signed, two's-complement `INT`
+Signed integer operations use the backend's native two's-complement `INT`
 representation, including negative values. Literal integer operands, including
-folded constant expressions, must fit the host-derived QCX `INT` range. Integer
-complement flips the native-width bits (`~0` is `-1`); declared `int[n]` and
-`uint[n]` widths remain unenforced. In particular, INT-backed `uint` complement
-may produce a negative value rather than an OpenQASM unsigned-width result.
+folded constant expressions, must fit the host-derived QCX `INT` range when
+used in signed bitwise operations. Signed complement flips the native-width
+bits (`~0` is `-1`); declared `int[n]` widths remain unenforced. Unsigned
+operations retain their unsigned width, and complement uses its width's mask
+(`~uint[8](0)` is `255`). Mixed integer operands follow the promotion rules
+above.
 Generated programs assume a backend with the same integer representation as
-the converter host. General arithmetic and cast overflow checks remain
-separate work.
+the converter host. General signed arithmetic overflow checks remain separate work.
 
 Bit complement flips only the single bit: `~bit(false)` is one and
 `~bit(true)` is zero. Scalar bits and individually indexed bit-register
@@ -200,11 +295,12 @@ bool ready = flags[i] & ~flags[0];
 // selected is 0; flags is "110"; ready is true; i is still -1.
 ```
 
-Compound `&=`, `|=`, and `^=` assignments accept scalar `int`, INT-backed
+Compound `&=`, `|=`, and `^=` assignments accept scalar `int`,
 `uint`, and scalar bit targets, including static and runtime-indexed integer-array
-and bit-register elements. Their RHS must match the target's integer or bit
-type. For example, `flag ^= bit(true)` is accepted, but `flag ^= 1` requires
-that explicit bit conversion. Complete registers, even `bit[1]`, and range or
+and bit-register elements. Their RHS must have integer type for integer targets
+or scalar bit type for bit targets. For example, `flag ^= bit(true)` is accepted,
+but `flag ^= 1` requires that explicit bit conversion. Complete registers, even
+`bit[1]`, and range or
 discrete-set selections are not compound-assignment targets. Active loop
 iterators remain read-only.
 
@@ -213,7 +309,8 @@ do not short-circuit like `&&` and `||`. Only the surrounding logical
 operators, branches, and loop transfers can skip their evaluation. Literal
 expressions fold during conversion; runtime expressions use private storage
 and the QCX `LET &=`, `|=`, and `^=` operators. Integer complement uses XOR
-with `-1`, while bit complement uses XOR with `1`.
+with `-1` for INT or the width mask for UINT, while bit complement uses XOR
+with `1`.
 
 Compound assignments evaluate the complete RHS before modifying the target.
 Runtime destination indices are captured and bounds-checked before the RHS
@@ -223,7 +320,7 @@ accesses read the original target throughout RHS evaluation. Types, names, and
 supported index syntax are validated even in empty loop bodies, without
 evaluating value-dependent bounds or arithmetic there. Shift operators,
 whole-register or whole-array bitwise operations, aliases, and general
-fixed-width integer semantics remain unsupported.
+fixed-width signed integer semantics remain unsupported.
 
 ### One-dimensional integer arrays
 
@@ -272,7 +369,7 @@ block-local array declarations remain unsupported.
 
 ### Runtime integer-array indexing
 
-Runtime indices support scalar `int`, INT-backed `uint`, supported integer
+Runtime indices support scalar `int`, `uint`, supported integer
 arithmetic, enclosing runtime iterators, and indexed integer-array elements.
 Nested accesses such as `values[indices[i]]` are accepted. Floating-point,
 Boolean, and scalar bit indices require an explicit integer cast, for example
@@ -294,8 +391,11 @@ private QCX `INT` storage. The converter emits `ASSERT index >= -N` and
 Checks apply to the original signed value; normalization neither changes the
 source variable nor negates the index. For accepted sizes and indices, this
 normalization does not overflow QCX `INT`, including at native integer endpoints.
-Arithmetic used to calculate the index is not protected by general overflow
-checks, and declared integer widths and unsigned semantics remain unenforced.
+UINT indices undergo checked conversion to QCX `INT` before these assertions;
+a value above `INT_MAX` throws `std::out_of_range` before the element access.
+Unsigned expression widths are enforced before capture. Signed index arithmetic
+is not protected by general overflow checks, and declared signed widths remain
+unenforced.
 
 Runtime reads copy the selected element into an expression temporary. For
 assignments, the destination index is captured and checked before evaluating
@@ -324,7 +424,7 @@ unsupported. Runtime bit-register element indexing is described next.
 
 A declared `bit[N]` register supports single-element reads, `=` assignments,
 and scalar-qubit measurement destinations with runtime integer indices.
-Scalar `int`, INT-backed `uint`, supported integer arithmetic, enclosing integer
+Scalar `int`, `uint`, supported integer arithmetic, enclosing integer
 iterators, and integer-array elements can supply an index. Floating-point,
 Boolean, and scalar bit expressions require an explicit integer cast.
 Nested accesses such as `flags[positions[i]]` and `flags[int(flags[i])]` are
@@ -356,8 +456,10 @@ Each executed access evaluates its index once, copies it into private QCX
 `ASSERT`. Negative indices are then normalized by adding `N` to the private
 copy without changing the source variable. Checks precede normalization and
 storage access, including for `bit[1]`, whose valid indices are `-1` and `0`.
-Accepted normalization is representable; general overflow in index arithmetic,
-declared integer widths, and unsigned semantics remain unchecked or unenforced.
+UINT indices first undergo checked conversion to QCX `INT`; values above
+`INT_MAX` throw `std::out_of_range` before index assertions or storage access.
+Accepted normalization is representable. General signed index arithmetic
+overflow checks and signed-width emulation remain separate work.
 
 Reads copy the selected bit into an expression temporary. Assignment destination
 indices are captured and checked before the RHS, and their private storage
@@ -479,8 +581,10 @@ the same number of qubits. Scalar indexed operands can broadcast across those
 register selections. Measurement requires both operands to be scalars or both
 to be equal-sized register selections.
 
-Single indices, range bounds, range steps, and discrete indices must be signed
-integer literals. Both range bounds must be present. A zero step, an empty
+Qubit indices, range bounds, range steps, and discrete indices must be signed
+integer literals outside constant loop scopes. Bit selections also accept
+supported constant `int` and `uint` expressions, including named constants and
+casts. Both range bounds must be present. A zero step, an empty
 range, or an out-of-bounds index is rejected during conversion.
 
 ## Classical control flow
@@ -616,9 +720,10 @@ integer casts are accepted. Nested bounds may also use outer iteration values.
 Runtime variables are not constant bounds or steps, even when initialized with
 a literal;
 such ranges use the runtime lowering described below instead of unrolling.
-Only `int` iteration variables are supported; `uint` constants may still appear
-in bounds under the converter's existing INT-backed representation.
-Declared integer widths retain the limitations described above.
+Only `int` iteration variables are supported. UINT bounds and steps are accepted
+when their evaluated values fit QCX `INT`; an unrepresentable constant UINT
+operand is rejected during conversion, including for an empty range.
+Declared signed iterator widths remain unenforced.
 
 Following the [OpenQASM range-loop rules](https://openqasm.com/versions/3.0/language/classical.html#for-loops),
 the step defaults to one and the stop is inclusive when reached. Negative steps
@@ -648,8 +753,8 @@ The converter also supports `for int name in {value, ...}`, with a
 single-statement or braced body. Each element must evaluate to an integer during
 conversion. Integer literals, previously declared constants, supported constant
 expressions, explicit integer casts, and outer iteration values are accepted.
-As with ranges, only `int` iterators are supported; integer widths and INT-backed
-`uint` values retain their existing limitations.
+As with ranges, only `int` iterators are supported. Constant UINT elements must
+fit QCX `INT`; declared signed iterator widths remain unenforced.
 
 Elements are visited in the listed order, including duplicates. They are not
 sorted or deduplicated:
@@ -794,7 +899,7 @@ runtime iteration count.
 The converter supports `for int name in [start:stop]` and
 `for int name in [start:step:stop]` when either bound or the step depends on a
 runtime variable or an enclosing runtime iterator. Both bounds must be present and have
-integer type. Scalar `int` and INT-backed `uint` variables, supported integer
+integer type. Scalar `int` and `uint` variables, supported integer
 arithmetic, and explicit integer casts are accepted. Floating-point, Boolean,
 and scalar bit operands require an explicit integer cast; statically or
 runtime-indexed bit-register elements are also accepted through a cast. Whole bit registers
@@ -815,9 +920,14 @@ target integer widths are not automatically detected. Out-of-range constant step
 produce converter-specific errors rather than unrepresentable QCX literals;
 runtime expressions retain the backend's existing integer representation and
 arithmetic limitations.
-Declared OpenQASM widths do not change these bounds. Fully constant ranges
+Declared signed widths do not change these bounds. Fully constant signed ranges
 still use unrolling and retain their conversion-time integer-step behavior,
-including steps outside the runtime QCX representation.
+including signed steps outside the runtime QCX representation. UINT operands
+are normalized to their unsigned widths first, and values used in INT loop
+storage must fit QCX `INT`. Runtime UINT bounds and steps use checked `:INT:`
+captures; out-of-range values throw `std::out_of_range` when loop entry executes.
+Unsigned negation wraps and cannot supply a negative step; use `int` for
+descending loops.
 
 ```qasm
 OPENQASM 3.0;
@@ -896,8 +1006,9 @@ The iterator is advanced only when another in-range value exists. Negative
 steps are used directly without negating them, including the minimum signed
 integer. Thus both guard arithmetic and iterator advancement avoid overflow
 for representable bounds and steps. This is not a general arithmetic overflow
-check: calculations producing bounds or steps, body arithmetic, declared widths,
-and unsigned semantics retain their existing limitations.
+check: signed calculations producing bounds or steps, signed body arithmetic,
+and declared signed widths retain their existing limitations. Unsigned
+calculations follow the width and promotion rules described above.
 
 Bodies support the same statements as constant loops. The iterator is a scoped,
 read-only runtime integer usable in arithmetic, gate parameters, and conditions.
@@ -946,11 +1057,14 @@ statements and instructions to the enclosing expansion budgets.
 
 The converter supports `for int name in {value, ...}` when one or more elements
 depend on a runtime variable or an enclosing runtime iterator. Elements must
-have integer type: scalar `int`, INT-backed `uint`, supported integer arithmetic,
+have integer type: scalar `int`, `uint`, supported integer arithmetic,
 and supported explicit integer casts are accepted. Floating-point, Boolean,
 and scalar bit values require integer casts; statically or runtime-indexed
-bit-register elements may also be cast. Whole-register casts and runtime complex-to-integer
-casts remain unsupported. Existing constant numeric casts retain their behavior.
+bit-register elements may also be cast. Whole-register casts and runtime complex-to-`int`
+casts remain unsupported here; explicit complex-to-`uint` casts use the real
+component with native range checks. Existing constant numeric casts retain
+their behavior. Captured UINT elements use checked conversion to QCX `INT`;
+values above `INT_MAX` throw `std::out_of_range` before the first body executes.
 
 ```qasm
 OPENQASM 3.0;
@@ -1009,9 +1123,10 @@ Every generated body copy consumes the expansion budgets described above,
 whether or not it executes. Nested generated statements and instructions also
 count, even when their iterator is runtime-valued or shadows an outer iterator.
 Runtime reentry into an already generated loop does not charge additional
-conversion-time iterations. Integer widths and unsigned semantics retain the
-converter's existing limitations. Integer-array and bit-register iteration are
-described below; alias iteration remains unsupported. The parser still rejects
+conversion-time iterations. Signed widths remain unenforced; unsigned expressions
+follow the normalization and promotion rules above. Integer-array and
+bit-register iteration are described below; alias iteration remains unsupported.
+The parser still rejects
 an empty source set `{}`.
 
 ## Integer-array for loops
@@ -1257,6 +1372,11 @@ The current prototype does not reliably support:
   Boolean bitwise operations, or classical functions; or
 - arithmetic operators other than `+`, `-`, `*`, `/`, and integer `%`.
 
+Integer limitations additionally include `uint[n]` widths above native `UINT`,
+UINT arrays or iterators, fixed-width signed reinterpretation casts from UINT,
+mixed signed/unsigned expressions with non-native signed widths, and general
+signed-width emulation or signed-arithmetic overflow checks.
+
 The characterization tests in `bra/test/test_qasm2qcx.py` define the working
 baseline. `bra/test/qasm2qcx_if_else_numerical.py` additionally converts and
 executes deterministic measurement-controlled programs with `bra`, verifies
@@ -1286,6 +1406,16 @@ validation, and read-only iterators.
 `bra/test/qasm2qcx_integer_remainder_numerical.py` verifies runtime remainder
 for signed operands, nested expressions, operand preservation, short-circuiting,
 compound assignments, self-references, and temporary reuse.
+
+`bra/test/qasm2qcx_uint_numerical.py` compares constant folding and runtime
+unsigned arithmetic, remainder, bitwise expressions, complement, and compound
+assignments at widths 1, 4, 8, and native UINT. It covers intermediate masks,
+native endpoints, mixed signed/unsigned promotions, casts, comparisons,
+checked conversions, and skipped runtime errors. Integration cases verify
+UINT range bounds and steps, set captures, `while`, `break`/`continue`, array
+and bit indices, measurement destinations, quantum parameters, singleton
+storage, and bounds failures. Unit tests also cover invalid widths, unsupported
+signed-width combinations, constant loop capture limits, and temporary reuse.
 
 `bra/test/qasm2qcx_integer_array_numerical.py` verifies declarations and runtime
 initializers, static, runtime, and negative element indices, compound assignments,
@@ -1390,4 +1520,5 @@ python3 bra/test/qasm2qcx_integer_array_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_bit_register_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_bit_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_bitwise_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_uint_numerical.py --bra bra/bin/bra
 ```

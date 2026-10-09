@@ -19,7 +19,7 @@ def check_assignments(bra: pathlib.Path, values: tuple[int, ...]) -> None:
     for op, function in (('&=', operator.and_), ('|=', operator.or_), ('^=', operator.xor)):
         for lhs in values:
             for rhs in values:
-                check_program(bra, f'int a = {lhs}; uint b = {rhs}; a {op} b;',
+                check_program(bra, f'int a = {lhs}; int b = {rhs}; a {op} b;',
                               ('A1', 'B1'), [str(function(lhs, rhs)), str(rhs)])
             check_program(bra, f'int a = {lhs}; a {op} a;', ('A1',), [str(function(lhs, lhs))])
         for lhs in (0, 1):
@@ -92,7 +92,7 @@ def main() -> None:
             for rhs in values:
                 result = function(lhs, rhs)
                 check_program(bra, f'''const int FOLDED = ({lhs}) {op} ({rhs});
-                    int a = {lhs}; uint b = {rhs}; int c = a {op} b;
+                    int a = {lhs}; int b = {rhs}; int c = a {op} b;
                     int d = FOLDED;''', ('C1', 'D1', 'A1', 'B1'),
                               [str(result), str(result), str(lhs), str(rhs)])
         for lhs in (0, 1):

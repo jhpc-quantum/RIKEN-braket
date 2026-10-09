@@ -17,10 +17,302 @@ def convert(source: str) -> list[str]:
     return qasm2qcx.convert(source)
 
 
+class UnsignedIntegerFoundationTests(unittest.TestCase):
+    def converter(self, source: str):
+        program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3.0; ' + source)
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        return converter
+
+    def test_native_unsigned_bounds_and_enum(self) -> None:
+        converter = qasm2qcx.QASM2QCXConverter
+        self.assertEqual(converter.QCX_UINT_WIDTH, ctypes.sizeof(ctypes.c_uint) * 8)
+        self.assertEqual(converter.QCX_UINT_MAX, (1 << converter.QCX_UINT_WIDTH) - 1)
+        self.assertNotEqual(qasm2qcx.ValueType.INT, qasm2qcx.ValueType.UINT)
+        self.assertEqual(qasm2qcx.ValueType.BOOL.value, 5)
+
+    def test_unsized_and_explicit_native_types_remain_distinct(self) -> None:
+        width = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        converter = self.converter(f'uint a; uint[{width}] b; uint[1] c;')
+        types = converter._QASM2QCXConverter__uint_variable_types
+        self.assertEqual(types['A1'], qasm2qcx._UnsignedIntegerType(width, False))
+        self.assertEqual(types['B1'], qasm2qcx._UnsignedIntegerType(width, True))
+        self.assertEqual(types['C1'], qasm2qcx._UnsignedIntegerType(1, True))
+        self.assertNotEqual(types['A1'], types['B1'])
+
+    def test_every_supported_width_and_modulo_normalization(self) -> None:
+        native_width = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        for width in range(1, native_width + 1):
+            with self.subTest(width=width):
+                converter = self.converter(f'uint[{width}] a;')
+                info = converter._QASM2QCXConverter__uint_variable_types['A1']
+                self.assertEqual(info.mask, (1 << width) - 1)
+                for value in (-1, -(1 << (width + 2)), 0, 1, info.mask,
+                              info.mask + 1, (1 << (width + 3)) + 7):
+                    self.assertEqual(info.normalize(value), value % (1 << width))
+        for width in (0, -1):
+            with self.assertRaises(ValueError):
+                qasm2qcx._UnsignedIntegerType(width, True)
+
+    def test_constant_widths_and_separate_unsigned_bookkeeping(self) -> None:
+        converter = self.converter('''
+            const int N = 4; const uint M = 2;
+            const uint[N + M] mask = 3;
+            uint[N * M] value = mask; int signed_value = N;
+            for int i in {M} { signed_value += i; }
+        ''')
+        self.assertEqual(converter._QASM2QCXConverter__const_uint_types['mask'].width, 6)
+        self.assertEqual(converter._QASM2QCXConverter__uint_variable_types['VALUE31'].width, 8)
+        self.assertEqual(converter._QASM2QCXConverter__const_uint_variable_name_values_map,
+                         {'M': [2], 'mask': [3]})
+        self.assertEqual(converter._QASM2QCXConverter__const_int_variable_name_values_map, {'N': [4]})
+        self.assertEqual(converter._QASM2QCXConverter__uint_variable_name_size_map, {'VALUE31': 1})
+        self.assertNotIn('VALUE31', converter._QASM2QCXConverter__int_variable_name_size_map)
+
+    def test_width_is_resolved_in_declaration_scope(self) -> None:
+        converter = self.converter('''const int N = 8; uint[N] value;
+            for int N in [1:2] { value += N; }''')
+        self.assertEqual(converter._QASM2QCXConverter__uint_variable_types['VALUE31'].width, 8)
+
+    def test_rejects_nonpositive_and_oversized_declaration_widths(self) -> None:
+        native_width = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        for declaration in ('uint[{width}] a;', 'const uint[{width}] a = 1;'):
+            for width in (0, -1, native_width + 1, native_width * 2):
+                error = (qasm2qcx.InvalidDeclarationException if width <= 0
+                         else qasm2qcx.UnsupportedOpenQASMError)
+                with self.subTest(declaration=declaration, width=width), self.assertRaises(error):
+                    # A named width reaches converter validation even when
+                    # the parser rejects a nonpositive literal designator.
+                    convert(f'OPENQASM 3.0; const int SIZE = {width}; '
+                            + declaration.format(width='SIZE'))
+
+    def test_rejects_noninteger_and_runtime_widths(self) -> None:
+        for width in ('true', '2.5', 'R', 'N', 'float(8)', 'N + 1'):
+            with self.subTest(width=width), self.assertRaises(qasm2qcx.InvalidDeclarationException):
+                convert('OPENQASM 3.0; int N = 8; float R = 8.0; '
+                        f'uint[{width}] value;')
+        for source in ('uint[missing] value;', 'uint[N] value; const int N = 8;',
+                       'const uint[N] N = 8;'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.NoVariableNameException):
+                convert('OPENQASM 3.0; ' + source)
+
+    def test_cast_width_validation(self) -> None:
+        width = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        for size in ('1', '8', str(width), 'N + 1'):
+            convert('OPENQASM 3.0; const int N = 7; int value = 3; '
+                    f'int result = uint[{size}](value);')
+        for size in ('N - N', 'N - N - 1', str(width + 1), 'true', '1.5', 'value'):
+            with self.subTest(size=size), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert('OPENQASM 3.0; const int N = 7; int value = 3; '
+                        f'int result = uint[{size}](value);')
+
+    def test_cast_width_checked_during_loop_analysis(self) -> None:
+        with self.assertRaisesRegex(qasm2qcx.InvalidDeclarationException, 'constant integer'):
+            convert('OPENQASM 3.0; int width = 8; '
+                    'for int i in [0:uint[width](3)] {}')
+        for loop in ('for int N in [1:2]', 'for int N in [2:1]'):
+            with self.subTest(loop=loop), self.assertRaisesRegex(
+                    qasm2qcx.InvalidDeclarationException, 'loop iterator'):
+                convert('OPENQASM 3.0; const int N = 8; '
+                        + loop + ' { for int i in [0:uint[N](1)] {} }')
+
+    def test_width_evaluation_restores_expression_state(self) -> None:
+        converter = self.converter('const int N = 8; uint[N] a;')
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        converter._QASM2QCXConverter__value = 'SENTINEL'
+        converter._QASM2QCXConverter__value_type = qasm2qcx.ValueType.FLOAT
+        converter._QASM2QCXConverter__value_kind = qasm2qcx.ValueKind.TEMPORARY
+        converter._QASM2QCXConverter__evaluate_constant = False
+        for size in (qasm2qcx.ast.IntegerLiteral(8), qasm2qcx.ast.IntegerLiteral(0)):
+            try:
+                converter._QASM2QCXConverter__unsigned_integer_type(qasm2qcx.ast.UintType(size))
+            except qasm2qcx.InvalidDeclarationException:
+                pass
+            self.assertEqual((converter._QASM2QCXConverter__expression_kind,
+                              converter._QASM2QCXConverter__value,
+                              converter._QASM2QCXConverter__value_type,
+                              converter._QASM2QCXConverter__value_kind,
+                              converter._QASM2QCXConverter__evaluate_constant),
+                             (qasm2qcx.ExpressionKind.ARITHMETIC, 'SENTINEL',
+                              qasm2qcx.ValueType.FLOAT, qasm2qcx.ValueKind.TEMPORARY, False))
+
+    def test_uint_temporary_reuse_updates_width_and_emits_masks(self) -> None:
+        converter = self.converter('')
+        narrow = qasm2qcx._UnsignedIntegerType(8, True)
+        native = qasm2qcx._UnsignedIntegerType(converter.QCX_UINT_WIDTH, False)
+        name = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT, narrow)
+        self.assertEqual(converter._QASM2QCXConverter__temporary_uint_types[name], narrow)
+        converter._QASM2QCXConverter__normalize_uint_storage(name, narrow)
+        converter._QASM2QCXConverter__release_temporary_variable(name)
+        reused = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+        self.assertEqual(name, reused)
+        self.assertEqual(converter._QASM2QCXConverter__temporary_uint_types[name], native)
+        converter._QASM2QCXConverter__normalize_uint_storage(name, native)
+        self.assertEqual(list(converter), ['QUBITS 0', f'VAR {name} UINT', f'LET {name} &= 255'])
+        with self.assertRaises(ValueError):
+            converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.INT, narrow)
+
+
+class NativeUnsignedExpressionTests(unittest.TestCase):
+    def test_native_constants_keep_full_unsigned_range(self) -> None:
+        maximum = qasm2qcx.QASM2QCXConverter.QCX_UINT_MAX
+        lines = convert(f'''OPENQASM 3.0; const uint U = uint(-1);
+            uint a = U; uint b = U + uint(1); uint c = ~U; uint d = -uint(1);''')
+        for name, value in (('A1', maximum), ('B1', 0), ('C1', 0), ('D1', maximum)):
+            self.assertIn(f'VAR {name} UINT', lines)
+            self.assertIn(f'LET {name} := {value}', lines)
+
+    def test_narrow_constant_operations_mask_intermediate_results(self) -> None:
+        lines = convert('''OPENQASM 3.0; const uint[8] U = 255;
+            uint[8] a = (U + uint[8](1)) / uint[8](2);
+            uint[8] b = (U * U) % uint[8](7);
+            uint[8] c = ~uint[8](0); uint[8] d = -uint[8](1);''')
+        for name, value in (('A1', 0), ('B1', 1), ('C1', 255), ('D1', 255)):
+            self.assertIn(f'LET {name} := {value}', lines)
+            self.assertIn(f'LET {name} &= 255', lines)
+
+    def test_runtime_narrow_results_use_uint_temporaries_and_masks(self) -> None:
+        lines = convert('''OPENQASM 3.0; uint[8] a = 255; uint[8] b = 1;
+            uint[8] c = (a + b) / b; c = ~a; c = -b; c %= b;''')
+        self.assertTrue(any(line.startswith('VAR QASM2QCX_UINT_') for line in lines))
+        self.assertFalse(any(line.startswith('VAR QASM2QCX_INT_') for line in lines))
+        self.assertTrue(any(line.startswith('LET QASM2QCX_UINT_') and line.endswith(' &= 255') for line in lines))
+        self.assertTrue(any(line.endswith(' ^= 255') for line in lines))
+        self.assertTrue(any(line.endswith(' *= :UINT:-1') for line in lines))
+
+    def test_mixed_integer_promotions_depend_on_unsigned_width(self) -> None:
+        narrow = convert('OPENQASM 3.0; int a = -1; uint[8] b = 1; int c = a + b;')
+        self.assertIn('LET QASM2QCX_INT_0 += :INT:B1', narrow)
+        native = convert('OPENQASM 3.0; int a = -1; uint b = 1; uint c = a + b;')
+        self.assertIn('LET QASM2QCX_UINT_0 := :UINT:A1', native)
+        self.assertIn('LET QASM2QCX_UINT_0 += B1', native)
+        lines = convert('OPENQASM 3.0; uint[4] a = 15; uint[8] b = 1; uint[8] c = a + b;')
+        self.assertIn('LET QASM2QCX_UINT_0 &= 255', lines)
+
+    def test_constant_and_runtime_comparisons_use_the_same_promotions(self) -> None:
+        maximum = qasm2qcx.QASM2QCXConverter.QCX_UINT_MAX
+        lines = convert(f'''OPENQASM 3.0; const uint U = {maximum};
+            const bool YES = U == -1; bool result = YES;
+            uint a = U; if (a == -1) {{ result = true; }}''')
+        self.assertIn('LET RESULT63 := 1', lines)
+        self.assertIn(f'JUMPIF QASM2QCX_IF_0 A1 == {maximum}', lines)
+        narrow = convert('''OPENQASM 3.0; uint[8] a = 255; bool result = a > -1;''')
+        self.assertIn('LET QASM2QCX_INT_1 := :INT:A1', narrow)
+
+    def test_mixed_non_native_signed_widths_are_diagnosed(self) -> None:
+        for source in (
+                'int[8] a = -1; uint[8] b = 1; int c = a + b;',
+                'const int[8] A = -1; const uint[8] B = 1; int c = A + B;',
+                'int[8] a = -1; uint b = 1; a += b;',
+                'array[int[8], 1] a = {-1}; uint b = 1; uint c = a[0] + b;'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                convert('OPENQASM 3.0; ' + source)
+        width = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        lines = convert(f'OPENQASM 3.0; int[{width}] a = -1; uint b = 1; uint c = a + b;')
+        self.assertIn('LET QASM2QCX_UINT_0 := :UINT:A1', lines)
+
+    def test_unsigned_boolean_literals_keep_scalar_compatibility(self) -> None:
+        lines = convert('OPENQASM 3.0; bool a = uint(0); bool b = uint[1](1);')
+        self.assertIn('LET A1 := 0', lines)
+        self.assertIn('LET B1 := 1', lines)
+
+    def test_casts_apply_target_width_and_preserve_integer_precision(self) -> None:
+        maximum = qasm2qcx.QASM2QCXConverter.QCX_UINT_MAX
+        lines = convert(f'''OPENQASM 3.0; uint a = uint({maximum});
+            uint[8] b = uint[8](a); uint[1] c = uint[1](b);
+            uint[8] d = uint[8](257.9); uint[8] e = uint[8](-1);''')
+        self.assertIn(f'LET A1 := {maximum}', lines)
+        self.assertIn('LET QASM2QCX_UINT_0 := :UINT:A1', lines)
+        self.assertIn('LET QASM2QCX_UINT_0 &= 255', lines)
+        self.assertIn('LET QASM2QCX_UINT_0 &= 1', lines)
+        self.assertIn('LET D1 := 1', lines)
+        self.assertIn('LET E1 := 255', lines)
+
+    def test_constant_invalid_conversions_are_diagnosed(self) -> None:
+        for value in ('-1.0', '1e999', str(qasm2qcx.QASM2QCXConverter.QCX_UINT_MAX + 1) + '.0'):
+            with self.subTest(value=value), self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'UINT range'):
+                convert(f'OPENQASM 3.0; const uint a = uint({value});')
+        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'INT range'):
+            convert('OPENQASM 3.0; const int a = int(uint(-1));')
+        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'fixed-width signed cast'):
+            convert('OPENQASM 3.0; uint[8] a = 255; int b = int[8](a);')
+
+    def test_runtime_invalid_literal_casts_stay_in_control_flow(self) -> None:
+        lines = convert('''OPENQASM 3.0; uint a = 7; int b = 3;
+            if (false) { a = uint(-1.0); b = int(uint(-1)); }''')
+        self.assertGreater(lines.index('LET QASM2QCX_UINT_0 := :UINT::REAL:-1.0'), lines.index('@QASM2QCX_IF_0'))
+        self.assertGreater(lines.index(f'LET QASM2QCX_INT_0 := :INT::UINT:{qasm2qcx.QASM2QCXConverter.QCX_UINT_MAX}'),
+                           lines.index('@QASM2QCX_IF_0'))
+        self.assertIn('LET OUT7 := 0', convert('''OPENQASM 3.0;
+            const bool OFF = false && bool(uint(-1.0)); bool out = OFF;'''))
+
+
+class UnsignedIntegrationTests(unittest.TestCase):
+    def test_runtime_loop_operands_use_checked_signed_captures(self) -> None:
+        for loop in ('for int i in [first:step:last] { total += i; }',
+                     'for int i in {first, last, first} { total += i; }'):
+            lines = convert('OPENQASM 3.0; uint[8] first = 1; uint last = 3; '
+                            'uint step = 1; int total = 0; ' + loop)
+            for name in ('FIRST31', 'LAST15'):
+                self.assertTrue(any(line.startswith('LET QASM2QCX_INT_')
+                                    and line.endswith(f':= :INT:{name}') for line in lines))
+            if '[' in loop:
+                self.assertTrue(any(line.endswith(':= :INT:STEP15') for line in lines))
+
+    def test_constant_unsigned_loop_values_must_fit_signed_iterator(self) -> None:
+        for loop in ('for int i in [U:U] {}', 'for int i in [0:U] {}',
+                     'for int i in [0:U:0] {}', 'for int i in {U} {}',
+                     'for int i in [1:0] { for int j in {U} {} }'):
+            with self.subTest(loop=loop), self.assertRaisesRegex(
+                    qasm2qcx.InvalidLoopRangeException, 'UINT value must fit QCX INT'):
+                convert('OPENQASM 3.0; const uint U = uint(-1); ' + loop)
+        maximum = qasm2qcx.QASM2QCXConverter.QCX_INT_MAX
+        lines = convert(f'OPENQASM 3.0; const uint U = {maximum}; int a = 0; '
+                        'for int i in {U} { a = i; }')
+        self.assertIn(f'LET A1 := {maximum}', lines)
+
+    def test_unsigned_runtime_indices_are_converted_before_bounds_checks(self) -> None:
+        lines = convert('''OPENQASM 3.0; uint i = 1; array[int, 2] a = {4, 5};
+            bit[2] flags = "01"; int out = a[i]; flags[i] = !flags[i];''')
+        captures = [index for index, line in enumerate(lines) if line.endswith(':= :INT:I1')]
+        self.assertEqual(len(captures), 3)
+        for index in captures:
+            self.assertTrue(lines[index + 1].startswith('ASSERT '))
+
+    def test_static_unsigned_bit_indices_and_selections(self) -> None:
+        lines = convert('''OPENQASM 3.0; const uint[8] I = 1; bit[3] flags = "101";
+            bit out = flags[I]; flags[I] = true;
+            bit[2] selected = flags[{uint[8](0), I + 1}];''')
+        self.assertIn('LET OUT7 := FLAGS31:1', lines)
+        self.assertIn('LET FLAGS31:1 := 1', lines)
+        self.assertIn('LET SELECTED255:0 := FLAGS31:0', lines)
+        self.assertIn('LET SELECTED255:1 := FLAGS31:2', lines)
+        with self.assertRaises(qasm2qcx.InvalidBitOperandException):
+            convert('OPENQASM 3.0; bit[2] flags; bit out = flags[uint(-1)];')
+
+    def test_complex_to_uint_cast_in_runtime_index(self) -> None:
+        lines = convert('''OPENQASM 3.0; complex z = 1.5 + 2im;
+            array[int, 2] a = {4, 5}; int out = a[uint(z)];''')
+        self.assertTrue(any(':= :UINT:Z1' in line for line in lines))
+
+    def test_unsigned_quantum_angles_use_real_conversion(self) -> None:
+        lines = convert('''OPENQASM 3.0; include "stdgates.inc"; qubit q;
+            uint theta = 1; rx(theta) q; gphase(theta);''')
+        self.assertIn('LET QASM2QCX_REAL_0 := :REAL:THETA31', lines)
+        self.assertIn('EX 0 QASM2QCX_REAL_0', lines)
+        self.assertIn('PHASE :REAL:THETA31', lines)
+
+    def test_uint_arrays_iterators_and_dynamic_qubits_remain_unsupported(self) -> None:
+        for source in ('array[uint, 2] a;', 'for uint i in [0:1] {}',
+                       'qubit[2] q; uint i = 1; reset q[i];'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                convert('OPENQASM 3.0; ' + source)
+
+
 class ScalarBitwiseExpressionTests(unittest.TestCase):
     def test_integer_and_bit_constant_folding(self) -> None:
         self.assertEqual(convert('''OPENQASM 3.0;
-            const int MASK = 7 & 3; const uint INVERSE = ~MASK;
+            const int MASK = 7 & 3; const int INVERSE = ~MASK;
             int a = (7 | 8) ^ 3; int b = INVERSE; bit out = ~bit(false);'''),
                          ['QUBITS 0', 'VAR A1 INT', 'LET A1 := 12',
                           'VAR B1 INT', 'LET B1 := -4', 'VAR OUT7 INT', 'LET OUT7 := 1'])
@@ -29,7 +321,7 @@ class ScalarBitwiseExpressionTests(unittest.TestCase):
                 f'OPENQASM 3.0; bit out = bit(true) {op} bit(false);'))
 
     def test_runtime_integer_lowering_preserves_operands(self) -> None:
-        lines = convert('OPENQASM 3.0; int a = -3; uint b = 7; int c = ~(a & b) | (a ^ b);')
+        lines = convert('OPENQASM 3.0; int a = -3; int b = 7; int c = ~(a & b) | (a ^ b);')
         self.assertTrue(any(' &= B1' in line for line in lines))
         self.assertTrue(any(' ^= -1' in line for line in lines))
         self.assertTrue(any(' ^= B1' in line for line in lines))
@@ -108,7 +400,9 @@ class ScalarBitwiseAssignmentTests(unittest.TestCase):
             with self.subTest(op=op):
                 self.assertEqual(convert(f'OPENQASM 3.0; int a = 7; uint b = 3; a {op} b;'),
                                  ['QUBITS 0', 'VAR A1 INT', 'LET A1 := 7',
-                                  'VAR B1 INT', 'LET B1 := 3', f'LET A1 {op} B1'])
+                                  'VAR B1 UINT', 'LET B1 := 3', 'VAR QASM2QCX_UINT_0 UINT',
+                                  'LET QASM2QCX_UINT_0 := :UINT:A1', f'LET QASM2QCX_UINT_0 {op} B1',
+                                  'LET A1 := :INT:QASM2QCX_UINT_0'])
                 self.assertEqual(convert(f'OPENQASM 3.0; bit a = 1; bit b = 0; a {op} b;'),
                                  ['QUBITS 0', 'VAR A1 INT', 'LET A1 := 1',
                                   'VAR B1 INT', 'LET B1 := 0', f'LET A1 {op} B1'])
@@ -883,7 +1177,7 @@ class BitIteratorInfrastructureTests(unittest.TestCase):
     def test_supported_bit_casts_and_logical_metadata(self) -> None:
         converter = self.converter()
         with converter._QASM2QCXConverter__iterator_binding('value', self.bit_binding()):
-            for target, expected in (('int', qasm2qcx.ValueType.INT), ('uint', qasm2qcx.ValueType.INT),
+            for target, expected in (('int', qasm2qcx.ValueType.INT), ('uint', qasm2qcx.ValueType.UINT),
                                      ('float', qasm2qcx.ValueType.FLOAT), ('complex', qasm2qcx.ValueType.COMPLEX),
                                      ('bool', qasm2qcx.ValueType.BOOL), ('bit', qasm2qcx.ValueType.BIT)):
                 expression = qasm2qcx.openqasm3.parser.parse(
@@ -1250,7 +1544,7 @@ class RuntimeStrideInfrastructureTests(unittest.TestCase):
     @staticmethod
     def converter():
         program = qasm2qcx.openqasm3.parser.parse('''OPENQASM 3.0;
-            const int stride = 2; const uint backwards = 3;
+            const int stride = 2; const int backwards = 3;
             int last = 3; int dynamic = 2;''')
         converter = qasm2qcx.QASM2QCXConverter(program)
         converter.visit(program)
@@ -3708,7 +4002,7 @@ class IntegerRemainderConstantTests(unittest.TestCase):
         self.assertEqual(convert('''OPENQASM 3.0;
             const uint a = 7; const int b = 3;
             const uint value = a % b; uint result = value;'''), [
-                'QUBITS 0', 'VAR RESULT63 INT', 'LET RESULT63 := 1',
+                'QUBITS 0', 'VAR RESULT63 UINT', 'LET RESULT63 := 1',
             ])
 
     def test_folds_literal_remainder_and_explicit_integer_casts(self) -> None:
@@ -3788,7 +4082,9 @@ class IntegerRemainderRuntimeTests(unittest.TestCase):
             with self.subTest(expression=expression):
                 lines = convert('OPENQASM 3.0; int a = 7; uint b = 3; float f = 7.5; '
                                 f'int result = {expression};')
-                self.assertTrue(lines[-1].startswith('LET RESULT63 := QASM2QCX_INT_'))
+                prefix = ('LET RESULT63 := QASM2QCX_INT_' if expression in ('a % 3', 'a % a')
+                          else 'LET RESULT63 := :INT:QASM2QCX_UINT_')
+                self.assertTrue(lines[-1].startswith(prefix))
                 self.assertFalse(any('%=' in line for line in lines))
 
     def test_self_assignment_is_emitted_after_complete_remainder(self) -> None:
@@ -3853,8 +4149,8 @@ class IntegerRemainderAssignmentTests(unittest.TestCase):
 
     def test_uint_target_and_mixed_integer_rhs(self) -> None:
         lines = convert('OPENQASM 3.0; uint a = 7; int b = 3; a %= b;')
-        self.assertEqual(lines[-1], 'LET A1 := QASM2QCX_INT_0')
-        self.assertIn('LET QASM2QCX_INT_1 /= B1', lines)
+        self.assertEqual(lines[-1], 'LET A1 := QASM2QCX_UINT_0')
+        self.assertIn('LET QASM2QCX_UINT_1 /= :UINT:B1', lines)
 
     def test_compound_assignment_reuses_temporaries(self) -> None:
         lines = convert('OPENQASM 3.0; int a = 7; int b = 3; '
@@ -4327,7 +4623,8 @@ class BooleanConversionTests(unittest.TestCase):
             int n = int(a); uint u = uint(a); float f = float(a);
             complex z = complex(a); n = a; f = a; z = a;''')
         self.assertIn('LET N1 := A1', lines)
-        self.assertIn('LET U1 := A1', lines)
+        self.assertIn('LET QASM2QCX_UINT_0 := :UINT:A1', lines)
+        self.assertIn('LET U1 := QASM2QCX_UINT_0', lines)
         self.assertIn('LET QASM2QCX_REAL_0 := :REAL:A1', lines)
         self.assertIn('LET QASM2QCX_COMPLEX_0 := :COMPLEX:A1', lines)
         self.assertIn('LET F1 := :REAL:A1', lines)
@@ -4339,7 +4636,7 @@ class BooleanConversionTests(unittest.TestCase):
             const uint u = false; const float f = yes; const complex z = yes;
             int a = n; uint b = u; float c = f; complex d = z;'''), [
                 'QUBITS 0', 'VAR A1 INT', 'LET A1 := 1',
-                'VAR B1 INT', 'LET B1 := 0', 'VAR C1 REAL', 'LET C1 := 1.0',
+                'VAR B1 UINT', 'LET B1 := 0', 'VAR C1 REAL', 'LET C1 := 1.0',
                 'VAR D1 COMPLEX', 'LET D1 := :COMPLEX:1.0',
             ])
 
@@ -4994,7 +5291,7 @@ class GateConversionTests(unittest.TestCase):
 
 
 class ClassicalScalarTests(unittest.TestCase):
-    def test_maps_uint_to_qcx_int(self) -> None:
+    def test_maps_narrow_uint_to_qcx_uint_with_masks(self) -> None:
         source = """
             OPENQASM 3.0;
             uint[8] value = 3;
@@ -5007,9 +5304,14 @@ class ClassicalScalarTests(unittest.TestCase):
             convert(source),
             [
                 "QUBITS 1",
-                "VAR VALUE31 INT",
+                "VAR VALUE31 UINT",
                 "LET VALUE31 := 3",
-                "LET VALUE31 += 2",
+                "LET VALUE31 &= 255",
+                "VAR QASM2QCX_INT_0 INT",
+                "LET QASM2QCX_INT_0 := :INT:VALUE31",
+                "LET QASM2QCX_INT_0 += 2",
+                "LET VALUE31 := :UINT:QASM2QCX_INT_0",
+                "LET VALUE31 &= 255",
                 "VAR PROMOTED255 REAL",
                 "LET PROMOTED255 := :REAL:VALUE31",
             ],
@@ -5069,7 +5371,8 @@ class ClassicalScalarTests(unittest.TestCase):
         lines = convert(source)
         self.assertIn("LET QASM2QCX_INT_0 := :INT:REAL15", lines)
         self.assertIn("LET INTEGER127 := QASM2QCX_INT_0", lines)
-        self.assertIn("LET UNSIGNED255 := QASM2QCX_INT_0", lines)
+        self.assertIn("LET QASM2QCX_UINT_0 := :UINT:REAL15", lines)
+        self.assertIn("LET UNSIGNED255 := QASM2QCX_UINT_0", lines)
         self.assertIn("LET QASM2QCX_COMPLEX_0 := :COMPLEX:REAL15", lines)
         self.assertIn("LET NUMBER63 := QASM2QCX_COMPLEX_0", lines)
 
