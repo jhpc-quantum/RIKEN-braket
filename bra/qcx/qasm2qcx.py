@@ -2275,10 +2275,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if target is not None and self.__operand_name(target) in iterators:
                 raise UnsupportedOpenQASMError('assignment to a for-loop iterator')
             if isinstance(child, ast.ClassicalAssignment) and child.op.name not in (
-                    '=', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^='):
+                    '=', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '<<=', '>>='):
                 raise UnsupportedOpenQASMError(f'assignment operator {child.op.name}')
-            if isinstance(child, ast.ClassicalAssignment) and child.op.name in ('&=', '|=', '^='):
-                self.__validate_bitwise_assignment_types(child, iterators)
+            if isinstance(child, ast.ClassicalAssignment) and child.op.name in ('&=', '|=', '^=', '<<=', '>>='):
+                self.__validate_integer_operator_assignment_types(child, iterators)
             if isinstance(child, ast.QuantumGate):
                 if child.modifiers or child.duration is not None:
                     raise UnsupportedOpenQASMError('gate modifiers or duration in a loop')
@@ -2306,7 +2306,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__validate_loop_syntax(child.while_condition)
                 self.__validate_loop_body(child.block, iterators)
 
-    def __validate_bitwise_assignment_types(
+    def __validate_integer_operator_assignment_types(
             self, statement: ast.ClassicalAssignment, iterators: dict[str, ValueType]) -> None:
         target = statement.lvalue
         if isinstance(target, ast.IndexedIdentifier):
@@ -2318,7 +2318,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             target = ast.IndexExpression(target.name, target.indices[0])
         target_type, _ = self.__loop_expression_info(target, iterators)
         rhs_type, _ = self.__loop_expression_info(statement.rvalue, iterators)
-        self.__bitwise_type(target_type, rhs_type)
+        if statement.op.name in ('<<=', '>>='):
+            expression = ast.BinaryExpression(ast.BinaryOperator[statement.op.name[:-1]], target, statement.rvalue)
+            self.__validate_shift_types(expression, target_type, rhs_type, iterators)
+        else:
+            self.__bitwise_type(target_type, rhs_type)
         self.__validate_bitwise_indices(target, iterators)
         self.__validate_bitwise_indices(statement.rvalue, iterators)
 
@@ -3502,6 +3506,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __emit_classical_value_assignment(
             self, statement: ast.ClassicalAssignment, variable_name: str,
             variable_type: ValueType, *, runtime_array: bool = False) -> None:
+        if statement.op.name in ('<<=', '>>='):
+            self.__emit_shift_assignment(statement, variable_name, variable_type)
+            return
         if (variable_type == ValueType.INT and statement.op.name != '='
                 and not self.__native_signed_operand(statement.lvalue)):
             rhs_type, _ = self.__loop_expression_info(statement.rvalue)
@@ -3562,6 +3569,28 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__emit_assignment(
             variable_name, operator, variable_type, self.__value,
             self.__value_type, self.__value_kind, self.__uint_expression_type(expression))
+
+    def __emit_shift_assignment(
+            self, statement: ast.ClassicalAssignment, target: str,
+            target_type: ValueType) -> None:
+        operand = None
+        try:
+            operand = self.__condition_operand(statement.rvalue)
+            expression = ast.BinaryExpression(
+                ast.BinaryOperator[statement.op.name[:-1]], statement.lvalue, statement.rvalue)
+            self.__validate_shift_types(expression, target_type, operand[1])
+            uint_type = self.__uint_variable_types.get(target) if target_type == ValueType.UINT else None
+            # Use the already captured destination operand, not its AST. In
+            # particular, a runtime array index must only be evaluated once.
+            self.__emit_shift_expression(statement.op.name[:-1],
+                                         [(target, target_type, ValueKind.LVALUE), operand], uint_type)
+            # Only write the destination after all checks and the shift have
+            # succeeded; the count may refer to the destination itself.
+            self.__emit_assignment(target, ':=', target_type, self.__value,
+                                   self.__value_type, self.__value_kind, uint_type)
+        finally:
+            if operand is not None and operand[2] == ValueKind.TEMPORARY:
+                self.__release_temporary_variable(str(operand[0]))
 
     def __emit_bitwise_assignment(
             self, target: str, operator: str, target_type: ValueType,
