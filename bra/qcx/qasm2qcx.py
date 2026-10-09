@@ -160,6 +160,9 @@ class ZeroDivisorException(QASM2QCXError):
     def __str__(self):
         return f'Constant {self.operator} expression divisor must not be zero'
 
+class InvalidShiftException(QASM2QCXError):
+    """Invalid constant shift count or overflowing signed left shift."""
+
 class WrongConstantVariableException(QASM2QCXError):
     def __str__(self):
         return 'Wrong constant variable'
@@ -696,13 +699,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return ValueType.UINT, _UnsignedIntegerType(self.QCX_UINT_WIDTH, False)
         return ValueType.UINT, _UnsignedIntegerType(width, any(info.is_sized for info in infos))
 
-    def __native_signed_operand(self, expression: ast.Expression) -> bool:
+    def __native_signed_operand(
+            self, expression: ast.Expression,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> bool:
         # Signed width emulation is not part of UINT support. Do not silently
         # assign native signed rank to a specified non-native signed type.
         source_type = None
         if isinstance(expression, (ast.Identifier, ast.IndexedIdentifier)):
             name = self.__operand_name(expression)
-            if any(name in scope for scope in self.__loop_bindings):
+            if (iterators is not None and name in iterators) or any(name in scope for scope in self.__loop_bindings):
                 return True
             source_type = self.__classical_source_types.get(name) or self.__constant_source_types.get(name)
         elif isinstance(expression, ast.IndexExpression) and isinstance(expression.collection, ast.Identifier):
@@ -710,9 +715,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         elif isinstance(expression, ast.Cast):
             source_type = expression.type
         elif isinstance(expression, ast.UnaryExpression):
-            return self.__native_signed_operand(expression.expression)
+            return self.__native_signed_operand(expression.expression, iterators)
         elif isinstance(expression, ast.BinaryExpression):
-            return self.__native_signed_operand(expression.lhs) and self.__native_signed_operand(expression.rhs)
+            return (self.__native_signed_operand(expression.lhs, iterators)
+                    and self.__native_signed_operand(expression.rhs, iterators))
         if isinstance(source_type, ast.ArrayType):
             source_type = source_type.base_type
         if not isinstance(source_type, ast.IntType) or source_type.size is None:
@@ -825,6 +831,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.__expression_kind is None:
             return
 
+        if expression.op.name in ('<<', '>>'):
+            self.__visit_shift_binary(expression)
+            return
         if expression.op.name in ('&', '|', '^'):
             self.__visit_bitwise_binary(expression)
             return
@@ -935,6 +944,93 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__value = result
         self.__value_type = result_type
         self.__value_kind = ValueKind.TEMPORARY
+
+    def __validate_shift_types(
+            self, expression: ast.BinaryExpression, lhs_type: ValueType, rhs_type: ValueType,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> None:
+        if lhs_type not in (ValueType.INT, ValueType.UINT) or rhs_type not in (ValueType.INT, ValueType.UINT):
+            raise UnsupportedOpenQASMError('shift operators require scalar integer operands')
+        if lhs_type == ValueType.INT and not self.__native_signed_operand(expression.lhs, iterators):
+            raise UnsupportedOpenQASMError('shift of an integer with a non-native signed width')
+
+    def __fold_shift(
+            self, lhs: int, rhs: int, operator: str,
+            uint_type: _UnsignedIntegerType | None) -> int:
+        width = uint_type.width if uint_type is not None else self.QCX_UINT_WIDTH
+        if not 0 <= rhs < width:
+            raise InvalidShiftException(f'Shift count {rhs} must be in [0, {width - 1}]')
+        result = lhs << rhs if operator == '<<' else lhs >> rhs
+        if uint_type is not None:
+            return uint_type.normalize(result)
+        if not self.QCX_INT_MIN <= result <= self.QCX_INT_MAX:
+            raise InvalidShiftException('Signed left shift result outside QCX INT range')
+        return result
+
+    def __visit_shift_binary(self, expression: ast.BinaryExpression) -> None:
+        operands = []
+        try:
+            # A count is independent of the shifted value's type. Do not use
+            # arithmetic promotion or narrow a UINT count through signed INT.
+            for operand in (expression.lhs, expression.rhs):
+                self.visit(operand)
+                if self.__value is None or self.__value_type is None or self.__value_kind is None:
+                    raise UninitializedValueException
+                operands.append((self.__value, self.__value_type, self.__value_kind))
+            (lhs, lhs_type, lhs_kind), (rhs, rhs_type, rhs_kind) = operands
+            self.__validate_shift_types(expression, lhs_type, rhs_type)
+            uint_type = self.__uint_expression_type(expression.lhs) if lhs_type == ValueType.UINT else None
+            if lhs_type == ValueType.UINT:
+                if uint_type is None:
+                    raise UninitializedValueException
+                self.__uint_expression_types[id(expression)] = (expression, uint_type)
+            if (lhs_type == ValueType.INT and lhs_kind == ValueKind.LITERAL
+                    and not self.QCX_INT_MIN <= int(lhs) <= self.QCX_INT_MAX):
+                raise UnsupportedOpenQASMError('shift operand outside QCX INT range')
+            if lhs_kind == rhs_kind == ValueKind.LITERAL:
+                if not self.__evaluate_constant:
+                    self.__value, self.__value_type, self.__value_kind = 0, lhs_type, ValueKind.LITERAL
+                    return
+                try:
+                    folded = self.__fold_shift(int(lhs), int(rhs), expression.op.name, uint_type)
+                except InvalidShiftException:
+                    if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
+                        raise
+                    # Emit the check at runtime even for literal operands:
+                    # enclosing branches or logical operators may skip it.
+                else:
+                    self.__value, self.__value_type, self.__value_kind = folded, lhs_type, ValueKind.LITERAL
+                    return
+            if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
+                raise NoConstantExpressionException
+            self.__emit_shift_expression(expression.op.name, operands, uint_type)
+        finally:
+            for value, _, kind in operands:
+                if kind == ValueKind.TEMPORARY:
+                    self.__release_temporary_variable(str(value))
+
+    def __emit_shift_expression(
+            self, operator: str,
+            operands: list[tuple[str | int | float | complex, ValueType, ValueKind]],
+            uint_type: _UnsignedIntegerType | None) -> None:
+        (lhs, lhs_type, _), (rhs, rhs_type, rhs_kind) = operands
+        count_temporary = None
+        try:
+            if uint_type is not None and uint_type.width < self.QCX_UINT_WIDTH:
+                # bra checks the native width. Narrow source widths need their
+                # own guards; ASSERT requires a variable on the left side.
+                if rhs_kind == ValueKind.LITERAL:
+                    count_temporary = self.__add_new_temporary_variable(rhs_type)
+                    self.__qcx_lines.append(f'LET {count_temporary} := {rhs}')
+                    rhs = count_temporary
+                self.__qcx_lines.extend([f'ASSERT {rhs} >= 0', f'ASSERT {rhs} < {uint_type.width}'])
+            result = self.__add_new_temporary_variable(lhs_type, uint_type)
+            self.__qcx_lines.extend([f'LET {result} := {lhs}', f'LET {result} {operator}= {rhs}'])
+            if uint_type is not None:
+                self.__normalize_uint_storage(result, uint_type)
+            self.__value, self.__value_type, self.__value_kind = result, lhs_type, ValueKind.TEMPORARY
+        finally:
+            if count_temporary is not None:
+                self.__release_temporary_variable(count_temporary)
 
     @staticmethod
     def __integer_quotient(lhs: int, rhs: int) -> int:
@@ -1962,6 +2058,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return ValueType.BOOL, runtime
         if expression.op.name in ('&', '|', '^'):
             return self.__bitwise_type(lhs_type, rhs_type), runtime
+        if expression.op.name in ('<<', '>>'):
+            self.__validate_shift_types(expression, lhs_type, rhs_type, iterators)
+            return lhs_type, runtime
         if expression.op.name not in ('+', '-', '*', '/', '%'):
             raise UnsupportedOpenQASMError(f'binary operator {expression.op.name}')
         result_type = self.__promoted_type(lhs_type, rhs_type)
@@ -2061,7 +2160,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 ast.UnaryExpression, ast.BinaryExpression, ast.Cast, ast.IndexExpression)):
             raise UnsupportedOpenQASMError(f'loop expression {type(node).__name__}')
         if isinstance(node, ast.BinaryExpression) and node.op.name not in (
-                '+', '-', '*', '/', '%', '&', '|', '^',
+                '+', '-', '*', '/', '%', '&', '|', '^', '<<', '>>',
                 '==', '!=', '<', '<=', '>', '>=', '&&', '||'):
             raise UnsupportedOpenQASMError(f'binary operator {node.op.name}')
         if isinstance(node, ast.UnaryExpression) and node.op.name not in ('-', '!', '~'):
@@ -2254,7 +2353,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__validate_bitwise_types(node.set_declaration, iterators)
             return
         if ((isinstance(node, ast.UnaryExpression) and node.op.name == '~')
-                or (isinstance(node, ast.BinaryExpression) and node.op.name in ('&', '|', '^'))):
+                or (isinstance(node, ast.BinaryExpression) and node.op.name in ('&', '|', '^', '<<', '>>'))):
             self.__loop_expression_info(node, iterators)
             self.__validate_bitwise_indices(node, iterators)
         for field in dataclasses.fields(node):

@@ -309,6 +309,88 @@ class UnsignedIntegrationTests(unittest.TestCase):
                 convert('OPENQASM 3.0; ' + source)
 
 
+class ScalarShiftExpressionTests(unittest.TestCase):
+    def test_signed_constant_folding_and_endpoints(self) -> None:
+        width = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        minimum = qasm2qcx.QASM2QCXConverter.QCX_INT_MIN
+        lines = convert(f'''OPENQASM 3.0; const int A = -3 >> 1;
+            int a = A; int b = -1 << {width - 1}; int c = {minimum} >> {width - 1};
+            int d = 3 << 1 + 1; int e = 32 >> 1 >> 2;''')
+        for name, value in (('A1', -2), ('B1', minimum), ('C1', -1), ('D1', 12), ('E1', 4)):
+            self.assertIn(f'LET {name} := {value}', lines)
+
+    def test_unsigned_folding_retains_left_width(self) -> None:
+        lines = convert('''OPENQASM 3.0; const uint[8] A = uint[8](255) << 1;
+            uint[8] a = A; uint[8] b = uint[8](128) >> uint(7);
+            uint[4] c = (uint[4](15) << 1) >> 1;''')
+        for name, value in (('A1', 254), ('B1', 1), ('C1', 7)):
+            self.assertIn(f'LET {name} := {value}', lines)
+
+    def test_runtime_signed_shift_count_does_not_promote_result(self) -> None:
+        lines = convert('OPENQASM 3.0; int a = -3; uint count = 1; int out = a >> count;')
+        self.assertIn('LET QASM2QCX_INT_0 := A1', lines)
+        self.assertIn('LET QASM2QCX_INT_0 >>= COUNT31', lines)
+        self.assertFalse(any(line.startswith('VAR QASM2QCX_UINT_') for line in lines))
+
+    def test_runtime_narrow_shift_has_count_guards_and_result_mask(self) -> None:
+        lines = convert('OPENQASM 3.0; uint[8] a = 255; int n = 1; uint[8] out = a << n;')
+        self.assertIn('ASSERT N1 >= 0', lines)
+        self.assertIn('ASSERT N1 < 8', lines)
+        self.assertIn('LET QASM2QCX_UINT_0 <<= N1', lines)
+        self.assertIn('LET QASM2QCX_UINT_0 &= 255', lines)
+        self.assertFalse(any(line.startswith('VAR QASM2QCX_INT_') for line in lines))
+        literal = convert('OPENQASM 3.0; uint[4] a = 15; uint[4] out = a >> 1;')
+        self.assertIn('ASSERT QASM2QCX_INT_0 < 4', literal)
+
+    def test_indexed_operands_evaluate_in_source_order_and_release_temporaries(self) -> None:
+        program = qasm2qcx.openqasm3.parse('''OPENQASM 3.0;
+            array[int, 2] a = {4, 1}; int i = 0; int out = a[i] << a[i + 1];''')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        lines = list(converter)
+        reads = [index for index, line in enumerate(lines) if ':= A1:QASM2QCX_INT_' in line]
+        self.assertEqual(len(reads), 2)
+        shift = next(index for index, line in enumerate(lines) if ' <<= ' in line)
+        self.assertLess(reads[0], reads[1])
+        self.assertLess(reads[1], shift)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_invalid_constant_counts_and_signed_overflow_are_converter_errors(self) -> None:
+        width = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        maximum = qasm2qcx.QASM2QCXConverter.QCX_INT_MAX
+        for expression in ('1 << -1', f'1 >> {width}', 'uint[4](1) << 4', f'{maximum} << 1'):
+            with self.subTest(expression=expression), self.assertRaises(qasm2qcx.InvalidShiftException):
+                convert('OPENQASM 3.0; const int A = int(' + expression + ');')
+
+    def test_invalid_literal_runtime_shifts_are_deferred(self) -> None:
+        maximum = qasm2qcx.QASM2QCXConverter.QCX_INT_MAX
+        lines = convert(f'''OPENQASM 3.0; int out = 7;
+            if (false) {{ out = 1 << -1; out = {maximum} << 1; }}
+            uint[4] small = 3; if (false) {{ small = uint[4](1) >> 4; }}''')
+        self.assertIn('LET QASM2QCX_INT_0 <<= -1', lines)
+        self.assertIn('ASSERT QASM2QCX_INT_0 < 4', lines)
+        self.assertGreater(lines.index('LET QASM2QCX_INT_0 <<= -1'), lines.index('@QASM2QCX_IF_0'))
+        self.assertIn('LET OUT7 := 0', convert('''OPENQASM 3.0;
+            const bool OFF = false && bool(1 << -1); bool out = OFF;'''))
+
+    def test_non_integer_operands_and_non_native_signed_values_rejected(self) -> None:
+        for expression in ('true << 1', 'bit(true) >> 1', '1 << false', '1 >> 1.5', '1.0im << 1'):
+            with self.subTest(expression=expression), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                convert('OPENQASM 3.0; int out = int(' + expression + ');')
+        for prefix, expression in (('int[8] a = 3;', 'a << 1'),
+                                   ('const int[8] A = 3;', 'A >> 1'),
+                                   ('array[int[8], 1] a = {3};', 'a[0] << 1')):
+            with self.subTest(expression=expression), self.assertRaisesRegex(
+                    qasm2qcx.UnsupportedOpenQASMError, 'non-native signed width'):
+                convert('OPENQASM 3.0; ' + prefix + ' int out = ' + expression + ';')
+
+    def test_empty_loops_validate_types_without_evaluating_counts(self) -> None:
+        convert('OPENQASM 3.0; int out = 0; for int i in [1:0] { out = i << -1; }')
+        for expression in ('true << i', 'i >> false', 'bit(true) << i'):
+            with self.subTest(expression=expression), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                convert('OPENQASM 3.0; int out = 0; for int i in [1:0] { out = int(' + expression + '); }')
+
+
 class ScalarBitwiseExpressionTests(unittest.TestCase):
     def test_integer_and_bit_constant_folding(self) -> None:
         self.assertEqual(convert('''OPENQASM 3.0;
@@ -378,10 +460,10 @@ class ScalarBitwiseExpressionTests(unittest.TestCase):
             with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
                 convert('OPENQASM 3.0; int n = 1; if (' + expression + ') {}')
 
-    def test_unsupported_types_mixing_registers_and_shifts_rejected(self) -> None:
+    def test_unsupported_types_and_mixing_registers_rejected(self) -> None:
         prefix = 'OPENQASM 3.0; int n = 1; float f = 1.5; complex z = 1.0im; bool b = true; bit a = 1; bit[1] flags = "1"; '
         for expression in ('n & f', 'n | z', 'a ^ n', 'a & 1', '~f', '~z', '~b',
-                           'b & b', 'a | b', '~flags', 'flags & flags', 'n << 1', 'n >> 1'):
+                           'b & b', 'a | b', '~flags', 'flags & flags'):
             with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
                 convert(prefix + 'int out = int(' + expression + ');')
         for statement in ('if (false) { n = n & f; }', 'bool out = false && bool(n & f);'):
