@@ -47,9 +47,6 @@ namespace bra
 {
   namespace
   {
-    bool is_uint_symbol(std::string const& name)
-    { return name == ":UINT"; }
-
     ::bra::int_type checked_uint_to_int(::bra::uint_type const value, std::string const& operand)
     {
       if (value > static_cast< ::bra::uint_type >(std::numeric_limits< ::bra::int_type >::max()))
@@ -783,6 +780,8 @@ namespace bra
       do_send_complex_variable(destination_circuit_index, variable_name, num_elements);
     else if (type == ::bra::variable_type::integer)
       do_send_int_variable(destination_circuit_index, variable_name, num_elements);
+    else if (type == ::bra::variable_type::unsigned_integer)
+      do_send_uint_variable(destination_circuit_index, variable_name, num_elements);
   }
 
   auto state::receive_variable(int const source_circuit_index, std::string const& variable_name, ::bra::variable_type const type, int const num_elements) -> void
@@ -793,6 +792,8 @@ namespace bra
       do_receive_complex_variable(source_circuit_index, variable_name, num_elements);
     else if (type == ::bra::variable_type::integer)
       do_receive_int_variable(source_circuit_index, variable_name, num_elements);
+    else if (type == ::bra::variable_type::unsigned_integer)
+      do_receive_uint_variable(source_circuit_index, variable_name, num_elements);
   }
 
   auto state::broadcast_variable(int const root_circuit_index, std::string const& variable_name, ::bra::variable_type const type, int const num_elements) -> void
@@ -803,6 +804,8 @@ namespace bra
       do_broadcast_complex_variable(root_circuit_index, variable_name, num_elements);
     else if (type == ::bra::variable_type::integer)
       do_broadcast_int_variable(root_circuit_index, variable_name, num_elements);
+    else if (type == ::bra::variable_type::unsigned_integer)
+      do_broadcast_uint_variable(root_circuit_index, variable_name, num_elements);
   }
 
   auto state::gather_variable(int const root_circuit_index, std::string const& variable_name, ::bra::variable_type const type, int const num_elements, std::string const& destination_variable_name) -> void
@@ -813,6 +816,8 @@ namespace bra
       do_gather_complex_variable(root_circuit_index, variable_name, num_elements, destination_variable_name);
     else if (type == ::bra::variable_type::integer)
       do_gather_int_variable(root_circuit_index, variable_name, num_elements, destination_variable_name);
+    else if (type == ::bra::variable_type::unsigned_integer)
+      do_gather_uint_variable(root_circuit_index, variable_name, num_elements, destination_variable_name);
   }
 
   auto state::scatter_variable(int const root_circuit_index, std::string const& variable_name, ::bra::variable_type const type, int const num_elements, std::string const& source_variable_name) -> void
@@ -823,7 +828,12 @@ namespace bra
       do_scatter_complex_variable(root_circuit_index, variable_name, num_elements, source_variable_name);
     else if (type == ::bra::variable_type::integer)
       do_scatter_int_variable(root_circuit_index, variable_name, num_elements, source_variable_name);
+    else if (type == ::bra::variable_type::unsigned_integer)
+      do_scatter_uint_variable(root_circuit_index, variable_name, num_elements, source_variable_name);
   }
+
+  auto state::is_uint_symbol(std::string const& symbol_name) const -> bool
+  { return symbol_name == ":UINT"; }
 
   auto state::to_uint(std::string const& colon_separated_string) const -> uint_type
   {
@@ -890,6 +900,24 @@ namespace bra
     auto const index = found_index == std::string::npos ? 0 : to_int(colon_separated_string.substr(found_index + 1u));
     return uint_variables_.at(colon_separated_string.substr(0u, found_index)).at(index);
   }
+
+  auto state::uint_variable_data(std::string const& name, int const count, int const repeats) const -> uint_type const*
+  {
+    if (count <= 0 or repeats <= 0)
+      throw std::runtime_error{"UINT communication count must be positive: " + name};
+    auto const separator = name.find(':');
+    auto const index = separator == std::string::npos ? 0 : to_int(name.substr(separator + 1u));
+    auto const& values = uint_variables_.at(name.substr(0u, separator));
+    using size_type = uint_variables_type::mapped_type::size_type;
+    if (index < 0 or static_cast<size_type>(index) >= values.size()
+        or (values.size() - static_cast<size_type>(index)) / static_cast<size_type>(count)
+             < static_cast<size_type>(repeats))
+      throw std::out_of_range{"UINT communication range out of bounds: " + name};
+    return values.data() + index;
+  }
+
+  auto state::uint_variable_data(std::string const& name, int const count, int const repeats) -> uint_type*
+  { return const_cast<uint_type*>(static_cast<state const&>(*this).uint_variable_data(name, count, repeats)); }
 
   auto state::is_int_symbol(std::string const& symbol_name) const -> bool
   { return symbol_name == ":INT" or symbol_name == ":OUTCOME" or symbol_name == ":OUTCOMES"; }

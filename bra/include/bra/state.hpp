@@ -201,7 +201,8 @@ namespace bra
       receive_real_variable, receive_complex_variable, receive_int_variable,
       broadcast_real_variable, broadcast_complex_variable, broadcast_int_variable,
       gather_real_variable, gather_complex_variable, gather_int_variable,
-      scatter_real_variable, scatter_complex_variable, scatter_int_variable
+      scatter_real_variable, scatter_complex_variable, scatter_int_variable,
+      send_uint_variable, receive_uint_variable, broadcast_uint_variable, gather_uint_variable, scatter_uint_variable
     };
 
     status_t status_;
@@ -228,18 +229,28 @@ namespace bra
     struct send_real_variable_t { };
     struct send_complex_variable_t { };
     struct send_int_variable_t { };
+
+    struct send_uint_variable_t { };
     struct receive_real_variable_t { };
     struct receive_complex_variable_t { };
     struct receive_int_variable_t { };
+
+    struct receive_uint_variable_t { };
     struct broadcast_real_variable_t { };
     struct broadcast_complex_variable_t { };
     struct broadcast_int_variable_t { };
+
+    struct broadcast_uint_variable_t { };
     struct gather_real_variable_t { };
     struct gather_complex_variable_t { };
     struct gather_int_variable_t { };
+
+    struct gather_uint_variable_t { };
     struct scatter_real_variable_t { };
     struct scatter_complex_variable_t { };
     struct scatter_int_variable_t { };
+
+    struct scatter_uint_variable_t { };
 
     wait_reason(no_wait_t const)
       : status_{status_t::no_wait}, other_circuit_index_{}, root_circuit_index_{},
@@ -327,6 +338,14 @@ namespace bra
     { }
 
     wait_reason(
+      send_uint_variable_t const, int const other_circuit_index,
+      std::string const& variable_name, int const num_elements)
+      : status_{status_t::send_uint_variable}, other_circuit_index_{other_circuit_index}, root_circuit_index_{},
+        operator_literal_or_variable_name_{}, operated_qubits_{},
+        variable_name_{variable_name}, num_elements_{num_elements}, other_variable_name_{}
+    { }
+
+    wait_reason(
       receive_real_variable_t const, int const other_circuit_index,
       std::string const& variable_name, int const num_elements)
       : status_{status_t::receive_real_variable}, other_circuit_index_{other_circuit_index}, root_circuit_index_{},
@@ -346,6 +365,14 @@ namespace bra
       receive_int_variable_t const, int const other_circuit_index,
       std::string const& variable_name, int const num_elements)
       : status_{status_t::receive_int_variable}, other_circuit_index_{other_circuit_index}, root_circuit_index_{},
+        operator_literal_or_variable_name_{}, operated_qubits_{},
+        variable_name_{variable_name}, num_elements_{num_elements}, other_variable_name_{}
+    { }
+
+    wait_reason(
+      receive_uint_variable_t const, int const other_circuit_index,
+      std::string const& variable_name, int const num_elements)
+      : status_{status_t::receive_uint_variable}, other_circuit_index_{other_circuit_index}, root_circuit_index_{},
         operator_literal_or_variable_name_{}, operated_qubits_{},
         variable_name_{variable_name}, num_elements_{num_elements}, other_variable_name_{}
     { }
@@ -375,6 +402,14 @@ namespace bra
     { }
 
     wait_reason(
+      broadcast_uint_variable_t const, int const root_circuit_index,
+      std::string const& variable_name, int const num_elements)
+      : status_{status_t::broadcast_uint_variable}, other_circuit_index_{}, root_circuit_index_{root_circuit_index},
+        operator_literal_or_variable_name_{}, operated_qubits_{},
+        variable_name_{variable_name}, num_elements_{num_elements}, other_variable_name_{}
+    { }
+
+    wait_reason(
       gather_real_variable_t const, int const root_circuit_index,
       std::string const& variable_name, int const num_elements, std::string const& destination_variable_name)
       : status_{status_t::gather_real_variable}, other_circuit_index_{}, root_circuit_index_{root_circuit_index},
@@ -394,6 +429,14 @@ namespace bra
       gather_int_variable_t const, int const root_circuit_index,
       std::string const& variable_name, int const num_elements, std::string const& destination_variable_name)
       : status_{status_t::gather_int_variable}, other_circuit_index_{}, root_circuit_index_{root_circuit_index},
+        operator_literal_or_variable_name_{}, operated_qubits_{},
+        variable_name_{variable_name}, num_elements_{num_elements}, other_variable_name_{destination_variable_name}
+    { }
+
+    wait_reason(
+      gather_uint_variable_t const, int const root_circuit_index,
+      std::string const& variable_name, int const num_elements, std::string const& destination_variable_name)
+      : status_{status_t::gather_uint_variable}, other_circuit_index_{}, root_circuit_index_{root_circuit_index},
         operator_literal_or_variable_name_{}, operated_qubits_{},
         variable_name_{variable_name}, num_elements_{num_elements}, other_variable_name_{destination_variable_name}
     { }
@@ -422,6 +465,14 @@ namespace bra
         variable_name_{variable_name}, num_elements_{num_elements}, other_variable_name_{source_variable_name}
     { }
 
+    wait_reason(
+      scatter_uint_variable_t const, int const root_circuit_index,
+      std::string const& variable_name, int const num_elements, std::string const& source_variable_name)
+      : status_{status_t::scatter_uint_variable}, other_circuit_index_{}, root_circuit_index_{root_circuit_index},
+        operator_literal_or_variable_name_{}, operated_qubits_{},
+        variable_name_{variable_name}, num_elements_{num_elements}, other_variable_name_{source_variable_name}
+    { }
+
     auto is_inner_product() const -> bool { return status_ == status_t::inner_product; }
     auto is_inner_product_all() const -> bool { return status_ == status_t::inner_product_all; }
     auto is_inner_product_op() const -> bool { return status_ == status_t::inner_product_op; }
@@ -433,18 +484,28 @@ namespace bra
     auto is_send_real_variable() const -> bool { return status_ == status_t::send_real_variable; }
     auto is_send_complex_variable() const -> bool { return status_ == status_t::send_complex_variable; }
     auto is_send_int_variable() const -> bool { return status_ == status_t::send_int_variable; }
+
+    auto is_send_uint_variable() const -> bool { return status_ == status_t::send_uint_variable; }
     auto is_receive_real_variable() const -> bool { return status_ == status_t::receive_real_variable; }
     auto is_receive_complex_variable() const -> bool { return status_ == status_t::receive_complex_variable; }
     auto is_receive_int_variable() const -> bool { return status_ == status_t::receive_int_variable; }
+
+    auto is_receive_uint_variable() const -> bool { return status_ == status_t::receive_uint_variable; }
     auto is_broadcast_real_variable() const -> bool { return status_ == status_t::broadcast_real_variable; }
     auto is_broadcast_complex_variable() const -> bool { return status_ == status_t::broadcast_complex_variable; }
     auto is_broadcast_int_variable() const -> bool { return status_ == status_t::broadcast_int_variable; }
+
+    auto is_broadcast_uint_variable() const -> bool { return status_ == status_t::broadcast_uint_variable; }
     auto is_gather_real_variable() const -> bool { return status_ == status_t::gather_real_variable; }
     auto is_gather_complex_variable() const -> bool { return status_ == status_t::gather_complex_variable; }
     auto is_gather_int_variable() const -> bool { return status_ == status_t::gather_int_variable; }
+
+    auto is_gather_uint_variable() const -> bool { return status_ == status_t::gather_uint_variable; }
     auto is_scatter_real_variable() const -> bool { return status_ == status_t::scatter_real_variable; }
     auto is_scatter_complex_variable() const -> bool { return status_ == status_t::scatter_complex_variable; }
     auto is_scatter_int_variable() const -> bool { return status_ == status_t::scatter_int_variable; }
+
+    auto is_scatter_uint_variable() const -> bool { return status_ == status_t::scatter_uint_variable; }
 
     auto other_circuit_index() const -> int { return other_circuit_index_; }
     auto root_circuit_index() const -> int { return root_circuit_index_; }
@@ -688,9 +749,12 @@ namespace bra
     auto to_int(std::string const& colon_separated_string) const -> int_type;
     auto to_int_variable(std::string const& colon_separated_string) const -> int_type const&;
     auto to_int_variable(std::string const& colon_separated_string) -> int_type&;
+    auto is_uint_symbol(std::string const& symbol_name) const -> bool;
     auto to_uint(std::string const& colon_separated_string) const -> uint_type;
     auto to_uint_variable(std::string const& colon_separated_string) const -> uint_type const&;
     auto to_uint_variable(std::string const& colon_separated_string) -> uint_type&;
+    auto uint_variable_data(std::string const& name, int const count, int const repeats = 1) const -> uint_type const*;
+    auto uint_variable_data(std::string const& name, int const count, int const repeats = 1) -> uint_type*;
     auto is_real_symbol(std::string const& symbol_name) const -> bool;
     auto to_real(std::string const& colon_separated_string) const -> real_type;
     auto to_real_variable(std::string const& colon_separated_string) const -> real_type const&;
@@ -1062,18 +1126,28 @@ namespace bra
     virtual auto do_send_real_variable(int const destination_circuit_index, std::string const& variable_name, int const num_elements) const -> void = 0;
     virtual auto do_send_complex_variable(int const destination_circuit_index, std::string const& variable_name, int const num_elements) const -> void = 0;
     virtual auto do_send_int_variable(int const destination_circuit_index, std::string const& variable_name, int const num_elements) const -> void = 0;
+
+    virtual auto do_send_uint_variable(int const destination_circuit_index, std::string const& variable_name, int const num_elements) const -> void = 0;
     virtual auto do_receive_real_variable(int const source_circuit_index, std::string const& variable_name, int const num_elements) -> void = 0;
     virtual auto do_receive_complex_variable(int const source_circuit_index, std::string const& variable_name, int const num_elements) -> void = 0;
     virtual auto do_receive_int_variable(int const source_circuit_index, std::string const& variable_name, int const num_elements) -> void = 0;
+
+    virtual auto do_receive_uint_variable(int const source_circuit_index, std::string const& variable_name, int const num_elements) -> void = 0;
     virtual auto do_broadcast_real_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements) -> void = 0;
     virtual auto do_broadcast_complex_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements) -> void = 0;
     virtual auto do_broadcast_int_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements) -> void = 0;
+
+    virtual auto do_broadcast_uint_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements) -> void = 0;
     virtual auto do_gather_real_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements, std::string const& destination_variable_name) -> void = 0;
     virtual auto do_gather_complex_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements, std::string const& destination_variable_name) -> void = 0;
     virtual auto do_gather_int_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements, std::string const& destination_variable_name) -> void = 0;
+
+    virtual auto do_gather_uint_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements, std::string const& destination_variable_name) -> void = 0;
     virtual auto do_scatter_real_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements, std::string const& source_variable_name) -> void = 0;
     virtual auto do_scatter_complex_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements, std::string const& source_variable_name) -> void = 0;
     virtual auto do_scatter_int_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements, std::string const& source_variable_name) -> void = 0;
+
+    virtual auto do_scatter_uint_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements, std::string const& source_variable_name) -> void = 0;
 
 # ifndef BRA_NO_MPI
     virtual unsigned int do_num_page_qubits() const = 0;

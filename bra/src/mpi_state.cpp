@@ -70,6 +70,24 @@ namespace bra
       yampi::rank{destination_circuit_index}, tag, intercircuit_communicator_, environment_);
   }
 
+  auto mpi_state::do_send_uint_variable(
+    int const destination_circuit_index, std::string const& variable_name, int const num_elements) const -> void
+  {
+    if (destination_circuit_index == circuit_index_)
+      return;
+    if (is_uint_symbol(variable_name))
+      return;
+
+    auto const uint_variable = uint_variable_data(variable_name, num_elements);
+    auto const num_circuits = intercircuit_communicator_.size(environment_);
+    auto const tag
+      = yampi::tag{circuit_index_ + num_circuits * destination_circuit_index + num_circuits * num_circuits * circuit_communicator_.size(environment_)};
+
+    yampi::send(
+      yampi::make_buffer(uint_variable, uint_variable + num_elements),
+      yampi::rank{destination_circuit_index}, tag, intercircuit_communicator_, environment_);
+  }
+
   auto mpi_state::do_receive_real_variable(
     int const source_circuit_index, std::string const& variable_name, int const num_elements) -> void
   {
@@ -124,6 +142,24 @@ namespace bra
       yampi::rank{source_circuit_index}, tag, intercircuit_communicator_, environment_);
   }
 
+  auto mpi_state::do_receive_uint_variable(
+    int const source_circuit_index, std::string const& variable_name, int const num_elements) -> void
+  {
+    if (source_circuit_index == circuit_index_)
+      return;
+    if (is_uint_symbol(variable_name))
+      return;
+
+    auto const uint_variable = uint_variable_data(variable_name, num_elements);
+    auto const num_circuits = intercircuit_communicator_.size(environment_);
+    auto const tag
+      = yampi::tag{source_circuit_index + num_circuits * circuit_index_ + num_circuits * num_circuits * circuit_communicator_.size(environment_)};
+
+    yampi::receive(
+      yampi::make_buffer(uint_variable, uint_variable + num_elements),
+      yampi::rank{source_circuit_index}, tag, intercircuit_communicator_, environment_);
+  }
+
   auto mpi_state::do_broadcast_real_variable(
     int const root_circuit_index, std::string const& variable_name, int const num_elements) -> void
   {
@@ -157,6 +193,18 @@ namespace bra
     auto& int_variable = to_int_variable(variable_name);
     yampi::broadcast(
       yampi::make_buffer(std::addressof(int_variable), std::addressof(int_variable) + num_elements),
+      yampi::rank{root_circuit_index}, intercircuit_communicator_, environment_);
+  }
+
+  auto mpi_state::do_broadcast_uint_variable(
+    int const root_circuit_index, std::string const& variable_name, int const num_elements) -> void
+  {
+    if (is_uint_symbol(variable_name))
+      return;
+
+    auto const uint_variable = uint_variable_data(variable_name, num_elements);
+    yampi::broadcast(
+      yampi::make_buffer(uint_variable, uint_variable + num_elements),
       yampi::rank{root_circuit_index}, intercircuit_communicator_, environment_);
   }
 
@@ -265,6 +313,41 @@ namespace bra
       intercircuit_root, intercircuit_communicator_, environment_);
   }
 
+  auto mpi_state::do_gather_uint_variable(
+    int const root_circuit_index, std::string const& variable_name, int const num_elements,
+    std::string const& destination_variable_name) -> void
+  {
+    if (is_uint_symbol(variable_name))
+      return;
+
+    auto const intercircuit_root = yampi::rank{root_circuit_index};
+    if (intercircuit_communicator_.rank(environment_) == intercircuit_root)
+    {
+      if (destination_variable_name == "")
+      {
+        auto const uint_variable = uint_variable_data(variable_name, num_elements, intercircuit_communicator_.size(environment_));
+        yampi::gather(
+          yampi::in_place,
+          yampi::make_buffer(uint_variable, uint_variable + static_cast<std::size_t>(num_elements) * intercircuit_communicator_.size(environment_)),
+          intercircuit_root, intercircuit_communicator_, environment_);
+        return;
+      }
+
+      auto const uint_variable = uint_variable_data(variable_name, num_elements);
+      auto const destination_uint_variable = uint_variable_data(destination_variable_name, num_elements, intercircuit_communicator_.size(environment_));
+      yampi::gather(
+        yampi::make_buffer(uint_variable, uint_variable + num_elements),
+        destination_uint_variable,
+        intercircuit_root, intercircuit_communicator_, environment_);
+      return;
+    }
+
+    auto const uint_variable = uint_variable_data(variable_name, num_elements);
+    yampi::gather(
+      yampi::make_buffer(uint_variable, uint_variable + num_elements),
+      intercircuit_root, intercircuit_communicator_, environment_);
+  }
+
   auto mpi_state::do_scatter_real_variable(
     int const root_circuit_index, std::string const& variable_name, int const num_elements,
     std::string const& source_variable_name) -> void
@@ -367,6 +450,41 @@ namespace bra
     auto& int_variable = to_int_variable(variable_name);
     yampi::scatter(
       yampi::make_buffer(std::addressof(int_variable), std::addressof(int_variable) + num_elements),
+      intercircuit_root, intercircuit_communicator_, environment_);
+  }
+
+  auto mpi_state::do_scatter_uint_variable(
+    int const root_circuit_index, std::string const& variable_name, int const num_elements,
+    std::string const& source_variable_name) -> void
+  {
+    if (is_uint_symbol(variable_name))
+      return;
+
+    auto const intercircuit_root = yampi::rank{root_circuit_index};
+    if (intercircuit_communicator_.rank(environment_) == intercircuit_root)
+    {
+      if (source_variable_name == "")
+      {
+        auto const uint_variable = uint_variable_data(variable_name, num_elements, intercircuit_communicator_.size(environment_));
+        yampi::scatter(
+          yampi::in_place,
+          yampi::make_buffer(uint_variable, uint_variable + static_cast<std::size_t>(num_elements) * intercircuit_communicator_.size(environment_)),
+          intercircuit_root, intercircuit_communicator_, environment_);
+        return;
+      }
+
+      auto const uint_variable = uint_variable_data(variable_name, num_elements);
+      auto const source_uint_variable = uint_variable_data(source_variable_name, num_elements, intercircuit_communicator_.size(environment_));
+      yampi::scatter(
+        source_uint_variable,
+        yampi::make_buffer(uint_variable, uint_variable + num_elements),
+        intercircuit_root, intercircuit_communicator_, environment_);
+      return;
+    }
+
+    auto const uint_variable = uint_variable_data(variable_name, num_elements);
+    yampi::scatter(
+      yampi::make_buffer(uint_variable, uint_variable + num_elements),
       intercircuit_root, intercircuit_communicator_, environment_);
   }
 } // namespace bra

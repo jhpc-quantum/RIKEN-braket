@@ -212,6 +212,15 @@ namespace bra
     wait_reason_ = ::bra::wait_reason{::bra::wait_reason::send_int_variable_t{}, destination_circuit_index, variable_name, num_elements};
   }
 
+  auto nompi_state::do_send_uint_variable(int const destination_circuit_index, std::string const& variable_name, int const num_elements) const -> void
+  {
+    if (destination_circuit_index < 0 or destination_circuit_index == circuit_index_)
+      return;
+
+    is_waiting_ = true;
+    wait_reason_ = ::bra::wait_reason{::bra::wait_reason::send_uint_variable_t{}, destination_circuit_index, variable_name, num_elements};
+  }
+
   auto nompi_state::do_receive_real_variable(int const destination_circuit_index, std::string const& variable_name, int const num_elements) -> void
   {
     if (destination_circuit_index < 0 or destination_circuit_index == circuit_index_)
@@ -237,6 +246,15 @@ namespace bra
 
     is_waiting_ = true;
     wait_reason_ = ::bra::wait_reason{::bra::wait_reason::receive_int_variable_t{}, destination_circuit_index, variable_name, num_elements};
+  }
+
+  auto nompi_state::do_receive_uint_variable(int const destination_circuit_index, std::string const& variable_name, int const num_elements) -> void
+  {
+    if (destination_circuit_index < 0 or destination_circuit_index == circuit_index_)
+      return;
+
+    is_waiting_ = true;
+    wait_reason_ = ::bra::wait_reason{::bra::wait_reason::receive_uint_variable_t{}, destination_circuit_index, variable_name, num_elements};
   }
 
   auto nompi_state::do_broadcast_real_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements) -> void
@@ -266,6 +284,15 @@ namespace bra
     wait_reason_ = ::bra::wait_reason{::bra::wait_reason::broadcast_int_variable_t{}, root_circuit_index, variable_name, num_elements};
   }
 
+  auto nompi_state::do_broadcast_uint_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements) -> void
+  {
+    if (root_circuit_index < 0)
+      return;
+
+    is_waiting_ = true;
+    wait_reason_ = ::bra::wait_reason{::bra::wait_reason::broadcast_uint_variable_t{}, root_circuit_index, variable_name, num_elements};
+  }
+
   auto nompi_state::do_gather_real_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements, std::string const& destination_variable_name) -> void
   {
     if (root_circuit_index < 0)
@@ -293,6 +320,15 @@ namespace bra
     wait_reason_ = ::bra::wait_reason{::bra::wait_reason::gather_int_variable_t{}, root_circuit_index, variable_name, num_elements, destination_variable_name};
   }
 
+  auto nompi_state::do_gather_uint_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements, std::string const& destination_variable_name) -> void
+  {
+    if (root_circuit_index < 0)
+      return;
+
+    is_waiting_ = true;
+    wait_reason_ = ::bra::wait_reason{::bra::wait_reason::gather_uint_variable_t{}, root_circuit_index, variable_name, num_elements, destination_variable_name};
+  }
+
   auto nompi_state::do_scatter_real_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements, std::string const& source_variable_name) -> void
   {
     if (root_circuit_index < 0)
@@ -318,6 +354,15 @@ namespace bra
 
     is_waiting_ = true;
     wait_reason_ = ::bra::wait_reason{::bra::wait_reason::scatter_int_variable_t{}, root_circuit_index, variable_name, num_elements, source_variable_name};
+  }
+
+  auto nompi_state::do_scatter_uint_variable(int const root_circuit_index, std::string const& variable_name, int const num_elements, std::string const& source_variable_name) -> void
+  {
+    if (root_circuit_index < 0)
+      return;
+
+    is_waiting_ = true;
+    wait_reason_ = ::bra::wait_reason{::bra::wait_reason::scatter_uint_variable_t{}, root_circuit_index, variable_name, num_elements, source_variable_name};
   }
 
   void nompi_state::do_i_gate(qubit_type const qubit)
@@ -2921,6 +2966,19 @@ namespace bra
       std::addressof(destination_int_variable));
   }
 
+  void send_uint_variable(
+    nompi_state const& source_state, std::string const& source_variable_name,
+    nompi_state& destination_state, std::string const& destination_variable_name,
+    int const num_elements)
+  {
+    auto const source_uint_variable = source_state.uint_variable_data(source_variable_name, num_elements);
+    auto const destination_uint_variable = destination_state.uint_variable_data(destination_variable_name, num_elements);
+
+    std::copy(
+      source_uint_variable, source_uint_variable + num_elements,
+      destination_uint_variable);
+  }
+
   void broadcast_real_variable(
     std::vector< ::bra::nompi_state >& states,
     std::vector<std::string> const& variable_names,
@@ -2978,6 +3036,26 @@ namespace bra
       std::copy(
         std::addressof(root_int_variable), std::addressof(root_int_variable) + num_elements,
         std::addressof(destination_int_variable));
+    }
+  }
+
+  void broadcast_uint_variable(
+    std::vector< ::bra::nompi_state >& states,
+    std::vector<std::string> const& variable_names,
+    int const root_circuit_index, int const num_elements)
+  {
+    auto const root_uint_variable = states.at(root_circuit_index).uint_variable_data(variable_names.at(root_circuit_index), num_elements);
+
+    auto const num_circuits = static_cast<int>(states.size());
+    for (auto circuit_index = 0; circuit_index < num_circuits; ++circuit_index)
+    {
+      if (circuit_index == root_circuit_index)
+        continue;
+
+      auto const destination_uint_variable = states[circuit_index].uint_variable_data(variable_names[circuit_index], num_elements);
+      std::copy(
+        root_uint_variable, root_uint_variable + num_elements,
+        destination_uint_variable);
     }
   }
 
@@ -3056,6 +3134,31 @@ namespace bra
     }
   }
 
+  void gather_uint_variable(
+    std::vector< ::bra::nompi_state >& states,
+    std::vector<std::string> const& variable_names,
+    std::string const& destination_variable_name,
+    int const root_circuit_index, int const num_elements)
+  {
+    auto is_destination_variable_name_specified = destination_variable_name != "";
+    auto const destination_uint_variable
+      = is_destination_variable_name_specified
+        ? states.at(root_circuit_index).uint_variable_data(destination_variable_name, num_elements, static_cast<int>(states.size()))
+        : states.at(root_circuit_index).uint_variable_data(variable_names.at(root_circuit_index), num_elements, static_cast<int>(states.size()));
+
+    auto const num_circuits = static_cast<int>(states.size());
+    for (auto circuit_index = 0; circuit_index < num_circuits; ++circuit_index)
+    {
+      if (circuit_index == root_circuit_index and not is_destination_variable_name_specified)
+        continue;
+
+      auto const source_uint_variable = states[circuit_index].uint_variable_data(variable_names[circuit_index], num_elements);
+      std::copy(
+        source_uint_variable, source_uint_variable + num_elements,
+        destination_uint_variable + static_cast<std::size_t>(num_elements) * circuit_index);
+    }
+  }
+
   void scatter_real_variable(
     std::vector< ::bra::nompi_state >& states,
     std::vector<std::string> const& variable_names,
@@ -3131,6 +3234,32 @@ namespace bra
         std::addressof(source_int_variable) + num_elements * circuit_index,
         std::addressof(source_int_variable) + num_elements * circuit_index + num_elements,
         std::addressof(destination_int_variable));
+    }
+  }
+
+  void scatter_uint_variable(
+    std::vector< ::bra::nompi_state >& states,
+    std::vector<std::string> const& variable_names,
+    std::string const& source_variable_name,
+    int const root_circuit_index, int const num_elements)
+  {
+    auto is_source_variable_name_specified = source_variable_name != "";
+    auto const source_uint_variable
+      = is_source_variable_name_specified
+        ? states.at(root_circuit_index).uint_variable_data(source_variable_name, num_elements, static_cast<int>(states.size()))
+        : states.at(root_circuit_index).uint_variable_data(variable_names.at(root_circuit_index), num_elements, static_cast<int>(states.size()));
+
+    auto const num_circuits = static_cast<int>(states.size());
+    for (auto circuit_index = 0; circuit_index < num_circuits; ++circuit_index)
+    {
+      if (circuit_index == root_circuit_index and not is_source_variable_name_specified)
+        continue;
+
+      auto const destination_uint_variable = states[circuit_index].uint_variable_data(variable_names[circuit_index], num_elements);
+      std::copy(
+        source_uint_variable + static_cast<std::size_t>(num_elements) * circuit_index,
+        source_uint_variable + static_cast<std::size_t>(num_elements) * circuit_index + num_elements,
+        destination_uint_variable);
     }
   }
 } // namespace bra
