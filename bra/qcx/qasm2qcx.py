@@ -12,7 +12,7 @@ import openqasm3.ast as ast
 import openqasm3.visitor as visitor
 
 ValueType = enum.Enum(
-    'ValueType', [('INT', 1), ('FLOAT', 2), ('BIT', 3), ('COMPLEX', 4), ('BOOL', 5)])
+    'ValueType', [('INT', 1), ('FLOAT', 2), ('BIT', 3), ('COMPLEX', 4), ('BOOL', 5), ('UINT', 6)])
 ValueKind = enum.Enum('ValueKind', [('LITERAL', 1), ('TEMPORARY', 2), ('LVALUE', 3)])
 # CONST_ARITHMETIC => ARITHMETIC
 ExpressionKind = enum.Enum('ExpressionKind', [('ARITHMETIC', 1), ('CONST_ARITHMETIC', 2), ('CONDITIONAL', 3)])
@@ -166,6 +166,25 @@ class WrongConstantVariableException(QASM2QCXError):
 
 
 @dataclasses.dataclass(frozen=True)
+class _UnsignedIntegerType:
+    # Keep specified and target-defined widths distinct even when both use
+    # the same number of bits. All runtime storage will use native QCX UINT.
+    width: int
+    is_sized: bool
+
+    def __post_init__(self) -> None:
+        if self.width <= 0:
+            raise ValueError('unsigned integer width must be positive')
+
+    @property
+    def mask(self) -> int:
+        return (1 << self.width) - 1
+
+    def normalize(self, value: int) -> int:
+        return value & self.mask
+
+
+@dataclasses.dataclass(frozen=True)
 class _RuntimeIteratorBinding:
     # Unlike an unrolled iterator's integer value, this names live QCX storage.
     storage: str
@@ -185,6 +204,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     # converter's host; OpenQASM declared widths do not change QCX storage.
     QCX_INT_MIN = -(1 << (ctypes.sizeof(ctypes.c_int) * 8 - 1))
     QCX_INT_MAX = (1 << (ctypes.sizeof(ctypes.c_int) * 8 - 1)) - 1
+    QCX_UINT_WIDTH = ctypes.sizeof(ctypes.c_uint) * 8
+    QCX_UINT_MAX = (1 << QCX_UINT_WIDTH) - 1
 
     MAX_LOOP_ITERATIONS = 10000
     MAX_EXPANDED_LOOP_STATEMENTS = 100000
@@ -226,6 +247,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__bit_register_source_sizes: dict[str, int] = {}
 
         self.__int_variable_name_size_map: dict[str, int] = {}
+        self.__uint_variable_name_size_map: dict[str, int] = {}
+        self.__uint_variable_types: dict[str, _UnsignedIntegerType] = {}
+        self.__temporary_uint_types: dict[str, _UnsignedIntegerType] = {}
         self.__integer_array_names: set[str] = set()
         self.__float_variable_name_size_map: dict[str, int] = {}
         self.__bit_variable_name_size_map: dict[str, int] = {}
@@ -234,6 +258,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__complex_variable_name_size_map: dict[str, int] = {}
 
         self.__const_int_variable_name_values_map: dict[str, list[int]] = {}
+        self.__const_uint_variable_name_values_map: dict[str, list[int]] = {}
+        self.__const_uint_types: dict[str, _UnsignedIntegerType] = {}
         self.__const_float_variable_name_values_map: dict[str, list[float]] = {}
         self.__const_complex_variable_name_values_map: dict[str, list[complex]] = {}
         self.__const_bool_variable_values_map: dict[str, int] = {}
@@ -337,6 +363,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return ValueType.BIT
         elif identifier_name in self.__int_variable_name_size_map:
             return ValueType.INT
+        elif identifier_name in self.__uint_variable_name_size_map:
+            # Stage 1 separates source metadata/storage bookkeeping; expression
+            # lowering switches to UINT together with its conversions/masks.
+            return ValueType.INT
         elif identifier_name in self.__float_variable_name_size_map:
             return ValueType.FLOAT
         elif identifier_name in self.__complex_variable_name_size_map:
@@ -359,10 +389,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise DuplicateIdentifierException(identifier)
         self.__source_identifiers.add(identifier)
 
-    def __add_new_temporary_variable(self, value_type: ValueType) -> str:
+    def __add_new_temporary_variable(
+            self, value_type: ValueType,
+            uint_type: _UnsignedIntegerType | None = None) -> str:
+        if uint_type is not None and value_type != ValueType.UINT:
+            raise ValueError('unsigned width supplied for a non-UINT temporary')
         match value_type:
             case ValueType.INT | ValueType.BOOL | ValueType.BIT:
                 type_str = 'INT'
+            case ValueType.UINT:
+                type_str = 'UINT'
             case ValueType.FLOAT:
                 type_str = 'REAL'
             case ValueType.COMPLEX:
@@ -376,6 +412,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             temporary_variable = f'QASM2QCX_{type_str}_{temporary_variable_index}'
 
         self.__used_temporary_variables.add(temporary_variable)
+        if value_type == ValueType.UINT:
+            self.__temporary_uint_types[temporary_variable] = (
+                uint_type if uint_type is not None
+                else _UnsignedIntegerType(self.QCX_UINT_WIDTH, False))
         if temporary_variable not in self.__declared_temporary_variables:
             self.__declared_temporary_variables.add(temporary_variable)
             self.__qcx_lines.append(f'VAR {temporary_variable} {type_str}')
@@ -408,6 +448,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             expression.name in constant_values
             for constant_values in (
                 self.__const_int_variable_name_values_map,
+                self.__const_uint_variable_name_values_map,
                 self.__const_float_variable_name_values_map,
                 self.__const_complex_variable_name_values_map,
                 self.__const_bool_variable_values_map,
@@ -438,6 +479,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__value_kind = ValueKind.LITERAL
         elif expression.name in self.__const_int_variable_name_values_map:
             self.__value = self.__const_int_variable_name_values_map[expression.name][0]
+            self.__value_type = ValueType.INT
+            self.__value_kind = ValueKind.LITERAL
+        elif expression.name in self.__const_uint_variable_name_values_map:
+            self.__value = self.__const_uint_variable_name_values_map[expression.name][0]
             self.__value_type = ValueType.INT
             self.__value_kind = ValueKind.LITERAL
         elif expression.name in self.__const_float_variable_name_values_map:
@@ -1692,6 +1737,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                         else (ValueType.INT, False))
         for constants, value_type in (
                 (self.__const_int_variable_name_values_map, ValueType.INT),
+                (self.__const_uint_variable_name_values_map, ValueType.INT),
                 (self.__const_float_variable_name_values_map, ValueType.FLOAT),
                 (self.__const_complex_variable_name_values_map, ValueType.COMPLEX),
                 (self.__const_bool_variable_values_map, ValueType.BOOL)):
@@ -1709,6 +1755,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __loop_cast_info(
             self, expression: ast.Cast, iterators: set[str] | dict[str, ValueType] | None
             ) -> tuple[ValueType, bool]:
+        if isinstance(expression.type, ast.UintType):
+            self.__unsigned_integer_type(expression.type, iterators)
         operand_type, runtime = self.__loop_expression_info(expression.argument, iterators)
         target_type = self.__source_value_type(expression.type)
         if operand_type == ValueType.COMPLEX and target_type != ValueType.COMPLEX:
@@ -1904,6 +1952,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                        if is_set else [(bounds.start, 'start'), (bounds.end, 'end'),
                                        (bounds.step, 'step')])
         constants = (set(self.__const_int_variable_name_values_map)
+                     | set(self.__const_uint_variable_name_values_map)
                      | set(self.__const_float_variable_name_values_map)
                      | set(self.__const_complex_variable_name_values_map)
                      | set(self.__const_bool_variable_values_map))
@@ -2496,6 +2545,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.__expression_kind is None:
             return
 
+        if isinstance(expression.type, ast.UintType):
+            self.__unsigned_integer_type(expression.type)
+
         if isinstance(expression.type, ast.BoolType):
             if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
                 self.visit(expression.argument)
@@ -2592,10 +2644,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 pass
 
             case ast.IntType() | ast.UintType():
-                if variable_name in self.__const_int_variable_name_values_map:
+                values_map = (self.__const_uint_variable_name_values_map
+                              if isinstance(variable_type, ast.UintType)
+                              else self.__const_int_variable_name_values_map)
+                if variable_name in values_map:
                     raise WrongConstantVariableException(variable_name)
 
-                self.__const_int_variable_name_values_map[variable_name] = [0] * num_elements
+                values_map[variable_name] = [0] * num_elements
 
             case ast.FloatType():
                 if variable_name in self.__const_float_variable_name_values_map:
@@ -2626,13 +2681,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__value_type = ValueType.INT
         match variable_type:
             case ast.IntType() | ast.UintType():
-                if variable_name not in self.__const_int_variable_name_values_map:
+                values_map = (self.__const_uint_variable_name_values_map
+                              if isinstance(variable_type, ast.UintType)
+                              else self.__const_int_variable_name_values_map)
+                if variable_name not in values_map:
                     raise WrongConstantVariableException(variable_name)
 
                 if self.__value_type == ValueType.FLOAT or self.__value_type == ValueType.COMPLEX:
                     raise NoImplicitCastException
 
-                self.__const_int_variable_name_values_map[variable_name][0] = int(self.__value)
+                values_map[variable_name][0] = int(self.__value)
 
             case ast.FloatType():
                 if variable_name not in self.__const_float_variable_name_values_map:
@@ -2671,6 +2729,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 ast.BoolType)):
             raise UnsupportedOpenQASMError(
                 f'constant type {type(variable_type).__name__}')
+        if isinstance(variable_type, ast.UintType):
+            self.__const_uint_types[variable_name] = self.__unsigned_integer_type(variable_type)
         self.__make_constant_variable(variable_name, variable_type)
 
         if statement.init_expression is None:
@@ -2698,10 +2758,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__qcx_lines.append(f'VAR {variable_name} INT')
 
             case ast.IntType() | ast.UintType():
-                if variable_name in self.__int_variable_name_size_map:
+                sizes_map = (self.__uint_variable_name_size_map
+                             if isinstance(variable_type, ast.UintType)
+                             else self.__int_variable_name_size_map)
+                if variable_name in sizes_map:
                     raise WrongClassicalDeclarationException(variable_name)
 
-                self.__int_variable_name_size_map[variable_name] = num_elements
+                sizes_map[variable_name] = num_elements
                 self.__qcx_lines.append(f'VAR {variable_name} INT' + (f' {num_elements}' if num_elements > 1 else ''))
 
             case ast.FloatType():
@@ -2726,6 +2789,44 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
                 self.__complex_variable_name_size_map[variable_name] = num_elements
                 self.__qcx_lines.append(f'VAR {variable_name} COMPLEX' + (f' {num_elements}' if num_elements > 1 else ''))
+
+    def __unsigned_integer_type(
+            self, variable_type: ast.UintType,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _UnsignedIntegerType:
+        if variable_type.size is None:
+            return _UnsignedIntegerType(self.QCX_UINT_WIDTH, False)
+        names = self.__loop_bound_names(variable_type.size)
+        iterator_names = set(iterators or ()) | {name for scope in self.__loop_bindings for name in scope}
+        if names & iterator_names:
+            raise InvalidDeclarationException('UINT width must be a constant integer, not a loop iterator')
+        value_type, runtime = self.__loop_expression_info(variable_type.size)
+        if value_type != ValueType.INT or runtime:
+            raise InvalidDeclarationException('UINT width must be a constant integer')
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        try:
+            self.__expression_kind = ExpressionKind.CONST_ARITHMETIC
+            self.__value = self.__value_type = self.__value_kind = None
+            self.__evaluate_constant = True
+            self.visit(variable_type.size)
+            if self.__value_kind != ValueKind.LITERAL or self.__value_type != ValueType.INT:
+                raise InvalidDeclarationException('UINT width must be a constant integer')
+            width = int(self.__value)
+            if width <= 0:
+                raise InvalidDeclarationException('UINT width must be positive')
+            if width > self.QCX_UINT_WIDTH:
+                raise UnsupportedOpenQASMError(
+                    f'UINT width {width} exceeds native QCX UINT width {self.QCX_UINT_WIDTH}')
+            return _UnsignedIntegerType(width, True)
+        finally:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+
+    def __normalize_uint_storage(self, name: str, uint_type: _UnsignedIntegerType) -> None:
+        # Native unsigned arithmetic already wraps at QCX_UINT_WIDTH. Narrow
+        # values require a mask after each operation, not only at assignment.
+        if uint_type.width < self.QCX_UINT_WIDTH:
+            self.__qcx_lines.append(f'LET {name} &= {uint_type.mask}')
 
     def __bit_type_size(self, variable_type: ast.BitType, variable_name: str) -> int:
         if variable_type.size is None:
@@ -2991,6 +3092,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def visit_ClassicalDeclaration(self, statement: ast.ClassicalDeclaration) -> None:
         if self.__is_initialization_process:
             self.__register_source_identifier(statement.identifier.name)
+            if isinstance(statement.type, ast.UintType):
+                self.__uint_variable_types[self.__capitalize_variable_name(statement.identifier.name)] = (
+                    self.__unsigned_integer_type(statement.type))
             self.__classical_source_types[statement.identifier.name] = statement.type
             if isinstance(statement.type, ast.ArrayType):
                 # Resolve dimensions in declaration scope, before loop iterators
