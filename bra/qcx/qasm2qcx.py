@@ -3417,6 +3417,18 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             size = self.__bit_variable_name_size_map[name]
             yield tuple(self.__qcx_bit_name(name, size, index) for index in indices)
             return
+        if isinstance(expression, ast.IndexExpression):
+            selection = self.__static_bit_selection(expression)
+            if not selection.is_register:
+                raise InvalidBitOperandException('A bit-register expression requires register operands')
+            name = self.__capitalize_variable_name(selection.source_name)
+            # Declaration metadata alone is not permission to read storage
+            # before its actual declaration in the emitted program.
+            if self.__type_of(name) != ValueType.BIT:
+                raise InvalidBitOperandException('A bit selection source must have bit type')
+            size = self.__bit_variable_name_size_map[name]
+            yield tuple(self.__qcx_bit_name(name, size, index) for index in selection.indices)
+            return
         if isinstance(expression, ast.BinaryExpression) and expression.op.name in ('<<', '>>'):
             with self.__bit_register_expression_value(expression.lhs) as values:
                 with self.__shift_bit_register_value(expression, values) as result:

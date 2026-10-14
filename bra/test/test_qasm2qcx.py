@@ -669,8 +669,75 @@ class StaticBitSelectionFoundationTests(unittest.TestCase):
                          self.converter._QASM2QCXConverter__value_kind,
                          self.converter._QASM2QCXConverter__expression_kind))
         self.assertEqual(self.converter._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertIn('LET QASM2QCX_INT_0 := A1:0',
+                      convert('OPENQASM 3.0; bit[4] a; bit[2] b = ~a[0:1];'))
+
+
+class StaticBitSelectionOperandTests(unittest.TestCase):
+    def test_source_order_is_preserved_in_generated_reads(self) -> None:
+        for selection, indices in (('a[3:-1:0]', (3, 2, 1, 0)),
+                                    ('a[{3, 0, 2}]', (3, 0, 2)), ('a[{1, 1}]', (1, 1))):
+            with self.subTest(selection=selection):
+                lines = convert(f'OPENQASM 3.0; bit[4] a; bit[{len(indices)}] b = ~{selection};')
+                reads = [line.split(' := ')[1] for line in lines if ' := A1:' in line]
+                self.assertEqual(reads, [f'A1:{index}' for index in indices])
+
+    def test_nested_selection_expressions_mix_registers_and_literals(self) -> None:
+        lines = convert('''OPENQASM 3.0; bit[4] a; bit[2] b = "10";
+            bit[2] c = ~(a[0:1] ^ a[{3, 1}]) & (b | "01");''')
+        self.assertIn('LET QASM2QCX_INT_0 := A1:0', lines)
+        self.assertIn('LET QASM2QCX_INT_0 ^= A1:3', lines)
+        self.assertTrue(lines[-1].startswith('LET C1:1 := QASM2QCX_INT_'))
+
+    def test_singleton_selection_keeps_register_identity(self) -> None:
+        lines = convert('''OPENQASM 3.0; bit[4] a; bit[1] b = ~a[{2}];
+            bit[1] one = "1"; b = one[0:0] | "0";''')
+        self.assertIn('LET QASM2QCX_INT_0 := A1:2', lines)
+        self.assertIn('LET QASM2QCX_INT_0 := ONE7', lines)
+        for source in ('bit[4] a; bit b = ~a[{0}];',
+                       'bit[4] a; bit[1] b = a[0] | "1";'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert('OPENQASM 3.0; ' + source)
+
+    def test_shift_selection_width_not_container_width(self) -> None:
+        lines = convert('OPENQASM 3.0; bit[4] a; uint n; bit[2] b = a[{3, 0}] << n;')
+        self.assertTrue(any(line.startswith('JUMPIF QASM2QCX_REGISTER_SHIFT_') and line.endswith(' >= 2') for line in lines))
+        self.assertTrue(any(line.startswith('VAR QASM2QCX_BITS_2_') for line in lines))
+        self.assertFalse(any(line.startswith('VAR QASM2QCX_BITS_4_') for line in lines))
+
+    def test_self_reference_consumes_all_sources_before_whole_register_write(self) -> None:
+        lines = convert('OPENQASM 3.0; bit[4] a = "1010"; a = ~a[3:-1:0];')
+        reads = [index for index, line in enumerate(lines) if ':= A1:' in line]
+        writes = [index for index, line in enumerate(lines) if line.startswith('LET A1:')]
+        self.assertLess(max(reads), writes[4])
+
+    def test_nested_buffers_release_and_reuse_storage(self) -> None:
+        program = qasm2qcx.openqasm3.parse('''OPENQASM 3.0; bit[4] a; uint n = 1;
+            bit[2] b = (a[0:1] << n) ^ (a[{3, 0}] >> n);
+            b = (a[0:1] << n) ^ (a[{3, 0}] >> n);''')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertEqual(sum(line.startswith('VAR QASM2QCX_BITS_2_') for line in list(converter)), 4)
+
+    def test_invalid_operands_are_rejected_even_when_skipped(self) -> None:
+        prefix = 'OPENQASM 3.0; bit[4] a; bit[2] b; int n; '
+        for body in ('b = a[0:2] & "11";', 'b = ~a[n:3];', 'b = ~a[3:0];',
+                     'b = ~a[0:4];', 'b = (a | a)[0:1] ^ "11";',
+                     'b = a[0:1] << a[0:0];'):
+            for wrapper in ('{}', 'if (false) {{ {} }}', 'for int i in [1:0] {{ {} }}'):
+                with self.subTest(body=body, wrapper=wrapper), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    convert(prefix + wrapper.format(body))
         with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
-            convert('OPENQASM 3.0; bit[4] a; bit[2] b = ~a[0:1];')
+            convert(prefix + 'a[0:1] = ~b;')
+
+    def test_forward_reference_failure_releases_partial_result(self) -> None:
+        program = qasm2qcx.openqasm3.parse('''OPENQASM 3.0; bit[4] a;
+            bit[2] b = ~a[0:1] | later[0:1]; bit[4] later;''')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            converter.visit(program)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
 
 
 class BitRegisterShiftFoundationTests(unittest.TestCase):
@@ -819,7 +886,7 @@ class BitRegisterShiftExpressionTests(unittest.TestCase):
     def test_unsupported_targets_counts_and_scalar_contexts_still_rejected(self) -> None:
         prefix = 'OPENQASM 3.0; bit[4] a; int n; '
         for statement in ('a[0:3] = a << n;', 'a = a << true;',
-                          'a = a[0:3] >> n;', 'int out = int(a << n);',
+                          'a = a[0:4] >> n;', 'int out = int(a << n);',
                           'if (a >> n) {}', 'bit scalar = "1" << n;', 'a <<= true;'):
             with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
                 convert(prefix + statement)
@@ -950,7 +1017,7 @@ class BitRegisterBitwiseExpressionTests(unittest.TestCase):
     def test_unsupported_selections_casts_and_conditions_stay_rejected(self) -> None:
         prefix = 'OPENQASM 3.0; bit[4] a; bit[4] b; '
         for statement in ('a[0:3] = ~b;', 'a[{0, 1, 2, 3}] = b & a;',
-                          'a = a[0:3] ^ b;', 'a = a << true;', 'a = bit[4](1);',
+                          'a = a[0:4] ^ b;', 'a = a << true;', 'a = bit[4](1);',
                           'int n = int(a & b);', 'if (a | b) {}', 'bool ok = a == b;',
                           'if (false) { a = a ^ "01"; }'):
             with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
