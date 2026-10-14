@@ -569,6 +569,110 @@ class BitRegisterBitwiseFoundationTests(unittest.TestCase):
                          ['QUBITS 0', 'VAR A1 INT', 'LET A1 := 1', 'VAR B1 INT', 'LET B1 := A1'])
 
 
+class StaticBitSelectionFoundationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.foundation = BitRegisterBitwiseFoundationTests()
+        self.converter = self.foundation.converter('''const int LOW = 1; const uint HIGH = 3;
+            bit[4] a; bit[1] one; bit scalar; int n; float f; array[int, 2] values;''')
+
+    def selection(self, source: str, *, destination: bool = False, iterators=None):
+        return self.converter._QASM2QCXConverter__static_bit_selection(
+            self.foundation.expression(source), iterators, destination=destination)
+
+    def test_order_ranges_sets_negative_indices_and_constants(self) -> None:
+        for source, indices in (
+                ('a[0:2]', (0, 1, 2)), ('a[3:-1:0]', (3, 2, 1, 0)),
+                ('a[0:2:3]', (0, 2)), ('a[-2:-1]', (2, 3)),
+                ('a[-1:-1:-4]', (3, 2, 1, 0)), ('a[{3, 0, 2}]', (3, 0, 2)),
+                ('a[{LOW, HIGH}]', (1, 3)), ('a[LOW:HIGH]', (1, 2, 3)),
+                ('a[{HIGH - LOW, uint(0)}]', (2, 0))):
+            with self.subTest(source=source):
+                selection = self.selection(source)
+                self.assertEqual(selection.source_name, 'a')
+                self.assertEqual(selection.indices, indices)
+                self.assertEqual(selection.width, len(indices))
+                self.assertTrue(selection.is_register)
+
+    def test_singleton_register_selection_differs_from_scalar_element(self) -> None:
+        for source, is_register in (('a[0]', False), ('a[0:0]', True), ('a[{0}]', True),
+                                    ('one', True), ('one[0]', False), ('one[0:0]', True),
+                                    ('scalar', False), ('scalar[0:0]', True)):
+            with self.subTest(source=source):
+                selection = self.selection(source)
+                self.assertEqual(selection.width, 1)
+                self.assertEqual(selection.is_register, is_register)
+
+    def test_indexed_identifier_and_expression_have_same_description(self) -> None:
+        statement = qasm2qcx.openqasm3.parse('OPENQASM 3.0; a[{3, 0, 2}] = "101";').statements[0]
+        self.assertEqual(self.converter._QASM2QCXConverter__static_bit_selection(statement.lvalue),
+                         self.selection('a[{3, 0, 2}]'))
+
+    def test_repeated_sources_preserved_and_destinations_rejected(self) -> None:
+        for source, indices in (('a[{1, 1}]', (1, 1)), ('a[{3, -1}]', (3, 3)),
+                                ('a[-4:3]', (0, 1, 2, 3, 0, 1, 2, 3))):
+            with self.subTest(source=source):
+                self.assertEqual(self.selection(source).indices, indices)
+                with self.assertRaisesRegex(qasm2qcx.InvalidBitOperandException, 'must not repeat'):
+                    self.selection(source, destination=True)
+        self.assertEqual(self.selection('a[{3, 0, 2}]', destination=True).indices, (3, 0, 2))
+
+    def test_empty_bad_bounds_and_unsupported_shapes_rejected(self) -> None:
+        for source in ('a[1:0]', 'a[0:0:3]', 'a[0:4]', 'a[-5:-1]',
+                       'a[0:4294967295]', 'a[0:]', 'a[:3]', 'a[f:3]',
+                       'a[0, 1]', 'a[0][1]', '(a | a)[0:1]', 'values[0:1]'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.selection(source)
+        empty = qasm2qcx.ast.IndexExpression(qasm2qcx.ast.Identifier('a'), qasm2qcx.ast.DiscreteSet([]))
+        with self.assertRaises(qasm2qcx.InvalidBitOperandException):
+            self.converter._QASM2QCXConverter__static_bit_selection(empty)
+
+    def test_runtime_and_iterator_dependent_bounds_rejected(self) -> None:
+        for source in ('a[n:3]', 'a[{0, n}]', 'a[n]'):
+            with self.subTest(source=source), self.assertRaisesRegex(
+                    qasm2qcx.UnsupportedOpenQASMError, 'runtime-dependent'):
+                self.selection(source)
+        for source in ('a[LOW:3]', 'a[{LOW, 0}]'):
+            with self.subTest(source=source), self.assertRaisesRegex(
+                    qasm2qcx.UnsupportedOpenQASMError, 'iterator-dependent'):
+                self.selection(source, iterators={'LOW': qasm2qcx.ValueType.INT})
+        self.converter._QASM2QCXConverter__loop_bindings.append({'LOW': 1})
+        try:
+            with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                self.selection('a[LOW:3]')
+        finally:
+            self.converter._QASM2QCXConverter__loop_bindings.pop()
+        with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+            self.selection('a[0:1]', iterators={'a': qasm2qcx.ValueType.INT})
+
+    def test_nested_register_widths_and_scalar_type_behavior(self) -> None:
+        for source, width in (('~a[0:1]', 2), ('a[{3, 1}] & "01"', 2),
+                              ('(a[0:1] ^ a[2:3]) << n', 2), ('a[0:0] | one', 1)):
+            with self.subTest(source=source):
+                self.assertEqual(self.foundation.width(self.converter, source), width)
+        for source in ('a[0:1] & a', 'a[0:0] | scalar', 'a[{0}] & a[0]'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.InvalidBitOperandException):
+                self.foundation.width(self.converter, source)
+        self.assertIsNone(self.foundation.width(self.converter, 'a[n] & scalar'))
+
+    def test_metadata_is_immutable_and_validation_does_not_emit(self) -> None:
+        before = (list(self.converter._QASM2QCXConverter__qcx_lines),
+                  self.converter._QASM2QCXConverter__value,
+                  self.converter._QASM2QCXConverter__value_type,
+                  self.converter._QASM2QCXConverter__value_kind,
+                  self.converter._QASM2QCXConverter__expression_kind)
+        selection = self.selection('a[LOW:HIGH]')
+        with self.assertRaises(AttributeError):
+            selection.indices = (0,)
+        self.assertEqual(before, (list(self.converter._QASM2QCXConverter__qcx_lines),
+                         self.converter._QASM2QCXConverter__value,
+                         self.converter._QASM2QCXConverter__value_type,
+                         self.converter._QASM2QCXConverter__value_kind,
+                         self.converter._QASM2QCXConverter__expression_kind))
+        self.assertEqual(self.converter._QASM2QCXConverter__used_temporary_variables, set())
+        with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+            convert('OPENQASM 3.0; bit[4] a; bit[2] b = ~a[0:1];')
+
+
 class BitRegisterShiftFoundationTests(unittest.TestCase):
     def setUp(self) -> None:
         self.foundation = BitRegisterBitwiseFoundationTests()
@@ -595,7 +699,7 @@ class BitRegisterShiftFoundationTests(unittest.TestCase):
                 self.width('a << (' + count + ')')
         with self.assertRaises(qasm2qcx.NoVariableNameException):
             self.width('a >> missing')
-        for expression in ('a[0:3] << 1', 'a[{0,1,2,3}] >> 1', 'scalar << 1'):
+        for expression in ('a[0:4] << 1', 'a[{0,4}] >> 1', 'scalar << 1'):
             with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.width(expression)
 
@@ -902,7 +1006,7 @@ class BitRegisterBitwiseIntegrationTests(unittest.TestCase):
         for body in ('a &= b;', 'a ^= "01";', 'a |= scalar;', 'a &= n;',
                      'a = ~b;', 'a = a | scalar;', 'scalar ^= ~a;', 'n &= a;',
                      'a[0:3] ^= a;', 'a[{0,1,2,3}] &= a;',
-                     'a ^= a[f];', 'a &= a[0:3];', 'a = ~missing;'):
+                     'a ^= a[f];', 'a &= a[0:2];', 'a = ~missing;'):
             for wrapper in ('{}', 'if (false) {{ {} }}', 'for int i in [1:0] {{ {} }}',
                             'while (false) {{ {} }}'):
                 with self.subTest(body=body, wrapper=wrapper), self.assertRaises(qasm2qcx.QASM2QCXError):

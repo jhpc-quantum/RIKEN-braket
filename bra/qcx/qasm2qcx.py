@@ -188,6 +188,17 @@ class _UnsignedIntegerType:
 
 
 @dataclasses.dataclass(frozen=True)
+class _StaticBitSelection:
+    source_name: str
+    indices: tuple[int, ...]
+    is_register: bool
+
+    @property
+    def width(self) -> int:
+        return len(self.indices)
+
+
+@dataclasses.dataclass(frozen=True)
 class _RuntimeIteratorBinding:
     # Unlike an unrolled iterator's integer value, this names live QCX storage.
     storage: str
@@ -582,14 +593,19 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self, expression: ast.Expression,
             iterators: set[str] | dict[str, ValueType] | None = None) -> int | None:
         # None denotes a scalar, not a one-bit register. Inspect declaration
-        # metadata only: validation must not emit QCX or evaluate arithmetic,
-        # including index values in an empty loop body.
+        # metadata and constant selection bounds only: never emit QCX or
+        # evaluate runtime count/index values in an empty loop body.
         if isinstance(expression, ast.Identifier):
             name = expression.name
             shadowed = ((iterators is not None and name in iterators)
                         or any(name in scope for scope in self.__loop_bindings))
             if not shadowed and name in self.__bit_register_source_sizes:
                 return self.__bit_register_source_sizes[name]
+        if isinstance(expression, ast.IndexExpression):
+            selector = expression.index
+            if (isinstance(selector, ast.DiscreteSet)
+                    or (isinstance(selector, list) and any(isinstance(value, ast.RangeDefinition) for value in selector))):
+                return self.__static_bit_selection(expression, iterators).width
         if isinstance(expression, ast.BitstringLiteral):
             if expression.width <= 0:
                 raise InvalidBitOperandException('A bit-string operand must have a positive width')
@@ -1219,7 +1235,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     raise invalid_operand_exception(
                         f'{kind.capitalize()} range step cannot be zero')
                 stop = end + (1 if step > 0 else -1)
-                raw_indices = list(range(start, stop, step))
+                # Validate incrementally instead of materializing a potentially
+                # enormous invalid range before its first bounds failure.
+                raw_indices = range(start, stop, step)
                 if not raw_indices:
                     raise invalid_operand_exception(
                         f'{kind.capitalize()} range is empty')
@@ -1290,6 +1308,54 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             ],
             is_register,
         )
+
+    def __static_bit_selection(
+            self, operand: ast.Identifier | ast.IndexExpression | ast.IndexedIdentifier,
+            iterators: set[str] | dict[str, ValueType] | None = None, *,
+            destination: bool = False) -> _StaticBitSelection:
+        if isinstance(operand, ast.IndexExpression):
+            if not isinstance(operand.collection, ast.Identifier):
+                raise UnsupportedOpenQASMError('indexing a computed bit-register expression')
+            name, selector = operand.collection.name, operand.index
+        elif isinstance(operand, ast.IndexedIdentifier):
+            if len(operand.indices) != 1:
+                raise UnsupportedOpenQASMError('multidimensional bit indexing')
+            name, selector = operand.name.name, operand.indices[0]
+        else:
+            name, selector = operand.name, None
+        active = ((iterators is not None and name in iterators)
+                  or any(name in scope for scope in self.__loop_bindings))
+        if active:
+            raise UnsupportedOpenQASMError('static bit selection of a for-loop iterator')
+        source_type = self.__classical_source_types.get(name)
+        if source_type is None:
+            raise NoVariableNameException(name)
+        if not isinstance(source_type, ast.BitType):
+            raise InvalidBitOperandException(f'Bit selection source {name} is not a bit variable')
+        size = self.__bit_register_source_sizes.get(name, 1)
+        if selector is None:
+            return _StaticBitSelection(name, tuple(range(size)), source_type.size is not None)
+        # Even an unrolled iterator is not a declaration-scope constant. Do
+        # not give empty-loop validation a fabricated value for selection bounds.
+        bound_names = self.__loop_bound_names(selector) if isinstance(selector, ast.QASMNode) else set().union(
+            *(self.__loop_bound_names(value) for value in selector if isinstance(value, ast.QASMNode)))
+        iterator_names = set(iterators or ()) | {name for scope in self.__loop_bindings for name in scope}
+        if bound_names & iterator_names:
+            raise UnsupportedOpenQASMError('iterator-dependent bit-register selection')
+        for bound in bound_names:
+            if bound in self.__classical_source_types:
+                raise UnsupportedOpenQASMError('runtime-dependent bit-register selection')
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        try:
+            indices, is_register = self.__index_selection(
+                selector, size, 'bit', f'variable {name}[{size}]', InvalidBitOperandException)
+        finally:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+        if destination and len(set(indices)) != len(indices):
+            raise InvalidBitOperandException('A bit selection destination must not repeat an index')
+        return _StaticBitSelection(name, tuple(indices), is_register)
 
     def __bit_operand(
             self, bit: ast.Identifier | ast.IndexedIdentifier, *,
