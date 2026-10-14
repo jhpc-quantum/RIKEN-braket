@@ -652,9 +652,73 @@ class BitRegisterShiftFoundationTests(unittest.TestCase):
                        'bit[4] a; a = a >> true;', 'bit[4] a; a = a << a[0];'):
             with self.subTest(source=source), self.assertRaises(qasm2qcx.InvalidBitOperandException):
                 convert('OPENQASM 3.0; ' + source)
-        # The next stage will enable lowering; only width/type handling is added here.
-        with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
-            convert('OPENQASM 3.0; bit[4] a; a = a << 1;')
+        self.assertIn('LET A1:0 := 0', convert('OPENQASM 3.0; bit[4] a; a = a << 1;'))
+
+
+class BitRegisterShiftExpressionTests(unittest.TestCase):
+    def test_literal_folding_zero_fill_and_oversized_counts(self) -> None:
+        for expression, expected in (('"1011" << 1', (0, 1, 1, 0)),
+                                     ('"1011" >> 1', (1, 0, 1, 0)),
+                                     ('"1011" << 4', (0, 0, 0, 0)),
+                                     ('"1011" >> uint(-1)', (0, 0, 0, 0)),
+                                     ('~("1011" >> 1) & "1111"', (0, 1, 0, 1))):
+            with self.subTest(expression=expression):
+                lines = convert('OPENQASM 3.0; bit[4] a = ' + expression + ';')
+                self.assertEqual(lines[2:], [f'LET A1:{index} := {value}' for index, value in enumerate(expected)])
+
+    def test_constant_shifts_snapshot_all_source_reads_before_writing(self) -> None:
+        for operator in ('<<', '>>'):
+            lines = convert(f'OPENQASM 3.0; bit[4] a = "1011"; a = a {operator} 1;')
+            reads = [index for index, line in enumerate(lines) if ':= A1:' in line]
+            writes = [index for index, line in enumerate(lines) if line.startswith('LET A1:')]
+            self.assertLess(max(reads), writes[4])
+
+    def test_runtime_count_captured_once_and_uint_guard_precedes_cast(self) -> None:
+        lines = convert('OPENQASM 3.0; bit[4] a; uint n; bit[4] b = a << n;')
+        self.assertEqual(sum(line.endswith(' := N1') for line in lines), 1)
+        guard = next(index for index, line in enumerate(lines) if line.startswith('JUMPIF ') and ' >= 4' in line)
+        cast = next(index for index, line in enumerate(lines) if ':= :INT:QASM2QCX_UINT_' in line)
+        self.assertLess(guard, cast)
+        self.assertFalse(any(line.startswith('ASSERT ') and 'QASM2QCX_UINT_' in line for line in lines))
+        signed = convert('OPENQASM 3.0; bit[4] a; int n; a = a >> n;')
+        self.assertTrue(any(line.startswith('ASSERT QASM2QCX_INT_') and line.endswith(' >= 0') for line in signed))
+
+    def test_invalid_literal_count_is_deferred_to_runtime(self) -> None:
+        lines = convert('OPENQASM 3.0; bit[4] a; if (false) { a = "1011" << -1; }')
+        assertion = next(index for index, line in enumerate(lines) if line.startswith('ASSERT '))
+        self.assertGreater(assertion, lines.index('@QASM2QCX_IF_0'))
+        self.assertIn('LET QASM2QCX_INT_0 := -1', lines)
+
+    def test_nested_runtime_results_reuse_buffers_and_release_storage(self) -> None:
+        program = qasm2qcx.openqasm3.parse('''OPENQASM 3.0; bit[4] a; bit[4] b; int n = 1;
+            a = ~(a << n) ^ (b >> n); b = ~(a << n) ^ (b >> n);
+            bit[1] one = "1"; one = one >> n;''')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        lines = list(converter)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertEqual(sum(line.startswith('VAR QASM2QCX_BITS_4_') for line in lines), 2)
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_self_referencing_count_and_index_evaluated_once(self) -> None:
+        program = qasm2qcx.openqasm3.parse('''OPENQASM 3.0;
+            bit[4] a = "1011"; int i = 0; array[int, 2] counts = {1, 2};
+            a = a << int(a[i]); a = a >> counts[i + 1];''')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        lines = list(converter)
+        count_evaluation = lines[lines.index('@QASM2QCX_REGISTER_SHIFT_0_END') + 1:
+                                 lines.index('@QASM2QCX_REGISTER_SHIFT_1_COPY')]
+        self.assertEqual(sum(line.endswith(' += 1') for line in count_evaluation), 1)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_unsupported_targets_counts_and_scalar_contexts_still_rejected(self) -> None:
+        prefix = 'OPENQASM 3.0; bit[4] a; int n; '
+        for statement in ('a[0:3] = a << n;', 'a = a << true;',
+                          'a = a[0:3] >> n;', 'int out = int(a << n);',
+                          'if (a >> n) {}', 'bit scalar = "1" << n;', 'a <<= n;'):
+            with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert(prefix + statement)
 
 
 class BitRegisterBitwiseExpressionTests(unittest.TestCase):
@@ -706,7 +770,7 @@ class BitRegisterBitwiseExpressionTests(unittest.TestCase):
     def test_unsupported_selections_casts_and_conditions_stay_rejected(self) -> None:
         prefix = 'OPENQASM 3.0; bit[4] a; bit[4] b; '
         for statement in ('a[0:3] = ~b;', 'a[{0, 1, 2, 3}] = b & a;',
-                          'a = a[0:3] ^ b;', 'a = a << 1;', 'a = bit[4](1);',
+                          'a = a[0:3] ^ b;', 'a = a << true;', 'a = bit[4](1);',
                           'int n = int(a & b);', 'if (a | b) {}', 'bool ok = a == b;',
                           'if (false) { a = a ^ "01"; }'):
             with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
