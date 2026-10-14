@@ -75,6 +75,8 @@ The converter currently covers:
 - integer remainder expressions and compound assignments using `%` and `%=`;
 - scalar integer and bit bitwise expressions (`&`, `|`, `^`, `~`) and
   compound assignments (`&=`, `|=`, `^=`);
+- whole-bit-register bitwise expressions and compound assignments with
+  equal-width register operands and bit-string literals;
 - scalar integer shift expressions (`<<`, `>>`) and compound assignments
   (`<<=`, `>>=`), with checked counts and signed left-shift overflow;
 - scalar constants, variables, assignments, and numeric casts;
@@ -303,9 +305,9 @@ Compound `&=`, `|=`, and `^=` assignments accept scalar `int`,
 `uint`, and scalar bit targets, including static and runtime-indexed integer-array
 and bit-register elements. Their RHS must have integer type for integer targets
 or scalar bit type for bit targets. For example, `flag ^= bit(true)` is accepted,
-but `flag ^= 1` requires that explicit bit conversion. Complete registers, even
-`bit[1]`, and range or
-discrete-set selections are not compound-assignment targets. Active loop
+but `flag ^= 1` requires that explicit bit conversion. Whole-register operations
+are described below; range and discrete-set selections are not bitwise
+compound-assignment targets. Active loop
 iterators remain read-only.
 
 Bitwise binary operands evaluate left to right and are eager: `&` and `|`
@@ -322,9 +324,61 @@ and remain reserved until the write; they are not reevaluated. Separate RHS
 accesses retain their own captures and checks. Self-references and overlapping
 accesses read the original target throughout RHS evaluation. Types, names, and
 supported index syntax are validated even in empty loop bodies, without
-evaluating value-dependent bounds or arithmetic there. Whole-register or
-whole-array bitwise operations, aliases, and general
+evaluating value-dependent bounds or arithmetic there. Whole-array bitwise
+operations, aliases, and general
 fixed-width signed integer semantics remain unsupported.
+
+### Whole-bit-register bitwise operators
+
+Fixed-size `bit[n]` registers support binary `&`, `|`, and `^`, unary `~`,
+and compound assignments `&=`, `|=`, and `^=`. Operands may be whole register
+names, bit-string literals, or nested register bitwise expressions. Binary
+operands must have equal widths, and the result preserves that width.
+Complement flips every bit without changing the width.
+
+Register expressions can initialize a top-level `bit[n]` declaration or be
+assigned with `=` to a whole register. The destination must have the same
+width as the result. Compound assignments also require an equal-width register
+RHS. No implicit padding, truncation, or scalar broadcasting is performed.
+`bit[1]` remains a register, distinct from scalar `bit`: `one ^ "1"` is valid
+for a singleton register, but `one ^ bit(true)` is not. Leading zeroes in a
+bit-string literal count toward its width.
+
+```qasm
+OPENQASM 3.0;
+bit[4] a = "1010";
+bit[4] b = "1100";
+bit[4] c = a & b;          // "1000"
+bit[4] d = ~(a ^ b);       // "1001"
+a |= b;                   // "1110"
+b ^= b & "0011";          // "1100"
+```
+
+Operations use the existing one-`INT`-element-per-bit representation and bra's
+scalar bitwise instructions. Registers are not packed into native integers, so
+their width is not restricted to native `INT` or `UINT` width. As in existing
+register assignments, index zero is the rightmost bit of a literal.
+Literal-only expressions fold during conversion; runtime expressions evaluate
+left to right into private storage. The complete result is computed before
+any destination element is written, including for `a = ~(a & b)` and
+`a ^= a & b`. Temporary storage is released and reused after evaluation and
+assignment. No new bra instruction is required.
+
+Ordinary and compound register assignments are supported in branches and
+supported `for` and `while` bodies, including nested loops and
+measurement-controlled execution. Branches and loop transfers can skip their execution;
+binary bitwise operators themselves remain eager. Types, names, and widths
+are checked even in skipped branches and empty loop bodies. Register sizes
+remain tied to declaration scope when iterators shadow size constants, and
+active iterators remain read-only.
+
+Register values are supported only in the register-assignment contexts above;
+this does not add register comparisons, conditions, integer/register casts,
+indexing of computed results, or register expressions as loop bounds or
+iteration collections. New bitwise operations on slices or discrete-set
+selections, register shifts, concatenation, aliases, `const bit[n]` declarations,
+and functions such as `popcount` remain outside this subset. Existing direct
+bit-register copies and indexed scalar-bit operations retain their behavior.
 
 ### Scalar integer shifts
 
@@ -1434,7 +1488,8 @@ The current prototype does not reliably support:
   whole-register casts, complex-to-Boolean casts,
   Boolean arithmetic, mixed Boolean/numeric comparisons, or block-local
   declarations;
-- bit/register shifts, whole-register or whole-array bitwise operations, direct
+- bit/register shifts, register bitwise operations on selections,
+  whole-array bitwise operations, direct
   Boolean bitwise operations, or classical functions; or
 - arithmetic operators other than `+`, `-`, `*`, `/`, and integer `%`.
 
@@ -1468,6 +1523,15 @@ native endpoints, casts, precedence, left-to-right eager evaluation,
 short-circuiting, loop nesting, gate parameters, and runtime failures. Unit tests
 additionally cover typing, temporary cleanup, unsupported selections, empty-loop
 validation, and read-only iterators.
+
+`bra/test/qasm2qcx_bit_register_bitwise_numerical.py` exhaustively checks
+register expressions and compound assignments for all operand pairs at widths
+1 through 4. It also covers leading zeroes, nested literal folding,
+self-references, 33- and 65-bit registers, branches, range/set/register iteration,
+`while`, loop transfers, declaration-scope widths, iterator shadowing, and
+measurement-controlled execution. Unit tests additionally cover width/type
+errors, unsupported selections and scalar contexts, empty-loop validation,
+temporary reuse, and cleanup after failed lowering.
 
 `bra/test/integer_shift_numerical.py` checks native signed and unsigned shifts
 at every valid count, negative values and endpoints, invalid counts, overflow,
@@ -1603,6 +1667,7 @@ python3 bra/test/qasm2qcx_integer_array_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_bit_register_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_bit_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_bitwise_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_bit_register_bitwise_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_shift_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_uint_numerical.py --bra bra/bin/bra
 ```

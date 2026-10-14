@@ -73,6 +73,12 @@ def main() -> None:
         for int N in [0:1] { a ^= "0001"; }
         for int a in [0:1] { b ^= b; }''',
                   outputs('A1', 4) + outputs('B1', 4), bits(10, 4) + bits(0, 4))
+    # Keep the documented example executable, including its bit-string order.
+    check_program(bra, '''bit[4] a = "1010"; bit[4] b = "1100";
+        bit[4] c = a & b; bit[4] d = ~(a ^ b);
+        a |= b; b ^= b & "0011";''',
+                  outputs('C1', 4) + outputs('D1', 4) + outputs('A1', 4) + outputs('B1', 4),
+                  bits(8, 4) + bits(9, 4) + bits(14, 4) + bits(12, 4))
     print('Whole-bit-register bitwise numerical tests passed')
 
 
