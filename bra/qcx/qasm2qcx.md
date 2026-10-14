@@ -77,6 +77,8 @@ The converter currently covers:
   compound assignments (`&=`, `|=`, `^=`);
 - whole-bit-register bitwise expressions and compound assignments with
   equal-width register operands and bit-string literals;
+- whole-bit-register shifts with constant or runtime integer counts,
+  including `<<=` and `>>=` assignments;
 - scalar integer shift expressions (`<<`, `>>`) and compound assignments
   (`<<=`, `>>=`), with checked counts and signed left-shift overflow;
 - scalar constants, variables, assignments, and numeric casts;
@@ -376,9 +378,74 @@ Register values are supported only in the register-assignment contexts above;
 this does not add register comparisons, conditions, integer/register casts,
 indexing of computed results, or register expressions as loop bounds or
 iteration collections. New bitwise operations on slices or discrete-set
-selections, register shifts, concatenation, aliases, `const bit[n]` declarations,
+selections, concatenation, aliases, `const bit[n]` declarations,
 and functions such as `popcount` remain outside this subset. Existing direct
 bit-register copies and indexed scalar-bit operations retain their behavior.
+
+### Whole-bit-register shifts
+
+`<<` and `>>` shift fixed-size `bit[n]` register values, including bit-string
+literals and nested register bitwise/shift expressions. Results preserve the
+left operand's width and can initialize a top-level register declaration or
+be assigned to an equal-width whole register. Whole registers also support
+`<<=` and `>>=`. Singleton `bit[1]` values remain registers, distinct from
+scalar `bit` values.
+
+The converter uses the following register-shift policy:
+
+- Left shifts move bits toward higher indices; right shifts move them toward
+  lower indices. Index zero is the rightmost bit of a literal.
+- Vacated positions are filled with zeroes, and shifted-out bits are discarded.
+- A zero count preserves the value. A count at least as large as the register
+  width produces an all-zero result.
+- Counts may be scalar `uint` or nonnegative `int` expressions. Negative signed
+  counts are rejected, not converted to unsigned values. Boolean and scalar
+  bit counts require an explicit integer cast; floating-point and complex
+  counts likewise require a supported integer cast.
+
+This oversized-count policy differs from scalar integer shifts, which require
+the count to be below the shifted integer's width. Scalar-integer semantics
+are unchanged. Register widths may exceed native integer width, and counts
+such as native `UINT_MAX` safely produce zero rather than causing an invalid
+native shift or an out-of-range signed conversion.
+
+```qasm
+OPENQASM 3.0;
+bit[4] a = "1011";
+uint count = 1;
+bit[4] b = a << count;       // "0110"
+bit[4] c = a >> count;       // "0101"
+a <<= int(a[0]);            // "0110": count reads the original low bit
+a >>= 4;                    // "0000"
+```
+
+Literal-only expressions fold during conversion; constant counts use direct
+element assignments. Runtime counts are evaluated and captured once. A signed
+count is checked with `ASSERT count >= 0`; negative literal counts in runtime
+expressions also emit a check so unreachable code can skip them. An executed
+failure throws `bra::assertion_error`, currently uncaught by bra's CLI.
+
+Runtime lowering uses private source/result bit arrays and a bounded copy
+loop. Oversized counts reach the zero-result path before any count-to-`INT`
+conversion or index arithmetic. Runtime register shifts require a width at
+most the host-derived QCX `INT_MAX` because indices use signed native storage.
+The complete result is computed before any destination element is written,
+preserving self-references such as `a <<= int(a[0])`. Buffer storage is reused
+only after its result is consumed. No new bra instruction is required.
+
+These operations support branches and supported loops, including transfers,
+measurement-controlled execution, and nested expressions. Runtime checks and
+copy loops stay on reached paths. Empty loop bodies validate types, names,
+and index syntax without evaluating count or index values; statically invalid
+indices in converted bodies retain existing conversion-time errors. Active
+iterators remain read-only, and bit-register iteration retains live element
+reads when a shift modifies the iterated register.
+
+Shifts on scalar bits, register selections, and computed-result indexing remain
+unsupported. This does not add rotations, aliases, concatenation, register
+casts or comparisons, `const bit[n]` declarations, or register-valued scalar
+conditions/loop bounds. General count-expression overflow checks remain
+separate work.
 
 ### Scalar integer shifts
 
@@ -440,7 +507,8 @@ indices are captured and checked once before the RHS; self-references read the
 original value. Active loop iterators remain read-only. Names, types, and index
 syntax are validated in empty loop bodies without evaluating counts or index
 values there. General signed arithmetic and count-expression overflow checks,
-bit/register shifts, UINT arrays, and signed-width emulation remain future work.
+scalar-bit shifts, UINT arrays, and signed-width emulation remain future work.
+Whole-register shifts follow the separate policy above.
 
 ### One-dimensional integer arrays
 
@@ -615,8 +683,9 @@ stay on the paths that reach them: skipped branches, loop bodies, transfers,
 and short-circuit operands skip these runtime operations. Names, types, and
 syntax are still validated during conversion, including on unreachable paths.
 Static indices retain their existing conversion-time checks and QCX output.
-Dynamic ranges and discrete sets, multidimensional indexing, aliases, and
-whole-register bitwise operations remain unsupported.
+Dynamic ranges and discrete sets, multidimensional indexing, and aliases remain
+unsupported. Whole-register bitwise operations and shifts are described above;
+their operations on register selections remain unsupported.
 
 ### Boolean values and conversions
 
@@ -1488,7 +1557,7 @@ The current prototype does not reliably support:
   whole-register casts, complex-to-Boolean casts,
   Boolean arithmetic, mixed Boolean/numeric comparisons, or block-local
   declarations;
-- bit/register shifts, register bitwise operations on selections,
+- scalar-bit shifts, register bitwise operations and shifts on selections,
   whole-array bitwise operations, direct
   Boolean bitwise operations, or classical functions; or
 - arithmetic operators other than `+`, `-`, `*`, `/`, and integer `%`.
@@ -1532,6 +1601,15 @@ self-references, 33- and 65-bit registers, branches, range/set/register iteratio
 measurement-controlled execution. Unit tests additionally cover width/type
 errors, unsupported selections and scalar contexts, empty-loop validation,
 temporary reuse, and cleanup after failed lowering.
+
+`bra/test/qasm2qcx_bit_register_shift_numerical.py` compares literal folding,
+runtime expressions, ordinary assignments, and compound shifts with Python
+bit patterns at widths 1, 2, 4, 33, and 65. It covers zero and boundary counts,
+native integer maximum counts, negative-count failures, bit order, nested
+results, self-referencing counts, single index capture, skipped errors,
+loop transfers, live register iteration, and measurement-controlled execution.
+Unit tests additionally check width/type rejection, guard-before-cast ordering,
+buffer reuse, cleanup, empty-loop validation, and unsupported scalar contexts.
 
 `bra/test/integer_shift_numerical.py` checks native signed and unsigned shifts
 at every valid count, negative values and endpoints, invalid counts, overflow,
@@ -1668,6 +1746,7 @@ python3 bra/test/qasm2qcx_bit_register_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_bit_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_bitwise_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_bit_register_bitwise_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_bit_register_shift_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_shift_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_uint_numerical.py --bra bra/bin/bra
 ```

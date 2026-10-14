@@ -63,6 +63,12 @@ def main() -> None:
         if (measured) { a <<= int(measured); }
         for bit value in a { if (value) { a >>= int(value); } }''',
                   outputs('A1', 4), bits(3, 4))
+    # Execute the guide's example, including self-referencing count capture.
+    check_program(bra, '''bit[4] a = "1011"; uint count = 1;
+        bit[4] b = a << count; bit[4] c = a >> count;
+        a <<= int(a[0]); a >>= 4;''',
+                  outputs('A1', 4) + outputs('B1', 4) + outputs('C1', 4),
+                  bits(0, 4) + bits(6, 4) + bits(5, 4))
     for source in ('bit[4] a = "1011"; int n = -1; a = a << n;',
                    'bit[4] a = "0000"; a = a >> -1;',
                    f'bit[1] a = "1"; int n = {native.QCX_INT_MIN}; a = a << n;',
