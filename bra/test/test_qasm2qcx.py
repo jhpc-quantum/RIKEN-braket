@@ -562,9 +562,9 @@ class BitRegisterBitwiseFoundationTests(unittest.TestCase):
             with self.subTest(source=source), self.assertRaisesRegex(qasm2qcx.InvalidBitOperandException, diagnostic):
                 convert('OPENQASM 3.0; ' + source)
 
-    def test_compound_lowering_remains_for_the_next_stage(self) -> None:
+    def test_compound_selections_remain_unsupported(self) -> None:
         with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
-            convert('OPENQASM 3.0; bit[4] a; bit[4] b; a &= b;')
+            convert('OPENQASM 3.0; bit[4] a; bit[4] b; a[0:3] &= b;')
         self.assertEqual(convert('OPENQASM 3.0; bit[1] a = "1"; bit[1] b = a;'),
                          ['QUBITS 0', 'VAR A1 INT', 'LET A1 := 1', 'VAR B1 INT', 'LET B1 := A1'])
 
@@ -632,6 +632,78 @@ class BitRegisterBitwiseExpressionTests(unittest.TestCase):
         converter = qasm2qcx.QASM2QCXConverter(program)
         with self.assertRaises(qasm2qcx.QASM2QCXError):
             converter.visit(program)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+
+class BitRegisterBitwiseIntegrationTests(unittest.TestCase):
+    def test_compounds_match_explicit_assignment(self) -> None:
+        for width in (1, 4):
+            for operator in ('&', '|', '^'):
+                for rhs in ('a', 'b', '~a', '~(a ^ b)', '"' + '1' * width + '"'):
+                    with self.subTest(width=width, operator=operator, rhs=rhs):
+                        prefix = f'OPENQASM 3.0; bit[{width}] a; bit[{width}] b; '
+                        self.assertEqual(convert(prefix + f'a {operator}= {rhs};'),
+                                         convert(prefix + f'a = a {operator} ({rhs});'))
+
+    def test_nested_loop_assignments_release_storage(self) -> None:
+        program = qasm2qcx.openqasm3.parse('''OPENQASM 3.0;
+            bit[4] a = "1010"; bit[4] b = "1100"; int n = 2;
+            for int i in [0:1] {
+                a ^= a & b;
+                for int j in [0:n] { if (j == 1) { continue; } a = ~a; }
+                while (n > 0) { b |= a; n -= 1; if (n == 0) { break; } }
+            }
+            for bit value in a { if (value) { b &= "1010"; } }
+            for int j in {n, n + 1} { a = a | b; }''')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        ForLoopControlLoweringTests.assert_resolved_jumps(list(converter))
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertEqual(converter._QASM2QCXConverter__loop_bindings, [])
+        self.assertEqual(converter._QASM2QCXConverter__loop_contexts, [])
+
+    def test_empty_and_false_loops_accept_register_assignments(self) -> None:
+        for body in ('a = ~(a ^ b);', 'a &= b;', 'a |= ~b;', 'a ^= "0011";'):
+            for wrapper in ('for int i in [1:0] {{ {} }}', 'while (false) {{ {} }}',
+                            'for int i in [1:0] {{ if (false) {{ {} }} }}'):
+                with self.subTest(body=body, wrapper=wrapper):
+                    convert('OPENQASM 3.0; bit[4] a; bit[4] b; ' + wrapper.format(body))
+
+    def test_invalid_assignments_rejected_even_in_empty_loops(self) -> None:
+        prefix = 'OPENQASM 3.0; bit[4] a; bit[2] b; bit scalar; int n; float f; '
+        for body in ('a &= b;', 'a ^= "01";', 'a |= scalar;', 'a &= n;',
+                     'a = ~b;', 'a = a | scalar;', 'scalar ^= ~a;', 'n &= a;',
+                     'a[0:3] ^= a;', 'a[{0,1,2,3}] &= a;',
+                     'a ^= a[f];', 'a &= a[0:3];', 'a = ~missing;'):
+            for wrapper in ('{}', 'if (false) {{ {} }}', 'for int i in [1:0] {{ {} }}',
+                            'while (false) {{ {} }}'):
+                with self.subTest(body=body, wrapper=wrapper), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    convert(prefix + wrapper.format(body))
+
+    def test_iterators_shadow_registers_and_remain_read_only(self) -> None:
+        prefix = 'OPENQASM 3.0; bit[4] a; bit[4] b; '
+        for loop in ('for int a in [1:0]', 'for bit a in b'):
+            for body in ('b ^= a;', 'a &= b;', 'b = ~a;', 'if (false) { a ^= a; }'):
+                with self.subTest(loop=loop, body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    convert(prefix + loop + ' { ' + body + ' }')
+        convert(prefix + 'for int a in [1:0] { b ^= b; }')
+
+    def test_register_results_do_not_leak_into_scalar_loop_contexts(self) -> None:
+        prefix = 'OPENQASM 3.0; bit[4] a; bit[4] b; int n; array[int, 1] values; '
+        for body in ('if (a & b) {}', 'while (~a) {}', 'n = int(a | b);',
+                     'for int j in {a ^ b} {}', 'for int j in [0:~a] {}',
+                     'values[a & b] = 1;', 'a[a ^ b] = bit(true);'):
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert(prefix + 'for int i in [1:0] { ' + body + ' }')
+
+    def test_loop_validation_does_not_emit_or_reserve_storage(self) -> None:
+        program = qasm2qcx.openqasm3.parse('''OPENQASM 3.0; bit[4] a; bit[4] b;
+            for int i in [1:0] { a ^= ~(a & b); }''')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        before = list(converter._QASM2QCXConverter__qcx_lines)
+        converter._QASM2QCXConverter__validate_loop_body(program.statements[-1].block,
+                                                       {'i': qasm2qcx.ValueType.INT})
+        self.assertEqual(converter._QASM2QCXConverter__qcx_lines, before)
         self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
 
 
@@ -773,7 +845,7 @@ class ScalarBitwiseAssignmentTests(unittest.TestCase):
     def test_invalid_types_register_selections_and_iterator_writes(self) -> None:
         prefix = 'OPENQASM 3.0; int i = 0; float f = 1.5; bool b = true; complex z = 1.0im; bit a = 1; bit[2] flags = "01"; array[int, 2] values = {0, 1}; '
         for statement in ('i &= a;', 'i |= f;', 'i ^= b;', 'f &= i;', 'z ^= i;',
-                          'b |= b;', 'a ^= 1;', 'a &= b;', 'flags ^= flags;',
+                          'b |= b;', 'a ^= 1;', 'a &= b;', 'flags ^= a;',
                           'flags[{0}] |= a;', 'flags[0:0] &= a;',
                           'values &= 1;', 'values[0:0] ^= 1;',
                           'values[i] |= a;', 'flags[i] &= values[i];',
