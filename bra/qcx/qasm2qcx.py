@@ -2373,7 +2373,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __validate_integer_operator_assignment_types(
             self, statement: ast.ClassicalAssignment, iterators: dict[str, ValueType]) -> None:
-        if self.__validate_register_bitwise_assignment(statement, iterators):
+        if self.__validate_register_operator_assignment(statement, iterators):
             return
         target = statement.lvalue
         if isinstance(target, ast.IndexedIdentifier):
@@ -2411,10 +2411,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if isinstance(value, ast.Expression):
                 self.__validate_bitwise_indices(value, iterators)
 
-    def __validate_register_bitwise_assignment(
+    def __validate_register_operator_assignment(
             self, statement: ast.ClassicalAssignment,
             iterators: dict[str, ValueType] | None = None) -> bool:
-        if not isinstance(statement.lvalue, ast.Identifier) or statement.op.name not in ('=', '&=', '|=', '^='):
+        if not isinstance(statement.lvalue, ast.Identifier) or statement.op.name not in ('=', '&=', '|=', '^=', '<<=', '>>='):
             return False
         if statement.lvalue.name not in self.__bit_register_source_sizes:
             return False
@@ -2423,7 +2423,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return False  # An active scalar iterator shadows the register.
         if statement.op.name == '=' and not isinstance(statement.rvalue, (ast.UnaryExpression, ast.BinaryExpression)):
             return False  # Preserve the existing literal/copy assignment path.
-        rhs_width = self.__bit_register_expression_width(statement.rvalue, iterators)
+        expression = (ast.BinaryExpression(ast.BinaryOperator[statement.op.name[:-1]],
+                                          statement.lvalue, statement.rvalue)
+                      if statement.op.name in ('<<=', '>>=') else statement.rvalue)
+        rhs_width = self.__bit_register_expression_width(expression, iterators)
         if rhs_width is None:
             raise InvalidBitOperandException('A bit-register assignment requires a register value')
         if width != rhs_width:
@@ -2445,7 +2448,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return
         # Register values are accepted only in their assignment context, not
         # accidentally as scalar loop bounds, conditions, casts, or indices.
-        if isinstance(node, ast.ClassicalAssignment) and self.__validate_register_bitwise_assignment(node, iterators):
+        if isinstance(node, ast.ClassicalAssignment) and self.__validate_register_operator_assignment(node, iterators):
             return
         if ((isinstance(node, ast.UnaryExpression) and node.op.name == '~')
                 or (isinstance(node, ast.BinaryExpression) and node.op.name in ('&', '|', '^', '<<', '>>'))):
@@ -3722,15 +3725,17 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return
 
         if variable_type == ValueType.BIT:
-            if statement.op.name in ('&=', '|=', '^='):
+            if statement.op.name in ('&=', '|=', '^=', '<<=', '>>='):
                 with self.__bit_target(statement.lvalue) as (targets, is_register):
                     if is_register:
                         if not isinstance(statement.lvalue, ast.Identifier):
-                            raise UnsupportedOpenQASMError('register bitwise assignment to a bit selection')
+                            raise UnsupportedOpenQASMError('register operator assignment to a bit selection')
                         expression = ast.BinaryExpression(
                             ast.BinaryOperator[statement.op.name[:-1]], statement.lvalue, statement.rvalue)
                         self.__emit_bit_value_assignment(targets, True, expression)
                         return
+                    if statement.op.name in ('<<=', '>>='):
+                        raise UnsupportedOpenQASMError('shift assignment requires a whole bit-register target')
                     self.__emit_bitwise_assignment(targets[0], statement.op.name,
                                                    ValueType.BIT, statement.rvalue)
                 return

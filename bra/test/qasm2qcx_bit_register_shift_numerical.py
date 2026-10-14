@@ -35,22 +35,41 @@ def main() -> None:
                         check_program(bra, f'''bit[{width}] a = "{value:0{width}b}";
                             {count_type} n = {count};
                             bit[{width}] b = "{value:0{width}b}" {operator} {count_type}({count});
-                            bit[{width}] c = a {operator} n; a = a {operator} n;''',
-                                      outputs('A1', width) + outputs('B1', width) + outputs('C1', width) + ('N1',),
-                                      bits(expected, width) * 3 + [str(count)])
+                            bit[{width}] c = a {operator} n; bit[{width}] d = a;
+                            d {operator}= n; a = a {operator} n;''',
+                                      outputs('A1', width) + outputs('B1', width) + outputs('C1', width) + outputs('D1', width) + ('N1',),
+                                      bits(expected, width) * 4 + [str(count)])
     check_program(bra, '''bit[4] a = "1011"; int i = 0; array[int, 2] counts = {1, 2};
         a = a << int(a[i]); a = a >> counts[i + 1];''', outputs('A1', 4) + ('I1',), bits(1, 4) + ['0'])
+    check_program(bra, '''bit[4] a = "1011"; int i = 0; array[int, 2] counts = {1, 2};
+        a <<= int(a[i]); a >>= counts[i + 1];''', outputs('A1', 4) + ('I1',), bits(1, 4) + ['0'])
     check_program(bra, '''bit[4] a = "1011"; bit[4] b = "1100"; int n = 1;
         bit[4] c = ~(a << n) ^ (b >> n);
         a = (a << n) >> n; b = (b >> n) << n;
         if (false) { a = "1011" << -1; }
         while (false) { b = b >> -1; }''',
                   outputs('A1', 4) + outputs('B1', 4) + outputs('C1', 4), bits(3, 4) + bits(12, 4) + bits(15, 4))
+    check_program(bra, '''bit[4] a = "1111"; array[int, 2] counts = {0, 1}; int n = 2;
+        for int count in counts { a >>= count; }
+        for int j in [0:n] { if (j == 1) { continue; } a <<= uint(j); }
+        while (n > 0) { a >>= 1; n -= 1; if (n == 1) { break; } }
+        for int j in {n, n + 1} { a >>= j; }
+        if (false) { a <<= -1; a >>= 1 / 0; }
+        for int j in [1:0] { a <<= counts[999]; }
+        bit[1] one = "1"; uint huge = uint(-1); one >>= huge;''',
+                  outputs('A1', 4) + ('N1', 'ONE7'), bits(0, 4) + ['1', '0'])
+    check_program(bra, '''include "stdgates.inc"; qubit q; x q;
+        bit measured = measure q; bit[4] a = "1011";
+        if (measured) { a <<= int(measured); }
+        for bit value in a { if (value) { a >>= int(value); } }''',
+                  outputs('A1', 4), bits(3, 4))
     for source in ('bit[4] a = "1011"; int n = -1; a = a << n;',
                    'bit[4] a = "0000"; a = a >> -1;',
-                   f'bit[1] a = "1"; int n = {native.QCX_INT_MIN}; a = a << n;'):
+                   f'bit[1] a = "1"; int n = {native.QCX_INT_MIN}; a = a << n;',
+                   'bit[4] a = "1011"; a <<= -1;',
+                   'bit[4] a = "0000"; int n = -1; a >>= n;'):
         check_error(bra, source, 'assertion failed in ASSERT')
-    print('Whole-bit-register shift expression numerical tests passed')
+    print('Whole-bit-register shift numerical tests passed')
 
 
 if __name__ == '__main__':
