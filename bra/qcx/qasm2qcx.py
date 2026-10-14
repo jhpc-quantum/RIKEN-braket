@@ -601,11 +601,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                         or any(name in scope for scope in self.__loop_bindings))
             if not shadowed and name in self.__bit_register_source_sizes:
                 return self.__bit_register_source_sizes[name]
-        if isinstance(expression, ast.IndexExpression):
-            selector = expression.index
-            if (isinstance(selector, ast.DiscreteSet)
-                    or (isinstance(selector, list) and any(isinstance(value, ast.RangeDefinition) for value in selector))):
-                return self.__static_bit_selection(expression, iterators).width
+        if isinstance(expression, ast.IndexExpression) and self.__is_register_bit_selection(expression):
+            return self.__static_bit_selection(expression, iterators).width
         if isinstance(expression, ast.BitstringLiteral):
             if expression.width <= 0:
                 raise InvalidBitOperandException('A bit-string operand must have a positive width')
@@ -1308,6 +1305,17 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             ],
             is_register,
         )
+
+    @staticmethod
+    def __is_register_bit_selection(operand: ast.QASMNode) -> bool:
+        if isinstance(operand, ast.IndexExpression):
+            selector = operand.index
+        elif isinstance(operand, ast.IndexedIdentifier) and len(operand.indices) == 1:
+            selector = operand.indices[0]
+        else:
+            return False
+        return (isinstance(selector, ast.DiscreteSet)
+                or (isinstance(selector, list) and any(isinstance(value, ast.RangeDefinition) for value in selector)))
 
     def __static_bit_selection(
             self, operand: ast.Identifier | ast.IndexExpression | ast.IndexedIdentifier,
@@ -2480,17 +2488,28 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __validate_register_operator_assignment(
             self, statement: ast.ClassicalAssignment,
             iterators: dict[str, ValueType] | None = None) -> bool:
-        if not isinstance(statement.lvalue, ast.Identifier) or statement.op.name not in ('=', '&=', '|=', '^=', '<<=', '>>='):
+        if statement.op.name not in ('=', '&=', '|=', '^=', '<<=', '>>='):
             return False
-        if statement.lvalue.name not in self.__bit_register_source_sizes:
-            return False
-        width = self.__bit_register_expression_width(statement.lvalue, iterators)
+        selected_target = self.__is_register_bit_selection(statement.lvalue)
+        if selected_target:
+            if not isinstance(self.__classical_source_types.get(statement.lvalue.name.name), ast.BitType):
+                return False
+            selection = self.__static_bit_selection(statement.lvalue, iterators, destination=True)
+            width = selection.width
+            lhs = ast.IndexExpression(statement.lvalue.name, statement.lvalue.indices[0])
+        else:
+            if not isinstance(statement.lvalue, ast.Identifier) or statement.lvalue.name not in self.__bit_register_source_sizes:
+                return False
+            lhs = statement.lvalue
+            width = self.__bit_register_expression_width(lhs, iterators)
         if width is None:
             return False  # An active scalar iterator shadows the register.
-        if statement.op.name == '=' and not isinstance(statement.rvalue, (ast.UnaryExpression, ast.BinaryExpression)):
+        if (statement.op.name == '=' and not selected_target
+                and not isinstance(statement.rvalue, (ast.UnaryExpression, ast.BinaryExpression))
+                and not self.__is_register_bit_selection(statement.rvalue)):
             return False  # Preserve the existing literal/copy assignment path.
         expression = (ast.BinaryExpression(ast.BinaryOperator[statement.op.name[:-1]],
-                                          statement.lvalue, statement.rvalue)
+                                          lhs, statement.rvalue)
                       if statement.op.name in ('<<=', '>>=') else statement.rvalue)
         rhs_width = self.__bit_register_expression_width(expression, iterators)
         if rhs_width is None:
@@ -3312,11 +3331,22 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __emit_bit_expression_assignment(
             self, target: ast.Identifier | ast.IndexedIdentifier,
             expression: ast.Expression) -> None:
-        with self.__bit_target(target) as (target_names, target_is_register):
-            if (target_is_register and isinstance(target, ast.IndexedIdentifier)
-                    and isinstance(expression, (ast.UnaryExpression, ast.BinaryExpression))):
-                raise UnsupportedOpenQASMError('register-expression assignment to a bit selection')
+        with self.__bit_assignment_target(target) as (target_names, target_is_register):
             self.__emit_bit_value_assignment(target_names, target_is_register, expression)
+
+    @contextlib.contextmanager
+    def __bit_assignment_target(
+            self, target: ast.Identifier | ast.IndexedIdentifier) -> Iterator[tuple[list[str], bool]]:
+        if self.__is_register_bit_selection(target):
+            selection = self.__static_bit_selection(target, destination=True)
+            name = self.__capitalize_variable_name(selection.source_name)
+            if self.__type_of(name) != ValueType.BIT:
+                raise InvalidBitOperandException('A bit selection destination must have bit type')
+            size = self.__bit_variable_name_size_map[name]
+            yield [self.__qcx_bit_name(name, size, index) for index in selection.indices], True
+            return
+        with self.__bit_target(target) as resolved:
+            yield resolved
 
     @contextlib.contextmanager
     def __shift_bit_register_value(
@@ -3566,8 +3596,24 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UnsupportedOpenQASMError(
                 f'bit assignment from {type(expression).__name__}')
 
-        for target_name, value in zip(target_names, values):
-            self.__qcx_lines.append(f'LET {target_name} := {value}')
+        temporaries = []
+        try:
+            destinations = set(target_names)
+            if target_is_register and any(isinstance(value, str) and value in destinations for value in values):
+                # Direct register copies also have value semantics. Snapshot
+                # all source bits before any overlapping destination write.
+                snapshot = []
+                for value in values:
+                    temporary = self.__add_new_temporary_variable(ValueType.BIT)
+                    temporaries.append(temporary)
+                    self.__qcx_lines.append(f'LET {temporary} := {value}')
+                    snapshot.append(temporary)
+                values = snapshot
+            for target_name, value in zip(target_names, values):
+                self.__qcx_lines.append(f'LET {target_name} := {value}')
+        finally:
+            for temporary in temporaries:
+                self.__release_temporary_variable(temporary)
 
     def __runtime_bit_read(
             self, expression: ast.IndexExpression, variable_name: str, size: int
@@ -3804,12 +3850,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
         if variable_type == ValueType.BIT:
             if statement.op.name in ('&=', '|=', '^=', '<<=', '>>='):
-                with self.__bit_target(statement.lvalue) as (targets, is_register):
+                with self.__bit_assignment_target(statement.lvalue) as (targets, is_register):
                     if is_register:
-                        if not isinstance(statement.lvalue, ast.Identifier):
-                            raise UnsupportedOpenQASMError('register operator assignment to a bit selection')
+                        lhs = (ast.IndexExpression(statement.lvalue.name, statement.lvalue.indices[0])
+                               if isinstance(statement.lvalue, ast.IndexedIdentifier) else statement.lvalue)
                         expression = ast.BinaryExpression(
-                            ast.BinaryOperator[statement.op.name[:-1]], statement.lvalue, statement.rvalue)
+                            ast.BinaryOperator[statement.op.name[:-1]], lhs, statement.rvalue)
                         self.__emit_bit_value_assignment(targets, True, expression)
                         return
                     if statement.op.name in ('<<=', '>>='):
