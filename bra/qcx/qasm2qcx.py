@@ -577,6 +577,43 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 'bitwise operators require matching integer or scalar bit operands')
         return lhs_type
 
+    def __bit_register_expression_width(
+            self, expression: ast.Expression,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> int | None:
+        # None denotes a scalar, not a one-bit register. Inspect declaration
+        # metadata only: validation must not emit QCX or evaluate arithmetic,
+        # including index values in an empty loop body.
+        if isinstance(expression, ast.Identifier):
+            name = expression.name
+            shadowed = ((iterators is not None and name in iterators)
+                        or any(name in scope for scope in self.__loop_bindings))
+            if not shadowed and name in self.__bit_register_source_sizes:
+                return self.__bit_register_source_sizes[name]
+        if isinstance(expression, ast.BitstringLiteral):
+            if expression.width <= 0:
+                raise InvalidBitOperandException('A bit-string operand must have a positive width')
+            return expression.width
+        if isinstance(expression, ast.UnaryExpression) and expression.op.name == '~':
+            width = self.__bit_register_expression_width(expression.expression, iterators)
+            if width is not None:
+                return width
+        if isinstance(expression, ast.BinaryExpression) and expression.op.name in ('&', '|', '^'):
+            lhs = self.__bit_register_expression_width(expression.lhs, iterators)
+            rhs = self.__bit_register_expression_width(expression.rhs, iterators)
+            if lhs is not None or rhs is not None:
+                if lhs is None or rhs is None:
+                    raise InvalidBitOperandException(
+                        'Bitwise operands must both be scalars or both be registers')
+                if lhs != rhs:
+                    raise InvalidBitOperandException(
+                        f'Bitwise register widths {lhs} and {rhs} do not match')
+                return lhs
+        # Preserve existing scalar operator/type rules and check indexed
+        # operand syntax without reading an element or computing its index.
+        self.__loop_expression_info(expression, iterators)
+        self.__validate_bitwise_indices(expression, iterators)
+        return None
+
     def __bitwise_operand(
             self, expression: ast.Expression
             ) -> tuple[str | int | float | complex, ValueType, ValueKind]:
@@ -2311,6 +2348,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __validate_integer_operator_assignment_types(
             self, statement: ast.ClassicalAssignment, iterators: dict[str, ValueType]) -> None:
+        if self.__validate_register_bitwise_assignment(statement, iterators):
+            return
         target = statement.lvalue
         if isinstance(target, ast.IndexedIdentifier):
             if (len(target.indices) != 1 or not isinstance(target.indices[0], list)
@@ -2347,6 +2386,26 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if isinstance(value, ast.Expression):
                 self.__validate_bitwise_indices(value, iterators)
 
+    def __validate_register_bitwise_assignment(
+            self, statement: ast.ClassicalAssignment,
+            iterators: dict[str, ValueType] | None = None) -> bool:
+        if not isinstance(statement.lvalue, ast.Identifier) or statement.op.name not in ('=', '&=', '|=', '^='):
+            return False
+        if statement.lvalue.name not in self.__bit_register_source_sizes:
+            return False
+        width = self.__bit_register_expression_width(statement.lvalue, iterators)
+        if width is None:
+            return False  # An active scalar iterator shadows the register.
+        if statement.op.name == '=' and not isinstance(statement.rvalue, (ast.UnaryExpression, ast.BinaryExpression)):
+            return False  # Preserve the existing literal/copy assignment path.
+        rhs_width = self.__bit_register_expression_width(statement.rvalue, iterators)
+        if rhs_width is None:
+            raise InvalidBitOperandException('A bit-register assignment requires a register value')
+        if width != rhs_width:
+            raise InvalidBitOperandException(
+                f'Bit expression width {rhs_width} does not match target size {width}')
+        return True
+
     def __validate_bitwise_types(
             self, node: ast.QASMNode | list, iterators: dict[str, ValueType]) -> None:
         if isinstance(node, list):
@@ -2358,6 +2417,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # by __validate_loop_body. Never invent values for an empty loop.
         if isinstance(node, ast.ForInLoop):
             self.__validate_bitwise_types(node.set_declaration, iterators)
+            return
+        # Register values are accepted only in their assignment context, not
+        # accidentally as scalar loop bounds, conditions, casts, or indices.
+        if isinstance(node, ast.ClassicalAssignment) and self.__validate_register_bitwise_assignment(node, iterators):
             return
         if ((isinstance(node, ast.UnaryExpression) and node.op.name == '~')
                 or (isinstance(node, ast.BinaryExpression) and node.op.name in ('&', '|', '^', '<<', '>>'))):
@@ -3156,11 +3219,69 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self, target: ast.Identifier | ast.IndexedIdentifier,
             expression: ast.Expression) -> None:
         with self.__bit_target(target) as (target_names, target_is_register):
+            if (target_is_register and isinstance(target, ast.IndexedIdentifier)
+                    and isinstance(expression, (ast.UnaryExpression, ast.BinaryExpression))):
+                raise UnsupportedOpenQASMError('register-expression assignment to a bit selection')
             self.__emit_bit_value_assignment(target_names, target_is_register, expression)
+
+    @contextlib.contextmanager
+    def __bit_register_expression_value(
+            self, expression: ast.Expression) -> Iterator[tuple[str | int, ...]]:
+        # The caller validates widths first. Each result owns its temporary
+        # bits until the assignment finishes; no destination is written here.
+        if isinstance(expression, ast.BitstringLiteral):
+            yield tuple((expression.value >> index) & 1 for index in range(expression.width))
+            return
+        if isinstance(expression, ast.Identifier):
+            name, indices, is_register = self.__bit_operand(expression, role='Bit source')
+            if not is_register:
+                raise InvalidBitOperandException('A bit-register expression requires register operands')
+            size = self.__bit_variable_name_size_map[name]
+            yield tuple(self.__qcx_bit_name(name, size, index) for index in indices)
+            return
+        temporaries = []
+        try:
+            with contextlib.ExitStack() as operands:
+                if isinstance(expression, ast.UnaryExpression) and expression.op.name == '~':
+                    left = operands.enter_context(self.__bit_register_expression_value(expression.expression))
+                    right = (1,) * len(left)
+                    operator = '^'
+                elif isinstance(expression, ast.BinaryExpression) and expression.op.name in ('&', '|', '^'):
+                    left = operands.enter_context(self.__bit_register_expression_value(expression.lhs))
+                    right = operands.enter_context(self.__bit_register_expression_value(expression.rhs))
+                    operator = expression.op.name
+                else:
+                    raise UnsupportedOpenQASMError(f'bit-register expression {type(expression).__name__}')
+                values = []
+                for lhs, rhs in zip(left, right):
+                    if isinstance(lhs, int) and isinstance(rhs, int):
+                        values.append(lhs & rhs if operator == '&' else lhs | rhs if operator == '|' else lhs ^ rhs)
+                    else:
+                        temporary = self.__add_new_temporary_variable(ValueType.BIT)
+                        temporaries.append(temporary)
+                        self.__qcx_lines.extend([f'LET {temporary} := {lhs}', f'LET {temporary} {operator}= {rhs}'])
+                        values.append(temporary)
+            # Child temporaries can be reused now that this complete result
+            # has been computed. Its own storage stays reserved across yield.
+            yield tuple(values)
+        finally:
+            for temporary in temporaries:
+                self.__release_temporary_variable(temporary)
 
     def __emit_bit_value_assignment(
             self, target_names: list[str], target_is_register: bool,
             expression: ast.Expression) -> None:
+        if target_is_register and isinstance(expression, (ast.UnaryExpression, ast.BinaryExpression)):
+            width = self.__bit_register_expression_width(expression)
+            if width is None:
+                raise InvalidBitOperandException('A bit-register assignment requires a register value')
+            if width != len(target_names):
+                raise InvalidBitOperandException(
+                    f'Bit expression width {width} does not match target size {len(target_names)}')
+            with self.__bit_register_expression_value(expression) as values:
+                for target, value in zip(target_names, values):
+                    self.__qcx_lines.append(f'LET {target} := {value}')
+            return
         boolean_identifier = isinstance(expression, ast.Identifier) and (
             self.__capitalize_variable_name(expression.name) in self.__bool_variable_names
             or expression.name in self.__const_bool_variable_values_map)
@@ -3490,7 +3611,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if statement.op.name in ('&=', '|=', '^='):
                 with self.__bit_target(statement.lvalue) as (targets, is_register):
                     if is_register:
-                        raise UnsupportedOpenQASMError('bitwise assignment requires a scalar target')
+                        if not isinstance(statement.lvalue, ast.Identifier):
+                            raise UnsupportedOpenQASMError('register bitwise assignment to a bit selection')
+                        expression = ast.BinaryExpression(
+                            ast.BinaryOperator[statement.op.name[:-1]], statement.lvalue, statement.rvalue)
+                        self.__emit_bit_value_assignment(targets, True, expression)
+                        return
                     self.__emit_bitwise_assignment(targets[0], statement.op.name,
                                                    ValueType.BIT, statement.rvalue)
                 return
