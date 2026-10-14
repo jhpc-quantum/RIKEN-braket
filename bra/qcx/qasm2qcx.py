@@ -597,6 +597,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             width = self.__bit_register_expression_width(expression.expression, iterators)
             if width is not None:
                 return width
+        if isinstance(expression, ast.BinaryExpression) and expression.op.name in ('<<', '>>'):
+            width = self.__bit_register_expression_width(expression.lhs, iterators)
+            if width is not None:
+                count_type, _ = self.__loop_expression_info(expression.rhs, iterators)
+                if count_type not in (ValueType.INT, ValueType.UINT):
+                    raise InvalidBitOperandException('A register shift count must be a scalar integer')
+                self.__validate_bitwise_indices(expression.rhs, iterators)
+                return width
         if isinstance(expression, ast.BinaryExpression) and expression.op.name in ('&', '|', '^'):
             lhs = self.__bit_register_expression_width(expression.lhs, iterators)
             rhs = self.__bit_register_expression_width(expression.rhs, iterators)
@@ -613,6 +621,22 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__loop_expression_info(expression, iterators)
         self.__validate_bitwise_indices(expression, iterators)
         return None
+
+    @staticmethod
+    def __fold_bit_register_shift(value: int, width: int, count: int, operator: str) -> int:
+        if width <= 0:
+            raise ValueError('Register shift width must be positive')
+        if operator not in ('<<', '>>'):
+            raise ValueError('Invalid register shift operator')
+        if count < 0:
+            raise InvalidShiftException('Register shift count must not be negative')
+        # Register shifts are not native integer shifts. Discarding all bits
+        # yields zero, without constructing an enormous Python left shift.
+        if count >= width:
+            return 0
+        mask = (1 << width) - 1
+        value &= mask
+        return ((value << count) if operator == '<<' else (value >> count)) & mask
 
     def __bitwise_operand(
             self, expression: ast.Expression
