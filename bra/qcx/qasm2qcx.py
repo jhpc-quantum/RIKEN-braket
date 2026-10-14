@@ -2492,8 +2492,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return False
         selected_target = self.__is_register_bit_selection(statement.lvalue)
         if selected_target:
-            if not isinstance(self.__classical_source_types.get(statement.lvalue.name.name), ast.BitType):
-                return False
             selection = self.__static_bit_selection(statement.lvalue, iterators, destination=True)
             width = selection.width
             lhs = ast.IndexExpression(statement.lvalue.name, statement.lvalue.indices[0])

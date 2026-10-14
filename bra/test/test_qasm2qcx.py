@@ -805,6 +805,14 @@ class StaticBitSelectionAssignmentTests(unittest.TestCase):
             with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
                 convert('OPENQASM 3.0; bit[4] a; for int i in [1:0] { ' + body + ' }')
 
+    def test_empty_loops_reject_unknown_and_nonbit_selection_destinations(self) -> None:
+        for destination in ('missing[0:1]', 'n[0:1]', 'values[0:1]'):
+            for operator in ('=', '&=', '<<='):
+                rhs = '1' if operator == '<<=' else '"11"'
+                with self.subTest(destination=destination, operator=operator), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    convert('OPENQASM 3.0; int n; array[int, 2] values; '
+                            f'for int i in [1:0] {{ {destination} {operator} {rhs}; }}')
+
 
 class BitRegisterShiftFoundationTests(unittest.TestCase):
     def setUp(self) -> None:

@@ -98,6 +98,11 @@ def main() -> None:
     check_error(bra, 'bit[4] a = "1111"; int n = -1; bit[2] b = a[{3, 0}] << n;',
                 'assertion failed in ASSERT')
     check_error(bra, 'bit[4] a = "1111"; a[0:1] >>= -1;', 'assertion failed in ASSERT')
+    # Keep the guide's ordering and overlapping-assignment example executable.
+    check_program(bra, '''bit[4] a = "1010"; bit[2] b = "11";
+        bit[2] c = a[0:1] ^ b; a[1:2] = ~a[0:1];
+        a[{0, 2}] &= b; a[0:1] <<= 1;''',
+                  outputs('A1', 4) + outputs('C1', 2), bits(8, 4) + bits(1, 2))
     print('Static bit-selection numerical tests passed')
 
 

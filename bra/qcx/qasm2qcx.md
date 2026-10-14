@@ -79,6 +79,8 @@ The converter currently covers:
   equal-width register operands and bit-string literals;
 - whole-bit-register shifts with constant or runtime integer counts,
   including `<<=` and `>>=` assignments;
+- static bit-register range/set selections as bitwise and shift operands
+  and overlap-safe assignment destinations;
 - scalar integer shift expressions (`<<`, `>>`) and compound assignments
   (`<<=`, `>>=`), with checked counts and signed left-shift overflow;
 - scalar constants, variables, assignments, and numeric casts;
@@ -307,9 +309,8 @@ Compound `&=`, `|=`, and `^=` assignments accept scalar `int`,
 `uint`, and scalar bit targets, including static and runtime-indexed integer-array
 and bit-register elements. Their RHS must have integer type for integer targets
 or scalar bit type for bit targets. For example, `flag ^= bit(true)` is accepted,
-but `flag ^= 1` requires that explicit bit conversion. Whole-register operations
-are described below; range and discrete-set selections are not bitwise
-compound-assignment targets. Active loop
+but `flag ^= 1` requires that explicit bit conversion. Whole-register and static
+selection operations are described below. Active loop
 iterators remain read-only.
 
 Bitwise binary operands evaluate left to right and are eager: `&` and `|`
@@ -377,8 +378,8 @@ active iterators remain read-only.
 Register values are supported only in the register-assignment contexts above;
 this does not add register comparisons, conditions, integer/register casts,
 indexing of computed results, or register expressions as loop bounds or
-iteration collections. New bitwise operations on slices or discrete-set
-selections, concatenation, aliases, `const bit[n]` declarations,
+iteration collections. Static selection operations are described below.
+Concatenation, aliases, `const bit[n]` declarations,
 and functions such as `popcount` remain outside this subset. Existing direct
 bit-register copies and indexed scalar-bit operations retain their behavior.
 
@@ -441,11 +442,73 @@ indices in converted bodies retain existing conversion-time errors. Active
 iterators remain read-only, and bit-register iteration retains live element
 reads when a shift modifies the iterated register.
 
-Shifts on scalar bits, register selections, and computed-result indexing remain
-unsupported. This does not add rotations, aliases, concatenation, register
+Shifts on scalar bits and computed-result indexing remain unsupported. Static
+selection shifts are described below. This does not add rotations, aliases, concatenation, register
 casts or comparisons, `const bit[n]` declarations, or register-valued scalar
 conditions/loop bounds. General count-expression overflow checks remain
 separate work.
+
+### Static bit-register selections
+
+Constant index ranges and discrete index sets can be register-valued operands
+in `&`, `|`, `^`, `~`, `<<`, and `>>` expressions. They can also be destinations
+of ordinary `=` and compound `&=`, `|=`, `^=`, `<<=`, and `>>=` assignments.
+Selected values may be combined with whole registers, other selections, and
+bit-string literals, including in nested expressions and top-level initializers.
+No new bra instruction is required.
+
+Selection order is significant: ranges follow their specified progression,
+and discrete sets retain their listed order. The first selected element is
+position zero (the low bit) of the selected value. Negative indices are
+normalized against the original container size after generating the range or
+set. Descending ranges and nonunit steps are supported; range endpoints are
+inclusive when reached by the step. For example, `a[3:-1:0]` reverses the
+element order, and `a[{3, 0}]` has `a[3]` as its low bit and `a[0]` as its high bit.
+
+The selected width is the number of selected elements, not the container width.
+Binary bitwise operands and assignment destinations require matching widths;
+there is no padding, truncation, or scalar broadcasting. `a[0]` is a scalar
+bit, whereas `a[0:0]` and `a[{0}]` are one-bit register selections. These views
+also work for singleton storage. Shift counts follow the register policy above:
+counts at least the selected width produce zero, and negative signed counts
+fail only when their emitted check executes.
+
+```qasm
+OPENQASM 3.0;
+bit[4] a = "1010";
+bit[2] b = "11";
+bit[2] c = a[0:1] ^ b;     // "01"
+a[1:2] = ~a[0:1];          // overlapping source/destination; a stays "1010"
+a[{0, 2}] &= b;            // a stays "1010"
+a[0:1] <<= 1;              // a becomes "1000"
+```
+
+The complete RHS is evaluated before any destination write, including direct
+copies such as `a[1:2] = a[0:1]` and `a = a[3:-1:0]`. Overlapping direct copies
+snapshot their sources; computed expressions use existing private result
+storage. Untouched container elements are preserved, and temporary storage is
+released and reused after assignment.
+
+The converter preserves repeated source indices in order, including entries
+that become equal after negative-index normalization. Ordinary and compound
+assignment destinations must not repeat a normalized index: `a[{3, -1}]` is
+therefore rejected as a destination for a four-bit register. This is an explicit
+converter subset policy; it does not change measurement selection handling.
+
+Range bounds, steps, and set elements must be literals or supported expressions
+of previously declared constants. Runtime variables and active loop iterators
+are not allowed in these selections, even when an iterator is unrolled or
+shadows a constant. Runtime scalar-element indexing remains supported separately.
+Empty selections, zero steps, omitted bounds, noninteger indices, and out-of-range
+elements are rejected during conversion. Invalid large ranges are checked
+incrementally rather than fully allocated before a bounds failure.
+
+Supported branches and loops may contain these assignments. Widths, types,
+selection bounds, and repeated destinations are checked on skipped paths and
+in empty loop bodies; runtime shift-count arithmetic and checks stay on reached
+paths. Active iterators remain read-only. Dynamic selections, multidimensional
+indexing, indexing computed register results, aliases, concatenation, register
+casts/comparisons, and iteration over selections remain separate work.
 
 ### Scalar integer shifts
 
@@ -684,8 +747,8 @@ and short-circuit operands skip these runtime operations. Names, types, and
 syntax are still validated during conversion, including on unreachable paths.
 Static indices retain their existing conversion-time checks and QCX output.
 Dynamic ranges and discrete sets, multidimensional indexing, and aliases remain
-unsupported. Whole-register bitwise operations and shifts are described above;
-their operations on register selections remain unsupported.
+unsupported. Whole-register and static-selection bitwise operations and shifts
+are described above.
 
 ### Boolean values and conversions
 
@@ -1557,7 +1620,7 @@ The current prototype does not reliably support:
   whole-register casts, complex-to-Boolean casts,
   Boolean arithmetic, mixed Boolean/numeric comparisons, or block-local
   declarations;
-- scalar-bit shifts, register bitwise operations and shifts on selections,
+- scalar-bit shifts and runtime-dependent register selections,
   whole-array bitwise operations, direct
   Boolean bitwise operations, or classical functions; or
 - arithmetic operators other than `+`, `-`, `*`, `/`, and integer `%`.
@@ -1610,6 +1673,16 @@ results, self-referencing counts, single index capture, skipped errors,
 loop transfers, live register iteration, and measurement-controlled execution.
 Unit tests additionally check width/type rejection, guard-before-cast ordering,
 buffer reuse, cleanup, empty-loop validation, and unsupported scalar contexts.
+
+`bra/test/qasm2qcx_static_bit_selection_numerical.py` checks all four-bit source
+patterns across ascending/descending ranges, negative indices, reordered sets,
+singleton views, and repeated sources. A Python snapshot model checks ordinary
+and compound assignments with overlapping destinations, verifying untouched
+bits and selected-width shifts. It also covers nested expressions, runtime
+counts, self-references, loops, skipped checks, and negative-count failures.
+Unit tests cover immutable metadata, constant bounds, width errors, repeated
+destination rejection, iterator shadowing, source declaration ordering, and
+temporary reuse/cleanup.
 
 `bra/test/integer_shift_numerical.py` checks native signed and unsigned shifts
 at every valid count, negative values and endpoints, invalid counts, overflow,
@@ -1747,6 +1820,7 @@ python3 bra/test/qasm2qcx_runtime_bit_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_bitwise_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_bit_register_bitwise_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_bit_register_shift_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_static_bit_selection_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_shift_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_uint_numerical.py --bra bra/bin/bra
 ```
