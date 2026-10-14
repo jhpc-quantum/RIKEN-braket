@@ -279,6 +279,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__amplitude_indices: list[int] | None = None
         self.__branch_index: int = 0
         self.__array_index: int = 0
+        self.__register_shift_index: int = 0
         self.__condition_index: int = 0
         self.__branch_depth: int = 0
         self.__boolean_expression_index: int = 0
@@ -597,6 +598,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             width = self.__bit_register_expression_width(expression.expression, iterators)
             if width is not None:
                 return width
+        if isinstance(expression, ast.BinaryExpression) and expression.op.name in ('<<', '>>'):
+            width = self.__bit_register_expression_width(expression.lhs, iterators)
+            if width is not None:
+                count_type, _ = self.__loop_expression_info(expression.rhs, iterators)
+                if count_type not in (ValueType.INT, ValueType.UINT):
+                    raise InvalidBitOperandException('A register shift count must be a scalar integer')
+                self.__validate_bitwise_indices(expression.rhs, iterators)
+                return width
         if isinstance(expression, ast.BinaryExpression) and expression.op.name in ('&', '|', '^'):
             lhs = self.__bit_register_expression_width(expression.lhs, iterators)
             rhs = self.__bit_register_expression_width(expression.rhs, iterators)
@@ -613,6 +622,22 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__loop_expression_info(expression, iterators)
         self.__validate_bitwise_indices(expression, iterators)
         return None
+
+    @staticmethod
+    def __fold_bit_register_shift(value: int, width: int, count: int, operator: str) -> int:
+        if width <= 0:
+            raise ValueError('Register shift width must be positive')
+        if operator not in ('<<', '>>'):
+            raise ValueError('Invalid register shift operator')
+        if count < 0:
+            raise InvalidShiftException('Register shift count must not be negative')
+        # Register shifts are not native integer shifts. Discarding all bits
+        # yields zero, without constructing an enormous Python left shift.
+        if count >= width:
+            return 0
+        mask = (1 << width) - 1
+        value &= mask
+        return ((value << count) if operator == '<<' else (value >> count)) & mask
 
     def __bitwise_operand(
             self, expression: ast.Expression
@@ -2348,7 +2373,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __validate_integer_operator_assignment_types(
             self, statement: ast.ClassicalAssignment, iterators: dict[str, ValueType]) -> None:
-        if self.__validate_register_bitwise_assignment(statement, iterators):
+        if self.__validate_register_operator_assignment(statement, iterators):
             return
         target = statement.lvalue
         if isinstance(target, ast.IndexedIdentifier):
@@ -2386,10 +2411,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if isinstance(value, ast.Expression):
                 self.__validate_bitwise_indices(value, iterators)
 
-    def __validate_register_bitwise_assignment(
+    def __validate_register_operator_assignment(
             self, statement: ast.ClassicalAssignment,
             iterators: dict[str, ValueType] | None = None) -> bool:
-        if not isinstance(statement.lvalue, ast.Identifier) or statement.op.name not in ('=', '&=', '|=', '^='):
+        if not isinstance(statement.lvalue, ast.Identifier) or statement.op.name not in ('=', '&=', '|=', '^=', '<<=', '>>='):
             return False
         if statement.lvalue.name not in self.__bit_register_source_sizes:
             return False
@@ -2398,7 +2423,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return False  # An active scalar iterator shadows the register.
         if statement.op.name == '=' and not isinstance(statement.rvalue, (ast.UnaryExpression, ast.BinaryExpression)):
             return False  # Preserve the existing literal/copy assignment path.
-        rhs_width = self.__bit_register_expression_width(statement.rvalue, iterators)
+        expression = (ast.BinaryExpression(ast.BinaryOperator[statement.op.name[:-1]],
+                                          statement.lvalue, statement.rvalue)
+                      if statement.op.name in ('<<=', '>>=') else statement.rvalue)
+        rhs_width = self.__bit_register_expression_width(expression, iterators)
         if rhs_width is None:
             raise InvalidBitOperandException('A bit-register assignment requires a register value')
         if width != rhs_width:
@@ -2420,7 +2448,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return
         # Register values are accepted only in their assignment context, not
         # accidentally as scalar loop bounds, conditions, casts, or indices.
-        if isinstance(node, ast.ClassicalAssignment) and self.__validate_register_bitwise_assignment(node, iterators):
+        if isinstance(node, ast.ClassicalAssignment) and self.__validate_register_operator_assignment(node, iterators):
             return
         if ((isinstance(node, ast.UnaryExpression) and node.op.name == '~')
                 or (isinstance(node, ast.BinaryExpression) and node.op.name in ('&', '|', '^', '<<', '>>'))):
@@ -3225,6 +3253,90 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__emit_bit_value_assignment(target_names, target_is_register, expression)
 
     @contextlib.contextmanager
+    def __shift_bit_register_value(
+            self, expression: ast.BinaryExpression,
+            values: tuple[str | int, ...]) -> Iterator[tuple[str | int, ...]]:
+        operand = None
+        temporaries = []
+        try:
+            operand = self.__condition_operand(expression.rhs)
+            count, count_type, count_kind = operand
+            if count_type not in (ValueType.INT, ValueType.UINT):
+                raise InvalidBitOperandException('A register shift count must be a scalar integer')
+            width = len(values)
+            if count_kind == ValueKind.LITERAL and int(count) >= 0:
+                distance = int(count)
+                if all(isinstance(value, int) for value in values):
+                    packed = sum(int(value) << index for index, value in enumerate(values))
+                    folded = self.__fold_bit_register_shift(packed, width, distance, expression.op.name)
+                    yield tuple((folded >> index) & 1 for index in range(width))
+                    return
+                result = []
+                for index in range(width):
+                    source = index - distance if expression.op.name == '<<' else index + distance
+                    value = values[source] if 0 <= source < width else 0
+                    if isinstance(value, str):
+                        storage = self.__add_new_temporary_variable(ValueType.BIT)
+                        temporaries.append(storage)
+                        self.__qcx_lines.append(f'LET {storage} := {value}')
+                        value = storage
+                    result.append(value)
+                yield tuple(result)
+                return
+            if width > self.QCX_INT_MAX:
+                raise InvalidBitOperandException('Runtime register shifts require a width within QCX INT range')
+            captured = self.__add_new_temporary_variable(count_type)
+            temporaries.append(captured)
+            self.__qcx_lines.append(f'LET {captured} := {count}')
+            if count_type == ValueType.INT:
+                self.__qcx_lines.append(f'ASSERT {captured} >= 0')
+            source_buffer = self.__add_temporary_bit_register(width)
+            result_buffer = self.__add_temporary_bit_register(width)
+            temporaries.extend((source_buffer, result_buffer))
+            result = tuple(self.__qcx_bit_name(result_buffer, width, index) for index in range(width))
+            for index, value in enumerate(values):
+                self.__qcx_lines.extend([
+                    f'LET {self.__qcx_bit_name(source_buffer, width, index)} := {value}',
+                    f'LET {result[index]} := 0'])
+            source_index = self.__add_new_temporary_variable(ValueType.INT)
+            target_index = self.__add_new_temporary_variable(ValueType.INT)
+            temporaries.extend((source_index, target_index))
+            label = f'QASM2QCX_REGISTER_SHIFT_{self.__register_shift_index}'
+            self.__register_shift_index += 1
+            # Oversized UINT counts must reach the zero result before a checked
+            # INT cast or index arithmetic. Valid indices increment at most to
+            # width, which is representable even at the native INT endpoint.
+            count_as_int = f':INT:{captured}' if count_type == ValueType.UINT else captured
+            self.__qcx_lines.extend([
+                f'JUMPIF {label}_END {captured} >= {width}',
+                f'LET {source_index} := {0 if expression.op.name == "<<" else count_as_int}',
+                f'LET {target_index} := {count_as_int if expression.op.name == "<<" else 0}',
+                f'@{label}_COPY',
+                f'JUMPIF {label}_END {source_index} >= {width}',
+                f'JUMPIF {label}_END {target_index} >= {width}',
+                f'LET {result_buffer}:{target_index} := {source_buffer}:{source_index}',
+                f'LET {source_index} += 1', f'LET {target_index} += 1',
+                f'JUMP {label}_COPY', f'@{label}_END'])
+            yield result
+        finally:
+            for temporary in temporaries:
+                self.__release_temporary_variable(temporary)
+            if operand is not None and operand[2] == ValueKind.TEMPORARY:
+                self.__release_temporary_variable(str(operand[0]))
+
+    def __add_temporary_bit_register(self, width: int) -> str:
+        index = 0
+        name = f'QASM2QCX_BITS_{width}_{index}'
+        while name in self.__used_temporary_variables or name in self.__reserved_variable_names:
+            index += 1
+            name = f'QASM2QCX_BITS_{width}_{index}'
+        self.__used_temporary_variables.add(name)
+        if name not in self.__declared_temporary_variables:
+            self.__declared_temporary_variables.add(name)
+            self.__qcx_lines.append(f'VAR {name} INT {width}')
+        return name
+
+    @contextlib.contextmanager
     def __bit_register_expression_value(
             self, expression: ast.Expression) -> Iterator[tuple[str | int, ...]]:
         # The caller validates widths first. Each result owns its temporary
@@ -3238,6 +3350,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise InvalidBitOperandException('A bit-register expression requires register operands')
             size = self.__bit_variable_name_size_map[name]
             yield tuple(self.__qcx_bit_name(name, size, index) for index in indices)
+            return
+        if isinstance(expression, ast.BinaryExpression) and expression.op.name in ('<<', '>>'):
+            with self.__bit_register_expression_value(expression.lhs) as values:
+                with self.__shift_bit_register_value(expression, values) as result:
+                    yield result
             return
         temporaries = []
         try:
@@ -3608,15 +3725,17 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return
 
         if variable_type == ValueType.BIT:
-            if statement.op.name in ('&=', '|=', '^='):
+            if statement.op.name in ('&=', '|=', '^=', '<<=', '>>='):
                 with self.__bit_target(statement.lvalue) as (targets, is_register):
                     if is_register:
                         if not isinstance(statement.lvalue, ast.Identifier):
-                            raise UnsupportedOpenQASMError('register bitwise assignment to a bit selection')
+                            raise UnsupportedOpenQASMError('register operator assignment to a bit selection')
                         expression = ast.BinaryExpression(
                             ast.BinaryOperator[statement.op.name[:-1]], statement.lvalue, statement.rvalue)
                         self.__emit_bit_value_assignment(targets, True, expression)
                         return
+                    if statement.op.name in ('<<=', '>>='):
+                        raise UnsupportedOpenQASMError('shift assignment requires a whole bit-register target')
                     self.__emit_bitwise_assignment(targets[0], statement.op.name,
                                                    ValueType.BIT, statement.rvalue)
                 return
