@@ -3193,7 +3193,54 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self, target: ast.Identifier | ast.IndexedIdentifier,
             expression: ast.Expression) -> None:
         with self.__bit_target(target) as (target_names, target_is_register):
+            if (target_is_register and isinstance(target, ast.IndexedIdentifier)
+                    and isinstance(expression, (ast.UnaryExpression, ast.BinaryExpression))):
+                raise UnsupportedOpenQASMError('register-expression assignment to a bit selection')
             self.__emit_bit_value_assignment(target_names, target_is_register, expression)
+
+    @contextlib.contextmanager
+    def __bit_register_expression_value(
+            self, expression: ast.Expression) -> Iterator[tuple[str | int, ...]]:
+        # The caller validates widths first. Each result owns its temporary
+        # bits until the assignment finishes; no destination is written here.
+        if isinstance(expression, ast.BitstringLiteral):
+            yield tuple((expression.value >> index) & 1 for index in range(expression.width))
+            return
+        if isinstance(expression, ast.Identifier):
+            name, indices, is_register = self.__bit_operand(expression, role='Bit source')
+            if not is_register:
+                raise InvalidBitOperandException('A bit-register expression requires register operands')
+            size = self.__bit_variable_name_size_map[name]
+            yield tuple(self.__qcx_bit_name(name, size, index) for index in indices)
+            return
+        temporaries = []
+        try:
+            with contextlib.ExitStack() as operands:
+                if isinstance(expression, ast.UnaryExpression) and expression.op.name == '~':
+                    left = operands.enter_context(self.__bit_register_expression_value(expression.expression))
+                    right = (1,) * len(left)
+                    operator = '^'
+                elif isinstance(expression, ast.BinaryExpression) and expression.op.name in ('&', '|', '^'):
+                    left = operands.enter_context(self.__bit_register_expression_value(expression.lhs))
+                    right = operands.enter_context(self.__bit_register_expression_value(expression.rhs))
+                    operator = expression.op.name
+                else:
+                    raise UnsupportedOpenQASMError(f'bit-register expression {type(expression).__name__}')
+                values = []
+                for lhs, rhs in zip(left, right):
+                    if isinstance(lhs, int) and isinstance(rhs, int):
+                        values.append(lhs & rhs if operator == '&' else lhs | rhs if operator == '|' else lhs ^ rhs)
+                    else:
+                        temporary = self.__add_new_temporary_variable(ValueType.BIT)
+                        temporaries.append(temporary)
+                        self.__qcx_lines.extend([f'LET {temporary} := {lhs}', f'LET {temporary} {operator}= {rhs}'])
+                        values.append(temporary)
+            # Child temporaries can be reused now that this complete result
+            # has been computed. Its own storage stays reserved across yield.
+            yield tuple(values)
+        finally:
+            for temporary in temporaries:
+                self.__release_temporary_variable(temporary)
 
     def __emit_bit_value_assignment(
             self, target_names: list[str], target_is_register: bool,
@@ -3205,8 +3252,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if width != len(target_names):
                 raise InvalidBitOperandException(
                     f'Bit expression width {width} does not match target size {len(target_names)}')
-            # Register-expression lowering is not implemented yet. Existing
-            # literal and register-copy assignments continue unchanged below.
+            with self.__bit_register_expression_value(expression) as values:
+                for target, value in zip(target_names, values):
+                    self.__qcx_lines.append(f'LET {target} := {value}')
+            return
         boolean_identifier = isinstance(expression, ast.Identifier) and (
             self.__capitalize_variable_name(expression.name) in self.__bool_variable_names
             or expression.name in self.__const_bool_variable_values_map)

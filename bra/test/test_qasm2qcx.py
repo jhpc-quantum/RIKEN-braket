@@ -562,11 +562,77 @@ class BitRegisterBitwiseFoundationTests(unittest.TestCase):
             with self.subTest(source=source), self.assertRaisesRegex(qasm2qcx.InvalidBitOperandException, diagnostic):
                 convert('OPENQASM 3.0; ' + source)
 
-    def test_lowering_remains_for_the_next_stage(self) -> None:
+    def test_compound_lowering_remains_for_the_next_stage(self) -> None:
         with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
-            convert('OPENQASM 3.0; bit[4] a; bit[4] b; bit[4] c = a & b;')
+            convert('OPENQASM 3.0; bit[4] a; bit[4] b; a &= b;')
         self.assertEqual(convert('OPENQASM 3.0; bit[1] a = "1"; bit[1] b = a;'),
                          ['QUBITS 0', 'VAR A1 INT', 'LET A1 := 1', 'VAR B1 INT', 'LET B1 := A1'])
+
+
+class BitRegisterBitwiseExpressionTests(unittest.TestCase):
+    def test_binary_initializers_and_assignment_output(self) -> None:
+        for operator in ('&', '|', '^'):
+            with self.subTest(operator=operator):
+                lines = convert(f'''OPENQASM 3.0; bit[2] a = "01"; bit[2] b = "10";
+                    bit[2] c = a {operator} b; c = a {operator} "11";''')
+                self.assertIn(f'LET QASM2QCX_INT_0 {operator}= B1:0', lines)
+                self.assertIn(f'LET QASM2QCX_INT_1 {operator}= B1:1', lines)
+                self.assertEqual(lines[-2:], ['LET C1:0 := QASM2QCX_INT_0', 'LET C1:1 := QASM2QCX_INT_1'])
+                self.assertEqual(sum(line.startswith('VAR QASM2QCX_') for line in lines), 2)
+
+    def test_literal_expressions_fold_with_leading_zeroes(self) -> None:
+        lines = convert('''OPENQASM 3.0; bit[4] a = ~("0011" ^ "0101") & "1010";
+            bit[1] b = ~"1";''')
+        self.assertEqual([line for line in lines if line.startswith('LET A1:')],
+                         ['LET A1:0 := 0', 'LET A1:1 := 0', 'LET A1:2 := 0', 'LET A1:3 := 1'])
+        self.assertIn('LET B1 := 0', lines)
+        self.assertFalse(any(line.startswith('VAR QASM2QCX_') for line in lines))
+
+    def test_self_references_write_only_after_complete_result(self) -> None:
+        lines = convert('OPENQASM 3.0; bit[3] a = "101"; bit[3] b = "011"; a = ~(a & b) ^ a;')
+        writes = [index for index, line in enumerate(lines) if line.startswith('LET A1:')]
+        reads = [index for index, line in enumerate(lines) if ':= A1:' in line or '^= A1:' in line]
+        self.assertEqual(len(writes), 6)
+        self.assertGreater(writes[3], max(reads))
+
+    def test_singleton_registers_remain_distinct_from_scalars(self) -> None:
+        lines = convert('OPENQASM 3.0; bit[1] a = "1"; bit[1] b = ~a; a = a ^ b;')
+        self.assertIn('LET QASM2QCX_INT_0 := A1', lines)
+        self.assertIn('LET QASM2QCX_INT_0 ^= 1', lines)
+        self.assertFalse(any('A1:' in line or 'B1:' in line for line in lines))
+        for source in ('bit[1] a; bit b = ~a;', 'bit b; bit[1] a = ~b;',
+                       'bit[1] a; bit b; a = a | b;'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert('OPENQASM 3.0; ' + source)
+
+    def test_nested_results_release_and_reuse_storage(self) -> None:
+        program = qasm2qcx.openqasm3.parse('''OPENQASM 3.0; bit[4] a; bit[4] b;
+            a = ~(a ^ b) & (a | "0011"); b = ~(a ^ b) & (a | "0011");''')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        lines = list(converter)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        # Three simultaneously live four-bit buffers, reused for the second assignment.
+        self.assertEqual(sum(line.startswith('VAR QASM2QCX_') for line in lines), 12)
+
+    def test_unsupported_selections_casts_and_conditions_stay_rejected(self) -> None:
+        prefix = 'OPENQASM 3.0; bit[4] a; bit[4] b; '
+        for statement in ('a[0:3] = ~b;', 'a[{0, 1, 2, 3}] = b & a;',
+                          'a = a[0:3] ^ b;', 'a = a << 1;', 'a = bit[4](1);',
+                          'int n = int(a & b);', 'if (a | b) {}', 'bool ok = a == b;',
+                          'if (false) { a = a ^ "01"; }'):
+            with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert(prefix + statement)
+
+    def test_failure_releases_partial_expression_storage(self) -> None:
+        # The source type pass knows later registers, but lowering must still
+        # reject reading their storage before the actual declaration.
+        program = qasm2qcx.openqasm3.parse('''OPENQASM 3.0; bit[2] a;
+            a = ~a | b; bit[2] b;''')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            converter.visit(program)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
 
 
 class ScalarBitwiseExpressionTests(unittest.TestCase):
