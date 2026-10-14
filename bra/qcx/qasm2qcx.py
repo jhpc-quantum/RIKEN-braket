@@ -577,6 +577,43 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 'bitwise operators require matching integer or scalar bit operands')
         return lhs_type
 
+    def __bit_register_expression_width(
+            self, expression: ast.Expression,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> int | None:
+        # None denotes a scalar, not a one-bit register. Inspect declaration
+        # metadata only: validation must not emit QCX or evaluate arithmetic,
+        # including index values in an empty loop body.
+        if isinstance(expression, ast.Identifier):
+            name = expression.name
+            shadowed = ((iterators is not None and name in iterators)
+                        or any(name in scope for scope in self.__loop_bindings))
+            if not shadowed and name in self.__bit_register_source_sizes:
+                return self.__bit_register_source_sizes[name]
+        if isinstance(expression, ast.BitstringLiteral):
+            if expression.width <= 0:
+                raise InvalidBitOperandException('A bit-string operand must have a positive width')
+            return expression.width
+        if isinstance(expression, ast.UnaryExpression) and expression.op.name == '~':
+            width = self.__bit_register_expression_width(expression.expression, iterators)
+            if width is not None:
+                return width
+        if isinstance(expression, ast.BinaryExpression) and expression.op.name in ('&', '|', '^'):
+            lhs = self.__bit_register_expression_width(expression.lhs, iterators)
+            rhs = self.__bit_register_expression_width(expression.rhs, iterators)
+            if lhs is not None or rhs is not None:
+                if lhs is None or rhs is None:
+                    raise InvalidBitOperandException(
+                        'Bitwise operands must both be scalars or both be registers')
+                if lhs != rhs:
+                    raise InvalidBitOperandException(
+                        f'Bitwise register widths {lhs} and {rhs} do not match')
+                return lhs
+        # Preserve existing scalar operator/type rules and check indexed
+        # operand syntax without reading an element or computing its index.
+        self.__loop_expression_info(expression, iterators)
+        self.__validate_bitwise_indices(expression, iterators)
+        return None
+
     def __bitwise_operand(
             self, expression: ast.Expression
             ) -> tuple[str | int | float | complex, ValueType, ValueKind]:
@@ -3161,6 +3198,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __emit_bit_value_assignment(
             self, target_names: list[str], target_is_register: bool,
             expression: ast.Expression) -> None:
+        if target_is_register and isinstance(expression, (ast.UnaryExpression, ast.BinaryExpression)):
+            width = self.__bit_register_expression_width(expression)
+            if width is None:
+                raise InvalidBitOperandException('A bit-register assignment requires a register value')
+            if width != len(target_names):
+                raise InvalidBitOperandException(
+                    f'Bit expression width {width} does not match target size {len(target_names)}')
+            # Register-expression lowering is not implemented yet. Existing
+            # literal and register-copy assignments continue unchanged below.
         boolean_identifier = isinstance(expression, ast.Identifier) and (
             self.__capitalize_variable_name(expression.name) in self.__bool_variable_names
             or expression.name in self.__const_bool_variable_values_map)

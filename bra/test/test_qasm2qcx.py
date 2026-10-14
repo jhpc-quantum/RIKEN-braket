@@ -471,6 +471,104 @@ class ScalarShiftAssignmentTests(unittest.TestCase):
         self.assertEqual(converter._QASM2QCXConverter__loop_contexts, [])
 
 
+class BitRegisterBitwiseFoundationTests(unittest.TestCase):
+    def converter(self, declarations: str):
+        program = qasm2qcx.openqasm3.parse('OPENQASM 3.0; ' + declarations)
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        return converter
+
+    def expression(self, source: str):
+        program = qasm2qcx.openqasm3.parse('OPENQASM 3.0; bit[4] result = ' + source + ';')
+        return program.statements[0].init_expression
+
+    def width(self, converter, source: str, iterators=None):
+        return converter._QASM2QCXConverter__bit_register_expression_width(
+            self.expression(source), iterators)
+
+    def test_registers_literals_and_nested_expression_widths(self) -> None:
+        converter = self.converter('bit[4] a; bit[4] b; bit[1] one; bit scalar;')
+        for expression, width in (
+                ('a', 4), ('"0001"', 4), ('one', 1), ('"0"', 1),
+                ('~a', 4), ('~~"0011"', 4), ('a & b', 4),
+                ('a | "0011"', 4), ('~(a ^ b) & ("0001" | a)', 4),
+                ('one ^ "1"', 1), ('scalar', None), ('~scalar', None)):
+            with self.subTest(expression=expression):
+                self.assertEqual(self.width(converter, expression), width)
+
+    def test_different_widths_and_scalar_register_mixing_rejected(self) -> None:
+        converter = self.converter('bit[4] a; bit[2] b; bit[1] one; bit scalar; int n; bool ready;')
+        for expression in ('a & b', 'a | "01"', 'one ^ "00"', '~(a & (b | "01"))'):
+            with self.subTest(expression=expression), self.assertRaisesRegex(
+                    qasm2qcx.InvalidBitOperandException, 'widths .* do not match'):
+                self.width(converter, expression)
+        for expression in ('one & scalar', 'scalar | "1"', 'a ^ n', 'ready & a',
+                           'a[0] & one', 'one | bit(true)'):
+            with self.subTest(expression=expression), self.assertRaisesRegex(
+                    qasm2qcx.InvalidBitOperandException, 'both be scalars or both be registers'):
+                self.width(converter, expression)
+
+    def test_width_checks_do_not_emit_or_evaluate_index_arithmetic(self) -> None:
+        converter = self.converter('bit[4] a; bit[4] b; bit scalar; int i;')
+        before = (list(converter._QASM2QCXConverter__qcx_lines), converter._QASM2QCXConverter__value,
+                  converter._QASM2QCXConverter__value_type, converter._QASM2QCXConverter__value_kind,
+                  converter._QASM2QCXConverter__expression_kind,
+                  set(converter._QASM2QCXConverter__used_temporary_variables))
+        self.assertEqual(self.width(converter, '~(a & b)'), 4)
+        for expression in ('a[999] & scalar', 'a[1 / 0] ^ scalar', 'a[i + 1] | scalar'):
+            self.assertIsNone(self.width(converter, expression))
+        self.assertEqual(before, (list(converter._QASM2QCXConverter__qcx_lines), converter._QASM2QCXConverter__value,
+                         converter._QASM2QCXConverter__value_type, converter._QASM2QCXConverter__value_kind,
+                         converter._QASM2QCXConverter__expression_kind,
+                         set(converter._QASM2QCXConverter__used_temporary_variables)))
+
+    def test_register_widths_remain_in_declaration_scope(self) -> None:
+        converter = self.converter('const int N = 4; bit[N] a; bit[4] b;')
+        self.assertEqual(self.width(converter, 'a & b', {'N': qasm2qcx.ValueType.INT}), 4)
+        self.assertIsNone(self.width(converter, 'a', {'a': qasm2qcx.ValueType.BIT}))
+        self.assertIsNone(self.width(converter, '~a', {'a': qasm2qcx.ValueType.INT}))
+        with self.assertRaises(qasm2qcx.InvalidBitOperandException):
+            self.width(converter, 'a & b', {'a': qasm2qcx.ValueType.BIT})
+        converter._QASM2QCXConverter__loop_bindings.append({'a': 2})
+        try:
+            self.assertIsNone(self.width(converter, '~a'))
+        finally:
+            converter._QASM2QCXConverter__loop_bindings.pop()
+
+    def test_unsupported_operations_and_selections_rejected(self) -> None:
+        converter = self.converter('bit[4] a; bit[4] b; float f; array[int, 2] values;')
+        for expression in ('a << 1', 'a + b', '!a', 'a == b', 'int(a)', 'a[0:1] & b',
+                           'a[{0, 1}] | b', 'a[f] & a[0]', 'values & a', 'sin(1.0)'):
+            with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.width(converter, expression)
+        with self.assertRaises(qasm2qcx.NoVariableNameException):
+            self.width(converter, 'a & missing')
+
+    def test_existing_scalar_type_rules_are_preserved(self) -> None:
+        converter = self.converter('int a; uint b; bit scalar; bool ready;')
+        for expression in ('a & b', '~a', 'scalar ^ bit(true)', 'a << 1'):
+            with self.subTest(expression=expression):
+                self.assertIsNone(self.width(converter, expression))
+        for expression in ('scalar & a', '~ready', 'ready | ready'):
+            with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.width(converter, expression)
+
+    def test_register_assignment_reports_operand_and_target_width_errors(self) -> None:
+        for source, diagnostic in (
+                ('bit[4] a; bit[2] b; bit[4] c = a & b;', 'widths 4 and 2 do not match'),
+                ('bit[4] a; bit[2] c = ~a;', 'width 4 does not match target size 2'),
+                ('bit scalar; bit[1] c = ~scalar;', 'requires a register value'),
+                ('bit[1] one; bit scalar; one = one & scalar;', 'both be scalars or both be registers')):
+            with self.subTest(source=source), self.assertRaisesRegex(qasm2qcx.InvalidBitOperandException, diagnostic):
+                convert('OPENQASM 3.0; ' + source)
+
+    def test_lowering_remains_for_the_next_stage(self) -> None:
+        with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+            convert('OPENQASM 3.0; bit[4] a; bit[4] b; bit[4] c = a & b;')
+        self.assertEqual(convert('OPENQASM 3.0; bit[1] a = "1"; bit[1] b = a;'),
+                         ['QUBITS 0', 'VAR A1 INT', 'LET A1 := 1', 'VAR B1 INT', 'LET B1 := A1'])
+
+
 class ScalarBitwiseExpressionTests(unittest.TestCase):
     def test_integer_and_bit_constant_folding(self) -> None:
         self.assertEqual(convert('''OPENQASM 3.0;
