@@ -89,8 +89,8 @@ The converter currently covers:
 - scalar integer shift expressions (`<<`, `>>`) and compound assignments
   (`<<=`, `>>=`), with checked counts and signed left-shift overflow;
 - scalar constants, variables, assignments, and numeric casts;
-- fixed-size, one-dimensional `int` arrays with static and runtime element
-  reads and writes;
+- fixed-size, one-dimensional `int` and `float` arrays with static and runtime
+  element reads and writes;
 - scalar and register `bit` values, including bit-string initialization;
 - runtime-indexed bit-register element reads, assignments, and scalar
   measurement destinations;
@@ -797,14 +797,68 @@ Even a one-element array requires explicit indexing
 when used as a scalar. Qubit indices remain static; bit-register elements also
 support runtime indices as described below.
 
-Multidimensional arrays, non-`int` arrays (including `uint` arrays), slices,
+Floating-point arrays are supported as described next. Multidimensional arrays,
+arrays of other element types (including `uint`), slices,
 whole-array arithmetic or assignments, array-copy initializers, aliases, and
 block-local array declarations remain unsupported.
 
-### Runtime integer-array indexing
+### One-dimensional floating-point arrays
 
-Runtime indices support scalar `int`, `uint`, supported integer
-arithmetic, enclosing runtime iterators, and indexed integer-array elements.
+The converter supports top-level `array[float, N]` declarations, including sized
+base types such as `float[32]` and `float[64]`. Size expressions follow the same
+rules as integer arrays: `N` must be a positive compile-time integer no larger
+than QCX `INT_MAX`, resolved in declaration scope.
+
+Elements use bra's native QCX `REAL` storage, including expression temporaries.
+As with scalar floats, declared floating-point widths are not enforced:
+`float[32]` does not introduce single-precision rounding, and `float[64]` does
+not guarantee double precision independently of the bra build. This feature
+does not add width emulation or change existing scalar-float arithmetic.
+
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+qubit q;
+array[float, 3] angles = {0.1, 0.2, 0.3};
+int index = -1;
+angles[index] += 0.05;
+rx(angles[index]) q;
+```
+
+An optional initializer must be a flat array literal with exactly `N` elements.
+Expressions execute in element order at the declaration's position and use the
+existing scalar-float assignment conversions: integers and Booleans can promote
+to floats, but complex values require an explicit conversion. An initializer
+can read elements of a previously declared array. Without an initializer,
+OpenQASM element values remain undefined until assigned; do not rely on the
+backend's zero-initialized storage.
+
+Element assignments support `=`, `+=`, `-=`, `*=`, and `/=`. Reads can be used in
+supported scalar arithmetic, unary negation, comparisons, casts, gate parameters,
+and `gphase` arguments. Comparisons promote compatible integer and floating-point
+operands without truncating the float. A floating-point element is not a direct
+Boolean condition; use a comparison or `bool(angles[index])`. Similarly, integer
+loop bounds, steps, set elements, and array indices require an explicit integer
+cast when supplied by a floating-point expression.
+
+Static and runtime integer indices, including negative indices, follow the
+shared indexing rules below. Access remains explicitly indexed even for
+one-element arrays. Position-based integer loops can read and update float
+arrays, but direct iteration such as `for float angle in angles` remains
+unsupported.
+
+Floating-point `%`, `**`, bitwise operators, and shifts are not supported,
+including their compound assignments. These type restrictions also apply to
+integer-only operators in empty loops; validation does not execute the skipped
+arithmetic. Other array element types, multidimensional arrays, slices,
+whole-array expressions or assignments, array-copy initializers, aliases, and
+block-local declarations remain separate work.
+
+### Runtime array indexing
+
+Both integer and floating-point arrays accept runtime indices using scalar
+`int`, `uint`, supported integer arithmetic, enclosing runtime iterators, and
+indexed integer-array elements.
 Nested accesses such as `values[indices[i]]` are accepted. Floating-point,
 Boolean, and scalar bit indices require an explicit integer cast, for example
 `values[int(flag)]`. Whole-register casts retain their existing restrictions.
@@ -1030,8 +1084,8 @@ operators are `==`, `!=`, `>`, `<`, `>=`, and `<=`. OpenQASM `!=` is emitted as 
 not-equal operator `\=`.
 
 Conditions can compare scalar `int`, `uint`, `float`, and `bit` expressions.
-A bit-register or integer-array element with a supported static or runtime
-index is also accepted.
+A bit-register, integer-array, or floating-point-array element with a supported
+static or runtime index is also accepted.
 Compatible integer and floating-point operands are promoted when necessary. Complex
 values cannot be compared. Equal-width bit-register `==` and `!=` comparisons
 are supported as described in [Bit-register equality](#bit-register-equality).
@@ -1800,7 +1854,7 @@ The current prototype does not reliably support:
 - user-defined gates or gate modifiers;
 - runtime qubit indices, dynamic register ranges or discrete sets, ranges with
   omitted bounds, or multidimensional indexing;
-- classical arrays beyond the one-dimensional `int` subset above,
+- classical arrays beyond the one-dimensional `int` and `float` subsets above,
   whole-register casts, complex-to-Boolean casts,
   Boolean arithmetic, mixed Boolean/numeric comparisons, or block-local
   declarations;
@@ -1943,6 +1997,16 @@ Python reference model, bounds failures, skipped assertions, mixed control flow,
 casts, indexed initializers, and temporary-storage lifetime. Unit tests interpret
 the emitted normalization guard using checked native integer arithmetic.
 
+`bra/test/qasm2qcx_float_array_numerical.py` verifies native REAL declarations,
+runtime initializers and scalar numeric promotions, static/runtime/negative
+indices, singleton arrays, indexed assignments and compound assignments,
+captured destination indices, nested integer-array indices, and bounds failures.
+Integration cases cover arithmetic, negation, casts, mixed numeric comparisons,
+short-circuiting, skipped accesses, integer loops and `while`, iterator shadowing,
+gate parameters, and executed index division errors. Unit tests additionally
+cover invalid dimensions, initializers, indices, unsupported operations and
+iteration, empty-loop validation, and temporary cleanup.
+
 `bra/test/qasm2qcx_bit_register_numerical.py` verifies singleton and larger
 registers, bit-string element order, live mutation, casts and conditions,
 scalar assignments, mixed loop nesting and typed shadowing, repeated entry,
@@ -2032,6 +2096,7 @@ python3 bra/test/qasm2qcx_runtime_for_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_step_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_set_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_integer_array_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_float_array_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_bit_register_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_bit_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_bitwise_numerical.py --bra bra/bin/bra
