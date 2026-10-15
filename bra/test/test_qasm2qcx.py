@@ -499,6 +499,13 @@ class IntegerPowerExpressionTests(unittest.TestCase):
             converter.visit(program)
         self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
 
+    def test_signed_literal_inputs_must_fit_even_when_the_result_would_fit(self) -> None:
+        maximum = qasm2qcx.QASM2QCXConverter.QCX_INT_MAX
+        for expression in (f'{maximum + 1} ** 0', f'1 ** {maximum + 1}'):
+            with self.subTest(expression=expression), self.assertRaisesRegex(
+                    qasm2qcx.UnsupportedOpenQASMError, 'operand outside QCX INT range'):
+                convert(f'OPENQASM 3.0; int x = {expression};')
+
 
 class IntegerPowerAssignmentTests(unittest.TestCase):
     def test_scalar_compound_assignments_produce_completed_results(self) -> None:

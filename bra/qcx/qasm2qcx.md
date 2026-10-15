@@ -73,6 +73,8 @@ The converter currently covers:
 - native unsigned storage and modulo-width arithmetic for scalar `uint` and
   supported `uint[n]` widths;
 - integer remainder expressions and compound assignments using `%` and `%=`;
+- scalar integer exponentiation (`**`, `**=`), with nonnegative exponents,
+  modular UINT results, and checked native INT results;
 - scalar integer and bit bitwise expressions (`&`, `|`, `^`, `~`) and
   compound assignments (`&=`, `|=`, `^=`);
 - whole-bit-register bitwise expressions and compound assignments with
@@ -553,12 +555,12 @@ widths, scalar/register mixing, ordered register comparisons (`<`, `<=`, `>`,
 `>=`), bare register conditions, dynamic selections, aliases, and indexing of
 computed register results remain unsupported.
 
-### Integer exponentiation design (implementation in progress)
+### Integer exponentiation
 
 `**` supports constant folding and runtime lowering, and `**=` supports scalar
 and indexed integer-array targets. Both integrate with supported expressions,
-conditions, and loops. Final documentation and regression review are pending.
-The integer subset follows these rules:
+casts, comparisons, conditions, and loops. An integer result needs a comparison
+or `bool(...)` cast to become a condition. The integer subset follows these rules:
 
 - Operands must be scalar `int` or `uint`. Signed operands must have native QCX
   width; non-native signed widths, Boolean/bit values, registers, floating-point,
@@ -578,8 +580,50 @@ The integer subset follows these rules:
   Runtime checks execute only on reached paths, including for literal operands
   in runtime expressions. Metadata checks validate types without evaluating
   powers, exponent arithmetic, or element indices in empty loops.
-- Operands will be evaluated once, left to right. Parser precedence is retained:
+- Signed literal operands must fit native INT, even when an exponent of zero
+  would make the result small. Use an explicit supported cast when UINT input
+  semantics are intended; general overflow in operand arithmetic is not checked.
+- Operands are evaluated once, left to right. Parser precedence is retained:
   `2 ** 3 ** 2` means `2 ** (3 ** 2)`, and `-2 ** 2` means `-(2 ** 2)`.
+
+```qasm
+const int SIZE = 2 ** 3;               // 8
+int a = -2;
+int n = 3;
+int signed_power = a ** n;             // -8
+uint[4] u = 3;
+uint[4] e = 4;
+uint[4] wrapped = u ** e;              // 81 modulo 16: 1
+int promoted = u ** n;                // INT result: 27
+array[int, 2] values = {2, 3};
+int i = 0;
+values[i] **= values[i + 1];           // values[0] becomes 8
+if (signed_power < 0 && bool(u ** e)) { a **= 2; }
+```
+
+Compound assignment captures its destination index once and snapshots the
+destination's value before evaluating the RHS. It writes only after the power
+calculation and its checks succeed. Result promotion is the same as for an
+ordinary `a ** b` expression, followed by the destination's usual conversion
+and UINT normalization. A native UINT result assigned to INT must fit INT;
+this is a checked conversion, not a signed reinterpretation cast.
+
+Constant UINT folding uses modular exponentiation. Runtime powers use
+exponentiation by squaring with a logarithmic number of iterations and existing
+QCX arithmetic, branches, and `ASSERT` instructions. Signed powers compute
+unsigned magnitudes (including the magnitude of `INT_MIN`) and guard each
+product with an unsigned division bound before multiplying. The final signed
+value is reconstructed without negating `INT_MIN` or narrowing its magnitude
+through INT. An unused final squaring is not performed, so a valid `a ** 1`
+does not fail because `a ** 2` would overflow. No new bra instruction is required.
+
+Negative exponents and signed-result overflow on reached runtime paths fail
+through `ASSERT`; the bra CLI reports the failed assertion and exits nonzero.
+Surrounding logical short-circuiting and skipped branches/loops skip these
+runtime checks. Invalid operand types, non-native signed widths, and
+iterator-dependent cast widths remain conversion errors even on skipped paths.
+Already declared widths retain their declaration-scope meaning when a loop
+iterator shadows a constant used in the declaration. Iterators remain read-only.
 
 OpenQASM specifies integer power and compound assignment in its
 [classical instructions](https://openqasm.com/versions/3.0/language/classical.html#integers)
@@ -1704,7 +1748,7 @@ The current prototype does not reliably support:
 - scalar-bit shifts and runtime-dependent register selections,
   ordered bit-register comparisons, whole-array bitwise operations, direct
   Boolean bitwise operations, or classical functions; or
-- arithmetic operators other than `+`, `-`, `*`, `/`, and integer `%`.
+- arithmetic operators other than `+`, `-`, `*`, `/`, and integer `%` and `**`.
 
 Integer limitations additionally include `uint[n]` widths above native `UINT`,
 UINT arrays or iterators, fixed-width signed reinterpretation casts from UINT,
@@ -1789,6 +1833,17 @@ intermediate masks, self-references, captured array indices, loop bounds and
 sets, skipped errors, invalid counts, and signed overflow. Unit tests additionally
 cover type rejection, non-native signed operands, empty-loop validation, and
 temporary cleanup.
+
+`bra/test/qasm2qcx_integer_power_numerical.py` compares constant folding, runtime
+powers, and compound assignments with Python reference results. It checks signed
+bases and native endpoints, zero/one exponents, unsigned widths and wrapping,
+mixed promotions, nested powers, single destination-index capture, self-references,
+casts, comparisons, short-circuiting, branches, range/set/array/register/while loops,
+declaration-scope widths, gate parameters, and measurement-controlled execution.
+Negative exponents, signed-result overflow, and checked assignment-conversion
+failures are tested at runtime. Unit tests additionally cover precedence,
+invalid operands and widths, empty loops, read-only iterators, temporary cleanup,
+and failed RHS lowering. The power numerical suite also passes with UBSan enabled.
 
 `bra/test/qasm2qcx_integer_remainder_numerical.py` verifies runtime remainder
 for signed operands, nested expressions, operand preservation, short-circuiting,
@@ -1899,6 +1954,7 @@ python3 bra/test/integer_bitwise_numerical.py --bra bra/bin/bra
 python3 bra/test/integer_shift_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_if_else_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_integer_remainder_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_integer_power_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_for_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_while_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_for_numerical.py --bra bra/bin/bra

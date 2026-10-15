@@ -7,6 +7,7 @@ Example:
 """
 
 import argparse
+import math
 import pathlib
 import resource
 
@@ -59,6 +60,18 @@ def check_assignments_and_control_flow(bra: pathlib.Path) -> None:
         for int i in v { x **= i; }
         bit[2] flags = "11"; int y = 2;
         for bit b in flags { y **= int(b) + 1; }''', ('X1', 'Y1'), ['64', '16'])
+    # Keep the documentation's complete exponentiation example executable.
+    check_program(bra, '''const int SIZE = 2 ** 3;
+        int a = -2; int n = 3; int signed_power = a ** n;
+        uint[4] u = 3; uint[4] e = 4; uint[4] wrapped = u ** e;
+        int promoted = u ** n; array[int, 2] values = {2, 3}; int i = 0;
+        values[i] **= values[i + 1];
+        if (signed_power < 0 && bool(u ** e)) { a **= 2; }
+        int x = signed_power; int y = int(wrapped); int z = promoted;''',
+                  ('X1', 'Y1', 'Z1', 'A1', 'VALUES63:0'), ['-8', '1', '27', '4', '8'])
+    check_program(bra, '''uint[4] u = 15; int n = 1;
+        int x = (u + n) ** uint[4](2); int y = (-(u + n)) ** uint[4](2);
+        int z = 15; z **= (u + n) ** 0;''', ('X1', 'Y1', 'Z1'), ['256', '256', '15'])
     for source in ('int x = 2; x **= -1;', 'uint x = 2; int n = -1; x **= n;',
                    f'int x = {converter.QCX_INT_MAX}; x **= 2;'):
         check_error(bra, source, 'assertion failed in ASSERT')
@@ -77,11 +90,19 @@ def main() -> None:
     signed_cases.extend(((minimum, 0), (minimum, 1), (minimum, 2), (maximum, 1),
                          (maximum, 2), (-2, width - 1), (2, width - 1),
                          (-2, width), (-1, maximum), (0, maximum), (1, maximum)))
+    root = math.isqrt(maximum)
+    signed_cases.extend((base, 2) for base in (root, root + 1, -root, -root - 1))
     for base, exponent in signed_cases:
         expected = pow(base, exponent)
         runtime = f'int a = {base}; int n = {exponent}; int x = a ** n;'
         if not minimum <= expected <= maximum:
             check_error(bra, runtime, 'assertion failed in ASSERT')
+            try:
+                qasm2qcx.convert(f'OPENQASM 3.0; const int C = ({base}) ** {exponent};')
+            except qasm2qcx.InvalidPowerException:
+                pass
+            else:
+                raise RuntimeError('An overflowing constant power was accepted')
             continue
         check_program(bra, runtime + f'const int C = ({base}) ** {exponent}; int y = C;',
                       ('X1', 'Y1'), [str(expected), str(expected)])
