@@ -569,6 +569,99 @@ class BitRegisterBitwiseFoundationTests(unittest.TestCase):
                          ['QUBITS 0', 'VAR A1 INT', 'LET A1 := 1', 'VAR B1 INT', 'LET B1 := A1'])
 
 
+class BitRegisterEqualityFoundationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.foundation = BitRegisterBitwiseFoundationTests()
+        self.converter = self.foundation.converter('''bit[4] a; bit[4] b; bit[1] one;
+            bit scalar; bit other; int n; uint u; float f; bool ready; bit[65] wide;
+            array[int, 2] counts;''')
+
+    def comparison(self, source: str):
+        return qasm2qcx.openqasm3.parse('OPENQASM 3.0; bool result = ' + source + ';').statements[0].init_expression
+
+    def width(self, source: str, iterators=None):
+        return self.converter._QASM2QCXConverter__register_comparison_width(self.comparison(source), iterators)
+
+    def test_equal_width_register_operands_literals_and_expressions(self) -> None:
+        for expression, expected in (('a == b', 4), ('a != "0000"', 4),
+                                     ('"0000" == "0001"', 4), ('~a == (b ^ "0011")', 4),
+                                     ('(a << n) != (b >> u)', 4), ('a[0:1] == a[{3, 1}]', 2),
+                                     ('one == a[0:0]', 1), ('one != "1"', 1), ('wide == ~wide', 65)):
+            with self.subTest(expression=expression):
+                self.assertEqual(self.width(expression), expected)
+
+    def test_width_mismatches_and_scalar_register_mixing_rejected(self) -> None:
+        for expression in ('a == "01"', 'a != one', 'a[0:1] == a[0:2]', '"0" != "00"'):
+            with self.subTest(expression=expression), self.assertRaisesRegex(
+                    qasm2qcx.InvalidBitOperandException, 'register widths .* do not match'):
+                self.width(expression)
+        for expression in ('a == n', 'a != u', 'a == ready', 'one == scalar',
+                           'one != a[0]', 'true == one', 'a[0:0] == 1'):
+            with self.subTest(expression=expression), self.assertRaisesRegex(
+                    qasm2qcx.InvalidBitOperandException, 'both be scalars or both be registers'):
+                self.width(expression)
+
+    def test_scalar_comparisons_keep_existing_type_path(self) -> None:
+        for expression in ('n == u', 'n < f', 'scalar == other', 'scalar != ready',
+                           'a[n] == scalar', 'one[0] != true', '1 == 1'):
+            with self.subTest(expression=expression):
+                self.assertIsNone(self.width(expression))
+        lines = convert('OPENQASM 3.0; int n = 1; bool same = n == 1; bit flag = 1; if (flag != false) {}')
+        self.assertTrue(any(line.startswith('JUMPIF ') for line in lines))
+
+    def test_ordered_register_comparisons_remain_unsupported(self) -> None:
+        for operator in ('<', '<=', '>', '>='):
+            with self.subTest(operator=operator), self.assertRaisesRegex(
+                    qasm2qcx.UnsupportedOpenQASMError, 'ordered comparisons'):
+                self.width('a ' + operator + ' b')
+
+    def test_validation_does_not_emit_or_evaluate_runtime_arithmetic(self) -> None:
+        before = (list(self.converter._QASM2QCXConverter__qcx_lines),
+                  self.converter._QASM2QCXConverter__value, self.converter._QASM2QCXConverter__value_type,
+                  self.converter._QASM2QCXConverter__value_kind, self.converter._QASM2QCXConverter__expression_kind)
+        for expression in ('(a << -1) == b', '(a >> (1 / 0)) != b',
+                           '(a << counts[999]) == b', '(a << n) == ~b'):
+            self.assertEqual(self.width(expression), 4)
+        self.assertEqual(before, (list(self.converter._QASM2QCXConverter__qcx_lines),
+                         self.converter._QASM2QCXConverter__value, self.converter._QASM2QCXConverter__value_type,
+                         self.converter._QASM2QCXConverter__value_kind, self.converter._QASM2QCXConverter__expression_kind))
+        self.assertEqual(self.converter._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_bad_selection_shapes_names_and_bounds_rejected(self) -> None:
+        for expression in ('a[n:3] == b', 'a[0:4] == b', 'a[1:0] != "1"',
+                           '(a | b)[0:1] == "11"', 'int(a) == n',
+                           'a[{0, 1}] == a[{0, 1, 2}]'):
+            with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.width(expression)
+        with self.assertRaises(qasm2qcx.NoVariableNameException):
+            self.width('a == missing')
+
+    def test_iterator_shadowing_preserves_scalar_identity(self) -> None:
+        with self.assertRaises(qasm2qcx.InvalidBitOperandException):
+            self.width('a == b', {'a': qasm2qcx.ValueType.INT})
+        self.assertIsNone(self.width('a == n', {'a': qasm2qcx.ValueType.INT}))
+        self.assertIsNone(self.width('a == true', {'a': qasm2qcx.ValueType.BIT}))
+        self.converter._QASM2QCXConverter__loop_bindings.append({'a': 1})
+        try:
+            self.assertIsNone(self.width('a == n'))
+        finally:
+            self.converter._QASM2QCXConverter__loop_bindings.pop()
+
+    def test_public_runtime_and_constant_paths_validate_widths(self) -> None:
+        for source in ('bit[4] a; bool same = a == "01";',
+                       'bit[4] a; if (false && a == "01") {}',
+                       'const bool SAME = "0000" == "00";',
+                       'const bool OFF = false && ("0000" != "00");',
+                       'bit[1] one; bit scalar; bool same = one == scalar;'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.InvalidBitOperandException):
+                convert('OPENQASM 3.0; ' + source)
+        # Width validation is ready; lowering will be enabled in Stage 2.
+        for source in ('bit[4] a; bit[4] b; bool same = a == b;',
+                       'const bool SAME = "0000" == "0000";'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                convert('OPENQASM 3.0; ' + source)
+
+
 class StaticBitSelectionFoundationTests(unittest.TestCase):
     def setUp(self) -> None:
         self.foundation = BitRegisterBitwiseFoundationTests()

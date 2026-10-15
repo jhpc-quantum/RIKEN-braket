@@ -1740,6 +1740,23 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 'bit-register conditional operand')
         return self.__value, self.__value_type, self.__value_kind
 
+    def __register_comparison_width(
+            self, expression: ast.BinaryExpression,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> int | None:
+        # Scalar comparisons continue through their existing promotion rules.
+        # None is a scalar operand, never a synonym for a one-bit register.
+        lhs = self.__bit_register_expression_width(expression.lhs, iterators)
+        rhs = self.__bit_register_expression_width(expression.rhs, iterators)
+        if lhs is None and rhs is None:
+            return None
+        if lhs is None or rhs is None:
+            raise InvalidBitOperandException('Comparison operands must both be scalars or both be registers')
+        if expression.op.name not in ('==', '!='):
+            raise UnsupportedOpenQASMError('ordered comparisons of bit-register values')
+        if lhs != rhs:
+            raise InvalidBitOperandException(f'Comparison register widths {lhs} and {rhs} do not match')
+        return lhs
+
     @staticmethod
     def __comparison_types(
             lhs_type: ValueType, rhs_type: ValueType,
@@ -1780,6 +1797,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UnsupportedOpenQASMError(
                 f'branching condition operator {condition.op.name}')
 
+        if self.__register_comparison_width(condition) is not None:
+            raise UnsupportedOpenQASMError('bit-register equality lowering is not implemented yet')
         rhs_value, rhs_type, rhs_kind = self.__condition_operand(
             condition.rhs)
         lhs_value, lhs_type, lhs_kind = self.__condition_operand(
@@ -1930,6 +1949,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise NoImplicitCastException
             self.__value = int(not self.__value) if self.__evaluate_constant else 0
         else:
+            if (expression.op.name in ('==', '!=', '<', '<=', '>', '>=')
+                    and self.__register_comparison_width(expression) is not None):
+                raise UnsupportedOpenQASMError('constant bit-register equality lowering is not implemented yet')
             self.visit(expression.lhs)
             lhs_value, lhs_type = self.__value, self.__value_type
             logical = expression.op in (
