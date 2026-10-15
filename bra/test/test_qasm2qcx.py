@@ -2700,6 +2700,88 @@ class FloatArrayAccessTests(unittest.TestCase):
                 self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
 
 
+class FloatArrayIntegrationTests(unittest.TestCase):
+    def assert_converts_without_temporary_leaks(self, source: str) -> list[str]:
+        program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; ' + source)
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        lines = converter._QASM2QCXConverter__qcx_lines
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+        return lines
+
+    def test_arithmetic_unary_negation_and_numeric_casts(self) -> None:
+        self.assert_converts_without_temporary_leaks(
+            'array[float, 2] a = {0.5, 1.5}; int i = 1; '
+            'float x = -a[i] + a[0] * 2 - a[i] / 2; '
+            'int n = int(a[i]); uint u = uint[4](a[i]); '
+            'complex z = complex(a[i]) + 1.0im; float f = float(a[0]);')
+
+    def test_all_comparisons_with_integer_unsigned_and_float_operands(self) -> None:
+        for operator in ('==', '!=', '<', '<=', '>', '>='):
+            for rhs in ('1', 'u', 'a[0]'):
+                with self.subTest(operator=operator, rhs=rhs):
+                    self.assert_converts_without_temporary_leaks(
+                        'array[float, 2] a = {0.5, 1.5}; int i = 1; uint u = 1; '
+                        f'bool b = a[i] {operator} {rhs}; '
+                        f'if (a[i] {operator} {rhs}) {{ a[0] += 0.25; }} else {{ a[0] -= 0.25; }}')
+
+    def test_boolean_casts_and_short_circuit_conditions(self) -> None:
+        self.assert_converts_without_temporary_leaks(
+            'array[float, 2] a = {0, 0.5}; int i = 1; int bad = 2; '
+            'bool b = bool(a[i]); b = !bool(a[0]); '
+            'b = false && a[bad] > 0; b = true || bool(a[bad]); '
+            'if (bool(a[i]) && a[0] == 0) { a[i] += 0.25; }')
+
+    def test_elements_work_in_constant_runtime_and_while_loops(self) -> None:
+        self.assert_converts_without_temporary_leaks(
+            'array[float, 3] a = {0.25, 0.5, 0.75}; int stop = 2; '
+            'for int i in [0:2] { a[i] = -a[i]; } '
+            'for int i in [0:stop] { if (a[i] < 0) { a[i] *= -1; } } '
+            'int j = 0; while (a[j] < 1) { a[j] += 0.25; '
+            'if (a[j] == 1) { break; } continue; } '
+            'for int i in {0, stop} { a[i] += 0.25; }')
+
+    def test_explicit_integer_casts_work_in_runtime_loop_bounds(self) -> None:
+        self.assert_converts_without_temporary_leaks(
+            'array[float, 2] a = {0, 2}; int i = 1; int total = 0; '
+            'for int j in [int(a[0]):int(a[i])] { total += j; } '
+            'for int j in {int(a[0]), int(a[i])} { total += j; }')
+
+    def test_gate_parameters_and_global_phase_keep_real_elements(self) -> None:
+        lines = self.assert_converts_without_temporary_leaks(
+            'include "stdgates.inc"; qubit q; int i = 1; array[float, 2] a = {0, pi}; '
+            'rx(a[i]) q; ry(a[0] + a[i] / 2) q; rz(-a[i]) q; '
+            'U(a[0], a[i], a[i] / 2) q; gphase(a[i]);')
+        self.assertTrue(any(line.startswith('EX ') for line in lines))
+
+    def test_bare_float_conditions_and_implicit_integer_loop_bounds_are_rejected(self) -> None:
+        for statement in ('if (a[i]) {}', 'while (a[i]) {}',
+                          'for int j in [0:a[i]] {}', 'for int j in {a[i]} {}'):
+            with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert('OPENQASM 3; int i = 0; array[float, 2] a; ' + statement)
+
+    def test_integer_only_operators_rejected_even_in_empty_loops(self) -> None:
+        for expression in ('~a[i]', 'a[i] & 1', 'a[i] << 1', 'a[i] ** 2', 'a[i] % 2'):
+            with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert('OPENQASM 3; array[float, 2] a; float x; '
+                        f'for int i in [1:0] {{ x = {expression}; }}')
+        for operator in ('%=', '**=', '&=', '|=', '^=', '<<=', '>>='):
+            with self.subTest(operator=operator), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert('OPENQASM 3; array[float, 2] a; '
+                        f'for int i in [1:0] {{ a[i] {operator} 1; }}')
+
+    def test_iterator_shadowing_rejects_indexing_and_restores_array_after_loop(self) -> None:
+        lines = self.assert_converts_without_temporary_leaks(
+            'array[float, 2] a = {0.25, 0.5}; float x = 0; int stop = 1; '
+            'for int a in [0:stop] { x += float(a); } x += a[0];')
+        self.assertIn('LET X1 += A1:0', lines)
+        for bounds in ('[0:1]', '[1:0]'):
+            with self.subTest(bounds=bounds), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert('OPENQASM 3; array[float, 2] a; float x; '
+                        f'for int a in {bounds} {{ x = -a[0]; }}')
+
+
 class IntegerArrayLoopLoweringTests(unittest.TestCase):
     def test_loop_loads_live_element_and_generates_body_once(self) -> None:
         lines = convert('OPENQASM 3.0; array[int, 3] values = {1, 3, 5}; int total = 0; '

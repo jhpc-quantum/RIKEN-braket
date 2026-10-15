@@ -2874,6 +2874,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                       else None)
             if target is not None and self.__operand_name(target) in iterators:
                 raise UnsupportedOpenQASMError('assignment to a for-loop iterator')
+            if isinstance(child, ast.ClassicalAssignment):
+                source_type = self.__classical_source_types.get(self.__operand_name(child.lvalue))
+                if isinstance(source_type, ast.ArrayType):
+                    self.__validate_array_assignment_operator(
+                        self.__source_value_type(source_type.base_type), child.op.name)
             if isinstance(child, ast.ClassicalAssignment) and child.op.name not in (
                     '=', '+=', '-=', '*=', '/=', '%=', '**=', '&=', '|=', '^=', '<<=', '>>='):
                 raise UnsupportedOpenQASMError(f'assignment operator {child.op.name}')
@@ -3007,7 +3012,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 and self.__register_comparison_width(node, iterators) is not None):
             return
         if ((isinstance(node, ast.UnaryExpression) and node.op.name in ('~', '-'))
-                or (isinstance(node, ast.BinaryExpression) and node.op.name in ('&', '|', '^', '<<', '>>', '**'))):
+                or (isinstance(node, ast.BinaryExpression) and node.op.name in ('&', '|', '^', '<<', '>>', '**', '%'))):
             self.__loop_expression_info(node, iterators)
             self.__validate_bitwise_indices(node, iterators)
         for field in dataclasses.fields(node):
@@ -4320,9 +4325,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if variable_name in self.__array_element_types:
             if not isinstance(statement.lvalue, ast.IndexedIdentifier):
                 raise UnsupportedOpenQASMError('whole classical array assignment')
-            if (variable_type == ValueType.FLOAT
-                    and statement.op.name not in ('=', '+=', '-=', '*=', '/=')):
-                raise UnsupportedOpenQASMError(f'floating-point array assignment operator {statement.op.name}')
+            self.__validate_array_assignment_operator(variable_type, statement.op.name)
             operand, index = self.__array_access(statement.lvalue)
             previous_temporaries = self.__used_temporary_variables.copy()
             try:
@@ -4366,6 +4369,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UnsupportedOpenQASMError('indexed classical assignment')
 
         self.__emit_classical_value_assignment(statement, variable_name, variable_type)
+
+    @staticmethod
+    def __validate_array_assignment_operator(element_type: ValueType, operator: str) -> None:
+        if element_type == ValueType.FLOAT and operator not in ('=', '+=', '-=', '*=', '/='):
+            raise UnsupportedOpenQASMError(f'floating-point array assignment operator {operator}')
 
     def __emit_classical_value_assignment(
             self, statement: ast.ClassicalAssignment, variable_name: str,
