@@ -75,6 +75,15 @@ def main() -> None:
                       'false || ((a >> n) != "11")'):
         check_error(bra, f'bit[2] a = "01"; int n = -1; bool c = {condition};',
                     'assertion failed in ASSERT')
+    check_program(bra, '''include "stdgates.inc"; qubit[2] q;
+        bit[1] a; bit[1] b; x q[0]; a[0] = measure q[0];
+        if (a == "1") { x q[1]; }
+        b[0] = measure q[1]; bool c = a == b; bit d = a != b;''',
+                  ('A1', 'B1', 'C1', 'D1'), ['1', '1', '1', '0'])
+    check_program(bra, '''bit[4] a = "1010";
+        bool c = a[{0, 0, 1}] == "100";
+        bool d = a[{-1, 0, -1}] != a[{3, 0, 3}];''',
+                  ('C1', 'D1'), ['1', '0'])
     print('Bit-register equality numerical tests passed')
 
 
