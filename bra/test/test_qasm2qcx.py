@@ -438,6 +438,80 @@ class CheckedNegationFoundationTests(unittest.TestCase):
         self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
 
 
+class CheckedNegationExpressionTests(unittest.TestCase):
+    def test_minimum_literal_spellings_and_valid_constant_boundaries(self) -> None:
+        minimum = qasm2qcx.QASM2QCXConverter.QCX_INT_MIN
+        maximum = qasm2qcx.QASM2QCXConverter.QCX_INT_MAX
+        for source, expected in ((str(minimum), minimum), (f'-({-minimum})', minimum),
+                                 (f'-0x{-minimum:x}', minimum), ('-0', 0), ('-1', -1),
+                                 (f'-({minimum + 1})', maximum), (f'-({maximum})', -maximum)):
+            with self.subTest(source=source):
+                lines = convert(f'OPENQASM 3.0; const int C = {source}; int out = C;')
+                self.assertIn(f'LET OUT7 := {expected}', lines)
+                self.assertFalse(any(line.startswith('ASSERT ') for line in lines))
+
+    def test_constant_minimum_value_and_nested_negation_overflow(self) -> None:
+        minimum = qasm2qcx.QASM2QCXConverter.QCX_INT_MIN
+        for source in ('-MINIMUM', f'-({minimum})', f'-(-({minimum}))'):
+            with self.subTest(source=source), self.assertRaisesRegex(
+                    qasm2qcx.InvalidNegationException, 'result outside QCX INT range'):
+                convert(f'OPENQASM 3.0; const int MINIMUM = {minimum}; const int BAD = {source};')
+
+    def test_unrepresentable_inputs_are_conversion_errors_not_wrapped_literals(self) -> None:
+        magnitude = -qasm2qcx.QASM2QCXConverter.QCX_INT_MIN
+        for source in (f'-{magnitude + 1}', f'-({magnitude - 1} + 1)', f'-int({magnitude})'):
+            for wrapper in ('int out = {};', 'const int C = {};', 'int out; if (false) {{ out = {}; }}'):
+                with self.subTest(source=source, wrapper=wrapper), self.assertRaisesRegex(
+                        qasm2qcx.InvalidNegationException, 'operand outside QCX INT range'):
+                    convert('OPENQASM 3.0; ' + wrapper.format(source))
+
+    def test_constant_short_circuit_suppresses_value_checks_not_type_checks(self) -> None:
+        minimum = qasm2qcx.QASM2QCXConverter.QCX_INT_MIN
+        lines = convert(f'''OPENQASM 3.0; const int MINIMUM = {minimum};
+            const bool OFF = false && bool(-MINIMUM);
+            const bool ON = true || bool(-({minimum}));
+            bool a = OFF; bool b = ON;''')
+        self.assertIn('LET A1 := 0', lines)
+        self.assertIn('LET B1 := 1', lines)
+        with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+            convert('OPENQASM 3.0; const bool OFF = false && bool(-true);')
+
+    def test_runtime_operand_is_captured_and_guarded_before_multiplication(self) -> None:
+        minimum = qasm2qcx.QASM2QCXConverter.QCX_INT_MIN
+        lines = convert('OPENQASM 3.0; int a = 2; int out = -a;')
+        capture = next(index for index, line in enumerate(lines) if line.endswith(':= A1'))
+        temporary = lines[capture].split()[1]
+        self.assertEqual(lines[capture + 1], f'ASSERT {temporary} \\= {minimum}')
+        self.assertEqual(lines[capture + 2], f'LET {temporary} *= -1')
+        self.assertEqual(lines[-1], f'LET OUT7 := {temporary}')
+
+    def test_literal_runtime_result_overflow_is_deferred_without_bad_int_literal(self) -> None:
+        minimum = qasm2qcx.QASM2QCXConverter.QCX_INT_MIN
+        lines = convert(f'OPENQASM 3.0; int out = -({minimum});')
+        self.assertTrue(any(line.startswith('ASSERT ') for line in lines))
+        self.assertFalse(any(line.endswith(f':= {-minimum}') for line in lines))
+        convert(f'''OPENQASM 3.0; int out = 0;
+            if (false) {{ out = -({minimum}); }}
+            bool off = false && bool(-({minimum}));''')
+
+    def test_indexed_reads_and_computed_operands_release_temporaries(self) -> None:
+        program = qasm2qcx.openqasm3.parse('''OPENQASM 3.0; array[int, 2] v = {1, 2};
+            int i = 0; int out = -v[i + 1]; out = -(out + v[i]);''')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        lines = list(converter)
+        self.assertEqual(sum(line.endswith(' += 1') for line in lines), 1)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_unsigned_float_and_complex_lowering_do_not_get_int_guards(self) -> None:
+        lines = convert('''OPENQASM 3.0; uint[4] u = 1; uint[4] v = -u;
+            float f = 1.5; float g = -f; complex z = 1 + 2im; complex w = -z;''')
+        self.assertFalse(any(line.startswith('ASSERT ') for line in lines))
+        self.assertTrue(any(' *= :UINT:-1' in line for line in lines))
+        self.assertTrue(any(' *= :COMPLEX:-1.0' in line for line in lines))
+
+
 class IntegerPowerFoundationTests(unittest.TestCase):
     def setUp(self) -> None:
         width = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
@@ -3131,18 +3205,20 @@ class RuntimeStrideInfrastructureTests(unittest.TestCase):
         converter = self.converter()
         for step in (converter.QCX_INT_MIN - 1, converter.QCX_INT_MAX + 1, 10 ** 100):
             with self.subTest(step=step):
+                # Isolate range validation from checked unary negation.
+                source = f'(0 - {-step})' if step < 0 else str(step)
                 with self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'must fit QCX INT'):
-                    converter._QASM2QCXConverter__validated_runtime_range_step(self.bounds(str(step)))
+                    converter._QASM2QCXConverter__validated_runtime_range_step(self.bounds(source))
                 with self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'must fit QCX INT'):
                     convert('OPENQASM 3.0; int last = 3; for int i in [1:0] '
-                            f'{{ for int j in [0:{step}:last] {{}} }}')
+                            f'{{ for int j in [0:{source}:last] {{}} }}')
 
     def test_constant_range_steps_retain_unbounded_compile_time_integer_behavior(self) -> None:
         prefix = 'OPENQASM 3.0; int total = 0; '
         step = 10 ** 100
         self.assertEqual(convert(prefix + f'for int i in [0:{step}:1] {{ total += i; }}'),
                          convert(prefix + 'total += 0;'))
-        self.assertEqual(convert(prefix + f'for int i in [0:{-step}:-1] {{ total += i; }}'),
+        self.assertEqual(convert(prefix + f'for int i in [0:0 - {step}:-1] {{ total += i; }}'),
                          convert(prefix + 'total += 0;'))
 
     def test_nonunit_runtime_strides_now_use_safe_advance_lowering(self) -> None:
@@ -3422,7 +3498,7 @@ class RuntimeStepLoweringTests(unittest.TestCase):
                 ForLoopControlLoweringTests.assert_resolved_jumps(lines)
         lines = convert(prefix + 'for int s in {stride, -stride} '
                         '{ for int i in [0:s:5] { break; } }')
-        self.assertEqual(sum(line.startswith('ASSERT ') for line in lines), 2)
+        self.assertEqual(sum(line.startswith('ASSERT ') for line in lines), 3)
         ForLoopControlLoweringTests.assert_resolved_jumps(lines)
 
     def test_step_capture_and_iterator_temporaries_are_released(self) -> None:
@@ -4512,7 +4588,9 @@ class ConstantForIterationInfrastructureTests(unittest.TestCase):
     def test_huge_range_counts_do_not_use_len_or_materialize_values(self) -> None:
         magnitude = 10 ** 100
         count = qasm2qcx.QASM2QCXConverter._QASM2QCXConverter__loop_value_count
-        for bounds in (f'[-{magnitude}:{magnitude}]', f'[{magnitude}:-1:-{magnitude}]'):
+        # Binary constant arithmetic retains its existing precision; unary
+        # negation itself now requires native-range inputs and results.
+        for bounds in (f'[0 - {magnitude}:{magnitude}]', f'[{magnitude}:-1:0 - {magnitude}]'):
             with self.subTest(bounds=bounds):
                 values = self.evaluate_values(bounds)
                 self.assertIsInstance(values, range)
@@ -5136,7 +5214,7 @@ class ConstantForLoopRangeTests(unittest.TestCase):
 
     def test_large_range_is_lazy_and_preserves_integer_precision(self) -> None:
         magnitude = 2**100
-        values = self.evaluate_range(f'[-{magnitude}:{magnitude}]')
+        values = self.evaluate_range(f'[0 - {magnitude}:{magnitude}]')
         self.assertIsInstance(values, range)
         self.assertEqual(values.start, -magnitude)
         self.assertEqual(values.stop, magnitude + 1)
@@ -5533,8 +5611,11 @@ class IntegerRemainderConstantTests(unittest.TestCase):
             for rhs in (7, -7):
                 with self.subTest(lhs=lhs, rhs=rhs):
                     expected = abs(lhs) % abs(rhs) * (-1 if lhs < 0 else 1)
+                    # Test remainder precision independently of native unary
+                    # negation's operand-range checks.
+                    source = f'(0 - {-lhs})' if lhs < 0 else str(lhs)
                     self.assertEqual(convert(f'''OPENQASM 3.0;
-                        const int value = {lhs} % {rhs}; int result = value;''')[-1],
+                        const int value = {source} % {rhs}; int result = value;''')[-1],
                                      f'LET RESULT63 := {expected}')
 
     def test_nested_expressions_and_precedence(self) -> None:

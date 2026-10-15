@@ -569,6 +569,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 if self.__value_kind == ValueKind.TEMPORARY:
                     self.__release_temporary_variable(str(self.__value))
                 raise
+            self.__visit_native_int_negation(expression)
+            return
         if self.__value_kind == ValueKind.LITERAL:
             self.__value = -self.__value
             uint_type = self.__uint_expression_type(expression.expression)
@@ -595,6 +597,43 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__value = temporary_variable
         self.__value_kind = ValueKind.TEMPORARY
 
+    def __visit_native_int_negation(self, expression: ast.UnaryExpression) -> None:
+        operand, kind = self.__value, self.__value_kind
+        result = None
+        keep = False
+        try:
+            if kind == ValueKind.LITERAL:
+                if not self.__evaluate_constant:
+                    self.__value = 0
+                    return
+                try:
+                    self.__validate_native_negation_value(expression, int(operand))
+                except InvalidNegationException:
+                    if (self.__expression_kind == ExpressionKind.CONST_ARITHMETIC
+                            or not self.QCX_INT_MIN <= int(operand) <= self.QCX_INT_MAX):
+                        raise
+                    # Preserve runtime reachability for a known overflowing
+                    # result. Invalid inputs that cannot be represented in an
+                    # INT LET remain conversion errors on all paths.
+                else:
+                    self.__value = -int(operand)
+                    return
+            elif self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
+                raise NoConstantExpressionException
+            result = self.__add_new_temporary_variable(ValueType.INT)
+            self.__qcx_lines.extend([
+                f'LET {result} := {operand}',
+                f'ASSERT {result} \\= {self.QCX_INT_MIN}',
+                f'LET {result} *= -1',
+            ])
+            self.__value, self.__value_type, self.__value_kind = result, ValueType.INT, ValueKind.TEMPORARY
+            keep = True
+        finally:
+            if kind == ValueKind.TEMPORARY:
+                self.__release_temporary_variable(str(operand))
+            if result is not None and not keep:
+                self.__release_temporary_variable(result)
+
     def __negation_expression_info(
             self, expression: ast.UnaryExpression,
             iterators: set[str] | dict[str, ValueType] | None = None
@@ -620,7 +659,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 and expression.expression.value == -self.QCX_INT_MIN)
 
     def __validate_native_negation_value(self, expression: ast.UnaryExpression, value: int) -> None:
-        # Pure boundary validation; wired into folding/lowering in Stage 2.
+        # Pure boundary validation, without emitting instructions or arithmetic.
         if self.__is_minimum_int_literal(expression) and value == -self.QCX_INT_MIN:
             return
         if not self.QCX_INT_MIN <= value <= self.QCX_INT_MAX:
