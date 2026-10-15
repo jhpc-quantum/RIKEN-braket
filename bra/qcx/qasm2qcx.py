@@ -163,6 +163,9 @@ class ZeroDivisorException(QASM2QCXError):
 class InvalidShiftException(QASM2QCXError):
     """Invalid constant shift count or overflowing signed left shift."""
 
+class InvalidPowerException(QASM2QCXError):
+    """Negative integer exponent or overflowing signed integer power."""
+
 class WrongConstantVariableException(QASM2QCXError):
     def __str__(self):
         return 'Wrong constant variable'
@@ -291,6 +294,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__branch_index: int = 0
         self.__array_index: int = 0
         self.__register_shift_index: int = 0
+        self.__power_index: int = 0
         self.__condition_index: int = 0
         self.__branch_depth: int = 0
         self.__boolean_expression_index: int = 0
@@ -757,17 +761,26 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __integer_expression_type(
             self, lhs_type: ValueType, rhs_type: ValueType,
             lhs: ast.Expression, rhs: ast.Expression) -> tuple[ValueType, _UnsignedIntegerType | None]:
+        infos = [self.__uint_expression_type(node)
+                 for node, value_type in ((lhs, lhs_type), (rhs, rhs_type)) if value_type == ValueType.UINT]
+        return self.__integer_result_type(lhs_type, rhs_type, lhs, rhs, infos)
+
+    def __integer_result_type(
+            self, lhs_type: ValueType, rhs_type: ValueType,
+            lhs: ast.Expression, rhs: ast.Expression,
+            infos: list[_UnsignedIntegerType | None],
+            iterators: set[str] | dict[str, ValueType] | None = None
+            ) -> tuple[ValueType, _UnsignedIntegerType | None]:
+        # Shared by value lowering and side-effect-free power metadata.
         result_type = self.__promoted_type(lhs_type, rhs_type)
         if result_type != ValueType.UINT:
             return result_type, None
-        infos = [self.__uint_expression_type(node)
-                 for node, value_type in ((lhs, lhs_type), (rhs, rhs_type)) if value_type == ValueType.UINT]
         if any(info is None for info in infos):
             raise UninitializedValueException
         width = max(info.width for info in infos)
         if ValueType.INT in (lhs_type, rhs_type):
             for node, value_type in ((lhs, lhs_type), (rhs, rhs_type)):
-                if value_type == ValueType.INT and not self.__native_signed_operand(node):
+                if value_type == ValueType.INT and not self.__native_signed_operand(node, iterators):
                     raise UnsupportedOpenQASMError('mixed signed/unsigned expression with a non-native signed width')
             if width < self.QCX_UINT_WIDTH:
                 return ValueType.INT, None
@@ -801,6 +814,20 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             source_type = source_type.base_type
         if not isinstance(source_type, ast.IntType) or source_type.size is None:
             return True
+        if isinstance(expression, ast.Cast):
+            names = self.__loop_bound_names(source_type.size)
+            active = set(iterators or ()) | {name for scope in self.__loop_bindings for name in scope}
+            if names & active:
+                raise InvalidDeclarationException('INT cast width must be a constant integer, not a loop iterator')
+        else:
+            # Source declarations are global; their widths must not be
+            # reinterpreted through the current loop's iterator bindings.
+            previous_bindings = self.__loop_bindings
+            self.__loop_bindings = []
+            try:
+                return self.__constant_loop_integer(source_type.size, 'signed operand width') == self.QCX_UINT_WIDTH
+            finally:
+                self.__loop_bindings = previous_bindings
         return self.__constant_loop_integer(source_type.size, 'signed operand width') == self.QCX_UINT_WIDTH
 
     def __converted_operand(
@@ -909,6 +936,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.__expression_kind is None:
             return
 
+        if expression.op.name == '**':
+            self.__visit_power_binary(expression)
+            return
         if expression.op.name in ('<<', '>>'):
             self.__visit_shift_binary(expression)
             return
@@ -1030,6 +1060,226 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UnsupportedOpenQASMError('shift operators require scalar integer operands')
         if lhs_type == ValueType.INT and not self.__native_signed_operand(expression.lhs, iterators):
             raise UnsupportedOpenQASMError('shift of an integer with a non-native signed width')
+
+    def __validate_power_types(
+            self, expression: ast.BinaryExpression, lhs_type: ValueType, rhs_type: ValueType,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> None:
+        if lhs_type not in (ValueType.INT, ValueType.UINT) or rhs_type not in (ValueType.INT, ValueType.UINT):
+            raise UnsupportedOpenQASMError('integer exponentiation requires scalar int or uint operands')
+        for operand, value_type in ((expression.lhs, lhs_type), (expression.rhs, rhs_type)):
+            if value_type == ValueType.INT and not self.__native_signed_operand(operand, iterators):
+                raise UnsupportedOpenQASMError('integer exponentiation with a non-native signed width')
+
+    def __power_expression_info(
+            self, expression: ast.BinaryExpression,
+            iterators: set[str] | dict[str, ValueType] | None = None
+            ) -> tuple[ValueType, _UnsignedIntegerType | None, bool]:
+        lhs_type, lhs_uint, lhs_runtime = self.__integer_operand_info(expression.lhs, iterators)
+        rhs_type, rhs_uint, rhs_runtime = self.__integer_operand_info(expression.rhs, iterators)
+        self.__validate_power_types(expression, lhs_type, rhs_type, iterators)
+        self.__validate_bitwise_indices(expression.lhs, iterators)
+        self.__validate_bitwise_indices(expression.rhs, iterators)
+        infos = [info for value_type, info in ((lhs_type, lhs_uint), (rhs_type, rhs_uint))
+                 if value_type == ValueType.UINT]
+        result_type, uint_type = self.__integer_result_type(
+            lhs_type, rhs_type, expression.lhs, expression.rhs, infos, iterators)
+        return result_type, uint_type, lhs_runtime or rhs_runtime
+
+    def __integer_operand_info(
+            self, expression: ast.Expression,
+            iterators: set[str] | dict[str, ValueType] | None
+            ) -> tuple[ValueType, _UnsignedIntegerType | None, bool]:
+        # Resolve widths from declarations/AST, never from mutable visit state.
+        # Inspect both operands even if one already has a runtime dependency.
+        if isinstance(expression, ast.BinaryExpression) and expression.op.name == '**':
+            return self.__power_expression_info(expression, iterators)
+        value_type, runtime = self.__loop_expression_info(expression, iterators)
+        if isinstance(expression, ast.BinaryExpression) and expression.op.name in ('+', '-', '*', '/', '%', '&', '|', '^', '<<', '>>'):
+            lhs_type, lhs_uint, _ = self.__integer_operand_info(expression.lhs, iterators)
+            rhs_type, rhs_uint, _ = self.__integer_operand_info(expression.rhs, iterators)
+            if expression.op.name in ('<<', '>>'):
+                return lhs_type, lhs_uint, runtime
+            infos = [info for operand_type, info in ((lhs_type, lhs_uint), (rhs_type, rhs_uint))
+                     if operand_type == ValueType.UINT]
+            result_type, uint_type = self.__integer_result_type(
+                lhs_type, rhs_type, expression.lhs, expression.rhs, infos, iterators)
+            return result_type, uint_type, runtime
+        if isinstance(expression, ast.UnaryExpression) and expression.op.name in ('-', '~'):
+            return self.__integer_operand_info(expression.expression, iterators)
+        if value_type != ValueType.UINT:
+            return value_type, None, runtime
+        if isinstance(expression, ast.Identifier):
+            uint_type = (self.__const_uint_types.get(expression.name)
+                         or self.__uint_variable_types.get(self.__capitalize_variable_name(expression.name)))
+            if uint_type is None:
+                raise UninitializedValueException
+            # A declaration's width is already resolved; a loop iterator may
+            # now shadow a constant used in that width without changing it.
+            return value_type, uint_type, runtime
+        elif isinstance(expression, ast.Cast):
+            source_type = expression.type
+        else:
+            raise UnsupportedOpenQASMError('unsupported unsigned exponentiation operand')
+        return value_type, self.__unsigned_integer_type(source_type, iterators), runtime
+
+    def __fold_power(self, base: int, exponent: int,
+                     uint_type: _UnsignedIntegerType | None) -> int:
+        if exponent < 0:
+            raise InvalidPowerException('Integer exponent must not be negative')
+        if uint_type is not None:
+            return pow(base, exponent, 1 << uint_type.width)
+        result = 1
+        while exponent:
+            if exponent & 1:
+                result *= base
+                if not self.QCX_INT_MIN <= result <= self.QCX_INT_MAX:
+                    raise InvalidPowerException('Integer power result outside QCX INT range')
+            exponent >>= 1
+            if exponent:
+                base *= base
+                if not self.QCX_INT_MIN <= base <= self.QCX_INT_MAX:
+                    raise InvalidPowerException('Integer power result outside QCX INT range')
+        return result
+
+    def __visit_power_binary(self, expression: ast.BinaryExpression) -> None:
+        self.__power_expression_info(expression)
+        operands = []
+        try:
+            for operand in (expression.lhs, expression.rhs):
+                self.visit(operand)
+                if self.__value is None or self.__value_type is None or self.__value_kind is None:
+                    raise UninitializedValueException
+                operands.append((self.__value, self.__value_type, self.__value_kind))
+            (lhs, lhs_type, lhs_kind), (rhs, rhs_type, rhs_kind) = operands
+            result_type, uint_type = self.__integer_expression_type(
+                lhs_type, rhs_type, expression.lhs, expression.rhs)
+            if uint_type is not None:
+                self.__uint_expression_types[id(expression)] = (expression, uint_type)
+            self.__validate_power_literal_operands(operands)
+            if lhs_kind == rhs_kind == ValueKind.LITERAL:
+                if not self.__evaluate_constant:
+                    self.__value, self.__value_type, self.__value_kind = 0, result_type, ValueKind.LITERAL
+                    return
+                try:
+                    # Check the signed exponent before unsigned promotion.
+                    if int(rhs) < 0:
+                        raise InvalidPowerException('Integer exponent must not be negative')
+                    base = uint_type.normalize(int(lhs)) if uint_type is not None else int(lhs)
+                    folded = self.__fold_power(base, int(rhs), uint_type)
+                except InvalidPowerException:
+                    if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
+                        raise
+                    # Literal failures on runtime paths must also be skippable.
+                else:
+                    self.__value, self.__value_type, self.__value_kind = folded, result_type, ValueKind.LITERAL
+                    return
+            if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
+                raise NoConstantExpressionException
+            self.__emit_power_expression(operands, result_type, uint_type)
+        finally:
+            for value, _, kind in operands:
+                if kind == ValueKind.TEMPORARY:
+                    self.__release_temporary_variable(str(value))
+
+    def __validate_power_literal_operands(
+            self, operands: list[tuple[str | int | float | complex, ValueType, ValueKind]]) -> None:
+        for value, value_type, kind in operands:
+            if (kind == ValueKind.LITERAL and value_type == ValueType.INT
+                    and self.__evaluate_constant
+                    and not self.QCX_INT_MIN <= int(value) <= self.QCX_INT_MAX):
+                raise UnsupportedOpenQASMError('integer exponentiation operand outside QCX INT range')
+
+    def __emit_power_expression(
+            self, operands: list[tuple[str | int | float | complex, ValueType, ValueKind]],
+            result_type: ValueType, uint_type: _UnsignedIntegerType | None) -> None:
+        self.__validate_power_literal_operands(operands)
+        (lhs, lhs_type, lhs_kind), (rhs, rhs_type, rhs_kind) = operands
+        owned: set[str] = set()
+        keep = None
+
+        def allocate(value_type=ValueType.UINT, info=None):
+            name = self.__add_new_temporary_variable(value_type, info)
+            owned.add(name)
+            return name
+
+        prefix = f'QASM2QCX_POWER_{self.__power_index}'
+        self.__power_index += 1
+        try:
+            count, parity = allocate(), allocate()
+            base, accumulator = allocate(info=uint_type), allocate(info=uint_type)
+            result = accumulator if uint_type is not None else allocate(ValueType.INT)
+            limit = quotient = negative = None
+            if uint_type is None:
+                limit, quotient, negative = allocate(), allocate(), allocate(ValueType.INT)
+            if rhs_type == ValueType.INT:
+                if rhs_kind == ValueKind.LITERAL:
+                    captured = allocate(ValueType.INT)
+                    self.__qcx_lines.append(f'LET {captured} := {rhs}')
+                else:
+                    captured = str(rhs)
+                self.__qcx_lines.append(f'ASSERT {captured} >= 0')
+            # After the domain check, no exponent is narrowed through INT.
+            exponent, _ = self.__converted_operand(rhs, rhs_type, rhs_kind, ValueType.UINT)
+            factor, _ = self.__converted_operand(lhs, lhs_type, lhs_kind, ValueType.UINT)
+            self.__qcx_lines.extend([f'LET {count} := {exponent}',
+                                     f'LET {base} := {factor}', f'LET {accumulator} := 1'])
+            if uint_type is None:
+                signed_base, _ = self.__converted_operand(lhs, lhs_type, lhs_kind, ValueType.INT)
+                # Compare only variables in QCX. Use result as the base snapshot
+                # until the final signed result is reconstructed.
+                self.__qcx_lines.extend([
+                    f'LET {result} := {signed_base}', f'LET {negative} := 0',
+                    f'LET {limit} := {self.QCX_INT_MAX}',
+                    f'JUMPIF {prefix}_READY {result} >= 0',
+                    f'LET {base} := 0', f'LET {base} -= {factor}',
+                    f'LET {parity} := {count}', f'LET {parity} &= 1',
+                    f'JUMPIF {prefix}_READY {parity} == 0',
+                    f'LET {negative} := 1', f'LET {limit} := {-self.QCX_INT_MIN}',
+                    f'@{prefix}_READY',
+                ])
+            self.__qcx_lines.extend([
+                f'@{prefix}_LOOP', f'JUMPIF {prefix}_DONE {count} == 0',
+                f'LET {parity} := {count}', f'LET {parity} &= 1',
+                f'JUMPIF {prefix}_NEXT {parity} == 0',
+            ])
+            self.__emit_power_multiply(accumulator, base, uint_type, limit, quotient, prefix + '_PRODUCT')
+            self.__qcx_lines.extend([
+                f'@{prefix}_NEXT', f'LET {count} >>= 1',
+                f'JUMPIF {prefix}_DONE {count} == 0',
+            ])
+            # Do not square once the exponent is exhausted: x ** 1 must not
+            # fail just because the unused x ** 2 would overflow.
+            self.__emit_power_multiply(base, base, uint_type, limit, quotient, prefix + '_SQUARE')
+            self.__qcx_lines.extend([f'JUMP {prefix}_LOOP', f'@{prefix}_DONE'])
+            if uint_type is None:
+                self.__qcx_lines.extend([
+                    f'JUMPIF {prefix}_POSITIVE {negative} == 0',
+                    f'JUMPIF {prefix}_MINIMUM {accumulator} == {-self.QCX_INT_MIN}',
+                    f'LET {result} := :INT:{accumulator}', f'LET {result} *= -1',
+                    f'JUMP {prefix}_END', f'@{prefix}_MINIMUM',
+                    f'LET {result} := {self.QCX_INT_MIN}', f'JUMP {prefix}_END',
+                    f'@{prefix}_POSITIVE', f'LET {result} := :INT:{accumulator}', f'@{prefix}_END',
+                ])
+            self.__value, self.__value_type, self.__value_kind = result, result_type, ValueKind.TEMPORARY
+            keep = result
+        finally:
+            for name in owned - {keep}:
+                self.__release_temporary_variable(name)
+
+    def __emit_power_multiply(
+            self, target: str, factor: str, uint_type: _UnsignedIntegerType | None,
+            limit: str | None, quotient: str | None, label: str) -> None:
+        if uint_type is None:
+            # Magnitudes use UINT, including abs(INT_MIN). Division guards the
+            # multiplication without evaluating any potentially overflowing INT
+            # operation, and a zero factor never becomes a divisor.
+            self.__qcx_lines.extend([
+                f'JUMPIF {label} {factor} == 0', f'LET {quotient} := {limit}',
+                f'LET {quotient} /= {factor}', f'ASSERT {target} <= {quotient}', f'@{label}',
+            ])
+        self.__qcx_lines.append(f'LET {target} *= {factor}')
+        if uint_type is not None:
+            self.__normalize_uint_storage(target, uint_type)
 
     def __fold_shift(
             self, lhs: int, rhs: int, operator: str,
@@ -2264,6 +2514,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __loop_binary_info(
             self, expression: ast.BinaryExpression, iterators: set[str] | dict[str, ValueType] | None
             ) -> tuple[ValueType, bool]:
+        if expression.op.name == '**':
+            value_type, _, runtime = self.__power_expression_info(expression, iterators)
+            return value_type, runtime
         if (expression.op.name in ('==', '!=', '<', '<=', '>', '>=')
                 and self.__register_comparison_width(expression, iterators) is not None):
             lhs_runtime = self.__register_expression_runtime(expression.lhs, iterators)
@@ -2401,7 +2654,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 ast.UnaryExpression, ast.BinaryExpression, ast.Cast, ast.IndexExpression)):
             raise UnsupportedOpenQASMError(f'loop expression {type(node).__name__}')
         if isinstance(node, ast.BinaryExpression) and node.op.name not in (
-                '+', '-', '*', '/', '%', '&', '|', '^', '<<', '>>',
+                '+', '-', '*', '/', '%', '**', '&', '|', '^', '<<', '>>',
                 '==', '!=', '<', '<=', '>', '>=', '&&', '||'):
             raise UnsupportedOpenQASMError(f'binary operator {node.op.name}')
         if isinstance(node, ast.UnaryExpression) and node.op.name not in ('-', '!', '~'):
@@ -2516,9 +2769,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if target is not None and self.__operand_name(target) in iterators:
                 raise UnsupportedOpenQASMError('assignment to a for-loop iterator')
             if isinstance(child, ast.ClassicalAssignment) and child.op.name not in (
-                    '=', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '<<=', '>>='):
+                    '=', '+=', '-=', '*=', '/=', '%=', '**=', '&=', '|=', '^=', '<<=', '>>='):
                 raise UnsupportedOpenQASMError(f'assignment operator {child.op.name}')
-            if isinstance(child, ast.ClassicalAssignment) and child.op.name in ('&=', '|=', '^=', '<<=', '>>='):
+            if isinstance(child, ast.ClassicalAssignment) and child.op.name in ('&=', '|=', '^=', '<<=', '>>=', '**='):
                 self.__validate_integer_operator_assignment_types(child, iterators)
             if isinstance(child, ast.QuantumGate):
                 if child.modifiers or child.duration is not None:
@@ -2557,8 +2810,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     or len(target.indices[0]) != 1
                     or not isinstance(target.indices[0][0], ast.Expression)
                     or isinstance(target.indices[0][0], (ast.RangeDefinition, ast.DiscreteSet))):
-                raise UnsupportedOpenQASMError('bitwise assignment requires a scalar target')
+                raise UnsupportedOpenQASMError('integer operator assignment requires a scalar target')
             target = ast.IndexExpression(target.name, target.indices[0])
+        if statement.op.name == '**=':
+            expression = ast.BinaryExpression(ast.BinaryOperator['**'], target, statement.rvalue)
+            self.__power_expression_info(expression, iterators)
+            return
         target_type, _ = self.__loop_expression_info(target, iterators)
         rhs_type, _ = self.__loop_expression_info(statement.rvalue, iterators)
         if statement.op.name in ('<<=', '>>='):
@@ -2644,7 +2901,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 and self.__register_comparison_width(node, iterators) is not None):
             return
         if ((isinstance(node, ast.UnaryExpression) and node.op.name == '~')
-                or (isinstance(node, ast.BinaryExpression) and node.op.name in ('&', '|', '^', '<<', '>>'))):
+                or (isinstance(node, ast.BinaryExpression) and node.op.name in ('&', '|', '^', '<<', '>>', '**'))):
             self.__loop_expression_info(node, iterators)
             self.__validate_bitwise_indices(node, iterators)
         for field in dataclasses.fields(node):
@@ -3986,6 +4243,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __emit_classical_value_assignment(
             self, statement: ast.ClassicalAssignment, variable_name: str,
             variable_type: ValueType, *, runtime_array: bool = False) -> None:
+        if statement.op.name == '**=':
+            self.__emit_power_assignment(statement, variable_name, variable_type)
+            return
         if statement.op.name in ('<<=', '>>='):
             self.__emit_shift_assignment(statement, variable_name, variable_type)
             return
@@ -4049,6 +4309,31 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__emit_assignment(
             variable_name, operator, variable_type, self.__value,
             self.__value_type, self.__value_kind, self.__uint_expression_type(expression))
+
+    def __emit_power_assignment(
+            self, statement: ast.ClassicalAssignment, target: str,
+            target_type: ValueType) -> None:
+        lhs = (ast.IndexExpression(statement.lvalue.name, statement.lvalue.indices[0])
+               if isinstance(statement.lvalue, ast.IndexedIdentifier) else statement.lvalue)
+        expression = ast.BinaryExpression(ast.BinaryOperator['**'], lhs, statement.rvalue)
+        result_type, uint_type, _ = self.__power_expression_info(expression)
+        source_uint = self.__uint_variable_types.get(target) if target_type == ValueType.UINT else None
+        snapshot = self.__add_new_temporary_variable(target_type, source_uint)
+        operand = None
+        try:
+            # The caller has already captured an indexed destination. Snapshot
+            # its value before the RHS, without evaluating its index again.
+            self.__qcx_lines.append(f'LET {snapshot} := {target}')
+            operand = self.__condition_operand(statement.rvalue)
+            self.__emit_power_expression(
+                [(snapshot, target_type, ValueKind.TEMPORARY), operand], result_type, uint_type)
+            # Apply assignment conversion/masking only to the completed result.
+            self.__emit_assignment(target, ':=', target_type, self.__value,
+                                   self.__value_type, self.__value_kind, uint_type)
+        finally:
+            self.__release_temporary_variable(snapshot)
+            if operand is not None and operand[2] == ValueKind.TEMPORARY:
+                self.__release_temporary_variable(str(operand[0]))
 
     def __emit_shift_assignment(
             self, statement: ast.ClassicalAssignment, target: str,
