@@ -163,6 +163,9 @@ class ZeroDivisorException(QASM2QCXError):
 class InvalidShiftException(QASM2QCXError):
     """Invalid constant shift count or overflowing signed left shift."""
 
+class InvalidPowerException(QASM2QCXError):
+    """Negative integer exponent or overflowing signed integer power."""
+
 class WrongConstantVariableException(QASM2QCXError):
     def __str__(self):
         return 'Wrong constant variable'
@@ -291,6 +294,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__branch_index: int = 0
         self.__array_index: int = 0
         self.__register_shift_index: int = 0
+        self.__power_index: int = 0
         self.__condition_index: int = 0
         self.__branch_depth: int = 0
         self.__boolean_expression_index: int = 0
@@ -919,8 +923,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return
 
         if expression.op.name == '**':
-            self.__power_expression_info(expression)
-            raise UnsupportedOpenQASMError('integer exponentiation lowering is not implemented yet')
+            self.__visit_power_binary(expression)
+            return
         if expression.op.name in ('<<', '>>'):
             self.__visit_shift_binary(expression)
             return
@@ -1098,6 +1102,160 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         else:
             raise UnsupportedOpenQASMError('unsupported unsigned exponentiation operand')
         return value_type, self.__unsigned_integer_type(source_type, iterators), runtime
+
+    def __fold_power(self, base: int, exponent: int,
+                     uint_type: _UnsignedIntegerType | None) -> int:
+        if exponent < 0:
+            raise InvalidPowerException('Integer exponent must not be negative')
+        if uint_type is not None:
+            return pow(base, exponent, 1 << uint_type.width)
+        result = 1
+        while exponent:
+            if exponent & 1:
+                result *= base
+                if not self.QCX_INT_MIN <= result <= self.QCX_INT_MAX:
+                    raise InvalidPowerException('Integer power result outside QCX INT range')
+            exponent >>= 1
+            if exponent:
+                base *= base
+                if not self.QCX_INT_MIN <= base <= self.QCX_INT_MAX:
+                    raise InvalidPowerException('Integer power result outside QCX INT range')
+        return result
+
+    def __visit_power_binary(self, expression: ast.BinaryExpression) -> None:
+        self.__power_expression_info(expression)
+        operands = []
+        try:
+            for operand in (expression.lhs, expression.rhs):
+                self.visit(operand)
+                if self.__value is None or self.__value_type is None or self.__value_kind is None:
+                    raise UninitializedValueException
+                operands.append((self.__value, self.__value_type, self.__value_kind))
+            (lhs, lhs_type, lhs_kind), (rhs, rhs_type, rhs_kind) = operands
+            result_type, uint_type = self.__integer_expression_type(
+                lhs_type, rhs_type, expression.lhs, expression.rhs)
+            if uint_type is not None:
+                self.__uint_expression_types[id(expression)] = (expression, uint_type)
+            for value, value_type, kind in operands:
+                if (kind == ValueKind.LITERAL and value_type == ValueType.INT
+                        and self.__evaluate_constant
+                        and not self.QCX_INT_MIN <= int(value) <= self.QCX_INT_MAX):
+                    raise UnsupportedOpenQASMError('integer exponentiation operand outside QCX INT range')
+            if lhs_kind == rhs_kind == ValueKind.LITERAL:
+                if not self.__evaluate_constant:
+                    self.__value, self.__value_type, self.__value_kind = 0, result_type, ValueKind.LITERAL
+                    return
+                try:
+                    # Check the signed exponent before unsigned promotion.
+                    if int(rhs) < 0:
+                        raise InvalidPowerException('Integer exponent must not be negative')
+                    base = uint_type.normalize(int(lhs)) if uint_type is not None else int(lhs)
+                    folded = self.__fold_power(base, int(rhs), uint_type)
+                except InvalidPowerException:
+                    if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
+                        raise
+                    # Literal failures on runtime paths must also be skippable.
+                else:
+                    self.__value, self.__value_type, self.__value_kind = folded, result_type, ValueKind.LITERAL
+                    return
+            if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
+                raise NoConstantExpressionException
+            self.__emit_power_expression(operands, result_type, uint_type)
+        finally:
+            for value, _, kind in operands:
+                if kind == ValueKind.TEMPORARY:
+                    self.__release_temporary_variable(str(value))
+
+    def __emit_power_expression(
+            self, operands: list[tuple[str | int | float | complex, ValueType, ValueKind]],
+            result_type: ValueType, uint_type: _UnsignedIntegerType | None) -> None:
+        (lhs, lhs_type, lhs_kind), (rhs, rhs_type, rhs_kind) = operands
+        owned: set[str] = set()
+        keep = None
+
+        def allocate(value_type=ValueType.UINT, info=None):
+            name = self.__add_new_temporary_variable(value_type, info)
+            owned.add(name)
+            return name
+
+        prefix = f'QASM2QCX_POWER_{self.__power_index}'
+        self.__power_index += 1
+        try:
+            count, parity = allocate(), allocate()
+            base, accumulator = allocate(info=uint_type), allocate(info=uint_type)
+            result = accumulator if uint_type is not None else allocate(ValueType.INT)
+            limit = quotient = negative = None
+            if uint_type is None:
+                limit, quotient, negative = allocate(), allocate(), allocate(ValueType.INT)
+            if rhs_type == ValueType.INT:
+                if rhs_kind == ValueKind.LITERAL:
+                    captured = allocate(ValueType.INT)
+                    self.__qcx_lines.append(f'LET {captured} := {rhs}')
+                else:
+                    captured = str(rhs)
+                self.__qcx_lines.append(f'ASSERT {captured} >= 0')
+            # After the domain check, no exponent is narrowed through INT.
+            exponent, _ = self.__converted_operand(rhs, rhs_type, rhs_kind, ValueType.UINT)
+            factor, _ = self.__converted_operand(lhs, lhs_type, lhs_kind, ValueType.UINT)
+            self.__qcx_lines.extend([f'LET {count} := {exponent}',
+                                     f'LET {base} := {factor}', f'LET {accumulator} := 1'])
+            if uint_type is None:
+                signed_base, _ = self.__converted_operand(lhs, lhs_type, lhs_kind, ValueType.INT)
+                # Compare only variables in QCX. Use result as the base snapshot
+                # until the final signed result is reconstructed.
+                self.__qcx_lines.extend([
+                    f'LET {result} := {signed_base}', f'LET {negative} := 0',
+                    f'LET {limit} := {self.QCX_INT_MAX}',
+                    f'JUMPIF {prefix}_READY {result} >= 0',
+                    f'LET {base} := 0', f'LET {base} -= {factor}',
+                    f'LET {parity} := {count}', f'LET {parity} &= 1',
+                    f'JUMPIF {prefix}_READY {parity} == 0',
+                    f'LET {negative} := 1', f'LET {limit} := {-self.QCX_INT_MIN}',
+                    f'@{prefix}_READY',
+                ])
+            self.__qcx_lines.extend([
+                f'@{prefix}_LOOP', f'JUMPIF {prefix}_DONE {count} == 0',
+                f'LET {parity} := {count}', f'LET {parity} &= 1',
+                f'JUMPIF {prefix}_NEXT {parity} == 0',
+            ])
+            self.__emit_power_multiply(accumulator, base, uint_type, limit, quotient, prefix + '_PRODUCT')
+            self.__qcx_lines.extend([
+                f'@{prefix}_NEXT', f'LET {count} >>= 1',
+                f'JUMPIF {prefix}_DONE {count} == 0',
+            ])
+            # Do not square once the exponent is exhausted: x ** 1 must not
+            # fail just because the unused x ** 2 would overflow.
+            self.__emit_power_multiply(base, base, uint_type, limit, quotient, prefix + '_SQUARE')
+            self.__qcx_lines.extend([f'JUMP {prefix}_LOOP', f'@{prefix}_DONE'])
+            if uint_type is None:
+                self.__qcx_lines.extend([
+                    f'JUMPIF {prefix}_POSITIVE {negative} == 0',
+                    f'JUMPIF {prefix}_MINIMUM {accumulator} == {-self.QCX_INT_MIN}',
+                    f'LET {result} := :INT:{accumulator}', f'LET {result} *= -1',
+                    f'JUMP {prefix}_END', f'@{prefix}_MINIMUM',
+                    f'LET {result} := {self.QCX_INT_MIN}', f'JUMP {prefix}_END',
+                    f'@{prefix}_POSITIVE', f'LET {result} := :INT:{accumulator}', f'@{prefix}_END',
+                ])
+            self.__value, self.__value_type, self.__value_kind = result, result_type, ValueKind.TEMPORARY
+            keep = result
+        finally:
+            for name in owned - {keep}:
+                self.__release_temporary_variable(name)
+
+    def __emit_power_multiply(
+            self, target: str, factor: str, uint_type: _UnsignedIntegerType | None,
+            limit: str | None, quotient: str | None, label: str) -> None:
+        if uint_type is None:
+            # Magnitudes use UINT, including abs(INT_MIN). Division guards the
+            # multiplication without evaluating any potentially overflowing INT
+            # operation, and a zero factor never becomes a divisor.
+            self.__qcx_lines.extend([
+                f'JUMPIF {label} {factor} == 0', f'LET {quotient} := {limit}',
+                f'LET {quotient} /= {factor}', f'ASSERT {target} <= {quotient}', f'@{label}',
+            ])
+        self.__qcx_lines.append(f'LET {target} *= {factor}')
+        if uint_type is not None:
+            self.__normalize_uint_storage(target, uint_type)
 
     def __fold_shift(
             self, lhs: int, rhs: int, operator: str,

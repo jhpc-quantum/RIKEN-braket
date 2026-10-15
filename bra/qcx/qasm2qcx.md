@@ -555,9 +555,9 @@ computed register results remain unsupported.
 
 ### Integer exponentiation design (implementation in progress)
 
-`**` and `**=` are not yet available for conversion. Metadata validation is in
-place; constant folding, runtime lowering, and compound assignments remain to
-be implemented. The intended integer subset follows these rules:
+`**` supports constant folding and runtime lowering. Compound assignment
+(`**=`) and the final integration audit remain to be implemented. The integer
+subset follows these rules:
 
 - Operands must be scalar `int` or `uint`. Signed operands must have native QCX
   width; non-native signed widths, Boolean/bit values, registers, floating-point,
