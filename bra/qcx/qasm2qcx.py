@@ -166,6 +166,9 @@ class InvalidShiftException(QASM2QCXError):
 class InvalidPowerException(QASM2QCXError):
     """Negative integer exponent or overflowing signed integer power."""
 
+class InvalidNegationException(QASM2QCXError):
+    """Native INT negation has an unrepresentable operand or result."""
+
 class WrongConstantVariableException(QASM2QCXError):
     def __str__(self):
         return 'Wrong constant variable'
@@ -547,17 +550,37 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if expression.op == ast.UnaryOperator['~']:
             self.__visit_bitwise_complement(expression.expression)
             return
-        self.visit(expression.expression)
+        previous_temporaries = self.__used_temporary_variables.copy()
+        try:
+            self.visit(expression.expression)
+        except Exception:
+            # A failed nested operand may not return its partial results for
+            # normal cleanup. Keep caller-owned storage reserved.
+            for temporary in self.__used_temporary_variables - previous_temporaries:
+                self.__release_temporary_variable(temporary)
+            raise
         if self.__value is None or self.__value_type is None or self.__value_kind is None:
             raise UninitializedValueException
-        if self.__value_type == ValueType.BIT:
-            raise UnsupportedOpenQASMError('unary arithmetic on bit values')
-        if self.__value_type == ValueType.BOOL:
-            raise UnsupportedOpenQASMError('unary value expression on Boolean values')
+        if self.__value_type in (ValueType.BIT, ValueType.BOOL):
+            if self.__value_kind == ValueKind.TEMPORARY:
+                self.__release_temporary_variable(str(self.__value))
+            feature = ('unary arithmetic on bit values' if self.__value_type == ValueType.BIT
+                       else 'unary value expression on Boolean values')
+            raise UnsupportedOpenQASMError(feature)
 
         if expression.op != ast.UnaryOperator['-']:
             raise UnsupportedOpenQASMError(f'unary operator {expression.op.name}')
 
+        if self.__value_type == ValueType.INT:
+            try:
+                if not self.__native_signed_operand(expression.expression):
+                    raise UnsupportedOpenQASMError('unary negation of an integer with a non-native signed width')
+            except QASM2QCXError:
+                if self.__value_kind == ValueKind.TEMPORARY:
+                    self.__release_temporary_variable(str(self.__value))
+                raise
+            self.__visit_native_int_negation(expression)
+            return
         if self.__value_kind == ValueKind.LITERAL:
             self.__value = -self.__value
             uint_type = self.__uint_expression_type(expression.expression)
@@ -583,6 +606,76 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__release_temporary_variable(operand)
         self.__value = temporary_variable
         self.__value_kind = ValueKind.TEMPORARY
+
+    def __visit_native_int_negation(self, expression: ast.UnaryExpression) -> None:
+        operand, kind = self.__value, self.__value_kind
+        result = None
+        keep = False
+        try:
+            if kind == ValueKind.LITERAL:
+                if not self.__evaluate_constant:
+                    self.__value = 0
+                    return
+                try:
+                    self.__validate_native_negation_value(expression, int(operand))
+                except InvalidNegationException:
+                    if (self.__expression_kind == ExpressionKind.CONST_ARITHMETIC
+                            or not self.QCX_INT_MIN <= int(operand) <= self.QCX_INT_MAX):
+                        raise
+                    # Preserve runtime reachability for a known overflowing
+                    # result. Invalid inputs that cannot be represented in an
+                    # INT LET remain conversion errors on all paths.
+                else:
+                    self.__value = -int(operand)
+                    return
+            elif self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
+                raise NoConstantExpressionException
+            result = self.__add_new_temporary_variable(ValueType.INT)
+            self.__qcx_lines.extend([
+                f'LET {result} := {operand}',
+                f'ASSERT {result} \\= {self.QCX_INT_MIN}',
+                f'LET {result} *= -1',
+            ])
+            self.__value, self.__value_type, self.__value_kind = result, ValueType.INT, ValueKind.TEMPORARY
+            keep = True
+        finally:
+            if kind == ValueKind.TEMPORARY:
+                self.__release_temporary_variable(str(operand))
+            if result is not None and not keep:
+                self.__release_temporary_variable(result)
+
+    def __negation_expression_info(
+            self, expression: ast.UnaryExpression,
+            iterators: set[str] | dict[str, ValueType] | None = None
+            ) -> tuple[ValueType, bool]:
+        # Inspect types/dependencies only, including in empty loop bodies.
+        value_type, _, runtime = self.__integer_operand_info(expression.expression, iterators)
+        if value_type == ValueType.BIT:
+            raise UnsupportedOpenQASMError('unary arithmetic on bit values')
+        if value_type == ValueType.BOOL:
+            raise UnsupportedOpenQASMError('unary value expression on Boolean values')
+        if value_type not in (ValueType.INT, ValueType.UINT, ValueType.FLOAT, ValueType.COMPLEX):
+            raise UnsupportedOpenQASMError('unary negation requires a numeric scalar operand')
+        if value_type == ValueType.INT and not self.__native_signed_operand(expression.expression, iterators):
+            raise UnsupportedOpenQASMError('unary negation of an integer with a non-native signed width')
+        self.__validate_bitwise_indices(expression.expression, iterators)
+        return value_type, runtime
+
+    def __is_minimum_int_literal(self, expression: ast.UnaryExpression) -> bool:
+        # The sign is an AST operator, not part of an IntegerLiteral. Admit
+        # this spelling of INT_MIN, but not negation of an existing INT_MIN.
+        return (expression.op.name == '-'
+                and isinstance(expression.expression, ast.IntegerLiteral)
+                and expression.expression.value == -self.QCX_INT_MIN)
+
+    def __validate_native_negation_value(self, expression: ast.UnaryExpression, value: int) -> None:
+        # Pure boundary validation, without emitting instructions or arithmetic.
+        if self.__is_minimum_int_literal(expression) and value == -self.QCX_INT_MIN:
+            return
+        if not self.QCX_INT_MIN <= value <= self.QCX_INT_MAX:
+            raise InvalidNegationException('Integer negation operand outside QCX INT range')
+        if value == self.QCX_INT_MIN:
+            raise InvalidNegationException('Integer negation result outside QCX INT range')
 
     @staticmethod
     def __bitwise_type(lhs_type: ValueType, rhs_type: ValueType | None = None) -> ValueType:
@@ -2142,6 +2235,19 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __emit_condition(
             self, condition: ast.Expression, true_label: str,
             false_label: str) -> None:
+        previous_used = self.__used_temporary_variables.copy()
+        try:
+            self.__emit_condition_body(condition, true_label, false_label)
+        except Exception:
+            # A completed operand may still be reserved when another fails.
+            # This covers condition values and direct if/while conditions.
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
+            raise
+
+    def __emit_condition_body(
+            self, condition: ast.Expression, true_label: str,
+            false_label: str) -> None:
         if isinstance(condition, ast.Cast) and isinstance(condition.type, ast.BoolType):
             value, value_type, value_kind = self.__condition_operand(condition.argument)
             if value_type not in (ValueType.BOOL, ValueType.BIT, ValueType.INT, ValueType.UINT, ValueType.FLOAT):
@@ -2499,6 +2605,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __loop_unary_info(
             self, expression: ast.UnaryExpression, iterators: set[str] | dict[str, ValueType] | None
             ) -> tuple[ValueType, bool]:
+        if expression.op.name == '-':
+            return self.__negation_expression_info(expression, iterators)
         value_type, runtime = self.__loop_expression_info(expression.expression, iterators)
         if expression.op.name == '!':
             if value_type not in (ValueType.BIT, ValueType.BOOL):
@@ -2506,10 +2614,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return ValueType.BOOL, runtime
         if expression.op.name == '~':
             return self.__bitwise_type(value_type), runtime
-        if expression.op.name != '-' or value_type not in (
-                ValueType.INT, ValueType.UINT, ValueType.FLOAT, ValueType.COMPLEX):
-            raise UnsupportedOpenQASMError('unsupported unary loop expression')
-        return value_type, runtime
+        raise UnsupportedOpenQASMError('unsupported unary loop expression')
 
     def __loop_binary_info(
             self, expression: ast.BinaryExpression, iterators: set[str] | dict[str, ValueType] | None
@@ -2900,7 +3005,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 and node.op.name in ('==', '!=', '<', '<=', '>', '>=')
                 and self.__register_comparison_width(node, iterators) is not None):
             return
-        if ((isinstance(node, ast.UnaryExpression) and node.op.name == '~')
+        if ((isinstance(node, ast.UnaryExpression) and node.op.name in ('~', '-'))
                 or (isinstance(node, ast.BinaryExpression) and node.op.name in ('&', '|', '^', '<<', '>>', '**'))):
             self.__loop_expression_info(node, iterators)
             self.__validate_bitwise_indices(node, iterators)

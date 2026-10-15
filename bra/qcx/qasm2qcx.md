@@ -75,6 +75,7 @@ The converter currently covers:
 - integer remainder expressions and compound assignments using `%` and `%=`;
 - scalar integer exponentiation (`**`, `**=`), with nonnegative exponents,
   modular UINT results, and checked native INT results;
+- checked native INT unary negation, including minimum-value literal syntax;
 - scalar integer and bit bitwise expressions (`&`, `|`, `^`, `~`) and
   compound assignments (`&=`, `|=`, `^=`);
 - whole-bit-register bitwise expressions and compound assignments with
@@ -554,6 +555,64 @@ is released afterward. No new bra instruction is required. Unequal operand
 widths, scalar/register mixing, ordered register comparisons (`<`, `<=`, `>`,
 `>=`), bare register conditions, dynamic selections, aliases, and indexing of
 computed register results remain unsupported.
+
+### Checked native INT negation
+
+Unary `-` supports numeric scalars. Native INT negation checks operand and result
+bounds in evaluated constant expressions and guards runtime arithmetic against
+overflow. It integrates with supported casts, comparisons, indexed expressions,
+assignments, and control flow. The checked behavior is:
+
+- INT operands must have native width. Non-native signed-width emulation remains
+  separate work; existing UINT modular, floating-point, and complex behavior is
+  preserved.
+- Direct unary minus applied to a single integer literal whose value is one
+  greater than `INT_MAX` represents `INT_MIN`. Parentheses around that literal
+  and hexadecimal spellings are equivalent. This is distinct from negating an
+  existing `INT_MIN` value, including through a constant name or nested negation.
+- Other evaluated constant INT negations must have representable operands and
+  results. Negating `INT_MIN` is an overflow error, not wrapping arithmetic.
+- Runtime negation checks the captured operand before multiplication by
+  `-1`. Such checks, including for overflowing literal results in runtime
+  expressions, stay on reached paths so logical short-circuiting and
+  skipped branches/loops can bypass them.
+- An out-of-range operand that cannot be captured in native INT remains a
+  conversion error, even on skipped runtime paths. The minimum-value literal
+  spelling above is the sole exception for an otherwise oversized literal.
+- Metadata validation checks numeric types and native signed widths without
+  evaluating negation, operand arithmetic, or element indices in empty loops.
+  It does not fabricate iterator values. Declared widths remain tied to
+  declaration scope when iterators shadow width constants.
+
+For example, on a target with 32-bit native INT:
+
+```qasm
+const int MINIMUM = -2147483648;       // valid minimum-value literal
+int a = -3;
+int x = -a;                           // 3
+int y = MINIMUM;
+bool off = false && bool(-y);         // false: negation is not reached
+float widened = -float(y);            // 2147483648.0: negate after widening
+// const int BAD = -MINIMUM;          // constant negation overflow
+// y = -y;                           // runtime assertion failure
+```
+
+The minimum-literal exception is syntactic: `-(2147483648)` and `-0x80000000`
+are valid here, but `-(2147483647 + 1)` has an unrepresentable INT operand and
+is rejected. More generally, `float(-y)` and `uint(-y)` still perform checked
+INT negation before the cast; widening or converting must occur before `-`
+when different operand semantics are intended.
+
+Runtime lowering evaluates the operand once, copies it to private INT storage,
+and emits `ASSERT temporary \= INT_MIN` before multiplication by `-1`. A reached
+failure is reported by the bra CLI with the failed assertion and a nonzero exit
+status. The destination is written only after the expression succeeds. No new
+bra instruction is required. Private temporaries are released after use and on
+failed operand/condition lowering, without releasing caller-owned storage.
+
+Only unary negation is checked here. Overflow in other operand arithmetic is
+not made safe by an enclosing negation; general signed-arithmetic checking and
+non-native signed-width emulation remain separate work.
 
 ### Integer exponentiation
 
@@ -1834,6 +1893,17 @@ sets, skipped errors, invalid counts, and signed overflow. Unit tests additional
 cover type rejection, non-native signed operands, empty-loop validation, and
 temporary cleanup.
 
+`bra/test/qasm2qcx_negation_numerical.py` compares constant-folded and runtime
+native INT negation at zero, native endpoints, and ordinary positive/negative
+values. It checks minimum literal spellings, overflowing constants and runtime
+values, nested/indexed operands and assignments, cast order, UINT modular
+negation, floating-point/complex negation, short-circuiting, branches and loops,
+declaration-scope widths, gate parameters, and measurement-controlled execution.
+Unit tests additionally cover unsupported widths/types, empty-loop metadata,
+single index evaluation, CLI diagnostics without partial output, temporary
+hoisting, and cleanup after failed lowering while preserving caller storage.
+The negation numerical suite also passes with UBSan enabled.
+
 `bra/test/qasm2qcx_integer_power_numerical.py` compares constant folding, runtime
 powers, and compound assignments with Python reference results. It checks signed
 bases and native endpoints, zero/one exponents, unsigned widths and wrapping,
@@ -1955,6 +2025,7 @@ python3 bra/test/integer_shift_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_if_else_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_integer_remainder_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_integer_power_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_negation_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_for_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_while_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_for_numerical.py --bra bra/bin/bra

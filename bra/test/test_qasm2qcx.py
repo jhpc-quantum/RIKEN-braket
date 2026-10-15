@@ -309,6 +309,315 @@ class UnsignedIntegrationTests(unittest.TestCase):
                 convert('OPENQASM 3.0; ' + source)
 
 
+class CheckedNegationFoundationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        converter = qasm2qcx.QASM2QCXConverter
+        self.converter = UnsignedIntegerFoundationTests().converter(f'''
+            const int N = {converter.QCX_UINT_WIDTH}; const int MINIMUM = {converter.QCX_INT_MIN};
+            const int[8] SMALL = 1; int a; int[N] native; int[8] small;
+            array[int, 2] values; array[int[8], 1] smalls;
+            uint u; uint[4] narrow; bool ready; bit flag; bit[2] bits;
+            float f; complex z;''')
+
+    @staticmethod
+    def expression(source: str):
+        return qasm2qcx.openqasm3.parse('OPENQASM 3.0; int out = ' + source + ';').statements[0].init_expression
+
+    def info(self, source: str, iterators=None):
+        return self.converter._QASM2QCXConverter__negation_expression_info(self.expression(source), iterators)
+
+    def test_numeric_types_promotions_and_dependencies(self) -> None:
+        for source, expected, runtime in (
+                ('-1', qasm2qcx.ValueType.INT, False), ('-MINIMUM', qasm2qcx.ValueType.INT, False),
+                ('-a', qasm2qcx.ValueType.INT, True), ('-native', qasm2qcx.ValueType.INT, True),
+                ('-values[a]', qasm2qcx.ValueType.INT, True),
+                ('-u', qasm2qcx.ValueType.UINT, True), ('-narrow', qasm2qcx.ValueType.UINT, True),
+                ('-uint[4](1)', qasm2qcx.ValueType.UINT, False),
+                ('-(a + narrow)', qasm2qcx.ValueType.INT, True),
+                ('-(a + u)', qasm2qcx.ValueType.UINT, True),
+                ('-f', qasm2qcx.ValueType.FLOAT, True), ('-1.5', qasm2qcx.ValueType.FLOAT, False),
+                ('-z', qasm2qcx.ValueType.COMPLEX, True), ('-1im', qasm2qcx.ValueType.COMPLEX, False)):
+            with self.subTest(source=source):
+                self.assertEqual(self.info(source), (expected, runtime))
+
+    def test_minimum_literal_recognition_uses_ast_shape_not_folded_value(self) -> None:
+        magnitude = -self.converter.QCX_INT_MIN
+        check = self.converter._QASM2QCXConverter__is_minimum_int_literal
+        for source in (f'-{magnitude}', f'-({magnitude})', f'-0x{magnitude:x}'):
+            with self.subTest(source=source):
+                self.assertTrue(check(self.expression(source)))
+                self.assertEqual(self.info(source), (qasm2qcx.ValueType.INT, False))
+        for source in ('-MINIMUM', f'-(-{magnitude})', f'-({magnitude - 1} + 1)',
+                       f'-int({magnitude})', '-1', f'-{magnitude + 1}'):
+            with self.subTest(source=source):
+                self.assertFalse(check(self.expression(source)))
+
+    def test_boundary_validation_accepts_representable_results_and_minimum_spelling(self) -> None:
+        validate = self.converter._QASM2QCXConverter__validate_native_negation_value
+        minimum, maximum = self.converter.QCX_INT_MIN, self.converter.QCX_INT_MAX
+        for value in (minimum + 1, -1, 0, 1, maximum):
+            validate(self.expression('-a'), value)
+        validate(self.expression(str(minimum)), -minimum)
+        for source in ('-a', '-MINIMUM', f'-({minimum})'):
+            with self.subTest(source=source), self.assertRaisesRegex(
+                    qasm2qcx.InvalidNegationException, 'result outside QCX INT range'):
+                validate(self.expression(source), minimum)
+        for value in (minimum - 1, maximum + 1, maximum + 2):
+            with self.subTest(value=value), self.assertRaisesRegex(
+                    qasm2qcx.InvalidNegationException, 'operand outside QCX INT range'):
+                validate(self.expression('-a'), value)
+
+    def test_invalid_types_and_non_native_signed_widths(self) -> None:
+        for source in ('-ready', '-flag', '-bits', '-bits[0]', '-bits[0:0]',
+                       '-values', '-small', '-SMALL', '-smalls[0]', '-int[8](a)',
+                       '-values[f]'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(source)
+        with self.assertRaises(qasm2qcx.NoVariableNameException):
+            self.info('-missing')
+
+    def test_metadata_does_not_evaluate_values_arithmetic_or_indices(self) -> None:
+        converter = self.converter
+        before = (list(converter._QASM2QCXConverter__qcx_lines),
+                  converter._QASM2QCXConverter__value, converter._QASM2QCXConverter__value_type,
+                  converter._QASM2QCXConverter__value_kind, converter._QASM2QCXConverter__expression_kind,
+                  converter._QASM2QCXConverter__evaluate_constant,
+                  set(converter._QASM2QCXConverter__used_temporary_variables))
+        for source in ('-MINIMUM', f'-({converter.QCX_INT_MIN})', '-(a / 0)', '-(a ** -1)',
+                       '-values[999]', '-values[1 / 0]', '-(1 << -1)'):
+            self.info(source)
+        self.assertEqual(before, (list(converter._QASM2QCXConverter__qcx_lines),
+                         converter._QASM2QCXConverter__value, converter._QASM2QCXConverter__value_type,
+                         converter._QASM2QCXConverter__value_kind, converter._QASM2QCXConverter__expression_kind,
+                         converter._QASM2QCXConverter__evaluate_constant,
+                         set(converter._QASM2QCXConverter__used_temporary_variables)))
+
+    def test_empty_loops_validate_types_without_evaluating_negation(self) -> None:
+        convert(f'''OPENQASM 3.0; int a; array[int, 1] values;
+            const int MINIMUM = {self.converter.QCX_INT_MIN};
+            for int i in [1:0] {{ a = -MINIMUM; a = -values[999]; a = -(1 / 0); }}''')
+        for declaration, source in (('int[8] small;', '-small'), ('bool b;', '-b'),
+                                    ('bit[2] b;', '-b[0]'), ('int[8] small;', '-int[8](small)')):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert('OPENQASM 3.0; int a; ' + declaration
+                        + ' for int i in [1:0] { a = ' + source + '; }')
+
+    def test_iterator_shadowing_and_declaration_scope_widths(self) -> None:
+        self.assertEqual(self.info('-small', {'small': qasm2qcx.ValueType.INT}),
+                         (qasm2qcx.ValueType.INT, False))
+        with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+            self.info('-small', {'small': qasm2qcx.ValueType.BIT})
+        self.converter._QASM2QCXConverter__loop_bindings.append({'N': 1})
+        try:
+            self.assertEqual(self.info('-native'), (qasm2qcx.ValueType.INT, True))
+        finally:
+            self.converter._QASM2QCXConverter__loop_bindings.pop()
+        with self.assertRaises(qasm2qcx.InvalidDeclarationException):
+            self.info('-int[N](a)', {'N': qasm2qcx.ValueType.INT})
+
+    def test_public_paths_preserve_valid_values_and_reject_unsupported_widths(self) -> None:
+        minimum = self.converter.QCX_INT_MIN
+        lines = convert(f'''OPENQASM 3.0; const int C = {minimum}; int a = C;
+            uint[4] u = -uint[4](1); float f = -1.5; complex z = -1im;''')
+        self.assertIn(f'LET A1 := {minimum}', lines)
+        self.assertIn('LET U1 := 15', lines)
+        # Do not impose the stricter loop-metadata cast subset on ordinary
+        # float/complex negation expressions that the converter already accepts.
+        convert('''OPENQASM 3.0; complex z = 1 + 2im;
+            int a = -int(z); float f = -float(z); complex w = -z;''')
+        for wrapper in ('{}', 'if (false) {{ {} }}', 'for int i in [1:0] {{ {} }}'):
+            with self.subTest(wrapper=wrapper), self.assertRaisesRegex(
+                    qasm2qcx.UnsupportedOpenQASMError, 'non-native signed width'):
+                convert('OPENQASM 3.0; int[8] small = 1; int out; ' + wrapper.format('out = -small;'))
+
+    def test_failed_native_width_validation_releases_computed_operands(self) -> None:
+        program = qasm2qcx.openqasm3.parse('OPENQASM 3.0; int[8] small = 1; int out = -(small + 1);')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'non-native signed width'):
+            converter.visit(program)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+
+class CheckedNegationExpressionTests(unittest.TestCase):
+    def test_minimum_literal_spellings_and_valid_constant_boundaries(self) -> None:
+        minimum = qasm2qcx.QASM2QCXConverter.QCX_INT_MIN
+        maximum = qasm2qcx.QASM2QCXConverter.QCX_INT_MAX
+        for source, expected in ((str(minimum), minimum), (f'-({-minimum})', minimum),
+                                 (f'-0x{-minimum:x}', minimum), ('-0', 0), ('-1', -1),
+                                 (f'-({minimum + 1})', maximum), (f'-({maximum})', -maximum)):
+            with self.subTest(source=source):
+                lines = convert(f'OPENQASM 3.0; const int C = {source}; int out = C;')
+                self.assertIn(f'LET OUT7 := {expected}', lines)
+                self.assertFalse(any(line.startswith('ASSERT ') for line in lines))
+
+    def test_constant_minimum_value_and_nested_negation_overflow(self) -> None:
+        minimum = qasm2qcx.QASM2QCXConverter.QCX_INT_MIN
+        for source in ('-MINIMUM', f'-({minimum})', f'-(-({minimum}))'):
+            with self.subTest(source=source), self.assertRaisesRegex(
+                    qasm2qcx.InvalidNegationException, 'result outside QCX INT range'):
+                convert(f'OPENQASM 3.0; const int MINIMUM = {minimum}; const int BAD = {source};')
+
+    def test_unrepresentable_inputs_are_conversion_errors_not_wrapped_literals(self) -> None:
+        magnitude = -qasm2qcx.QASM2QCXConverter.QCX_INT_MIN
+        for source in (f'-{magnitude + 1}', f'-({magnitude - 1} + 1)', f'-int({magnitude})'):
+            for wrapper in ('int out = {};', 'const int C = {};', 'int out; if (false) {{ out = {}; }}'):
+                with self.subTest(source=source, wrapper=wrapper), self.assertRaisesRegex(
+                        qasm2qcx.InvalidNegationException, 'operand outside QCX INT range'):
+                    convert('OPENQASM 3.0; ' + wrapper.format(source))
+
+    def test_constant_short_circuit_suppresses_value_checks_not_type_checks(self) -> None:
+        minimum = qasm2qcx.QASM2QCXConverter.QCX_INT_MIN
+        lines = convert(f'''OPENQASM 3.0; const int MINIMUM = {minimum};
+            const bool OFF = false && bool(-MINIMUM);
+            const bool ON = true || bool(-({minimum}));
+            bool a = OFF; bool b = ON;''')
+        self.assertIn('LET A1 := 0', lines)
+        self.assertIn('LET B1 := 1', lines)
+        with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+            convert('OPENQASM 3.0; const bool OFF = false && bool(-true);')
+
+    def test_runtime_operand_is_captured_and_guarded_before_multiplication(self) -> None:
+        minimum = qasm2qcx.QASM2QCXConverter.QCX_INT_MIN
+        lines = convert('OPENQASM 3.0; int a = 2; int out = -a;')
+        capture = next(index for index, line in enumerate(lines) if line.endswith(':= A1'))
+        temporary = lines[capture].split()[1]
+        self.assertEqual(lines[capture + 1], f'ASSERT {temporary} \\= {minimum}')
+        self.assertEqual(lines[capture + 2], f'LET {temporary} *= -1')
+        self.assertEqual(lines[-1], f'LET OUT7 := {temporary}')
+
+    def test_literal_runtime_result_overflow_is_deferred_without_bad_int_literal(self) -> None:
+        minimum = qasm2qcx.QASM2QCXConverter.QCX_INT_MIN
+        lines = convert(f'OPENQASM 3.0; int out = -({minimum});')
+        self.assertTrue(any(line.startswith('ASSERT ') for line in lines))
+        self.assertFalse(any(line.endswith(f':= {-minimum}') for line in lines))
+        convert(f'''OPENQASM 3.0; int out = 0;
+            if (false) {{ out = -({minimum}); }}
+            bool off = false && bool(-({minimum}));''')
+
+    def test_indexed_reads_and_computed_operands_release_temporaries(self) -> None:
+        program = qasm2qcx.openqasm3.parse('''OPENQASM 3.0; array[int, 2] v = {1, 2};
+            int i = 0; int out = -v[i + 1]; out = -(out + v[i]);''')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        lines = list(converter)
+        self.assertEqual(sum(line.endswith(' += 1') for line in lines), 1)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_unsigned_float_and_complex_lowering_do_not_get_int_guards(self) -> None:
+        lines = convert('''OPENQASM 3.0; uint[4] u = 1; uint[4] v = -u;
+            float f = 1.5; float g = -f; complex z = 1 + 2im; complex w = -z;''')
+        self.assertFalse(any(line.startswith('ASSERT ') for line in lines))
+        self.assertTrue(any(' *= :UINT:-1' in line for line in lines))
+        self.assertTrue(any(' *= :COMPLEX:-1.0' in line for line in lines))
+
+
+class CheckedNegationIntegrationTests(unittest.TestCase):
+    def test_rejected_bit_and_boolean_operands_release_computed_values(self) -> None:
+        for source in ('bit a = 1; bit b = 0; int out = -(a & b);',
+                       'int a = 1; int out = -bool(a);'):
+            with self.subTest(source=source):
+                program = qasm2qcx.openqasm3.parse('OPENQASM 3.0; ' + source)
+                converter = qasm2qcx.QASM2QCXConverter(program)
+                with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                    converter.visit(program)
+                self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_cli_constant_negation_errors_have_no_partial_output(self) -> None:
+        minimum = qasm2qcx.QASM2QCXConverter.QCX_INT_MIN
+        for expression, diagnostic in ((f'-({minimum})', 'result outside QCX INT range'),
+                                       (f'-({-minimum - 1} + 1)', 'operand outside QCX INT range')):
+            source = f'OPENQASM 3.0; qubit q; const int BAD = {expression};'
+            with self.subTest(expression=expression), patch('builtins.open', mock_open(read_data=source)), \
+                    patch('builtins.print') as output:
+                with self.assertRaises(SystemExit) as error:
+                    qasm2qcx.main(['negation.qasm'])
+                self.assertTrue(str(error.exception).startswith('qasm2qcx.py:'))
+                self.assertIn(diagnostic, str(error.exception))
+                output.assert_not_called()
+
+    def test_failed_nested_operand_releases_only_its_own_temporaries(self) -> None:
+        program = qasm2qcx.openqasm3.parse('''OPENQASM 3.0; int a = 2;
+            int out = -(later + -a); int later;''')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        reserved = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.INT)
+        with self.assertRaises(qasm2qcx.NoVariableNameException):
+            converter.visit(program)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {reserved})
+
+    def test_failed_condition_releases_guarded_rhs_without_releasing_caller_storage(self) -> None:
+        for statement in ('bool out = -later == -a;', 'if (-later == -a) {}',
+                          'while (-later == -a) {}'):
+            with self.subTest(statement=statement):
+                program = qasm2qcx.openqasm3.parse('OPENQASM 3.0; int a = 2; ' + statement + ' int later;')
+                converter = qasm2qcx.QASM2QCXConverter(program)
+                reserved = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.INT)
+                with self.assertRaises(qasm2qcx.NoVariableNameException):
+                    converter.visit(program)
+                self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {reserved})
+
+    def test_cast_order_controls_whether_int_negation_is_checked(self) -> None:
+        for declaration, checked, widened in (
+                ('float out;', 'out = float(-a);', 'out = -float(a);'),
+                ('uint out;', 'out = uint(-a);', 'out = -uint(a);'),
+                ('complex out;', 'out = complex(-a);', 'out = -complex(a);')):
+            prefix = 'OPENQASM 3.0; int a = 2; ' + declaration
+            with self.subTest(declaration=declaration):
+                self.assertEqual(sum(line.startswith('ASSERT ') for line in convert(prefix + checked)), 1)
+                self.assertFalse(any(line.startswith('ASSERT ') for line in convert(prefix + widened)))
+
+    def test_indexed_assignment_captures_destination_and_releases_storage(self) -> None:
+        program = qasm2qcx.openqasm3.parse('''OPENQASM 3.0; array[int, 2] v = {2, 3};
+            int i = 0; v[i + 1] = -v[i]; v[i] += -v[i + 1];''')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        lines = list(converter)
+        self.assertEqual(sum(line.endswith(' += 1') for line in lines), 2)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_nested_values_conditions_and_loop_headers_have_clean_storage(self) -> None:
+        width = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        program = qasm2qcx.openqasm3.parse(f'''OPENQASM 3.0; const int N = {width};
+            int[N] a = -2; int step = -1; int total = 0; array[int, 2] v = {{1, 2}};
+            bool same = -(-a) == a; same = !bool(-a) || (-a > 0 && same);
+            for int N in [0:1] {{ total += -a; }}
+            for int i in [0:-step:2] {{ total += -i; }}
+            for int j in {{-a, -step}} {{ total += -j; }}
+            while (-step > 0) {{ step = -step; if (-a == 2) {{ break; }} }}
+            total += v[-step + 1];''')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertEqual(converter._QASM2QCXConverter__loop_bindings, [])
+        ForLoopControlLoweringTests.assert_resolved_jumps(list(converter))
+
+    def test_storage_is_declared_before_a_skipped_first_use(self) -> None:
+        minimum = qasm2qcx.QASM2QCXConverter.QCX_INT_MIN
+        lines = convert(f'''OPENQASM 3.0; int a = {minimum}; bool off = false && bool(-a);
+            int out = 0; if (false) {{ out = -a; }} out = -out;''')
+        first_jump = next(index for index, line in enumerate(lines) if line.startswith('JUMP '))
+        self.assertTrue(all(index < first_jump for index, line in enumerate(lines)
+                            if line.startswith('VAR QASM2QCX_INT_')))
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_empty_loop_nested_validation_does_not_evaluate_bad_values(self) -> None:
+        minimum = qasm2qcx.QASM2QCXConverter.QCX_INT_MIN
+        convert(f'''OPENQASM 3.0; int a = {minimum}; array[int, 1] v;
+            for int i in [1:0] {{
+                while (bool(-a)) {{ a = -v[999]; }}
+                if (false && bool(-(1 / 0))) {{ a = -(-a); }}
+            }}''')
+        with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+            convert('''OPENQASM 3.0; int[8] small; int a;
+                for int i in [1:0] { while (false) { a = -small; } }''')
+
+    def test_bit_iterators_need_explicit_numeric_cast_and_remain_read_only(self) -> None:
+        convert('OPENQASM 3.0; bit[2] flags; int a; for bit b in flags { a = -int(b); }')
+        for body in ('a = -b;', 'b = -int(b);'):
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert('OPENQASM 3.0; bit[2] flags; int a; for bit b in flags { ' + body + ' }')
+
+
 class IntegerPowerFoundationTests(unittest.TestCase):
     def setUp(self) -> None:
         width = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
@@ -3002,18 +3311,20 @@ class RuntimeStrideInfrastructureTests(unittest.TestCase):
         converter = self.converter()
         for step in (converter.QCX_INT_MIN - 1, converter.QCX_INT_MAX + 1, 10 ** 100):
             with self.subTest(step=step):
+                # Isolate range validation from checked unary negation.
+                source = f'(0 - {-step})' if step < 0 else str(step)
                 with self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'must fit QCX INT'):
-                    converter._QASM2QCXConverter__validated_runtime_range_step(self.bounds(str(step)))
+                    converter._QASM2QCXConverter__validated_runtime_range_step(self.bounds(source))
                 with self.assertRaisesRegex(qasm2qcx.InvalidLoopRangeException, 'must fit QCX INT'):
                     convert('OPENQASM 3.0; int last = 3; for int i in [1:0] '
-                            f'{{ for int j in [0:{step}:last] {{}} }}')
+                            f'{{ for int j in [0:{source}:last] {{}} }}')
 
     def test_constant_range_steps_retain_unbounded_compile_time_integer_behavior(self) -> None:
         prefix = 'OPENQASM 3.0; int total = 0; '
         step = 10 ** 100
         self.assertEqual(convert(prefix + f'for int i in [0:{step}:1] {{ total += i; }}'),
                          convert(prefix + 'total += 0;'))
-        self.assertEqual(convert(prefix + f'for int i in [0:{-step}:-1] {{ total += i; }}'),
+        self.assertEqual(convert(prefix + f'for int i in [0:0 - {step}:-1] {{ total += i; }}'),
                          convert(prefix + 'total += 0;'))
 
     def test_nonunit_runtime_strides_now_use_safe_advance_lowering(self) -> None:
@@ -3293,7 +3604,7 @@ class RuntimeStepLoweringTests(unittest.TestCase):
                 ForLoopControlLoweringTests.assert_resolved_jumps(lines)
         lines = convert(prefix + 'for int s in {stride, -stride} '
                         '{ for int i in [0:s:5] { break; } }')
-        self.assertEqual(sum(line.startswith('ASSERT ') for line in lines), 2)
+        self.assertEqual(sum(line.startswith('ASSERT ') for line in lines), 3)
         ForLoopControlLoweringTests.assert_resolved_jumps(lines)
 
     def test_step_capture_and_iterator_temporaries_are_released(self) -> None:
@@ -4383,7 +4694,9 @@ class ConstantForIterationInfrastructureTests(unittest.TestCase):
     def test_huge_range_counts_do_not_use_len_or_materialize_values(self) -> None:
         magnitude = 10 ** 100
         count = qasm2qcx.QASM2QCXConverter._QASM2QCXConverter__loop_value_count
-        for bounds in (f'[-{magnitude}:{magnitude}]', f'[{magnitude}:-1:-{magnitude}]'):
+        # Binary constant arithmetic retains its existing precision; unary
+        # negation itself now requires native-range inputs and results.
+        for bounds in (f'[0 - {magnitude}:{magnitude}]', f'[{magnitude}:-1:0 - {magnitude}]'):
             with self.subTest(bounds=bounds):
                 values = self.evaluate_values(bounds)
                 self.assertIsInstance(values, range)
@@ -5007,7 +5320,7 @@ class ConstantForLoopRangeTests(unittest.TestCase):
 
     def test_large_range_is_lazy_and_preserves_integer_precision(self) -> None:
         magnitude = 2**100
-        values = self.evaluate_range(f'[-{magnitude}:{magnitude}]')
+        values = self.evaluate_range(f'[0 - {magnitude}:{magnitude}]')
         self.assertIsInstance(values, range)
         self.assertEqual(values.start, -magnitude)
         self.assertEqual(values.stop, magnitude + 1)
@@ -5404,8 +5717,11 @@ class IntegerRemainderConstantTests(unittest.TestCase):
             for rhs in (7, -7):
                 with self.subTest(lhs=lhs, rhs=rhs):
                     expected = abs(lhs) % abs(rhs) * (-1 if lhs < 0 else 1)
+                    # Test remainder precision independently of native unary
+                    # negation's operand-range checks.
+                    source = f'(0 - {-lhs})' if lhs < 0 else str(lhs)
                     self.assertEqual(convert(f'''OPENQASM 3.0;
-                        const int value = {lhs} % {rhs}; int result = value;''')[-1],
+                        const int value = {source} % {rhs}; int result = value;''')[-1],
                                      f'LET RESULT63 := {expected}')
 
     def test_nested_expressions_and_precedence(self) -> None:
