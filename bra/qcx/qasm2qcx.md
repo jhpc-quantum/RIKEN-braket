@@ -559,9 +559,9 @@ computed register results remain unsupported.
 
 Unary `-` supports numeric scalars. Native signed-width validation, checked
 constant folding, and guarded runtime negation for
-[#312](https://github.com/jhpc-quantum/RIKEN-braket/issues/312) are implemented;
-the integration audit and final documentation remain in progress. The checked
-behavior is:
+[#312](https://github.com/jhpc-quantum/RIKEN-braket/issues/312) are implemented
+and integrate with supported expressions and control flow. Final documentation
+and regression review remain in progress. The checked behavior is:
 
 - INT operands must have native width. Non-native signed-width emulation remains
   separate work; existing UINT modular, floating-point, and complex behavior is

@@ -512,6 +512,89 @@ class CheckedNegationExpressionTests(unittest.TestCase):
         self.assertTrue(any(' *= :COMPLEX:-1.0' in line for line in lines))
 
 
+class CheckedNegationIntegrationTests(unittest.TestCase):
+    def test_failed_nested_operand_releases_only_its_own_temporaries(self) -> None:
+        program = qasm2qcx.openqasm3.parse('''OPENQASM 3.0; int a = 2;
+            int out = -(later + -a); int later;''')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        reserved = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.INT)
+        with self.assertRaises(qasm2qcx.NoVariableNameException):
+            converter.visit(program)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {reserved})
+
+    def test_failed_condition_releases_guarded_rhs_without_releasing_caller_storage(self) -> None:
+        for statement in ('bool out = -later == -a;', 'if (-later == -a) {}',
+                          'while (-later == -a) {}'):
+            with self.subTest(statement=statement):
+                program = qasm2qcx.openqasm3.parse('OPENQASM 3.0; int a = 2; ' + statement + ' int later;')
+                converter = qasm2qcx.QASM2QCXConverter(program)
+                reserved = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.INT)
+                with self.assertRaises(qasm2qcx.NoVariableNameException):
+                    converter.visit(program)
+                self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {reserved})
+
+    def test_cast_order_controls_whether_int_negation_is_checked(self) -> None:
+        for declaration, checked, widened in (
+                ('float out;', 'out = float(-a);', 'out = -float(a);'),
+                ('uint out;', 'out = uint(-a);', 'out = -uint(a);'),
+                ('complex out;', 'out = complex(-a);', 'out = -complex(a);')):
+            prefix = 'OPENQASM 3.0; int a = 2; ' + declaration
+            with self.subTest(declaration=declaration):
+                self.assertEqual(sum(line.startswith('ASSERT ') for line in convert(prefix + checked)), 1)
+                self.assertFalse(any(line.startswith('ASSERT ') for line in convert(prefix + widened)))
+
+    def test_indexed_assignment_captures_destination_and_releases_storage(self) -> None:
+        program = qasm2qcx.openqasm3.parse('''OPENQASM 3.0; array[int, 2] v = {2, 3};
+            int i = 0; v[i + 1] = -v[i]; v[i] += -v[i + 1];''')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        lines = list(converter)
+        self.assertEqual(sum(line.endswith(' += 1') for line in lines), 2)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_nested_values_conditions_and_loop_headers_have_clean_storage(self) -> None:
+        width = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        program = qasm2qcx.openqasm3.parse(f'''OPENQASM 3.0; const int N = {width};
+            int[N] a = -2; int step = -1; int total = 0; array[int, 2] v = {{1, 2}};
+            bool same = -(-a) == a; same = !bool(-a) || (-a > 0 && same);
+            for int N in [0:1] {{ total += -a; }}
+            for int i in [0:-step:2] {{ total += -i; }}
+            for int j in {{-a, -step}} {{ total += -j; }}
+            while (-step > 0) {{ step = -step; if (-a == 2) {{ break; }} }}
+            total += v[-step + 1];''')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertEqual(converter._QASM2QCXConverter__loop_bindings, [])
+        ForLoopControlLoweringTests.assert_resolved_jumps(list(converter))
+
+    def test_storage_is_declared_before_a_skipped_first_use(self) -> None:
+        minimum = qasm2qcx.QASM2QCXConverter.QCX_INT_MIN
+        lines = convert(f'''OPENQASM 3.0; int a = {minimum}; bool off = false && bool(-a);
+            int out = 0; if (false) {{ out = -a; }} out = -out;''')
+        first_jump = next(index for index, line in enumerate(lines) if line.startswith('JUMP '))
+        self.assertTrue(all(index < first_jump for index, line in enumerate(lines)
+                            if line.startswith('VAR QASM2QCX_INT_')))
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_empty_loop_nested_validation_does_not_evaluate_bad_values(self) -> None:
+        minimum = qasm2qcx.QASM2QCXConverter.QCX_INT_MIN
+        convert(f'''OPENQASM 3.0; int a = {minimum}; array[int, 1] v;
+            for int i in [1:0] {{
+                while (bool(-a)) {{ a = -v[999]; }}
+                if (false && bool(-(1 / 0))) {{ a = -(-a); }}
+            }}''')
+        with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+            convert('''OPENQASM 3.0; int[8] small; int a;
+                for int i in [1:0] { while (false) { a = -small; } }''')
+
+    def test_bit_iterators_need_explicit_numeric_cast_and_remain_read_only(self) -> None:
+        convert('OPENQASM 3.0; bit[2] flags; int a; for bit b in flags { a = -int(b); }')
+        for body in ('a = -b;', 'b = -int(b);'):
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert('OPENQASM 3.0; bit[2] flags; int a; for bit b in flags { ' + body + ' }')
+
+
 class IntegerPowerFoundationTests(unittest.TestCase):
     def setUp(self) -> None:
         width = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH

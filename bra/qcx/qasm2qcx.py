@@ -550,7 +550,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if expression.op == ast.UnaryOperator['~']:
             self.__visit_bitwise_complement(expression.expression)
             return
-        self.visit(expression.expression)
+        previous_temporaries = self.__used_temporary_variables.copy()
+        try:
+            self.visit(expression.expression)
+        except Exception:
+            # A failed nested operand may not return its partial results for
+            # normal cleanup. Keep caller-owned storage reserved.
+            for temporary in self.__used_temporary_variables - previous_temporaries:
+                self.__release_temporary_variable(temporary)
+            raise
         if self.__value is None or self.__value_type is None or self.__value_kind is None:
             raise UninitializedValueException
         if self.__value_type == ValueType.BIT:
@@ -2223,6 +2231,19 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         raise NoConstantExpressionException
 
     def __emit_condition(
+            self, condition: ast.Expression, true_label: str,
+            false_label: str) -> None:
+        previous_used = self.__used_temporary_variables.copy()
+        try:
+            self.__emit_condition_body(condition, true_label, false_label)
+        except Exception:
+            # A completed operand may still be reserved when another fails.
+            # This covers condition values and direct if/while conditions.
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
+            raise
+
+    def __emit_condition_body(
             self, condition: ast.Expression, true_label: str,
             false_label: str) -> None:
         if isinstance(condition, ast.Cast) and isinstance(condition.type, ast.BoolType):
