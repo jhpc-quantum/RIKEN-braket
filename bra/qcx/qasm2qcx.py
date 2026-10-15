@@ -166,6 +166,9 @@ class InvalidShiftException(QASM2QCXError):
 class InvalidPowerException(QASM2QCXError):
     """Negative integer exponent or overflowing signed integer power."""
 
+class InvalidNegationException(QASM2QCXError):
+    """Native INT negation has an unrepresentable operand or result."""
+
 class WrongConstantVariableException(QASM2QCXError):
     def __str__(self):
         return 'Wrong constant variable'
@@ -558,6 +561,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if expression.op != ast.UnaryOperator['-']:
             raise UnsupportedOpenQASMError(f'unary operator {expression.op.name}')
 
+        if self.__value_type == ValueType.INT:
+            try:
+                if not self.__native_signed_operand(expression.expression):
+                    raise UnsupportedOpenQASMError('unary negation of an integer with a non-native signed width')
+            except QASM2QCXError:
+                if self.__value_kind == ValueKind.TEMPORARY:
+                    self.__release_temporary_variable(str(self.__value))
+                raise
         if self.__value_kind == ValueKind.LITERAL:
             self.__value = -self.__value
             uint_type = self.__uint_expression_type(expression.expression)
@@ -583,6 +594,39 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__release_temporary_variable(operand)
         self.__value = temporary_variable
         self.__value_kind = ValueKind.TEMPORARY
+
+    def __negation_expression_info(
+            self, expression: ast.UnaryExpression,
+            iterators: set[str] | dict[str, ValueType] | None = None
+            ) -> tuple[ValueType, bool]:
+        # Inspect types/dependencies only, including in empty loop bodies.
+        value_type, _, runtime = self.__integer_operand_info(expression.expression, iterators)
+        if value_type == ValueType.BIT:
+            raise UnsupportedOpenQASMError('unary arithmetic on bit values')
+        if value_type == ValueType.BOOL:
+            raise UnsupportedOpenQASMError('unary value expression on Boolean values')
+        if value_type not in (ValueType.INT, ValueType.UINT, ValueType.FLOAT, ValueType.COMPLEX):
+            raise UnsupportedOpenQASMError('unary negation requires a numeric scalar operand')
+        if value_type == ValueType.INT and not self.__native_signed_operand(expression.expression, iterators):
+            raise UnsupportedOpenQASMError('unary negation of an integer with a non-native signed width')
+        self.__validate_bitwise_indices(expression.expression, iterators)
+        return value_type, runtime
+
+    def __is_minimum_int_literal(self, expression: ast.UnaryExpression) -> bool:
+        # The sign is an AST operator, not part of an IntegerLiteral. Admit
+        # this spelling of INT_MIN, but not negation of an existing INT_MIN.
+        return (expression.op.name == '-'
+                and isinstance(expression.expression, ast.IntegerLiteral)
+                and expression.expression.value == -self.QCX_INT_MIN)
+
+    def __validate_native_negation_value(self, expression: ast.UnaryExpression, value: int) -> None:
+        # Pure boundary validation; wired into folding/lowering in Stage 2.
+        if self.__is_minimum_int_literal(expression) and value == -self.QCX_INT_MIN:
+            return
+        if not self.QCX_INT_MIN <= value <= self.QCX_INT_MAX:
+            raise InvalidNegationException('Integer negation operand outside QCX INT range')
+        if value == self.QCX_INT_MIN:
+            raise InvalidNegationException('Integer negation result outside QCX INT range')
 
     @staticmethod
     def __bitwise_type(lhs_type: ValueType, rhs_type: ValueType | None = None) -> ValueType:
@@ -2499,6 +2543,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __loop_unary_info(
             self, expression: ast.UnaryExpression, iterators: set[str] | dict[str, ValueType] | None
             ) -> tuple[ValueType, bool]:
+        if expression.op.name == '-':
+            return self.__negation_expression_info(expression, iterators)
         value_type, runtime = self.__loop_expression_info(expression.expression, iterators)
         if expression.op.name == '!':
             if value_type not in (ValueType.BIT, ValueType.BOOL):
@@ -2506,10 +2552,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return ValueType.BOOL, runtime
         if expression.op.name == '~':
             return self.__bitwise_type(value_type), runtime
-        if expression.op.name != '-' or value_type not in (
-                ValueType.INT, ValueType.UINT, ValueType.FLOAT, ValueType.COMPLEX):
-            raise UnsupportedOpenQASMError('unsupported unary loop expression')
-        return value_type, runtime
+        raise UnsupportedOpenQASMError('unsupported unary loop expression')
 
     def __loop_binary_info(
             self, expression: ast.BinaryExpression, iterators: set[str] | dict[str, ValueType] | None
@@ -2900,7 +2943,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 and node.op.name in ('==', '!=', '<', '<=', '>', '>=')
                 and self.__register_comparison_width(node, iterators) is not None):
             return
-        if ((isinstance(node, ast.UnaryExpression) and node.op.name == '~')
+        if ((isinstance(node, ast.UnaryExpression) and node.op.name in ('~', '-'))
                 or (isinstance(node, ast.BinaryExpression) and node.op.name in ('&', '|', '^', '<<', '>>', '**'))):
             self.__loop_expression_info(node, iterators)
             self.__validate_bitwise_indices(node, iterators)

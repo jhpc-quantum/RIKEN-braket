@@ -555,6 +555,32 @@ widths, scalar/register mixing, ordered register comparisons (`<`, `<=`, `>`,
 `>=`), bare register conditions, dynamic selections, aliases, and indexing of
 computed register results remain unsupported.
 
+### Checked native INT negation (implementation in progress)
+
+Unary `-` already supports numeric scalars. Native signed-width validation and
+the boundary-validation helpers for [#312](https://github.com/jhpc-quantum/RIKEN-braket/issues/312)
+are in place, but checked constant folding and guarded runtime negation are not
+yet implemented. In particular, negating an existing `INT_MIN` is not yet safe
+at runtime. The intended checked behavior is:
+
+- INT operands must have native width. Non-native signed-width emulation remains
+  separate work; existing UINT modular, floating-point, and complex behavior is
+  preserved.
+- Direct unary minus applied to the integer literal `INT_MAX + 1` represents
+  `INT_MIN`. Parentheses around that literal and hexadecimal spellings are
+  equivalent. This is distinct from negating an existing `INT_MIN` value,
+  including through a constant name or nested negation.
+- Other evaluated constant INT negations must have representable operands and
+  results. Negating `INT_MIN` is an overflow error, not wrapping arithmetic.
+- Runtime negation will check the captured operand before multiplication by
+  `-1`. Such checks, including for overflowing literal results in runtime
+  expressions, must stay on reached paths so logical short-circuiting and
+  skipped branches/loops can bypass them.
+- Metadata validation checks numeric types and native signed widths without
+  evaluating negation, operand arithmetic, or element indices in empty loops.
+  It does not fabricate iterator values. Declared widths remain tied to
+  declaration scope when iterators shadow width constants.
+
 ### Integer exponentiation
 
 `**` supports constant folding and runtime lowering, and `**=` supports scalar
