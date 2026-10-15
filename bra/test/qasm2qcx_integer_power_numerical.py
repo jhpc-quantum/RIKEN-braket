@@ -14,6 +14,58 @@ from qasm2qcx_integer_array_numerical import check_error
 from qasm2qcx_runtime_for_numerical import check_program, qasm2qcx
 
 
+def check_assignments_and_control_flow(bra: pathlib.Path) -> None:
+    converter = qasm2qcx.QASM2QCXConverter
+    for base in range(-4, 5):
+        for exponent in range(5):
+            expected = str(pow(base, exponent))
+            check_program(bra, f'''int x = {base}; int y = {base}; int n = {exponent};
+                x **= n; y = y ** n;''', ('X1', 'Y1'), [expected, expected])
+    for bits in (4, converter.QCX_UINT_WIDTH):
+        mask = (1 << bits) - 1
+        for base in (0, 1, 3, mask):
+            for exponent in (0, 1, 2, 7):
+                expected = str(pow(base, exponent, 1 << bits))
+                check_program(bra, f'''uint[{bits}] x = {base}; uint[{bits}] y = {base};
+                    uint[{bits}] n = {exponent}; x **= n; y = y ** n;''',
+                              ('X1', 'Y1'), [expected, expected])
+    check_program(bra, '''int x = 2; x **= x;
+        uint[4] u = 3; int n = 4; u **= n;
+        int y = -2; uint[4] e = 3; y **= e;
+        array[int, 2] v = {2, 3}; int i = -2; v[i] **= v[i + 1];
+        v[(i ** 0) - 1] **= v[1] ** 0;''',
+                  ('X1', 'U1', 'Y1', 'V1:0', 'V1:1', 'I1'), ['4', '1', '-8', '8', '3', '-2'])
+    check_program(bra, '''int n = 2; int x = 0; int y = 2;
+        array[int, 4] v = {1, 2, 3, 4};
+        for int i in [0:n ** 2] { x += i; }
+        for int j in {n ** 0, n ** 1, n ** 2} { x += j; }
+        while (y ** 2 < 300) { y **= 2; if (y > 10) { continue; } }
+        int z = v[n ** 1]; if (x ** 0 == 1 && bool(y ** 0)) { z **= 2; }
+        for int k in [0:2 ** 2] { x += 1; }
+        for int k in [0:n ** 1:4] { x += k; }
+        if (false) { z **= -1; } while (false) { z **= 2 ** -1; }''',
+                  ('X1', 'Y1', 'Z1'), ['28', '256', '9'])
+    check_program(bra, '''include "stdgates.inc"; const int N = 2 ** 1; qubit[N] q; int n = 2;
+        rx(float(n ** 0) * pi) q[1]; gphase(float(n ** 2));
+        bit b = measure q[1]; int x = 3;
+        if (b && (n ** 2 == 4)) { x **= n; }''', ('B1', 'X1'), ['1', '9'])
+    check_program(bra, '''const int N = 4; uint[N] a = 3; const uint[N] E = 2;
+        uint[N] b = 0; for int N in [1:2] { a **= E; b = a ** E; }''',
+                  ('A1', 'B1'), ['1', '1'])
+    check_program(bra, f'''const int N = {converter.QCX_UINT_WIDTH}; int[N] a = 2;
+        array[int[N], 1] v = {{2}}; for int N in [1:2] {{ a **= 2; v[0] **= 2; }}''',
+                  ('A1', 'V1'), ['16', '16'])
+    check_program(bra, '''array[int, 3] v = {1, 2, 3}; int x = 2;
+        for int i in v { x **= i; }
+        bit[2] flags = "11"; int y = 2;
+        for bit b in flags { y **= int(b) + 1; }''', ('X1', 'Y1'), ['64', '16'])
+    for source in ('int x = 2; x **= -1;', 'uint x = 2; int n = -1; x **= n;',
+                   f'int x = {converter.QCX_INT_MAX}; x **= 2;'):
+        check_error(bra, source, 'assertion failed in ASSERT')
+    check_error(bra, f'int x = 2; uint n = {converter.QCX_UINT_WIDTH - 1}; x **= n;',
+                'UINT to INT conversion out of range')
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument('--bra', required=True, type=pathlib.Path)
@@ -65,6 +117,7 @@ def main() -> None:
                 'assertion failed in ASSERT')
     check_error(bra, 'int a = 0; int z = 0; int x = a ** (1 / z);',
                 'integer division by zero in LET')
+    check_assignments_and_control_flow(bra)
     print('Integer exponentiation numerical tests passed')
 
 

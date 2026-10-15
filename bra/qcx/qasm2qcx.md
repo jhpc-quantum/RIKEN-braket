@@ -555,9 +555,10 @@ computed register results remain unsupported.
 
 ### Integer exponentiation design (implementation in progress)
 
-`**` supports constant folding and runtime lowering. Compound assignment
-(`**=`) and the final integration audit remain to be implemented. The integer
-subset follows these rules:
+`**` supports constant folding and runtime lowering, and `**=` supports scalar
+and indexed integer-array targets. Both integrate with supported expressions,
+conditions, and loops. Final documentation and regression review are pending.
+The integer subset follows these rules:
 
 - Operands must be scalar `int` or `uint`. Signed operands must have native QCX
   width; non-native signed widths, Boolean/bit values, registers, floating-point,

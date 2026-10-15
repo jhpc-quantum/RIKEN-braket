@@ -814,6 +814,20 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             source_type = source_type.base_type
         if not isinstance(source_type, ast.IntType) or source_type.size is None:
             return True
+        if isinstance(expression, ast.Cast):
+            names = self.__loop_bound_names(source_type.size)
+            active = set(iterators or ()) | {name for scope in self.__loop_bindings for name in scope}
+            if names & active:
+                raise InvalidDeclarationException('INT cast width must be a constant integer, not a loop iterator')
+        else:
+            # Source declarations are global; their widths must not be
+            # reinterpreted through the current loop's iterator bindings.
+            previous_bindings = self.__loop_bindings
+            self.__loop_bindings = []
+            try:
+                return self.__constant_loop_integer(source_type.size, 'signed operand width') == self.QCX_UINT_WIDTH
+            finally:
+                self.__loop_bindings = previous_bindings
         return self.__constant_loop_integer(source_type.size, 'signed operand width') == self.QCX_UINT_WIDTH
 
     def __converted_operand(
@@ -1095,8 +1109,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if value_type != ValueType.UINT:
             return value_type, None, runtime
         if isinstance(expression, ast.Identifier):
-            source_type = (self.__classical_source_types.get(expression.name)
-                           or self.__constant_source_types.get(expression.name))
+            uint_type = (self.__const_uint_types.get(expression.name)
+                         or self.__uint_variable_types.get(self.__capitalize_variable_name(expression.name)))
+            if uint_type is None:
+                raise UninitializedValueException
+            # A declaration's width is already resolved; a loop iterator may
+            # now shadow a constant used in that width without changing it.
+            return value_type, uint_type, runtime
         elif isinstance(expression, ast.Cast):
             source_type = expression.type
         else:
@@ -1136,11 +1155,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 lhs_type, rhs_type, expression.lhs, expression.rhs)
             if uint_type is not None:
                 self.__uint_expression_types[id(expression)] = (expression, uint_type)
-            for value, value_type, kind in operands:
-                if (kind == ValueKind.LITERAL and value_type == ValueType.INT
-                        and self.__evaluate_constant
-                        and not self.QCX_INT_MIN <= int(value) <= self.QCX_INT_MAX):
-                    raise UnsupportedOpenQASMError('integer exponentiation operand outside QCX INT range')
+            self.__validate_power_literal_operands(operands)
             if lhs_kind == rhs_kind == ValueKind.LITERAL:
                 if not self.__evaluate_constant:
                     self.__value, self.__value_type, self.__value_kind = 0, result_type, ValueKind.LITERAL
@@ -1166,9 +1181,18 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 if kind == ValueKind.TEMPORARY:
                     self.__release_temporary_variable(str(value))
 
+    def __validate_power_literal_operands(
+            self, operands: list[tuple[str | int | float | complex, ValueType, ValueKind]]) -> None:
+        for value, value_type, kind in operands:
+            if (kind == ValueKind.LITERAL and value_type == ValueType.INT
+                    and self.__evaluate_constant
+                    and not self.QCX_INT_MIN <= int(value) <= self.QCX_INT_MAX):
+                raise UnsupportedOpenQASMError('integer exponentiation operand outside QCX INT range')
+
     def __emit_power_expression(
             self, operands: list[tuple[str | int | float | complex, ValueType, ValueKind]],
             result_type: ValueType, uint_type: _UnsignedIntegerType | None) -> None:
+        self.__validate_power_literal_operands(operands)
         (lhs, lhs_type, lhs_kind), (rhs, rhs_type, rhs_kind) = operands
         owned: set[str] = set()
         keep = None
@@ -2745,9 +2769,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if target is not None and self.__operand_name(target) in iterators:
                 raise UnsupportedOpenQASMError('assignment to a for-loop iterator')
             if isinstance(child, ast.ClassicalAssignment) and child.op.name not in (
-                    '=', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '<<=', '>>='):
+                    '=', '+=', '-=', '*=', '/=', '%=', '**=', '&=', '|=', '^=', '<<=', '>>='):
                 raise UnsupportedOpenQASMError(f'assignment operator {child.op.name}')
-            if isinstance(child, ast.ClassicalAssignment) and child.op.name in ('&=', '|=', '^=', '<<=', '>>='):
+            if isinstance(child, ast.ClassicalAssignment) and child.op.name in ('&=', '|=', '^=', '<<=', '>>=', '**='):
                 self.__validate_integer_operator_assignment_types(child, iterators)
             if isinstance(child, ast.QuantumGate):
                 if child.modifiers or child.duration is not None:
@@ -2786,8 +2810,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     or len(target.indices[0]) != 1
                     or not isinstance(target.indices[0][0], ast.Expression)
                     or isinstance(target.indices[0][0], (ast.RangeDefinition, ast.DiscreteSet))):
-                raise UnsupportedOpenQASMError('bitwise assignment requires a scalar target')
+                raise UnsupportedOpenQASMError('integer operator assignment requires a scalar target')
             target = ast.IndexExpression(target.name, target.indices[0])
+        if statement.op.name == '**=':
+            expression = ast.BinaryExpression(ast.BinaryOperator['**'], target, statement.rvalue)
+            self.__power_expression_info(expression, iterators)
+            return
         target_type, _ = self.__loop_expression_info(target, iterators)
         rhs_type, _ = self.__loop_expression_info(statement.rvalue, iterators)
         if statement.op.name in ('<<=', '>>='):
@@ -4215,6 +4243,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __emit_classical_value_assignment(
             self, statement: ast.ClassicalAssignment, variable_name: str,
             variable_type: ValueType, *, runtime_array: bool = False) -> None:
+        if statement.op.name == '**=':
+            self.__emit_power_assignment(statement, variable_name, variable_type)
+            return
         if statement.op.name in ('<<=', '>>='):
             self.__emit_shift_assignment(statement, variable_name, variable_type)
             return
@@ -4278,6 +4309,31 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__emit_assignment(
             variable_name, operator, variable_type, self.__value,
             self.__value_type, self.__value_kind, self.__uint_expression_type(expression))
+
+    def __emit_power_assignment(
+            self, statement: ast.ClassicalAssignment, target: str,
+            target_type: ValueType) -> None:
+        lhs = (ast.IndexExpression(statement.lvalue.name, statement.lvalue.indices[0])
+               if isinstance(statement.lvalue, ast.IndexedIdentifier) else statement.lvalue)
+        expression = ast.BinaryExpression(ast.BinaryOperator['**'], lhs, statement.rvalue)
+        result_type, uint_type, _ = self.__power_expression_info(expression)
+        source_uint = self.__uint_variable_types.get(target) if target_type == ValueType.UINT else None
+        snapshot = self.__add_new_temporary_variable(target_type, source_uint)
+        operand = None
+        try:
+            # The caller has already captured an indexed destination. Snapshot
+            # its value before the RHS, without evaluating its index again.
+            self.__qcx_lines.append(f'LET {snapshot} := {target}')
+            operand = self.__condition_operand(statement.rvalue)
+            self.__emit_power_expression(
+                [(snapshot, target_type, ValueKind.TEMPORARY), operand], result_type, uint_type)
+            # Apply assignment conversion/masking only to the completed result.
+            self.__emit_assignment(target, ':=', target_type, self.__value,
+                                   self.__value_type, self.__value_kind, uint_type)
+        finally:
+            self.__release_temporary_variable(snapshot)
+            if operand is not None and operand[2] == ValueKind.TEMPORARY:
+                self.__release_temporary_variable(str(operand[0]))
 
     def __emit_shift_assignment(
             self, statement: ast.ClassicalAssignment, target: str,
