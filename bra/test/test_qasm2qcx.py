@@ -2588,9 +2588,8 @@ class FloatArrayDeclarationTests(unittest.TestCase):
                 with self.subTest(size=size, statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
                     convert(f'OPENQASM 3; array[float, {size}] a; {statement}')
 
-    def test_element_access_and_iteration_are_not_enabled_yet(self) -> None:
-        for statement in ('float x = a[0];', 'a[0] = 1;', 'a[0] += 1;',
-                          'for float x in a {}', 'for int x in a {}'):
+    def test_float_array_iteration_remains_unsupported(self) -> None:
+        for statement in ('for float x in a {}', 'for int x in a {}'):
             with self.subTest(statement=statement), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
                 convert('OPENQASM 3; array[float, 2] a; ' + statement)
 
@@ -2604,6 +2603,101 @@ class FloatArrayDeclarationTests(unittest.TestCase):
             with self.subTest(source=source), self.assertRaises(
                     (qasm2qcx.QASM2QCXError, qasm2qcx.openqasm3.parser.QASM3ParsingError)):
                 convert('OPENQASM 3; ' + source)
+
+
+class FloatArrayAccessTests(unittest.TestCase):
+    def test_static_reads_and_writes_normalize_negative_indices(self) -> None:
+        lines = convert('OPENQASM 3; const int LAST = -1; '
+                        'array[float, 3] a = {0.25, 0.5, 0.75}; '
+                        'float x = a[LAST]; a[-3] = x; a[1 + 1] += 0.25;')
+        self.assertIn('LET X1 := A1:2', lines)
+        self.assertIn('LET A1:0 := X1', lines)
+        self.assertIn('LET A1:2 += 0.25', lines)
+
+    def test_singleton_access_keeps_explicit_index(self) -> None:
+        lines = convert('OPENQASM 3; array[float, 1] a = {0.25}; '
+                        'float x = a[-1]; a[0] *= 2;')
+        self.assertIn('VAR A1 REAL', lines)
+        self.assertIn('LET X1 := A1:0', lines)
+        self.assertIn('LET A1:0 *= 2.0', lines)
+
+    def test_compound_assignments_use_real_target_and_scalar_promotion(self) -> None:
+        for operator, qcx_operator in (('=', ':='), ('+=', '+='), ('-=', '-='),
+                                       ('*=', '*='), ('/=', '/=')):
+            with self.subTest(operator=operator):
+                lines = convert(f'OPENQASM 3; uint u = 2; array[float, 2] a; a[0] {operator} u;')
+                self.assertIn(f'LET A1:0 {qcx_operator} :REAL:U1', lines)
+
+    def test_runtime_read_uses_real_snapshot_and_private_integer_index(self) -> None:
+        program = qasm2qcx.openqasm3.parser.parse(
+            'OPENQASM 3; array[float, 2] a = {0.25, 0.75}; int i = -1; float x = a[i];')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        lines = converter._QASM2QCXConverter__qcx_lines
+        self.assertIn('LET QASM2QCX_INT_0 := I1', lines)
+        self.assertIn('ASSERT QASM2QCX_INT_0 >= -2', lines)
+        self.assertIn('ASSERT QASM2QCX_INT_0 < 2', lines)
+        self.assertIn('LET QASM2QCX_INT_0 += 2', lines)
+        self.assertIn('VAR QASM2QCX_REAL_0 REAL', lines)
+        self.assertIn('LET QASM2QCX_REAL_0 := A1:QASM2QCX_INT_0', lines)
+        self.assertIn('LET X1 := QASM2QCX_REAL_0', lines)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_runtime_destination_index_is_reserved_during_rhs(self) -> None:
+        program = qasm2qcx.openqasm3.parser.parse(
+            'OPENQASM 3; array[float, 2] a = {0.25, 0.75}; int i = 0; int j = 1; '
+            'a[i] += a[j] * 2;')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        lines = converter._QASM2QCXConverter__qcx_lines
+        self.assertIn('LET QASM2QCX_INT_0 := I1', lines)
+        self.assertIn('LET QASM2QCX_INT_1 := J1', lines)
+        self.assertTrue(any(line.startswith('LET A1:QASM2QCX_INT_0 += QASM2QCX_REAL_')
+                            for line in lines))
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_nested_integer_array_indices_and_explicit_index_casts(self) -> None:
+        for index in ('indices[i]', 'int(f)', 'uint(1)', 'int(true)'):
+            with self.subTest(index=index):
+                lines = convert('OPENQASM 3; array[int, 2] indices = {0, 1}; int i = 1; '
+                                'float f = 1.5; array[float, 2] a = {0.25, 0.75}; '
+                                f'float x = a[{index}]; a[{index}] = x;')
+                self.assertTrue(any(line.startswith('LET X1 := ') for line in lines))
+
+    def test_float_element_can_initialize_another_array(self) -> None:
+        lines = convert('OPENQASM 3; array[float, 2] a = {0.25, 0.75}; int i = 1; '
+                        'array[float, 2] b = {a[0], a[i]};')
+        self.assertIn('LET B1:0 := A1:0', lines)
+        self.assertTrue(any(line.startswith('LET B1:1 := QASM2QCX_REAL_') for line in lines))
+
+    def test_invalid_indices_and_selections_are_rejected_for_reads_and_writes(self) -> None:
+        for access in ('a[-3]', 'a[2]', 'a[true]', 'a[0.5]', 'a[f]', 'a[0:1]',
+                       'a[{0, 1}]', 'a[0, 1]', 'a[0][0]'):
+            for statement in (f'float x = {access};', f'{access} = 0.5;'):
+                with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    convert('OPENQASM 3; float f = 1; array[float, 2] a; ' + statement)
+
+    def test_integer_only_compound_operators_are_rejected(self) -> None:
+        for operator in ('%=', '**=', '&=', '|=', '^=', '<<=', '>>='):
+            for index in ('0', 'i'):
+                with self.subTest(operator=operator, index=index), self.assertRaises(
+                        qasm2qcx.UnsupportedOpenQASMError):
+                    convert(f'OPENQASM 3; int i = 0; array[float, 2] a; a[{index}] {operator} 1;')
+
+    def test_float_reads_are_not_implicitly_narrowed_to_integers(self) -> None:
+        for index in ('0', 'i'):
+            with self.subTest(index=index), self.assertRaises(qasm2qcx.NoImplicitCastException):
+                convert(f'OPENQASM 3; int i = 0; array[float, 2] a; int x = a[{index}];')
+
+    def test_runtime_index_is_released_after_invalid_rhs(self) -> None:
+        for rhs in ('1.0im', 'a[i] + 1.0im'):
+            with self.subTest(rhs=rhs):
+                program = qasm2qcx.openqasm3.parser.parse(
+                    f'OPENQASM 3; int i = 0; array[float, 2] a; a[i] = {rhs};')
+                converter = qasm2qcx.QASM2QCXConverter(program)
+                with self.assertRaises(qasm2qcx.NoImplicitCastException):
+                    converter.visit(program)
+                self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
 
 
 class IntegerArrayLoopLoweringTests(unittest.TestCase):
