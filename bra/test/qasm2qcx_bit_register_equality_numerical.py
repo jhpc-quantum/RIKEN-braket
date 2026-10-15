@@ -44,6 +44,37 @@ def main() -> None:
     # A known mismatching first bit must not skip evaluating the RHS shift.
     check_error(bra, 'bit[4] a = "0001"; int n = -1; bool same = "0000" == (a << n);',
                 'assertion failed in ASSERT')
+    check_program(bra, '''bit[4] a = "0011"; int x = 0;
+        while (!(a == "0000")) { a <<= 1; x += 1; }
+        bool c = (a == "0000") == true;
+        bool d = bool(a != "0001");
+        bool e = (a << int(a == "0000")) == a;''',
+                  ('X1', 'C1', 'D1', 'E1'), ['4', '1', '1', '1'])
+    check_program(bra, '''bit[4] a = "1010"; bit[4] b = "0101";
+        int x = 0; int y = 0;
+        for int i in [0:2] {
+            if (a[3:-1:0] == b && !(a == b)) { x += 1; }
+            while (~a == b) {
+                y += 1;
+                if (y < 2 && a != b) { continue; }
+                break;
+            }
+        }''', ('X1', 'Y1'), ['3', '4'])
+    # Runtime failures inside the equality operand are skipped only by the
+    # surrounding logical expression, not by an earlier mismatching bit.
+    check_program(bra, '''bit[2] a = "01"; int n = -1; int z = 0;
+        array[int, 1] counts = {0}; int k = 9;
+        bool c = false && ((a << n) == "00");
+        bool d = true || ((a >> n) != "11");
+        bool e = false && ((a << (1 / z)) == "00");
+        bool f = true || ((a << counts[k]) == "00");
+        if (c || !(a != "00")) { z = 1; } else { z = 2; }
+        while (false && ((a << n) == a)) { z = 3; }''',
+                  ('C1', 'D1', 'E1', 'F1', 'Z1'), ['0', '1', '0', '1', '2'])
+    for condition in ('true && ((a << n) == "00")',
+                      'false || ((a >> n) != "11")'):
+        check_error(bra, f'bit[2] a = "01"; int n = -1; bool c = {condition};',
+                    'assertion failed in ASSERT')
     print('Bit-register equality numerical tests passed')
 
 

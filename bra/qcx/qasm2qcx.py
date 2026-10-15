@@ -2264,6 +2264,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __loop_binary_info(
             self, expression: ast.BinaryExpression, iterators: set[str] | dict[str, ValueType] | None
             ) -> tuple[ValueType, bool]:
+        if (expression.op.name in ('==', '!=', '<', '<=', '>', '>=')
+                and self.__register_comparison_width(expression, iterators) is not None):
+            lhs_runtime = self.__register_expression_runtime(expression.lhs, iterators)
+            rhs_runtime = self.__register_expression_runtime(expression.rhs, iterators)
+            return ValueType.BOOL, lhs_runtime or rhs_runtime
         lhs_type, lhs_runtime = self.__loop_expression_info(expression.lhs, iterators)
         rhs_type, rhs_runtime = self.__loop_expression_info(expression.rhs, iterators)
         runtime = lhs_runtime or rhs_runtime
@@ -2286,6 +2291,23 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if expression.op.name == '%' and result_type not in (ValueType.INT, ValueType.UINT):
             raise UnsupportedOpenQASMError('non-integer remainder in loop expression')
         return result_type, runtime
+
+    def __register_expression_runtime(
+            self, expression: ast.Expression,
+            iterators: set[str] | dict[str, ValueType] | None) -> bool:
+        # Width/type validation has already established a register expression.
+        # Inspect both sides without evaluating shift counts or reading bits.
+        if isinstance(expression, ast.BitstringLiteral):
+            return False
+        if isinstance(expression, (ast.Identifier, ast.IndexExpression)):
+            return True
+        if isinstance(expression, ast.UnaryExpression):
+            return self.__register_expression_runtime(expression.expression, iterators)
+        lhs = self.__register_expression_runtime(expression.lhs, iterators)
+        rhs = (self.__loop_expression_info(expression.rhs, iterators)[1]
+               if expression.op.name in ('<<', '>>')
+               else self.__register_expression_runtime(expression.rhs, iterators))
+        return lhs or rhs
 
     def __loop_index_info(
             self, expression: ast.IndexExpression, iterators: set[str] | dict[str, ValueType] | None
@@ -2549,6 +2571,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __validate_bitwise_indices(
             self, expression: ast.Expression, iterators: dict[str, ValueType]) -> None:
+        if (isinstance(expression, ast.BinaryExpression)
+                and expression.op.name in ('==', '!=', '<', '<=', '>', '>=')
+                and self.__register_comparison_width(expression, iterators) is not None):
+            return  # Register selections/counts were checked by width validation.
         if isinstance(expression, ast.IndexExpression):
             selectors = expression.index
             if (not isinstance(selectors, list) or len(selectors) != 1
@@ -2609,9 +2635,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if isinstance(node, ast.ForInLoop):
             self.__validate_bitwise_types(node.set_declaration, iterators)
             return
-        # Register values are accepted only in their assignment context, not
-        # accidentally as scalar loop bounds, conditions, casts, or indices.
+        # Register values are accepted only in assignment/comparison contexts,
+        # not accidentally as scalar loop bounds, casts, or indices.
         if isinstance(node, ast.ClassicalAssignment) and self.__validate_register_operator_assignment(node, iterators):
+            return
+        if (isinstance(node, ast.BinaryExpression)
+                and node.op.name in ('==', '!=', '<', '<=', '>', '>=')
+                and self.__register_comparison_width(node, iterators) is not None):
             return
         if ((isinstance(node, ast.UnaryExpression) and node.op.name == '~')
                 or (isinstance(node, ast.BinaryExpression) and node.op.name in ('&', '|', '^', '<<', '>>'))):
