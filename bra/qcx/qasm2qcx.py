@@ -561,10 +561,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise
         if self.__value is None or self.__value_type is None or self.__value_kind is None:
             raise UninitializedValueException
-        if self.__value_type == ValueType.BIT:
-            raise UnsupportedOpenQASMError('unary arithmetic on bit values')
-        if self.__value_type == ValueType.BOOL:
-            raise UnsupportedOpenQASMError('unary value expression on Boolean values')
+        if self.__value_type in (ValueType.BIT, ValueType.BOOL):
+            if self.__value_kind == ValueKind.TEMPORARY:
+                self.__release_temporary_variable(str(self.__value))
+            feature = ('unary arithmetic on bit values' if self.__value_type == ValueType.BIT
+                       else 'unary value expression on Boolean values')
+            raise UnsupportedOpenQASMError(feature)
 
         if expression.op != ast.UnaryOperator['-']:
             raise UnsupportedOpenQASMError(f'unary operator {expression.op.name}')

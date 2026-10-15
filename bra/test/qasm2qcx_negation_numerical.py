@@ -48,6 +48,11 @@ def check_integration(bra: pathlib.Path) -> None:
     check_program(bra, '''include "stdgates.inc"; qubit q; int n = -1;
         rx(float(-n) * pi) q; bit b = measure q;
         int x = 3; if (b) { x = -x; }''', ('B1', 'X1'), ['1', '-3'])
+    # Execute the documented 32-bit example using the target's native limits.
+    check_program(bra, f'''const int MINIMUM = {minimum}; int a = -3; int x = -a;
+        int y = MINIMUM; bool off = false && bool(-y); float widened = -float(y);
+        bool c = widened == {-minimum}.0;''',
+                  ('X1', 'Y1', 'OFF7', 'C1'), ['3', str(minimum), '0', '1'])
 
 
 def main() -> None:

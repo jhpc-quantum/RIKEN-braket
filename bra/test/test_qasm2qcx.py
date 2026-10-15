@@ -513,6 +513,29 @@ class CheckedNegationExpressionTests(unittest.TestCase):
 
 
 class CheckedNegationIntegrationTests(unittest.TestCase):
+    def test_rejected_bit_and_boolean_operands_release_computed_values(self) -> None:
+        for source in ('bit a = 1; bit b = 0; int out = -(a & b);',
+                       'int a = 1; int out = -bool(a);'):
+            with self.subTest(source=source):
+                program = qasm2qcx.openqasm3.parse('OPENQASM 3.0; ' + source)
+                converter = qasm2qcx.QASM2QCXConverter(program)
+                with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                    converter.visit(program)
+                self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_cli_constant_negation_errors_have_no_partial_output(self) -> None:
+        minimum = qasm2qcx.QASM2QCXConverter.QCX_INT_MIN
+        for expression, diagnostic in ((f'-({minimum})', 'result outside QCX INT range'),
+                                       (f'-({-minimum - 1} + 1)', 'operand outside QCX INT range')):
+            source = f'OPENQASM 3.0; qubit q; const int BAD = {expression};'
+            with self.subTest(expression=expression), patch('builtins.open', mock_open(read_data=source)), \
+                    patch('builtins.print') as output:
+                with self.assertRaises(SystemExit) as error:
+                    qasm2qcx.main(['negation.qasm'])
+                self.assertTrue(str(error.exception).startswith('qasm2qcx.py:'))
+                self.assertIn(diagnostic, str(error.exception))
+                output.assert_not_called()
+
     def test_failed_nested_operand_releases_only_its_own_temporaries(self) -> None:
         program = qasm2qcx.openqasm3.parse('''OPENQASM 3.0; int a = 2;
             int out = -(later + -a); int later;''')
