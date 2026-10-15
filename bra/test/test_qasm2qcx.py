@@ -309,6 +309,113 @@ class UnsignedIntegrationTests(unittest.TestCase):
                 convert('OPENQASM 3.0; ' + source)
 
 
+class IntegerPowerFoundationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        width = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        self.converter = UnsignedIntegerFoundationTests().converter(f'''
+            const int C = 3; const uint[4] U = 2;
+            int n; int m; int[8] small; int[{width}] native;
+            uint u; uint[4] narrow; uint[8] wider;
+            bool ready; bit flag; bit[2] bits; float f; complex z;
+            array[int, 2] values; array[int[8], 1] smalls;''')
+
+    @staticmethod
+    def expression(source: str):
+        return qasm2qcx.openqasm3.parse('OPENQASM 3.0; int out = ' + source + ';').statements[0].init_expression
+
+    def info(self, source: str, iterators=None):
+        return self.converter._QASM2QCXConverter__power_expression_info(self.expression(source), iterators)
+
+    def test_parser_precedence_associativity_and_compound_assignment(self) -> None:
+        expression = self.expression('2 ** 3 ** 2')
+        self.assertEqual(expression.op.name, '**')
+        self.assertEqual(expression.rhs.op.name, '**')
+        expression = self.expression('-2 ** 2')
+        self.assertEqual(expression.op.name, '-')
+        self.assertEqual(expression.expression.op.name, '**')
+        statement = qasm2qcx.openqasm3.parse('OPENQASM 3.0; int n; n **= 2;').statements[1]
+        self.assertEqual(statement.op.name, '**=')
+
+    def test_signed_result_types_and_runtime_dependencies(self) -> None:
+        for source, runtime in (('2 ** 3', False), ('C ** 0', False),
+                                ('0 ** 0', False), ('(-2) ** -1', False),
+                                ('n ** C', True), ('C ** m', True),
+                                ('values[999] ** n', True), ('native ** 2', True),
+                                ('int(narrow) ** m', True)):
+            with self.subTest(source=source):
+                self.assertEqual(self.info(source), (qasm2qcx.ValueType.INT, None, runtime))
+
+    def test_unsigned_widths_and_mixed_promotion_match_arithmetic(self) -> None:
+        width = self.converter.QCX_UINT_WIDTH
+        for source, result_type, uint_type, runtime in (
+                ('narrow ** wider', qasm2qcx.ValueType.UINT, qasm2qcx._UnsignedIntegerType(8, True), True),
+                ('uint[4](2) ** U', qasm2qcx.ValueType.UINT, qasm2qcx._UnsignedIntegerType(4, True), False),
+                ('u ** n', qasm2qcx.ValueType.UINT, qasm2qcx._UnsignedIntegerType(width, False), True),
+                ('n ** u', qasm2qcx.ValueType.UINT, qasm2qcx._UnsignedIntegerType(width, False), True),
+                ('narrow ** n', qasm2qcx.ValueType.INT, None, True),
+                ('n ** narrow', qasm2qcx.ValueType.INT, None, True),
+                ('(n + narrow) ** 2', qasm2qcx.ValueType.INT, None, True),
+                ('(narrow << n) ** uint[4](2)', qasm2qcx.ValueType.UINT,
+                 qasm2qcx._UnsignedIntegerType(4, True), True),
+                ('(narrow ** wider) ** U', qasm2qcx.ValueType.UINT,
+                 qasm2qcx._UnsignedIntegerType(8, True), True)):
+            with self.subTest(source=source):
+                self.assertEqual(self.info(source), (result_type, uint_type, runtime))
+
+    def test_invalid_types_registers_and_signed_widths_rejected(self) -> None:
+        for source in ('ready ** 2', 'n ** ready', 'flag ** 2', 'bits[0] ** 2',
+                       'bits ** 2', '"01" ** 2', 'n ** bits[0:0]', 'f ** n',
+                       'n ** z', 'values ** n', 'small ** 2', '2 ** small',
+                       'smalls[0] ** 2', 'int[8](2) ** 2', 'n ** uint[1 - 1](2)',
+                       'n ** uint[1000](2)', 'values[f] ** 2'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.info(source)
+        with self.assertRaises(qasm2qcx.NoVariableNameException):
+            self.info('n ** missing')
+
+    def test_metadata_never_evaluates_power_count_or_index_arithmetic(self) -> None:
+        converter = self.converter
+        before = (list(converter._QASM2QCXConverter__qcx_lines),
+                  converter._QASM2QCXConverter__value, converter._QASM2QCXConverter__value_type,
+                  converter._QASM2QCXConverter__value_kind, converter._QASM2QCXConverter__expression_kind,
+                  converter._QASM2QCXConverter__evaluate_constant,
+                  set(converter._QASM2QCXConverter__used_temporary_variables))
+        for source in ('2 ** -1', '2 ** (1 / 0)', 'n ** values[999]',
+                       'values[1 / 0] ** n', '2 ** 999999999999999999999999999999',
+                       '(n << -1) ** 2', 'uint[4](2) ** uint[4](3)'):
+            self.info(source)
+        self.assertEqual(before, (list(converter._QASM2QCXConverter__qcx_lines),
+                         converter._QASM2QCXConverter__value, converter._QASM2QCXConverter__value_type,
+                         converter._QASM2QCXConverter__value_kind, converter._QASM2QCXConverter__expression_kind,
+                         converter._QASM2QCXConverter__evaluate_constant,
+                         set(converter._QASM2QCXConverter__used_temporary_variables)))
+
+    def test_iterator_shadowing_uses_typed_scalar_metadata(self) -> None:
+        self.assertEqual(self.info('narrow ** 2', {'narrow': qasm2qcx.ValueType.INT}),
+                         (qasm2qcx.ValueType.INT, None, False))
+        with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+            self.info('narrow ** 2', {'narrow': qasm2qcx.ValueType.BIT})
+        self.assertEqual(self.info('small ** 2', {'small': qasm2qcx.ValueType.INT}),
+                         (qasm2qcx.ValueType.INT, None, False))
+
+    def test_empty_loop_validation_defers_values_but_checks_types(self) -> None:
+        for expression in ('i ** -1', '2 ** (1 / 0)', 'values[999] ** i', 'n ** 999999999999999999'):
+            convert('OPENQASM 3.0; int n; array[int, 1] values; '
+                    'for int i in [1:0] { n = ' + expression + '; }')
+        for expression in ('i ** true', '1.0 ** i', 'missing ** i'):
+            with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert('OPENQASM 3.0; int n; for int i in [1:0] { n = ' + expression + '; }')
+
+    def test_loop_metadata_and_reached_paths_do_not_claim_lowering_support(self) -> None:
+        expression = self.expression('n ** m')
+        self.assertEqual(self.converter._QASM2QCXConverter__loop_expression_info(expression),
+                         (qasm2qcx.ValueType.INT, True))
+        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'lowering is not implemented yet'):
+            convert('OPENQASM 3.0; int n = 2 ** 3;')
+        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'requires scalar int or uint'):
+            convert('OPENQASM 3.0; int n = int(true ** 3);')
+
+
 class ScalarShiftExpressionTests(unittest.TestCase):
     def test_signed_constant_folding_and_endpoints(self) -> None:
         width = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
@@ -2958,7 +3065,7 @@ class RuntimeStepLoweringTests(unittest.TestCase):
         prefix = 'OPENQASM 3.0; int stride = 0; '
         self.assertEqual(convert(prefix + 'for int outer in [1:0] '
                                  '{ for int i in [0:stride:3] {} }'), convert(prefix))
-        for step in ('true', 'missing', 'float(stride)', 'stride ** 2'):
+        for step in ('true', 'missing', 'float(stride)', 'stride ** true'):
             with self.subTest(step=step), self.assertRaises(qasm2qcx.QASM2QCXError):
                 convert(prefix + f'for int outer in [1:0] {{ for int i in [0:{step}:3] {{}} }}')
 
@@ -3451,7 +3558,7 @@ class SharedLoopInfrastructureTests(unittest.TestCase):
 
     def test_shared_validation_rejects_unsupported_false_loop_bodies(self) -> None:
         for body in ('int local;', 'const int local = 1;', 'qubit local;',
-                     'sum += 2 ** 3;', 'sum = sin(1.0);',
+                     'sum += 2 ** true;', 'sum = sin(1.0);',
                      'inv @ x q;', 'while (false) { int local; }',
                      'if (false) { int local; }', 'for int j in [1:0] { int local; }'):
             with self.subTest(body=body):
@@ -3479,7 +3586,7 @@ class SharedLoopInfrastructureTests(unittest.TestCase):
                     self.validate_while_body(body)
 
     def test_while_condition_syntax_is_checked_without_constant_evaluation(self) -> None:
-        for condition in ('sin(1.0) > 0', '(2 ** 3) > 0'):
+        for condition in ('sin(1.0) > 0', '(2 ** true) > 0'):
             with self.subTest(condition=condition):
                 with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
                     self.validate_while_body('', condition=condition)
@@ -3914,7 +4021,7 @@ class ForLoopControlLoweringTests(unittest.TestCase):
 
     def test_unreachable_and_empty_bodies_still_reject_unsupported_constructs(self) -> None:
         for bounds in ('[0:1]', '[1:0]'):
-            for body in ('int local;', 'while (false) { int local; }', 'sum += 2 ** i;', 'i = 1;'):
+            for body in ('int local;', 'while (false) { int local; }', 'sum += true ** i;', 'i = 1;'):
                 with self.subTest(bounds=bounds, body=body):
                     with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
                         convert(f'OPENQASM 3.0; int sum = 0; for int i in {bounds} {{ break; {body} }}')
@@ -4150,7 +4257,7 @@ class RuntimeSetInfrastructureTests(unittest.TestCase):
                 ('{first, 1.5}', qasm2qcx.InvalidLoopRangeException),
                 ('{first, ready}', qasm2qcx.InvalidLoopRangeException),
                 ('{first, flags}', qasm2qcx.UnsupportedOpenQASMError),
-                ('{first, 2 ** 3}', qasm2qcx.UnsupportedOpenQASMError)):
+                ('{first, 2 ** true}', qasm2qcx.UnsupportedOpenQASMError)):
             with self.subTest(elements=elements):
                 with self.assertRaises(error):
                     converter._QASM2QCXConverter__set_has_runtime_elements(self.source(elements))
@@ -4614,7 +4721,7 @@ class ConstantForSetRegressionTests(unittest.TestCase):
                                        for field in fields), before)
 
     def test_unknown_names_and_unsupported_syntax_rejected_in_empty_outer_loop(self) -> None:
-        for elements in ('{i + missing}', '{i, sin(1.0)}', '{i, 2 ** i}'):
+        for elements in ('{i + missing}', '{i, sin(1.0)}', '{i, true ** i}'):
             with self.subTest(elements=elements):
                 with self.assertRaises(qasm2qcx.QASM2QCXError):
                     convert(f'''OPENQASM 3.0; int n = 2;
@@ -4967,7 +5074,7 @@ class ConstantForLoopNestingTests(unittest.TestCase):
                         for int i in [1:0] { for int j in [1:0] { ''' + body + ' } }')
 
     def test_unsupported_expressions_and_gates_rejected_even_when_empty(self) -> None:
-        for body in ('sum += 2 ** i;', 'sum <<= true;',
+        for body in ('sum += true ** i;', 'sum <<= true;',
                      'sum = sin(i);', 'unknown q;', 'ctrl @ x q, q;',
                      'x(1) q;', 'gphase(0) q;'):
             with self.subTest(body=body):

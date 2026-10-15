@@ -757,17 +757,26 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __integer_expression_type(
             self, lhs_type: ValueType, rhs_type: ValueType,
             lhs: ast.Expression, rhs: ast.Expression) -> tuple[ValueType, _UnsignedIntegerType | None]:
+        infos = [self.__uint_expression_type(node)
+                 for node, value_type in ((lhs, lhs_type), (rhs, rhs_type)) if value_type == ValueType.UINT]
+        return self.__integer_result_type(lhs_type, rhs_type, lhs, rhs, infos)
+
+    def __integer_result_type(
+            self, lhs_type: ValueType, rhs_type: ValueType,
+            lhs: ast.Expression, rhs: ast.Expression,
+            infos: list[_UnsignedIntegerType | None],
+            iterators: set[str] | dict[str, ValueType] | None = None
+            ) -> tuple[ValueType, _UnsignedIntegerType | None]:
+        # Shared by value lowering and side-effect-free power metadata.
         result_type = self.__promoted_type(lhs_type, rhs_type)
         if result_type != ValueType.UINT:
             return result_type, None
-        infos = [self.__uint_expression_type(node)
-                 for node, value_type in ((lhs, lhs_type), (rhs, rhs_type)) if value_type == ValueType.UINT]
         if any(info is None for info in infos):
             raise UninitializedValueException
         width = max(info.width for info in infos)
         if ValueType.INT in (lhs_type, rhs_type):
             for node, value_type in ((lhs, lhs_type), (rhs, rhs_type)):
-                if value_type == ValueType.INT and not self.__native_signed_operand(node):
+                if value_type == ValueType.INT and not self.__native_signed_operand(node, iterators):
                     raise UnsupportedOpenQASMError('mixed signed/unsigned expression with a non-native signed width')
             if width < self.QCX_UINT_WIDTH:
                 return ValueType.INT, None
@@ -909,6 +918,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.__expression_kind is None:
             return
 
+        if expression.op.name == '**':
+            self.__power_expression_info(expression)
+            raise UnsupportedOpenQASMError('integer exponentiation lowering is not implemented yet')
         if expression.op.name in ('<<', '>>'):
             self.__visit_shift_binary(expression)
             return
@@ -1030,6 +1042,62 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UnsupportedOpenQASMError('shift operators require scalar integer operands')
         if lhs_type == ValueType.INT and not self.__native_signed_operand(expression.lhs, iterators):
             raise UnsupportedOpenQASMError('shift of an integer with a non-native signed width')
+
+    def __validate_power_types(
+            self, expression: ast.BinaryExpression, lhs_type: ValueType, rhs_type: ValueType,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> None:
+        if lhs_type not in (ValueType.INT, ValueType.UINT) or rhs_type not in (ValueType.INT, ValueType.UINT):
+            raise UnsupportedOpenQASMError('integer exponentiation requires scalar int or uint operands')
+        for operand, value_type in ((expression.lhs, lhs_type), (expression.rhs, rhs_type)):
+            if value_type == ValueType.INT and not self.__native_signed_operand(operand, iterators):
+                raise UnsupportedOpenQASMError('integer exponentiation with a non-native signed width')
+
+    def __power_expression_info(
+            self, expression: ast.BinaryExpression,
+            iterators: set[str] | dict[str, ValueType] | None = None
+            ) -> tuple[ValueType, _UnsignedIntegerType | None, bool]:
+        lhs_type, lhs_uint, lhs_runtime = self.__integer_operand_info(expression.lhs, iterators)
+        rhs_type, rhs_uint, rhs_runtime = self.__integer_operand_info(expression.rhs, iterators)
+        self.__validate_power_types(expression, lhs_type, rhs_type, iterators)
+        self.__validate_bitwise_indices(expression.lhs, iterators)
+        self.__validate_bitwise_indices(expression.rhs, iterators)
+        infos = [info for value_type, info in ((lhs_type, lhs_uint), (rhs_type, rhs_uint))
+                 if value_type == ValueType.UINT]
+        result_type, uint_type = self.__integer_result_type(
+            lhs_type, rhs_type, expression.lhs, expression.rhs, infos, iterators)
+        return result_type, uint_type, lhs_runtime or rhs_runtime
+
+    def __integer_operand_info(
+            self, expression: ast.Expression,
+            iterators: set[str] | dict[str, ValueType] | None
+            ) -> tuple[ValueType, _UnsignedIntegerType | None, bool]:
+        # Resolve widths from declarations/AST, never from mutable visit state.
+        # Inspect both operands even if one already has a runtime dependency.
+        if isinstance(expression, ast.BinaryExpression) and expression.op.name == '**':
+            return self.__power_expression_info(expression, iterators)
+        value_type, runtime = self.__loop_expression_info(expression, iterators)
+        if isinstance(expression, ast.BinaryExpression) and expression.op.name in ('+', '-', '*', '/', '%', '&', '|', '^', '<<', '>>'):
+            lhs_type, lhs_uint, _ = self.__integer_operand_info(expression.lhs, iterators)
+            rhs_type, rhs_uint, _ = self.__integer_operand_info(expression.rhs, iterators)
+            if expression.op.name in ('<<', '>>'):
+                return lhs_type, lhs_uint, runtime
+            infos = [info for operand_type, info in ((lhs_type, lhs_uint), (rhs_type, rhs_uint))
+                     if operand_type == ValueType.UINT]
+            result_type, uint_type = self.__integer_result_type(
+                lhs_type, rhs_type, expression.lhs, expression.rhs, infos, iterators)
+            return result_type, uint_type, runtime
+        if isinstance(expression, ast.UnaryExpression) and expression.op.name in ('-', '~'):
+            return self.__integer_operand_info(expression.expression, iterators)
+        if value_type != ValueType.UINT:
+            return value_type, None, runtime
+        if isinstance(expression, ast.Identifier):
+            source_type = (self.__classical_source_types.get(expression.name)
+                           or self.__constant_source_types.get(expression.name))
+        elif isinstance(expression, ast.Cast):
+            source_type = expression.type
+        else:
+            raise UnsupportedOpenQASMError('unsupported unsigned exponentiation operand')
+        return value_type, self.__unsigned_integer_type(source_type, iterators), runtime
 
     def __fold_shift(
             self, lhs: int, rhs: int, operator: str,
@@ -2264,6 +2332,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __loop_binary_info(
             self, expression: ast.BinaryExpression, iterators: set[str] | dict[str, ValueType] | None
             ) -> tuple[ValueType, bool]:
+        if expression.op.name == '**':
+            value_type, _, runtime = self.__power_expression_info(expression, iterators)
+            return value_type, runtime
         if (expression.op.name in ('==', '!=', '<', '<=', '>', '>=')
                 and self.__register_comparison_width(expression, iterators) is not None):
             lhs_runtime = self.__register_expression_runtime(expression.lhs, iterators)
@@ -2401,7 +2472,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 ast.UnaryExpression, ast.BinaryExpression, ast.Cast, ast.IndexExpression)):
             raise UnsupportedOpenQASMError(f'loop expression {type(node).__name__}')
         if isinstance(node, ast.BinaryExpression) and node.op.name not in (
-                '+', '-', '*', '/', '%', '&', '|', '^', '<<', '>>',
+                '+', '-', '*', '/', '%', '**', '&', '|', '^', '<<', '>>',
                 '==', '!=', '<', '<=', '>', '>=', '&&', '||'):
             raise UnsupportedOpenQASMError(f'binary operator {node.op.name}')
         if isinstance(node, ast.UnaryExpression) and node.op.name not in ('-', '!', '~'):
@@ -2644,7 +2715,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 and self.__register_comparison_width(node, iterators) is not None):
             return
         if ((isinstance(node, ast.UnaryExpression) and node.op.name == '~')
-                or (isinstance(node, ast.BinaryExpression) and node.op.name in ('&', '|', '^', '<<', '>>'))):
+                or (isinstance(node, ast.BinaryExpression) and node.op.name in ('&', '|', '^', '<<', '>>', '**'))):
             self.__loop_expression_info(node, iterators)
             self.__validate_bitwise_indices(node, iterators)
         for field in dataclasses.fields(node):

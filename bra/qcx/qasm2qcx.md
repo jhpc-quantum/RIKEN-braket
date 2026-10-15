@@ -553,6 +553,42 @@ widths, scalar/register mixing, ordered register comparisons (`<`, `<=`, `>`,
 `>=`), bare register conditions, dynamic selections, aliases, and indexing of
 computed register results remain unsupported.
 
+### Integer exponentiation design (implementation in progress)
+
+`**` and `**=` are not yet available for conversion. Metadata validation is in
+place; constant folding, runtime lowering, and compound assignments remain to
+be implemented. The intended integer subset follows these rules:
+
+- Operands must be scalar `int` or `uint`. Signed operands must have native QCX
+  width; non-native signed widths, Boolean/bit values, registers, floating-point,
+  and complex operands require a different feature or an explicit supported cast.
+- Result types use the converter's existing integer promotion rules. Two UINT
+  operands use the wider width. Native INT mixed with a narrower UINT produces
+  INT; mixing with a native-width UINT produces native UINT.
+- Exponents must be nonnegative. A negative signed exponent is rejected before
+  promotion to UINT; it is not interpreted as a large unsigned exponent.
+- An exponent of zero produces one, including `0 ** 0`. A positive exponent of
+  a zero base produces zero. Negative signed bases retain ordinary odd/even
+  power behavior when the promoted result type is INT.
+- UINT powers are modular at the promoted result width. INT powers must fit
+  native QCX INT, with checks before overflowing multiplication. General signed
+  overflow checking for other arithmetic remains separate work.
+- Domain/range errors in evaluated constant expressions are conversion errors.
+  Runtime checks execute only on reached paths, including for literal operands
+  in runtime expressions. Metadata checks validate types without evaluating
+  powers, exponent arithmetic, or element indices in empty loops.
+- Operands will be evaluated once, left to right. Parser precedence is retained:
+  `2 ** 3 ** 2` means `2 ** (3 ** 2)`, and `-2 ** 2` means `-(2 ** 2)`.
+
+OpenQASM specifies integer power and compound assignment in its
+[classical instructions](https://openqasm.com/versions/3.0/language/classical.html#integers)
+and general numeric promotion in
+[types and casting](https://openqasm.com/versions/3.0/language/types.html#casting-specifics).
+The nonnegative-exponent restriction, zero-to-zero convention, and checked
+signed-overflow behavior above define this converter's subset; they are not
+claimed as explicit requirements of those specification sections. The built-in
+`pow(...)` function and floating-point/complex powers remain separate work.
+
 ### Scalar integer shifts
 
 `<<` and `>>` accept scalar `int` and `uint` operands, including constants,
