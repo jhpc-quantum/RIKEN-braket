@@ -81,6 +81,8 @@ The converter currently covers:
   including `<<=` and `>>=` assignments;
 - static bit-register range/set selections as bitwise and shift operands
   and overlap-safe assignment destinations;
+- equal-width bit-register `==` and `!=` comparisons, including static
+  selections, bit-string literals, and nested bitwise/shift expressions;
 - scalar integer shift expressions (`<<`, `>>`) and compound assignments
   (`<<=`, `>>=`), with checked counts and signed left-shift overflow;
 - scalar constants, variables, assignments, and numeric casts;
@@ -375,10 +377,10 @@ are checked even in skipped branches and empty loop bodies. Register sizes
 remain tied to declaration scope when iterators shadow size constants, and
 active iterators remain read-only.
 
-Register values are supported only in the register-assignment contexts above;
-this does not add register comparisons, conditions, integer/register casts,
+Register values are supported in register assignments and the equality
+comparisons described below; they are not bare conditions. Integer/register casts,
 indexing of computed results, or register expressions as loop bounds or
-iteration collections. Static selection operations are described below.
+iteration collections remain unsupported. Static selection operations are described below.
 Concatenation, aliases, `const bit[n]` declarations,
 and functions such as `popcount` remain outside this subset. Existing direct
 bit-register copies and indexed scalar-bit operations retain their behavior.
@@ -444,7 +446,7 @@ reads when a shift modifies the iterated register.
 
 Shifts on scalar bits and computed-result indexing remain unsupported. Static
 selection shifts are described below. This does not add rotations, aliases, concatenation, register
-casts or comparisons, `const bit[n]` declarations, or register-valued scalar
+casts or ordered comparisons, `const bit[n]` declarations, or register-valued scalar
 conditions/loop bounds. General count-expression overflow checks remain
 separate work.
 
@@ -508,7 +510,48 @@ selection bounds, and repeated destinations are checked on skipped paths and
 in empty loop bodies; runtime shift-count arithmetic and checks stay on reached
 paths. Active iterators remain read-only. Dynamic selections, multidimensional
 indexing, indexing computed register results, aliases, concatenation, register
-casts/comparisons, and iteration over selections remain separate work.
+casts, ordered comparisons, and iteration over selections remain separate work.
+
+### Bit-register equality
+
+`==` and `!=` accept two register-valued operands of equal width and produce a
+scalar Boolean result. Operands may be whole `bit[n]` variables, bit-string
+literals, supported static range/set selections, or nested register bitwise and
+shift expressions. Selection order defines the corresponding bits to compare;
+repeated source indices are allowed. A one-bit register or selection remains
+distinct from a scalar bit: `a[0:0] == "1"` is supported, but `a[0] == "1"`
+is rejected. Scalar bit comparisons such as `a[0] == true` remain supported.
+
+```qasm
+bit[4] a = "1010";
+bit[4] b = "0101";
+bool same = a[3:-1:0] == b;             // true
+bool different = (~a ^ b) != "0000";   // false
+const bool FOLDED = ("0011" << 1) == "0110";
+if (same && !(a == b)) { a = b; }
+while (a != "0000") { a >>= 1; }
+```
+
+Results can initialize or be assigned to Boolean variables or scalar bits, be
+compared with Boolean/scalar-bit values, and be used in `if`/`else`, `while`,
+and logical `!`, `&&`, and `||` expressions. Supported explicit casts can convert
+the Boolean result; this does not introduce casts of register values themselves.
+Constant Boolean declarations accept comparisons of literal register expressions
+with constant shift counts. `const bit[n]` variables remain unsupported.
+
+Both complete operands are evaluated left to right before any mismatching bit
+can end the comparison. Outer logical operators retain short-circuit evaluation,
+so runtime checks in an unreached comparison are skipped. Types, names, widths,
+and static selection bounds are still checked on skipped paths and in empty
+loop bodies, without evaluating runtime shift counts or reading bits.
+
+Runtime equality uses element-wise QCX `JUMPIF`/`JUMP` instructions, not packing
+into a native integer, so registers wider than native `UINT` are supported.
+Private intermediate storage stays alive until both operands are evaluated and
+is released afterward. No new bra instruction is required. Unequal operand
+widths, scalar/register mixing, ordered register comparisons (`<`, `<=`, `>`,
+`>=`), bare register conditions, dynamic selections, aliases, and indexing of
+computed register results remain unsupported.
 
 ### Scalar integer shifts
 
@@ -850,7 +893,8 @@ Conditions can compare scalar `int`, `uint`, `float`, and `bit` expressions.
 A bit-register or integer-array element with a supported static or runtime
 index is also accepted.
 Compatible integer and floating-point operands are promoted when necessary. Complex
-values and complete bit registers cannot be compared.
+values cannot be compared. Equal-width bit-register `==` and `!=` comparisons
+are supported as described in [Bit-register equality](#bit-register-equality).
 Boolean and scalar bit operands can be compared with one another using `==`
 or `!=`.
 
@@ -1621,7 +1665,7 @@ The current prototype does not reliably support:
   Boolean arithmetic, mixed Boolean/numeric comparisons, or block-local
   declarations;
 - scalar-bit shifts and runtime-dependent register selections,
-  whole-array bitwise operations, direct
+  ordered bit-register comparisons, whole-array bitwise operations, direct
   Boolean bitwise operations, or classical functions; or
 - arithmetic operators other than `+`, `-`, `*`, `/`, and integer `%`.
 
@@ -1673,6 +1717,15 @@ results, self-referencing counts, single index capture, skipped errors,
 loop transfers, live register iteration, and measurement-controlled execution.
 Unit tests additionally check width/type rejection, guard-before-cast ordering,
 buffer reuse, cleanup, empty-loop validation, and unsupported scalar contexts.
+
+`bra/test/qasm2qcx_bit_register_equality_numerical.py` checks literal folding and
+runtime equality/inequality for widths 1, 2, 4, 33, and 65, including exhaustive
+pairs through four bits. It covers static selections (including repeated sources),
+nested register expressions, Boolean/scalar-bit values and casts, branches
+(including measurement-controlled execution), loops, complete operand evaluation, and logical
+short-circuiting around runtime failures. Unit tests also cover width/type errors,
+ordered-comparison rejection, empty-loop validation, iterator shadowing, and
+temporary cleanup. The equality numerical suite also passes with UBSan enabled.
 
 `bra/test/qasm2qcx_static_bit_selection_numerical.py` checks all four-bit source
 patterns across ascending/descending ranges, negative indices, reordered sets,
@@ -1820,6 +1873,7 @@ python3 bra/test/qasm2qcx_runtime_bit_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_bitwise_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_bit_register_bitwise_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_bit_register_shift_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_bit_register_equality_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_static_bit_selection_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_shift_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_uint_numerical.py --bra bra/bin/bra

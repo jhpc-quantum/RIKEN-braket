@@ -537,7 +537,7 @@ class BitRegisterBitwiseFoundationTests(unittest.TestCase):
 
     def test_unsupported_operations_and_selections_rejected(self) -> None:
         converter = self.converter('bit[4] a; bit[4] b; float f; array[int, 2] values;')
-        for expression in ('a << true', 'a + b', '!a', 'a == b', 'int(a)', 'a[0:1] & b',
+        for expression in ('a << true', 'a + b', '!a', 'a < b', 'int(a)', 'a[0:1] & b',
                            'a[{0, 1}] | b', 'a[f] & a[0]', 'values & a', 'sin(1.0)'):
             with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
                 self.width(converter, expression)
@@ -567,6 +567,238 @@ class BitRegisterBitwiseFoundationTests(unittest.TestCase):
             convert('OPENQASM 3.0; bit[4] a; bit[4] b; a[0:2] &= b;')
         self.assertEqual(convert('OPENQASM 3.0; bit[1] a = "1"; bit[1] b = a;'),
                          ['QUBITS 0', 'VAR A1 INT', 'LET A1 := 1', 'VAR B1 INT', 'LET B1 := A1'])
+
+
+class BitRegisterEqualityFoundationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.foundation = BitRegisterBitwiseFoundationTests()
+        self.converter = self.foundation.converter('''bit[4] a; bit[4] b; bit[1] one;
+            bit scalar; bit other; int n; uint u; float f; bool ready; bit[65] wide;
+            array[int, 2] counts;''')
+
+    def comparison(self, source: str):
+        return qasm2qcx.openqasm3.parse('OPENQASM 3.0; bool result = ' + source + ';').statements[0].init_expression
+
+    def width(self, source: str, iterators=None):
+        return self.converter._QASM2QCXConverter__register_comparison_width(self.comparison(source), iterators)
+
+    def test_equal_width_register_operands_literals_and_expressions(self) -> None:
+        for expression, expected in (('a == b', 4), ('a != "0000"', 4),
+                                     ('"0000" == "0001"', 4), ('~a == (b ^ "0011")', 4),
+                                     ('(a << n) != (b >> u)', 4), ('a[0:1] == a[{3, 1}]', 2),
+                                     ('one == a[0:0]', 1), ('one != "1"', 1), ('wide == ~wide', 65)):
+            with self.subTest(expression=expression):
+                self.assertEqual(self.width(expression), expected)
+
+    def test_width_mismatches_and_scalar_register_mixing_rejected(self) -> None:
+        for expression in ('a == "01"', 'a != one', 'a[0:1] == a[0:2]', '"0" != "00"'):
+            with self.subTest(expression=expression), self.assertRaisesRegex(
+                    qasm2qcx.InvalidBitOperandException, 'register widths .* do not match'):
+                self.width(expression)
+        for expression in ('a == n', 'a != u', 'a == ready', 'one == scalar',
+                           'one != a[0]', 'true == one', 'a[0:0] == 1'):
+            with self.subTest(expression=expression), self.assertRaisesRegex(
+                    qasm2qcx.InvalidBitOperandException, 'both be scalars or both be registers'):
+                self.width(expression)
+
+    def test_scalar_comparisons_keep_existing_type_path(self) -> None:
+        for expression in ('n == u', 'n < f', 'scalar == other', 'scalar != ready',
+                           'a[n] == scalar', 'one[0] != true', '1 == 1'):
+            with self.subTest(expression=expression):
+                self.assertIsNone(self.width(expression))
+        lines = convert('OPENQASM 3.0; int n = 1; bool same = n == 1; bit flag = 1; if (flag != false) {}')
+        self.assertTrue(any(line.startswith('JUMPIF ') for line in lines))
+
+    def test_ordered_register_comparisons_remain_unsupported(self) -> None:
+        for operator in ('<', '<=', '>', '>='):
+            with self.subTest(operator=operator), self.assertRaisesRegex(
+                    qasm2qcx.UnsupportedOpenQASMError, 'ordered comparisons'):
+                self.width('a ' + operator + ' b')
+
+    def test_validation_does_not_emit_or_evaluate_runtime_arithmetic(self) -> None:
+        before = (list(self.converter._QASM2QCXConverter__qcx_lines),
+                  self.converter._QASM2QCXConverter__value, self.converter._QASM2QCXConverter__value_type,
+                  self.converter._QASM2QCXConverter__value_kind, self.converter._QASM2QCXConverter__expression_kind)
+        for expression in ('(a << -1) == b', '(a >> (1 / 0)) != b',
+                           '(a << counts[999]) == b', '(a << n) == ~b'):
+            self.assertEqual(self.width(expression), 4)
+        self.assertEqual(before, (list(self.converter._QASM2QCXConverter__qcx_lines),
+                         self.converter._QASM2QCXConverter__value, self.converter._QASM2QCXConverter__value_type,
+                         self.converter._QASM2QCXConverter__value_kind, self.converter._QASM2QCXConverter__expression_kind))
+        self.assertEqual(self.converter._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_bad_selection_shapes_names_and_bounds_rejected(self) -> None:
+        for expression in ('a[n:3] == b', 'a[0:4] == b', 'a[1:0] != "1"',
+                           '(a | b)[0:1] == "11"', 'int(a) == n',
+                           'a[{0, 1}] == a[{0, 1, 2}]'):
+            with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.width(expression)
+        with self.assertRaises(qasm2qcx.NoVariableNameException):
+            self.width('a == missing')
+
+    def test_iterator_shadowing_preserves_scalar_identity(self) -> None:
+        with self.assertRaises(qasm2qcx.InvalidBitOperandException):
+            self.width('a == b', {'a': qasm2qcx.ValueType.INT})
+        self.assertIsNone(self.width('a == n', {'a': qasm2qcx.ValueType.INT}))
+        self.assertIsNone(self.width('a == true', {'a': qasm2qcx.ValueType.BIT}))
+        self.converter._QASM2QCXConverter__loop_bindings.append({'a': 1})
+        try:
+            self.assertIsNone(self.width('a == n'))
+        finally:
+            self.converter._QASM2QCXConverter__loop_bindings.pop()
+
+    def test_public_runtime_and_constant_paths_validate_widths(self) -> None:
+        for source in ('bit[4] a; bool same = a == "01";',
+                       'bit[4] a; if (false && a == "01") {}',
+                       'const bool SAME = "0000" == "00";',
+                       'const bool OFF = false && ("0000" != "00");',
+                       'bit[1] one; bit scalar; bool same = one == scalar;'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.InvalidBitOperandException):
+                convert('OPENQASM 3.0; ' + source)
+        for source in ('bit[4] a; bit[4] b; bool same = a == b;',
+                       'const bool SAME = "0000" == "0000";'):
+            with self.subTest(source=source):
+                convert('OPENQASM 3.0; ' + source)
+
+
+class BitRegisterEqualityExpressionTests(unittest.TestCase):
+    def test_runtime_equality_and_inequality_use_mismatch_branches(self) -> None:
+        for operator, mismatch, match in (('==', 'FALSE', 'TRUE'), ('!=', 'TRUE', 'FALSE')):
+            with self.subTest(operator=operator):
+                lines = convert(f'OPENQASM 3.0; bit[2] a; bit[2] b; bool same = a {operator} b;')
+                self.assertIn(f'JUMPIF QASM2QCX_BOOL_{mismatch}_0 A1:0 \\= B1:0', lines)
+                self.assertIn(f'JUMPIF QASM2QCX_BOOL_{mismatch}_0 A1:1 \\= B1:1', lines)
+                self.assertIn(f'JUMP QASM2QCX_BOOL_{match}_0', lines)
+
+    def test_literal_lhs_uses_register_variable_for_jumpif(self) -> None:
+        lines = convert('OPENQASM 3.0; bit[2] a; bool same = "01" == a;')
+        self.assertIn('JUMPIF QASM2QCX_BOOL_FALSE_0 A1:0 \\= 1', lines)
+        self.assertIn('JUMPIF QASM2QCX_BOOL_FALSE_0 A1:1 \\= 0', lines)
+
+    def test_constant_literals_nested_operations_and_shifts_fold(self) -> None:
+        lines = convert('''OPENQASM 3.0; const int COUNT = 1;
+            const bool SAME = (~"1010" ^ "1100") == "1001";
+            const bool DIFF = ("1011" << COUNT) != "1011";
+            const bool ZERO = ("1011" >> uint(-1)) == "0000";
+            bool a = SAME; bool b = DIFF; bool c = ZERO;''')
+        for name in ('A1', 'B1', 'C1'):
+            self.assertIn(f'LET {name} := 1', lines)
+        self.assertFalse(any(line.startswith('VAR QASM2QCX_') for line in lines))
+        runtime = convert('OPENQASM 3.0; bool a = "01" == "01";')
+        self.assertFalse(any(line.startswith('JUMPIF ') for line in runtime))
+
+    def test_constant_short_circuit_suppresses_shift_errors_not_type_checks(self) -> None:
+        lines = convert('''OPENQASM 3.0;
+            const bool OFF = false && (("01" << -1) == "00");
+            const bool ON = true || (("01" >> (1 / 0)) != "11");
+            bool a = OFF; bool b = ON;''')
+        self.assertIn('LET A1 := 0', lines)
+        self.assertIn('LET B1 := 1', lines)
+        with self.assertRaises(qasm2qcx.InvalidShiftException):
+            convert('OPENQASM 3.0; const bool BAD = ("01" << -1) == "00";')
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            convert('OPENQASM 3.0; bit[2] a; const bool BAD = a == "00";')
+
+    def test_both_operands_complete_left_to_right_before_comparison(self) -> None:
+        lines = convert('''OPENQASM 3.0; bit[4] a; bit[4] b; int n = 1;
+            bool same = (a << n) == (b >> n);''')
+        comparison = next(index for index, line in enumerate(lines)
+                          if line.startswith('JUMPIF QASM2QCX_BOOL_'))
+        self.assertLess(lines.index('@QASM2QCX_REGISTER_SHIFT_0_END'),
+                        lines.index('@QASM2QCX_REGISTER_SHIFT_1_END'))
+        self.assertLess(lines.index('@QASM2QCX_REGISTER_SHIFT_1_END'), comparison)
+        self.assertEqual(sum(line.startswith('VAR QASM2QCX_BITS_4_') for line in lines), 4)
+
+    def test_singleton_and_reordered_selections_keep_identity_and_order(self) -> None:
+        lines = convert('''OPENQASM 3.0; bit[4] a; bit[1] one;
+            bool same = a[{3, 0}] == a[1:2]; bool single = a[{0}] != one;''')
+        self.assertIn('JUMPIF QASM2QCX_BOOL_FALSE_0 A1:3 \\= A1:1', lines)
+        self.assertIn('JUMPIF QASM2QCX_BOOL_FALSE_0 A1:0 \\= A1:2', lines)
+        self.assertIn('JUMPIF QASM2QCX_BOOL_TRUE_1 A1:0 \\= ONE7', lines)
+
+    def test_results_reuse_and_release_storage(self) -> None:
+        program = qasm2qcx.openqasm3.parse('''OPENQASM 3.0; bit[4] a; bit[4] b;
+            bool same = (~a ^ b) == (a | b); same = (~a ^ b) != (a | b);''')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        ForLoopControlLoweringTests.assert_resolved_jumps(list(converter))
+
+    def test_failed_rhs_lowering_releases_both_operands_and_boolean_result(self) -> None:
+        program = qasm2qcx.openqasm3.parse('''OPENQASM 3.0; bit[2] a;
+            bool same = ~a == later; bit[2] later;''')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            converter.visit(program)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+
+class BitRegisterEqualityControlFlowTests(unittest.TestCase):
+    def test_metadata_tracks_boolean_type_and_runtime_dependency_without_evaluation(self) -> None:
+        foundation = BitRegisterEqualityFoundationTests()
+        foundation.setUp()
+        converter = foundation.converter
+        before = list(converter._QASM2QCXConverter__qcx_lines)
+        for source, runtime in (('"01" == ~"10"', False),
+                                ('("01" << -1) == "00"', False),
+                                ('("01" >> (1 / 0)) != "11"', False),
+                                ('a == b', True), ('a[0:1] == "01"', True),
+                                ('("0000" << n) == "0000"', True),
+                                ('!(a == b) || ((a != b) == true)', True)):
+            with self.subTest(source=source):
+                self.assertEqual(converter._QASM2QCXConverter__loop_expression_info(
+                    foundation.comparison(source)), (qasm2qcx.ValueType.BOOL, runtime))
+        self.assertEqual(converter._QASM2QCXConverter__qcx_lines, before)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_nested_boolean_comparisons_casts_and_shift_counts(self) -> None:
+        lines = convert('''OPENQASM 3.0; bit[2] a; bit[2] b;
+            bool same = (a == b) == true; int count = int(a != b);
+            bool shifted = (a << int(a == b)) == b;
+            if (bool(a == b) && !(a != b)) { same = true; }''')
+        ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_nested_if_while_and_for_release_temporaries(self) -> None:
+        program = qasm2qcx.openqasm3.parse('''OPENQASM 3.0; bit[4] a; bit[4] b;
+            int n = 1; bool ready = true;
+            for int i in [0:1] {
+                while (ready && ((a << n) != ~b)) {
+                    if ((~a == b) || !(a[{0, 2}] == b[1:2])) { break; }
+                    a = b; continue;
+                }
+            }''')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        ForLoopControlLoweringTests.assert_resolved_jumps(list(converter))
+
+    def test_empty_loops_validate_comparisons_without_evaluating_counts(self) -> None:
+        for condition in ('(a << -1) == b', '(a >> (1 / 0)) != b',
+                          '(a << counts[999]) == b', '(~a == b) == true'):
+            with self.subTest(condition=condition):
+                convert('OPENQASM 3.0; bit[4] a; bit[4] b; array[int, 2] counts; '
+                        'for int i in [1:0] { while (' + condition + ') { break; } }')
+        for condition in ('a == "01"', 'a == missing', 'a < b', 'a[n:3] == b',
+                          '(a << 1.5) == b', 'a[0:4] == b'):
+            with self.subTest(condition=condition), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert('OPENQASM 3.0; bit[4] a; bit[4] b; int n; '
+                        'for int i in [1:0] { if (false && (' + condition + ')) {} }')
+
+    def test_iterator_shadowing_applies_in_empty_and_executed_loops(self) -> None:
+        for bounds in ('1:0', '0:1'):
+            convert('OPENQASM 3.0; bit[2] a; int n; for int a in [' + bounds + '] { if (a == n) {} }')
+            with self.assertRaises(qasm2qcx.InvalidBitOperandException):
+                convert('OPENQASM 3.0; bit[2] a; bit[2] b; '
+                        'for int a in [' + bounds + '] { if (a == b) {} }')
+
+    def test_short_circuit_branches_precede_rhs_operand_evaluation(self) -> None:
+        for operator, lhs, destination in (('&&', 'false', 'FALSE'), ('||', 'true', 'TRUE')):
+            lines = convert(f'''OPENQASM 3.0; bit[2] a; int n = -1;
+                bool ready = {lhs} {operator} ((a << n) == "00");''')
+            jump = lines.index(f'JUMP QASM2QCX_BOOL_{destination}_0')
+            assertion = next(index for index, line in enumerate(lines) if line.startswith('ASSERT '))
+            self.assertLess(jump, assertion)
+            ForLoopControlLoweringTests.assert_resolved_jumps(lines)
 
 
 class StaticBitSelectionFoundationTests(unittest.TestCase):
@@ -1092,7 +1324,7 @@ class BitRegisterBitwiseExpressionTests(unittest.TestCase):
         prefix = 'OPENQASM 3.0; bit[4] a; bit[4] b; '
         for statement in ('a[0:2] = ~b;', 'a[{0, 1, 2}] = b & a;',
                           'a = a[0:4] ^ b;', 'a = a << true;', 'a = bit[4](1);',
-                          'int n = int(a & b);', 'if (a | b) {}', 'bool ok = a == b;',
+                          'int n = int(a & b);', 'if (a | b) {}', 'bool ok = a < b;',
                           'if (false) { a = a ^ "01"; }'):
             with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
                 convert(prefix + statement)

@@ -1740,6 +1740,23 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 'bit-register conditional operand')
         return self.__value, self.__value_type, self.__value_kind
 
+    def __register_comparison_width(
+            self, expression: ast.BinaryExpression,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> int | None:
+        # Scalar comparisons continue through their existing promotion rules.
+        # None is a scalar operand, never a synonym for a one-bit register.
+        lhs = self.__bit_register_expression_width(expression.lhs, iterators)
+        rhs = self.__bit_register_expression_width(expression.rhs, iterators)
+        if lhs is None and rhs is None:
+            return None
+        if lhs is None or rhs is None:
+            raise InvalidBitOperandException('Comparison operands must both be scalars or both be registers')
+        if expression.op.name not in ('==', '!='):
+            raise UnsupportedOpenQASMError('ordered comparisons of bit-register values')
+        if lhs != rhs:
+            raise InvalidBitOperandException(f'Comparison register widths {lhs} and {rhs} do not match')
+        return lhs
+
     @staticmethod
     def __comparison_types(
             lhs_type: ValueType, rhs_type: ValueType,
@@ -1780,6 +1797,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UnsupportedOpenQASMError(
                 f'branching condition operator {condition.op.name}')
 
+        if self.__register_comparison_width(condition) is not None:
+            self.__emit_register_equality_condition(condition, true_label, false_label)
+            return
         rhs_value, rhs_type, rhs_kind = self.__condition_operand(
             condition.rhs)
         lhs_value, lhs_type, lhs_kind = self.__condition_operand(
@@ -1821,6 +1841,53 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__qcx_lines.append(f'JUMP {false_label}')
         for temporary in temporaries_to_release:
             self.__release_temporary_variable(temporary)
+
+    def __emit_register_equality_condition(
+            self, expression: ast.BinaryExpression, true_label: str, false_label: str) -> None:
+        with contextlib.ExitStack() as operands:
+            lhs = operands.enter_context(self.__bit_register_expression_value(expression.lhs))
+            rhs = operands.enter_context(self.__bit_register_expression_value(expression.rhs))
+            # Both complete operands must be evaluated before any early exit
+            # on a mismatching element. Surrounding logical operators, not
+            # equality itself, may skip register-expression evaluation.
+            mismatch = false_label if expression.op.name == '==' else true_label
+            match = true_label if expression.op.name == '==' else false_label
+            for left, right in zip(lhs, rhs):
+                if isinstance(left, int) and isinstance(right, int):
+                    if left != right:
+                        self.__qcx_lines.append(f'JUMP {mismatch}')
+                        return
+                    continue
+                if isinstance(left, int):
+                    left, right = right, left  # JUMPIF requires a variable LHS.
+                self.__qcx_lines.append(f'JUMPIF {mismatch} {left} \\= {right}')
+            self.__qcx_lines.append(f'JUMP {match}')
+
+    def __constant_bit_register_value(self, expression: ast.Expression, width: int) -> int:
+        if isinstance(expression, ast.BitstringLiteral):
+            return expression.value if self.__evaluate_constant else 0
+        if isinstance(expression, ast.UnaryExpression) and expression.op.name == '~':
+            value = self.__constant_bit_register_value(expression.expression, width)
+            return value ^ ((1 << width) - 1) if self.__evaluate_constant else 0
+        if isinstance(expression, ast.BinaryExpression):
+            lhs = self.__constant_bit_register_value(expression.lhs, width)
+            if expression.op.name in ('<<', '>>'):
+                self.visit(expression.rhs)
+                if (self.__value_kind != ValueKind.LITERAL
+                        or self.__value_type not in (ValueType.INT, ValueType.UINT)):
+                    raise NoConstantExpressionException
+                return (self.__fold_bit_register_shift(lhs, width, int(self.__value), expression.op.name)
+                        if self.__evaluate_constant else 0)
+            rhs = self.__constant_bit_register_value(expression.rhs, width)
+            if expression.op.name == '&':
+                return lhs & rhs
+            if expression.op.name == '|':
+                return lhs | rhs
+            if expression.op.name == '^':
+                return lhs ^ rhs
+        # const bit[n] declarations are not supported: register names and
+        # selections therefore cannot supply a constant register value.
+        raise NoConstantExpressionException
 
     def __emit_condition(
             self, condition: ast.Expression, true_label: str,
@@ -1912,7 +1979,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # temporaries must not alias the result, nor overwrite an assignment's
         # destination before the complete RHS has been evaluated.
         result = self.__add_new_temporary_variable(ValueType.BOOL)
-        self.__emit_condition(expression, true_label, false_label)
+        try:
+            self.__emit_condition(expression, true_label, false_label)
+        except Exception:
+            self.__release_temporary_variable(result)
+            raise
         self.__qcx_lines.extend([
             f'@{true_label}', f'LET {result} := 1', f'JUMP {end_label}',
             f'@{false_label}', f'LET {result} := 0', f'@{end_label}',
@@ -1930,6 +2001,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise NoImplicitCastException
             self.__value = int(not self.__value) if self.__evaluate_constant else 0
         else:
+            if expression.op.name in ('==', '!=', '<', '<=', '>', '>='):
+                width = self.__register_comparison_width(expression)
+                if width is not None:
+                    lhs = self.__constant_bit_register_value(expression.lhs, width)
+                    rhs = self.__constant_bit_register_value(expression.rhs, width)
+                    equal = lhs == rhs
+                    self.__value = int(equal if expression.op.name == '==' else not equal) if self.__evaluate_constant else 0
+                    self.__value_type, self.__value_kind = ValueType.BOOL, ValueKind.LITERAL
+                    return
             self.visit(expression.lhs)
             lhs_value, lhs_type = self.__value, self.__value_type
             logical = expression.op in (
@@ -2184,6 +2264,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __loop_binary_info(
             self, expression: ast.BinaryExpression, iterators: set[str] | dict[str, ValueType] | None
             ) -> tuple[ValueType, bool]:
+        if (expression.op.name in ('==', '!=', '<', '<=', '>', '>=')
+                and self.__register_comparison_width(expression, iterators) is not None):
+            lhs_runtime = self.__register_expression_runtime(expression.lhs, iterators)
+            rhs_runtime = self.__register_expression_runtime(expression.rhs, iterators)
+            return ValueType.BOOL, lhs_runtime or rhs_runtime
         lhs_type, lhs_runtime = self.__loop_expression_info(expression.lhs, iterators)
         rhs_type, rhs_runtime = self.__loop_expression_info(expression.rhs, iterators)
         runtime = lhs_runtime or rhs_runtime
@@ -2206,6 +2291,23 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if expression.op.name == '%' and result_type not in (ValueType.INT, ValueType.UINT):
             raise UnsupportedOpenQASMError('non-integer remainder in loop expression')
         return result_type, runtime
+
+    def __register_expression_runtime(
+            self, expression: ast.Expression,
+            iterators: set[str] | dict[str, ValueType] | None) -> bool:
+        # Width/type validation has already established a register expression.
+        # Inspect both sides without evaluating shift counts or reading bits.
+        if isinstance(expression, ast.BitstringLiteral):
+            return False
+        if isinstance(expression, (ast.Identifier, ast.IndexExpression)):
+            return True
+        if isinstance(expression, ast.UnaryExpression):
+            return self.__register_expression_runtime(expression.expression, iterators)
+        lhs = self.__register_expression_runtime(expression.lhs, iterators)
+        rhs = (self.__loop_expression_info(expression.rhs, iterators)[1]
+               if expression.op.name in ('<<', '>>')
+               else self.__register_expression_runtime(expression.rhs, iterators))
+        return lhs or rhs
 
     def __loop_index_info(
             self, expression: ast.IndexExpression, iterators: set[str] | dict[str, ValueType] | None
@@ -2469,6 +2571,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __validate_bitwise_indices(
             self, expression: ast.Expression, iterators: dict[str, ValueType]) -> None:
+        if (isinstance(expression, ast.BinaryExpression)
+                and expression.op.name in ('==', '!=', '<', '<=', '>', '>=')
+                and self.__register_comparison_width(expression, iterators) is not None):
+            return  # Register selections/counts were checked by width validation.
         if isinstance(expression, ast.IndexExpression):
             selectors = expression.index
             if (not isinstance(selectors, list) or len(selectors) != 1
@@ -2529,9 +2635,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if isinstance(node, ast.ForInLoop):
             self.__validate_bitwise_types(node.set_declaration, iterators)
             return
-        # Register values are accepted only in their assignment context, not
-        # accidentally as scalar loop bounds, conditions, casts, or indices.
+        # Register values are accepted only in assignment/comparison contexts,
+        # not accidentally as scalar loop bounds, casts, or indices.
         if isinstance(node, ast.ClassicalAssignment) and self.__validate_register_operator_assignment(node, iterators):
+            return
+        if (isinstance(node, ast.BinaryExpression)
+                and node.op.name in ('==', '!=', '<', '<=', '>', '>=')
+                and self.__register_comparison_width(node, iterators) is not None):
             return
         if ((isinstance(node, ast.UnaryExpression) and node.op.name == '~')
                 or (isinstance(node, ast.BinaryExpression) and node.op.name in ('&', '|', '^', '<<', '>>'))):
