@@ -19,6 +19,7 @@
 
 #include <boost/variant/variant.hpp>
 #include <boost/variant/apply_visitor.hpp>
+#include <boost/math/constants/constants.hpp>
 #include <boost/math/special_functions/fpclassify.hpp>
 
 #ifndef BRA_NO_MPI
@@ -47,6 +48,29 @@ namespace bra
 {
   namespace
   {
+    ::bra::complex_type phase_coefficient_for_exponent(
+      std::vector< ::bra::complex_type > const& cached, ::bra::int_type const exponent)
+    {
+      // Negative exponents select the adjoint at the call site. Compute the
+      // magnitude in unsigned arithmetic, including INT_MIN, without UB.
+      auto const magnitude = exponent >= 0
+        ? static_cast< ::bra::uint_type >(exponent)
+        : ::bra::uint_type{0} - static_cast< ::bra::uint_type >(exponent);
+      if (magnitude < cached.size())
+        return cached[magnitude];
+
+      // The cache size depends on the state size, not on which phases are
+      // valid: e.g. T needs exponent 3 even on a one-qubit state. Compute a
+      // missing entry directly, with no exponent-sized allocation or shift.
+      // INT_MIN's magnitude exceeds ldexp's int range and its angle rounds
+      // to zero in every supported real_type.
+      if (magnitude > static_cast< ::bra::uint_type >(std::numeric_limits<int>::max()))
+        return ::bra::complex_type{1, 0};
+      auto const angle = std::ldexp(
+        boost::math::constants::two_pi< ::bra::real_type >(), -static_cast<int>(magnitude));
+      return ::bra::complex_type{std::cos(angle), std::sin(angle)};
+    }
+
     ::bra::int_type checked_uint_to_int(::bra::uint_type const value, std::string const& operand)
     {
       if (value > static_cast< ::bra::uint_type >(std::numeric_limits< ::bra::int_type >::max()))
@@ -1765,11 +1789,12 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubit);
 
     auto const phase_exponent_value = boost::apply_visitor(int_visitor{*this}, phase_exponent);
+    auto const coefficient = phase_coefficient_for_exponent(phase_coefficients_, phase_exponent_value);
 
     if (phase_exponent_value >= 0)
-      do_phase_shift(phase_coefficients_[phase_exponent_value], control_qubit);
+      do_phase_shift(coefficient, control_qubit);
     else
-      do_adj_phase_shift(phase_coefficients_[-phase_exponent_value], control_qubit);
+      do_adj_phase_shift(coefficient, control_qubit);
     apply_noise(control_qubit);
 
     return *this;
@@ -1783,11 +1808,12 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubit);
 
     auto const phase_exponent_value = boost::apply_visitor(int_visitor{*this}, phase_exponent);
+    auto const coefficient = phase_coefficient_for_exponent(phase_coefficients_, phase_exponent_value);
 
     if (phase_exponent_value >= 0)
-      do_adj_phase_shift(phase_coefficients_[phase_exponent_value], control_qubit);
+      do_adj_phase_shift(coefficient, control_qubit);
     else
-      do_phase_shift(phase_coefficients_[-phase_exponent_value], control_qubit);
+      do_phase_shift(coefficient, control_qubit);
     apply_noise(control_qubit);
 
     return *this;
@@ -3033,11 +3059,12 @@ namespace bra
     }
 
     auto const phase_exponent_value = boost::apply_visitor(int_visitor{*this}, phase_exponent);
+    auto const coefficient = phase_coefficient_for_exponent(phase_coefficients_, phase_exponent_value);
 
     if (phase_exponent_value >= 0)
-      do_controlled_phase_shift(phase_coefficients_[phase_exponent_value], control_qubit1, control_qubit2);
+      do_controlled_phase_shift(coefficient, control_qubit1, control_qubit2);
     else
-      do_adj_controlled_phase_shift(phase_coefficients_[-phase_exponent_value], control_qubit1, control_qubit2);
+      do_adj_controlled_phase_shift(coefficient, control_qubit1, control_qubit2);
     apply_noises(control_qubit1, control_qubit2);
 
     return *this;
@@ -3054,11 +3081,12 @@ namespace bra
     }
 
     auto const phase_exponent_value = boost::apply_visitor(int_visitor{*this}, phase_exponent);
+    auto const coefficient = phase_coefficient_for_exponent(phase_coefficients_, phase_exponent_value);
 
     if (phase_exponent_value >= 0)
-      do_adj_controlled_phase_shift(phase_coefficients_[phase_exponent_value], control_qubit1, control_qubit2);
+      do_adj_controlled_phase_shift(coefficient, control_qubit1, control_qubit2);
     else
-      do_controlled_phase_shift(phase_coefficients_[-phase_exponent_value], control_qubit1, control_qubit2);
+      do_controlled_phase_shift(coefficient, control_qubit1, control_qubit2);
     apply_noises(control_qubit1, control_qubit2);
 
     return *this;
@@ -3072,11 +3100,12 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubits);
 
     auto const phase_exponent_value = boost::apply_visitor(int_visitor{*this}, phase_exponent);
+    auto const coefficient = phase_coefficient_for_exponent(phase_coefficients_, phase_exponent_value);
 
     if (phase_exponent_value >= 0)
-      do_multi_controlled_phase_shift(phase_coefficients_[phase_exponent_value], control_qubits);
+      do_multi_controlled_phase_shift(coefficient, control_qubits);
     else
-      do_adj_multi_controlled_phase_shift(phase_coefficients_[-phase_exponent_value], control_qubits);
+      do_adj_multi_controlled_phase_shift(coefficient, control_qubits);
     apply_noises(control_qubits);
 
     return *this;
@@ -3090,11 +3119,12 @@ namespace bra
       ::bra::set_found_qubits(found_qubits_, control_qubits);
 
     auto const phase_exponent_value = boost::apply_visitor(int_visitor{*this}, phase_exponent);
+    auto const coefficient = phase_coefficient_for_exponent(phase_coefficients_, phase_exponent_value);
 
     if (phase_exponent_value >= 0)
-      do_adj_multi_controlled_phase_shift(phase_coefficients_[phase_exponent_value], control_qubits);
+      do_adj_multi_controlled_phase_shift(coefficient, control_qubits);
     else
-      do_multi_controlled_phase_shift(phase_coefficients_[-phase_exponent_value], control_qubits);
+      do_multi_controlled_phase_shift(coefficient, control_qubits);
     apply_noises(control_qubits);
 
     return *this;
