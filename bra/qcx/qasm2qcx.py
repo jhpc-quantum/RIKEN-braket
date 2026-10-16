@@ -1926,10 +1926,18 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def visit_QuantumGate(self, statement: ast.QuantumGate) -> None:
         if self.__is_initialization_process:
             return
+        previous_used = self.__used_temporary_variables.copy()
+        previous_kind = self.__expression_kind
+        try:
+            self.__emit_quantum_gate(statement)
+        finally:
+            self.__expression_kind = previous_kind
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
 
+    def __emit_quantum_gate(self, statement: ast.QuantumGate) -> None:
         qasm_gate_name: str = statement.name.name
-        if statement.modifiers:
-            raise UnsupportedOpenQASMError(f'modifiers on gate {qasm_gate_name}')
+        inverse = self.__inverse_modifier_parity(statement.modifiers)
         if statement.duration is not None:
             raise UnsupportedOpenQASMError(f'duration on gate {qasm_gate_name}')
 
@@ -1992,6 +2000,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 parameters, converted_parameters)
             if value_kind == ValueKind.TEMPORARY:
                 temporary_variables.add(u_global_phase)
+            if inverse:
+                u_global_phase = self.__negated_phase_operand(u_global_phase, value_kind)
 
         for index in range(loop_size):
             qubit_indices = []
@@ -2002,27 +2012,45 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 qubit_indices.append(str(self.__to_qubit_index(register_name, register_index)))
 
             if qasm_gate_name == 'cu':
-                self.__qcx_lines.append(
-                    f'U1 {qubit_indices[0]} {cu_control_phase}')
-                self.__qcx_lines.append(
-                    f'CU3 {" ".join(qubit_indices)} '
-                    f'{" ".join(converted_parameters[:3])}')
+                sequence = [('U1', [qubit_indices[0], cu_control_phase]),
+                            ('CU3', qubit_indices + converted_parameters[:3])]
             else:
+                sequence = []
                 if u_global_phase is not None:
-                    self.__qcx_lines.append(f'PHASE {u_global_phase}')
-                qcx_line = f'{qcx_gate_name} {" ".join(qubit_indices)}'
-                if converted_parameters:
-                    qcx_line += f' {" ".join(converted_parameters)}'
-                self.__qcx_lines.append(qcx_line)
+                    sequence.append(('PHASE', [u_global_phase]))
+                sequence.append((qcx_gate_name, qubit_indices + converted_parameters))
+            # Invert the complete lowered sequence, including the control
+            # phase of cu. PHASE operands have already been negated above.
+            for mnemonic, arguments in reversed(sequence) if inverse else sequence:
+                if inverse and mnemonic != 'PHASE':
+                    mnemonic = self.__adjoint_gate_name(mnemonic)
+                self.__qcx_lines.append(f'{mnemonic} {" ".join(arguments)}')
 
         for temporary_variable in temporary_variables:
             self.__release_temporary_variable(temporary_variable)
 
+    def __negated_phase_operand(self, operand: str, value_kind: ValueKind) -> str:
+        if value_kind == ValueKind.LITERAL:
+            return str(-float(operand))
+        # Never mutate the source expression or negate a signed INT directly.
+        temporary = self.__add_new_temporary_variable(ValueType.FLOAT)
+        self.__qcx_lines.extend([f'LET {temporary} := {operand}', f'LET {temporary} *= -1.0'])
+        return temporary
+
     def visit_QuantumPhase(self, statement: ast.QuantumPhase) -> None:
         if self.__is_initialization_process:
             return
-        if statement.modifiers:
-            raise UnsupportedOpenQASMError('modifiers on gphase')
+        previous_used = self.__used_temporary_variables.copy()
+        previous_kind = self.__expression_kind
+        try:
+            self.__emit_quantum_phase(statement)
+        finally:
+            self.__expression_kind = previous_kind
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
+
+    def __emit_quantum_phase(self, statement: ast.QuantumPhase) -> None:
+        inverse = self.__inverse_modifier_parity(statement.modifiers)
         if statement.qubits:
             raise UnsupportedOpenQASMError('qubit operands on gphase')
 
@@ -2035,6 +2063,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
         phase = self.__angle_operand(
             (self.__value, self.__value_type, self.__value_kind))
+        if inverse:
+            phase = self.__negated_phase_operand(phase, self.__value_kind)
         self.__qcx_lines.append(f'PHASE {phase}')
         if self.__value_kind == ValueKind.TEMPORARY:
             self.__release_temporary_variable(str(self.__value))
@@ -2945,8 +2975,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if isinstance(child, ast.ClassicalAssignment) and child.op.name in ('&=', '|=', '^=', '<<=', '>>=', '**='):
                 self.__validate_integer_operator_assignment_types(child, iterators)
             if isinstance(child, ast.QuantumGate):
-                if child.modifiers or child.duration is not None:
-                    raise UnsupportedOpenQASMError('gate modifiers or duration in a loop')
+                self.__inverse_modifier_parity(child.modifiers)
+                if child.duration is not None:
+                    raise UnsupportedOpenQASMError('gate duration in a loop')
                 if child.name.name not in self.gate_signatures:
                     raise UnsupportedOpenQASMError(f'gate {child.name.name}')
                 if (not self.__is_initialization_process
@@ -2957,8 +2988,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 if len(child.arguments) != parameters or len(child.qubits) != qubits:
                     raise WrongGateArityException(child.name.name, parameters, qubits,
                                                   len(child.arguments), len(child.qubits))
-            if isinstance(child, ast.QuantumPhase) and (child.modifiers or child.qubits):
-                raise UnsupportedOpenQASMError('modifiers or qubit operands on gphase')
+            if isinstance(child, ast.QuantumPhase):
+                self.__inverse_modifier_parity(child.modifiers)
+                if child.qubits:
+                    raise UnsupportedOpenQASMError('qubit operands on gphase')
             if isinstance(child, (ast.BranchingStatement, ast.WhileLoop)):
                 condition = (child.condition if isinstance(child, ast.BranchingStatement)
                              else child.while_condition)

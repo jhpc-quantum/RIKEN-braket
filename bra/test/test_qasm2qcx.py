@@ -76,6 +76,128 @@ class InverseModifierFoundationTests(unittest.TestCase):
             helper([modifier, modifier])
 
 
+class InverseModifierLoweringTests(unittest.TestCase):
+    def assert_clean_conversion(self, source: str):
+        program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; ' + source)
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertEqual(converter._QASM2QCXConverter__loop_bindings, [])
+        self.assertEqual(converter._QASM2QCXConverter__loop_contexts, [])
+        ForLoopControlLoweringTests.assert_resolved_jumps(converter._QASM2QCXConverter__qcx_lines)
+        return converter._QASM2QCXConverter__qcx_lines
+
+    def test_all_single_instruction_gates_emit_the_explicit_adjoint(self) -> None:
+        converter = qasm2qcx.QASM2QCXConverter
+        for gate, (parameters, qubits) in converter.gate_signatures.items():
+            if gate in ('U', 'cu'):
+                continue
+            arguments = '(' + ', '.join(str(i + 1) for i in range(parameters)) + ')' if parameters else ''
+            operands = ', '.join(f'q[{i}]' for i in range(qubits))
+            prefix = 'OPENQASM 3; include "stdgates.inc"; qubit[3] q; '
+            forward = convert(prefix + f'{gate}{arguments} {operands};')
+            inverse = convert(prefix + f'inv @ {gate}{arguments} {operands};')
+            with self.subTest(gate=gate):
+                mnemonic, rest = forward[-1].split(' ', 1)
+                self.assertEqual(inverse, forward[:-1] + [converter.qcx_adjoint_gate_map[mnemonic] + ' ' + rest])
+
+    def test_repeated_inverse_parity_preserves_forward_output(self) -> None:
+        for gate in ('h q', 'sdg q', 'rx(1) q', 'U(1, 2, 3) q', 'cu(1, 2, 3, 4) q, r', 'gphase(0.5)'):
+            prefix = 'OPENQASM 3; include "stdgates.inc"; qubit q; qubit r; '
+            for count in (2, 4):
+                with self.subTest(gate=gate, count=count):
+                    self.assertEqual(convert(prefix + 'inv @ ' * count + gate + ';'), convert(prefix + gate + ';'))
+            self.assertEqual(convert(prefix + 'inv @ inv @ inv @ ' + gate + ';'),
+                             convert(prefix + 'inv @ ' + gate + ';'))
+
+    def test_builtin_u_inverts_full_sequence_and_global_phase(self) -> None:
+        lines = self.assert_clean_conversion('qubit q; inv @ U(1, 2, 3) q;')
+        self.assertEqual(lines, ['QUBITS 1', 'U3+ 0 1 2 3', 'PHASE -3.0'])
+
+    def test_cu_inverts_sequence_and_control_phase(self) -> None:
+        lines = self.assert_clean_conversion('include "stdgates.inc"; qubit[2] q; '
+            'inv @ cu(1, 2, 3, 4) q[0], q[1];')
+        self.assertEqual(lines, ['QUBITS 2', 'CU3+ 0 1 1 2 3', 'U1+ 0 7.0'])
+
+    def test_inverse_rotations_keep_existing_half_angle_conversion(self) -> None:
+        lines = self.assert_clean_conversion('include "stdgates.inc"; qubit[2] q; float theta = 2; '
+            'inv @ rx(theta) q[0]; inv @ crz(theta) q[0], q[1];')
+        self.assertIn('EX+ 0 QASM2QCX_REAL_0', lines)
+        self.assertIn('CEZ+ 0 1 QASM2QCX_REAL_0', lines)
+        self.assertEqual(lines.count('LET QASM2QCX_REAL_0 := THETA31'), 2)
+        self.assertEqual(lines.count('LET QASM2QCX_REAL_0 *= -0.5'), 2)
+
+    def test_runtime_phase_negation_uses_private_float_without_mutating_source(self) -> None:
+        for declaration, operand in (('float theta = 2;', 'THETA31'),
+                                     (f'int theta = {qasm2qcx.QASM2QCXConverter.QCX_INT_MIN};', ':REAL:THETA31'),
+                                     ('uint theta = 2;', ':REAL:THETA31')):
+            with self.subTest(declaration=declaration):
+                lines = self.assert_clean_conversion(declaration + ' inv @ gphase(theta);')
+                self.assertIn(f'LET QASM2QCX_REAL_0 := {operand}', lines)
+                self.assertIn('LET QASM2QCX_REAL_0 *= -1.0', lines)
+                self.assertEqual(lines[-1], 'PHASE QASM2QCX_REAL_0')
+                self.assertEqual(sum(line.startswith('LET THETA31 ') for line in lines), 1)
+
+    def test_runtime_u_phase_is_computed_once_before_broadcast_and_reversed_per_element(self) -> None:
+        lines = self.assert_clean_conversion('qubit[2] q; float theta = 1; '
+            'inv @ U(theta, theta + 1, theta * 2) q;')
+        operations = [line for line in lines if line.startswith(('U3+', 'PHASE'))]
+        self.assertEqual(len(operations), 4)
+        self.assertTrue(operations[0].startswith('U3+ 0 '))
+        self.assertTrue(operations[1].startswith('PHASE QASM2QCX_REAL_'))
+        self.assertTrue(operations[2].startswith('U3+ 1 '))
+        self.assertEqual(operations[1], operations[3])
+        self.assertEqual(sum(line.endswith(' *= -1.0') for line in lines), 1)
+
+    def test_cu_broadcast_and_runtime_phase_preserve_control_operands(self) -> None:
+        lines = self.assert_clean_conversion('include "stdgates.inc"; qubit control; qubit[2] targets; '
+            'float theta = 1; inv @ cu(theta, 2, 3, theta + 1) control, targets;')
+        operations = [line for line in lines if line.startswith(('CU3+', 'U1+'))]
+        self.assertEqual(len(operations), 4)
+        self.assertTrue(operations[0].startswith('CU3+ 0 1 '))
+        self.assertTrue(operations[2].startswith('CU3+ 0 2 '))
+        self.assertEqual(operations[1], operations[3])
+        self.assertTrue(operations[1].startswith('U1+ 0 QASM2QCX_REAL_'))
+
+    def test_inverse_supported_in_branches_and_empty_nested_loops(self) -> None:
+        self.assert_clean_conversion('include "stdgates.inc"; qubit q; float theta = 1; bool ready = true; '
+            'if (ready) { inv @ rx(theta + 1) q; } '
+            'for int i in [0:1] { inv @ U(theta, 2, 3) q; inv @ gphase(theta); } '
+            'for int i in [1:0] { inv @ h q; for int j in {1, 2} { inv @ gphase(theta); } } '
+            'while (false) { inv @ rx(theta) q; }')
+
+    def test_unsupported_modifier_combinations_rejected_even_in_empty_loops(self) -> None:
+        for modifier in ('ctrl', 'negctrl', 'pow(2)', 'inv @ ctrl @ inv', 'inv @ inv @ pow(1 / 0)'):
+            for instruction in ('x q', 'gphase(1)'):
+                for wrapper in ('{}', 'for int i in [1:0] {{ {} }}'):
+                    with self.subTest(modifier=modifier, instruction=instruction, wrapper=wrapper), self.assertRaises(
+                            qasm2qcx.UnsupportedOpenQASMError):
+                        convert('OPENQASM 3; include "stdgates.inc"; qubit q; '
+                                + wrapper.format(f'{modifier} @ {instruction};'))
+
+    def test_inverse_still_checks_include_arity_parameter_types_and_phase_qubits(self) -> None:
+        for source in ('qubit q; inv @ h q;',
+                       'include "stdgates.inc"; qubit q; inv @ rx() q;',
+                       'include "stdgates.inc"; qubit q; inv @ rx(true) q;',
+                       'qubit q; inv @ gphase(1) q;', 'inv @ gphase(true);'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert('OPENQASM 3; ' + source)
+
+    def test_failed_gate_and_phase_parameters_cleanup_without_releasing_caller_storage(self) -> None:
+        for statement in ('inv @ U(theta + 1, missing, 0) q;',
+                          'inv @ U(theta + 1, true, 0) q;',
+                          'inv @ gphase(theta + missing);', 'inv @ gphase(complex(theta + 1));'):
+            program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; qubit q; float theta = 1;')
+            converter = qasm2qcx.QASM2QCXConverter(program)
+            converter.visit(program)
+            caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+            child = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; ' + statement).statements[0]
+            with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
+                converter.visit(child)
+            self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+            self.assertIsNone(converter._QASM2QCXConverter__expression_kind)
+
+
 class UnsignedIntegerFoundationTests(unittest.TestCase):
     def converter(self, source: str):
         program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3.0; ' + source)
@@ -5647,7 +5769,7 @@ class SharedLoopInfrastructureTests(unittest.TestCase):
     def test_shared_validation_rejects_unsupported_false_loop_bodies(self) -> None:
         for body in ('int local;', 'const int local = 1;', 'qubit local;',
                      'sum += 2 ** true;', 'sum = sin(1.0);',
-                     'inv @ x q;', 'while (false) { int local; }',
+                     'ctrl @ x q;', 'while (false) { int local; }',
                      'if (false) { int local; }', 'for int j in [1:0] { int local; }'):
             with self.subTest(body=body):
                 with self.assertRaises((qasm2qcx.UnsupportedOpenQASMError,
@@ -8568,7 +8690,7 @@ class GateConversionTests(unittest.TestCase):
         """
 
         with self.assertRaisesRegex(
-                qasm2qcx.UnsupportedOpenQASMError, "modifiers on gphase"):
+                qasm2qcx.UnsupportedOpenQASMError, "gate modifier ctrl"):
             convert(source)
 
     def test_rejects_bit_global_phase_parameter(self) -> None:
