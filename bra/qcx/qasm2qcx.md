@@ -89,8 +89,8 @@ The converter currently covers:
 - scalar integer shift expressions (`<<`, `>>`) and compound assignments
   (`<<=`, `>>=`), with checked counts and signed left-shift overflow;
 - scalar constants, variables, assignments, and numeric casts;
-- fixed-size, one-dimensional `int`, `uint`, `float`, and `bool` arrays with static and
-  runtime element reads and writes;
+- fixed-size, one-dimensional `int`, `uint`, `float`, `bool`, and `complex` arrays
+  with static and runtime element reads and writes;
 - scalar and register `bit` values, including bit-string initialization;
 - runtime-indexed bit-register element reads, assignments, and scalar
   measurement destinations;
@@ -106,7 +106,8 @@ The converter currently covers:
 - integer-range `for` loops with runtime-valued bounds or steps,
   including nested loops, `break`, and `continue`;
 - integer-set `for` loops with runtime-valued elements captured at loop entry;
-- runtime iteration over one-dimensional `int`, `uint`, `float`, and `bool` arrays;
+- runtime iteration over one-dimensional `int`, `uint`, `float`, `bool`, and
+  `complex` arrays;
 - runtime iteration over bit registers with scalar `bit` iterators;
 - runtime `while` loops, including nested loops, `break`, and `continue`;
 - scalar expressions used as gate parameters; and
@@ -799,7 +800,7 @@ Even a one-element array requires explicit indexing
 when used as a scalar. Qubit indices remain static; bit-register elements also
 support runtime indices as described below.
 
-Unsigned, floating-point, and Boolean arrays are supported as described below.
+Unsigned, floating-point, Boolean, and complex arrays are supported as described below.
 Multidimensional arrays, arrays of other element types, slices,
 whole-array arithmetic or assignments, array-copy initializers, aliases, and
 block-local array declarations remain unsupported.
@@ -949,14 +950,65 @@ under [Boolean-array for loops](#boolean-array-for-loops).
 Multidimensional arrays, slices, whole-array expressions or assignments,
 array-copy initializers, aliases, and block-local declarations remain unsupported.
 
+### One-dimensional complex arrays
+
+The converter supports top-level `array[complex, N]` declarations, including
+explicit base types such as `complex[float[32]]` and `complex[float[64]]`. As for
+scalar complex values, elements use native QCX `COMPLEX` storage; declared
+component widths do not introduce rounding or precision conversion. The array
+size follows the shared rules: a positive compile-time integer no larger than
+QCX `INT_MAX`, resolved in declaration scope.
+
+```qasm
+OPENQASM 3.0;
+complex seed = 1 + 2.0im;
+array[complex[float[64]], 2] values = {seed, -seed};
+int index = -1;
+values[index] += values[0] * 2;
+complex result = values[index];
+// result is 1 + 2im; seed is unchanged.
+```
+
+An optional initializer must be a flat array literal with exactly `N` elements,
+evaluated in element order at the declaration's position. Initializers use
+scalar-complex assignment conversions, including numeric, Boolean, and scalar-bit
+promotion. They can read elements of previously declared arrays. Without an
+initializer, elements have undefined OpenQASM values until assigned; do not rely
+on backend zero initialization.
+
+Static and runtime integer indexing, negative-index normalization, bounds checks,
+and explicit singleton indexing follow the shared rules below. Element assignments
+support `=`, `+=`, `-=`, `*=`, and `/=`. Destination indices are captured and
+checked once before RHS evaluation and stay reserved through the write, including
+self-referential arithmetic. Reads support complex `+`, `-`, `*`, `/`, unary
+negation, and existing scalar-complex casts. Plain implicit assignment to integer,
+unsigned-integer, floating-point, Boolean, or bit destinations is rejected.
+
+Complex values cannot be compared, used as direct conditions, or passed directly
+as gate parameters or `gphase` arguments. Boolean/bit casts, `%`, `**`, bitwise
+operators, shifts, and their compound assignments remain unsupported. An explicit
+`float(...)` cast extracts the real component for supported arithmetic or gate
+parameters. Complex-to-`uint` casts extract the real component, with native range
+checks and the specified UINT-width normalization. Existing loop-expression
+analysis still rejects runtime complex-to-`int` casts, including conversion through
+`float`; runtime complex-to-`float` casts are also rejected in conditions analyzed
+by that path. Use a supported `uint(...)` cast when a complex value supplies an
+integer index, range bound, step, or set element.
+
+Position-based loops can update complex elements; direct iteration is described
+under [Complex-array for loops](#complex-array-for-loops). Multidimensional arrays,
+slices, whole-array expressions or assignments, array-copy initializers, aliases,
+and block-local declarations remain unsupported.
+
 ### Runtime array indexing
 
-Signed/unsigned integer, floating-point, and Boolean arrays accept runtime indices using
-scalar `int`, `uint`, supported integer arithmetic, enclosing runtime iterators, and
-indexed integer-array elements.
+Signed/unsigned integer, floating-point, Boolean, and complex arrays accept runtime
+indices using scalar `int`, `uint`, supported integer arithmetic, enclosing runtime
+iterators, and indexed integer-array elements.
 Nested accesses such as `values[indices[i]]` are accepted. Floating-point,
 Boolean, and scalar bit indices require an explicit integer cast, for example
-`values[int(flag)]`. Whole-register casts retain their existing restrictions.
+`values[int(flag)]`. Complex indices require a supported explicit integer cast,
+such as `values[uint(z)]`. Whole-register casts retain their existing restrictions.
 
 ```qasm
 OPENQASM 3.0;
@@ -1376,8 +1428,8 @@ literal; sets containing them use the runtime-valued lowering described below.
 Non-integer elements require a supported explicit integer cast;
 implicit conversion of floating-point, Boolean, or complex elements is not
 supported. Signed/unsigned integer-array, floating-point-array, Boolean-array,
-and bit-register iteration use the runtime lowering described below; alias
-iteration remains unsupported.
+complex-array, and bit-register iteration use the runtime lowering described below;
+alias iteration remains unsupported.
 The installed parser requires a nonempty set in
 source code: the spelling `{}` is rejected. An empty discrete-set AST supplied
 directly to the converter emits no body instructions but still validates its
@@ -1478,7 +1530,8 @@ The same budgets apply to constant range and set loops and to the generated
 body copies of runtime-valued set loops; repeated set elements each count as an
 expanded iteration. A `break` does not reduce the generated iteration count.
 Runtime-bound range, signed/unsigned integer-array, floating-point-array,
-Boolean-array, and bit-register loops do not expand their runtime iteration count.
+Boolean-array, complex-array, and bit-register loops do not expand their runtime
+iteration count.
 
 ## Runtime-bound for loops
 
@@ -1711,8 +1764,8 @@ count, even when their iterator is runtime-valued or shadows an outer iterator.
 Runtime reentry into an already generated loop does not charge additional
 conversion-time iterations. Signed widths remain unenforced; unsigned expressions
 follow the normalization and promotion rules above. Signed/unsigned integer-array,
-floating-point-array, Boolean-array, and bit-register iteration are described below;
-alias iteration remains unsupported.
+floating-point-array, Boolean-array, complex-array, and bit-register iteration are
+described below; alias iteration remains unsupported.
 The parser still rejects
 an empty source set `{}`.
 
@@ -1771,9 +1824,10 @@ This does not add general overflow checks or enforce declared integer widths.
 Runtime array iteration counts do not consume expansion budgets. Nested
 constant or set-loop body copies still consume their usual budgets, and an
 array loop inside an expanded loop contributes its generated statements and
-instructions. Unsigned-integer-array, floating-point-array, Boolean-array, and bit-register
-iteration are described below. Iteration over slices, other unsupported array types, aliases, or
-arbitrary array expressions remains unsupported.
+instructions. Unsigned-integer-array, floating-point-array, Boolean-array,
+complex-array, and bit-register iteration are described below. Iteration over
+slices, other unsupported array types, aliases, or arbitrary array expressions
+remains unsupported.
 
 ## Unsigned-integer-array for loops
 
@@ -1933,6 +1987,56 @@ so skipped bodies and short-circuit operands skip their access checks. Types,
 conditions, supported syntax, and read-only bindings are validated even inside
 empty enclosing loops. Failed lowering releases loop-owned temporary storage
 without releasing storage reserved by callers.
+
+## Complex-array for loops
+
+The converter supports `for complex name in values` over previously declared
+one-dimensional complex arrays. Explicit iterator types such as
+`complex[float[64]]` are also accepted. Elements and iterators must both have
+complex base type; no implicit conversion from numeric or Boolean arrays or bit
+registers is performed. Declared component widths follow the scalar native-storage
+policy, so differing complex element/iterator widths do not introduce rounding.
+
+```qasm
+OPENQASM 3.0;
+array[complex[float[64]], 2] values = {1 + 1.0im, 2 + 2.0im};
+complex total = 0;
+for complex z in values {
+    total += z;
+}
+// total is 3 + 3im.
+```
+
+Elements are visited in increasing index order. Each current element is copied
+into a private `COMPLEX` iterator before the body executes. Writes to future
+elements affect later visits, while writes to the current element do not change
+its copied iterator value. Reentering the loop starts at element zero and reads
+the array's then-current contents.
+
+The iterator is scoped and read-only. It may shadow a variable, constant, array,
+or outer iterator, whose binding is restored afterward. The source is resolved
+before binding the iterator, so `for complex values in values` is accepted.
+Assignments and measurements into active iterators are rejected. Arithmetic,
+negation, casts, and type restrictions follow the complex-element rules above.
+In particular, iterators are not direct conditions or comparison operands;
+`uint(z)` can supply supported integer indices and nested range/set values, and
+`float(z)` can supply gate parameters. Complex ranges and sets remain unsupported.
+
+Nested supported range, set, array, bit-register, and `while` loops are supported.
+`break` exits the nearest loop; `continue` proceeds to its next iteration. The
+body is generated once, with a private `INT` position and copied `COMPLEX`
+iterator reserved throughout the body. An endpoint guard precedes index
+advancement. No new bra instruction is required, and runtime iteration counts
+do not consume constant-loop expansion budgets. Enclosing and nested expanded
+loops retain their existing accounting.
+
+Runtime arithmetic and access checks stay on their execution paths, including
+skipped bodies and short-circuit operands. Iterator types, read-only bindings,
+conditions, and unsupported operators are validated even inside empty enclosing
+loops, without executing skipped arithmetic. Failed lowering releases loop-owned
+temporaries while preserving caller-owned storage. Slices, multidimensional
+arrays, aliases, arbitrary array expressions, and block-local declarations remain
+outside this subset.
 
 ## Bit-register for loops
 
@@ -2106,13 +2210,14 @@ vector defined by the program's qubit declarations.
 
 The current prototype does not reliably support:
 
-- delays, iteration over arrays other than the supported `int`/`uint`/`float`/`bool` subset,
+- delays, iteration over arrays other than the supported
+  `int`/`uint`/`float`/`bool`/`complex` subset,
   alias iteration, or `switch` statements;
 - user-defined gates or gate modifiers;
 - runtime qubit indices, dynamic register ranges or discrete sets, ranges with
   omitted bounds, or multidimensional indexing;
-- classical arrays beyond the one-dimensional `int`, `uint`, `float`, and `bool` subsets
-  above, whole-register casts, complex-to-Boolean casts,
+- classical arrays beyond the one-dimensional `int`, `uint`, `float`, `bool`, and
+  `complex` subsets above, whole-register casts, complex-to-Boolean casts,
   Boolean arithmetic, mixed Boolean/numeric comparisons, or block-local
   declarations;
 - scalar-bit shifts and runtime-dependent register selections,
@@ -2306,6 +2411,23 @@ checks, and executed access/division failures. Unit tests additionally verify
 matching iterator types, read-only bindings, empty enclosing loops, resolved
 labels, temporary hoisting, and cleanup preserving caller-owned storage.
 
+`bra/test/qasm2qcx_complex_array_numerical.py` checks complex storage and precision
+policy, literal/runtime initializers and scalar promotions, static/runtime/negative
+indices, singleton arrays, arithmetic against Python complex reference values,
+compound assignments, self-references, nested indices, casts, loop integration,
+short-circuiting, gate parameters, and executed bounds/index-division failures.
+Unit tests additionally cover unsupported declarations, operations, implicit
+narrowing, captured destination indices, empty-loop validation, and cleanup.
+
+`bra/test/qasm2qcx_complex_array_loop_numerical.py` compares live reads, visit order,
+mutation, copied iterator values, and loop transfers against Python reference
+loops. It also checks repeated entry after `break`, scoped mixed-type shadowing,
+source-array shadowing, mixed loop nesting, casts, gate parameters, skipped
+checks, and executed failures. Unit tests verify matching complex base types,
+the native precision policy, singleton indexing and endpoint guards, read-only
+bindings, empty enclosing loops, hoisted temporary declarations, resolved labels,
+and cleanup preserving caller-owned storage.
+
 `bra/test/qasm2qcx_bit_register_numerical.py` verifies singleton and larger
 registers, bit-string element order, live mutation, casts and conditions,
 scalar assignments, mixed loop nesting and typed shadowing, repeated entry,
@@ -2401,6 +2523,8 @@ python3 bra/test/qasm2qcx_float_array_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_float_array_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_bool_array_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_bool_array_loop_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_complex_array_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_complex_array_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_bit_register_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_bit_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_bitwise_numerical.py --bra bra/bin/bra
