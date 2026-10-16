@@ -2559,7 +2559,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         name = expression.name
         if iterators is not None and name in iterators:
             value_type = iterators[name] if isinstance(iterators, dict) else ValueType.INT
-            return value_type, value_type == ValueType.BIT
+            # Unlike possibly expanded integer iterators, bit and float
+            # collection iterators always refer to runtime element values.
+            return value_type, value_type in (ValueType.BIT, ValueType.FLOAT)
         for scope in reversed(self.__loop_bindings):
             if name in scope:
                 binding = scope[name]
@@ -2739,11 +2741,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     @staticmethod
     def __validate_loop_header(statement: ast.ForInLoop) -> None:
-        bit_register_loop = (isinstance(statement.type, ast.BitType)
-                             and statement.type.size is None
-                             and isinstance(statement.set_declaration, ast.Identifier))
-        if not isinstance(statement.type, ast.IntType) and not bit_register_loop:
-            raise UnsupportedOpenQASMError('for-loop iteration type other than int')
+        typed_collection_loop = (
+            isinstance(statement.set_declaration, ast.Identifier)
+            and (isinstance(statement.type, ast.FloatType)
+                 or (isinstance(statement.type, ast.BitType) and statement.type.size is None)))
+        if not isinstance(statement.type, ast.IntType) and not typed_collection_loop:
+            raise UnsupportedOpenQASMError('for-loop iterator requires int or a supported collection type')
         bounds = statement.set_declaration
         if not isinstance(bounds, (ast.RangeDefinition, ast.DiscreteSet, ast.Identifier)):
             raise UnsupportedOpenQASMError('for-loop iteration other than a constant range or integer set')
@@ -2899,6 +2902,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                                                   len(child.arguments), len(child.qubits))
             if isinstance(child, ast.QuantumPhase) and (child.modifiers or child.qubits):
                 raise UnsupportedOpenQASMError('modifiers or qubit operands on gphase')
+            if isinstance(child, (ast.BranchingStatement, ast.WhileLoop)):
+                condition = (child.condition if isinstance(child, ast.BranchingStatement)
+                             else child.while_condition)
+                condition_type, _ = self.__loop_expression_info(condition, iterators)
+                if condition_type not in (ValueType.BOOL, ValueType.BIT):
+                    raise UnsupportedOpenQASMError('non-Boolean loop condition')
             if isinstance(child, ast.BranchingStatement):
                 self.__validate_loop_body(child.if_block, iterators)
                 self.__validate_loop_body(child.else_block, iterators)
@@ -3126,15 +3135,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise InvalidDeclarationException(f'Bit register {name} loop size must be in [1, {self.QCX_INT_MAX}]')
             return variable_name, size, ValueType.BIT
         if isinstance(variable_type, ast.ArrayType):
-            if not isinstance(variable_type.base_type, ast.IntType):
-                raise UnsupportedOpenQASMError('iteration over non-int classical array')
-            if not isinstance(iteration_type, ast.IntType):
-                raise UnsupportedOpenQASMError('integer-array iteration requires an int iterator')
+            if not isinstance(variable_type.base_type, (ast.IntType, ast.FloatType)):
+                raise UnsupportedOpenQASMError('iteration over classical array other than int or float')
+            value_type = self.__source_value_type(variable_type.base_type)
+            if self.__source_value_type(iteration_type) != value_type:
+                raise UnsupportedOpenQASMError('array iteration requires matching element and iterator types')
             if (not self.__is_initialization_process
                     and variable_name not in self.__array_element_types):
                 raise NoVariableNameException(name)
-            return variable_name, self.__array_source_sizes[name], ValueType.INT
-        raise UnsupportedOpenQASMError('for-loop identifier other than an integer array or bit register')
+            return variable_name, self.__array_source_sizes[name], value_type
+        raise UnsupportedOpenQASMError('for-loop identifier other than an int/float array or bit register')
 
     def __visit_collection_for(self, statement: ast.ForInLoop) -> None:
         variable_name, size, value_type = self.__collection_loop_info(statement.set_declaration, statement.type)
@@ -3153,11 +3163,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return
 
         previous_temporaries = self.__declared_temporary_variables.copy()
-        iterator = self.__add_new_temporary_variable(ValueType.INT)
+        previous_used = self.__used_temporary_variables.copy()
+        iterator = self.__add_new_temporary_variable(value_type)
         index = self.__add_new_temporary_variable(ValueType.INT)
         try:
             # QCX stores a singleton bit register as a scalar INT, unlike
-            # integer arrays, whose scalar accesses retain explicit indexing.
+            # classical arrays, whose scalar accesses retain explicit indexing.
             operand = variable_name if value_type == ValueType.BIT and size == 1 else f'{variable_name}:{index}'
             self.__qcx_lines.extend([f'LET {index} := 0', f'@{body_label}',
                                     f'LET {iterator} := {operand}'])
@@ -3173,8 +3184,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if self.__inside_expanded_loop():
                 self.__check_loop_output_limit()
         finally:
-            self.__release_temporary_variable(index)
-            self.__release_temporary_variable(iterator)
+            # No expression result escapes a collection loop. Also release
+            # body temporaries left behind by failed expression lowering,
+            # without disturbing storage reserved by enclosing callers.
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
 
     def __visit_runtime_set(self, statement: ast.ForInLoop) -> None:
         self.__validate_loop_body(statement.block, self.__loop_iterator_types(statement.identifier.name))
