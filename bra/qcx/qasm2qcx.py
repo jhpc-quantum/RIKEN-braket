@@ -3047,8 +3047,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 and node.op.name in ('==', '!=', '<', '<=', '>', '>=')
                 and self.__register_comparison_width(node, iterators) is not None):
             return
-        if ((isinstance(node, ast.UnaryExpression) and node.op.name in ('~', '-'))
-                or (isinstance(node, ast.BinaryExpression) and node.op.name in ('&', '|', '^', '<<', '>>', '**', '%'))):
+        # Logical values and casts also need type checking when a body is
+        # empty; this inspects types without executing skipped arithmetic.
+        if ((isinstance(node, ast.UnaryExpression) and node.op.name in ('~', '-', '!'))
+                or (isinstance(node, ast.Cast) and isinstance(node.type, (ast.BoolType, ast.BitType)))
+                or (isinstance(node, ast.BinaryExpression) and node.op.name in (
+                    '&', '|', '^', '<<', '>>', '**', '%', '&&', '||', '==', '!=', '<', '<=', '>', '>='))):
             self.__loop_expression_info(node, iterators)
             self.__validate_bitwise_indices(node, iterators)
         for field in dataclasses.fields(node):
@@ -4434,6 +4438,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UnsupportedOpenQASMError(f'Boolean array assignment operator {operator}')
         if element_type == ValueType.FLOAT and operator not in ('=', '+=', '-=', '*=', '/='):
             raise UnsupportedOpenQASMError(f'floating-point array assignment operator {operator}')
+        if element_type == ValueType.COMPLEX and operator not in ('=', '+=', '-=', '*=', '/='):
+            raise UnsupportedOpenQASMError(f'complex array assignment operator {operator}')
 
     def __emit_classical_value_assignment(
             self, statement: ast.ClassicalAssignment, variable_name: str,
