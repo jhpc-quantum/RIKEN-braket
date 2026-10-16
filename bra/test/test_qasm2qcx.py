@@ -3214,9 +3214,10 @@ class ComplexArrayDeclarationTests(unittest.TestCase):
                 with self.subTest(size=size, statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
                     convert(f'OPENQASM 3; array[complex, {size}] a; {statement}')
 
-    def test_iteration_remains_deferred(self) -> None:
-        with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
-            convert('OPENQASM 3; array[complex, 2] a; for complex z in a {}')
+    def test_iteration_requires_matching_complex_type(self) -> None:
+        for iterator in ('int', 'uint', 'float', 'bool', 'bit'):
+            with self.subTest(iterator=iterator), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                convert(f'OPENQASM 3; array[complex, 2] a; for {iterator} z in a {{}}')
 
     def test_duplicates_forward_self_references_and_local_arrays_are_rejected(self) -> None:
         for source in ('array[complex, 1] a; complex a;', 'complex a; array[complex, 1] a;',
@@ -3333,6 +3334,93 @@ class ComplexArrayAccessTests(unittest.TestCase):
             with self.subTest(rhs=rhs), self.assertRaises(qasm2qcx.QASM2QCXError):
                 converter.visit(program)
             self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+
+class ComplexArrayLoopTests(unittest.TestCase):
+    def assert_clean_conversion(self, source: str):
+        converter = ComplexArrayDeclarationTests.converter(source)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertEqual(converter._QASM2QCXConverter__loop_bindings, [])
+        self.assertEqual(converter._QASM2QCXConverter__loop_contexts, [])
+        ForLoopControlLoweringTests.assert_resolved_jumps(converter._QASM2QCXConverter__qcx_lines)
+        return converter._QASM2QCXConverter__qcx_lines
+
+    def test_complex_iterator_uses_complex_storage_and_body_emitted_once(self) -> None:
+        lines = self.assert_clean_conversion('array[complex, 2] a = {1.0im, 2.0im}; complex total = 0; '
+            'for complex z in a { total += z; a[1] += 1; }')
+        body = lines.index('@QASM2QCX_LOOP_0_BODY')
+        self.assertIn('VAR QASM2QCX_COMPLEX_0 COMPLEX', lines[:body])
+        self.assertIn('VAR QASM2QCX_INT_0 INT', lines[:body])
+        self.assertEqual(lines[body + 1], 'LET QASM2QCX_COMPLEX_0 := A1:QASM2QCX_INT_0')
+        self.assertEqual(lines.count('LET TOTAL31 += QASM2QCX_COMPLEX_0'), 1)
+
+    def test_singleton_has_explicit_index_and_endpoint_guard(self) -> None:
+        lines = self.assert_clean_conversion('array[complex, 1] a = {1.0im}; for complex z in a { continue; }')
+        self.assertIn('LET QASM2QCX_COMPLEX_0 := A1:QASM2QCX_INT_0', lines)
+        self.assertIn('JUMPIF QASM2QCX_LOOP_0_END QASM2QCX_INT_0 == 0', lines)
+
+    def test_matching_precision_policy_reuses_scalar_native_complex(self) -> None:
+        for base in ('complex', 'complex[float[32]]', 'complex[float[64]]'):
+            for iterator in ('complex', 'complex[float[32]]', 'complex[float[64]]'):
+                with self.subTest(base=base, iterator=iterator):
+                    self.assert_clean_conversion(f'array[{base}, 1] a = {{1.0im}}; complex total = 0; '
+                        f'for {iterator} z in a {{ total += z; }}')
+
+    def test_shadowing_source_and_mixed_type_iterators_restores_bindings(self) -> None:
+        self.assert_clean_conversion('array[complex, 2] a; array[uint[4], 1] u; array[float, 1] f; '
+            'array[bool, 1] flags; bit[1] bits; complex total = 0; complex z = 1.0im; '
+            'for complex a in a { total += a; } total += a[0]; '
+            'for complex z in a { for int z in [0:1] { total += z; } '
+            'for uint[4] z in u { total += z; } for float z in f { total += z; } '
+            'for bool z in flags { total += z; } for bit z in bits { total += complex(z); } total += z; } '
+            'total += z;')
+
+    def test_casts_and_nested_integer_ranges_keep_runtime_metadata_in_empty_loops(self) -> None:
+        self.assert_clean_conversion('array[complex, 2] a; complex total; '
+            'for int outer in [1:0] { for complex z in a { '
+            'for int j in [0:uint(z)] { total += z; } '
+            'for int j in {1 / uint(z)} { total += j; } } }')
+        converter = ComplexArrayDeclarationTests.converter('array[complex, 1] a;')
+        expression = qasm2qcx.ast.Identifier('z')
+        self.assertEqual(converter._QASM2QCXConverter__loop_expression_info(
+            expression, {'z': qasm2qcx.ValueType.COMPLEX}), (qasm2qcx.ValueType.COMPLEX, True))
+
+    def test_readonly_iterators_rejected_including_empty_outer_loops(self) -> None:
+        for body in ('z = 1;', 'z += 1;', 'z[0] = 1;', 'z = measure q;',
+                     'if (false) { z = 1; }', 'while (false) { z = 1; }'):
+            for wrapper in ('{}', 'for int outer in [1:0] {{ {} }}'):
+                with self.subTest(body=body, wrapper=wrapper), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    convert('OPENQASM 3; qubit q; array[complex, 2] a; '
+                            + wrapper.format(f'for complex z in a {{ {body} }}'))
+
+    def test_complex_type_restrictions_remain_in_nested_and_empty_loops(self) -> None:
+        for body in ('if (z) {}', 'if (z == 1) {}', 'total = !z;', 'total = bool(z);',
+                     'total = z % 2;', 'total = z ** 2;', 'total = z & 1;', 'total = z << 1;',
+                     'for int j in [0:z] {}', 'for int j in {z} {}'):
+            for wrapper in ('{}', 'for int outer in [1:0] {{ {} }}'):
+                with self.subTest(body=body, wrapper=wrapper), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    convert('OPENQASM 3; array[complex, 2] a; complex total; '
+                            + wrapper.format(f'for complex z in a {{ {body} }}'))
+
+    def test_unsupported_sources_rejected_even_in_empty_outer_loops(self) -> None:
+        for declaration in ('array[int, 2] a;', 'array[uint, 2] a;', 'array[float, 2] a;',
+                            'array[bool, 2] a;', 'bit[2] a;', 'complex a;'):
+            with self.subTest(declaration=declaration), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                convert('OPENQASM 3; ' + declaration + 'for int outer in [1:0] { for complex z in a {} }')
+        for source in ('[0:1]', '{1.0im, 2.0im}', 'a[0:1]', 'a[0]'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                convert(f'OPENQASM 3; array[complex, 2] a; for complex z in {source} {{}}')
+
+    def test_failed_body_preserves_caller_storage_and_releases_loop_temporaries(self) -> None:
+        converter = ComplexArrayDeclarationTests.converter('array[complex, 2] a; complex total;')
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.COMPLEX)
+        statement = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; for complex z in a { '
+            'for complex other in a { total = (z + other) + missing; } }').statements[0]
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            converter.visit(statement)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertEqual(converter._QASM2QCXConverter__loop_bindings, [])
+        self.assertEqual(converter._QASM2QCXConverter__loop_contexts, [])
 
 
 class FloatArrayDeclarationTests(unittest.TestCase):
