@@ -4235,8 +4235,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __array_size(self, variable_type: ast.ArrayType, variable_name: str) -> int:
         if len(variable_type.dimensions) != 1:
             raise UnsupportedOpenQASMError('multidimensional classical array')
-        if not isinstance(variable_type.base_type, (ast.IntType, ast.UintType, ast.FloatType, ast.BoolType)):
-            raise UnsupportedOpenQASMError('classical array base type other than int, uint, float, or bool')
+        if not isinstance(variable_type.base_type, (
+                ast.IntType, ast.UintType, ast.FloatType, ast.BoolType, ast.ComplexType)):
+            raise UnsupportedOpenQASMError('classical array base type other than int, uint, float, bool, or complex')
         previous = (self.__expression_kind, self.__value, self.__value_type,
                     self.__value_kind, self.__evaluate_constant)
         try:
