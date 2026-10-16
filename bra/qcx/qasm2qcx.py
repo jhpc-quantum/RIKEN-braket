@@ -1736,7 +1736,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             for scope in reversed(self.__loop_bindings):
                 if source_name in scope:
                     binding = scope[source_name]
-                    if isinstance(binding, _RuntimeIteratorBinding) and binding.value_type == ValueType.BIT:
+                    if (isinstance(binding, _RuntimeIteratorBinding)
+                            and binding.value_type in (ValueType.BIT, ValueType.BOOL)):
                         return binding.storage, [0], False
                     raise InvalidBitOperandException(f'{role} {source_name} is not a bit variable')
         variable_name = self.__capitalize_variable_name(source_name)
@@ -2581,9 +2582,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         name = expression.name
         if iterators is not None and name in iterators:
             value_type = iterators[name] if isinstance(iterators, dict) else ValueType.INT
-            # Unlike possibly expanded signed iterators, bit, float, and UINT
+            # Unlike possibly expanded signed iterators, bit, bool, float, and UINT
             # collection iterators always refer to runtime element values.
-            return value_type, value_type in (ValueType.BIT, ValueType.FLOAT, ValueType.UINT)
+            return value_type, value_type in (ValueType.BIT, ValueType.BOOL, ValueType.FLOAT, ValueType.UINT)
         for scope in reversed(self.__loop_bindings):
             if name in scope:
                 binding = scope[name]
@@ -2765,7 +2766,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __validate_loop_header(statement: ast.ForInLoop) -> None:
         typed_collection_loop = (
             isinstance(statement.set_declaration, ast.Identifier)
-            and (isinstance(statement.type, (ast.FloatType, ast.UintType))
+            and (isinstance(statement.type, (ast.FloatType, ast.UintType, ast.BoolType))
                  or (isinstance(statement.type, ast.BitType) and statement.type.size is None)))
         if not isinstance(statement.type, ast.IntType) and not typed_collection_loop:
             raise UnsupportedOpenQASMError('for-loop iterator requires int or a supported collection type')
@@ -3162,8 +3163,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise InvalidDeclarationException(f'Bit register {name} loop size must be in [1, {self.QCX_INT_MAX}]')
             return variable_name, size, ValueType.BIT, None
         if isinstance(variable_type, ast.ArrayType):
-            if not isinstance(variable_type.base_type, (ast.IntType, ast.UintType, ast.FloatType)):
-                raise UnsupportedOpenQASMError('iteration over classical array other than int, uint, or float')
+            if not isinstance(variable_type.base_type, (ast.IntType, ast.UintType, ast.FloatType, ast.BoolType)):
+                raise UnsupportedOpenQASMError('iteration over classical array other than int, uint, float, or bool')
             value_type = self.__source_value_type(variable_type.base_type)
             if self.__source_value_type(iteration_type) != value_type:
                 raise UnsupportedOpenQASMError('array iteration requires matching element and iterator types')
@@ -3176,7 +3177,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     and variable_name not in self.__array_element_types):
                 raise NoVariableNameException(name)
             return variable_name, self.__array_source_sizes[name], value_type, uint_type
-        raise UnsupportedOpenQASMError('for-loop identifier other than an int/uint/float array or bit register')
+        raise UnsupportedOpenQASMError('for-loop identifier other than an int/uint/float/bool array or bit register')
 
     def __visit_collection_for(self, statement: ast.ForInLoop) -> None:
         variable_name, size, value_type, uint_type = self.__collection_loop_info(
@@ -3760,7 +3761,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         match variable_type:
             case ast.BoolType():
                 self.__bool_variable_names.add(variable_name)
-                self.__qcx_lines.append(f'VAR {variable_name} INT')
+                self.__qcx_lines.append(f'VAR {variable_name} INT' + (f' {num_elements}' if num_elements > 1 else ''))
 
             case ast.IntType() | ast.UintType():
                 sizes_map = (self.__uint_variable_name_size_map
@@ -4037,7 +4038,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         boolean_identifier = isinstance(expression, ast.Identifier) and (
             self.__capitalize_variable_name(expression.name) in self.__bool_variable_names
             or expression.name in self.__const_bool_variable_values_map)
-        if not target_is_register and (boolean_identifier or not isinstance(
+        boolean_element = (isinstance(expression, ast.IndexExpression)
+                           and isinstance(expression.collection, ast.Identifier)
+                           and self.__array_element_types.get(
+                               self.__capitalize_variable_name(expression.collection.name)) == ValueType.BOOL)
+        if not target_is_register and (boolean_identifier or boolean_element or not isinstance(
                 expression, (ast.Identifier, ast.IndexExpression,
                              ast.IntegerLiteral, ast.BitstringLiteral))):
             previous_expression_kind = self.__expression_kind
@@ -4230,8 +4235,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __array_size(self, variable_type: ast.ArrayType, variable_name: str) -> int:
         if len(variable_type.dimensions) != 1:
             raise UnsupportedOpenQASMError('multidimensional classical array')
-        if not isinstance(variable_type.base_type, (ast.IntType, ast.UintType, ast.FloatType)):
-            raise UnsupportedOpenQASMError('classical array base type other than int, uint, or float')
+        if not isinstance(variable_type.base_type, (ast.IntType, ast.UintType, ast.FloatType, ast.BoolType)):
+            raise UnsupportedOpenQASMError('classical array base type other than int, uint, float, or bool')
         previous = (self.__expression_kind, self.__value, self.__value_type,
                     self.__value_kind, self.__evaluate_constant)
         try:
@@ -4424,6 +4429,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     @staticmethod
     def __validate_array_assignment_operator(element_type: ValueType, operator: str) -> None:
+        if element_type == ValueType.BOOL and operator != '=':
+            raise UnsupportedOpenQASMError(f'Boolean array assignment operator {operator}')
         if element_type == ValueType.FLOAT and operator not in ('=', '+=', '-=', '*=', '/='):
             raise UnsupportedOpenQASMError(f'floating-point array assignment operator {operator}')
 

@@ -89,7 +89,7 @@ The converter currently covers:
 - scalar integer shift expressions (`<<`, `>>`) and compound assignments
   (`<<=`, `>>=`), with checked counts and signed left-shift overflow;
 - scalar constants, variables, assignments, and numeric casts;
-- fixed-size, one-dimensional `int`, `uint`, and `float` arrays with static and
+- fixed-size, one-dimensional `int`, `uint`, `float`, and `bool` arrays with static and
   runtime element reads and writes;
 - scalar and register `bit` values, including bit-string initialization;
 - runtime-indexed bit-register element reads, assignments, and scalar
@@ -106,7 +106,7 @@ The converter currently covers:
 - integer-range `for` loops with runtime-valued bounds or steps,
   including nested loops, `break`, and `continue`;
 - integer-set `for` loops with runtime-valued elements captured at loop entry;
-- runtime iteration over one-dimensional `int`, `uint`, and `float` arrays;
+- runtime iteration over one-dimensional `int`, `uint`, `float`, and `bool` arrays;
 - runtime iteration over bit registers with scalar `bit` iterators;
 - runtime `while` loops, including nested loops, `break`, and `continue`;
 - scalar expressions used as gate parameters; and
@@ -799,7 +799,7 @@ Even a one-element array requires explicit indexing
 when used as a scalar. Qubit indices remain static; bit-register elements also
 support runtime indices as described below.
 
-Unsigned and floating-point arrays are supported as described below.
+Unsigned, floating-point, and Boolean arrays are supported as described below.
 Multidimensional arrays, arrays of other element types, slices,
 whole-array arithmetic or assignments, array-copy initializers, aliases, and
 block-local array declarations remain unsupported.
@@ -902,13 +902,56 @@ arrays, and direct `for float` iteration is supported as described under
 Floating-point `%`, `**`, bitwise operators, and shifts are not supported,
 including their compound assignments. These type restrictions also apply to
 integer-only operators in empty loops; validation does not execute the skipped
-arithmetic. Other array element types, multidimensional arrays, slices,
+arithmetic. Unsupported array element types, multidimensional arrays, slices,
 whole-array expressions or assignments, array-copy initializers, aliases, and
 block-local declarations remain separate work.
 
+### One-dimensional Boolean arrays
+
+The converter supports top-level `array[bool, N]` declarations. `N` must be a
+positive compile-time integer no larger than QCX `INT_MAX`, following the shared
+array-size rules. Elements use QCX `INT` storage with values zero and one, but
+retain Boolean type metadata; they are not integer expressions.
+
+```qasm
+OPENQASM 3.0;
+bit b = 1;
+array[bool, 3] flags = {true, b, false};
+int index = -1;
+flags[index] = flags[0] && !flags[1];
+bool ready = flags[0] || flags[index];
+```
+
+An optional initializer must be a flat array literal with exactly `N` elements,
+evaluated in element order at the declaration's position. Elements follow the
+scalar Boolean assignment rules: Boolean and scalar-bit values, comparisons,
+logical expressions, and integer constant values zero and one are accepted.
+General numeric values require an explicit `bool(...)` cast, including runtime
+integer variables whose values happen to be zero or one. Complex-to-Boolean
+casts remain unsupported. Initializers can read previously declared array
+elements. Without initialization, element values are undefined until assigned;
+do not rely on the backend's zero-initialized storage.
+
+Static and runtime integer indices, negative indices, bounds checks, and explicit
+singleton indexing follow the shared indexing rules below. Only plain `=`
+element assignment is supported. A destination index is captured once before
+evaluating the RHS, including self-referential logical assignments.
+
+Reads support direct conditions, `!`, short-circuit `&&` and `||`, Boolean/scalar-bit
+`==` and `!=`, the supported Boolean casts, and scalar Boolean/bit assignments.
+Numeric assignment conversions follow the scalar Boolean rules. Arithmetic,
+ordered comparisons, bitwise operators, shifts, and compound assignments on
+Boolean elements are unsupported; use an explicit numeric cast where applicable.
+Integer indices, range bounds, steps, set elements, and gate parameters also
+require an explicit numeric cast of a Boolean value. Direct iteration is described
+under [Boolean-array for loops](#boolean-array-for-loops).
+
+Multidimensional arrays, slices, whole-array expressions or assignments,
+array-copy initializers, aliases, and block-local declarations remain unsupported.
+
 ### Runtime array indexing
 
-Signed/unsigned integer and floating-point arrays accept runtime indices using
+Signed/unsigned integer, floating-point, and Boolean arrays accept runtime indices using
 scalar `int`, `uint`, supported integer arithmetic, enclosing runtime iterators, and
 indexed integer-array elements.
 Nested accesses such as `values[indices[i]]` are accepted. Floating-point,
@@ -1073,8 +1116,8 @@ Whole-register casts, including `bool(register)` when `register` is a `bit[1]`
 register, and `bit[n](...)` casts are not yet supported. Complex-to-Boolean casts,
 Boolean arithmetic, and mixed Boolean/numeric comparisons remain unsupported;
 explicitly cast Boolean values
-to a numeric type before using them in these operations. Boolean arrays and
-block-local declarations remain unsupported.
+to a numeric type before using them in these operations. Boolean array elements
+and iterators follow these same rules. Block-local declarations remain unsupported.
 
 ### Quantum instructions and gate parameters
 
@@ -1136,8 +1179,8 @@ operators are `==`, `!=`, `>`, `<`, `>=`, and `<=`. OpenQASM `!=` is emitted as 
 not-equal operator `\=`.
 
 Conditions can compare scalar `int`, `uint`, `float`, and `bit` expressions.
-A bit-register, signed/unsigned integer-array, or floating-point-array element
-with a supported static or runtime index is also accepted.
+A bit-register, signed/unsigned integer-array, floating-point-array, or
+Boolean-array element with a supported static or runtime index is also accepted.
 Compatible integer and floating-point operands are promoted when necessary. Complex
 values cannot be compared. Equal-width bit-register `==` and `!=` comparisons
 are supported as described in [Bit-register equality](#bit-register-equality).
@@ -1145,8 +1188,8 @@ Boolean and scalar bit operands can be compared with one another using `==`
 or `!=`.
 
 A scalar `bit`, a statically or runtime-indexed element of a bit register, or a
-Boolean literal, constant, or variable can also be used directly as a condition:
-zero is false and one is true. Logical negation
+Boolean literal, constant, variable, array element, or iterator can also be used
+directly as a condition: zero is false and one is true. Logical negation
 `!` and logical combinations `&&` and `||` can be applied recursively to these
 conditions and supported comparisons. Parentheses can group conditions.
 
@@ -1332,8 +1375,9 @@ Runtime variables are not constant elements, even when initialized with a
 literal; sets containing them use the runtime-valued lowering described below.
 Non-integer elements require a supported explicit integer cast;
 implicit conversion of floating-point, Boolean, or complex elements is not
-supported. Signed/unsigned integer-array, floating-point-array, and bit-register
-iteration use the runtime lowering described below; alias iteration remains unsupported.
+supported. Signed/unsigned integer-array, floating-point-array, Boolean-array,
+and bit-register iteration use the runtime lowering described below; alias
+iteration remains unsupported.
 The installed parser requires a nonempty set in
 source code: the spelling `{}` is rejected. An empty discrete-set AST supplied
 directly to the converter emits no body instructions but still validates its
@@ -1367,7 +1411,7 @@ inner loop can use the outer value in its bounds or elements. These rules follow
 [OpenQASM scoping](https://openqasm.com/versions/3.0/language/scope.html).
 As an explicit subset restriction, assignments or measurements into any active
 iterator are rejected, although OpenQASM itself permits modifying iterators.
-General local declarations remain unsupported. Integer-array and bit-register
+General local declarations remain unsupported. Supported array and bit-register
 iteration are described below.
 Runtime `while` loops may also appear inside a `for` body, as described below.
 
@@ -1433,8 +1477,8 @@ a converter error rather than silently truncating the loop.
 The same budgets apply to constant range and set loops and to the generated
 body copies of runtime-valued set loops; repeated set elements each count as an
 expanded iteration. A `break` does not reduce the generated iteration count.
-Runtime-bound range, signed/unsigned integer-array, floating-point-array, and
-bit-register loops do not expand their runtime iteration count.
+Runtime-bound range, signed/unsigned integer-array, floating-point-array,
+Boolean-array, and bit-register loops do not expand their runtime iteration count.
 
 ## Runtime-bound for loops
 
@@ -1667,7 +1711,7 @@ count, even when their iterator is runtime-valued or shadows an outer iterator.
 Runtime reentry into an already generated loop does not charge additional
 conversion-time iterations. Signed widths remain unenforced; unsigned expressions
 follow the normalization and promotion rules above. Signed/unsigned integer-array,
-floating-point-array, and bit-register iteration are described below;
+floating-point-array, Boolean-array, and bit-register iteration are described below;
 alias iteration remains unsupported.
 The parser still rejects
 an empty source set `{}`.
@@ -1727,7 +1771,7 @@ This does not add general overflow checks or enforce declared integer widths.
 Runtime array iteration counts do not consume expansion budgets. Nested
 constant or set-loop body copies still consume their usual budgets, and an
 array loop inside an expanded loop contributes its generated statements and
-instructions. Unsigned-integer-array, floating-point-array, and bit-register
+instructions. Unsigned-integer-array, floating-point-array, Boolean-array, and bit-register
 iteration are described below. Iteration over slices, other unsupported array types, aliases, or
 arbitrary array expressions remains unsupported.
 
@@ -1838,6 +1882,57 @@ operands skip their runtime arithmetic and access checks. Iterator types,
 conditions, read-only bindings, and supported syntax are validated even inside
 empty enclosing loops. Failed loop lowering releases loop-owned temporaries without releasing
 storage reserved by enclosing callers.
+
+## Boolean-array for loops
+
+The converter supports `for bool name in flags` when `flags` is a previously
+declared one-dimensional Boolean array. Elements are visited in increasing index
+order, including repeated values. The iterator must be `bool`; `bit` and numeric
+iterators do not implicitly convert Boolean array elements. Conversely, `bool`
+iterators cannot iterate over bit registers or numeric arrays.
+
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+qubit q;
+array[bool, 3] flags = {true, false, true};
+int count = 0;
+for bool flag in flags {
+    if (!flag) { continue; }
+    count += int(flag);
+    x q;
+}
+// count is 2; q is back in state |0>.
+```
+
+Each iteration copies the current element into a private Boolean iterator backed
+by QCX `INT`. Writes to future elements affect their later visits, but writes to
+the current element do not change its copied iterator value. Reentering the loop
+starts at element zero and reads the array's then-current contents.
+
+The iterator is scoped and read-only. It can shadow variables, constants, arrays,
+or outer iterators, with their bindings restored afterward. The source is resolved
+before binding the iterator, so `for bool flags in flags` is accepted. Assignments
+and measurements into active iterators are rejected. Iterators retain Boolean
+semantics: they support direct conditions, logical expressions, Boolean/scalar-bit
+equality, casts, and scalar Boolean/bit assignments. Numeric operations, integer
+indices, range bounds, steps, set elements, and gate parameters require explicit
+numeric casts as described for Boolean array elements.
+
+Nested supported range, set, array, bit-register, and `while` loops are supported.
+`break` exits the nearest loop; `continue` proceeds to its next iteration. Boolean
+iterators do not enable Boolean ranges or sets. Slices, multidimensional arrays,
+aliases, arbitrary array expressions, and block-local declarations remain unsupported.
+
+The body is generated once using existing QCX loop instructions, with a private
+`INT` position and copied Boolean iterator reserved throughout the body. No new
+bra instruction is required. Runtime iteration counts do not consume constant-loop
+expansion budgets; enclosing or nested expanded loops retain their existing
+accounting. Runtime checks and arithmetic stay on their original execution paths,
+so skipped bodies and short-circuit operands skip their access checks. Types,
+conditions, supported syntax, and read-only bindings are validated even inside
+empty enclosing loops. Failed lowering releases loop-owned temporary storage
+without releasing storage reserved by callers.
 
 ## Bit-register for loops
 
@@ -2011,12 +2106,12 @@ vector defined by the program's qubit declarations.
 
 The current prototype does not reliably support:
 
-- delays, iteration over arrays other than the supported `int`/`uint`/`float` subset,
+- delays, iteration over arrays other than the supported `int`/`uint`/`float`/`bool` subset,
   alias iteration, or `switch` statements;
 - user-defined gates or gate modifiers;
 - runtime qubit indices, dynamic register ranges or discrete sets, ranges with
   omitted bounds, or multidimensional indexing;
-- classical arrays beyond the one-dimensional `int`, `uint`, and `float` subsets
+- classical arrays beyond the one-dimensional `int`, `uint`, `float`, and `bool` subsets
   above, whole-register casts, complex-to-Boolean casts,
   Boolean arithmetic, mixed Boolean/numeric comparisons, or block-local
   declarations;
@@ -2195,6 +2290,22 @@ matching iterator types, read-only bindings, empty enclosing loops, temporary
 hoisting, cleanup after failed body lowering, and CLI rejection without partial
 output.
 
+`bra/test/qasm2qcx_bool_array_numerical.py` checks Boolean initialization,
+static/runtime/negative indexing, singleton arrays, self-referential assignments,
+logical truth tables, short-circuiting, casts, bit interoperability, branches,
+position-based loops, measurement-controlled conditions, and gate parameters.
+It also checks executed bounds and index-division failures. Unit tests cover
+invalid dimensions, initializers, operations and indices, empty-loop validation,
+captured destination indices, and temporary cleanup after failed RHS lowering.
+
+`bra/test/qasm2qcx_bool_array_loop_numerical.py` compares live reads, mutation,
+copied iterator values, singleton arrays, visit order, and `break`/`continue`
+against Python reference loops. It also covers repeated entry, mixed-type
+shadowing, nested loops, casts, bit interoperability, gate parameters, skipped
+checks, and executed access/division failures. Unit tests additionally verify
+matching iterator types, read-only bindings, empty enclosing loops, resolved
+labels, temporary hoisting, and cleanup preserving caller-owned storage.
+
 `bra/test/qasm2qcx_bit_register_numerical.py` verifies singleton and larger
 registers, bit-string element order, live mutation, casts and conditions,
 scalar assignments, mixed loop nesting and typed shadowing, repeated entry,
@@ -2288,6 +2399,8 @@ python3 bra/test/qasm2qcx_uint_array_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_uint_array_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_float_array_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_float_array_loop_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_bool_array_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_bool_array_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_bit_register_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_bit_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_bitwise_numerical.py --bra bra/bin/bra
