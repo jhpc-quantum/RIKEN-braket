@@ -1209,6 +1209,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # A declaration's width is already resolved; a loop iterator may
             # now shadow a constant used in that width without changing it.
             return value_type, uint_type, runtime
+        elif isinstance(expression, ast.IndexExpression) and isinstance(expression.collection, ast.Identifier):
+            uint_type = self.__uint_variable_types.get(
+                self.__capitalize_variable_name(expression.collection.name))
+            if uint_type is None:
+                raise UninitializedValueException
+            return value_type, uint_type, runtime
         elif isinstance(expression, ast.Cast):
             source_type = expression.type
         else:
@@ -2034,10 +2040,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if variable_name in self.__array_element_types:
                 operand, index = self.__array_access(expression)
                 element_type = self.__array_element_types[variable_name]
+                uint_type = self.__uint_variable_types.get(variable_name) if element_type == ValueType.UINT else None
+                if uint_type is not None:
+                    self.__uint_expression_types[id(expression)] = (expression, uint_type)
                 if index is None:
                     return operand, element_type, ValueKind.LVALUE
                 try:
-                    result = self.__add_new_temporary_variable(element_type)
+                    result = self.__add_new_temporary_variable(element_type, uint_type)
                     self.__qcx_lines.append(f'LET {result} := {operand}')
                     return result, element_type, ValueKind.TEMPORARY
                 finally:
@@ -4159,9 +4168,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__type_of(variable_name)  # Reject an active iterator shadowing the array.
         if variable_name not in self.__array_element_types:
             raise UnsupportedOpenQASMError('indexed non-array classical operand')
-        if self.__array_element_types[variable_name] == ValueType.UINT:
-            # UINT reads need width-preserving expression lowering first.
-            raise UnsupportedOpenQASMError('unsigned integer array element access')
         if not isinstance(selectors, list) or len(selectors) != 1 or not isinstance(selectors[0], ast.Expression):
             raise UnsupportedOpenQASMError('classical array slice or multidimensional selection')
         if isinstance(selectors[0], (ast.RangeDefinition, ast.DiscreteSet)):
@@ -4414,6 +4420,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             binary_name = statement.op.name[:-1]
             if binary_name not in ('+', '-', '*', '/', '%', '&', '|', '^'):
                 raise UnsupportedOpenQASMError(f'assignment operator {statement.op.name}')
+            if isinstance(statement.lvalue, ast.IndexedIdentifier):
+                self.__emit_uint_array_compound_assignment(statement, variable_name)
+                return
             expression = ast.BinaryExpression(ast.BinaryOperator[binary_name], statement.lvalue, statement.rvalue)
             value, value_type, value_kind = self.__condition_operand(expression)
             self.__emit_assignment(variable_name, ':=', variable_type, value, value_type, value_kind)
@@ -4466,6 +4475,47 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             variable_name, operator, variable_type, self.__value,
             self.__value_type, self.__value_kind, self.__uint_expression_type(expression))
 
+    def __emit_uint_array_compound_assignment(
+            self, statement: ast.ClassicalAssignment, target: str) -> None:
+        # The caller has captured and checked the destination index. Use a
+        # value snapshot, not a second visit to the indexed source expression.
+        source_uint = self.__uint_variable_types[target.split(':')[0]]
+        lhs_node = ast.IndexExpression(statement.lvalue.name, statement.lvalue.indices[0])
+        self.__uint_expression_types[id(lhs_node)] = (lhs_node, source_uint)
+        previous_used = self.__used_temporary_variables.copy()
+        previous_kind = self.__expression_kind
+        try:
+            snapshot = self.__add_new_temporary_variable(ValueType.UINT, source_uint)
+            self.__qcx_lines.append(f'LET {snapshot} := {target}')
+            self.__expression_kind = ExpressionKind.ARITHMETIC
+            bitwise = statement.op.name in ('&=', '|=', '^=')
+            rhs, rhs_type, rhs_kind = (self.__bitwise_operand(statement.rvalue) if bitwise
+                                       else self.__condition_operand(statement.rvalue))
+            if bitwise:
+                self.__bitwise_type(ValueType.UINT, rhs_type)
+            if statement.op.name == '%=' and rhs_type not in (ValueType.INT, ValueType.UINT):
+                raise UnsupportedOpenQASMError('integer remainder requires int or uint operands')
+            result_type, uint_type = self.__integer_expression_type(
+                ValueType.UINT, rhs_type, lhs_node, statement.rvalue)
+            if (bitwise and result_type == ValueType.INT and rhs_kind == ValueKind.LITERAL
+                    and not self.QCX_INT_MIN <= int(rhs) <= self.QCX_INT_MAX):
+                raise UnsupportedOpenQASMError('bitwise integer operand outside QCX INT range')
+            left, _ = self.__converted_operand(snapshot, ValueType.UINT, ValueKind.LVALUE, result_type)
+            right, _ = self.__converted_operand(rhs, rhs_type, rhs_kind, result_type)
+            if statement.op.name == '%=':
+                result = self.__emit_integer_remainder(left, right, result_type, uint_type)
+            else:
+                result = self.__add_new_temporary_variable(result_type, uint_type)
+                self.__qcx_lines.extend([f'LET {result} := {left}',
+                                         f'LET {result} {statement.op.name} {right}'])
+                if uint_type is not None:
+                    self.__normalize_uint_storage(result, uint_type)
+            self.__emit_assignment(target, ':=', ValueType.UINT, result, result_type, ValueKind.TEMPORARY)
+        finally:
+            self.__expression_kind = previous_kind
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
+
     def __emit_power_assignment(
             self, statement: ast.ClassicalAssignment, target: str,
             target_type: ValueType) -> None:
@@ -4473,7 +4523,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                if isinstance(statement.lvalue, ast.IndexedIdentifier) else statement.lvalue)
         expression = ast.BinaryExpression(ast.BinaryOperator['**'], lhs, statement.rvalue)
         result_type, uint_type, _ = self.__power_expression_info(expression)
-        source_uint = self.__uint_variable_types.get(target) if target_type == ValueType.UINT else None
+        source_uint = self.__uint_variable_types.get(target.split(':')[0]) if target_type == ValueType.UINT else None
         snapshot = self.__add_new_temporary_variable(target_type, source_uint)
         operand = None
         try:
@@ -4500,7 +4550,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             expression = ast.BinaryExpression(
                 ast.BinaryOperator[statement.op.name[:-1]], statement.lvalue, statement.rvalue)
             self.__validate_shift_types(expression, target_type, operand[1])
-            uint_type = self.__uint_variable_types.get(target) if target_type == ValueType.UINT else None
+            uint_type = self.__uint_variable_types.get(target.split(':')[0]) if target_type == ValueType.UINT else None
             # Use the already captured destination operand, not its AST. In
             # particular, a runtime array index must only be evaluated once.
             self.__emit_shift_expression(statement.op.name[:-1],
