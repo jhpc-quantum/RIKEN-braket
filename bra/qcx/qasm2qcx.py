@@ -3760,7 +3760,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         match variable_type:
             case ast.BoolType():
                 self.__bool_variable_names.add(variable_name)
-                self.__qcx_lines.append(f'VAR {variable_name} INT')
+                self.__qcx_lines.append(f'VAR {variable_name} INT' + (f' {num_elements}' if num_elements > 1 else ''))
 
             case ast.IntType() | ast.UintType():
                 sizes_map = (self.__uint_variable_name_size_map
@@ -4193,6 +4193,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__type_of(variable_name)  # Reject an active iterator shadowing the array.
         if variable_name not in self.__array_element_types:
             raise UnsupportedOpenQASMError('indexed non-array classical operand')
+        if self.__array_element_types[variable_name] == ValueType.BOOL:
+            # Boolean element access is enabled with its expression integration.
+            raise UnsupportedOpenQASMError('Boolean array element access')
         if not isinstance(selectors, list) or len(selectors) != 1 or not isinstance(selectors[0], ast.Expression):
             raise UnsupportedOpenQASMError('classical array slice or multidimensional selection')
         if isinstance(selectors[0], (ast.RangeDefinition, ast.DiscreteSet)):
@@ -4230,8 +4233,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __array_size(self, variable_type: ast.ArrayType, variable_name: str) -> int:
         if len(variable_type.dimensions) != 1:
             raise UnsupportedOpenQASMError('multidimensional classical array')
-        if not isinstance(variable_type.base_type, (ast.IntType, ast.UintType, ast.FloatType)):
-            raise UnsupportedOpenQASMError('classical array base type other than int, uint, or float')
+        if not isinstance(variable_type.base_type, (ast.IntType, ast.UintType, ast.FloatType, ast.BoolType)):
+            raise UnsupportedOpenQASMError('classical array base type other than int, uint, float, or bool')
         previous = (self.__expression_kind, self.__value, self.__value_type,
                     self.__value_kind, self.__evaluate_constant)
         try:
