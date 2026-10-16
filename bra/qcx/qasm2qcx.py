@@ -3156,16 +3156,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     self.visit(child)
             return
 
-        if value_type == ValueType.FLOAT:
-            # Type validation is available before REAL iterator lowering.
-            raise UnsupportedOpenQASMError('floating-point array loop lowering')
-
         previous_temporaries = self.__declared_temporary_variables.copy()
-        iterator = self.__add_new_temporary_variable(ValueType.INT)
+        iterator = self.__add_new_temporary_variable(value_type)
         index = self.__add_new_temporary_variable(ValueType.INT)
         try:
             # QCX stores a singleton bit register as a scalar INT, unlike
-            # integer arrays, whose scalar accesses retain explicit indexing.
+            # classical arrays, whose scalar accesses retain explicit indexing.
             operand = variable_name if value_type == ValueType.BIT and size == 1 else f'{variable_name}:{index}'
             self.__qcx_lines.extend([f'LET {index} := 0', f'@{body_label}',
                                     f'LET {iterator} := {operand}'])
