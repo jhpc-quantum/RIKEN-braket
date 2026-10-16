@@ -67,6 +67,8 @@ The converter currently covers:
 - OpenQASM 3 qubit declarations;
 - `stdgates.inc` gates that have direct QCX equivalents;
 - `inv` modifiers on supported gates and `gphase`, including repeated inversions;
+- `ctrl` modifiers with constant counts on supported gates and `gphase`, including
+  repeated controls and controls added to already-controlled gates;
 - literal indices, static index ranges, discrete index sets, and complete
   qubit registers as gate operands;
 - equal-sized register-selection gate broadcasting;
@@ -1265,10 +1267,91 @@ Modifier syntax is validated even inside empty enclosing loops, without
 evaluating unsupported modifier arguments. Successful and failed parameter
 lowering release gate-owned temporaries without releasing caller-owned storage.
 
-`ctrl`, `negctrl`, and `pow` modifiers remain unsupported, including combinations
-with `inv`. User-defined gates, gate durations, arguments to `inv`, and qubit
-operands on un-controlled `gphase` remain unsupported. Modifier support does not
-relax gate arity, operand selection, broadcasting, or parameter-type restrictions.
+Combinations of `inv` with other modifier kinds remain unsupported. User-defined
+gates, gate durations, arguments to `inv`, and qubit operands on uncontrolled
+`gphase` remain unsupported. Modifier support does not relax gate arity, operand
+selection, broadcasting, or parameter-type restrictions.
+
+### Control gate modifiers
+
+`ctrl @` and `ctrl(n) @` are supported on every currently supported built-in and
+standard-library gate, and on `gphase`. Added controls are prepended to the
+original quantum operands. The original gate is applied only when all added
+control qubits are one. For example:
+
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+qubit control;
+qubit target;
+h control;
+ctrl @ x control, target;
+// The state is (|00> + |11>)/sqrt(2).
+```
+
+The default count is one. An explicit count must be a positive compile-time
+`int` or `uint` expression, including previously declared integer constants and
+supported explicit integer casts. Boolean or floating-point counts require an
+explicit integer cast; runtime variables, array reads, forward references, and
+loop-iterator dependencies are rejected. Even an expanded constant-loop iterator
+cannot supply a control count. Repeated `ctrl` modifiers add their counts:
+`ctrl @ ctrl(2) @ x` adds three controls. Individual and summed counts must not
+exceed QCX `INT_MAX`; a gate's existing controls also count toward the native
+mnemonic's limit. The resulting quantum operand count must match exactly.
+
+The converter uses native controlled and multi-controlled QCX gate families.
+For example, `ctrl @ h` emits `CH`, `ctrl(2) @ x` emits `C2X`, and
+`ctrl @ cx` also emits `C2X`, preserving added controls before the original
+control and target. Standard-library adjoint gates such as `sdg` use native
+forms such as `CS+`. Controlled identity uses `CI1` or `C<n>I1`, with one
+identity target, because the current QCX parser rejects the shorter `CI` form.
+Compact count notation avoids constructing a string with one `C` per control.
+
+Controlling an operation conditions its entire lowered sequence, including
+every phase correction. The existing forward phase conventions described above
+remain unchanged:
+
+- `ctrl @ U(theta, phi, lambda) c, t` emits `U1 c phase` and
+  `CU3 c t theta phi lambda`, with `phase = (theta + phi + lambda) / 2`.
+  The correction is a phase on the added control, not a global `PHASE`.
+- `ctrl @ cu(theta, phi, lambda, gamma) extra, c, t` emits
+  `CU1 extra c phase` and `C2U3 extra c t theta phi lambda`, where
+  `phase = gamma + (theta + phi + lambda) / 2`. The correction requires both
+  the added control and the original control to be one.
+- `ctrl @ gphase(angle) c` emits `U1 c angle`; it needs no extra target.
+  With `n` controls, the converter emits a `U1` conditioned on the other
+  `n - 1` control operands, so only the all-one basis component acquires the phase.
+
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+qubit[3] controls;
+const uint N = 2;
+float theta = 0.4;
+h controls;
+ctrl @ ctrl(N) @ gphase(theta) controls[0], controls[1], controls[2];
+// Only the |111> amplitude acquires exp(i * theta).
+```
+
+Scalar qubits, static selections, and complete registers follow the existing
+broadcasting rules: all register operands must have equal lengths, and scalar
+operands repeat across those selections. Broadcasting repeats the complete
+controlled sequence for each tuple. Qubits must be distinct within each emitted
+controlled operation; added controls cannot alias original controls or targets.
+Execution remains subject to backend resources, including MPI local-qubit limits.
+
+Runtime parameter expressions are evaluated once per invocation and remain
+reserved through every component and broadcast copy. A quantum control in
+`|0>` does **not** skip classical parameter evaluation or bounds/divisor checks.
+In contrast, an unexecuted classical branch or loop body skips its runtime
+parameter computations. Controlled gates work in all supported loops, including
+`break` and `continue`. Modifier kinds, constant counts, and modified gate arity
+are validated even inside empty enclosing loops. Successful and failed lowering
+release gate-owned temporaries while preserving caller-owned storage.
+
+`negctrl`, `pow`, combinations of different modifier kinds (including `inv`
+with `ctrl`), user-defined gates, gate durations, and runtime-dependent control
+counts remain unsupported. No new QCX instruction is introduced by this feature.
 
 ## Static indexing
 
@@ -2289,7 +2372,8 @@ The current prototype does not reliably support:
 - delays, iteration over arrays other than the supported
   `int`/`uint`/`float`/`bool`/`complex` subset,
   alias iteration, or `switch` statements;
-- user-defined gates, gate durations, or gate modifiers other than `inv`;
+- user-defined gates, gate durations, `negctrl` or `pow` modifiers, combinations
+  of different modifier kinds, or runtime-dependent control counts;
 - runtime qubit indices, dynamic register ranges or discrete sets, ranges with
   omitted bounds, or multidimensional indexing;
 - classical arrays beyond the one-dimensional `int`, `uint`, `float`, `bool`, and
@@ -2328,6 +2412,19 @@ Unit tests additionally verify mnemonic coverage and involution, parameter and
 phase snapshot separation, temporary hoisting, cleanup preserving caller storage,
 unsupported modifiers and durations, empty-loop validation, and CLI errors
 without partial output. Each numerical execution has a timeout.
+
+`bra/test/qasm2qcx_control_numerical.py` compares each supported gate on every
+basis state and a complex superposition with independently conditioned base
+matrices. It covers one/two added controls, repeated controls, constant counts,
+runtime parameters, already-controlled gates, operand permutations, `gphase`,
+and control/target/paired-register broadcasting. The references preserve the
+existing `U`/`cu` phase conventions and compare amplitudes without discarding
+global or relative phase. Integration cases cover all supported loop types,
+nested transfers, indexed parameters, measurement-controlled branches, skipped
+checks, source preservation, and executed failures even with inactive quantum
+controls. Unit tests additionally cover modifier/count errors, empty loops,
+iterator shadowing, arity, duplicate operands, parameter snapshots, temporary
+hoisting, caller-storage preservation, and CLI errors without partial output.
 
 `bra/test/integer_bitwise_numerical.py` checks bra's three integer bitwise
 assignment operators against Python results, including negative values and
@@ -2598,6 +2695,7 @@ python3 bra/test/integer_bitwise_numerical.py --bra bra/bin/bra
 python3 bra/test/integer_shift_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_if_else_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_inverse_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_control_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_integer_remainder_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_integer_power_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_negation_numerical.py --bra bra/bin/bra
