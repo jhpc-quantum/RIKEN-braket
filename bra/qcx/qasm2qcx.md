@@ -106,7 +106,7 @@ The converter currently covers:
 - integer-range `for` loops with runtime-valued bounds or steps,
   including nested loops, `break`, and `continue`;
 - integer-set `for` loops with runtime-valued elements captured at loop entry;
-- runtime iteration over one-dimensional `int` arrays;
+- runtime iteration over one-dimensional `int` and `float` arrays;
 - runtime iteration over bit registers with scalar `bit` iterators;
 - runtime `while` loops, including nested loops, `break`, and `continue`;
 - scalar expressions used as gate parameters; and
@@ -844,8 +844,8 @@ cast when supplied by a floating-point expression.
 Static and runtime integer indices, including negative indices, follow the
 shared indexing rules below. Access remains explicitly indexed even for
 one-element arrays. Position-based integer loops can read and update float
-arrays, but direct iteration such as `for float angle in angles` remains
-unsupported.
+arrays, and direct `for float` iteration is supported as described under
+[Floating-point-array for loops](#floating-point-array-for-loops).
 
 Floating-point `%`, `**`, bitwise operators, and shifts are not supported,
 including their compound assignments. These type restrictions also apply to
@@ -1280,8 +1280,8 @@ Runtime variables are not constant elements, even when initialized with a
 literal; sets containing them use the runtime-valued lowering described below.
 Non-integer elements require a supported explicit integer cast;
 implicit conversion of floating-point, Boolean, or complex elements is not
-supported. Integer-array and bit-register iteration use the runtime lowering
-described below; alias iteration remains unsupported.
+supported. Integer-array, floating-point-array, and bit-register iteration use
+the runtime lowering described below; alias iteration remains unsupported.
 The installed parser requires a nonempty set in
 source code: the spelling `{}` is rejected. An empty discrete-set AST supplied
 directly to the converter emits no body instructions but still validates its
@@ -1381,8 +1381,8 @@ a converter error rather than silently truncating the loop.
 The same budgets apply to constant range and set loops and to the generated
 body copies of runtime-valued set loops; repeated set elements each count as an
 expanded iteration. A `break` does not reduce the generated iteration count.
-Runtime-bound range, integer-array, and bit-register loops do not expand their
-runtime iteration count.
+Runtime-bound range, integer-array, floating-point-array, and bit-register loops
+do not expand their runtime iteration count.
 
 ## Runtime-bound for loops
 
@@ -1614,8 +1614,9 @@ whether or not it executes. Nested generated statements and instructions also
 count, even when their iterator is runtime-valued or shadows an outer iterator.
 Runtime reentry into an already generated loop does not charge additional
 conversion-time iterations. Signed widths remain unenforced; unsigned expressions
-follow the normalization and promotion rules above. Integer-array and
-bit-register iteration are described below; alias iteration remains unsupported.
+follow the normalization and promotion rules above. Integer-array,
+floating-point-array, and bit-register iteration are described below;
+alias iteration remains unsupported.
 The parser still rejects
 an empty source set `{}`.
 
@@ -1674,8 +1675,65 @@ This does not add general overflow checks or enforce declared integer widths.
 Runtime array iteration counts do not consume expansion budgets. Nested
 constant or set-loop body copies still consume their usual budgets, and an
 array loop inside an expanded loop contributes its generated statements and
-instructions. Bit-register iteration is described below. Iteration over slices,
-non-`int` arrays, aliases, or arbitrary array expressions remains unsupported.
+instructions. Floating-point-array and bit-register iteration are described
+below. Iteration over slices, other unsupported array types, aliases, or
+arbitrary array expressions remains unsupported.
+
+## Floating-point-array for loops
+
+The converter supports `for float name in values` when `values` is a previously
+declared one-dimensional floating-point array. Elements are visited in increasing
+index order, including repeated values. Sized float base and iterator types such
+as `float[32]` and `float[64]` follow the existing native-`REAL` policy: their widths
+are not enforced, and differing declared float widths do not introduce rounding
+or precision conversion. Integer arrays require `int` iterators and float arrays
+require `float` iterators; implicit conversion between those types is not supported.
+
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+qubit q;
+array[float, 3] angles = {0.1, 0.2, 0.3};
+for float theta in angles {
+    rx(theta) q;
+}
+```
+
+The same live-read policy as integer-array loops applies. Each iteration reads
+the current element into a private `REAL` iterator before executing the body.
+Writes to future elements affect their later visits; writes to the current
+element do not change its copied iterator value. Reentering the loop starts
+at index zero and reads the array's then-current contents.
+
+The iterator is scoped and read-only. It can shadow a variable, constant, source
+array, or outer iterator, whose binding is restored afterward. The source is
+resolved before binding the iterator, so `for float values in values` is accepted.
+Assignments and measurements into active iterators are rejected. Arithmetic,
+negation, comparisons, casts, gate parameters, and `gphase` arguments use the
+same rules as scalar floats. Direct floating-point conditions require a
+comparison or an explicit `bool(...)` cast. Integer indices, range bounds,
+steps, and set elements require an explicit integer cast of a float iterator.
+
+Nested integer-range/set loops, supported array and bit-register loops, and
+`while` loops are supported. `break` exits the nearest loop; `continue` proceeds
+to that loop's next iteration. A float iterator does not enable floating-point
+ranges or discrete sets. Slices, multidimensional arrays, aliases, arbitrary
+array expressions, and arrays of other unsupported element types remain outside
+this subset; general block-local declarations remain unsupported.
+
+The body is generated once using the existing QCX loop instructions. A private
+`INT` index and copied `REAL` iterator remain reserved throughout the body,
+including nested computations. An endpoint guard precedes index advancement,
+as for integer arrays. No new bra instruction is required. Runtime iteration
+counts do not consume constant-loop expansion budgets; nested expansions and
+enclosing expanded loops retain their existing accounting.
+
+Computations stay on their original execution paths, while temporary
+declarations may move before control flow. Skipped bodies and short-circuit
+operands skip their runtime arithmetic and access checks. Iterator types,
+conditions, read-only bindings, and supported syntax are validated even inside
+empty enclosing loops. Failed loop lowering releases loop-owned temporaries without releasing
+storage reserved by enclosing callers.
 
 ## Bit-register for loops
 
@@ -1849,8 +1907,8 @@ vector defined by the program's qubit declarations.
 
 The current prototype does not reliably support:
 
-- delays, iteration over non-`int` arrays or aliases,
-  or `switch` statements;
+- delays, iteration over arrays other than the supported `int`/`float` subset,
+  alias iteration, or `switch` statements;
 - user-defined gates or gate modifiers;
 - runtime qubit indices, dynamic register ranges or discrete sets, ranges with
   omitted bounds, or multidimensional indexing;
@@ -2005,7 +2063,17 @@ Integration cases cover arithmetic, negation, casts, mixed numeric comparisons,
 short-circuiting, skipped accesses, integer loops and `while`, iterator shadowing,
 gate parameters, and executed index division errors. Unit tests additionally
 cover invalid dimensions, initializers, indices, unsupported operations and
-iteration, empty-loop validation, and temporary cleanup.
+iterator types, empty-loop validation, and temporary cleanup.
+
+`bra/test/qasm2qcx_float_array_loop_numerical.py` checks element order, live reads,
+current-element mutation and copied-value preservation, singleton arrays,
+position-based transfers against Python reference loops, repeated entry after
+`break`, nested typed shadowing, and mixed loop nesting. It also covers casts,
+comparisons, gate parameters, source-angle preservation, skipped runtime
+checks, and executed access/division errors. Unit tests additionally verify
+matching iterator types, read-only bindings, empty enclosing loops, temporary
+hoisting, cleanup after failed body lowering, and CLI rejection without partial
+output.
 
 `bra/test/qasm2qcx_bit_register_numerical.py` verifies singleton and larger
 registers, bit-string element order, live mutation, casts and conditions,
@@ -2097,6 +2165,7 @@ python3 bra/test/qasm2qcx_runtime_step_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_set_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_integer_array_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_float_array_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_float_array_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_bit_register_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_bit_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_bitwise_numerical.py --bra bra/bin/bra

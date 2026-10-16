@@ -2902,6 +2902,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                                                   len(child.arguments), len(child.qubits))
             if isinstance(child, ast.QuantumPhase) and (child.modifiers or child.qubits):
                 raise UnsupportedOpenQASMError('modifiers or qubit operands on gphase')
+            if isinstance(child, (ast.BranchingStatement, ast.WhileLoop)):
+                condition = (child.condition if isinstance(child, ast.BranchingStatement)
+                             else child.while_condition)
+                condition_type, _ = self.__loop_expression_info(condition, iterators)
+                if condition_type not in (ValueType.BOOL, ValueType.BIT):
+                    raise UnsupportedOpenQASMError('non-Boolean loop condition')
             if isinstance(child, ast.BranchingStatement):
                 self.__validate_loop_body(child.if_block, iterators)
                 self.__validate_loop_body(child.else_block, iterators)

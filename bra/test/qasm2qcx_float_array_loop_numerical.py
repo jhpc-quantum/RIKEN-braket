@@ -31,7 +31,7 @@ def main() -> None:
             for index in range(size):
                 value = values[index]
                 position += 1
-                if mode == 'continue' and value == 0.5:
+                if mode == 'continue' and value == 0.75:
                     continue
                 if mode == 'break' and value > 1:
                     break
@@ -40,7 +40,7 @@ def main() -> None:
                     values[position] += 0.25
                 values[position - 1] = -value
                 copied += value
-            transfer = ('if (value == 0.5) { continue; }' if mode == 'continue'
+            transfer = ('if (value == 0.75) { continue; }' if mode == 'continue'
                         else 'if (value > 1) { break; }' if mode == 'break' else '')
             source = f'''array[float, {size}] values = {{{', '.join(map(str, initial))}}};
                 float total = 0; float copied = 0; int i = 0;

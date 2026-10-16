@@ -2878,6 +2878,19 @@ class FloatArrayLoopValidationTests(unittest.TestCase):
                     'for int outer in [1:0] { for float value in values { '
                     f'result = {expression}; }} }}')
 
+    def test_float_conditions_require_explicit_conversion_even_in_empty_enclosing_loop(self) -> None:
+        prefix = 'OPENQASM 3; array[float, 2] values; '
+        for condition in ('value', '-value', 'value + 1', '!value', 'value && true'):
+            for statement in ('if (' + condition + ') {}', 'while (' + condition + ') {}'):
+                with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    convert(prefix + 'for int outer in [1:0] { for float value in values { '
+                            + statement + ' } }')
+        for condition in ('bool(value)', 'value > 0', '!bool(value)', 'bool(value) && value > 0',
+                          'bool(value) && bool(1 / int(value))'):
+            with self.subTest(condition=condition):
+                convert(prefix + 'for int outer in [1:0] { for float value in values { '
+                        f'if ({condition}) {{}} while ({condition}) {{ break; }} }} }}')
+
     def test_typed_shadowing_restores_float_validation_after_inner_integer_loop(self) -> None:
         prefix = 'OPENQASM 3; array[float, 2] values; float result; '
         convert(prefix + 'for int outer in [1:0] { for float value in values { '
@@ -4631,7 +4644,8 @@ class SharedLoopInfrastructureTests(unittest.TestCase):
     @staticmethod
     def validate_while_body(body: str, iterators: set[str] | None = None,
                             condition: str = 'false'):
-        program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3.0; const int n = 2;')
+        program = qasm2qcx.openqasm3.parser.parse(
+            'OPENQASM 3.0; const int n = 2; const bool ready = false;')
         converter = qasm2qcx.QASM2QCXConverter(program)
         converter.visit(program)
         loop = qasm2qcx.openqasm3.parser.parse(
