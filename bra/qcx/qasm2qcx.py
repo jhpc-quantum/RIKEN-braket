@@ -2582,9 +2582,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         name = expression.name
         if iterators is not None and name in iterators:
             value_type = iterators[name] if isinstance(iterators, dict) else ValueType.INT
-            # Unlike possibly expanded signed iterators, bit, bool, float, and UINT
-            # collection iterators always refer to runtime element values.
-            return value_type, value_type in (ValueType.BIT, ValueType.BOOL, ValueType.FLOAT, ValueType.UINT)
+            # Non-INT collection iterators always refer to runtime element
+            # values, unlike possibly expanded signed iterators.
+            return value_type, value_type != ValueType.INT
         for scope in reversed(self.__loop_bindings):
             if name in scope:
                 binding = scope[name]
@@ -2766,7 +2766,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __validate_loop_header(statement: ast.ForInLoop) -> None:
         typed_collection_loop = (
             isinstance(statement.set_declaration, ast.Identifier)
-            and (isinstance(statement.type, (ast.FloatType, ast.UintType, ast.BoolType))
+            and (isinstance(statement.type, (ast.FloatType, ast.UintType, ast.BoolType, ast.ComplexType))
                  or (isinstance(statement.type, ast.BitType) and statement.type.size is None)))
         if not isinstance(statement.type, ast.IntType) and not typed_collection_loop:
             raise UnsupportedOpenQASMError('for-loop iterator requires int or a supported collection type')
@@ -3047,8 +3047,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 and node.op.name in ('==', '!=', '<', '<=', '>', '>=')
                 and self.__register_comparison_width(node, iterators) is not None):
             return
-        if ((isinstance(node, ast.UnaryExpression) and node.op.name in ('~', '-'))
-                or (isinstance(node, ast.BinaryExpression) and node.op.name in ('&', '|', '^', '<<', '>>', '**', '%'))):
+        # Logical values and casts also need type checking when a body is
+        # empty; this inspects types without executing skipped arithmetic.
+        if ((isinstance(node, ast.UnaryExpression) and node.op.name in ('~', '-', '!'))
+                or (isinstance(node, ast.Cast) and isinstance(node.type, (ast.BoolType, ast.BitType)))
+                or (isinstance(node, ast.BinaryExpression) and node.op.name in (
+                    '&', '|', '^', '<<', '>>', '**', '%', '&&', '||', '==', '!=', '<', '<=', '>', '>='))):
             self.__loop_expression_info(node, iterators)
             self.__validate_bitwise_indices(node, iterators)
         for field in dataclasses.fields(node):
@@ -3163,8 +3167,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise InvalidDeclarationException(f'Bit register {name} loop size must be in [1, {self.QCX_INT_MAX}]')
             return variable_name, size, ValueType.BIT, None
         if isinstance(variable_type, ast.ArrayType):
-            if not isinstance(variable_type.base_type, (ast.IntType, ast.UintType, ast.FloatType, ast.BoolType)):
-                raise UnsupportedOpenQASMError('iteration over classical array other than int, uint, float, or bool')
+            if not isinstance(variable_type.base_type, (
+                    ast.IntType, ast.UintType, ast.FloatType, ast.BoolType, ast.ComplexType)):
+                raise UnsupportedOpenQASMError('iteration over classical array other than int, uint, float, bool, or complex')
             value_type = self.__source_value_type(variable_type.base_type)
             if self.__source_value_type(iteration_type) != value_type:
                 raise UnsupportedOpenQASMError('array iteration requires matching element and iterator types')
@@ -3177,7 +3182,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     and variable_name not in self.__array_element_types):
                 raise NoVariableNameException(name)
             return variable_name, self.__array_source_sizes[name], value_type, uint_type
-        raise UnsupportedOpenQASMError('for-loop identifier other than an int/uint/float/bool array or bit register')
+        raise UnsupportedOpenQASMError('for-loop identifier other than an int/uint/float/bool/complex array or bit register')
 
     def __visit_collection_for(self, statement: ast.ForInLoop) -> None:
         variable_name, size, value_type, uint_type = self.__collection_loop_info(
@@ -4235,8 +4240,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __array_size(self, variable_type: ast.ArrayType, variable_name: str) -> int:
         if len(variable_type.dimensions) != 1:
             raise UnsupportedOpenQASMError('multidimensional classical array')
-        if not isinstance(variable_type.base_type, (ast.IntType, ast.UintType, ast.FloatType, ast.BoolType)):
-            raise UnsupportedOpenQASMError('classical array base type other than int, uint, float, or bool')
+        if not isinstance(variable_type.base_type, (
+                ast.IntType, ast.UintType, ast.FloatType, ast.BoolType, ast.ComplexType)):
+            raise UnsupportedOpenQASMError('classical array base type other than int, uint, float, bool, or complex')
         previous = (self.__expression_kind, self.__value, self.__value_type,
                     self.__value_kind, self.__evaluate_constant)
         try:
@@ -4433,6 +4439,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UnsupportedOpenQASMError(f'Boolean array assignment operator {operator}')
         if element_type == ValueType.FLOAT and operator not in ('=', '+=', '-=', '*=', '/='):
             raise UnsupportedOpenQASMError(f'floating-point array assignment operator {operator}')
+        if element_type == ValueType.COMPLEX and operator not in ('=', '+=', '-=', '*=', '/='):
+            raise UnsupportedOpenQASMError(f'complex array assignment operator {operator}')
 
     def __emit_classical_value_assignment(
             self, statement: ast.ClassicalAssignment, variable_name: str,
