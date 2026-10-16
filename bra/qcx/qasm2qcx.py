@@ -4159,6 +4159,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__type_of(variable_name)  # Reject an active iterator shadowing the array.
         if variable_name not in self.__array_element_types:
             raise UnsupportedOpenQASMError('indexed non-array classical operand')
+        if self.__array_element_types[variable_name] == ValueType.UINT:
+            # UINT reads need width-preserving expression lowering first.
+            raise UnsupportedOpenQASMError('unsigned integer array element access')
         if not isinstance(selectors, list) or len(selectors) != 1 or not isinstance(selectors[0], ast.Expression):
             raise UnsupportedOpenQASMError('classical array slice or multidimensional selection')
         if isinstance(selectors[0], (ast.RangeDefinition, ast.DiscreteSet)):
@@ -4196,8 +4199,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __array_size(self, variable_type: ast.ArrayType, variable_name: str) -> int:
         if len(variable_type.dimensions) != 1:
             raise UnsupportedOpenQASMError('multidimensional classical array')
-        if not isinstance(variable_type.base_type, (ast.IntType, ast.FloatType)):
-            raise UnsupportedOpenQASMError('classical array base type other than int or float')
+        if not isinstance(variable_type.base_type, (ast.IntType, ast.UintType, ast.FloatType)):
+            raise UnsupportedOpenQASMError('classical array base type other than int, uint, or float')
         previous = (self.__expression_kind, self.__value, self.__value_type,
                     self.__value_kind, self.__evaluate_constant)
         try:
@@ -4257,9 +4260,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def visit_ClassicalDeclaration(self, statement: ast.ClassicalDeclaration) -> None:
         if self.__is_initialization_process:
             self.__register_source_identifier(statement.identifier.name)
-            if isinstance(statement.type, ast.UintType):
+            base_type = (statement.type.base_type if isinstance(statement.type, ast.ArrayType)
+                         else statement.type)
+            if isinstance(base_type, ast.UintType):
+                # Scalar and array element widths are resolved once, before
+                # a later loop iterator can shadow their dimension constants.
                 self.__uint_variable_types[self.__capitalize_variable_name(statement.identifier.name)] = (
-                    self.__unsigned_integer_type(statement.type))
+                    self.__unsigned_integer_type(base_type))
             self.__classical_source_types[statement.identifier.name] = statement.type
             if isinstance(statement.type, ast.ArrayType):
                 # Resolve dimensions in declaration scope, before loop iterators
