@@ -209,6 +209,11 @@ class _RuntimeIteratorBinding:
     # Unlike an unrolled iterator's integer value, this names live QCX storage.
     storage: str
     value_type: ValueType = ValueType.INT
+    uint_type: _UnsignedIntegerType | None = None
+
+    def __post_init__(self) -> None:
+        if (self.value_type == ValueType.UINT) != (self.uint_type is not None):
+            raise ValueError('UINT iterator bindings require width metadata; other types must not have it')
 
 
 @dataclasses.dataclass(frozen=True)
@@ -344,8 +349,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         result = super().visit(node, context)
         if isinstance(node, ast.Expression) and self.__value_type == ValueType.UINT:
             if isinstance(node, ast.Identifier):
-                info = (self.__const_uint_types.get(node.name)
-                        or self.__uint_variable_types.get(self.__capitalize_variable_name(node.name)))
+                info = self.__identifier_uint_type(node.name)
                 if info is not None:
                     self.__uint_expression_types[id(node)] = (node, info)
             elif isinstance(node, ast.UnaryExpression):
@@ -851,6 +855,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return entry[1]
         return None
 
+    def __identifier_uint_type(self, name: str) -> _UnsignedIntegerType | None:
+        # An active iterator shadows constants, variables, and source arrays,
+        # including UINT sources with a different width or sizedness.
+        for scope in reversed(self.__loop_bindings):
+            if name in scope:
+                binding = scope[name]
+                return binding.uint_type if isinstance(binding, _RuntimeIteratorBinding) else None
+        return (self.__const_uint_types.get(name)
+                or self.__uint_variable_types.get(self.__capitalize_variable_name(name)))
+
     def __integer_expression_type(
             self, lhs_type: ValueType, rhs_type: ValueType,
             lhs: ast.Expression, rhs: ast.Expression) -> tuple[ValueType, _UnsignedIntegerType | None]:
@@ -1202,8 +1216,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if value_type != ValueType.UINT:
             return value_type, None, runtime
         if isinstance(expression, ast.Identifier):
-            uint_type = (self.__const_uint_types.get(expression.name)
-                         or self.__uint_variable_types.get(self.__capitalize_variable_name(expression.name)))
+            uint_type = self.__identifier_uint_type(expression.name)
             if uint_type is None:
                 raise UninitializedValueException
             # A declaration's width is already resolved; a loop iterator may
@@ -2568,9 +2581,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         name = expression.name
         if iterators is not None and name in iterators:
             value_type = iterators[name] if isinstance(iterators, dict) else ValueType.INT
-            # Unlike possibly expanded integer iterators, bit and float
+            # Unlike possibly expanded signed iterators, bit, float, and UINT
             # collection iterators always refer to runtime element values.
-            return value_type, value_type in (ValueType.BIT, ValueType.FLOAT)
+            return value_type, value_type in (ValueType.BIT, ValueType.FLOAT, ValueType.UINT)
         for scope in reversed(self.__loop_bindings):
             if name in scope:
                 binding = scope[name]
@@ -2752,7 +2765,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __validate_loop_header(statement: ast.ForInLoop) -> None:
         typed_collection_loop = (
             isinstance(statement.set_declaration, ast.Identifier)
-            and (isinstance(statement.type, ast.FloatType)
+            and (isinstance(statement.type, (ast.FloatType, ast.UintType))
                  or (isinstance(statement.type, ast.BitType) and statement.type.size is None)))
         if not isinstance(statement.type, ast.IntType) and not typed_collection_loop:
             raise UnsupportedOpenQASMError('for-loop iterator requires int or a supported collection type')
@@ -2809,15 +2822,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         return names
 
     def __validate_nested_loop_bounds(
-            self, statement: ast.ForInLoop, iterators: set[str] | dict[str, ValueType]) -> None:
+            self, statement: ast.ForInLoop, iterators: set[str] | dict[str, ValueType]
+            ) -> _UnsignedIntegerType | None:
         # Outer iterator values may not exist for an empty outer loop. Validate
         # names and independent iteration values now; defer value-dependent checks until
         # an actual iteration, rather than fabricating an outer value.
         bounds = statement.set_declaration
         iterator_names = set(iterators)
         if isinstance(bounds, ast.Identifier):
-            self.__collection_loop_info(bounds, statement.type, iterators)
-            return
+            return self.__collection_loop_info(bounds, statement.type, iterators)[3]
         is_set = isinstance(bounds, ast.DiscreteSet)
         expressions = ([(value, f'element {index}') for index, value in enumerate(bounds.values)]
                        if is_set else [(bounds.start, 'start'), (bounds.end, 'end'),
@@ -2922,9 +2935,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__validate_loop_body(child.else_block, iterators)
             if isinstance(child, ast.ForInLoop):
                 self.__validate_loop_header(child)
-                self.__validate_nested_loop_bounds(child, iterators)
-                self.__validate_loop_body(child.block, iterators | {
-                    child.identifier.name: self.__source_value_type(child.type)})
+                uint_type = self.__validate_nested_loop_bounds(child, iterators)
+                value_type = self.__source_value_type(child.type)
+                # Width metadata must follow the same nested shadowing as
+                # value types, even when no enclosing iteration executes.
+                binding = _RuntimeIteratorBinding('QASM2QCX_VALIDATION_ITERATOR', value_type, uint_type)
+                with self.__iterator_binding(child.identifier.name, binding):
+                    self.__validate_loop_body(child.block, iterators | {child.identifier.name: value_type})
             if isinstance(child, ast.WhileLoop):
                 self.__validate_loop_syntax(child.while_condition)
                 self.__validate_loop_body(child.block, iterators)
@@ -3125,7 +3142,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __collection_loop_info(
             self, source: ast.Identifier, iteration_type: ast.QASMNode,
-            iterators: set[str] | dict[str, ValueType] | None = None) -> tuple[str, int, ValueType]:
+            iterators: set[str] | dict[str, ValueType] | None = None
+            ) -> tuple[str, int, ValueType, _UnsignedIntegerType | None]:
         name = source.name
         if ((iterators is not None and name in iterators)
                 or any(name in scope for scope in self.__loop_bindings)):
@@ -3142,22 +3160,30 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             size = self.__bit_register_source_sizes[name]
             if not 1 <= size <= self.QCX_INT_MAX:
                 raise InvalidDeclarationException(f'Bit register {name} loop size must be in [1, {self.QCX_INT_MAX}]')
-            return variable_name, size, ValueType.BIT
+            return variable_name, size, ValueType.BIT, None
         if isinstance(variable_type, ast.ArrayType):
-            if not isinstance(variable_type.base_type, (ast.IntType, ast.FloatType)):
-                raise UnsupportedOpenQASMError('iteration over classical array other than int or float')
+            if not isinstance(variable_type.base_type, (ast.IntType, ast.UintType, ast.FloatType)):
+                raise UnsupportedOpenQASMError('iteration over classical array other than int, uint, or float')
             value_type = self.__source_value_type(variable_type.base_type)
             if self.__source_value_type(iteration_type) != value_type:
                 raise UnsupportedOpenQASMError('array iteration requires matching element and iterator types')
+            uint_type = None
+            if value_type == ValueType.UINT:
+                uint_type = self.__unsigned_integer_type(iteration_type, iterators)
+                if uint_type.width != self.__uint_variable_types[variable_name].width:
+                    raise UnsupportedOpenQASMError('UINT array iteration requires matching effective widths')
             if (not self.__is_initialization_process
                     and variable_name not in self.__array_element_types):
                 raise NoVariableNameException(name)
-            return variable_name, self.__array_source_sizes[name], value_type
-        raise UnsupportedOpenQASMError('for-loop identifier other than an int/float array or bit register')
+            return variable_name, self.__array_source_sizes[name], value_type, uint_type
+        raise UnsupportedOpenQASMError('for-loop identifier other than an int/uint/float array or bit register')
 
     def __visit_collection_for(self, statement: ast.ForInLoop) -> None:
-        variable_name, size, value_type = self.__collection_loop_info(statement.set_declaration, statement.type)
-        self.__validate_loop_body(statement.block, self.__loop_iterator_types(statement.identifier.name, value_type))
+        variable_name, size, value_type, uint_type = self.__collection_loop_info(
+            statement.set_declaration, statement.type)
+        binding = _RuntimeIteratorBinding(f'QASM2QCX_LOOP_{self.__loop_index}_ITERATOR', value_type, uint_type)
+        with self.__iterator_binding(statement.identifier.name, binding):
+            self.__validate_loop_body(statement.block, self.__loop_iterator_types())
         self.__validate_loop_syntax(statement)
         loop_index = self.__loop_index
         self.__loop_index += 1
@@ -3165,7 +3191,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         next_label = f'QASM2QCX_LOOP_{loop_index}_NEXT'
         end_label = f'QASM2QCX_LOOP_{loop_index}_END'
         if self.__is_initialization_process:
-            binding = _RuntimeIteratorBinding(f'QASM2QCX_LOOP_{loop_index}_ITERATOR', value_type)
             with self.__iterator_binding(statement.identifier.name, binding), self.__loop_context(end_label, next_label):
                 for child in statement.block:
                     self.visit(child)
@@ -3173,7 +3198,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
         previous_temporaries = self.__declared_temporary_variables.copy()
         previous_used = self.__used_temporary_variables.copy()
-        iterator = self.__add_new_temporary_variable(value_type)
+        iterator = self.__add_new_temporary_variable(value_type, uint_type)
         index = self.__add_new_temporary_variable(ValueType.INT)
         try:
             # QCX stores a singleton bit register as a scalar INT, unlike
@@ -3183,7 +3208,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                                     f'LET {iterator} := {operand}'])
             # Read the current element on each iteration, not a loop-entry
             # snapshot. Keep its copied value and index reserved across the body.
-            with self.__iterator_binding(statement.identifier.name, _RuntimeIteratorBinding(iterator, value_type)), \
+            with self.__iterator_binding(statement.identifier.name, _RuntimeIteratorBinding(iterator, value_type, uint_type)), \
                     self.__loop_context(end_label, next_label):
                 for child in statement.block:
                     self.visit(child)

@@ -2617,10 +2617,10 @@ class UnsignedArrayDeclarationTests(unittest.TestCase):
                 self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
         self.assertIn('LET A1:0 := 2', convert('OPENQASM 3; array[uint[4], 1] a = {uint(2.5)};'))
 
-    def test_whole_arrays_are_not_scalars_and_iteration_is_deferred(self) -> None:
+    def test_whole_arrays_are_not_scalars_and_iteration_requires_matching_types(self) -> None:
         for size in (1, 2):
             for statement in ('uint x = a;', 'uint x = uint(a);', 'a = 1;',
-                              'for uint x in a {}', 'for int x in a {}'):
+                              'for float x in a {}', 'for int x in a {}'):
                 with self.subTest(size=size, statement=statement), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
                     convert(f'OPENQASM 3; array[uint[4], {size}] a; {statement}')
 
@@ -2724,6 +2724,127 @@ class UnsignedArrayAccessTests(unittest.TestCase):
                         'a[i] <<= count;')
         self.assertTrue(any(line.startswith('ASSERT ') and line.endswith(' < 4') for line in lines))
         self.assertIn('LET A1:QASM2QCX_INT_0 &= 15', lines)
+
+
+class UnsignedArrayLoopTests(unittest.TestCase):
+    def assert_clean_conversion(self, source: str):
+        converter = UnsignedArrayDeclarationTests.converter(source)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertEqual(converter._QASM2QCXConverter__loop_bindings, [])
+        self.assertEqual(converter._QASM2QCXConverter__loop_contexts, [])
+        ForLoopControlLoweringTests.assert_resolved_jumps(list(converter))
+        return converter
+
+    def test_binding_width_metadata_is_required_only_for_uint(self) -> None:
+        with self.assertRaises(ValueError):
+            qasm2qcx._RuntimeIteratorBinding('PRIVATE_UINT', qasm2qcx.ValueType.UINT)
+        with self.assertRaises(ValueError):
+            qasm2qcx._RuntimeIteratorBinding('PRIVATE_INT', qasm2qcx.ValueType.INT,
+                                           qasm2qcx._UnsignedIntegerType(4, True))
+
+    def test_uint_loop_storage_and_live_read_body_are_generated_once(self) -> None:
+        converter = self.assert_clean_conversion('array[uint[4], 3] values = {1, 2, 15}; uint total = 0; '
+            'for uint[4] value in values { total += value; values[1] = 7; }')
+        lines = converter._QASM2QCXConverter__qcx_lines
+        body = lines.index('@QASM2QCX_LOOP_0_BODY')
+        self.assertIn('VAR QASM2QCX_UINT_0 UINT', lines[:body])
+        self.assertIn('VAR QASM2QCX_INT_0 INT', lines[:body])
+        self.assertEqual(lines[body + 1], 'LET QASM2QCX_UINT_0 := VALUES63:QASM2QCX_INT_0')
+        self.assertEqual(converter._QASM2QCXConverter__temporary_uint_types['QASM2QCX_UINT_0'],
+                         qasm2qcx._UnsignedIntegerType(4, True))
+        self.assertEqual(lines.count('LET VALUES63:1 := 7'), 1)
+
+    def test_effective_width_compatibility_retains_iterator_sizedness(self) -> None:
+        native = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        for base, iterator, sized in (('uint', 'uint', False), ('uint', f'uint[{native}]', True),
+                                      (f'uint[{native}]', 'uint', False), ('uint[4]', 'uint[4]', True)):
+            with self.subTest(base=base, iterator=iterator):
+                converter = self.assert_clean_conversion(f'array[{base}, 1] values = {{1}}; '
+                    f'for {iterator} value in values {{ continue; }}')
+                info = converter._QASM2QCXConverter__temporary_uint_types['QASM2QCX_UINT_0']
+                self.assertEqual(info, qasm2qcx._UnsignedIntegerType(4 if base == 'uint[4]' else native, sized))
+
+    def test_mismatched_widths_and_base_types_rejected_even_in_empty_outer_loop(self) -> None:
+        for iterator in ('uint', 'uint[1]', 'uint[8]', 'int', 'float', 'bit'):
+            for wrapper in ('{}', 'for int outer in [1:0] {{ {} }}'):
+                with self.subTest(iterator=iterator, wrapper=wrapper), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                    convert('OPENQASM 3; array[uint[4], 2] values; '
+                            + wrapper.format(f'for {iterator} value in values {{}}'))
+        for source in ('array[int, 2] values;', 'array[float, 2] values;', 'bit[2] values;'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                convert('OPENQASM 3; ' + source + 'for uint value in values {}')
+
+    def test_runtime_and_unrepresentable_iterator_widths_are_rejected(self) -> None:
+        native = qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH
+        for width in ('n', 'ZERO', 'NEGATIVE', 'true', '4.5', str(native + 1)):
+            with self.subTest(width=width), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert('OPENQASM 3; const int ZERO = 0; const int NEGATIVE = -1; int n = 4; '
+                        f'array[uint[4], 2] values; for uint[{width}] value in values {{}}')
+        with self.assertRaises(qasm2qcx.InvalidDeclarationException):
+            convert('OPENQASM 3; const int W = 4; array[uint[W], 2] values; '
+                    'for int W in [1:0] { for uint[W] value in values {} }')
+        self.assert_clean_conversion('const int W = 4; array[uint[W], 2] values; '
+            'for int W in [0:0] { for uint[4] value in values {} }')
+
+    def test_nested_width_shadowing_and_global_source_width_are_restored(self) -> None:
+        self.assert_clean_conversion('uint[8] value = 3; array[uint[4], 2] small = {15, 1}; '
+            'array[uint[8], 2] large = {255, 1}; uint total = 0; '
+            'for uint[4] value in small { total += value + uint[4](1); '
+            'for uint[8] value in large { total += value + uint[8](1); } '
+            'total += value ** uint[4](2); } total += value;')
+        self.assert_clean_conversion('array[uint[4], 2] values; uint total; '
+            'for uint[4] values in values { total = ~values; } total += values[0];')
+
+    def test_iteration_supports_expressions_bounds_indices_and_gate_parameters(self) -> None:
+        self.assert_clean_conversion('include "stdgates.inc"; qubit q; array[uint[4], 2] values = {0, 1}; '
+            'uint total = 0; bool flag = false; float f; complex z; '
+            'for uint[4] value in values { total += (~value + value) ^ uint[4](2); '
+            'total += value ** uint[4](2); f = float(value); z = complex(value); '
+            'flag = bool(value) && value > 0; values[value] += uint[4](1); '
+            'for int j in [0:value] { total += j; } '
+            'for int j in {value, value + uint[4](1)} { total += j; } '
+            'rx(value) q; gphase(value); }')
+
+    def test_nested_float_bit_and_signed_iterators_restore_unsigned_metadata(self) -> None:
+        self.assert_clean_conversion('array[uint[4], 2] values; array[float, 1] floats; bit[1] flags; uint total; '
+            'for uint[4] value in values { for float value in floats { if (bool(value)) {} } '
+            'for bit value in flags { if (value) {} } '
+            'for int value in [0:1] { total += uint(value); } total += ~value; }')
+
+    def test_empty_outer_loop_keeps_uint_metadata_without_evaluating_values(self) -> None:
+        self.assert_clean_conversion('array[uint[4], 2] values; uint total; '
+            'for int outer in [1:0] { for uint[4] value in values { '
+            'total = value ** uint[4](2); '
+            'for int j in {1 / int(value)} { total += j; } } }')
+        for body in ('if (value) {}', 'while (value) {}', 'value = 0;',
+                     'value += 1;', 'value[0] = 1;', 'for uint[4] next in value {}'):
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert('OPENQASM 3; array[uint[4], 2] values; '
+                        f'for int outer in [1:0] {{ for uint[4] value in values {{ {body} }} }}')
+
+    def test_runtime_uint_binding_overrides_shadowed_declaration_width(self) -> None:
+        converter = UnsignedArrayDeclarationTests.converter('uint[8] value = 1;')
+        expression = qasm2qcx.ast.Identifier('value')
+        info = qasm2qcx._UnsignedIntegerType(4, True)
+        binding = qasm2qcx._RuntimeIteratorBinding('PRIVATE_UINT', qasm2qcx.ValueType.UINT, info)
+        with converter._QASM2QCXConverter__iterator_binding('value', binding):
+            operand = converter._QASM2QCXConverter__condition_operand(expression)
+            self.assertEqual(operand, ('PRIVATE_UINT', qasm2qcx.ValueType.UINT, qasm2qcx.ValueKind.LVALUE))
+            self.assertEqual(converter._QASM2QCXConverter__uint_expression_type(expression), info)
+            self.assertEqual(converter._QASM2QCXConverter__integer_operand_info(
+                expression, {'value': qasm2qcx.ValueType.UINT}), (qasm2qcx.ValueType.UINT, info, True))
+        self.assertEqual(converter._QASM2QCXConverter__identifier_uint_type('value').width, 8)
+
+    def test_failed_nested_loop_preserves_caller_storage_and_cleans_bindings(self) -> None:
+        converter = UnsignedArrayDeclarationTests.converter('array[uint[4], 2] values; uint total;')
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+        statement = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; for uint[4] value in values { '
+            'for uint[4] other in values { total = complex(value + other); } }').statements[0]
+        with self.assertRaises(qasm2qcx.NoImplicitCastException):
+            converter.visit(statement)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertEqual(converter._QASM2QCXConverter__loop_bindings, [])
+        self.assertEqual(converter._QASM2QCXConverter__loop_contexts, [])
 
 
 class FloatArrayDeclarationTests(unittest.TestCase):
@@ -3025,7 +3146,7 @@ class FloatArrayLoopValidationTests(unittest.TestCase):
                     converter._QASM2QCXConverter__validate_loop_header(statement)
                     self.assertEqual(converter._QASM2QCXConverter__collection_loop_info(
                         statement.set_declaration, statement.type),
-                        ('VALUES63', 3, qasm2qcx.ValueType.FLOAT))
+                        ('VALUES63', 3, qasm2qcx.ValueType.FLOAT, None))
 
     def test_initialization_pass_validates_without_emitting_loop_storage(self) -> None:
         program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; array[float, 1] values; '
