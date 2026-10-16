@@ -2599,8 +2599,8 @@ class BooleanArrayDeclarationTests(unittest.TestCase):
                 with self.subTest(size=size, statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
                     convert(f'OPENQASM 3; array[bool, {size}] a; {statement}')
 
-    def test_iteration_is_deferred(self) -> None:
-        for statement in ('for bool b in a {}', 'for int b in a {}'):
+    def test_iteration_requires_a_matching_boolean_iterator(self) -> None:
+        for statement in ('for bit b in a {}', 'for int b in a {}'):
             with self.subTest(statement=statement), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
                 convert('OPENQASM 3; array[bool, 2] a; ' + statement)
 
@@ -2701,6 +2701,101 @@ class BooleanArrayAccessTests(unittest.TestCase):
         with self.assertRaises(qasm2qcx.NoImplicitCastException):
             converter.visit(program)
         self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+
+class BooleanArrayLoopTests(unittest.TestCase):
+    def assert_clean_conversion(self, source: str):
+        converter = BooleanArrayDeclarationTests.converter(source)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertEqual(converter._QASM2QCXConverter__loop_bindings, [])
+        self.assertEqual(converter._QASM2QCXConverter__loop_contexts, [])
+        ForLoopControlLoweringTests.assert_resolved_jumps(converter._QASM2QCXConverter__qcx_lines)
+        return converter
+
+    def test_loop_uses_int_storage_but_boolean_binding_and_live_read(self) -> None:
+        converter = self.assert_clean_conversion('array[bool, 3] flags = {true, false, true}; int count = 0; '
+            'for bool flag in flags { if (flag) { count += 1; } flags[1] = true; }')
+        lines = converter._QASM2QCXConverter__qcx_lines
+        body = lines.index('@QASM2QCX_LOOP_0_BODY')
+        self.assertIn('VAR QASM2QCX_INT_0 INT', lines[:body])
+        self.assertIn('VAR QASM2QCX_INT_1 INT', lines[:body])
+        self.assertEqual(lines[body + 1], 'LET QASM2QCX_INT_0 := FLAGS31:QASM2QCX_INT_1')
+        self.assertEqual(lines.count('LET COUNT31 += 1'), 1)
+        self.assertEqual(lines.count('LET FLAGS31:1 := 1'), 1)
+        self.assertTrue(any(line.startswith('JUMPIF ') and ' QASM2QCX_INT_0 \\= 0' in line for line in lines))
+
+    def test_singleton_loop_keeps_explicit_index_and_endpoint_guard(self) -> None:
+        converter = self.assert_clean_conversion('array[bool, 1] flags = {true}; '
+            'for bool flag in flags { continue; }')
+        lines = converter._QASM2QCXConverter__qcx_lines
+        self.assertIn('LET QASM2QCX_INT_0 := FLAGS31:QASM2QCX_INT_1', lines)
+        self.assertIn('JUMPIF QASM2QCX_LOOP_0_END QASM2QCX_INT_1 == 0', lines)
+
+    def test_loop_supports_logical_values_comparisons_casts_and_scalar_bit_copy(self) -> None:
+        self.assert_clean_conversion('array[bool, 2] flags = {true, false}; bool ready = false; '
+            'bit b = 0; bit[2] bits = "00"; int i = 0; uint u; float f; complex z; '
+            'for bool flag in flags { ready = !flag || flag == b; b = flag; bits[i] = flag; '
+            'u = uint[4](flag); f = float(flag); z = complex(flag); '
+            'if (flag && ready) { flags[i] = flag; } i += 1; }')
+
+    def test_typed_runtime_metadata_is_preserved_in_nested_and_empty_loops(self) -> None:
+        self.assert_clean_conversion('array[bool, 2] flags; int count = 0; '
+            'for int outer in [1:0] { for bool flag in flags { '
+            'for int j in [0:int(flag)] { count += j; } '
+            'for int j in {1 / int(flag)} { count += j; } } }')
+        converter = BooleanArrayDeclarationTests.converter('int flag = 1;')
+        binding = qasm2qcx._RuntimeIteratorBinding('PRIVATE_BOOL', qasm2qcx.ValueType.BOOL)
+        expression = qasm2qcx.ast.Identifier('flag')
+        with converter._QASM2QCXConverter__iterator_binding('flag', binding):
+            self.assertEqual(converter._QASM2QCXConverter__condition_operand(expression),
+                             ('PRIVATE_BOOL', qasm2qcx.ValueType.BOOL, qasm2qcx.ValueKind.LVALUE))
+            self.assertEqual(converter._QASM2QCXConverter__loop_expression_info(
+                expression, {'flag': qasm2qcx.ValueType.BOOL}), (qasm2qcx.ValueType.BOOL, True))
+
+    def test_iterators_can_shadow_source_arrays_and_mixed_type_outer_iterators(self) -> None:
+        self.assert_clean_conversion('array[bool, 2] flags = {true, false}; '
+            'array[uint[4], 1] values = {1}; bit[1] bits; bool ready = false; int count = 0; '
+            'for bool flags in flags { ready = flags; } ready = flags[0]; '
+            'for bool flag in flags { for int flag in [0:1] { count += flag; } '
+            'for uint[4] flag in values { count += int(flag); } '
+            'for bit flag in bits { ready = flag; } ready = flag; }')
+
+    def test_read_only_boolean_iterators_rejected_even_in_empty_outer_loop(self) -> None:
+        for body in ('flag = true;', 'flag += 1;', 'flag[0] = false;', 'flag = measure q;',
+                     'if (false) { flag = true; }', 'while (false) { flag = false; }'):
+            for wrapper in ('{}', 'for int outer in [1:0] {{ {} }}'):
+                with self.subTest(body=body, wrapper=wrapper), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    convert('OPENQASM 3; qubit q; array[bool, 2] flags; '
+                            + wrapper.format(f'for bool flag in flags {{ {body} }}'))
+
+    def test_unsupported_operators_and_implicit_integer_bounds_are_rejected(self) -> None:
+        for body in ('count = ~flag;', 'count = -flag;', 'count = flag & true;',
+                     'count = flag << 1;', 'count = flag ** 2;', 'if (flag < true) {}',
+                     'for int j in [0:flag] {}', 'for int j in {flag} {}'):
+            with self.subTest(body=body), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert('OPENQASM 3; array[bool, 2] flags; int count = 0; '
+                        f'for bool flag in flags {{ {body} }}')
+
+    def test_mismatched_types_and_non_array_iterables_remain_unsupported(self) -> None:
+        for source in ('array[int, 2] values;', 'array[uint, 2] values;',
+                       'array[float, 2] values;', 'bit[2] values;', 'bool values;'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                convert('OPENQASM 3; ' + source + 'for bool flag in values {}')
+        for source in ('[0:1]', '{true, false}', 'flags[0:1]', 'flags[0]'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                convert('OPENQASM 3; array[bool, 2] flags; '
+                        f'for int outer in [1:0] {{ for bool flag in {source} {{}} }}')
+
+    def test_failed_nested_loop_cleans_up_without_releasing_caller_storage(self) -> None:
+        converter = BooleanArrayDeclarationTests.converter('array[bool, 2] flags; bool ready;')
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.BOOL)
+        statement = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; for bool flag in flags { '
+            'for bool other in flags { ready = complex(flag || other); } }').statements[0]
+        with self.assertRaises(qasm2qcx.NoImplicitCastException):
+            converter.visit(statement)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertEqual(converter._QASM2QCXConverter__loop_bindings, [])
+        self.assertEqual(converter._QASM2QCXConverter__loop_contexts, [])
 
 
 class UnsignedArrayDeclarationTests(unittest.TestCase):
