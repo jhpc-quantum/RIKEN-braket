@@ -192,6 +192,29 @@ The instruction set supported by *bra* is as follows.
 * `ASSERT lhs op rhs`: checks a comparison using the same operand types and operators as `JUMPIF`. The `lhs` must be an `INT`, `UINT`, or `REAL` variable, optionally indexed; the `rhs` may be a compatible variable, indexed element, literal, or built-in constant. If the comparison is false, it throws `bra::assertion_error` (a `std::runtime_error`) identifying the failed instruction and evaluated operands. A successful assertion does not change classical variables or jump state. Assertions skipped by control flow are not evaluated. This is a runtime instruction and remains enabled in release builds; for example, `ASSERT STEP \= 0` checks that an integer step is nonzero.
 * `PRINT var [...]`/`PRINTLN var [...]`: prints classical variables `var`, `...` with single-space separators.
 
+### Phase-exponent gates
+
+For `R`, `R+`, and their controlled forms, the magnitude of the `INT` exponent
+`k` specifies an angle of $2\pi/2^{|k|}$. A negative exponent exchanges the
+forward and adjoint operations, as described above; it does not make the angle
+$2\pi\,2^{|k|}$. Literal and variable exponents use the same rules.
+
+Phase exponents are not limited by the circuit's qubit count or by the machine
+integer shift width. Missing phase coefficients are computed directly, without
+growing the state-sized coefficient cache. Very large magnitudes produce angles
+that round to zero at native floating-point precision; this also handles
+`INT_MIN` without overflowing signed negation. These rules apply to fused and
+unfused execution and ensure `S`, `T`, and their controlled/adjoint forms work
+on small states as well.
+
+The native regression suite checks complex amplitudes on one- through four-qubit
+states, including cache boundaries, signed exponents, integer endpoints, variable
+operands, and fusion:
+
+```console
+python3 bra/test/phase_shift_numerical.py --bra bra/bin/bra
+```
+
 ### Unsigned integers
 
 `UINT` uses native C++ `unsigned int`, the unsigned counterpart of `INT` (`int`).
