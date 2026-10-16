@@ -262,6 +262,27 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             'CEX': 'CEX+', 'CEX+': 'CEX', 'CEY': 'CEY+', 'CEY+': 'CEY',
             'CEZ': 'CEZ+', 'CEZ+': 'CEZ'}
 
+    # Root QCX mnemonic and controls already present in a lowered gate.
+    # CI is rejected by the current parser; its equivalent CI1 is accepted.
+    qcx_controlled_gate_families: dict[str, tuple[str, int]] = {
+            'I': ('I1', 0), 'H': ('H', 0),
+            'X': ('X', 0), 'Y': ('Y', 0), 'Z': ('Z', 0),
+            'CX': ('X', 1), 'CY': ('Y', 1), 'CZ': ('Z', 1), 'CH': ('H', 1),
+            'CCX': ('X', 2), 'SWAP': ('SWAP', 0), 'CSWAP': ('SWAP', 1),
+            'S': ('S', 0), 'S+': ('S+', 0), 'T': ('T', 0), 'T+': ('T+', 0),
+            'SX': ('SX', 0), 'SX+': ('SX+', 0),
+            'U1': ('U1', 0), 'U1+': ('U1+', 0),
+            'U2': ('U2', 0), 'U2+': ('U2+', 0),
+            'U3': ('U3', 0), 'U3+': ('U3+', 0),
+            'EX': ('EX', 0), 'EX+': ('EX+', 0),
+            'EY': ('EY', 0), 'EY+': ('EY+', 0),
+            'EZ': ('EZ', 0), 'EZ+': ('EZ+', 0),
+            'CU1': ('U1', 1), 'CU1+': ('U1+', 1),
+            'CU3': ('U3', 1), 'CU3+': ('U3+', 1),
+            'CEX': ('EX', 1), 'CEX+': ('EX+', 1),
+            'CEY': ('EY', 1), 'CEY+': ('EY+', 1),
+            'CEZ': ('EZ', 1), 'CEZ+': ('EZ+', 1)}
+
     gate_signatures: dict[str, tuple[int, int]] = {
             'U': (3, 1),
             'p': (1, 1), 'phase': (1, 1), 'u1': (1, 1), 'u2': (2, 1), 'u3': (3, 1),
@@ -1922,6 +1943,52 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return cls.qcx_adjoint_gate_map[mnemonic]
         except KeyError:
             raise UnsupportedOpenQASMError(f'adjoint of QCX gate {mnemonic}') from None
+
+    def __control_modifier_count(
+            self, modifiers: list[ast.QuantumGateModifier],
+            iterators: set[str] | dict[str, ValueType] | None = None) -> int:
+        for modifier in modifiers:
+            if modifier.modifier != ast.GateModifierName.ctrl:
+                raise UnsupportedOpenQASMError(f'gate modifier {modifier.modifier.name} mixed with ctrl')
+        total = 0
+        iterator_names = set(iterators or ()) | {name for scope in self.__loop_bindings for name in scope}
+        for modifier in modifiers:
+            count = 1
+            if modifier.argument is not None:
+                expression = modifier.argument
+                if self.__loop_bound_names(expression) & iterator_names:
+                    raise UnsupportedOpenQASMError('ctrl count must not depend on a loop iterator')
+                value_type, runtime = self.__loop_expression_info(expression, iterators)
+                if value_type not in (ValueType.INT, ValueType.UINT) or runtime:
+                    raise UnsupportedOpenQASMError('ctrl count must be a constant integer')
+                count = self.__constant_loop_integer(expression, 'control count', kind='modifier')
+            if not 1 <= count <= self.QCX_INT_MAX:
+                raise UnsupportedOpenQASMError(f'ctrl count must be in [1, {self.QCX_INT_MAX}]')
+            total += count
+            if total > self.QCX_INT_MAX:
+                raise UnsupportedOpenQASMError(f'total ctrl count exceeds {self.QCX_INT_MAX}')
+        return total
+
+    @classmethod
+    def __controlled_gate_name(cls, mnemonic: str, added_controls: int) -> str:
+        if not 1 <= added_controls <= cls.QCX_INT_MAX:
+            raise UnsupportedOpenQASMError(f'added ctrl count must be in [1, {cls.QCX_INT_MAX}]')
+        try:
+            root, existing_controls = cls.qcx_controlled_gate_families[mnemonic]
+        except KeyError:
+            raise UnsupportedOpenQASMError(f'controlled form of QCX gate {mnemonic}') from None
+        count = added_controls + existing_controls
+        if count > cls.QCX_INT_MAX:
+            raise UnsupportedOpenQASMError(f'total QCX ctrl count exceeds {cls.QCX_INT_MAX}')
+        return ('C' if count == 1 else f'C{count}') + root
+
+    @classmethod
+    def __controlled_phase_gate_name(cls, num_controls: int) -> str:
+        if not 1 <= num_controls <= cls.QCX_INT_MAX:
+            raise UnsupportedOpenQASMError(f'phase ctrl count must be in [1, {cls.QCX_INT_MAX}]')
+        # A conditioned global phase is a U1 on one condition qubit,
+        # controlled by the remaining condition qubits (not by an extra target).
+        return 'U1' if num_controls == 1 else cls.__controlled_gate_name('U1', num_controls - 1)
 
     def visit_QuantumGate(self, statement: ast.QuantumGate) -> None:
         if self.__is_initialization_process:
