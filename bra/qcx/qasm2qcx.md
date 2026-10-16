@@ -66,6 +66,7 @@ The converter currently covers:
 
 - OpenQASM 3 qubit declarations;
 - `stdgates.inc` gates that have direct QCX equivalents;
+- `inv` modifiers on supported gates and `gphase`, including repeated inversions;
 - literal indices, static index ranges, discrete index sets, and complete
   qubit registers as gate operands;
 - equal-sized register-selection gate broadcasting;
@@ -1194,6 +1195,81 @@ barrier without operands is also accepted. Because the converter preserves
 source order and does not optimize or reorder operations, barriers emit no QCX
 instruction; their explicit operands are nevertheless validated.
 
+### Inverse gate modifiers
+
+`inv @` is supported on every currently supported built-in and standard-library
+gate, and on `gphase`. It inverts the complete operation, not just its main QCX
+instruction. An odd number of `inv` modifiers selects the inverse; an even
+number cancels and preserves ordinary forward lowering. Each modifier is still
+validated, so cancelling inversions cannot hide an unsupported modifier.
+
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+qubit q;
+float theta = 0.7;
+rx(theta) q;
+inv @ rx(theta) q;
+s q;
+inv @ s q;
+gphase(theta);
+inv @ gphase(theta);
+// The circuit returns exactly to |0>, including its global phase.
+```
+
+The converter uses explicit mappings to QCX adjoint mnemonics: `S` and `S+`,
+`T` and `T+`, `SX` and `SX+`, `U1`/`U2`/`U3` and their `+` forms, and the
+supported rotation and controlled-gate equivalents. For example, `inv @ sdg`
+emits `S`, and `inv @ rx(theta)` emits `EX+` with the same converted half-angle
+operand used by forward `rx`. Self-adjoint operations keep their accepted QCX
+mnemonics (`H`, `X`, `Y`, `Z`, `I`, `SWAP`, and supported controlled forms);
+the converter does not emit unsupported aliases such as `H+` or `CX+`.
+
+Lowering reverses each multi-instruction sequence and adjoints its components.
+The existing forward phase conventions are preserved:
+
+- Built-in `U(theta, phi, lambda)` lowers to `PHASE phase` followed by `U3`,
+  where `phase = (theta + phi + lambda) / 2`. Its inverse emits `U3+` followed
+  by `PHASE -phase`, with the same three gate parameters.
+- `cu(theta, phi, lambda, gamma)` lowers to a control-qubit `U1` followed by
+  `CU3`, where the control phase is `gamma + (theta + phi + lambda) / 2`.
+  Its inverse emits `CU3+` followed by the control-qubit `U1+`, keeping that
+  phase operand unchanged.
+- `inv @ gphase(angle)` emits `PHASE` with the negated angle. Runtime
+  negation uses private `REAL` storage, preserving the source variable and
+  avoiding signed-integer negation overflow.
+
+Parameters retain the existing expression, type, angle-conversion, and include
+rules. Runtime parameter expressions are evaluated once per gate invocation,
+with their temporaries kept reserved through all emitted components. Broadcasting
+repeats the complete inverse sequence for each selected operand tuple, including
+its phase correction. For example:
+
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+qubit control;
+qubit[2] targets;
+float theta = 0.3;
+h control;
+cu(theta, 0.4, 0.5, 0.6) control, targets;
+inv @ cu(theta, 0.4, 0.5, 0.6) control, targets;
+inv @ inv @ h control;
+// The circuit returns exactly to |000>.
+```
+
+Inverse-modified gates work inside branches and all supported loops, including
+`break` and `continue`. Runtime computations and access checks stay on their
+execution paths; skipped bodies do not evaluate their runtime parameters.
+Modifier syntax is validated even inside empty enclosing loops, without
+evaluating unsupported modifier arguments. Successful and failed parameter
+lowering release gate-owned temporaries without releasing caller-owned storage.
+
+`ctrl`, `negctrl`, and `pow` modifiers remain unsupported, including combinations
+with `inv`. User-defined gates, gate durations, arguments to `inv`, and qubit
+operands on un-controlled `gphase` remain unsupported. Modifier support does not
+relax gate arity, operand selection, broadcasting, or parameter-type restrictions.
+
 ## Static indexing
 
 Qubit and bit registers can be selected with literal indices, inclusive
@@ -2213,7 +2289,7 @@ The current prototype does not reliably support:
 - delays, iteration over arrays other than the supported
   `int`/`uint`/`float`/`bool`/`complex` subset,
   alias iteration, or `switch` statements;
-- user-defined gates or gate modifiers;
+- user-defined gates, gate durations, or gate modifiers other than `inv`;
 - runtime qubit indices, dynamic register ranges or discrete sets, ranges with
   omitted bounds, or multidimensional indexing;
 - classical arrays beyond the one-dimensional `int`, `uint`, `float`, `bool`, and
@@ -2239,6 +2315,19 @@ self-referencing assignments, short-circuit evaluation, and temporary reuse.
 It also executes the complete Boolean example above. These tests cover the
 converter's supported Boolean subset; the limitations above remain explicit
 future work.
+
+`bra/test/qasm2qcx_inverse_numerical.py` checks each supported gate against
+independently calculated complex matrices on every three-qubit basis state and
+a complex superposition. It covers odd/even repeated inversions, runtime
+parameters, `gphase`, single- and controlled-gate broadcasting, and the existing
+forward `U`/`cu` phase conventions described above. Amplitudes are compared
+directly, without removing global phase. Integration cases cover every supported
+loop type, nested transfers, measurement-controlled branching, skipped runtime
+arithmetic/access checks, executed failures, and source-variable preservation.
+Unit tests additionally verify mnemonic coverage and involution, parameter and
+phase snapshot separation, temporary hoisting, cleanup preserving caller storage,
+unsupported modifiers and durations, empty-loop validation, and CLI errors
+without partial output. Each numerical execution has a timeout.
 
 `bra/test/integer_bitwise_numerical.py` checks bra's three integer bitwise
 assignment operators against Python results, including negative values and
@@ -2508,6 +2597,7 @@ python3 bra/test/integer_division_numerical.py --bra bra/bin/bra
 python3 bra/test/integer_bitwise_numerical.py --bra bra/bin/bra
 python3 bra/test/integer_shift_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_if_else_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_inverse_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_integer_remainder_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_integer_power_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_negation_numerical.py --bra bra/bin/bra
