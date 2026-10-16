@@ -89,8 +89,8 @@ The converter currently covers:
 - scalar integer shift expressions (`<<`, `>>`) and compound assignments
   (`<<=`, `>>=`), with checked counts and signed left-shift overflow;
 - scalar constants, variables, assignments, and numeric casts;
-- fixed-size, one-dimensional `int` and `float` arrays with static and runtime
-  element reads and writes;
+- fixed-size, one-dimensional `int`, `uint`, and `float` arrays with static and
+  runtime element reads and writes;
 - scalar and register `bit` values, including bit-string initialization;
 - runtime-indexed bit-register element reads, assignments, and scalar
   measurement destinations;
@@ -106,7 +106,7 @@ The converter currently covers:
 - integer-range `for` loops with runtime-valued bounds or steps,
   including nested loops, `break`, and `continue`;
 - integer-set `for` loops with runtime-valued elements captured at loop entry;
-- runtime iteration over one-dimensional `int` and `float` arrays;
+- runtime iteration over one-dimensional `int`, `uint`, and `float` arrays;
 - runtime iteration over bit registers with scalar `bit` iterators;
 - runtime `while` loops, including nested loops, `break`, and `continue`;
 - scalar expressions used as gate parameters; and
@@ -157,8 +157,9 @@ uint full = uint(-1);                    // native UINT maximum
 Supported operations are `+`, `-`, `*`, `/`, `%`, `&`, `|`, `^`, `<<`, `>>`, unary `-`
 and `~`, comparisons, and the corresponding compound assignments. Unsigned
 division and remainder operate on nonnegative values. Complement flips the
-bits of the unsigned operand's width. General signed-width emulation,
-UINT arrays, and `for uint` iterators remain unsupported.
+bits of the unsigned operand's width. One-dimensional UINT arrays and
+matching-width `for uint` iteration follow the same scalar rules, as described below.
+General signed-width emulation remains unsupported.
 
 For two unsigned operands, the wider width determines the result width.
 When mixing an unsigned operand with native `int`, a narrower unsigned operand
@@ -211,7 +212,8 @@ range checks before index assertions or loop execution. Constant UINT loop
 operands must also fit QCX `INT`; expansion never silently retypes an
 unrepresentable unsigned value as an INT iterator. Negative indices and negative
 steps require signed values: unsigned negation wraps, rather than producing a
-negative value. UINT arrays and UINT iterators remain separate future work.
+negative value. `for uint` is supported for matching-width UINT arrays, not
+for integer ranges or discrete sets.
 
 ### Integer remainder
 
@@ -747,13 +749,13 @@ failures throw `std::out_of_range`, signed left-shift overflow throws
 `bra::assertion_error`. The bra CLI currently leaves these exceptions uncaught.
 
 Compound `<<=` and `>>=` support scalar integer destinations and static or
-runtime-indexed `int` array elements. They evaluate the count and complete a
-checked shift in private storage before writing the destination. Destination
+runtime-indexed `int` and `uint` array elements. They evaluate the count and
+complete a checked shift in private storage before writing the destination. Destination
 indices are captured and checked once before the RHS; self-references read the
 original value. Active loop iterators remain read-only. Names, types, and index
 syntax are validated in empty loop bodies without evaluating counts or index
 values there. General signed arithmetic and count-expression overflow checks,
-scalar-bit shifts, UINT arrays, and signed-width emulation remain future work.
+scalar-bit shifts, and signed-width emulation remain future work.
 Whole-register shifts follow the separate policy above.
 
 ### One-dimensional integer arrays
@@ -797,10 +799,60 @@ Even a one-element array requires explicit indexing
 when used as a scalar. Qubit indices remain static; bit-register elements also
 support runtime indices as described below.
 
-Floating-point arrays are supported as described next. Multidimensional arrays,
-arrays of other element types (including `uint`), slices,
+Unsigned and floating-point arrays are supported as described below.
+Multidimensional arrays, arrays of other element types, slices,
 whole-array arithmetic or assignments, array-copy initializers, aliases, and
 block-local array declarations remain unsupported.
+
+### One-dimensional unsigned integer arrays
+
+The converter supports top-level `array[uint, N]` and `array[uint[n], N]`
+declarations. The array size follows the integer-array rules: a positive
+compile-time integer no larger than QCX `INT_MAX`. Element widths follow the
+scalar UINT rules: unsized `uint` uses native width `W`, and specified widths
+must satisfy `1 <= n <= W`. Sizes and element widths are resolved in declaration
+scope; a later iterator shadowing a dimension constant does not change them.
+
+```qasm
+OPENQASM 3.0;
+array[uint[8], 3] values = {1, 2, 255};
+int index = -1;
+values[index] += uint[8](1);
+uint wrapped = values[0] + uint[8](255); // 0: the intermediate result is 8-bit.
+```
+
+Elements use native QCX `UINT` storage. Narrow element assignments are masked
+modulo `2**n`; unsized and explicitly native-width values use native unsigned
+wrapping. A flat initializer, when present, must contain exactly `N` expressions
+and is evaluated in element order. It uses scalar UINT assignment conversions,
+including integer wrapping and Boolean promotion. Floating-point and complex
+values require explicit UINT casts. An uninitialized array has undefined
+OpenQASM values until assigned; do not rely on backend storage initialization.
+
+Static and runtime integer indices, negative-index normalization, bounds checks,
+and explicit singleton indexing follow the shared array-indexing rules below.
+Reads retain their unsigned width and specified/unsized metadata, including
+runtime reads copied into temporaries. Thus intermediate arithmetic, complement,
+negation, shifts, powers, comparisons, and casts behave like their scalar UINT
+equivalents; assigning into a wider destination does not widen an earlier
+intermediate result retroactively. Elements can also supply supported runtime
+indices, `for int` bounds/steps/set elements, and gate parameters.
+
+Element assignments support `=`, `+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`,
+`<<=`, `>>=`, and `**=`. Compound assignments use the scalar operand-promotion
+rules, compute a completed result in private storage, and then convert and mask
+it to the destination width. Shift counts are checked against the shifted
+element's width. Exponentiation follows the existing signed/unsigned result
+rules; a signed intermediate can require overflow checks even when assigned
+back to UINT.
+
+The destination index is captured and checked once before RHS evaluation. Its
+original value is copied for compound computations; explicit RHS reads perform
+their own accesses. Failed runtime checks precede the final destination write.
+Skipped control-flow paths skip runtime operations and checks, while static
+indices retain conversion-time bounds validation. These rules do not add general
+signed-arithmetic overflow checking. Direct iteration is described under
+[Unsigned-integer-array for loops](#unsigned-integer-array-for-loops).
 
 ### One-dimensional floating-point arrays
 
@@ -856,8 +908,8 @@ block-local declarations remain separate work.
 
 ### Runtime array indexing
 
-Both integer and floating-point arrays accept runtime indices using scalar
-`int`, `uint`, supported integer arithmetic, enclosing runtime iterators, and
+Signed/unsigned integer and floating-point arrays accept runtime indices using
+scalar `int`, `uint`, supported integer arithmetic, enclosing runtime iterators, and
 indexed integer-array elements.
 Nested accesses such as `values[indices[i]]` are accepted. Floating-point,
 Boolean, and scalar bit indices require an explicit integer cast, for example
@@ -1084,8 +1136,8 @@ operators are `==`, `!=`, `>`, `<`, `>=`, and `<=`. OpenQASM `!=` is emitted as 
 not-equal operator `\=`.
 
 Conditions can compare scalar `int`, `uint`, `float`, and `bit` expressions.
-A bit-register, integer-array, or floating-point-array element with a supported
-static or runtime index is also accepted.
+A bit-register, signed/unsigned integer-array, or floating-point-array element
+with a supported static or runtime index is also accepted.
 Compatible integer and floating-point operands are promoted when necessary. Complex
 values cannot be compared. Equal-width bit-register `==` and `!=` comparisons
 are supported as described in [Bit-register equality](#bit-register-equality).
@@ -1280,8 +1332,8 @@ Runtime variables are not constant elements, even when initialized with a
 literal; sets containing them use the runtime-valued lowering described below.
 Non-integer elements require a supported explicit integer cast;
 implicit conversion of floating-point, Boolean, or complex elements is not
-supported. Integer-array, floating-point-array, and bit-register iteration use
-the runtime lowering described below; alias iteration remains unsupported.
+supported. Signed/unsigned integer-array, floating-point-array, and bit-register
+iteration use the runtime lowering described below; alias iteration remains unsupported.
 The installed parser requires a nonempty set in
 source code: the spelling `{}` is rejected. An empty discrete-set AST supplied
 directly to the converter emits no body instructions but still validates its
@@ -1381,8 +1433,8 @@ a converter error rather than silently truncating the loop.
 The same budgets apply to constant range and set loops and to the generated
 body copies of runtime-valued set loops; repeated set elements each count as an
 expanded iteration. A `break` does not reduce the generated iteration count.
-Runtime-bound range, integer-array, floating-point-array, and bit-register loops
-do not expand their runtime iteration count.
+Runtime-bound range, signed/unsigned integer-array, floating-point-array, and
+bit-register loops do not expand their runtime iteration count.
 
 ## Runtime-bound for loops
 
@@ -1614,7 +1666,7 @@ whether or not it executes. Nested generated statements and instructions also
 count, even when their iterator is runtime-valued or shadows an outer iterator.
 Runtime reentry into an already generated loop does not charge additional
 conversion-time iterations. Signed widths remain unenforced; unsigned expressions
-follow the normalization and promotion rules above. Integer-array,
+follow the normalization and promotion rules above. Signed/unsigned integer-array,
 floating-point-array, and bit-register iteration are described below;
 alias iteration remains unsupported.
 The parser still rejects
@@ -1675,9 +1727,60 @@ This does not add general overflow checks or enforce declared integer widths.
 Runtime array iteration counts do not consume expansion budgets. Nested
 constant or set-loop body copies still consume their usual budgets, and an
 array loop inside an expanded loop contributes its generated statements and
-instructions. Floating-point-array and bit-register iteration are described
-below. Iteration over slices, other unsupported array types, aliases, or
+instructions. Unsigned-integer-array, floating-point-array, and bit-register
+iteration are described below. Iteration over slices, other unsupported array types, aliases, or
 arbitrary array expressions remains unsupported.
+
+## Unsigned-integer-array for loops
+
+The converter supports `for uint name in values` and `for uint[n] name in values`
+over previously declared one-dimensional UINT arrays. The iterator and element
+must have equal effective widths. Therefore an unsized `uint` iterator requires
+a native-width array; `uint` and `uint[W]` are compatible when `W` is native width.
+Different specified widths, including widening, are rejected rather than
+implicitly converted. The iterator retains its own specified/unsized metadata.
+Its width must be a supported compile-time integer, resolved before introducing
+its binding; enclosing loop iterators cannot supply a width.
+
+```qasm
+OPENQASM 3.0;
+array[uint[8], 3] values = {1, 2, 255};
+values[-1] += 1;
+uint total = 0;
+for uint[8] value in values {
+    total += value;
+}
+// total is 3; values contains 1, 2, 0.
+```
+
+Elements are visited in increasing index order with the same live-read policy
+as other array loops. Each current element is copied into a reserved `UINT`
+iterator. Changes to future elements affect later visits; changes to the current
+element do not change the copied iterator value. Reentry starts again at index
+zero. The body is generated once, with a private `INT` position and the existing
+endpoint guard; no new bra instruction is required.
+
+Bindings are scoped and read-only. They can shadow source variables, constants,
+arrays, or outer iterators; widths and values are restored with their scopes.
+The source is resolved first, so `for uint[8] values in values` is accepted for
+an eight-bit source array. Assignments and measurements into active iterators
+are rejected. Nested range/set, supported array/register, and `while` loops,
+`break`, and `continue` use the existing loop-control rules.
+
+Iterator expressions preserve width through arithmetic, complement, negation,
+shifts, exponentiation, casts, comparisons, and gate parameters. Bare UINT
+conditions require a comparison or `bool(...)`. UINT values used as runtime
+indices or `for int` bounds, steps, or set elements undergo the existing checked
+conversion to QCX `INT`; values above `INT_MAX` are not silently narrowed.
+Typed validation, including width compatibility and shadowing, also applies
+inside empty enclosing loops without fabricating iterator values.
+
+Runtime iteration counts do not consume constant-loop expansion budgets;
+nested or enclosing expansions retain their existing accounting. Computations
+stay on their original paths, while temporary declarations may be hoisted.
+UINT range/set iteration, implicit cross-base-type iteration, different-width
+UINT iteration, slices, multidimensional arrays, aliases, and arbitrary array
+expressions remain unsupported.
 
 ## Floating-point-array for loops
 
@@ -1686,8 +1789,9 @@ declared one-dimensional floating-point array. Elements are visited in increasin
 index order, including repeated values. Sized float base and iterator types such
 as `float[32]` and `float[64]` follow the existing native-`REAL` policy: their widths
 are not enforced, and differing declared float widths do not introduce rounding
-or precision conversion. Integer arrays require `int` iterators and float arrays
-require `float` iterators; implicit conversion between those types is not supported.
+or precision conversion. Signed-integer arrays require `int` iterators,
+unsigned-integer arrays require matching-width `uint` iterators, and float arrays
+require `float` iterators; implicit cross-base-type conversion is not supported.
 
 ```qasm
 OPENQASM 3.0;
@@ -1907,13 +2011,13 @@ vector defined by the program's qubit declarations.
 
 The current prototype does not reliably support:
 
-- delays, iteration over arrays other than the supported `int`/`float` subset,
+- delays, iteration over arrays other than the supported `int`/`uint`/`float` subset,
   alias iteration, or `switch` statements;
 - user-defined gates or gate modifiers;
 - runtime qubit indices, dynamic register ranges or discrete sets, ranges with
   omitted bounds, or multidimensional indexing;
-- classical arrays beyond the one-dimensional `int` and `float` subsets above,
-  whole-register casts, complex-to-Boolean casts,
+- classical arrays beyond the one-dimensional `int`, `uint`, and `float` subsets
+  above, whole-register casts, complex-to-Boolean casts,
   Boolean arithmetic, mixed Boolean/numeric comparisons, or block-local
   declarations;
 - scalar-bit shifts and runtime-dependent register selections,
@@ -1922,7 +2026,8 @@ The current prototype does not reliably support:
 - arithmetic operators other than `+`, `-`, `*`, `/`, and integer `%` and `**`.
 
 Integer limitations additionally include `uint[n]` widths above native `UINT`,
-UINT arrays or iterators, fixed-width signed reinterpretation casts from UINT,
+UINT range/set iterators, different-width UINT array iterators,
+fixed-width signed reinterpretation casts from UINT,
 mixed signed/unsigned expressions with non-native signed widths, and general
 signed-width emulation or signed-arithmetic overflow checks.
 
@@ -2055,6 +2160,21 @@ Python reference model, bounds failures, skipped assertions, mixed control flow,
 casts, indexed initializers, and temporary-storage lifetime. Unit tests interpret
 the emitted normalization guard using checked native integer arithmetic.
 
+`bra/test/qasm2qcx_uint_array_numerical.py` checks every supported element width,
+initialization, width-preserving reads, wrapping intermediate results, and
+compound assignments against both Python results and equivalent scalar UINT
+operations. It covers mixed signed/unsigned promotions, negative/static/runtime
+indices, nested self-references, captured destinations, shifts, exponentiation,
+skipped checks, bounds failures, zero divisors, and checked conversions.
+
+`bra/test/qasm2qcx_uint_array_loop_numerical.py` checks live reads, copied iterator
+values, mutation, singleton arrays, loop transfers against Python reference
+loops, repeated entry, mixed nesting, width shadowing, compatible native-width
+forms, casts, comparisons, gate parameters, skipped accesses, and executed
+conversion/count/bounds errors. Unit tests additionally verify unsupported
+widths/types, scoped read-only bindings, empty-loop validation, and cleanup
+without releasing caller-owned storage.
+
 `bra/test/qasm2qcx_float_array_numerical.py` verifies native REAL declarations,
 runtime initializers and scalar numeric promotions, static/runtime/negative
 indices, singleton arrays, indexed assignments and compound assignments,
@@ -2164,6 +2284,8 @@ python3 bra/test/qasm2qcx_runtime_for_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_step_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_set_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_integer_array_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_uint_array_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_uint_array_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_float_array_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_float_array_loop_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_bit_register_numerical.py --bra bra/bin/bra
