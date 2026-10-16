@@ -239,6 +239,80 @@ class ControlModifierLoweringTests(unittest.TestCase):
             self.assertIsNone(converter._QASM2QCXConverter__expression_kind)
 
 
+class ControlModifierIntegrationTests(unittest.TestCase):
+    assert_clean_conversion = ControlModifierLoweringTests.assert_clean_conversion
+
+    def test_runtime_cu_parameters_and_control_phase_have_distinct_snapshots(self) -> None:
+        lines = self.assert_clean_conversion('include "stdgates.inc"; qubit[4] q; '
+            'array[float, 4] angles = {0.2, 0.4, 0.6, 0.8}; int i = 0; '
+            'ctrl(2) @ cu(angles[i], angles[i + 1], angles[i + 2], angles[i + 3]) q[0], q[1], q[2], q[3];')
+        phase = next(line for line in lines if line.startswith('C2U1 ')).split()
+        gate = next(line for line in lines if line.startswith('C3U3 ')).split()
+        self.assertEqual(phase[1:4], ['0', '1', '2'])
+        self.assertEqual(gate[1:5], ['0', '1', '2', '3'])
+        self.assertEqual(len(set(gate[5:])), 3)
+        self.assertNotIn(phase[-1], gate[5:])
+        self.assertEqual(sum(line.endswith(' := I1') for line in lines), 4)
+        self.assertEqual(sum(line.startswith('ASSERT ') for line in lines), 8)
+
+    def test_runtime_loops_hoist_controlled_parameter_and_phase_temporaries(self) -> None:
+        for header in ('for int i in [0:stop]', 'for int i in {0, stop}', 'while (false)'):
+            with self.subTest(header=header):
+                lines = self.assert_clean_conversion('include "stdgates.inc"; qubit[3] q; '
+                    'float theta = 0.2; int stop = 1; ' + header + '{ '
+                    'ctrl @ U(theta + 1, theta * 2, 3) q[0], q[1]; '
+                    'ctrl @ cu(theta, 1, 2, theta + 3) q[0], q[1], q[2]; '
+                    'ctrl(2) @ gphase(theta + 1) q[0], q[1]; }')
+                first_label = next(i for i, line in enumerate(lines) if line.startswith('@'))
+                self.assertFalse(any(line.startswith('VAR QASM2QCX_') for line in lines[first_label:]))
+                self.assertTrue(any(line.startswith('C2U3 ') for line in lines))
+
+    def test_count_shadowing_rejected_even_in_empty_nested_loops(self) -> None:
+        for nested in ('for int N in [1:0]', 'for int N in [0:stop]', 'for float N in values'):
+            with self.subTest(nested=nested), self.assertRaisesRegex(
+                    qasm2qcx.UnsupportedOpenQASMError, 'loop iterator'):
+                convert('OPENQASM 3; const int N = 1; int stop = 1; array[float, 1] values = {1}; qubit q; '
+                        'for int outer in [1:0] { ' + nested + ' { ctrl(N) @ gphase(1) q; } }')
+
+    def test_global_phase_counts_and_arity_checked_inside_empty_loops(self) -> None:
+        for statement in ('ctrl(2) @ gphase(1) q;', 'ctrl @ gphase(1);',
+                          'ctrl(0) @ gphase(1) q;', 'ctrl(2.0) @ gphase(1) q;',
+                          'ctrl @ inv @ gphase(1) q;', 'ctrl(n) @ gphase(1) q;'):
+            with self.subTest(statement=statement), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert('OPENQASM 3; int n = 1; qubit q; for int outer in [1:0] { '
+                        + statement + ' }')
+
+    def test_inactive_quantum_controls_do_not_suppress_runtime_parameter_checks(self) -> None:
+        lines = self.assert_clean_conversion('include "stdgates.inc"; qubit[2] q; '
+            'array[float, 1] angles; int bad = 1; ctrl @ rx(angles[bad]) q[0], q[1];')
+        assertion = next(i for i, line in enumerate(lines) if line.startswith('ASSERT '))
+        gate = next(i for i, line in enumerate(lines) if line.startswith('CEX '))
+        self.assertLess(assertion, gate)
+
+    def test_successful_gate_and_phase_preserve_caller_owned_storage(self) -> None:
+        for source in ('ctrl @ U(theta, theta + 1, theta * 2) q[0], q[1];',
+                       'ctrl(2) @ gphase(theta + 1) q[0], q[1];'):
+            converter = ControlModifierFoundationTests.converter('qubit[2] q; float theta = 0.2;')
+            caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+            child = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; ' + source).statements[0]
+            start = len(converter._QASM2QCXConverter__qcx_lines)
+            with self.subTest(source=source):
+                converter.visit(child)
+                self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+                self.assertFalse(any(line.startswith(f'LET {caller} ') for line in
+                                     converter._QASM2QCXConverter__qcx_lines[start:]))
+
+    def test_cli_control_errors_emit_no_partial_output(self) -> None:
+        for instruction in ('ctrl(n) @ x q[0], q[1];', 'ctrl @ x q[0], q[0];',
+                            'ctrl @ inv @ gphase(1) q[0];'):
+            source = 'OPENQASM 3; include "stdgates.inc"; int n = 1; qubit[2] q; h q; ' + instruction
+            with self.subTest(instruction=instruction), patch('builtins.open', mock_open(read_data=source)), \
+                    patch('builtins.print') as output:
+                with self.assertRaises(SystemExit):
+                    qasm2qcx.main(['control.qasm'])
+                output.assert_not_called()
+
+
 class InverseModifierFoundationTests(unittest.TestCase):
     def test_mapping_covers_all_existing_gate_lowerings_and_is_involutive(self) -> None:
         converter = qasm2qcx.QASM2QCXConverter
