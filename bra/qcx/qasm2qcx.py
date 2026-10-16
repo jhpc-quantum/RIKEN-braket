@@ -3157,6 +3157,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return
 
         previous_temporaries = self.__declared_temporary_variables.copy()
+        previous_used = self.__used_temporary_variables.copy()
         iterator = self.__add_new_temporary_variable(value_type)
         index = self.__add_new_temporary_variable(ValueType.INT)
         try:
@@ -3177,8 +3178,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if self.__inside_expanded_loop():
                 self.__check_loop_output_limit()
         finally:
-            self.__release_temporary_variable(index)
-            self.__release_temporary_variable(iterator)
+            # No expression result escapes a collection loop. Also release
+            # body temporaries left behind by failed expression lowering,
+            # without disturbing storage reserved by enclosing callers.
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
 
     def __visit_runtime_set(self, statement: ast.ForInLoop) -> None:
         self.__validate_loop_body(statement.block, self.__loop_iterator_types(statement.identifier.name))
