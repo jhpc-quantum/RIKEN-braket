@@ -246,6 +246,22 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             'crx': 'CEX', 'cry': 'CEY', 'crz': 'CEZ', 'ch': 'CH',
             'cu': 'CU3', 'swap': 'SWAP', 'ccx': 'CCX', 'cswap': 'CSWAP'}
 
+    # Only mnemonics accepted by QCX are listed. Self-adjoint gates keep
+    # their original spelling; in particular, QCX has no H+ or CX+ alias.
+    qcx_adjoint_gate_map: dict[str, str] = {
+            'I': 'I', 'H': 'H', 'X': 'X', 'Y': 'Y', 'Z': 'Z',
+            'CX': 'CX', 'CY': 'CY', 'CZ': 'CZ', 'CH': 'CH',
+            'SWAP': 'SWAP', 'CCX': 'CCX', 'CSWAP': 'CSWAP',
+            'S': 'S+', 'S+': 'S', 'T': 'T+', 'T+': 'T',
+            'SX': 'SX+', 'SX+': 'SX',
+            'U1': 'U1+', 'U1+': 'U1', 'U2': 'U2+', 'U2+': 'U2',
+            'U3': 'U3+', 'U3+': 'U3',
+            'EX': 'EX+', 'EX+': 'EX', 'EY': 'EY+', 'EY+': 'EY',
+            'EZ': 'EZ+', 'EZ+': 'EZ',
+            'CU1': 'CU1+', 'CU1+': 'CU1', 'CU3': 'CU3+', 'CU3+': 'CU3',
+            'CEX': 'CEX+', 'CEX+': 'CEX', 'CEY': 'CEY+', 'CEY+': 'CEY',
+            'CEZ': 'CEZ+', 'CEZ+': 'CEZ'}
+
     gate_signatures: dict[str, tuple[int, int]] = {
             'U': (3, 1),
             'p': (1, 1), 'phase': (1, 1), 'u1': (1, 1), 'u2': (2, 1), 'u3': (3, 1),
@@ -1888,6 +1904,24 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             f'LET {temporary} += {converted_parameters[2]}')
         self.__qcx_lines.append(f'LET {temporary} /= 2.0')
         return temporary, ValueKind.TEMPORARY
+
+    @staticmethod
+    def __inverse_modifier_parity(modifiers: list[ast.QuantumGateModifier]) -> bool:
+        # Validate the entire list before reducing it: cancelling inversions
+        # must not hide an unsupported modifier or an invalid inv argument.
+        for modifier in modifiers:
+            if modifier.modifier != ast.GateModifierName.inv:
+                raise UnsupportedOpenQASMError(f'gate modifier {modifier.modifier.name}')
+            if modifier.argument is not None:
+                raise UnsupportedOpenQASMError('inv modifier with an argument')
+        return len(modifiers) % 2 == 1
+
+    @classmethod
+    def __adjoint_gate_name(cls, mnemonic: str) -> str:
+        try:
+            return cls.qcx_adjoint_gate_map[mnemonic]
+        except KeyError:
+            raise UnsupportedOpenQASMError(f'adjoint of QCX gate {mnemonic}') from None
 
     def visit_QuantumGate(self, statement: ast.QuantumGate) -> None:
         if self.__is_initialization_process:

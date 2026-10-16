@@ -17,6 +17,65 @@ def convert(source: str) -> list[str]:
     return qasm2qcx.convert(source)
 
 
+class InverseModifierFoundationTests(unittest.TestCase):
+    def test_mapping_covers_all_existing_gate_lowerings_and_is_involutive(self) -> None:
+        converter = qasm2qcx.QASM2QCXConverter
+        mappings = converter.qcx_adjoint_gate_map
+        forward = set(converter.default_gates_qcx_map.values()) | set(converter.stdgates_qcx_map.values())
+        self.assertTrue(forward <= mappings.keys())
+        for gate, adjoint in mappings.items():
+            with self.subTest(gate=gate):
+                self.assertEqual(converter._QASM2QCXConverter__adjoint_gate_name(gate), adjoint)
+                self.assertEqual(converter._QASM2QCXConverter__adjoint_gate_name(adjoint), gate)
+
+    def test_self_adjoint_gates_keep_accepted_qcx_spelling(self) -> None:
+        for gate in ('I', 'H', 'X', 'Y', 'Z', 'CX', 'CY', 'CZ', 'CH', 'SWAP', 'CCX', 'CSWAP'):
+            with self.subTest(gate=gate):
+                self.assertEqual(qasm2qcx.QASM2QCXConverter._QASM2QCXConverter__adjoint_gate_name(gate), gate)
+
+    def test_nonselfadjoint_gates_toggle_existing_adjoint_mnemonics(self) -> None:
+        for gate in ('S', 'T', 'SX', 'U1', 'U2', 'U3', 'EX', 'EY', 'EZ',
+                     'CU1', 'CU3', 'CEX', 'CEY', 'CEZ'):
+            with self.subTest(gate=gate):
+                helper = qasm2qcx.QASM2QCXConverter._QASM2QCXConverter__adjoint_gate_name
+                self.assertEqual(helper(gate), gate + '+')
+                self.assertEqual(helper(gate + '+'), gate)
+
+    def test_unknown_instructions_and_phase_require_explicit_handling(self) -> None:
+        for gate in ('H+', 'X+', 'PHASE', 'RESET', 'M', 'UNKNOWN'):
+            with self.subTest(gate=gate), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                qasm2qcx.QASM2QCXConverter._QASM2QCXConverter__adjoint_gate_name(gate)
+
+    def test_inverse_parity_for_gates_and_global_phase(self) -> None:
+        helper = qasm2qcx.QASM2QCXConverter._QASM2QCXConverter__inverse_modifier_parity
+        for count in range(7):
+            for instruction in ('h q', 'gphase(0.5)'):
+                with self.subTest(count=count, instruction=instruction):
+                    statement = qasm2qcx.openqasm3.parser.parse(
+                        'OPENQASM 3; ' + 'inv @ ' * count + instruction + ';').statements[0]
+                    original = statement.modifiers.copy()
+                    self.assertEqual(helper(statement.modifiers), count % 2 == 1)
+                    self.assertEqual(statement.modifiers, original)
+
+    def test_unsupported_modifiers_rejected_even_among_cancelling_inverses(self) -> None:
+        helper = qasm2qcx.QASM2QCXConverter._QASM2QCXConverter__inverse_modifier_parity
+        for unsupported in ('ctrl', 'negctrl', 'ctrl(2)', 'negctrl(2)', 'pow(2)', 'pow(1 / 0)'):
+            for prefix, suffix in (('', ''), ('inv @ ', ' @ inv'), ('inv @ inv @ ', '')):
+                with self.subTest(unsupported=unsupported, prefix=prefix):
+                    statement = qasm2qcx.openqasm3.parser.parse(
+                        f'OPENQASM 3; {prefix}{unsupported}{suffix} @ x q;').statements[0]
+                    with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                        helper(statement.modifiers)
+
+    def test_malformed_inverse_argument_is_rejected_without_evaluation(self) -> None:
+        helper = qasm2qcx.QASM2QCXConverter._QASM2QCXConverter__inverse_modifier_parity
+        argument = qasm2qcx.ast.BinaryExpression(qasm2qcx.ast.BinaryOperator['/'],
+                                               qasm2qcx.ast.IntegerLiteral(1), qasm2qcx.ast.IntegerLiteral(0))
+        modifier = qasm2qcx.ast.QuantumGateModifier(qasm2qcx.ast.GateModifierName.inv, argument)
+        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'inv modifier with an argument'):
+            helper([modifier, modifier])
+
+
 class UnsignedIntegerFoundationTests(unittest.TestCase):
     def converter(self, source: str):
         program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3.0; ' + source)
