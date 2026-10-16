@@ -262,6 +262,27 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             'CEX': 'CEX+', 'CEX+': 'CEX', 'CEY': 'CEY+', 'CEY+': 'CEY',
             'CEZ': 'CEZ+', 'CEZ+': 'CEZ'}
 
+    # Root QCX mnemonic and controls already present in a lowered gate.
+    # CI is rejected by the current parser; its equivalent CI1 is accepted.
+    qcx_controlled_gate_families: dict[str, tuple[str, int]] = {
+            'I': ('I1', 0), 'H': ('H', 0),
+            'X': ('X', 0), 'Y': ('Y', 0), 'Z': ('Z', 0),
+            'CX': ('X', 1), 'CY': ('Y', 1), 'CZ': ('Z', 1), 'CH': ('H', 1),
+            'CCX': ('X', 2), 'SWAP': ('SWAP', 0), 'CSWAP': ('SWAP', 1),
+            'S': ('S', 0), 'S+': ('S+', 0), 'T': ('T', 0), 'T+': ('T+', 0),
+            'SX': ('SX', 0), 'SX+': ('SX+', 0),
+            'U1': ('U1', 0), 'U1+': ('U1+', 0),
+            'U2': ('U2', 0), 'U2+': ('U2+', 0),
+            'U3': ('U3', 0), 'U3+': ('U3+', 0),
+            'EX': ('EX', 0), 'EX+': ('EX+', 0),
+            'EY': ('EY', 0), 'EY+': ('EY+', 0),
+            'EZ': ('EZ', 0), 'EZ+': ('EZ+', 0),
+            'CU1': ('U1', 1), 'CU1+': ('U1+', 1),
+            'CU3': ('U3', 1), 'CU3+': ('U3+', 1),
+            'CEX': ('EX', 1), 'CEX+': ('EX+', 1),
+            'CEY': ('EY', 1), 'CEY+': ('EY+', 1),
+            'CEZ': ('EZ', 1), 'CEZ+': ('EZ+', 1)}
+
     gate_signatures: dict[str, tuple[int, int]] = {
             'U': (3, 1),
             'p': (1, 1), 'phase': (1, 1), 'u1': (1, 1), 'u2': (2, 1), 'u3': (3, 1),
@@ -1923,6 +1944,73 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         except KeyError:
             raise UnsupportedOpenQASMError(f'adjoint of QCX gate {mnemonic}') from None
 
+    def __control_modifier_count(
+            self, modifiers: list[ast.QuantumGateModifier],
+            iterators: set[str] | dict[str, ValueType] | None = None) -> int:
+        for modifier in modifiers:
+            if modifier.modifier != ast.GateModifierName.ctrl:
+                raise UnsupportedOpenQASMError(f'gate modifier {modifier.modifier.name} mixed with ctrl')
+        total = 0
+        iterator_names = set(iterators or ()) | {name for scope in self.__loop_bindings for name in scope}
+        for modifier in modifiers:
+            count = 1
+            if modifier.argument is not None:
+                expression = modifier.argument
+                if self.__loop_bound_names(expression) & iterator_names:
+                    raise UnsupportedOpenQASMError('ctrl count must not depend on a loop iterator')
+                value_type, runtime = self.__loop_expression_info(expression, iterators)
+                if value_type not in (ValueType.INT, ValueType.UINT) or runtime:
+                    raise UnsupportedOpenQASMError('ctrl count must be a constant integer')
+                count = self.__constant_loop_integer(expression, 'control count', kind='modifier')
+            if not 1 <= count <= self.QCX_INT_MAX:
+                raise UnsupportedOpenQASMError(f'ctrl count must be in [1, {self.QCX_INT_MAX}]')
+            total += count
+            if total > self.QCX_INT_MAX:
+                raise UnsupportedOpenQASMError(f'total ctrl count exceeds {self.QCX_INT_MAX}')
+        return total
+
+    @classmethod
+    def __controlled_gate_name(cls, mnemonic: str, added_controls: int) -> str:
+        if not 1 <= added_controls <= cls.QCX_INT_MAX:
+            raise UnsupportedOpenQASMError(f'added ctrl count must be in [1, {cls.QCX_INT_MAX}]')
+        try:
+            root, existing_controls = cls.qcx_controlled_gate_families[mnemonic]
+        except KeyError:
+            raise UnsupportedOpenQASMError(f'controlled form of QCX gate {mnemonic}') from None
+        count = added_controls + existing_controls
+        if count > cls.QCX_INT_MAX:
+            raise UnsupportedOpenQASMError(f'total QCX ctrl count exceeds {cls.QCX_INT_MAX}')
+        return ('C' if count == 1 else f'C{count}') + root
+
+    @classmethod
+    def __controlled_phase_gate_name(cls, num_controls: int) -> str:
+        if not 1 <= num_controls <= cls.QCX_INT_MAX:
+            raise UnsupportedOpenQASMError(f'phase ctrl count must be in [1, {cls.QCX_INT_MAX}]')
+        # A conditioned global phase is a U1 on one condition qubit,
+        # controlled by the remaining condition qubits (not by an extra target).
+        return 'U1' if num_controls == 1 else cls.__controlled_gate_name('U1', num_controls - 1)
+
+    def __gate_modifiers(
+            self, modifiers: list[ast.QuantumGateModifier],
+            iterators: set[str] | dict[str, ValueType] | None = None) -> tuple[bool, int]:
+        if any(modifier.modifier == ast.GateModifierName.ctrl for modifier in modifiers):
+            return False, self.__control_modifier_count(modifiers, iterators)
+        return self.__inverse_modifier_parity(modifiers), 0
+
+    def __qubit_operand_tuples(self, qubits, *, distinct: bool = False) -> Iterator[list[str]]:
+        operands = [self.__qubit_operand_indices(qubit) for qubit in qubits]
+        register_sizes = [len(indices) for indices, is_register in operands if is_register]
+        if len(set(register_sizes)) > 1:
+            raise WrongBroadcastingException
+        for index in range(register_sizes[0] if register_sizes else 1):
+            physical = []
+            for qubit, (indices, is_register) in zip(qubits, operands):
+                name = qubit.name if isinstance(qubit, ast.Identifier) else qubit.name.name
+                physical.append(str(self.__to_qubit_index(name, indices[index] if is_register else indices[0])))
+            if distinct and len(set(physical)) != len(physical):
+                raise UnsupportedOpenQASMError('controlled operation requires distinct qubit operands')
+            yield physical
+
     def visit_QuantumGate(self, statement: ast.QuantumGate) -> None:
         if self.__is_initialization_process:
             return
@@ -1937,7 +2025,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __emit_quantum_gate(self, statement: ast.QuantumGate) -> None:
         qasm_gate_name: str = statement.name.name
-        inverse = self.__inverse_modifier_parity(statement.modifiers)
+        inverse, controls = self.__gate_modifiers(statement.modifiers)
         if statement.duration is not None:
             raise UnsupportedOpenQASMError(f'duration on gate {qasm_gate_name}')
 
@@ -1949,22 +2037,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise UnsupportedOpenQASMError(f'gate {qasm_gate_name}')
 
         expected_parameters, expected_qubits = QASM2QCXConverter.gate_signatures[qasm_gate_name]
+        expected_qubits += controls
         if (len(statement.arguments) != expected_parameters
                 or len(statement.qubits) != expected_qubits):
             raise WrongGateArityException(
                 qasm_gate_name, expected_parameters, expected_qubits,
                 len(statement.arguments), len(statement.qubits))
-
-        operands = [
-            self.__qubit_operand_indices(qubit) for qubit in statement.qubits
-        ]
-        register_sizes = [
-            len(indices)
-            for indices, is_register in operands if is_register
-        ]
-        if len(set(register_sizes)) > 1:
-            raise WrongBroadcastingException
-        loop_size = register_sizes[0] if register_sizes else 1
 
         parameters: list[
             tuple[str | int | float | complex, ValueType, ValueKind]
@@ -2003,14 +2081,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if inverse:
                 u_global_phase = self.__negated_phase_operand(u_global_phase, value_kind)
 
-        for index in range(loop_size):
-            qubit_indices = []
-            for qubit, (indices, is_register) in zip(
-                    statement.qubits, operands):
-                register_name = qubit.name if isinstance(qubit, ast.Identifier) else qubit.name.name
-                register_index = indices[index] if is_register else indices[0]
-                qubit_indices.append(str(self.__to_qubit_index(register_name, register_index)))
-
+        for all_qubits in self.__qubit_operand_tuples(statement.qubits, distinct=controls > 0):
+            condition_qubits, qubit_indices = all_qubits[:controls], all_qubits[controls:]
             if qasm_gate_name == 'cu':
                 sequence = [('U1', [qubit_indices[0], cu_control_phase]),
                             ('CU3', qubit_indices + converted_parameters[:3])]
@@ -2019,6 +2091,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 if u_global_phase is not None:
                     sequence.append(('PHASE', [u_global_phase]))
                 sequence.append((qcx_gate_name, qubit_indices + converted_parameters))
+            if controls:
+                sequence = [
+                    (self.__controlled_phase_gate_name(controls) if mnemonic == 'PHASE'
+                     else self.__controlled_gate_name(mnemonic, controls), condition_qubits + arguments)
+                    for mnemonic, arguments in sequence]
             # Invert the complete lowered sequence, including the control
             # phase of cu. PHASE operands have already been negated above.
             for mnemonic, arguments in reversed(sequence) if inverse else sequence:
@@ -2050,9 +2127,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__release_temporary_variable(temporary)
 
     def __emit_quantum_phase(self, statement: ast.QuantumPhase) -> None:
-        inverse = self.__inverse_modifier_parity(statement.modifiers)
-        if statement.qubits:
+        inverse, controls = self.__gate_modifiers(statement.modifiers)
+        if not controls and statement.qubits:
             raise UnsupportedOpenQASMError('qubit operands on gphase')
+        if controls and len(statement.qubits) != controls:
+            raise WrongGateArityException('gphase', 1, controls, 1, len(statement.qubits))
 
         self.__expression_kind = ExpressionKind.ARITHMETIC
         self.visit(statement.argument)
@@ -2065,7 +2144,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             (self.__value, self.__value_type, self.__value_kind))
         if inverse:
             phase = self.__negated_phase_operand(phase, self.__value_kind)
-        self.__qcx_lines.append(f'PHASE {phase}')
+        if controls:
+            mnemonic = self.__controlled_phase_gate_name(controls)
+            for qubits in self.__qubit_operand_tuples(statement.qubits, distinct=True):
+                self.__qcx_lines.append(f'{mnemonic} {" ".join(qubits)} {phase}')
+        else:
+            self.__qcx_lines.append(f'PHASE {phase}')
         if self.__value_kind == ValueKind.TEMPORARY:
             self.__release_temporary_variable(str(self.__value))
 
@@ -2975,7 +3059,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if isinstance(child, ast.ClassicalAssignment) and child.op.name in ('&=', '|=', '^=', '<<=', '>>=', '**='):
                 self.__validate_integer_operator_assignment_types(child, iterators)
             if isinstance(child, ast.QuantumGate):
-                self.__inverse_modifier_parity(child.modifiers)
+                _, controls = self.__gate_modifiers(child.modifiers, iterators)
                 if child.duration is not None:
                     raise UnsupportedOpenQASMError('gate duration in a loop')
                 if child.name.name not in self.gate_signatures:
@@ -2985,13 +3069,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                         and not self.__is_stdgates_included):
                     raise UnsupportedOpenQASMError(f'gate {child.name.name}')
                 parameters, qubits = self.gate_signatures[child.name.name]
+                qubits += controls
                 if len(child.arguments) != parameters or len(child.qubits) != qubits:
                     raise WrongGateArityException(child.name.name, parameters, qubits,
                                                   len(child.arguments), len(child.qubits))
             if isinstance(child, ast.QuantumPhase):
-                self.__inverse_modifier_parity(child.modifiers)
-                if child.qubits:
+                _, controls = self.__gate_modifiers(child.modifiers, iterators)
+                if not controls and child.qubits:
                     raise UnsupportedOpenQASMError('qubit operands on gphase')
+                if controls and len(child.qubits) != controls:
+                    raise WrongGateArityException('gphase', 1, controls, 1, len(child.qubits))
             if isinstance(child, (ast.BranchingStatement, ast.WhileLoop)):
                 condition = (child.condition if isinstance(child, ast.BranchingStatement)
                              else child.while_condition)
