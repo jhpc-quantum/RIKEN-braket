@@ -4037,7 +4037,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         boolean_identifier = isinstance(expression, ast.Identifier) and (
             self.__capitalize_variable_name(expression.name) in self.__bool_variable_names
             or expression.name in self.__const_bool_variable_values_map)
-        if not target_is_register and (boolean_identifier or not isinstance(
+        boolean_element = (isinstance(expression, ast.IndexExpression)
+                           and isinstance(expression.collection, ast.Identifier)
+                           and self.__array_element_types.get(
+                               self.__capitalize_variable_name(expression.collection.name)) == ValueType.BOOL)
+        if not target_is_register and (boolean_identifier or boolean_element or not isinstance(
                 expression, (ast.Identifier, ast.IndexExpression,
                              ast.IntegerLiteral, ast.BitstringLiteral))):
             previous_expression_kind = self.__expression_kind
@@ -4193,9 +4197,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__type_of(variable_name)  # Reject an active iterator shadowing the array.
         if variable_name not in self.__array_element_types:
             raise UnsupportedOpenQASMError('indexed non-array classical operand')
-        if self.__array_element_types[variable_name] == ValueType.BOOL:
-            # Boolean element access is enabled with its expression integration.
-            raise UnsupportedOpenQASMError('Boolean array element access')
         if not isinstance(selectors, list) or len(selectors) != 1 or not isinstance(selectors[0], ast.Expression):
             raise UnsupportedOpenQASMError('classical array slice or multidimensional selection')
         if isinstance(selectors[0], (ast.RangeDefinition, ast.DiscreteSet)):
@@ -4427,6 +4428,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     @staticmethod
     def __validate_array_assignment_operator(element_type: ValueType, operator: str) -> None:
+        if element_type == ValueType.BOOL and operator != '=':
+            raise UnsupportedOpenQASMError(f'Boolean array assignment operator {operator}')
         if element_type == ValueType.FLOAT and operator not in ('=', '+=', '-=', '*=', '/='):
             raise UnsupportedOpenQASMError(f'floating-point array assignment operator {operator}')
 
