@@ -10,7 +10,7 @@
 #include <boost/variant/apply_visitor.hpp>
 
 #include <ket/qubit_io.hpp>
-#include <ket/control_io.hpp>
+#include <bra/control_io.hpp>
 
 #include <bra/gate/gate.hpp>
 #include <bra/gate/adj_multi_controlled_phase_shift.hpp>
@@ -47,7 +47,7 @@ namespace bra
       std::ostringstream& repr_stream, int const parameter_width) const
     {
       for (auto&& control_qubit: control_qubits_)
-        repr_stream << std::right << std::setw(parameter_width) << control_qubit;
+        repr_stream << std::right << std::setw(parameter_width) << ::bra::control_operand(control_qubit);
       repr_stream
         << std::right
         << std::setw(parameter_width) << boost::apply_visitor(::bra::gate::gate_detail::output_visitor<int_type>{}, phase_exponent_);

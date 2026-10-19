@@ -220,6 +220,48 @@
 
 namespace bra
 {
+  namespace
+  {
+    auto read_control_operand(std::string const& operand) -> ::bra::control_qubit_type
+    {
+      auto const separator = operand.find('#');
+      auto const wire = operand.substr(0u, separator);
+      if (wire.empty() or not std::all_of(wire.begin(), wire.end(),
+          [](unsigned char const ch) { return ch >= '0' and ch <= '9'; }))
+        throw std::invalid_argument{"invalid control operand: " + operand};
+      auto value = ::bra::state_integer_type{1u};
+      if (separator != std::string::npos)
+      {
+        auto const suffix = operand.substr(separator + 1u);
+        if (suffix != "0" and suffix != "1")
+          throw std::invalid_argument{"invalid control operand: " + operand};
+        value = suffix == "0" ? 0u : 1u;
+      }
+      return ::bra::control_qubit_type{
+        ::bra::qubit_type{boost::lexical_cast< ::bra::bit_integer_type >(wire)}, value};
+    }
+
+    auto validate_operated_qubits(
+      ::bra::interpreter::columns_type const& columns, ::bra::bit_integer_type const count,
+      ::bra::bit_integer_type const num_qubits) -> void
+    {
+      auto wires = std::vector< ::bra::bit_integer_type >{};
+      wires.reserve(count);
+      auto iter = columns.begin();
+      for (auto index = ::bra::bit_integer_type{0u}; index < count; ++index)
+      {
+        auto const& operand = *++iter;
+        auto const wire = boost::lexical_cast< ::bra::bit_integer_type >(
+          operand.substr(0u, operand.find('#')));
+        if (wire >= num_qubits)
+          throw std::out_of_range{"qubit operand out of range: " + operand};
+        if (std::find(wires.begin(), wires.end(), wire) != wires.end())
+          throw std::invalid_argument{"duplicate qubit operand: " + operand};
+        wires.push_back(wire);
+      }
+    }
+  } // namespace
+
   unsupported_mnemonic_error::unsupported_mnemonic_error(std::string const& mnemonic)
     : std::runtime_error{(mnemonic + " is not supported").c_str()}
   { }
@@ -975,6 +1017,7 @@ namespace bra
     auto iter = begin(columns);
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
 
+    validate_operated_qubits(columns, ::bra::bit_integer_type{1u}, num_qubits_);
     largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{1u}, largest_num_operated_qubits_);
 
     return ket::make_qubit< ::bra::state_integer_type >(target);
@@ -987,11 +1030,12 @@ namespace bra
 
     using std::begin;
     auto iter = begin(columns);
-    auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
+    auto const target = read_control_operand(*++iter);
 
+    validate_operated_qubits(columns, ::bra::bit_integer_type{1u}, num_qubits_);
     largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{1u}, largest_num_operated_qubits_);
 
-    return ket::make_control(ket::make_qubit< ::bra::state_integer_type >(target));
+    return target;
   }
 
   std::tuple< ::bra::qubit_type, ::bra::qubit_type > interpreter::read_2targets(interpreter::columns_type const& columns)
@@ -1004,6 +1048,7 @@ namespace bra
     auto const target1 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
     auto const target2 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
 
+    validate_operated_qubits(columns, ::bra::bit_integer_type{2u}, num_qubits_);
     largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{2u}, largest_num_operated_qubits_);
 
     return std::make_tuple(ket::make_qubit< ::bra::state_integer_type >(target1), ket::make_qubit< ::bra::state_integer_type >(target2));
@@ -1016,12 +1061,13 @@ namespace bra
 
     using std::begin;
     auto iter = begin(columns);
-    auto const target1 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const target2 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
+    auto const target1 = read_control_operand(*++iter);
+    auto const target2 = read_control_operand(*++iter);
 
+    validate_operated_qubits(columns, ::bra::bit_integer_type{2u}, num_qubits_);
     largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{2u}, largest_num_operated_qubits_);
 
-    return std::make_tuple(ket::make_control(ket::make_qubit< ::bra::state_integer_type >(target1)), ket::make_control(ket::make_qubit< ::bra::state_integer_type >(target2)));
+    return std::make_tuple(target1, target2);
   }
 
   void interpreter::read_multi_targets(interpreter::columns_type const& columns, std::vector< ::bra::qubit_type >& targets)
@@ -1040,6 +1086,7 @@ namespace bra
       *targets_iter = ket::make_qubit< ::bra::state_integer_type >(target);
     }
 
+    validate_operated_qubits(columns, static_cast< ::bra::bit_integer_type >(targets.size()), num_qubits_);
     largest_num_operated_qubits_ = std::max(static_cast< ::bra::bit_integer_type >(targets.size()), largest_num_operated_qubits_);
   }
 
@@ -1055,10 +1102,11 @@ namespace bra
     auto const controls_last = end(controls);
     for (auto controls_iter = begin(controls); controls_iter != controls_last; ++controls_iter, ++iter)
     {
-      auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
-      *controls_iter = ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control));
+      auto const control = read_control_operand(*iter);
+      *controls_iter = control;
     }
 
+    validate_operated_qubits(columns, static_cast< ::bra::bit_integer_type >(controls.size()), num_qubits_);
     largest_num_operated_qubits_ = std::max(static_cast< ::bra::bit_integer_type >(controls.size()), largest_num_operated_qubits_);
   }
 
@@ -1078,6 +1126,7 @@ namespace bra
     else
       phase = phase_string;
 
+    validate_operated_qubits(columns, ::bra::bit_integer_type{1u}, num_qubits_);
     largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{1u}, largest_num_operated_qubits_);
 
     return ket::make_qubit< ::bra::state_integer_type >(target);
@@ -1092,16 +1141,17 @@ namespace bra
 
     using std::begin;
     auto iter = begin(columns);
-    auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
+    auto const target = read_control_operand(*++iter);
     auto const phase_string = *++iter;
     if (std::isdigit(static_cast<unsigned char>(phase_string.front())) or phase_string.front() == '+' or phase_string.front() == '-' or phase_string.front() == '.')
       phase = boost::lexical_cast< ::bra::real_type >(phase_string);
     else
       phase = phase_string;
 
+    validate_operated_qubits(columns, ::bra::bit_integer_type{1u}, num_qubits_);
     largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{1u}, largest_num_operated_qubits_);
 
-    return ket::make_control(ket::make_qubit< ::bra::state_integer_type >(target));
+    return target;
   }
 
   ::bra::qubit_type interpreter::read_target_2phases(
@@ -1126,6 +1176,7 @@ namespace bra
     else
       phase2 = phase2_string;
 
+    validate_operated_qubits(columns, ::bra::bit_integer_type{1u}, num_qubits_);
     largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{1u}, largest_num_operated_qubits_);
 
     return ket::make_qubit< ::bra::state_integer_type >(target);
@@ -1159,6 +1210,7 @@ namespace bra
     else
       phase3 = phase3_string;
 
+    validate_operated_qubits(columns, ::bra::bit_integer_type{1u}, num_qubits_);
     largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{1u}, largest_num_operated_qubits_);
 
     return ket::make_qubit< ::bra::state_integer_type >(target);
@@ -1180,6 +1232,7 @@ namespace bra
     else
       phase_exponent = phase_exponent_string;
 
+    validate_operated_qubits(columns, ::bra::bit_integer_type{1u}, num_qubits_);
     largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{1u}, largest_num_operated_qubits_);
 
     return ket::make_qubit< ::bra::state_integer_type >(target);
@@ -1194,16 +1247,17 @@ namespace bra
 
     using std::begin;
     auto iter = begin(columns);
-    auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
+    auto const target = read_control_operand(*++iter);
     auto const phase_exponent_string = *++iter;
     if (std::isdigit(static_cast<unsigned char>(phase_exponent_string.front())))
       phase_exponent = boost::lexical_cast< ::bra::int_type >(phase_exponent_string);
     else
       phase_exponent = phase_exponent_string;
 
+    validate_operated_qubits(columns, ::bra::bit_integer_type{1u}, num_qubits_);
     largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{1u}, largest_num_operated_qubits_);
 
-    return ket::make_control(ket::make_qubit< ::bra::state_integer_type >(target));
+    return target;
   }
 
   std::tuple< ::bra::qubit_type, ::bra::qubit_type >
@@ -1224,6 +1278,7 @@ namespace bra
     else
       phase = phase_string;
 
+    validate_operated_qubits(columns, ::bra::bit_integer_type{2u}, num_qubits_);
     largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{2u}, largest_num_operated_qubits_);
 
     return std::make_tuple(ket::make_qubit< ::bra::state_integer_type >(target1), ket::make_qubit< ::bra::state_integer_type >(target2));
@@ -1253,6 +1308,7 @@ namespace bra
     else
       phase = phase_string;
 
+    validate_operated_qubits(columns, static_cast< ::bra::bit_integer_type >(targets.size()), num_qubits_);
     largest_num_operated_qubits_ = std::max(static_cast< ::bra::bit_integer_type >(targets.size()), largest_num_operated_qubits_);
   }
 
@@ -1263,13 +1319,14 @@ namespace bra
 
     using std::begin;
     auto iter = begin(columns);
-    auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
+    auto const control = read_control_operand(*++iter);
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
 
+    validate_operated_qubits(columns, ::bra::bit_integer_type{2u}, num_qubits_);
     largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{2u}, largest_num_operated_qubits_);
 
     return std::make_tuple(
-      ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control)),
+      control,
       ket::make_qubit< ::bra::state_integer_type >(target));
   }
 
@@ -1283,7 +1340,7 @@ namespace bra
 
     using std::begin;
     auto iter = begin(columns);
-    auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
+    auto const control = read_control_operand(*++iter);
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
     auto const phase_exponent_string = *++iter;
     if (std::isdigit(static_cast<unsigned char>(phase_exponent_string.front())))
@@ -1291,10 +1348,11 @@ namespace bra
     else
       phase_exponent = phase_exponent_string;
 
+    validate_operated_qubits(columns, ::bra::bit_integer_type{2u}, num_qubits_);
     largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{2u}, largest_num_operated_qubits_);
 
     return std::make_tuple(
-      ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control)),
+      control,
       ket::make_qubit< ::bra::state_integer_type >(target));
   }
 
@@ -1308,19 +1366,20 @@ namespace bra
 
     using std::begin;
     auto iter = begin(columns);
-    auto const control1 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const control2 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
+    auto const control1 = read_control_operand(*++iter);
+    auto const control2 = read_control_operand(*++iter);
     auto const phase_exponent_string = *++iter;
     if (std::isdigit(static_cast<unsigned char>(phase_exponent_string.front())))
       phase_exponent = boost::lexical_cast< ::bra::int_type >(phase_exponent_string);
     else
       phase_exponent = phase_exponent_string;
 
+    validate_operated_qubits(columns, ::bra::bit_integer_type{2u}, num_qubits_);
     largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{2u}, largest_num_operated_qubits_);
 
     return std::make_tuple(
-      ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control1)),
-      ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control2)));
+      control1,
+      control2);
   }
 
   std::tuple< ::bra::control_qubit_type, ::bra::control_qubit_type, ::bra::qubit_type >
@@ -1331,15 +1390,16 @@ namespace bra
 
     using std::begin;
     auto iter = begin(columns);
-    auto const control1 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const control2 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
+    auto const control1 = read_control_operand(*++iter);
+    auto const control2 = read_control_operand(*++iter);
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
 
+    validate_operated_qubits(columns, ::bra::bit_integer_type{3u}, num_qubits_);
     largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{3u}, largest_num_operated_qubits_);
 
     return std::make_tuple(
-      ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control1)),
-      ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control2)),
+      control1,
+      control2,
       ket::make_qubit< ::bra::state_integer_type >(target));
   }
 
@@ -1358,8 +1418,8 @@ namespace bra
     auto const controls_last = end(controls);
     for (auto controls_iter = begin(controls); controls_iter != controls_last; ++controls_iter, ++iter)
     {
-      auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
-      *controls_iter = ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control));
+      auto const control = read_control_operand(*iter);
+      *controls_iter = control;
     }
 
     auto const phase_string = *iter;
@@ -1368,6 +1428,7 @@ namespace bra
     else
       phase = phase_string;
 
+    validate_operated_qubits(columns, static_cast< ::bra::bit_integer_type >(controls.size()), num_qubits_);
     largest_num_operated_qubits_ = std::max(static_cast< ::bra::bit_integer_type >(controls.size()), largest_num_operated_qubits_);
   }
 
@@ -1384,12 +1445,13 @@ namespace bra
     auto const controls_last = end(controls);
     for (auto controls_iter = begin(controls); controls_iter != controls_last; ++controls_iter, ++iter)
     {
-      auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
-      *controls_iter = ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control));
+      auto const control = read_control_operand(*iter);
+      *controls_iter = control;
     }
 
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
 
+    validate_operated_qubits(columns, static_cast< ::bra::bit_integer_type >(controls.size()) + ::bra::bit_integer_type{1u}, num_qubits_);
     largest_num_operated_qubits_ = std::max(static_cast< ::bra::bit_integer_type >(controls.size()) + ::bra::bit_integer_type{1u}, largest_num_operated_qubits_);
 
     return ket::make_qubit< ::bra::state_integer_type >(target);
@@ -1409,13 +1471,14 @@ namespace bra
     auto const controls_last = end(controls);
     for (auto controls_iter = begin(controls); controls_iter != controls_last; ++controls_iter, ++iter)
     {
-      auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
-      *controls_iter = ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control));
+      auto const control = read_control_operand(*iter);
+      *controls_iter = control;
     }
 
     auto const target1 = boost::lexical_cast< ::bra::bit_integer_type >(*iter++);
     auto const target2 = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
 
+    validate_operated_qubits(columns, static_cast< ::bra::bit_integer_type >(controls.size()) + ::bra::bit_integer_type{2u}, num_qubits_);
     largest_num_operated_qubits_ = std::max(static_cast< ::bra::bit_integer_type >(controls.size()) + ::bra::bit_integer_type{2u}, largest_num_operated_qubits_);
 
     return std::make_tuple(
@@ -1436,8 +1499,8 @@ namespace bra
     auto const controls_last = end(controls);
     for (auto controls_iter = begin(controls); controls_iter != controls_last; ++controls_iter, ++iter)
     {
-      auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
-      *controls_iter = ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control));
+      auto const control = read_control_operand(*iter);
+      *controls_iter = control;
     }
 
     auto const targets_last = end(targets);
@@ -1447,6 +1510,7 @@ namespace bra
       *targets_iter = ket::make_qubit< ::bra::state_integer_type >(target);
     }
 
+    validate_operated_qubits(columns, static_cast< ::bra::bit_integer_type >(controls.size()) + static_cast< ::bra::bit_integer_type >(targets.size()), num_qubits_);
     largest_num_operated_qubits_ = std::max(static_cast< ::bra::bit_integer_type >(controls.size()) + static_cast< ::bra::bit_integer_type >(targets.size()), largest_num_operated_qubits_);
   }
 
@@ -1460,7 +1524,7 @@ namespace bra
 
     using std::begin;
     auto iter = begin(columns);
-    auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
+    auto const control = read_control_operand(*++iter);
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
     auto const phase_string = *++iter;
     if (std::isdigit(static_cast<unsigned char>(phase_string.front())) or phase_string.front() == '+' or phase_string.front() == '-' or phase_string.front() == '.')
@@ -1468,10 +1532,11 @@ namespace bra
     else
       phase = phase_string;
 
+    validate_operated_qubits(columns, ::bra::bit_integer_type{2u}, num_qubits_);
     largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{2u}, largest_num_operated_qubits_);
 
     return std::make_tuple(
-      ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control)),
+      control,
       ket::make_qubit< ::bra::state_integer_type >(target));
   }
 
@@ -1485,19 +1550,20 @@ namespace bra
 
     using std::begin;
     auto iter = begin(columns);
-    auto const control1 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
-    auto const control2 = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
+    auto const control1 = read_control_operand(*++iter);
+    auto const control2 = read_control_operand(*++iter);
     auto const phase_string = *++iter;
     if (std::isdigit(static_cast<unsigned char>(phase_string.front())) or phase_string.front() == '+' or phase_string.front() == '-' or phase_string.front() == '.')
       phase = boost::lexical_cast< ::bra::real_type >(phase_string);
     else
       phase = phase_string;
 
+    validate_operated_qubits(columns, ::bra::bit_integer_type{2u}, num_qubits_);
     largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{2u}, largest_num_operated_qubits_);
 
     return std::make_tuple(
-      ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control1)),
-      ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control2)));
+      control1,
+      control2);
   }
 
   ::bra::qubit_type interpreter::read_multi_controls_target_phase(
@@ -1515,8 +1581,8 @@ namespace bra
     auto const controls_last = end(controls);
     for (auto controls_iter = begin(controls); controls_iter != controls_last; ++controls_iter, ++iter)
     {
-      auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
-      *controls_iter = ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control));
+      auto const control = read_control_operand(*iter);
+      *controls_iter = control;
     }
 
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*iter++);
@@ -1526,6 +1592,7 @@ namespace bra
     else
       phase = phase_string;
 
+    validate_operated_qubits(columns, static_cast< ::bra::bit_integer_type >(controls.size()) + ::bra::bit_integer_type{1u}, num_qubits_);
     largest_num_operated_qubits_ = std::max(static_cast< ::bra::bit_integer_type >(controls.size()) + ::bra::bit_integer_type{1u}, largest_num_operated_qubits_);
 
     return ket::make_qubit< ::bra::state_integer_type >(target);
@@ -1542,7 +1609,7 @@ namespace bra
 
     using std::begin;
     auto iter = begin(columns);
-    auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
+    auto const control = read_control_operand(*++iter);
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
     auto const phase1_string = *++iter;
     if (std::isdigit(static_cast<unsigned char>(phase1_string.front())) or phase1_string.front() == '+' or phase1_string.front() == '-' or phase1_string.front() == '.')
@@ -1555,10 +1622,11 @@ namespace bra
     else
       phase2 = phase2_string;
 
+    validate_operated_qubits(columns, ::bra::bit_integer_type{2u}, num_qubits_);
     largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{2u}, largest_num_operated_qubits_);
 
     return std::make_tuple(
-      ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control)),
+      control,
       ket::make_qubit< ::bra::state_integer_type >(target));
   }
 
@@ -1578,8 +1646,8 @@ namespace bra
     auto const controls_last = end(controls);
     for (auto controls_iter = begin(controls); controls_iter != controls_last; ++controls_iter, ++iter)
     {
-      auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
-      *controls_iter = ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control));
+      auto const control = read_control_operand(*iter);
+      *controls_iter = control;
     }
 
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*iter++);
@@ -1594,6 +1662,7 @@ namespace bra
     else
       phase2 = phase2_string;
 
+    validate_operated_qubits(columns, static_cast< ::bra::bit_integer_type >(controls.size()) + ::bra::bit_integer_type{1u}, num_qubits_);
     largest_num_operated_qubits_ = std::max(static_cast< ::bra::bit_integer_type >(controls.size()) + ::bra::bit_integer_type{1u}, largest_num_operated_qubits_);
 
     return ket::make_qubit< ::bra::state_integer_type >(target);
@@ -1611,7 +1680,7 @@ namespace bra
 
     using std::begin;
     auto iter = begin(columns);
-    auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
+    auto const control = read_control_operand(*++iter);
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*++iter);
     auto const phase1_string = *++iter;
     if (std::isdigit(static_cast<unsigned char>(phase1_string.front())) or phase1_string.front() == '+' or phase1_string.front() == '-' or phase1_string.front() == '.')
@@ -1629,10 +1698,11 @@ namespace bra
     else
       phase3 = phase3_string;
 
+    validate_operated_qubits(columns, ::bra::bit_integer_type{2u}, num_qubits_);
     largest_num_operated_qubits_ = std::max(::bra::bit_integer_type{2u}, largest_num_operated_qubits_);
 
     return std::make_tuple(
-      ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control)),
+      control,
       ket::make_qubit< ::bra::state_integer_type >(target));
   }
 
@@ -1653,8 +1723,8 @@ namespace bra
     auto const controls_last = end(controls);
     for (auto controls_iter = begin(controls); controls_iter != controls_last; ++controls_iter, ++iter)
     {
-      auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
-      *controls_iter = ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control));
+      auto const control = read_control_operand(*iter);
+      *controls_iter = control;
     }
 
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*iter++);
@@ -1674,6 +1744,7 @@ namespace bra
     else
       phase3 = phase3_string;
 
+    validate_operated_qubits(columns, static_cast< ::bra::bit_integer_type >(controls.size()) + ::bra::bit_integer_type{1u}, num_qubits_);
     largest_num_operated_qubits_ = std::max(static_cast< ::bra::bit_integer_type >(controls.size()) + ::bra::bit_integer_type{1u}, largest_num_operated_qubits_);
 
     return ket::make_qubit< ::bra::state_integer_type >(target);
@@ -1694,8 +1765,8 @@ namespace bra
     auto const controls_last = end(controls);
     for (auto controls_iter = begin(controls); controls_iter != controls_last; ++controls_iter, ++iter)
     {
-      auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
-      *controls_iter = ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control));
+      auto const control = read_control_operand(*iter);
+      *controls_iter = control;
     }
 
     auto const phase_exponent_string = *iter;
@@ -1704,6 +1775,7 @@ namespace bra
     else
       phase_exponent = phase_exponent_string;
 
+    validate_operated_qubits(columns, static_cast< ::bra::bit_integer_type >(controls.size()), num_qubits_);
     largest_num_operated_qubits_ = std::max(static_cast< ::bra::bit_integer_type >(controls.size()), largest_num_operated_qubits_);
   }
 
@@ -1722,8 +1794,8 @@ namespace bra
     auto const controls_last = end(controls);
     for (auto controls_iter = begin(controls); controls_iter != controls_last; ++controls_iter, ++iter)
     {
-      auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
-      *controls_iter = ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control));
+      auto const control = read_control_operand(*iter);
+      *controls_iter = control;
     }
 
     auto const target = boost::lexical_cast< ::bra::bit_integer_type >(*iter++);
@@ -1733,6 +1805,7 @@ namespace bra
     else
       phase_exponent = phase_exponent_string;
 
+    validate_operated_qubits(columns, static_cast< ::bra::bit_integer_type >(controls.size()) + ::bra::bit_integer_type{1u}, num_qubits_);
     largest_num_operated_qubits_ = std::max(static_cast< ::bra::bit_integer_type >(controls.size()) + ::bra::bit_integer_type{1u}, largest_num_operated_qubits_);
 
     return ket::make_qubit< ::bra::state_integer_type >(target);
@@ -1754,8 +1827,8 @@ namespace bra
     auto const controls_last = end(controls);
     for (auto controls_iter = begin(controls); controls_iter != controls_last; ++controls_iter, ++iter)
     {
-      auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
-      *controls_iter = ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control));
+      auto const control = read_control_operand(*iter);
+      *controls_iter = control;
     }
 
     auto const targets_last = end(targets);
@@ -1771,6 +1844,7 @@ namespace bra
     else
       phase = phase_string;
 
+    validate_operated_qubits(columns, static_cast< ::bra::bit_integer_type >(controls.size()) + static_cast< ::bra::bit_integer_type >(targets.size()), num_qubits_);
     largest_num_operated_qubits_ = std::max(static_cast< ::bra::bit_integer_type >(controls.size()) + static_cast< ::bra::bit_integer_type >(targets.size()), largest_num_operated_qubits_);
   }
 
@@ -1790,8 +1864,8 @@ namespace bra
     auto const controls_last = end(controls);
     for (auto controls_iter = begin(controls); controls_iter != controls_last; ++controls_iter, ++iter)
     {
-      auto const control = boost::lexical_cast< ::bra::bit_integer_type >(*iter);
-      *controls_iter = ket::make_control(ket::make_qubit< ::bra::state_integer_type >(control));
+      auto const control = read_control_operand(*iter);
+      *controls_iter = control;
     }
 
     auto const target1 = boost::lexical_cast< ::bra::bit_integer_type >(*iter++);
@@ -1802,6 +1876,7 @@ namespace bra
     else
       phase = phase_string;
 
+    validate_operated_qubits(columns, static_cast< ::bra::bit_integer_type >(controls.size()) + ::bra::bit_integer_type{2u}, num_qubits_);
     largest_num_operated_qubits_ = std::max(static_cast< ::bra::bit_integer_type >(controls.size()) + ::bra::bit_integer_type{2u}, largest_num_operated_qubits_);
 
     return std::make_tuple(
@@ -3461,7 +3536,7 @@ namespace bra
 
     if (noncontrol_mnemonic == "I")
       add_ci(columns, num_control_qubits);
-    if (noncontrol_mnemonic == "IC")
+    else if (noncontrol_mnemonic == "IC")
       add_cic(columns, num_control_qubits);
     else if (noncontrol_mnemonic.size() >= 2u and noncontrol_mnemonic.find_first_not_of('I') == std::string::npos)
       add_cis(columns, num_control_qubits, noncontrol_mnemonic);
@@ -4341,7 +4416,7 @@ namespace bra
   {
     using std::begin;
     using std::end;
-    auto const possible_digits_first = std::next(begin(noncontrol_mnemonic));
+    auto const possible_digits_first = std::next(begin(noncontrol_mnemonic), 2);
     auto const possible_digits_last = end(noncontrol_mnemonic);
     if (not std::all_of(
               possible_digits_first, possible_digits_last,
@@ -4378,7 +4453,7 @@ namespace bra
   {
     using std::begin;
     using std::end;
-    auto const possible_digits_first = std::next(begin(noncontrol_mnemonic));
+    auto const possible_digits_first = std::next(begin(noncontrol_mnemonic), 2);
     auto const possible_digits_last = std::prev(end(noncontrol_mnemonic));
     if (not std::all_of(
               possible_digits_first, possible_digits_last,
@@ -4483,7 +4558,7 @@ namespace bra
   {
     using std::begin;
     using std::end;
-    auto const possible_digits_first = std::next(begin(noncontrol_mnemonic));
+    auto const possible_digits_first = std::next(begin(noncontrol_mnemonic), 2);
     auto const possible_digits_last = end(noncontrol_mnemonic);
     if (not std::all_of(
               possible_digits_first, possible_digits_last,
@@ -4520,7 +4595,7 @@ namespace bra
   {
     using std::begin;
     using std::end;
-    auto const possible_digits_first = std::next(begin(noncontrol_mnemonic));
+    auto const possible_digits_first = std::next(begin(noncontrol_mnemonic), 2);
     auto const possible_digits_last = std::prev(end(noncontrol_mnemonic));
     if (not std::all_of(
               possible_digits_first, possible_digits_last,
@@ -4623,7 +4698,7 @@ namespace bra
   {
     using std::begin;
     using std::end;
-    auto const possible_digits_first = std::next(begin(noncontrol_mnemonic));
+    auto const possible_digits_first = std::next(begin(noncontrol_mnemonic), 2);
     auto const possible_digits_last = end(noncontrol_mnemonic);
     if (not std::all_of(
               possible_digits_first, possible_digits_last,
@@ -4668,7 +4743,7 @@ namespace bra
   {
     using std::begin;
     using std::end;
-    auto const possible_digits_first = std::next(begin(noncontrol_mnemonic));
+    auto const possible_digits_first = std::next(begin(noncontrol_mnemonic), 2);
     auto const possible_digits_last = std::prev(end(noncontrol_mnemonic));
     if (not std::all_of(
               possible_digits_first, possible_digits_last,
@@ -4871,7 +4946,7 @@ namespace bra
   {
     using std::begin;
     using std::end;
-    auto const possible_digits_first = std::next(begin(noncontrol_mnemonic));
+    auto const possible_digits_first = std::next(begin(noncontrol_mnemonic), 2);
     auto const possible_digits_last = end(noncontrol_mnemonic);
     if (not std::all_of(
               possible_digits_first, possible_digits_last,
@@ -4916,7 +4991,7 @@ namespace bra
   {
     using std::begin;
     using std::end;
-    auto const possible_digits_first = std::next(begin(noncontrol_mnemonic));
+    auto const possible_digits_first = std::next(begin(noncontrol_mnemonic), 2);
     auto const possible_digits_last = std::prev(end(noncontrol_mnemonic));
     if (not std::all_of(
               possible_digits_first, possible_digits_last,

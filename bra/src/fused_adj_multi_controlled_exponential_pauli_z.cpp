@@ -56,7 +56,7 @@ namespace bra
       enabled_control_qubits.reserve(num_control_qubits);
       for (auto index = decltype(num_control_qubits){0}; index < num_control_qubits; ++index)
         if (static_cast<bool>(is_control_qubit_enabled_vec_[index]))
-          enabled_control_qubits.push_back(static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubits_[index].qubit())]));
+          enabled_control_qubits.push_back(::bra::control_qubit_type{::bra::qubit_type{to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubits_[index].qubit())]}, ket::control_value(control_qubits_[index])});
       if (unit_qubit_mask_ != ::bra::state_integer_type{0u})
         ::ket::gate::fused::runtime::ranges::adj_phase_shift_coeff(
           first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
@@ -97,7 +97,7 @@ namespace bra
       enabled_control_qubits.reserve(num_control_qubits);
       for (auto index = decltype(num_control_qubits){0}; index < num_control_qubits; ++index)
         if (static_cast<bool>(is_control_qubit_enabled_vec_[index]))
-          enabled_control_qubits.push_back(static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubits_[index].qubit())]));
+          enabled_control_qubits.push_back(::bra::control_qubit_type{::bra::qubit_type{to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubits_[index].qubit())]}, ket::control_value(control_qubits_[index])});
       if (unit_qubit_mask_ != ::bra::state_integer_type{0u})
         ::ket::gate::fused::runtime::ranges::adj_phase_shift_coeff(
           parallel_policy, thread_index,
@@ -151,7 +151,7 @@ namespace bra
       enabled_control_qubits.reserve(num_control_qubits);
       for (auto index = decltype(num_control_qubits){0}; index < num_control_qubits; ++index)
         if (static_cast<bool>(is_control_qubit_enabled_vec_[index]))
-          enabled_control_qubits.push_back(static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubits_[index].qubit())]));
+          enabled_control_qubits.push_back(::bra::control_qubit_type{::bra::qubit_type{to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubits_[index].qubit())]}, ket::control_value(control_qubits_[index])});
       if (unit_qubit_mask_ != ::bra::state_integer_type{0u})
         ::ket::gate::fused::runtime::ranges::adj_phase_shift_coeff(
           first, fused_index_wo_qubits, qubit_masks, index_masks,
@@ -192,7 +192,7 @@ namespace bra
       enabled_control_qubits.reserve(num_control_qubits);
       for (auto index = decltype(num_control_qubits){0}; index < num_control_qubits; ++index)
         if (static_cast<bool>(is_control_qubit_enabled_vec_[index]))
-          enabled_control_qubits.push_back(static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubits_[index].qubit())]));
+          enabled_control_qubits.push_back(::bra::control_qubit_type{::bra::qubit_type{to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubits_[index].qubit())]}, ket::control_value(control_qubits_[index])});
       if (unit_qubit_mask_ != ::bra::state_integer_type{0u})
         ::ket::gate::fused::runtime::ranges::adj_phase_shift_coeff(
           parallel_policy, thread_index,
