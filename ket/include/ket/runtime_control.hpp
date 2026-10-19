@@ -36,9 +36,9 @@ namespace ket
         throw std::out_of_range{"Control value must be within the quantum digit base"};
     }
 
-    template <state_integer_type Value>
-    explicit constexpr runtime_control(::ket::control<Qubit, Value> const control_qubit) noexcept
-      : qubit_{control_qubit.qubit()}, value_{Value} { }
+    template <state_integer_type control_value>
+    explicit constexpr runtime_control(::ket::control<Qubit, control_value> const control_qubit) noexcept
+      : qubit_{control_qubit.qubit()}, value_{control_value} { }
 
     constexpr auto qubit() noexcept -> qubit_type& { return qubit_; }
     constexpr auto qubit() const noexcept -> qubit_type const& { return qubit_; }
@@ -220,8 +220,8 @@ namespace ket
   -> ::ket::runtime_control<Qubit>
   { return ::ket::runtime_control<Qubit>{qubit, value}; }
 
-  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> Value>
-  inline constexpr auto make_runtime_control(::ket::control<Qubit, Value> const control_qubit) noexcept
+  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> control_value>
+  inline constexpr auto make_runtime_control(::ket::control<Qubit, control_value> const control_qubit) noexcept
   -> ::ket::runtime_control<Qubit>
   { return ::ket::runtime_control<Qubit>{control_qubit}; }
 }

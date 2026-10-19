@@ -10,10 +10,10 @@
 
 namespace ket
 {
-  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> Value = ::ket::meta::base_v<Qubit> - 1u>
+  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> control_value = ::ket::meta::base_v<Qubit> - 1u>
   class control
   {
-    static_assert(Value < ::ket::meta::base_v<Qubit>, "Control value must be smaller than the quantum digit base");
+    static_assert(control_value < ::ket::meta::base_v<Qubit>, "Control value must be smaller than the quantum digit base");
     Qubit qubit_;
 
    public:
@@ -33,7 +33,7 @@ namespace ket
       : qubit_{bit}
     { }
 
-    static constexpr auto value() noexcept -> state_integer_type { return Value; }
+    static constexpr auto value() noexcept -> state_integer_type { return control_value; }
 
     constexpr auto qubit() -> qubit_type& { return qubit_; }
     constexpr auto qubit() const -> qubit_type const& { return qubit_; }
@@ -58,7 +58,7 @@ namespace ket
       qubit_ -= bit;
       return *this;
     }
-  }; // class control<Qubit, Value>
+  }; // class control<Qubit, control_value>
 
   namespace meta
   {
@@ -67,13 +67,13 @@ namespace ket
       : std::false_type
     { };
 
-    template <typename Qubit, ::ket::meta::state_integer_t<Qubit> Value>
-    struct is_control< ::ket::control<Qubit, Value> >
+    template <typename Qubit, ::ket::meta::state_integer_t<Qubit> control_value>
+    struct is_control< ::ket::control<Qubit, control_value> >
       : std::true_type
     { };
 
-    template <typename Qubit, ::ket::meta::state_integer_t<Qubit> Value>
-    struct base< ::ket::control<Qubit, Value> > : ::ket::meta::base<Qubit>
+    template <typename Qubit, ::ket::meta::state_integer_t<Qubit> control_value>
+    struct base< ::ket::control<Qubit, control_value> > : ::ket::meta::base<Qubit>
     { };
 
     template <typename T>
@@ -82,158 +82,158 @@ namespace ket
     { };
   } // namespace meta
 
-  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> Value>
+  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> control_value1, ::ket::meta::state_integer_t<Qubit> control_value2>
   inline constexpr auto operator==(
-    ::ket::control<Qubit, Value> const control_qubit1, ::ket::control<Qubit, Value> const control_qubit2) noexcept
+    ::ket::control<Qubit, control_value1> const control_qubit1, ::ket::control<Qubit, control_value2> const control_qubit2) noexcept
   -> bool
   { return control_qubit1.qubit() == control_qubit2.qubit(); }
 
-  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> Value>
-  inline constexpr auto operator==(::ket::control<Qubit, Value> const control_qubit, Qubit const qubit) noexcept
+  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> control_value>
+  inline constexpr auto operator==(::ket::control<Qubit, control_value> const control_qubit, Qubit const qubit) noexcept
   -> bool
   { return control_qubit.qubit() == qubit; }
 
-  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> Value>
-  inline constexpr auto operator==(Qubit const qubit, ::ket::control<Qubit, Value> const control_qubit) noexcept
+  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> control_value>
+  inline constexpr auto operator==(Qubit const qubit, ::ket::control<Qubit, control_value> const control_qubit) noexcept
   -> bool
   { return qubit == control_qubit.qubit(); }
 
-  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> Value>
+  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> control_value1, ::ket::meta::state_integer_t<Qubit> control_value2>
   inline constexpr auto operator!=(
-    ::ket::control<Qubit, Value> const control_qubit1, ::ket::control<Qubit, Value> const control_qubit2) noexcept
+    ::ket::control<Qubit, control_value1> const control_qubit1, ::ket::control<Qubit, control_value2> const control_qubit2) noexcept
   -> bool
   { return control_qubit1.qubit() != control_qubit2.qubit(); }
 
-  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> Value>
-  inline constexpr auto operator!=(::ket::control<Qubit, Value> const control_qubit, Qubit const qubit) noexcept
+  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> control_value>
+  inline constexpr auto operator!=(::ket::control<Qubit, control_value> const control_qubit, Qubit const qubit) noexcept
   -> bool
   { return control_qubit.qubit() != qubit; }
 
-  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> Value>
-  inline constexpr auto operator!=(Qubit const qubit, ::ket::control<Qubit, Value> const control_qubit) noexcept
+  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> control_value>
+  inline constexpr auto operator!=(Qubit const qubit, ::ket::control<Qubit, control_value> const control_qubit) noexcept
   -> bool
   { return qubit != control_qubit.qubit(); }
 
-  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> Value>
+  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> control_value1, ::ket::meta::state_integer_t<Qubit> control_value2>
   inline constexpr auto operator<(
-    ::ket::control<Qubit, Value> const control_qubit1, ::ket::control<Qubit, Value> const control_qubit2) noexcept
+    ::ket::control<Qubit, control_value1> const control_qubit1, ::ket::control<Qubit, control_value2> const control_qubit2) noexcept
   -> bool
   { return control_qubit1.qubit() < control_qubit2.qubit(); }
 
-  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> Value>
-  inline constexpr auto operator<(::ket::control<Qubit, Value> const control_qubit, Qubit const qubit) noexcept
+  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> control_value>
+  inline constexpr auto operator<(::ket::control<Qubit, control_value> const control_qubit, Qubit const qubit) noexcept
   -> bool
   { return control_qubit.qubit() < qubit; }
 
-  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> Value>
-  inline constexpr auto operator<(Qubit const qubit, ::ket::control<Qubit, Value> const control_qubit) noexcept
+  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> control_value>
+  inline constexpr auto operator<(Qubit const qubit, ::ket::control<Qubit, control_value> const control_qubit) noexcept
   -> bool
   { return qubit < control_qubit.qubit(); }
 
-  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> Value>
+  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> control_value1, ::ket::meta::state_integer_t<Qubit> control_value2>
   inline constexpr auto operator>(
-    ::ket::control<Qubit, Value> const control_qubit1, ::ket::control<Qubit, Value> const control_qubit2) noexcept
+    ::ket::control<Qubit, control_value1> const control_qubit1, ::ket::control<Qubit, control_value2> const control_qubit2) noexcept
   -> bool
   { return control_qubit1.qubit() > control_qubit2.qubit(); }
 
-  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> Value>
-  inline constexpr auto operator>(::ket::control<Qubit, Value> const control_qubit, Qubit const qubit) noexcept -> bool
+  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> control_value>
+  inline constexpr auto operator>(::ket::control<Qubit, control_value> const control_qubit, Qubit const qubit) noexcept -> bool
   { return control_qubit.qubit() > qubit; }
 
-  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> Value>
-  inline constexpr auto operator>(Qubit const qubit, ::ket::control<Qubit, Value> const control_qubit) noexcept -> bool
+  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> control_value>
+  inline constexpr auto operator>(Qubit const qubit, ::ket::control<Qubit, control_value> const control_qubit) noexcept -> bool
   { return qubit > control_qubit.qubit(); }
 
-  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> Value>
+  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> control_value1, ::ket::meta::state_integer_t<Qubit> control_value2>
   inline constexpr auto operator<=(
-    ::ket::control<Qubit, Value> const control_qubit1, ::ket::control<Qubit, Value> const control_qubit2) noexcept
+    ::ket::control<Qubit, control_value1> const control_qubit1, ::ket::control<Qubit, control_value2> const control_qubit2) noexcept
   -> bool
   { return control_qubit1.qubit() <= control_qubit2.qubit(); }
 
-  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> Value>
-  inline constexpr auto operator<=(::ket::control<Qubit, Value> const control_qubit, Qubit const qubit) noexcept -> bool
+  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> control_value>
+  inline constexpr auto operator<=(::ket::control<Qubit, control_value> const control_qubit, Qubit const qubit) noexcept -> bool
   { return control_qubit.qubit() <= qubit; }
 
-  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> Value>
-  inline constexpr auto operator<=(Qubit const qubit, ::ket::control<Qubit, Value> const control_qubit) noexcept -> bool
+  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> control_value>
+  inline constexpr auto operator<=(Qubit const qubit, ::ket::control<Qubit, control_value> const control_qubit) noexcept -> bool
   { return qubit <= control_qubit.qubit(); }
 
-  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> Value>
+  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> control_value1, ::ket::meta::state_integer_t<Qubit> control_value2>
   inline constexpr auto operator>=(
-    ::ket::control<Qubit, Value> const control_qubit1, ::ket::control<Qubit, Value> const control_qubit2) noexcept
+    ::ket::control<Qubit, control_value1> const control_qubit1, ::ket::control<Qubit, control_value2> const control_qubit2) noexcept
   -> bool
   { return control_qubit1.qubit() >= control_qubit2.qubit(); }
 
-  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> Value>
-  inline constexpr auto operator>=(::ket::control<Qubit, Value> const control_qubit, Qubit const qubit) noexcept -> bool
+  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> control_value>
+  inline constexpr auto operator>=(::ket::control<Qubit, control_value> const control_qubit, Qubit const qubit) noexcept -> bool
   { return control_qubit.qubit() >= qubit; }
 
-  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> Value>
-  inline constexpr auto operator>=(Qubit const qubit, ::ket::control<Qubit, Value> const control_qubit) noexcept -> bool
+  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> control_value>
+  inline constexpr auto operator>=(Qubit const qubit, ::ket::control<Qubit, control_value> const control_qubit) noexcept -> bool
   { return qubit >= control_qubit.qubit(); }
 
-  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> Value, typename Integer>
-  inline constexpr auto operator+(::ket::control<Qubit, Value> control_qubit, Integer const bit) noexcept -> ::ket::control<Qubit, Value>
+  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> control_value, typename Integer>
+  inline constexpr auto operator+(::ket::control<Qubit, control_value> control_qubit, Integer const bit) noexcept -> ::ket::control<Qubit, control_value>
   { return control_qubit += bit; }
 
-  template <typename Integer, typename Qubit, ::ket::meta::state_integer_t<Qubit> Value>
-  inline constexpr auto operator+(Integer const bit, ::ket::control<Qubit, Value> const control_qubit) noexcept -> ::ket::control<Qubit, Value>
+  template <typename Integer, typename Qubit, ::ket::meta::state_integer_t<Qubit> control_value>
+  inline constexpr auto operator+(Integer const bit, ::ket::control<Qubit, control_value> const control_qubit) noexcept -> ::ket::control<Qubit, control_value>
   { return control_qubit + bit; }
 
-  template <typename Qubit1, ::ket::meta::state_integer_t<Qubit1> Value1,
-            typename Qubit2, ::ket::meta::state_integer_t<Qubit2> Value2>
-  inline auto operator+(::ket::control<Qubit1, Value1> const control_qubit1, ::ket::control<Qubit2, Value2> const control_qubit2) -> ::ket::control<Qubit1, Value1>
+  template <typename Qubit1, ::ket::meta::state_integer_t<Qubit1> control_value1,
+            typename Qubit2, ::ket::meta::state_integer_t<Qubit2> control_value2>
+  inline auto operator+(::ket::control<Qubit1, control_value1> const control_qubit1, ::ket::control<Qubit2, control_value2> const control_qubit2) -> ::ket::control<Qubit1, control_value1>
     = delete;
 
-  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> Value, typename Integer>
-  inline constexpr auto operator-(::ket::control<Qubit, Value> control_qubit, Integer const bit) noexcept -> ::ket::control<Qubit, Value>
+  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> control_value, typename Integer>
+  inline constexpr auto operator-(::ket::control<Qubit, control_value> control_qubit, Integer const bit) noexcept -> ::ket::control<Qubit, control_value>
   { return control_qubit -= bit; }
 
-  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> Value>
+  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> control_value1, ::ket::meta::state_integer_t<Qubit> control_value2>
   inline constexpr auto operator-(
-    ::ket::control<Qubit, Value> const control_qubit1, ::ket::control<Qubit, Value> const control_qubit2) noexcept
+    ::ket::control<Qubit, control_value1> const control_qubit1, ::ket::control<Qubit, control_value2> const control_qubit2) noexcept
   -> decltype(control_qubit1.qubit() - control_qubit2.qubit())
   { return control_qubit1.qubit() - control_qubit2.qubit(); }
 
-  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> Value>
-  inline constexpr auto operator-(::ket::control<Qubit, Value> const control_qubit, Qubit const qubit) noexcept
+  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> control_value>
+  inline constexpr auto operator-(::ket::control<Qubit, control_value> const control_qubit, Qubit const qubit) noexcept
   -> decltype(control_qubit.qubit() - qubit)
   { return control_qubit.qubit() - qubit; }
 
-  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> Value>
-  inline constexpr auto operator-(Qubit const qubit, ::ket::control<Qubit, Value> const control_qubit) noexcept
+  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> control_value>
+  inline constexpr auto operator-(Qubit const qubit, ::ket::control<Qubit, control_value> const control_qubit) noexcept
   -> decltype(qubit - control_qubit.qubit())
   { return qubit - control_qubit.qubit(); }
 
-  template <typename UnsignedInteger, typename Qubit, ::ket::meta::state_integer_t<Qubit> Value>
+  template <typename UnsignedInteger, typename Qubit, ::ket::meta::state_integer_t<Qubit> control_value>
   inline constexpr std::enable_if_t<std::is_integral<UnsignedInteger>::value and std::is_unsigned<UnsignedInteger>::value, UnsignedInteger>
-  operator<<(UnsignedInteger const unsigned_integer, ::ket::control<Qubit, Value> const control_qubit) noexcept
+  operator<<(UnsignedInteger const unsigned_integer, ::ket::control<Qubit, control_value> const control_qubit) noexcept
   { return unsigned_integer << control_qubit.qubit(); }
 
-  template <typename UnsignedInteger, typename Qubit, ::ket::meta::state_integer_t<Qubit> Value>
+  template <typename UnsignedInteger, typename Qubit, ::ket::meta::state_integer_t<Qubit> control_value>
   inline constexpr std::enable_if_t<std::is_integral<UnsignedInteger>::value and std::is_unsigned<UnsignedInteger>::value, UnsignedInteger>
-  operator>>(UnsignedInteger const unsigned_integer, ::ket::control<Qubit, Value> const control_qubit) noexcept
+  operator>>(UnsignedInteger const unsigned_integer, ::ket::control<Qubit, control_value> const control_qubit) noexcept
   { return unsigned_integer >> control_qubit.qubit(); }
 
   template <typename Qubit>
   inline constexpr auto make_control(Qubit const qubit) -> ::ket::control<Qubit>
   { return ::ket::control<Qubit>{qubit}; }
 
-  template <std::uintmax_t Value, typename Qubit>
+  template <std::uintmax_t control_value, typename Qubit>
   inline constexpr auto make_control(Qubit const qubit)
-  -> ::ket::control<Qubit, static_cast< ::ket::meta::state_integer_t<Qubit> >(Value)>
+  -> ::ket::control<Qubit, static_cast< ::ket::meta::state_integer_t<Qubit> >(control_value)>
   {
-    static_assert(Value < ::ket::meta::base_v<Qubit>, "Control value must be smaller than the quantum digit base");
-    return ::ket::control<Qubit, static_cast< ::ket::meta::state_integer_t<Qubit> >(Value)>{qubit};
+    static_assert(control_value < ::ket::meta::base_v<Qubit>, "Control value must be smaller than the quantum digit base");
+    return ::ket::control<Qubit, static_cast< ::ket::meta::state_integer_t<Qubit> >(control_value)>{qubit};
   }
 
-  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> Value>
-  inline constexpr auto control_value(::ket::control<Qubit, Value> const&) noexcept
+  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> value>
+  inline constexpr auto control_value(::ket::control<Qubit, value> const&) noexcept
   -> ::ket::meta::state_integer_t<Qubit>
-  { return Value; }
+  { return value; }
 
-  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> Value>
-  inline constexpr auto remove_control(::ket::control<Qubit, Value> const control_qubit) -> Qubit
+  template <typename Qubit, ::ket::meta::state_integer_t<Qubit> control_value>
+  inline constexpr auto remove_control(::ket::control<Qubit, control_value> const control_qubit) -> Qubit
   { return control_qubit.qubit(); }
 
   namespace literals
