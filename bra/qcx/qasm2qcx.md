@@ -1267,17 +1267,18 @@ Modifier syntax is validated even inside empty enclosing loops, without
 evaluating unsupported modifier arguments. Successful and failed parameter
 lowering release gate-owned temporaries without releasing caller-owned storage.
 
-Combinations of `inv` with other modifier kinds remain unsupported. User-defined
+`inv` can be combined with `ctrl` and `negctrl` as described below. User-defined
 gates, gate durations, arguments to `inv`, and qubit operands on uncontrolled
 `gphase` remain unsupported. Modifier support does not relax gate arity, operand
 selection, broadcasting, or parameter-type restrictions.
 
 ### Control gate modifiers
 
-`ctrl @` and `ctrl(n) @` are supported on every currently supported built-in and
-standard-library gate, and on `gphase`. Added controls are prepended to the
-original quantum operands. The original gate is applied only when all added
-control qubits are one. For example:
+`ctrl @`, `ctrl(n) @`, `negctrl @`, and `negctrl(n) @` are supported on every
+currently supported built-in and standard-library gate, and on `gphase`.
+Added controls are prepended to the original quantum operands. A `ctrl` group
+requires all its wires to be one; a `negctrl` group requires all its wires to
+be zero. All groups must match for the original gate to act. For example:
 
 ```qasm
 OPENQASM 3.0;
@@ -1294,18 +1295,39 @@ The default count is one. An explicit count must be a positive compile-time
 supported explicit integer casts. Boolean or floating-point counts require an
 explicit integer cast; runtime variables, array reads, forward references, and
 loop-iterator dependencies are rejected. Even an expanded constant-loop iterator
-cannot supply a control count. Repeated `ctrl` modifiers add their counts:
-`ctrl @ ctrl(2) @ x` adds three controls. Individual and summed counts must not
-exceed QCX `INT_MAX`; a gate's existing controls also count toward the native
+cannot supply a control count. Repeated control modifiers add their counts:
+`ctrl @ ctrl(2) @ x` adds three positive controls, and
+`negctrl(2) @ ctrl @ x` adds two negative controls followed by one positive
+control. Individual and summed counts must not exceed QCX `INT_MAX`; a gate's
+existing controls also count toward the native
 mnemonic's limit. The resulting quantum operand count must match exactly.
 
 The converter uses native controlled and multi-controlled QCX gate families.
 For example, `ctrl @ h` emits `CH`, `ctrl(2) @ x` emits `C2X`, and
 `ctrl @ cx` also emits `C2X`, preserving added controls before the original
 control and target. Standard-library adjoint gates such as `sdg` use native
-forms such as `CS+`. Controlled identity uses `CI1` or `C<n>I1`, with one
-identity target, because the current QCX parser rejects the shorter `CI` form.
-Compact count notation avoids constructing a string with one `C` per control.
+forms such as `CS+`. Controlled identity uses `CI1` or `C<n>I1`, explicitly
+identifying its one identity target. Compact count notation avoids constructing
+a string with one `C` per control.
+
+Negative controls use QCX `wire#0` operands; positive controls keep their bare
+wire spelling. No X gates are inserted to emulate a negative control. Modifier
+order determines control operand order, even when `inv` is interleaved:
+
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+qubit[4] q;
+negctrl @ h q[3], q[1];                    // CH 3#0 1
+ctrl @ negctrl @ x q[3], q[0], q[2];       // C2X 3 0#0 2
+negctrl @ ctrl @ x q[3], q[0], q[2];       // C2X 3#0 0 2
+negctrl @ inv @ sx q[3], q[1];            // CSX+ 3#0 1
+```
+
+`inv` commutes with control modifiers: inversion preserves their required
+values and reverses/adjoints the complete underlying sequence. Repeated `inv`
+modifiers cancel in pairs without removing any controls. The `#` suffix belongs
+to QCX, not OpenQASM syntax; runtime qubit indices remain unsupported.
 
 Controlling an operation conditions its entire lowered sequence, including
 every phase correction. The existing forward phase conventions described above
@@ -1321,6 +1343,14 @@ remain unchanged:
 - `ctrl @ gphase(angle) c` emits `U1 c angle`; it needs no extra target.
   With `n` controls, the converter emits a `U1` conditioned on the other
   `n - 1` control operands, so only the all-one basis component acquires the phase.
+
+The same phase conditioning applies to negative and mixed controls. For
+example, `negctrl @ U(1, 2, 3) c, t` emits `U1 c#0 3.0` and
+`CU3 c#0 t 1 2 3`. Its inverse emits `CU3+ c#0 t 1 2 3` followed by
+`U1 c#0 -3.0`, negating the phase correction exactly once. For `cu`, added
+negative controls do not change the original positive control's polarity.
+`negctrl @ ctrl @ gphase(angle) a, b` emits `CU1 a#0 b angle`: only the
+component with `a=0` and `b=1` acquires the phase, with no additional target.
 
 ```qasm
 OPENQASM 3.0;
@@ -1341,17 +1371,18 @@ controlled operation; added controls cannot alias original controls or targets.
 Execution remains subject to backend resources, including MPI local-qubit limits.
 
 Runtime parameter expressions are evaluated once per invocation and remain
-reserved through every component and broadcast copy. A quantum control in
-`|0>` does **not** skip classical parameter evaluation or bounds/divisor checks.
-In contrast, an unexecuted classical branch or loop body skips its runtime
+reserved through every component and broadcast copy. An inactive quantum
+control (positive in `|0>`, or negative in `|1>`) does **not** skip classical
+parameter evaluation or bounds/divisor checks. In contrast, an unexecuted
+classical branch or loop body skips its runtime
 parameter computations. Controlled gates work in all supported loops, including
 `break` and `continue`. Modifier kinds, constant counts, and modified gate arity
 are validated even inside empty enclosing loops. Successful and failed lowering
 release gate-owned temporaries while preserving caller-owned storage.
 
-`negctrl`, `pow`, combinations of different modifier kinds (including `inv`
-with `ctrl`), user-defined gates, gate durations, and runtime-dependent control
-counts remain unsupported. No new QCX instruction is introduced by this feature.
+`pow`, user-defined gates, gate durations, and runtime-dependent control counts
+remain unsupported. No new QCX mnemonic is introduced: the native control
+families use the `#0` operand suffix to select zero-controls.
 
 ## Static indexing
 
@@ -2372,8 +2403,8 @@ The current prototype does not reliably support:
 - delays, iteration over arrays other than the supported
   `int`/`uint`/`float`/`bool`/`complex` subset,
   alias iteration, or `switch` statements;
-- user-defined gates, gate durations, `negctrl` or `pow` modifiers, combinations
-  of different modifier kinds, or runtime-dependent control counts;
+- user-defined gates, gate durations, `pow` modifiers, or runtime-dependent
+  control counts;
 - runtime qubit indices, dynamic register ranges or discrete sets, ranges with
   omitted bounds, or multidimensional indexing;
 - classical arrays beyond the one-dimensional `int`, `uint`, `float`, `bool`, and
@@ -2425,6 +2456,25 @@ checks, source preservation, and executed failures even with inactive quantum
 controls. Unit tests additionally cover modifier/count errors, empty loops,
 iterator shadowing, arity, duplicate operands, parameter snapshots, temporary
 hoisting, caller-storage preservation, and CLI errors without partial output.
+
+`bra/test/qasm2qcx_negative_control_numerical.py` checks negative and mixed
+control groups, modifier order, inversion, already-controlled gates, phase
+corrections and `gphase` against independent complex matrices. It covers every
+supported gate, basis states and complex superpositions, runtime parameters,
+broadcasting, loops, and executed/skipped parameter checks. The references
+retain global phase. Unit tests additionally check compact maximum-size counts,
+invalid modifiers/counts, arity, duplicate operands, loop-iterator shadowing,
+temporary lifetime, and CLI failures without partial output.
+
+`bra/test/negative_controls_numerical.py` tests the native QCX syntax and gate
+families directly, both normally and inside fusion blocks, including adjoints,
+mixed polarities, aliases, comments and invalid operands. The focused C++ tests
+`negative_controls.cpp` and `negative_controls_fused.cpp` check representation,
+fusion classification, remapped control values, phase-batching exclusions and
+threaded fused execution in both indexing modes. The MPI driver
+`bra/test/negative_controls_mpi_numerical.py` checks native and converted
+circuits with initial wire permutations, simple/unit policies, paged/nonpaged
+states, and normal/fused execution against independent references.
 
 `bra/test/integer_bitwise_numerical.py` checks bra's three integer bitwise
 assignment operators against Python results, including negative values and
@@ -2696,6 +2746,8 @@ python3 bra/test/integer_shift_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_if_else_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_inverse_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_control_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_negative_control_numerical.py --bra bra/bin/bra
+python3 bra/test/negative_controls_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_integer_remainder_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_integer_power_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_negation_numerical.py --bra bra/bin/bra
@@ -2723,3 +2775,20 @@ python3 bra/test/qasm2qcx_static_bit_selection_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_shift_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_uint_numerical.py --bra bra/bin/bra
 ```
+
+For an MPI-enabled `bra` executable, run the distributed control-value driver
+separately (MPI processes must be allowed to communicate on the host):
+
+```console
+python3 bra/test/negative_controls_mpi_numerical.py --bra bra/bin/bra --ranks 2 --mode simple --page-qubits 0
+python3 bra/test/negative_controls_mpi_numerical.py --bra bra/bin/bra --ranks 4 --mode unit --page-qubits 2 --cache-qubits 3 --threads 2
+```
+
+Repeat with ranks `2`/`4`, modes `simple`/`unit`, and page counts `0`/`2` to
+exercise all distributed state variants. Each invocation checks eight native
+and converted matrix-reference circuits, with identity/nontrivial initial wire
+permutations and normal/fused execution. The driver uses a temporary shared QCX
+file so every rank reads the same program. A cache-aware build and
+`--cache-qubits 3` exercise fused blocks larger than the cache. The unit-policy
+tests use one unit qubit and two processes per unit; ten total wires leave
+sufficient local/non-page capacity for the five-wire operations tested.

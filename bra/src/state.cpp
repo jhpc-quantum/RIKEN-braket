@@ -3761,9 +3761,9 @@ namespace bra
     else if (probability < px_py + depolarizing_pz_)
     {
       if (is_in_fusion_)
-        ::bra::set_found_qubits(found_qubits_, ket::make_control(qubit));
+        ::bra::set_found_qubits(found_qubits_, ket::make_runtime_control(qubit, 1u));
 
-      do_pauli_z(ket::make_control(qubit));
+      do_pauli_z(ket::make_runtime_control(qubit, 1u));
     }
   }
 } // namespace bra

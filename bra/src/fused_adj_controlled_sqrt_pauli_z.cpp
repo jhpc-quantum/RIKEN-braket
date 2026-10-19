@@ -37,9 +37,9 @@ namespace bra
       auto enabled_control_qubits = std::vector< ::bra::control_qubit_type >{};
       enabled_control_qubits.reserve(2u);
       if (is_control_qubit1_enabled_)
-        enabled_control_qubits.push_back(static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit1_.qubit())]));
+        enabled_control_qubits.push_back(::bra::control_qubit_type{::bra::qubit_type{to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit1_.qubit())]}, ket::control_value(control_qubit1_)});
       if (is_control_qubit2_enabled_)
-        enabled_control_qubits.push_back(static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit2_.qubit())]));
+        enabled_control_qubits.push_back(::bra::control_qubit_type{::bra::qubit_type{to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit2_.qubit())]}, ket::control_value(control_qubit2_)});
       ::ket::gate::fused::runtime::ranges::adj_sqrt_pauli_z(
         first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
         enabled_control_qubits);
@@ -59,9 +59,9 @@ namespace bra
       auto enabled_control_qubits = std::vector< ::bra::control_qubit_type >{};
       enabled_control_qubits.reserve(2u);
       if (is_control_qubit1_enabled_)
-        enabled_control_qubits.push_back(static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit1_.qubit())]));
+        enabled_control_qubits.push_back(::bra::control_qubit_type{::bra::qubit_type{to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit1_.qubit())]}, ket::control_value(control_qubit1_)});
       if (is_control_qubit2_enabled_)
-        enabled_control_qubits.push_back(static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit2_.qubit())]));
+        enabled_control_qubits.push_back(::bra::control_qubit_type{::bra::qubit_type{to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit2_.qubit())]}, ket::control_value(control_qubit2_)});
       ::ket::gate::fused::runtime::ranges::adj_sqrt_pauli_z(
         parallel_policy, thread_index,
         first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
@@ -80,9 +80,9 @@ namespace bra
       auto enabled_control_qubits = std::vector< ::bra::control_qubit_type >{};
       enabled_control_qubits.reserve(2u);
       if (is_control_qubit1_enabled_)
-        enabled_control_qubits.push_back(static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit1_.qubit())]));
+        enabled_control_qubits.push_back(::bra::control_qubit_type{::bra::qubit_type{to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit1_.qubit())]}, ket::control_value(control_qubit1_)});
       if (is_control_qubit2_enabled_)
-        enabled_control_qubits.push_back(static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit2_.qubit())]));
+        enabled_control_qubits.push_back(::bra::control_qubit_type{::bra::qubit_type{to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit2_.qubit())]}, ket::control_value(control_qubit2_)});
       ::ket::gate::fused::runtime::ranges::adj_sqrt_pauli_z(
         first, fused_index_wo_qubits, qubit_masks, index_masks,
         enabled_control_qubits);
@@ -102,9 +102,9 @@ namespace bra
       auto enabled_control_qubits = std::vector< ::bra::control_qubit_type >{};
       enabled_control_qubits.reserve(2u);
       if (is_control_qubit1_enabled_)
-        enabled_control_qubits.push_back(static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit1_.qubit())]));
+        enabled_control_qubits.push_back(::bra::control_qubit_type{::bra::qubit_type{to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit1_.qubit())]}, ket::control_value(control_qubit1_)});
       if (is_control_qubit2_enabled_)
-        enabled_control_qubits.push_back(static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit2_.qubit())]));
+        enabled_control_qubits.push_back(::bra::control_qubit_type{::bra::qubit_type{to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit2_.qubit())]}, ket::control_value(control_qubit2_)});
       ::ket::gate::fused::runtime::ranges::adj_sqrt_pauli_z(
         parallel_policy, thread_index,
         first, fused_index_wo_qubits, qubit_masks, index_masks,

@@ -8,7 +8,7 @@
 #include <boost/variant/apply_visitor.hpp>
 
 #include <ket/qubit_io.hpp>
-#include <ket/control_io.hpp>
+#include <bra/control_io.hpp>
 
 #include <bra/gate/gate.hpp>
 #include <bra/gate/adj_controlled_phase_shift_.hpp>
@@ -39,8 +39,8 @@ namespace bra
     {
       repr_stream
         << std::right
-        << std::setw(parameter_width) << control_qubit1_
-        << std::setw(parameter_width) << control_qubit2_
+        << std::setw(parameter_width) << ::bra::control_operand(control_qubit1_)
+        << std::setw(parameter_width) << ::bra::control_operand(control_qubit2_)
         << std::setw(parameter_width) << boost::apply_visitor(::bra::gate::gate_detail::output_visitor<int_type>{}, phase_exponent_);
       return repr_stream.str();
     }

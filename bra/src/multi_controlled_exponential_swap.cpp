@@ -9,7 +9,7 @@
 #include <boost/variant/apply_visitor.hpp>
 
 #include <ket/qubit_io.hpp>
-#include <ket/control_io.hpp>
+#include <bra/control_io.hpp>
 
 #include <bra/gate/gate.hpp>
 #include <bra/gate/multi_controlled_exponential_swap.hpp>
@@ -46,7 +46,7 @@ namespace bra
       std::ostringstream& repr_stream, int const parameter_width) const
     {
       for (auto&& control_qubit: control_qubits_)
-        repr_stream << std::right << std::setw(parameter_width) << control_qubit;
+        repr_stream << std::right << std::setw(parameter_width) << ::bra::control_operand(control_qubit);
       repr_stream
         << std::right
         << std::setw(parameter_width) << target_qubit1_

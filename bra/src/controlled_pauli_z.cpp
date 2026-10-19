@@ -4,7 +4,7 @@
 #include <sstream>
 
 #include <ket/qubit_io.hpp>
-#include <ket/control_io.hpp>
+#include <bra/control_io.hpp>
 
 #include <bra/gate/gate.hpp>
 #include <bra/gate/controlled_pauli_z.hpp>
@@ -32,8 +32,8 @@ namespace bra
     {
       repr_stream
         << std::right
-        << std::setw(parameter_width) << control_qubit1_
-        << std::setw(parameter_width) << control_qubit2_;
+        << std::setw(parameter_width) << ::bra::control_operand(control_qubit1_)
+        << std::setw(parameter_width) << ::bra::control_operand(control_qubit2_);
       return repr_stream.str();
     }
   } // namespace gate

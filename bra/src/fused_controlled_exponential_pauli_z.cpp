@@ -48,7 +48,7 @@ namespace bra
       using complex_type = typename std::iterator_traits<Iterator>::value_type;
       auto enabled_control_qubits = std::vector< ::bra::control_qubit_type >{};
       if (is_control_qubit_enabled_)
-        enabled_control_qubits.push_back(static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit_.qubit())]));
+        enabled_control_qubits.push_back(::bra::control_qubit_type{::bra::qubit_type{to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit_.qubit())]}, ket::control_value(control_qubit_)});
       if (unit_qubit_mask_ != ::bra::state_integer_type{0u})
         ::ket::gate::fused::runtime::ranges::phase_shift_coeff(
           first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
@@ -86,7 +86,7 @@ namespace bra
       using complex_type = typename std::iterator_traits<Iterator>::value_type;
       auto enabled_control_qubits = std::vector< ::bra::control_qubit_type >{};
       if (is_control_qubit_enabled_)
-        enabled_control_qubits.push_back(static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit_.qubit())]));
+        enabled_control_qubits.push_back(::bra::control_qubit_type{::bra::qubit_type{to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit_.qubit())]}, ket::control_value(control_qubit_)});
       if (unit_qubit_mask_ != ::bra::state_integer_type{0u})
         ::ket::gate::fused::runtime::ranges::phase_shift_coeff(
           parallel_policy, thread_index,
@@ -137,7 +137,7 @@ namespace bra
       using complex_type = typename std::iterator_traits<Iterator>::value_type;
       auto enabled_control_qubits = std::vector< ::bra::control_qubit_type >{};
       if (is_control_qubit_enabled_)
-        enabled_control_qubits.push_back(static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit_.qubit())]));
+        enabled_control_qubits.push_back(::bra::control_qubit_type{::bra::qubit_type{to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit_.qubit())]}, ket::control_value(control_qubit_)});
       if (unit_qubit_mask_ != ::bra::state_integer_type{0u})
         ::ket::gate::fused::runtime::ranges::phase_shift_coeff(
           first, fused_index_wo_qubits, qubit_masks, index_masks,
@@ -175,7 +175,7 @@ namespace bra
       using complex_type = typename std::iterator_traits<Iterator>::value_type;
       auto enabled_control_qubits = std::vector< ::bra::control_qubit_type >{};
       if (is_control_qubit_enabled_)
-        enabled_control_qubits.push_back(static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit_.qubit())]));
+        enabled_control_qubits.push_back(::bra::control_qubit_type{::bra::qubit_type{to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit_.qubit())]}, ket::control_value(control_qubit_)});
       if (unit_qubit_mask_ != ::bra::state_integer_type{0u})
         ::ket::gate::fused::runtime::ranges::phase_shift_coeff(
           parallel_policy, thread_index,

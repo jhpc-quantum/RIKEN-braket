@@ -167,6 +167,13 @@ namespace bra
     ::bra::control_qubit_type const control_qubit)
   -> void
   {
+    // A zero-control must remain inside the fused block. The outer fused
+    // control optimization selects only the all-one sector.
+    if (ket::control_value(control_qubit) == 0u)
+    {
+      set_found_qubits(found_qubits, control_qubit.qubit());
+      return;
+    }
     if (::bra::is_weaker(found_qubits[static_cast< ::bra::bit_integer_type >(control_qubit.qubit())], ::bra::found_qubit::control_qubit))
       found_qubits[static_cast< ::bra::bit_integer_type >(control_qubit.qubit())] = ::bra::found_qubit::control_qubit;
   }

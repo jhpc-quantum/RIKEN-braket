@@ -39,7 +39,7 @@ namespace bra
       if (is_control_qubit_enabled_)
       {
         std::array< ::bra::control_qubit_type, 1u > const control_qubits{{
-          static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit_.qubit())])}};
+          ::bra::control_qubit_type{::bra::qubit_type{to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit_.qubit())]}, ket::control_value(control_qubit_)}}};
         ::ket::gate::fused::runtime::ranges::adj_exponential_pauli_x(
           first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
           phase_,
@@ -68,7 +68,7 @@ namespace bra
       if (is_control_qubit_enabled_)
       {
         std::array< ::bra::control_qubit_type, 1u > const control_qubits{{
-          static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit_.qubit())])}};
+          ::bra::control_qubit_type{::bra::qubit_type{to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit_.qubit())]}, ket::control_value(control_qubit_)}}};
         ::ket::gate::fused::runtime::ranges::adj_exponential_pauli_x(
         parallel_policy, thread_index,
           first, fused_index_wo_qubits, unsorted_fused_qubits, sorted_fused_qubits_with_sentinel,
@@ -97,7 +97,7 @@ namespace bra
       if (is_control_qubit_enabled_)
       {
         std::array< ::bra::control_qubit_type, 1u > const control_qubits{{
-          static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit_.qubit())])}};
+          ::bra::control_qubit_type{::bra::qubit_type{to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit_.qubit())]}, ket::control_value(control_qubit_)}}};
         ::ket::gate::fused::runtime::ranges::adj_exponential_pauli_x(
           first, fused_index_wo_qubits, qubit_masks, index_masks,
           phase_,
@@ -126,7 +126,7 @@ namespace bra
       if (is_control_qubit_enabled_)
       {
         std::array< ::bra::control_qubit_type, 1u > const control_qubits{{
-          static_cast< ::bra::control_qubit_type >(to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit_.qubit())])}};
+          ::bra::control_qubit_type{::bra::qubit_type{to_qubit_index_in_fused_gates[static_cast< ::bra::bit_integer_type >(control_qubit_.qubit())]}, ket::control_value(control_qubit_)}}};
         ::ket::gate::fused::runtime::ranges::adj_exponential_pauli_x(
         parallel_policy, thread_index,
           first, fused_index_wo_qubits, qubit_masks, index_masks,

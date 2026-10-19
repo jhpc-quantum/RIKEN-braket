@@ -2076,7 +2076,7 @@ namespace bra
       switch (found_qubits_[index])
       {
        case ::bra::found_qubit::control_qubit:
-        fused_control_qubits.push_back(ket::make_control(ket::make_qubit< ::bra::state_integer_type >(index)));
+        fused_control_qubits.push_back(ket::make_runtime_control(ket::make_qubit< ::bra::state_integer_type >(index), 1u));
         break;
 
        case ::bra::found_qubit::ez_qubit:
@@ -2213,7 +2213,7 @@ namespace bra
     unit_ez_qubit_masks.reserve(unit_fused_ez_qubit_last - unit_fused_ez_qubit_first);
     for (auto iter = unit_fused_ez_qubit_first; iter != unit_fused_ez_qubit_last; ++iter)
     {
-      unit_ez_control_qubits.push_back(ket::make_control(*iter));
+      unit_ez_control_qubits.push_back(ket::make_runtime_control(*iter, 1u));
       unit_ez_qubit_masks.push_back(
         ::bra::state_integer_type{1u} << (permutation_[*iter] - least_permutated_unit_qubit));
     }
@@ -2242,7 +2242,7 @@ namespace bra
     unit_cez_qubit_masks.reserve(unit_fused_cez_qubit_last - unit_fused_cez_qubit_first);
     for (auto iter = unit_fused_cez_qubit_first; iter != unit_fused_cez_qubit_last; ++iter)
     {
-      unit_cez_control_qubits.push_back(ket::make_control(*iter));
+      unit_cez_control_qubits.push_back(ket::make_runtime_control(*iter, 1u));
       unit_cez_qubit_masks.push_back(
         ::bra::state_integer_type{1u} << (permutation_[*iter] - least_permutated_unit_qubit));
     }

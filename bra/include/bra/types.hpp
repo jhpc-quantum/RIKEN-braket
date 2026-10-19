@@ -8,6 +8,7 @@
 
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
+# include <ket/runtime_control.hpp>
 # ifndef BRA_NO_MPI
 #   include <ket/mpi/permutated.hpp>
 #   include <ket/mpi/state.hpp>
@@ -19,7 +20,7 @@ namespace bra
   using state_integer_type = std::uint64_t;
   using bit_integer_type = unsigned int;
   using qubit_type = ket::qubit<state_integer_type, bit_integer_type>;
-  using control_qubit_type = ket::control<qubit_type>;
+  using control_qubit_type = ket::runtime_control<qubit_type>;
 # ifndef BRA_NO_MPI
   using permutated_qubit_type = ket::mpi::permutated< ::bra::qubit_type >;
   using permutated_control_qubit_type = ket::mpi::permutated< ::bra::control_qubit_type >;

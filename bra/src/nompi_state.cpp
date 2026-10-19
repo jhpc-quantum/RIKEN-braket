@@ -1,4 +1,5 @@
 #ifdef BRA_NO_MPI
+# include <array>
 # include <cmath>
 # include <iostream>
 # include <sstream>
@@ -497,7 +498,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::pauli_z(parallel_policy_, data_, control_qubit);
+      ket::gate::runtime::ranges::pauli_z(
+        parallel_policy_, data_, std::array<control_qubit_type, 1u>{{control_qubit}});
   }
 
   void nompi_state::do_pauli_zz(qubit_type const qubit1, qubit_type const qubit2)
@@ -604,7 +606,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::sqrt_pauli_z(parallel_policy_, data_, control_qubit);
+      ket::gate::runtime::ranges::sqrt_pauli_z(
+        parallel_policy_, data_, std::array<control_qubit_type, 1u>{{control_qubit}});
   }
 
   void nompi_state::do_adj_sqrt_pauli_z(control_qubit_type const control_qubit)
@@ -617,7 +620,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::adj_sqrt_pauli_z(parallel_policy_, data_, control_qubit);
+      ket::gate::runtime::ranges::adj_sqrt_pauli_z(
+        parallel_policy_, data_, std::array<control_qubit_type, 1u>{{control_qubit}});
   }
 
   void nompi_state::do_sqrt_pauli_zz(qubit_type const qubit1, qubit_type const qubit2)
@@ -701,7 +705,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::phase_shift(parallel_policy_, data_, phase, control_qubit);
+      ket::gate::runtime::ranges::phase_shift(
+        parallel_policy_, data_, phase, std::array<control_qubit_type, 1u>{{control_qubit}});
   }
 
   void nompi_state::do_adj_u1(real_type const phase, control_qubit_type const control_qubit)
@@ -714,7 +719,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::adj_phase_shift(parallel_policy_, data_, phase, control_qubit);
+      ket::gate::runtime::ranges::adj_phase_shift(
+        parallel_policy_, data_, phase, std::array<control_qubit_type, 1u>{{control_qubit}});
   }
 
   void nompi_state::do_u2(
@@ -786,7 +792,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::phase_shift_coeff(parallel_policy_, data_, phase_coefficient, control_qubit);
+      ket::gate::runtime::ranges::phase_shift_coeff(
+        parallel_policy_, data_, phase_coefficient, std::array<control_qubit_type, 1u>{{control_qubit}});
   }
 
   void nompi_state::do_adj_phase_shift(
@@ -800,7 +807,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::adj_phase_shift_coeff(parallel_policy_, data_, phase_coefficient, control_qubit);
+      ket::gate::runtime::ranges::adj_phase_shift_coeff(
+        parallel_policy_, data_, phase_coefficient, std::array<control_qubit_type, 1u>{{control_qubit}});
   }
 
   void nompi_state::do_x_rotation_half_pi(qubit_type const qubit)
@@ -1163,7 +1171,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::toffoli(parallel_policy_, data_, target_qubit, control_qubit1, control_qubit2);
+      ket::gate::runtime::ranges::pauli_x(
+        parallel_policy_, data_, std::array<qubit_type, 1u>{{target_qubit}}, std::array<control_qubit_type, 2u>{{control_qubit1, control_qubit2}});
   }
 
   ::ket::gate::outcome nompi_state::do_projective_measurement(qubit_type const qubit)
@@ -1367,7 +1376,7 @@ namespace bra
       switch (found_qubits_[index])
       {
        case ::bra::found_qubit::control_qubit:
-        fused_control_qubits.push_back(ket::make_control(ket::make_qubit< ::bra::state_integer_type >(index)));
+        fused_control_qubits.push_back(ket::make_runtime_control(ket::make_qubit< ::bra::state_integer_type >(index), 1u));
         break;
 
        case ::bra::found_qubit::ez_qubit:
@@ -1463,7 +1472,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::hadamard(parallel_policy_, data_, target_qubit, control_qubit);
+      ket::gate::runtime::ranges::hadamard(
+        parallel_policy_, data_, target_qubit, std::array<control_qubit_type, 1u>{{control_qubit}});
   }
 
   void nompi_state::do_multi_controlled_hadamard(
@@ -1498,7 +1508,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::not_(parallel_policy_, data_, target_qubit, control_qubit);
+      ket::gate::runtime::ranges::not_(
+        parallel_policy_, data_, target_qubit, std::array<control_qubit_type, 1u>{{control_qubit}});
   }
 
   void nompi_state::do_multi_controlled_not(
@@ -1533,7 +1544,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::pauli_x(parallel_policy_, data_, target_qubit, control_qubit);
+      ket::gate::runtime::ranges::pauli_x(
+        parallel_policy_, data_, std::array<qubit_type, 1u>{{target_qubit}}, std::array<control_qubit_type, 1u>{{control_qubit}});
   }
 
   void nompi_state::do_multi_controlled_pauli_xn(
@@ -1570,7 +1582,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::pauli_y(parallel_policy_, data_, target_qubit, control_qubit);
+      ket::gate::runtime::ranges::pauli_y(
+        parallel_policy_, data_, std::array<qubit_type, 1u>{{target_qubit}}, std::array<control_qubit_type, 1u>{{control_qubit}});
   }
 
   void nompi_state::do_multi_controlled_pauli_yn(
@@ -1607,7 +1620,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::pauli_z(parallel_policy_, data_, control_qubit1, control_qubit2);
+      ket::gate::runtime::ranges::pauli_z(
+        parallel_policy_, data_, std::array<control_qubit_type, 2u>{{control_qubit1, control_qubit2}});
   }
 
   void nompi_state::do_multi_controlled_pauli_z(std::vector<control_qubit_type> const& control_qubits)
@@ -1678,7 +1692,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::sqrt_pauli_x(parallel_policy_, data_, target_qubit, control_qubit);
+      ket::gate::runtime::ranges::sqrt_pauli_x(
+        parallel_policy_, data_, target_qubit, std::array<control_qubit_type, 1u>{{control_qubit}});
   }
 
   void nompi_state::do_adj_controlled_sqrt_pauli_x(
@@ -1696,7 +1711,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::adj_sqrt_pauli_x(parallel_policy_, data_, target_qubit, control_qubit);
+      ket::gate::runtime::ranges::adj_sqrt_pauli_x(
+        parallel_policy_, data_, target_qubit, std::array<control_qubit_type, 1u>{{control_qubit}});
   }
 
   void nompi_state::do_multi_controlled_sqrt_pauli_x(
@@ -1748,7 +1764,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::sqrt_pauli_y(parallel_policy_, data_, target_qubit, control_qubit);
+      ket::gate::runtime::ranges::sqrt_pauli_y(
+        parallel_policy_, data_, target_qubit, std::array<control_qubit_type, 1u>{{control_qubit}});
   }
 
   void nompi_state::do_adj_controlled_sqrt_pauli_y(
@@ -1766,7 +1783,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::adj_sqrt_pauli_y(parallel_policy_, data_, target_qubit, control_qubit);
+      ket::gate::runtime::ranges::adj_sqrt_pauli_y(
+        parallel_policy_, data_, target_qubit, std::array<control_qubit_type, 1u>{{control_qubit}});
   }
 
   void nompi_state::do_multi_controlled_sqrt_pauli_y(
@@ -1818,7 +1836,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::sqrt_pauli_z(parallel_policy_, data_, control_qubit1, control_qubit2);
+      ket::gate::runtime::ranges::sqrt_pauli_z(
+        parallel_policy_, data_, std::array<control_qubit_type, 2u>{{control_qubit1, control_qubit2}});
   }
 
   void nompi_state::do_adj_controlled_sqrt_pauli_z(
@@ -1836,7 +1855,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::adj_sqrt_pauli_z(parallel_policy_, data_, control_qubit1, control_qubit2);
+      ket::gate::runtime::ranges::adj_sqrt_pauli_z(
+        parallel_policy_, data_, std::array<control_qubit_type, 2u>{{control_qubit1, control_qubit2}});
   }
 
   void nompi_state::do_multi_controlled_sqrt_pauli_z(std::vector<control_qubit_type> const& control_qubits)
@@ -1925,7 +1945,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::phase_shift_coeff(parallel_policy_, data_, phase_coefficient, control_qubit1, control_qubit2);
+      ket::gate::runtime::ranges::phase_shift_coeff(
+        parallel_policy_, data_, phase_coefficient, std::array<control_qubit_type, 2u>{{control_qubit1, control_qubit2}});
   }
 
   void nompi_state::do_adj_controlled_phase_shift(
@@ -1944,7 +1965,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::adj_phase_shift_coeff(parallel_policy_, data_, phase_coefficient, control_qubit1, control_qubit2);
+      ket::gate::runtime::ranges::adj_phase_shift_coeff(
+        parallel_policy_, data_, phase_coefficient, std::array<control_qubit_type, 2u>{{control_qubit1, control_qubit2}});
   }
 
   void nompi_state::do_multi_controlled_phase_shift(
@@ -2000,7 +2022,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::phase_shift(parallel_policy_, data_, phase, control_qubit1, control_qubit2);
+      ket::gate::runtime::ranges::phase_shift(
+        parallel_policy_, data_, phase, std::array<control_qubit_type, 2u>{{control_qubit1, control_qubit2}});
   }
 
   void nompi_state::do_adj_controlled_u1(
@@ -2018,7 +2041,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::adj_phase_shift(parallel_policy_, data_, phase, control_qubit1, control_qubit2);
+      ket::gate::runtime::ranges::adj_phase_shift(
+        parallel_policy_, data_, phase, std::array<control_qubit_type, 2u>{{control_qubit1, control_qubit2}});
   }
 
   void nompi_state::do_multi_controlled_u1(
@@ -2072,7 +2096,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::phase_shift2(parallel_policy_, data_, phase1, phase2, target_qubit, control_qubit);
+      ket::gate::runtime::ranges::phase_shift2(
+        parallel_policy_, data_, phase1, phase2, target_qubit, std::array<control_qubit_type, 1u>{{control_qubit}});
   }
 
   void nompi_state::do_adj_controlled_u2(
@@ -2090,7 +2115,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::adj_phase_shift2(parallel_policy_, data_, phase1, phase2, target_qubit, control_qubit);
+      ket::gate::runtime::ranges::adj_phase_shift2(
+        parallel_policy_, data_, phase1, phase2, target_qubit, std::array<control_qubit_type, 1u>{{control_qubit}});
   }
 
   void nompi_state::do_multi_controlled_u2(
@@ -2145,7 +2171,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::phase_shift3(parallel_policy_, data_, phase1, phase2, phase3, target_qubit, control_qubit);
+      ket::gate::runtime::ranges::phase_shift3(
+        parallel_policy_, data_, phase1, phase2, phase3, target_qubit, std::array<control_qubit_type, 1u>{{control_qubit}});
   }
 
   void nompi_state::do_adj_controlled_u3(
@@ -2164,7 +2191,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::adj_phase_shift3(parallel_policy_, data_, phase1, phase2, phase3, target_qubit, control_qubit);
+      ket::gate::runtime::ranges::adj_phase_shift3(
+        parallel_policy_, data_, phase1, phase2, phase3, target_qubit, std::array<control_qubit_type, 1u>{{control_qubit}});
   }
 
   void nompi_state::do_multi_controlled_u3(
@@ -2220,7 +2248,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::x_rotation_half_pi(parallel_policy_, data_, target_qubit, control_qubit);
+      ket::gate::runtime::ranges::x_rotation_half_pi(
+        parallel_policy_, data_, target_qubit, std::array<control_qubit_type, 1u>{{control_qubit}});
   }
 
   void nompi_state::do_adj_controlled_x_rotation_half_pi(
@@ -2238,7 +2267,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::adj_x_rotation_half_pi(parallel_policy_, data_, target_qubit, control_qubit);
+      ket::gate::runtime::ranges::adj_x_rotation_half_pi(
+        parallel_policy_, data_, target_qubit, std::array<control_qubit_type, 1u>{{control_qubit}});
   }
 
   void nompi_state::do_multi_controlled_x_rotation_half_pi(
@@ -2290,7 +2320,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::y_rotation_half_pi(parallel_policy_, data_, target_qubit, control_qubit);
+      ket::gate::runtime::ranges::y_rotation_half_pi(
+        parallel_policy_, data_, target_qubit, std::array<control_qubit_type, 1u>{{control_qubit}});
   }
 
   void nompi_state::do_adj_controlled_y_rotation_half_pi(
@@ -2308,7 +2339,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::adj_y_rotation_half_pi(parallel_policy_, data_, target_qubit, control_qubit);
+      ket::gate::runtime::ranges::adj_y_rotation_half_pi(
+        parallel_policy_, data_, target_qubit, std::array<control_qubit_type, 1u>{{control_qubit}});
   }
 
   void nompi_state::do_multi_controlled_y_rotation_half_pi(
@@ -2360,7 +2392,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::exponential_pauli_x(parallel_policy_, data_, phase, target_qubit, control_qubit);
+      ket::gate::runtime::ranges::exponential_pauli_x(
+        parallel_policy_, data_, phase, std::array<qubit_type, 1u>{{target_qubit}}, std::array<control_qubit_type, 1u>{{control_qubit}});
   }
 
   void nompi_state::do_adj_controlled_exponential_pauli_x(
@@ -2378,7 +2411,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::adj_exponential_pauli_x(parallel_policy_, data_, phase, target_qubit, control_qubit);
+      ket::gate::runtime::ranges::adj_exponential_pauli_x(
+        parallel_policy_, data_, phase, std::array<qubit_type, 1u>{{target_qubit}}, std::array<control_qubit_type, 1u>{{control_qubit}});
   }
 
   void nompi_state::do_multi_controlled_exponential_pauli_xn(
@@ -2436,7 +2470,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::exponential_pauli_y(parallel_policy_, data_, phase, target_qubit, control_qubit);
+      ket::gate::runtime::ranges::exponential_pauli_y(
+        parallel_policy_, data_, phase, std::array<qubit_type, 1u>{{target_qubit}}, std::array<control_qubit_type, 1u>{{control_qubit}});
   }
 
   void nompi_state::do_adj_controlled_exponential_pauli_y(
@@ -2454,7 +2489,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::adj_exponential_pauli_y(parallel_policy_, data_, phase, target_qubit, control_qubit);
+      ket::gate::runtime::ranges::adj_exponential_pauli_y(
+        parallel_policy_, data_, phase, std::array<qubit_type, 1u>{{target_qubit}}, std::array<control_qubit_type, 1u>{{control_qubit}});
   }
 
   void nompi_state::do_multi_controlled_exponential_pauli_yn(
@@ -2512,7 +2548,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::exponential_pauli_z(parallel_policy_, data_, phase, target_qubit, control_qubit);
+      ket::gate::runtime::ranges::exponential_pauli_z(
+        parallel_policy_, data_, phase, std::array<qubit_type, 1u>{{target_qubit}}, std::array<control_qubit_type, 1u>{{control_qubit}});
   }
 
   void nompi_state::do_adj_controlled_exponential_pauli_z(
@@ -2530,7 +2567,8 @@ namespace bra
 # endif // defined(KET_ENABLE_CACHE_AWARE_GATE_FUNCTION) && !defined(KET_USE_ON_CACHE_STATE_VECTOR)
     }
     else
-      ket::gate::ranges::adj_exponential_pauli_z(parallel_policy_, data_, phase, target_qubit, control_qubit);
+      ket::gate::runtime::ranges::adj_exponential_pauli_z(
+        parallel_policy_, data_, phase, std::array<qubit_type, 1u>{{target_qubit}}, std::array<control_qubit_type, 1u>{{control_qubit}});
   }
 
   void nompi_state::do_multi_controlled_exponential_pauli_z(

@@ -109,6 +109,37 @@ So-called "quantum assembler" code is required to use *bra*.
 
 The instruction set supported by *bra* is as follows.
 
+Gate control operands accept `wire`, `wire#1`, or `wire#0`. A bare wire and
+`wire#1` are positive controls (required value one); `wire#0` is a negative
+control (required value zero). Mixed controls can appear in any order. Existing
+mnemonics and operand order are unchanged: controls precede targets.
+
+```text
+CH 0#0 1              ! H on wire 1 when wire 0 is zero
+C2X 0#0 1#1 2         ! X on wire 2 when wire 0 is zero and wire 1 is one
+TOFFOLI 0#0 1 2       ! same mixed controls; bare wire 1 means positive
+U1 0#0 0.5            ! phase exp(i*0.5) on the zero component of wire 0
+```
+
+The suffix is allowed in every control slot, including the intrinsic phase
+controls of `Z`, `SZ`, `S`, `T`, `U1`, `R`, and their adjoint/controlled forms.
+For example, `CU1 0#0 1 0.5` requires wire 0 to be zero and wire 1 to be one.
+Multi-target parity operands such as those of `ZZ` are targets, not control
+slots. Target operands cannot carry a control-value suffix. Values other than
+`0` or `1`, malformed suffixes, out-of-range indices, and repeated wire indices
+(even with different control values) are rejected. Qubit operands currently
+require literal wire indices; classical-variable-selected wires remain future
+work. The `#` separator keeps control values distinct from classical array
+indexing with `:`. Only `!`, not `#`, starts a QCX comment.
+
+Negative controls use native value-aware ket operations, including inside
+`BEGIN FUSION` / `END FUSION`; they are not emulated by surrounding X gates.
+Gate representations preserve bare positive controls and print negative
+controls with `#0`. MPI execution remains subject to local/non-page qubit
+capacity: negative controls can require localization and more communication
+than positive-only rank/unit filtering. Fusion retains zero-controls inside the
+fused block rather than factoring them into its positive-only outer mask.
+
 * `I i`: identity gate operated on qubit $i$, $I (a_0 \ket{0} + a_1 \ket{1}) = a_0 \ket{0} + a_1 \ket{1}$. This gate performs MPI communication of a gate with one qubit, e.g., `X i`.
 * `IC c`: identity gate operated on control qubit $c$, $I_\mathrm{C} (a_0 \ket{0} + a_1 \ket{1}) = a_0 \ket{0} + a_1 \ket{1}$. This gate performs MPI communication of a gate with one control qubit, e.g., `Z c`.
 * `CCCIII c1 c2 c3 t1 t2 t3` or `C3I3 c1 c2 c3 t1 t2 t3`: the controlled identity gate. Qubits $c_1$, ..., $c_3$ are control qubits and $t_1$, ..., $t_3$ are target qubits. If you use two control qubits and two target qubits, use `CCII c1 c2 t1 t2` or `C2I2 c1 c2 t1 t2` instead. This gate performs MPI comunication of a gate with control and target qubits, e.g., `CCCZZZ c1 c2 c3 t1 t2 t3`.
