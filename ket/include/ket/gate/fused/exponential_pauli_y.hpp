@@ -17,6 +17,7 @@
 
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
+# include <ket/gate/utility/control_mask.hpp>
 # include <ket/gate/fused/gate.hpp>
 # include <ket/gate/utility/index_with_qubits.hpp>
 # include <ket/gate/meta/num_control_qubits.hpp>
@@ -187,14 +188,14 @@ namespace ket
       // CeY_{tc}(theta) = C[exp(i theta Y_t)]_c = C[I cos(theta) + i Y_t sin(theta)]_c, C1eY_{tc}(theta), CeY1_{tc}(theta), or C1eY1_{tc}(theta)
       // CeY_{1,2}(theta) (a_{00} |00> + a_{01} |01> + a_{10} |10> + a{11} |11>)
       //   = a_{00} |00> + a_{01} |01> + (cos(theta) a_{10} + sin(theta) a_{11}) |10> + (-sin(theta) a_{10} + cos(theta) a_{11}) |11>
-      template <typename RandomAccessIterator, typename StateInteger, typename BitInteger, std::size_t num_fused_qubits, typename Complex>
+      template <typename RandomAccessIterator, typename StateInteger, typename BitInteger, std::size_t num_fused_qubits, typename Complex, StateInteger control_value>
       inline auto exponential_pauli_y_coeff(
         RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
         std::array< ::ket::qubit<StateInteger, BitInteger>, num_fused_qubits > const& unsorted_fused_qubits,
         std::array< ::ket::qubit<StateInteger, BitInteger>, num_fused_qubits + 1u> const& sorted_fused_qubits_with_sentinel,
         Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit)
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger>, control_value> const control_qubit)
       -> void
       {
         static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
@@ -231,7 +232,7 @@ namespace ket
               bitor ((index_wo_qubits bitand middle_bits_mask) << 1u)
               bitor (index_wo_qubits bitand lower_bits_mask);
           // xxx0_txxx1_cxxx
-          auto const control_on_index = base_index bitor control_qubit_mask;
+          auto const control_on_index = base_index bitor (control_qubit_mask * control_value);
           // xxx1_txxx1_cxxx
           auto const target_control_on_index = control_on_index bitor target_qubit_mask;
           using std::begin;
@@ -267,6 +268,7 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const qubit1, Qubit2 const qubit2, Qubit3 const qubit3, Qubits const... qubits)
       -> void
       {
+        auto const negative_control_mask = ::ket::gate::utility::negative_control_mask<std::size_t>(qubit1, qubit2, qubit3, qubits...);
         static_assert(
           std::is_same<Complex, typename std::iterator_traits<RandomAccessIterator>::value_type>::value,
           "Complex should be the same to value_type of RandomAccessIterator");
@@ -296,7 +298,7 @@ namespace ket
 
         ::ket::gate::fused::gate<num_fused_qubits>(
           first,
-          [fused_index_wo_qubits, &unsorted_fused_qubits, &sorted_fused_qubits_with_sentinel, cos_theta, &sin_part](
+          [fused_index_wo_qubits, &unsorted_fused_qubits, &sorted_fused_qubits_with_sentinel, cos_theta, &sin_part, negative_control_mask](
             auto const first, StateInteger const operated_index_wo_qubits,
             std::array<qubit_type, num_operated_qubits> const& unsorted_operated_qubits,
             std::array<qubit_type, num_operated_qubits + 1u> const& sorted_operated_qubits_with_sentinel)
@@ -330,7 +332,7 @@ namespace ket
                   + ::ket::gate::utility::index_with_qubits(
                       fused_index_wo_qubits,
                       ::ket::gate::utility::index_with_qubits(
-                        operated_index_wo_qubits, base_index + i,
+                        operated_index_wo_qubits, ((base_index + i) xor negative_control_mask),
                         begin(unsorted_operated_qubits), end(unsorted_operated_qubits),
                         begin(sorted_operated_qubits_with_sentinel), end(sorted_operated_qubits_with_sentinel)),
                       begin(unsorted_fused_qubits), end(unsorted_fused_qubits),
@@ -340,7 +342,7 @@ namespace ket
                   + ::ket::gate::utility::index_with_qubits(
                       fused_index_wo_qubits,
                       ::ket::gate::utility::index_with_qubits(
-                        operated_index_wo_qubits, base_index + j,
+                        operated_index_wo_qubits, ((base_index + j) xor negative_control_mask),
                         begin(unsorted_operated_qubits), end(unsorted_operated_qubits),
                         begin(sorted_operated_qubits_with_sentinel), end(sorted_operated_qubits_with_sentinel)),
                       begin(unsorted_fused_qubits), end(unsorted_fused_qubits),
@@ -403,13 +405,14 @@ namespace ket
             QubitsRange3 const& target_qubits, ControlQubitsRange const& control_qubits)
           -> void
           {
+            auto const negative_control_mask = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(control_qubits, static_cast<std::size_t>(std::distance(std::begin(target_qubits), std::end(target_qubits))));
             using qubit_type = ::ket::utility::meta::range_value_t<QubitsRange3>;
-            using control_qubit_type = ::ket::control<qubit_type>;
+            using control_qubit_type = ::ket::utility::meta::range_value_t<ControlQubitsRange>;
             static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
             static_assert(std::is_same<StateInteger, ::ket::meta::state_integer_t<qubit_type>>::value, "The state_integer_type of the value_type of QubitsRange3 should be the same as StateInteger");
             using bit_integer_type = ::ket::meta::bit_integer_t<qubit_type>;
             static_assert(std::is_unsigned<bit_integer_type>::value, "The bit_integer_type of the value_type of QubitsRange should be unsigned");
-            static_assert(std::is_same< ::ket::utility::meta::range_value_t<ControlQubitsRange>, control_qubit_type >::value, "The value_type of ControlQubitsRange should be the same as the value_type of QubitsRange");
+            static_assert(::ket::gate::utility::is_control_of<control_qubit_type, qubit_type>::value, "Control range must contain controls of the target qubit type");
 
             using std::begin;
             using std::end;
@@ -447,7 +450,7 @@ namespace ket
             ::ket::gate::fused::runtime::ranges::gate(
               first, num_fused_qubits,
               [fused_index_wo_qubits, &unsorted_fused_qubits, &sorted_fused_qubits_with_sentinel,
-               num_target_qubits, num_control_qubits, num_target_indices, half_num_target_indices, cos_theta, &sin_part](
+               num_target_qubits, num_control_qubits, num_target_indices, half_num_target_indices, cos_theta, &sin_part, negative_control_mask](
                 auto const first, StateInteger const operated_index_wo_qubits,
                 auto const& unsorted_operated_qubits, auto const& sorted_operated_qubits_with_sentinel)
               {
@@ -480,7 +483,7 @@ namespace ket
                       + ::ket::gate::utility::ranges::index_with_qubits(
                           fused_index_wo_qubits,
                           ::ket::gate::utility::ranges::index_with_qubits(
-                            operated_index_wo_qubits, base_index + i,
+                            operated_index_wo_qubits, ((base_index + i) xor negative_control_mask),
                             unsorted_operated_qubits, sorted_operated_qubits_with_sentinel),
                           unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);
                   auto const iter2
@@ -488,7 +491,7 @@ namespace ket
                       + ::ket::gate::utility::ranges::index_with_qubits(
                           fused_index_wo_qubits,
                           ::ket::gate::utility::ranges::index_with_qubits(
-                            operated_index_wo_qubits, base_index + j,
+                            operated_index_wo_qubits, ((base_index + j) xor negative_control_mask),
                             unsorted_operated_qubits, sorted_operated_qubits_with_sentinel),
                           unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);
                   auto const value1 = *iter1;
@@ -514,13 +517,14 @@ namespace ket
             QubitsRange3 const& target_qubits, ControlQubitsRange const& control_qubits)
           -> void
           {
+            auto const negative_control_mask = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(control_qubits, static_cast<std::size_t>(std::distance(std::begin(target_qubits), std::end(target_qubits))));
             using qubit_type = ::ket::utility::meta::range_value_t<QubitsRange3>;
-            using control_qubit_type = ::ket::control<qubit_type>;
+            using control_qubit_type = ::ket::utility::meta::range_value_t<ControlQubitsRange>;
             static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
             static_assert(std::is_same<StateInteger, ::ket::meta::state_integer_t<qubit_type>>::value, "The state_integer_type of the value_type of QubitsRange3 should be the same as StateInteger");
             using bit_integer_type = ::ket::meta::bit_integer_t<qubit_type>;
             static_assert(std::is_unsigned<bit_integer_type>::value, "The bit_integer_type of the value_type of QubitsRange should be unsigned");
-            static_assert(std::is_same< ::ket::utility::meta::range_value_t<ControlQubitsRange>, control_qubit_type >::value, "The value_type of ControlQubitsRange should be the same as the value_type of QubitsRange");
+            static_assert(::ket::gate::utility::is_control_of<control_qubit_type, qubit_type>::value, "Control range must contain controls of the target qubit type");
 
             using std::begin;
             using std::end;
@@ -558,7 +562,7 @@ namespace ket
             ::ket::gate::fused::runtime::ranges::gate(
               parallel_policy, thread_index, first, num_fused_qubits,
               [fused_index_wo_qubits, &unsorted_fused_qubits, &sorted_fused_qubits_with_sentinel,
-               num_target_qubits, num_control_qubits, num_target_indices, half_num_target_indices, cos_theta, &sin_part](
+               num_target_qubits, num_control_qubits, num_target_indices, half_num_target_indices, cos_theta, &sin_part, negative_control_mask](
                 auto const first, StateInteger const operated_index_wo_qubits,
                 auto const& unsorted_operated_qubits, auto const& sorted_operated_qubits_with_sentinel)
               {
@@ -591,7 +595,7 @@ namespace ket
                       + ::ket::gate::utility::ranges::index_with_qubits(
                           fused_index_wo_qubits,
                           ::ket::gate::utility::ranges::index_with_qubits(
-                            operated_index_wo_qubits, base_index + i,
+                            operated_index_wo_qubits, ((base_index + i) xor negative_control_mask),
                             unsorted_operated_qubits, sorted_operated_qubits_with_sentinel),
                           unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);
                   auto const iter2
@@ -599,7 +603,7 @@ namespace ket
                       + ::ket::gate::utility::ranges::index_with_qubits(
                           fused_index_wo_qubits,
                           ::ket::gate::utility::ranges::index_with_qubits(
-                            operated_index_wo_qubits, base_index + j,
+                            operated_index_wo_qubits, ((base_index + j) xor negative_control_mask),
                             unsorted_operated_qubits, sorted_operated_qubits_with_sentinel),
                           unsorted_fused_qubits, sorted_fused_qubits_with_sentinel);
                   auto const value1 = *iter1;
@@ -1131,13 +1135,13 @@ namespace ket
       // CeY_{tc}(theta) = C[exp(i theta Y_t)]_c = C[I cos(theta) + i Y_t sin(theta)]_c, C1eY_{tc}(theta), CeY1_{tc}(theta), or C1eY1_{tc}(theta)
       // CeY_{1,2}(theta) (a_{00} |00> + a_{01} |01> + a_{10} |10> + a{11} |11>)
       //   = a_{00} |00> + a_{01} |01> + (cos(theta) a_{10} + sin(theta) a_{11}) |10> + (-sin(theta) a_{10} + cos(theta) a_{11}) |11>
-      template <typename RandomAccessIterator, typename StateInteger, std::size_t num_fused_qubits, typename Complex, typename BitInteger>
+      template <typename RandomAccessIterator, typename StateInteger, std::size_t num_fused_qubits, typename Complex, typename BitInteger, StateInteger control_value>
       inline auto exponential_pauli_y_coeff(
         RandomAccessIterator const first, StateInteger const fused_index_wo_qubits,
         std::array<StateInteger, num_fused_qubits> const& fused_qubit_masks, std::array<StateInteger, num_fused_qubits + 1u> const& fused_index_masks,
         Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit)
+        ::ket::control< ::ket::qubit<StateInteger, BitInteger>, control_value> const control_qubit)
       -> void
       {
         static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
@@ -1174,7 +1178,7 @@ namespace ket
               bitor ((index_wo_qubits bitand middle_bits_mask) << 1u)
               bitor (index_wo_qubits bitand lower_bits_mask);
           // xxx0_txxx1_cxxx
-          auto const control_on_index = base_index bitor control_qubit_mask;
+          auto const control_on_index = base_index bitor (control_qubit_mask * control_value);
           // xxx1_txxx1_cxxx
           auto const target_control_on_index = control_on_index bitor target_qubit_mask;
           using std::begin;
@@ -1207,6 +1211,7 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const qubit1, Qubit2 const qubit2, Qubit3 const qubit3, Qubits const... qubits)
       -> void
       {
+        auto const negative_control_mask = ::ket::gate::utility::negative_control_mask<std::size_t>(qubit1, qubit2, qubit3, qubits...);
         static_assert(
           std::is_same<Complex, typename std::iterator_traits<RandomAccessIterator>::value_type>::value,
           "Complex should be the same to value_type of RandomAccessIterator");
@@ -1235,7 +1240,7 @@ namespace ket
 
         ::ket::gate::fused::gate<num_fused_qubits>(
           first,
-          [fused_index_wo_qubits, &fused_qubit_masks, &fused_index_masks, cos_theta, &sin_part](
+          [fused_index_wo_qubits, &fused_qubit_masks, &fused_index_masks, cos_theta, &sin_part, negative_control_mask](
             auto const first, StateInteger const operated_index_wo_qubits,
             std::array<StateInteger, num_operated_qubits> const& operated_qubit_masks,
             std::array<StateInteger, num_operated_qubits + 1u> const& operated_index_masks)
@@ -1269,7 +1274,7 @@ namespace ket
                   + ::ket::gate::utility::index_with_qubits(
                       fused_index_wo_qubits,
                       ::ket::gate::utility::index_with_qubits(
-                        operated_index_wo_qubits, base_index + i,
+                        operated_index_wo_qubits, ((base_index + i) xor negative_control_mask),
                         begin(operated_qubit_masks), end(operated_qubit_masks), begin(operated_index_masks), end(operated_index_masks)),
                       begin(fused_qubit_masks), end(fused_qubit_masks), begin(fused_index_masks), end(fused_index_masks));
               auto const iter2
@@ -1277,7 +1282,7 @@ namespace ket
                   + ::ket::gate::utility::index_with_qubits(
                       fused_index_wo_qubits,
                       ::ket::gate::utility::index_with_qubits(
-                        operated_index_wo_qubits, base_index + j,
+                        operated_index_wo_qubits, ((base_index + j) xor negative_control_mask),
                         begin(operated_qubit_masks), end(operated_qubit_masks), begin(operated_index_masks), end(operated_index_masks)),
                       begin(fused_qubit_masks), end(fused_qubit_masks), begin(fused_index_masks), end(fused_index_masks));
               auto const value1 = *iter1;
@@ -1335,13 +1340,14 @@ namespace ket
             QubitsRange const& target_qubits, ControlQubitsRange const& control_qubits)
           -> void
           {
+            auto const negative_control_mask = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(control_qubits, static_cast<std::size_t>(std::distance(std::begin(target_qubits), std::end(target_qubits))));
             using qubit_type = ::ket::utility::meta::range_value_t<QubitsRange>;
-            using control_qubit_type = ::ket::control<qubit_type>;
+            using control_qubit_type = ::ket::utility::meta::range_value_t<ControlQubitsRange>;
             static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
             static_assert(std::is_same<StateInteger, ::ket::meta::state_integer_t<qubit_type>>::value, "The state_integer_type of the value_type of QubitsRange should be the same as StateInteger");
             using bit_integer_type = ::ket::meta::bit_integer_t<qubit_type>;
             static_assert(std::is_unsigned<bit_integer_type>::value, "The bit_integer_type of the value_type of QubitsRange should be unsigned");
-            static_assert(std::is_same< ::ket::utility::meta::range_value_t<ControlQubitsRange>, control_qubit_type >::value, "The value_type of ControlQubitsRange should be the same as the value_type of QubitsRange");
+            static_assert(::ket::gate::utility::is_control_of<control_qubit_type, qubit_type>::value, "Control range must contain controls of the target qubit type");
 
             using std::begin;
             using std::end;
@@ -1379,7 +1385,7 @@ namespace ket
             ::ket::gate::fused::runtime::ranges::gate(
               first, num_fused_qubits,
               [fused_index_wo_qubits, &fused_qubit_masks, &fused_index_masks,
-               num_target_qubits, num_control_qubits, num_target_indices, half_num_target_indices, cos_theta, &sin_part](
+               num_target_qubits, num_control_qubits, num_target_indices, half_num_target_indices, cos_theta, &sin_part, negative_control_mask](
                 auto const first, StateInteger const operated_index_wo_qubits,
                 auto const& operated_qubit_masks, auto const& operated_index_masks)
               {
@@ -1412,7 +1418,7 @@ namespace ket
                       + ::ket::gate::utility::ranges::index_with_qubits(
                           fused_index_wo_qubits,
                           ::ket::gate::utility::ranges::index_with_qubits(
-                            operated_index_wo_qubits, base_index + i,
+                            operated_index_wo_qubits, ((base_index + i) xor negative_control_mask),
                             operated_qubit_masks, operated_index_masks),
                           fused_qubit_masks, fused_index_masks);
                   auto const iter2
@@ -1420,7 +1426,7 @@ namespace ket
                       + ::ket::gate::utility::ranges::index_with_qubits(
                           fused_index_wo_qubits,
                           ::ket::gate::utility::ranges::index_with_qubits(
-                            operated_index_wo_qubits, base_index + j,
+                            operated_index_wo_qubits, ((base_index + j) xor negative_control_mask),
                             operated_qubit_masks, operated_index_masks),
                           fused_qubit_masks, fused_index_masks);
                   auto const value1 = *iter1;
@@ -1446,13 +1452,14 @@ namespace ket
             QubitsRange const& target_qubits, ControlQubitsRange const& control_qubits)
           -> void
           {
+            auto const negative_control_mask = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(control_qubits, static_cast<std::size_t>(std::distance(std::begin(target_qubits), std::end(target_qubits))));
             using qubit_type = ::ket::utility::meta::range_value_t<QubitsRange>;
-            using control_qubit_type = ::ket::control<qubit_type>;
+            using control_qubit_type = ::ket::utility::meta::range_value_t<ControlQubitsRange>;
             static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
             static_assert(std::is_same<StateInteger, ::ket::meta::state_integer_t<qubit_type>>::value, "The state_integer_type of the value_type of QubitsRange should be the same as StateInteger");
             using bit_integer_type = ::ket::meta::bit_integer_t<qubit_type>;
             static_assert(std::is_unsigned<bit_integer_type>::value, "The bit_integer_type of the value_type of QubitsRange should be unsigned");
-            static_assert(std::is_same< ::ket::utility::meta::range_value_t<ControlQubitsRange>, control_qubit_type >::value, "The value_type of ControlQubitsRange should be the same as the value_type of QubitsRange");
+            static_assert(::ket::gate::utility::is_control_of<control_qubit_type, qubit_type>::value, "Control range must contain controls of the target qubit type");
 
             using std::begin;
             using std::end;
@@ -1490,7 +1497,7 @@ namespace ket
             ::ket::gate::fused::runtime::ranges::gate(
               parallel_policy, thread_index, first, num_fused_qubits,
               [fused_index_wo_qubits, &fused_qubit_masks, &fused_index_masks,
-               num_target_qubits, num_control_qubits, num_target_indices, half_num_target_indices, cos_theta, &sin_part](
+               num_target_qubits, num_control_qubits, num_target_indices, half_num_target_indices, cos_theta, &sin_part, negative_control_mask](
                 auto const first, StateInteger const operated_index_wo_qubits,
                 auto const& operated_qubit_masks, auto const& operated_index_masks)
               {
@@ -1523,7 +1530,7 @@ namespace ket
                       + ::ket::gate::utility::ranges::index_with_qubits(
                           fused_index_wo_qubits,
                           ::ket::gate::utility::ranges::index_with_qubits(
-                            operated_index_wo_qubits, base_index + i,
+                            operated_index_wo_qubits, ((base_index + i) xor negative_control_mask),
                             operated_qubit_masks, operated_index_masks),
                           fused_qubit_masks, fused_index_masks);
                   auto const iter2
@@ -1531,7 +1538,7 @@ namespace ket
                       + ::ket::gate::utility::ranges::index_with_qubits(
                           fused_index_wo_qubits,
                           ::ket::gate::utility::ranges::index_with_qubits(
-                            operated_index_wo_qubits, base_index + j,
+                            operated_index_wo_qubits, ((base_index + j) xor negative_control_mask),
                             operated_qubit_masks, operated_index_masks),
                           fused_qubit_masks, fused_index_masks);
                   auto const value1 = *iter1;

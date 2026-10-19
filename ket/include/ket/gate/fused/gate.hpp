@@ -85,7 +85,9 @@ namespace ket
         using qubit_type = ::ket::qubit<state_integer_type, bit_integer_type>;
         constexpr auto num_operated_qubits = bit_integer_type{2u};
         static_assert(num_fused_qubits >= num_operated_qubits, "num_fused_qubits should be greater than or equal to the number of operated qubits");
-        auto const minmax_qubits = std::minmax(qubit1, qubit2);
+        auto const raw_qubit1 = ::ket::remove_control(qubit1);
+        auto const raw_qubit2 = ::ket::remove_control(qubit2);
+        auto const minmax_qubits = std::minmax(raw_qubit1, raw_qubit2);
         std::array<qubit_type, num_operated_qubits + bit_integer_type{1u}> sorted_operated_qubits_with_sentinel{
           ::ket::remove_control(minmax_qubits.first), ::ket::remove_control(minmax_qubits.second), sentinel_qubit};
 
