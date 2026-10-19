@@ -14,6 +14,7 @@
 
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
+# include <ket/mpi/gate/detail/dispatch_control_values.hpp>
 # ifdef KET_PRINT_LOG
 #   include <ket/qubit_io.hpp>
 #   include <ket/control_io.hpp>
@@ -169,30 +170,40 @@ namespace ket
       template <
         typename MpiPolicy, typename ParallelPolicy,
         typename RandomAccessRange, typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename... Qubits>
+        typename Allocator, typename BufferAllocator, typename ControlQubit, typename... Qubits>
       inline auto identity(
         MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value and ::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
-        constexpr auto num_control_qubits = BitInteger{sizeof...(Qubits)};
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(std::string(num_control_qubits, 'C').append("I"), control_qubit, control_qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const control_qubit, auto const... control_qubits) -> RandomAccessRange&
+          {
+            constexpr auto num_control_qubits = BitInteger{sizeof...(Qubits)};
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(std::string(num_control_qubits, 'C').append("I"), control_qubit, control_qubits...),
+              environment};
 
-        return ::ket::mpi::gate::identity_detail::identity(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, communicator, environment, control_qubit, control_qubits...);
+            return ::ket::mpi::gate::identity_detail::identity(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment, control_qubit, control_qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::identity_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, communicator, environment, boost::join(value_targets, value_controls | boost::adaptors::transformed([](auto const control) { return ::ket::remove_control(control); })));
+          }, control_qubit, control_qubits...);
       }
 
       template <
         typename MpiPolicy, typename ParallelPolicy,
         typename RandomAccessRange, typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename... Qubits>
+        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename ControlQubit, typename... Qubits>
       inline auto identity(
         MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
@@ -200,29 +211,39 @@ namespace ket
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value and ::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
-        constexpr auto num_control_qubits = BitInteger{sizeof...(Qubits)};
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(std::string(num_control_qubits, 'C').append("I"), control_qubit, control_qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const control_qubit, auto const... control_qubits) -> RandomAccessRange&
+          {
+            constexpr auto num_control_qubits = BitInteger{sizeof...(Qubits)};
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(std::string(num_control_qubits, 'C').append("I"), control_qubit, control_qubits...),
+              environment};
 
-        return ::ket::mpi::gate::identity_detail::identity(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, datatype, communicator, environment, control_qubit, control_qubits...);
+            return ::ket::mpi::gate::identity_detail::identity(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment, control_qubit, control_qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::identity_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, datatype, communicator, environment, boost::join(value_targets, value_controls | boost::adaptors::transformed([](auto const control) { return ::ket::remove_control(control); })));
+          }, control_qubit, control_qubits...);
       }
 
       template <
         typename RandomAccessRange, typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename... Qubits>
+        typename Allocator, typename BufferAllocator, typename ControlQubit, typename... Qubits>
       inline auto identity(
         RandomAccessRange& local_state,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value and ::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::identity(
           ::ket::mpi::utility::policy::make_simple_mpi(),
@@ -233,15 +254,15 @@ namespace ket
       template <
         typename RandomAccessRange,
         typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename... Qubits>
+        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename ControlQubit, typename... Qubits>
       inline auto identity(
         RandomAccessRange& local_state,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value and ::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::identity(
           ::ket::mpi::utility::policy::make_simple_mpi(),
@@ -252,15 +273,15 @@ namespace ket
       template <
         typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename... Qubits>
+        typename Allocator, typename BufferAllocator, typename ControlQubit, typename... Qubits>
       inline auto identity(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value and ::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::identity(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
@@ -270,7 +291,7 @@ namespace ket
       template <
         typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename... Qubits>
+        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename ControlQubit, typename... Qubits>
       inline auto identity(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
@@ -278,8 +299,8 @@ namespace ket
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value and ::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::identity(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
@@ -300,14 +321,24 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
       -> RandomAccessRange&
       {
-        constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(std::string(num_control_qubits, 'C').append(sizeof...(Qubits) + 1u - num_control_qubits, 'I'), qubit, qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const qubit, auto const... qubits) -> RandomAccessRange&
+          {
+            constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(std::string(num_control_qubits, 'C').append(sizeof...(Qubits) + 1u - num_control_qubits, 'I'), qubit, qubits...),
+              environment};
 
-        return ::ket::mpi::gate::identity_detail::identity(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, communicator, environment, qubit, qubits...);
+            return ::ket::mpi::gate::identity_detail::identity(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment, qubit, qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::identity_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, communicator, environment, boost::join(value_targets, value_controls | boost::adaptors::transformed([](auto const control) { return ::ket::remove_control(control); })));
+          }, qubit, qubits...);
       }
 
       template <
@@ -324,14 +355,24 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
       -> RandomAccessRange&
       {
-        constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(std::string(num_control_qubits, 'C').append(sizeof...(Qubits) + 1u - num_control_qubits, 'I'), qubit, qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const qubit, auto const... qubits) -> RandomAccessRange&
+          {
+            constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(std::string(num_control_qubits, 'C').append(sizeof...(Qubits) + 1u - num_control_qubits, 'I'), qubit, qubits...),
+              environment};
 
-        return ::ket::mpi::gate::identity_detail::identity(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, datatype, communicator, environment, qubit, qubits...);
+            return ::ket::mpi::gate::identity_detail::identity(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment, qubit, qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::identity_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, datatype, communicator, environment, boost::join(value_targets, value_controls | boost::adaptors::transformed([](auto const control) { return ::ket::remove_control(control); })));
+          }, qubit, qubits...);
       }
 
       template <
@@ -490,30 +531,40 @@ namespace ket
       template <
         typename MpiPolicy, typename ParallelPolicy,
         typename RandomAccessRange, typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename... Qubits>
+        typename Allocator, typename BufferAllocator, typename ControlQubit, typename... Qubits>
       inline auto adj_identity(
         MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value and ::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
-        constexpr auto num_control_qubits = BitInteger{sizeof...(Qubits)};
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(std::string{"Adj("}.append(num_control_qubits, 'C').append("I)"), control_qubit, control_qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const control_qubit, auto const... control_qubits) -> RandomAccessRange&
+          {
+            constexpr auto num_control_qubits = BitInteger{sizeof...(Qubits)};
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(std::string{"Adj("}.append(num_control_qubits, 'C').append("I)"), control_qubit, control_qubits...),
+              environment};
 
-        return ::ket::mpi::gate::identity_detail::adj_identity(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, communicator, environment, control_qubit, control_qubits...);
+            return ::ket::mpi::gate::identity_detail::adj_identity(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment, control_qubit, control_qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::adj_identity_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, communicator, environment, boost::join(value_targets, value_controls | boost::adaptors::transformed([](auto const control) { return ::ket::remove_control(control); })));
+          }, control_qubit, control_qubits...);
       }
 
       template <
         typename MpiPolicy, typename ParallelPolicy,
         typename RandomAccessRange, typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename... Qubits>
+        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename ControlQubit, typename... Qubits>
       inline auto adj_identity(
         MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
@@ -521,30 +572,40 @@ namespace ket
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value and ::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
-        constexpr auto num_control_qubits = BitInteger{sizeof...(Qubits)};
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(std::string{"Adj("}.append(num_control_qubits, 'C').append("I)"), control_qubit, control_qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const control_qubit, auto const... control_qubits) -> RandomAccessRange&
+          {
+            constexpr auto num_control_qubits = BitInteger{sizeof...(Qubits)};
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(std::string{"Adj("}.append(num_control_qubits, 'C').append("I)"), control_qubit, control_qubits...),
+              environment};
 
-        return ::ket::mpi::gate::identity_detail::adj_identity(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, datatype, communicator, environment, control_qubit, control_qubits...);
+            return ::ket::mpi::gate::identity_detail::adj_identity(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment, control_qubit, control_qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::adj_identity_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, datatype, communicator, environment, boost::join(value_targets, value_controls | boost::adaptors::transformed([](auto const control) { return ::ket::remove_control(control); })));
+          }, control_qubit, control_qubits...);
       }
 
       template <
         typename RandomAccessRange,
         typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename... Qubits>
+        typename Allocator, typename BufferAllocator, typename ControlQubit, typename... Qubits>
       inline auto adj_identity(
         RandomAccessRange& local_state,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value and ::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::adj_identity(
           ::ket::mpi::utility::policy::make_simple_mpi(),
@@ -555,15 +616,15 @@ namespace ket
       template <
         typename RandomAccessRange,
         typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename... Qubits>
+        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename ControlQubit, typename... Qubits>
       inline auto adj_identity(
         RandomAccessRange& local_state,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value and ::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::adj_identity(
           ::ket::mpi::utility::policy::make_simple_mpi(),
@@ -574,15 +635,15 @@ namespace ket
       template <
         typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename... Qubits>
+        typename Allocator, typename BufferAllocator, typename ControlQubit, typename... Qubits>
       inline auto adj_identity(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value and ::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::adj_identity(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
@@ -592,7 +653,7 @@ namespace ket
       template <
         typename ParallelPolicy, typename RandomAccessRange,
         typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename... Qubits>
+        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename ControlQubit, typename... Qubits>
       inline auto adj_identity(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
@@ -600,8 +661,8 @@ namespace ket
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value and ::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::adj_identity(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
@@ -622,14 +683,24 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
       -> RandomAccessRange&
       {
-        constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(std::string{"Adj("}.append(num_control_qubits, 'C').append(sizeof...(Qubits) + 1u - num_control_qubits, 'I').append(")"), qubit, qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const qubit, auto const... qubits) -> RandomAccessRange&
+          {
+            constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(std::string{"Adj("}.append(num_control_qubits, 'C').append(sizeof...(Qubits) + 1u - num_control_qubits, 'I').append(")"), qubit, qubits...),
+              environment};
 
-        return ::ket::mpi::gate::identity_detail::adj_identity(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, communicator, environment, qubit, qubits...);
+            return ::ket::mpi::gate::identity_detail::adj_identity(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment, qubit, qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::adj_identity_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, communicator, environment, boost::join(value_targets, value_controls | boost::adaptors::transformed([](auto const control) { return ::ket::remove_control(control); })));
+          }, qubit, qubits...);
       }
 
       template <
@@ -646,14 +717,24 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
       -> RandomAccessRange&
       {
-        constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(std::string{"Adj("}.append(num_control_qubits, 'C').append(sizeof...(Qubits) + 1u - num_control_qubits, 'I').append(")"), qubit, qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const qubit, auto const... qubits) -> RandomAccessRange&
+          {
+            constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(std::string{"Adj("}.append(num_control_qubits, 'C').append(sizeof...(Qubits) + 1u - num_control_qubits, 'I').append(")"), qubit, qubits...),
+              environment};
 
-        return ::ket::mpi::gate::identity_detail::adj_identity(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, datatype, communicator, environment, qubit, qubits...);
+            return ::ket::mpi::gate::identity_detail::adj_identity(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment, qubit, qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::adj_identity_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, datatype, communicator, environment, boost::join(value_targets, value_controls | boost::adaptors::transformed([](auto const control) { return ::ket::remove_control(control); })));
+          }, qubit, qubits...);
       }
 
       template <
@@ -1096,6 +1177,25 @@ namespace ket
             local_state, permutation, buffer, std::forward<Args>(args)...);
         }
       } // namespace runtime
+      namespace detail
+      {
+        template <typename LocalState>
+        struct value_control_dispatch<identity_tag, LocalState>
+        {
+          template <typename... Args>
+          static auto call(Args&&... args) -> LocalState&
+          { return ::ket::mpi::gate::runtime::ranges::identity(std::forward<Args>(args)...); }
+        };
+
+        template <typename LocalState>
+        struct value_control_dispatch<adj_identity_tag, LocalState>
+        {
+          template <typename... Args>
+          static auto call(Args&&... args) -> LocalState&
+          { return ::ket::mpi::gate::runtime::ranges::adj_identity(std::forward<Args>(args)...); }
+        };
+
+      } // namespace detail
     } // namespace gate
   } // namespace mpi
 } // namespace ket

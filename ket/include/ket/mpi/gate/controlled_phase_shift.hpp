@@ -11,6 +11,7 @@
 
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
+# include <ket/mpi/gate/detail/dispatch_control_values.hpp>
 # ifdef KET_PRINT_LOG
 #   include <ket/qubit_io.hpp>
 #   include <ket/control_io.hpp>
@@ -52,20 +53,30 @@ namespace ket
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment,
         Complex const& phase_coefficient,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(
-            ::ket::mpi::utility::generate_logger_string(
-              std::string(std::max(sizeof...(Qubits), std::size_t{2u}) - std::size_t{1u}, 'C').append("phase(coeff) "), phase_coefficient),
-            control_qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const... control_qubits) -> RandomAccessRange&
+          {
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(
+                  std::string(std::max(sizeof...(Qubits), std::size_t{2u}) - std::size_t{1u}, 'C').append("phase(coeff) "), phase_coefficient),
+                control_qubits...),
+              environment};
 
-        return ::ket::mpi::gate::phase_shift_detail::phase_shift_coeff(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, communicator, environment,
-          phase_coefficient, control_qubits...);
+            return ::ket::mpi::gate::phase_shift_detail::phase_shift_coeff(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment,
+              phase_coefficient, control_qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::phase_shift_coeff_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, communicator, environment, phase_coefficient, value_controls);
+          }, control_qubits...);
       }
 
       template <
@@ -80,20 +91,30 @@ namespace ket
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment,
         Complex const& phase_coefficient,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(
-            ::ket::mpi::utility::generate_logger_string(
-              std::string(std::max(sizeof...(Qubits), std::size_t{2u}) - std::size_t{1u}, 'C').append("phase(coeff) "), phase_coefficient),
-            control_qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const... control_qubits) -> RandomAccessRange&
+          {
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(
+                  std::string(std::max(sizeof...(Qubits), std::size_t{2u}) - std::size_t{1u}, 'C').append("phase(coeff) "), phase_coefficient),
+                control_qubits...),
+              environment};
 
-        return ::ket::mpi::gate::phase_shift_detail::phase_shift_coeff(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, datatype, communicator, environment,
-          phase_coefficient, control_qubits...);
+            return ::ket::mpi::gate::phase_shift_detail::phase_shift_coeff(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment,
+              phase_coefficient, control_qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::phase_shift_coeff_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, datatype, communicator, environment, phase_coefficient, value_controls);
+          }, control_qubits...);
       }
 
       template <
@@ -105,8 +126,8 @@ namespace ket
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment,
         Complex const& phase_coefficient,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::controlled_phase_shift_coeff(
           ::ket::mpi::utility::policy::make_simple_mpi(),
@@ -125,8 +146,8 @@ namespace ket
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment,
         Complex const& phase_coefficient,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::controlled_phase_shift_coeff(
           ::ket::mpi::utility::policy::make_simple_mpi(),
@@ -145,8 +166,8 @@ namespace ket
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment,
         Complex const& phase_coefficient,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::controlled_phase_shift_coeff(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
@@ -165,8 +186,8 @@ namespace ket
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment,
         Complex const& phase_coefficient,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::controlled_phase_shift_coeff(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
@@ -185,20 +206,30 @@ namespace ket
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment,
         Complex const& phase_coefficient,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(
-            ::ket::mpi::utility::generate_logger_string(
-              std::string{"Adj("}.append(std::max(sizeof...(Qubits), std::size_t{2u}) - std::size_t{1u}, 'C').append("phase(coeff)) "), phase_coefficient),
-            control_qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const... control_qubits) -> RandomAccessRange&
+          {
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(
+                  std::string{"Adj("}.append(std::max(sizeof...(Qubits), std::size_t{2u}) - std::size_t{1u}, 'C').append("phase(coeff)) "), phase_coefficient),
+                control_qubits...),
+              environment};
 
-        return ::ket::mpi::gate::phase_shift_detail::adj_phase_shift_coeff(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, communicator, environment,
-          phase_coefficient, control_qubits...);
+            return ::ket::mpi::gate::phase_shift_detail::adj_phase_shift_coeff(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment,
+              phase_coefficient, control_qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::adj_phase_shift_coeff_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, communicator, environment, phase_coefficient, value_controls);
+          }, control_qubits...);
       }
 
       template <
@@ -213,20 +244,30 @@ namespace ket
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment,
         Complex const& phase_coefficient,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(
-            ::ket::mpi::utility::generate_logger_string(
-              std::string{"Adj("}.append(std::max(sizeof...(Qubits), std::size_t{2u}) - std::size_t{1u}, 'C').append("phase(coeff)) "), phase_coefficient),
-            control_qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const... control_qubits) -> RandomAccessRange&
+          {
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(
+                  std::string{"Adj("}.append(std::max(sizeof...(Qubits), std::size_t{2u}) - std::size_t{1u}, 'C').append("phase(coeff)) "), phase_coefficient),
+                control_qubits...),
+              environment};
 
-        return ::ket::mpi::gate::phase_shift_detail::adj_phase_shift_coeff(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, datatype, communicator, environment,
-          phase_coefficient, control_qubits...);
+            return ::ket::mpi::gate::phase_shift_detail::adj_phase_shift_coeff(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment,
+              phase_coefficient, control_qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::adj_phase_shift_coeff_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, datatype, communicator, environment, phase_coefficient, value_controls);
+          }, control_qubits...);
       }
 
       template <
@@ -238,8 +279,8 @@ namespace ket
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment,
         Complex const& phase_coefficient,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::adj_controlled_phase_shift_coeff(
           ::ket::mpi::utility::policy::make_simple_mpi(),
@@ -258,8 +299,8 @@ namespace ket
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment,
         Complex const& phase_coefficient,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::adj_controlled_phase_shift_coeff(
           ::ket::mpi::utility::policy::make_simple_mpi(),
@@ -278,8 +319,8 @@ namespace ket
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment,
         Complex const& phase_coefficient,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::adj_controlled_phase_shift_coeff(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
@@ -298,8 +339,8 @@ namespace ket
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment,
         Complex const& phase_coefficient,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::adj_controlled_phase_shift_coeff(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
@@ -314,7 +355,7 @@ namespace ket
       template <
         typename MpiPolicy, typename ParallelPolicy,
         typename RandomAccessRange, typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename Complex, typename... ControlQubits>
+        typename Allocator, typename BufferAllocator, typename Complex, typename ControlQubit, typename... ControlQubits>
       inline auto controlled_phase_shift_coeff(
         MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
@@ -323,26 +364,36 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment,
         Complex const& phase_coefficient,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ControlQubits const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, ControlQubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value, RandomAccessRange&>
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(
-            ::ket::mpi::utility::generate_logger_string(
-              std::string(sizeof...(ControlQubits) + 1u, 'C').append("phase(coeff) "), phase_coefficient),
-            target_qubit, control_qubit, control_qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const target_qubit, auto const control_qubit, auto const... control_qubits) -> RandomAccessRange&
+          {
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(
+                  std::string(sizeof...(ControlQubits) + 1u, 'C').append("phase(coeff) "), phase_coefficient),
+                target_qubit, control_qubit, control_qubits...),
+              environment};
 
-        return ::ket::mpi::gate::phase_shift_detail::phase_shift_coeff(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, communicator, environment,
-          phase_coefficient, target_qubit, control_qubit, control_qubits...);
+            return ::ket::mpi::gate::phase_shift_detail::phase_shift_coeff(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment,
+              phase_coefficient, target_qubit, control_qubit, control_qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::phase_shift_coeff_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, communicator, environment, phase_coefficient, value_targets[0], value_controls);
+          }, target_qubit, control_qubit, control_qubits...);
       }
 
       template <
         typename MpiPolicy, typename ParallelPolicy,
         typename RandomAccessRange, typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Complex, typename... ControlQubits>
+        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Complex, typename ControlQubit, typename... ControlQubits>
       inline auto controlled_phase_shift_coeff(
         MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
@@ -352,25 +403,35 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment,
         Complex const& phase_coefficient,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ControlQubits const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, ControlQubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value, RandomAccessRange&>
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(
-            ::ket::mpi::utility::generate_logger_string(
-              std::string(sizeof...(ControlQubits) + 1u, 'C').append("phase(coeff) "), phase_coefficient),
-            target_qubit, control_qubit, control_qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const target_qubit, auto const control_qubit, auto const... control_qubits) -> RandomAccessRange&
+          {
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(
+                  std::string(sizeof...(ControlQubits) + 1u, 'C').append("phase(coeff) "), phase_coefficient),
+                target_qubit, control_qubit, control_qubits...),
+              environment};
 
-        return ::ket::mpi::gate::phase_shift_detail::phase_shift_coeff(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, datatype, communicator, environment,
-          phase_coefficient, target_qubit, control_qubit, control_qubits...);
+            return ::ket::mpi::gate::phase_shift_detail::phase_shift_coeff(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment,
+              phase_coefficient, target_qubit, control_qubit, control_qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::phase_shift_coeff_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, datatype, communicator, environment, phase_coefficient, value_targets[0], value_controls);
+          }, target_qubit, control_qubit, control_qubits...);
       }
 
       template <
         typename RandomAccessRange, typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename Complex, typename... ControlQubits>
+        typename Allocator, typename BufferAllocator, typename Complex, typename ControlQubit, typename... ControlQubits>
       inline auto controlled_phase_shift_coeff(
         RandomAccessRange& local_state,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -378,8 +439,8 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment,
         Complex const& phase_coefficient,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ControlQubits const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, ControlQubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::controlled_phase_shift_coeff(
           ::ket::mpi::utility::policy::make_simple_mpi(),
@@ -390,7 +451,7 @@ namespace ket
 
       template <
         typename RandomAccessRange, typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Complex, typename... ControlQubits>
+        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Complex, typename ControlQubit, typename... ControlQubits>
       inline auto controlled_phase_shift_coeff(
         RandomAccessRange& local_state,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -399,8 +460,8 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment,
         Complex const& phase_coefficient,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ControlQubits const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, ControlQubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::controlled_phase_shift_coeff(
           ::ket::mpi::utility::policy::make_simple_mpi(),
@@ -411,7 +472,7 @@ namespace ket
 
       template <
         typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename Complex, typename... ControlQubits>
+        typename Allocator, typename BufferAllocator, typename Complex, typename ControlQubit, typename... ControlQubits>
       inline auto controlled_phase_shift_coeff(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
@@ -420,8 +481,8 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment,
         Complex const& phase_coefficient,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ControlQubits const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, ControlQubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::controlled_phase_shift_coeff(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
@@ -431,7 +492,7 @@ namespace ket
 
       template <
         typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Complex, typename... ControlQubits>
+        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Complex, typename ControlQubit, typename... ControlQubits>
       inline auto controlled_phase_shift_coeff(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
@@ -441,8 +502,8 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment,
         Complex const& phase_coefficient,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ControlQubits const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, ControlQubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::controlled_phase_shift_coeff(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
@@ -453,7 +514,7 @@ namespace ket
       template <
         typename MpiPolicy, typename ParallelPolicy,
         typename RandomAccessRange, typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename Complex, typename... ControlQubits>
+        typename Allocator, typename BufferAllocator, typename Complex, typename ControlQubit, typename... ControlQubits>
       inline auto adj_controlled_phase_shift_coeff(
         MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
@@ -462,26 +523,36 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment,
         Complex const& phase_coefficient,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ControlQubits const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, ControlQubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value, RandomAccessRange&>
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(
-            ::ket::mpi::utility::generate_logger_string(
-              std::string{"Adj("}.append(sizeof...(ControlQubits) + 1u, 'C').append("phase(coeff)) "), phase_coefficient),
-            target_qubit, control_qubit, control_qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const target_qubit, auto const control_qubit, auto const... control_qubits) -> RandomAccessRange&
+          {
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(
+                  std::string{"Adj("}.append(sizeof...(ControlQubits) + 1u, 'C').append("phase(coeff)) "), phase_coefficient),
+                target_qubit, control_qubit, control_qubits...),
+              environment};
 
-        return ::ket::mpi::gate::phase_shift_detail::adj_phase_shift_coeff(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, communicator, environment,
-          phase_coefficient, target_qubit, control_qubit, control_qubits...);
+            return ::ket::mpi::gate::phase_shift_detail::adj_phase_shift_coeff(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment,
+              phase_coefficient, target_qubit, control_qubit, control_qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::adj_phase_shift_coeff_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, communicator, environment, phase_coefficient, value_targets[0], value_controls);
+          }, target_qubit, control_qubit, control_qubits...);
       }
 
       template <
         typename MpiPolicy, typename ParallelPolicy,
         typename RandomAccessRange, typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Complex, typename... ControlQubits>
+        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Complex, typename ControlQubit, typename... ControlQubits>
       inline auto adj_controlled_phase_shift_coeff(
         MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
@@ -491,25 +562,35 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment,
         Complex const& phase_coefficient,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ControlQubits const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, ControlQubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value, RandomAccessRange&>
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(
-            ::ket::mpi::utility::generate_logger_string(
-              std::string{"Adj("}.append(sizeof...(ControlQubits) + 1u, 'C').append("phase(coeff)) "), phase_coefficient),
-            target_qubit, control_qubit, control_qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const target_qubit, auto const control_qubit, auto const... control_qubits) -> RandomAccessRange&
+          {
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(
+                  std::string{"Adj("}.append(sizeof...(ControlQubits) + 1u, 'C').append("phase(coeff)) "), phase_coefficient),
+                target_qubit, control_qubit, control_qubits...),
+              environment};
 
-        return ::ket::mpi::gate::phase_shift_detail::adj_phase_shift_coeff(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, datatype, communicator, environment,
-          phase_coefficient, target_qubit, control_qubit, control_qubits...);
+            return ::ket::mpi::gate::phase_shift_detail::adj_phase_shift_coeff(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment,
+              phase_coefficient, target_qubit, control_qubit, control_qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::adj_phase_shift_coeff_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, datatype, communicator, environment, phase_coefficient, value_targets[0], value_controls);
+          }, target_qubit, control_qubit, control_qubits...);
       }
 
       template <
         typename RandomAccessRange, typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename Complex, typename... ControlQubits>
+        typename Allocator, typename BufferAllocator, typename Complex, typename ControlQubit, typename... ControlQubits>
       inline auto adj_controlled_phase_shift_coeff(
         RandomAccessRange& local_state,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -517,8 +598,8 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment,
         Complex const& phase_coefficient,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ControlQubits const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, ControlQubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::adj_controlled_phase_shift_coeff(
           ::ket::mpi::utility::policy::make_simple_mpi(),
@@ -529,7 +610,7 @@ namespace ket
 
       template <
         typename RandomAccessRange, typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Complex, typename... ControlQubits>
+        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Complex, typename ControlQubit, typename... ControlQubits>
       inline auto adj_controlled_phase_shift_coeff(
         RandomAccessRange& local_state,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -538,8 +619,8 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment,
         Complex const& phase_coefficient,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ControlQubits const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, ControlQubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::adj_controlled_phase_shift_coeff(
           ::ket::mpi::utility::policy::make_simple_mpi(),
@@ -550,7 +631,7 @@ namespace ket
 
       template <
         typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename Complex, typename... ControlQubits>
+        typename Allocator, typename BufferAllocator, typename Complex, typename ControlQubit, typename... ControlQubits>
       inline auto adj_controlled_phase_shift_coeff(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
@@ -559,8 +640,8 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment,
         Complex const& phase_coefficient,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ControlQubits const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, ControlQubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::adj_controlled_phase_shift_coeff(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
@@ -570,7 +651,7 @@ namespace ket
 
       template <
         typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Complex, typename... ControlQubits>
+        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Complex, typename ControlQubit, typename... ControlQubits>
       inline auto adj_controlled_phase_shift_coeff(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
@@ -580,8 +661,8 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment,
         Complex const& phase_coefficient,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ControlQubits const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, ControlQubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::adj_controlled_phase_shift_coeff(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
@@ -602,20 +683,30 @@ namespace ket
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment,
         Real const phase,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(
-            ::ket::mpi::utility::generate_logger_string(
-              std::string(std::max(sizeof...(Qubits), std::size_t{2u}) - std::size_t{1u}, 'C').append("phase "), phase),
-            control_qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const... control_qubits) -> RandomAccessRange&
+          {
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(
+                  std::string(std::max(sizeof...(Qubits), std::size_t{2u}) - std::size_t{1u}, 'C').append("phase "), phase),
+                control_qubits...),
+              environment};
 
-        return ::ket::mpi::gate::phase_shift_detail::phase_shift(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, communicator, environment,
-          phase, control_qubits...);
+            return ::ket::mpi::gate::phase_shift_detail::phase_shift(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment,
+              phase, control_qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::phase_shift_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, communicator, environment, phase, value_controls);
+          }, control_qubits...);
       }
 
       template <
@@ -630,20 +721,30 @@ namespace ket
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment,
         Real const phase,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(
-            ::ket::mpi::utility::generate_logger_string(
-              std::string(std::max(sizeof...(Qubits), std::size_t{2u}) - std::size_t{1u}, 'C').append("phase "), phase),
-            control_qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const... control_qubits) -> RandomAccessRange&
+          {
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(
+                  std::string(std::max(sizeof...(Qubits), std::size_t{2u}) - std::size_t{1u}, 'C').append("phase "), phase),
+                control_qubits...),
+              environment};
 
-        return ::ket::mpi::gate::phase_shift_detail::phase_shift(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, datatype, communicator, environment,
-          phase, control_qubits...);
+            return ::ket::mpi::gate::phase_shift_detail::phase_shift(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment,
+              phase, control_qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::phase_shift_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, datatype, communicator, environment, phase, value_controls);
+          }, control_qubits...);
       }
 
       template <
@@ -655,8 +756,8 @@ namespace ket
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment,
         Real const phase,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::controlled_phase_shift(
           ::ket::mpi::utility::policy::make_simple_mpi(),
@@ -675,8 +776,8 @@ namespace ket
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment,
         Real const phase,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::controlled_phase_shift(
           ::ket::mpi::utility::policy::make_simple_mpi(),
@@ -695,8 +796,8 @@ namespace ket
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment,
         Real const phase,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::controlled_phase_shift(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
@@ -715,8 +816,8 @@ namespace ket
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment,
         Real const phase,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::controlled_phase_shift(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
@@ -735,20 +836,30 @@ namespace ket
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment,
         Real const phase,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(
-            ::ket::mpi::utility::generate_logger_string(
-              std::string{"Adj("}.append(std::max(sizeof...(Qubits), std::size_t{2u}) - std::size_t{1u}, 'C').append("phase) "), phase),
-            control_qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const... control_qubits) -> RandomAccessRange&
+          {
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(
+                  std::string{"Adj("}.append(std::max(sizeof...(Qubits), std::size_t{2u}) - std::size_t{1u}, 'C').append("phase) "), phase),
+                control_qubits...),
+              environment};
 
-        return ::ket::mpi::gate::phase_shift_detail::adj_phase_shift(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, communicator, environment,
-          phase, control_qubits...);
+            return ::ket::mpi::gate::phase_shift_detail::adj_phase_shift(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment,
+              phase, control_qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::adj_phase_shift_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, communicator, environment, phase, value_controls);
+          }, control_qubits...);
       }
 
       template <
@@ -763,20 +874,30 @@ namespace ket
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment,
         Real const phase,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(
-            ::ket::mpi::utility::generate_logger_string(
-              std::string{"Adj("}.append(std::max(sizeof...(Qubits), std::size_t{2u}) - std::size_t{1u}, 'C').append("phase) "), phase),
-            control_qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const... control_qubits) -> RandomAccessRange&
+          {
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(
+                  std::string{"Adj("}.append(std::max(sizeof...(Qubits), std::size_t{2u}) - std::size_t{1u}, 'C').append("phase) "), phase),
+                control_qubits...),
+              environment};
 
-        return ::ket::mpi::gate::phase_shift_detail::adj_phase_shift(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, datatype, communicator, environment,
-          phase, control_qubits...);
+            return ::ket::mpi::gate::phase_shift_detail::adj_phase_shift(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment,
+              phase, control_qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::adj_phase_shift_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, datatype, communicator, environment, phase, value_controls);
+          }, control_qubits...);
       }
 
       template <
@@ -788,8 +909,8 @@ namespace ket
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment,
         Real const phase,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::adj_controlled_phase_shift(
           ::ket::mpi::utility::policy::make_simple_mpi(),
@@ -808,8 +929,8 @@ namespace ket
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment,
         Real const phase,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::adj_controlled_phase_shift(
           ::ket::mpi::utility::policy::make_simple_mpi(),
@@ -828,8 +949,8 @@ namespace ket
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment,
         Real const phase,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::adj_controlled_phase_shift(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
@@ -848,8 +969,8 @@ namespace ket
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment,
         Real const phase,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::adj_controlled_phase_shift(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
@@ -861,7 +982,7 @@ namespace ket
       template <
         typename MpiPolicy, typename ParallelPolicy,
         typename RandomAccessRange, typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename Real, typename... ControlQubits>
+        typename Allocator, typename BufferAllocator, typename Real, typename ControlQubit, typename... ControlQubits>
       inline auto controlled_phase_shift(
         MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
@@ -870,26 +991,36 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment,
         Real const phase,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ControlQubits const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, ControlQubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value, RandomAccessRange&>
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(
-            ::ket::mpi::utility::generate_logger_string(
-              std::string(sizeof...(ControlQubits) + 1u, 'C').append("phase "), phase),
-            target_qubit, control_qubit, control_qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const target_qubit, auto const control_qubit, auto const... control_qubits) -> RandomAccessRange&
+          {
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(
+                  std::string(sizeof...(ControlQubits) + 1u, 'C').append("phase "), phase),
+                target_qubit, control_qubit, control_qubits...),
+              environment};
 
-        return ::ket::mpi::gate::phase_shift_detail::phase_shift(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, communicator, environment,
-          phase, target_qubit, control_qubit, control_qubits...);
+            return ::ket::mpi::gate::phase_shift_detail::phase_shift(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment,
+              phase, target_qubit, control_qubit, control_qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::phase_shift_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, communicator, environment, phase, value_targets[0], value_controls);
+          }, target_qubit, control_qubit, control_qubits...);
       }
 
       template <
         typename MpiPolicy, typename ParallelPolicy,
         typename RandomAccessRange, typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Real, typename... ControlQubits>
+        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Real, typename ControlQubit, typename... ControlQubits>
       inline auto controlled_phase_shift(
         MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
@@ -899,25 +1030,35 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment,
         Real const phase,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ControlQubits const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, ControlQubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value, RandomAccessRange&>
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(
-            ::ket::mpi::utility::generate_logger_string(
-              std::string(sizeof...(ControlQubits) + 1u, 'C').append("phase "), phase),
-            target_qubit, control_qubit, control_qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const target_qubit, auto const control_qubit, auto const... control_qubits) -> RandomAccessRange&
+          {
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(
+                  std::string(sizeof...(ControlQubits) + 1u, 'C').append("phase "), phase),
+                target_qubit, control_qubit, control_qubits...),
+              environment};
 
-        return ::ket::mpi::gate::phase_shift_detail::phase_shift(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, datatype, communicator, environment,
-          phase, target_qubit, control_qubit, control_qubits...);
+            return ::ket::mpi::gate::phase_shift_detail::phase_shift(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment,
+              phase, target_qubit, control_qubit, control_qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::phase_shift_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, datatype, communicator, environment, phase, value_targets[0], value_controls);
+          }, target_qubit, control_qubit, control_qubits...);
       }
 
       template <
         typename RandomAccessRange, typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename Real, typename... ControlQubits>
+        typename Allocator, typename BufferAllocator, typename Real, typename ControlQubit, typename... ControlQubits>
       inline auto controlled_phase_shift(
         RandomAccessRange& local_state,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -925,8 +1066,8 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment,
         Real const phase,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ControlQubits const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, ControlQubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::controlled_phase_shift(
           ::ket::mpi::utility::policy::make_simple_mpi(),
@@ -937,7 +1078,7 @@ namespace ket
 
       template <
         typename RandomAccessRange, typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Real, typename... ControlQubits>
+        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Real, typename ControlQubit, typename... ControlQubits>
       inline auto controlled_phase_shift(
         RandomAccessRange& local_state,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -946,8 +1087,8 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment,
         Real const phase,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ControlQubits const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, ControlQubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::controlled_phase_shift(
           ::ket::mpi::utility::policy::make_simple_mpi(),
@@ -958,7 +1099,7 @@ namespace ket
 
       template <
         typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename Real, typename... ControlQubits>
+        typename Allocator, typename BufferAllocator, typename Real, typename ControlQubit, typename... ControlQubits>
       inline auto controlled_phase_shift(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
@@ -967,8 +1108,8 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment,
         Real const phase,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ControlQubits const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, ControlQubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::controlled_phase_shift(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
@@ -978,7 +1119,7 @@ namespace ket
 
       template <
         typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Real, typename... ControlQubits>
+        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Real, typename ControlQubit, typename... ControlQubits>
       inline auto controlled_phase_shift(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
@@ -988,8 +1129,8 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment,
         Real const phase,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ControlQubits const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, ControlQubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::controlled_phase_shift(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
@@ -1000,7 +1141,7 @@ namespace ket
       template <
         typename MpiPolicy, typename ParallelPolicy,
         typename RandomAccessRange, typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename Real, typename... ControlQubits>
+        typename Allocator, typename BufferAllocator, typename Real, typename ControlQubit, typename... ControlQubits>
       inline auto adj_controlled_phase_shift(
         MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
@@ -1009,26 +1150,36 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment,
         Real const phase,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ControlQubits const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, ControlQubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value, RandomAccessRange&>
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(
-            ::ket::mpi::utility::generate_logger_string(
-              std::string{"Adj("}.append(sizeof...(ControlQubits) + 1u, 'C').append("phase) "), phase),
-            target_qubit, control_qubit, control_qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const target_qubit, auto const control_qubit, auto const... control_qubits) -> RandomAccessRange&
+          {
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(
+                  std::string{"Adj("}.append(sizeof...(ControlQubits) + 1u, 'C').append("phase) "), phase),
+                target_qubit, control_qubit, control_qubits...),
+              environment};
 
-        return ::ket::mpi::gate::phase_shift_detail::adj_phase_shift(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, communicator, environment,
-          phase, target_qubit, control_qubit, control_qubits...);
+            return ::ket::mpi::gate::phase_shift_detail::adj_phase_shift(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment,
+              phase, target_qubit, control_qubit, control_qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::adj_phase_shift_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, communicator, environment, phase, value_targets[0], value_controls);
+          }, target_qubit, control_qubit, control_qubits...);
       }
 
       template <
         typename MpiPolicy, typename ParallelPolicy,
         typename RandomAccessRange, typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Real, typename... ControlQubits>
+        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Real, typename ControlQubit, typename... ControlQubits>
       inline auto adj_controlled_phase_shift(
         MpiPolicy const& mpi_policy, ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
@@ -1038,25 +1189,35 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment,
         Real const phase,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ControlQubits const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, ControlQubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value, RandomAccessRange&>
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(
-            ::ket::mpi::utility::generate_logger_string(
-              std::string{"Adj("}.append(sizeof...(ControlQubits) + 1u, 'C').append("phase) "), phase),
-            target_qubit, control_qubit, control_qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const target_qubit, auto const control_qubit, auto const... control_qubits) -> RandomAccessRange&
+          {
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(
+                  std::string{"Adj("}.append(sizeof...(ControlQubits) + 1u, 'C').append("phase) "), phase),
+                target_qubit, control_qubit, control_qubits...),
+              environment};
 
-        return ::ket::mpi::gate::phase_shift_detail::adj_phase_shift(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, datatype, communicator, environment,
-          phase, target_qubit, control_qubit, control_qubits...);
+            return ::ket::mpi::gate::phase_shift_detail::adj_phase_shift(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment,
+              phase, target_qubit, control_qubit, control_qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::adj_phase_shift_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, datatype, communicator, environment, phase, value_targets[0], value_controls);
+          }, target_qubit, control_qubit, control_qubits...);
       }
 
       template <
         typename RandomAccessRange, typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename Real, typename... ControlQubits>
+        typename Allocator, typename BufferAllocator, typename Real, typename ControlQubit, typename... ControlQubits>
       inline auto adj_controlled_phase_shift(
         RandomAccessRange& local_state,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -1064,8 +1225,8 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment,
         Real const phase,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ControlQubits const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, ControlQubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::adj_controlled_phase_shift(
           ::ket::mpi::utility::policy::make_simple_mpi(),
@@ -1076,7 +1237,7 @@ namespace ket
 
       template <
         typename RandomAccessRange, typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Real, typename... ControlQubits>
+        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Real, typename ControlQubit, typename... ControlQubits>
       inline auto adj_controlled_phase_shift(
         RandomAccessRange& local_state,
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
@@ -1085,8 +1246,8 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment,
         Real const phase,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ControlQubits const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, ControlQubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::adj_controlled_phase_shift(
           ::ket::mpi::utility::policy::make_simple_mpi(),
@@ -1097,7 +1258,7 @@ namespace ket
 
       template <
         typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename Real, typename... ControlQubits>
+        typename Allocator, typename BufferAllocator, typename Real, typename ControlQubit, typename... ControlQubits>
       inline auto adj_controlled_phase_shift(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
@@ -1106,8 +1267,8 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment,
         Real const phase,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ControlQubits const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, ControlQubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::adj_controlled_phase_shift(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
@@ -1117,7 +1278,7 @@ namespace ket
 
       template <
         typename ParallelPolicy, typename RandomAccessRange, typename StateInteger, typename BitInteger,
-        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Real, typename... ControlQubits>
+        typename Allocator, typename BufferAllocator, typename DerivedDatatype, typename Real, typename ControlQubit, typename... ControlQubits>
       inline auto adj_controlled_phase_shift(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& local_state,
@@ -1127,8 +1288,8 @@ namespace ket
         yampi::communicator const& communicator, yampi::environment const& environment,
         Real const phase,
         ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-        ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit, ControlQubits const... control_qubits)
-      -> RandomAccessRange&
+        ControlQubit const control_qubit, ControlQubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::is_control_of<ControlQubit, ::ket::qubit<StateInteger, BitInteger>>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::adj_controlled_phase_shift(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,

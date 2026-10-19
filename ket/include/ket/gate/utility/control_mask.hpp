@@ -13,6 +13,25 @@
 
 namespace ket { namespace gate { namespace utility
 {
+  template <typename Qubit>
+  struct is_default_control_operand : std::true_type { };
+
+  template <typename Qubit, typename Qubit::state_integer_type control_value>
+  struct is_default_control_operand< ::ket::control<Qubit, control_value> >
+    : std::integral_constant<bool, control_value == ::ket::meta::base_v<Qubit> - 1u> { };
+
+  template <typename Qubit>
+  struct is_default_control_operand< ::ket::runtime_control<Qubit> > : std::false_type { };
+
+  template <typename... Qubits>
+  struct all_default_control_operands;
+  template <>
+  struct all_default_control_operands<> : std::true_type { };
+  template <typename Qubit, typename... Qubits>
+  struct all_default_control_operands<Qubit, Qubits...>
+    : std::integral_constant<bool, is_default_control_operand<Qubit>::value
+                                  and all_default_control_operands<Qubits...>::value> { };
+
   template <typename... Qubits>
   struct all_controls;
 
@@ -69,7 +88,8 @@ namespace ket { namespace gate { namespace utility
     {
       if (bit >= std::numeric_limits<UnsignedInteger>::digits)
         throw std::out_of_range{"Too many operands for packed index"};
-      if (::ket::control_value(control) == 0u)
+      using ::ket::control_value;
+      if (control_value(control) == 0u)
         result |= UnsignedInteger{1u} << bit;
       ++bit;
     }
