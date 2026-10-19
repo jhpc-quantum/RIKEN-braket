@@ -6,6 +6,7 @@
 
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
+# include <ket/runtime_control.hpp>
 # include <ket/meta/bit_integer_of.hpp>
 # include <ket/meta/state_integer_of.hpp>
 
@@ -199,20 +200,34 @@ namespace ket
         { return permutated_qubit; }
       }; // struct remove_control<Qubit>
 
-      template <typename Qubit>
-      struct remove_control< ::ket::control<Qubit> >
+      template <typename Qubit, typename Qubit::state_integer_type control_value>
+      struct remove_control< ::ket::control<Qubit, control_value> >
       {
         static constexpr auto call(
-          ::ket::mpi::permutated< ::ket::control<Qubit> > const permutated_control_qubit)
+          ::ket::mpi::permutated< ::ket::control<Qubit, control_value> > const permutated_control_qubit)
         -> ::ket::mpi::permutated<Qubit>
         { return ::ket::mpi::make_permutated(permutated_control_qubit.qubit().qubit()); }
       }; // struct remove_control< ::ket::control<Qubit> >
+
+      template <typename Qubit>
+      struct remove_control< ::ket::runtime_control<Qubit> >
+      {
+        static constexpr auto call(
+          ::ket::mpi::permutated< ::ket::runtime_control<Qubit> > const permutated_control_qubit)
+        -> ::ket::mpi::permutated<Qubit>
+        { return ::ket::mpi::make_permutated(permutated_control_qubit.qubit().qubit()); }
+      };
     } // namespace permutated_detail
 
     template <typename Qubit>
     inline constexpr auto remove_control(::ket::mpi::permutated<Qubit> const permutated_qubit)
       -> decltype(::ket::mpi::permutated_detail::remove_control<Qubit>::call(permutated_qubit))
     { return ::ket::mpi::permutated_detail::remove_control<Qubit>::call(permutated_qubit); }
+
+    template <typename Control>
+    inline constexpr auto control_value(::ket::mpi::permutated<Control> const control)
+    -> decltype(::ket::control_value(control.qubit()))
+    { return ::ket::control_value(control.qubit()); }
 
     namespace literals
     {

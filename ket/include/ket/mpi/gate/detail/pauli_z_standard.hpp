@@ -11,6 +11,7 @@
 
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
+# include <ket/mpi/gate/detail/dispatch_control_values.hpp>
 # ifdef KET_PRINT_LOG
 #   include <ket/qubit_io.hpp>
 #   include <ket/control_io.hpp>
@@ -179,7 +180,7 @@ namespace ket
           if (::ket::mpi::page::any_on_page(local_state, permutation[control_qubit1], permutation[control_qubit2], permutation[control_qubit3], permutation[control_qubits]...))
           {
             using local_state_type = std::remove_const_t<std::remove_reference_t<RandomAccessRange>>;
-            ::ket::mpi::gate::local::dispatch::transpage_pauli_z<local_state_type>::call(
+            return ::ket::mpi::gate::local::dispatch::transpage_pauli_z<local_state_type>::call(
               parallel_policy, local_state,
               permutation[control_qubit1], permutation[control_qubit2], permutation[control_qubit3], permutation[control_qubits]...);
           }
@@ -324,7 +325,7 @@ namespace ket
           if (::ket::mpi::page::any_on_page(local_state, permutation[qubit1], permutation[qubit2], permutation[qubit3], permutation[qubits]...))
           {
             using local_state_type = std::remove_const_t<std::remove_reference_t<RandomAccessRange>>;
-            ::ket::mpi::gate::local::dispatch::transpage_pauli_z<local_state_type>::call(
+            return ::ket::mpi::gate::local::dispatch::transpage_pauli_z<local_state_type>::call(
               parallel_policy, local_state,
               permutation[qubit1], permutation[qubit2], permutation[qubit3], permutation[qubits]...);
           }
@@ -472,16 +473,26 @@ namespace ket
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(std::string(std::max(sizeof...(Qubits), std::size_t{1u}) - std::size_t{1u}, 'C').append("Z"), control_qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const... control_qubits) -> RandomAccessRange&
+          {
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(std::string(std::max(sizeof...(Qubits), std::size_t{1u}) - std::size_t{1u}, 'C').append("Z"), control_qubits...),
+              environment};
 
-        return ::ket::mpi::gate::pauli_z_detail::pauli_z(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, communicator, environment, control_qubits...);
+            return ::ket::mpi::gate::pauli_z_detail::pauli_z(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment, control_qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::pauli_z_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, communicator, environment, value_controls);
+          }, control_qubits...);
       }
 
       template <
@@ -495,16 +506,26 @@ namespace ket
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(std::string(std::max(sizeof...(Qubits), std::size_t{1u}) - std::size_t{1u}, 'C').append("Z"), control_qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const... control_qubits) -> RandomAccessRange&
+          {
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(std::string(std::max(sizeof...(Qubits), std::size_t{1u}) - std::size_t{1u}, 'C').append("Z"), control_qubits...),
+              environment};
 
-        return ::ket::mpi::gate::pauli_z_detail::pauli_z(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, datatype, communicator, environment, control_qubits...);
+            return ::ket::mpi::gate::pauli_z_detail::pauli_z(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment, control_qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::pauli_z_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, datatype, communicator, environment, value_controls);
+          }, control_qubits...);
       }
 
       template <
@@ -516,8 +537,8 @@ namespace ket
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::pauli_z(
           ::ket::mpi::utility::policy::make_simple_mpi(),
@@ -535,8 +556,8 @@ namespace ket
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::pauli_z(
           ::ket::mpi::utility::policy::make_simple_mpi(),
@@ -554,8 +575,8 @@ namespace ket
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::pauli_z(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
@@ -573,8 +594,8 @@ namespace ket
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::pauli_z(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
@@ -679,14 +700,24 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
       -> RandomAccessRange&
       {
-        constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(std::string(num_control_qubits, 'C').append(sizeof...(Qubits) + 1u - num_control_qubits, 'Z'), qubit, qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const qubit, auto const... qubits) -> RandomAccessRange&
+          {
+            constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(std::string(num_control_qubits, 'C').append(sizeof...(Qubits) + 1u - num_control_qubits, 'Z'), qubit, qubits...),
+              environment};
 
-        return ::ket::mpi::gate::pauli_z_detail::pauli_z(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, communicator, environment, qubit, qubits...);
+            return ::ket::mpi::gate::pauli_z_detail::pauli_z(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment, qubit, qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::pauli_z_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, communicator, environment, value_targets, value_controls);
+          }, qubit, qubits...);
       }
 
       template <
@@ -703,14 +734,24 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
       -> RandomAccessRange&
       {
-        constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(std::string(num_control_qubits, 'C').append(sizeof...(Qubits) + 1u - num_control_qubits, 'Z'), qubit, qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const qubit, auto const... qubits) -> RandomAccessRange&
+          {
+            constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(std::string(num_control_qubits, 'C').append(sizeof...(Qubits) + 1u - num_control_qubits, 'Z'), qubit, qubits...),
+              environment};
 
-        return ::ket::mpi::gate::pauli_z_detail::pauli_z(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, datatype, communicator, environment, qubit, qubits...);
+            return ::ket::mpi::gate::pauli_z_detail::pauli_z(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment, qubit, qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::pauli_z_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, datatype, communicator, environment, value_targets, value_controls);
+          }, qubit, qubits...);
       }
 
       template <
@@ -1029,16 +1070,26 @@ namespace ket
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(std::string{"Adj("}.append(std::max(sizeof...(Qubits), std::size_t{1u}) - std::size_t{1u}, 'C').append("Z)"), control_qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const... control_qubits) -> RandomAccessRange&
+          {
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(std::string{"Adj("}.append(std::max(sizeof...(Qubits), std::size_t{1u}) - std::size_t{1u}, 'C').append("Z)"), control_qubits...),
+              environment};
 
-        return ::ket::mpi::gate::pauli_z_detail::adj_pauli_z(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, communicator, environment, control_qubits...);
+            return ::ket::mpi::gate::pauli_z_detail::adj_pauli_z(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment, control_qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::adj_pauli_z_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, communicator, environment, value_controls);
+          }, control_qubits...);
       }
 
       template <
@@ -1052,16 +1103,26 @@ namespace ket
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(std::string{"Adj("}.append(std::max(sizeof...(Qubits), std::size_t{1u}) - std::size_t{1u}, 'C').append("Z)"), control_qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const... control_qubits) -> RandomAccessRange&
+          {
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(std::string{"Adj("}.append(std::max(sizeof...(Qubits), std::size_t{1u}) - std::size_t{1u}, 'C').append("Z)"), control_qubits...),
+              environment};
 
-        return ::ket::mpi::gate::pauli_z_detail::adj_pauli_z(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, datatype, communicator, environment, control_qubits...);
+            return ::ket::mpi::gate::pauli_z_detail::adj_pauli_z(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment, control_qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::adj_pauli_z_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, datatype, communicator, environment, value_controls);
+          }, control_qubits...);
       }
 
       template <
@@ -1073,8 +1134,8 @@ namespace ket
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::adj_pauli_z(
           ::ket::mpi::utility::policy::make_simple_mpi(),
@@ -1092,8 +1153,8 @@ namespace ket
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::adj_pauli_z(
           ::ket::mpi::utility::policy::make_simple_mpi(),
@@ -1111,8 +1172,8 @@ namespace ket
         ::ket::mpi::qubit_permutation<StateInteger, BitInteger, Allocator>& permutation,
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::communicator const& communicator, yampi::environment const& environment,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::adj_pauli_z(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
@@ -1130,8 +1191,8 @@ namespace ket
         std::vector< ::ket::utility::meta::range_value_t<RandomAccessRange>, BufferAllocator >& buffer,
         yampi::datatype_base<DerivedDatatype> const& datatype,
         yampi::communicator const& communicator, yampi::environment const& environment,
-        ::ket::control<Qubits> const... control_qubits)
-      -> RandomAccessRange&
+        Qubits const... control_qubits)
+      -> std::enable_if_t<::ket::gate::utility::all_controls<Qubits...>::value, RandomAccessRange&>
       {
         return ::ket::mpi::gate::adj_pauli_z(
           ::ket::mpi::utility::policy::make_simple_mpi(), parallel_policy,
@@ -1236,14 +1297,24 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
       -> RandomAccessRange&
       {
-        constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(std::string{"Adj("}.append(num_control_qubits, 'C').append(sizeof...(Qubits) + 1u - num_control_qubits, 'Z').append(")"), qubit, qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const qubit, auto const... qubits) -> RandomAccessRange&
+          {
+            constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(std::string{"Adj("}.append(num_control_qubits, 'C').append(sizeof...(Qubits) + 1u - num_control_qubits, 'Z').append(")"), qubit, qubits...),
+              environment};
 
-        return ::ket::mpi::gate::pauli_z_detail::adj_pauli_z(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, communicator, environment, qubit, qubits...);
+            return ::ket::mpi::gate::pauli_z_detail::adj_pauli_z(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment, qubit, qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::adj_pauli_z_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, communicator, environment, value_targets, value_controls);
+          }, qubit, qubits...);
       }
 
       template <
@@ -1260,14 +1331,24 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
       -> RandomAccessRange&
       {
-        constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(std::string{"Adj("}.append(num_control_qubits, 'C').append(sizeof...(Qubits) + 1u - num_control_qubits, 'Z').append(")"), qubit, qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const qubit, auto const... qubits) -> RandomAccessRange&
+          {
+            constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(std::string{"Adj("}.append(num_control_qubits, 'C').append(sizeof...(Qubits) + 1u - num_control_qubits, 'Z').append(")"), qubit, qubits...),
+              environment};
 
-        return ::ket::mpi::gate::pauli_z_detail::adj_pauli_z(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, datatype, communicator, environment, qubit, qubits...);
+            return ::ket::mpi::gate::pauli_z_detail::adj_pauli_z(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment, qubit, qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::adj_pauli_z_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, datatype, communicator, environment, value_targets, value_controls);
+          }, qubit, qubits...);
       }
 
       template <

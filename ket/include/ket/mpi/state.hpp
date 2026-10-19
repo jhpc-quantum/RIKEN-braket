@@ -35,11 +35,10 @@
 
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
-# ifdef KET_USE_BIT_MASKS_EXPLICITLY
-#   include <ket/gate/gate.hpp>
-# endif // KET_USE_BIT_MASKS_EXPLICITLY
+# include <ket/gate/gate.hpp>
 # include <ket/gate/meta/num_control_qubits.hpp>
 # include <ket/gate/utility/index_with_qubits.hpp>
+# include <ket/gate/utility/control_mask.hpp>
 # include <ket/utility/integer_exp2.hpp>
 # include <ket/utility/imaginary_unit.hpp>
 # include <ket/utility/exp_i.hpp>
@@ -682,9 +681,10 @@ namespace ket
         and permutated_qubit < ::ket::mpi::make_permutated(::ket::make_qubit<StateInteger>(num_local_qubits));
     }
 
-    template <typename StateInteger, typename BitInteger, typename Complex, bool has_page_qubits, typename Allocator>
+    template <typename Control, typename Complex, bool has_page_qubits, typename Allocator,
+      std::enable_if_t< ::ket::meta::is_control<Control>::value, int> = 0>
     inline auto is_page_qubit(
-      ::ket::mpi::permutated< ::ket::control< ::ket::qubit<StateInteger, BitInteger> > > const permutated_control_qubit,
+      ::ket::mpi::permutated<Control> const permutated_control_qubit,
       ::ket::mpi::state<Complex, has_page_qubits, Allocator> const& local_state)
     -> bool
     { return ::ket::mpi::is_page_qubit(::ket::mpi::remove_control(permutated_control_qubit), local_state); }
@@ -4234,6 +4234,16 @@ namespace ket
             = ::ket::mpi::make_permutated(::ket::make_qubit<state_integer_type>(num_nonpage_local_qubits));
 
           constexpr auto num_operated_qubits = static_cast<bit_integer_type>(sizeof...(Qubits) + 1u);
+          // Mapping page wires into unused nonpage wires needs one nonpage
+          // slot per operand. Use logical state iterators when a gate is too
+          // wide for that mapping instead of underflowing the candidate wire.
+          if (num_operated_qubits > num_nonpage_local_qubits)
+          {
+            ::ket::gate::nocache::gate(
+              parallel_policy, local_state.begin(), local_state.end(), function,
+              permutated_qubit.qubit(), permutated_qubits.qubit()...);
+            return local_state;
+          }
           using permutated_qubit_type = ::ket::mpi::permutated<qubit_type>;
           std::array<permutated_qubit_type, num_operated_qubits> sorted_permutated_operated_qubits_array{
             ::ket::mpi::remove_control(permutated_qubit), ::ket::mpi::remove_control(permutated_qubits)...};
@@ -4587,19 +4597,25 @@ namespace ket
 
               auto sin_part = Complex{};
               constexpr auto num_operated_qubits = static_cast<BitInteger>(sizeof...(Qubits) + 3u);
-              switch (num_operated_qubits % BitInteger{4u})
+              constexpr auto num_target_qubits = num_operated_qubits
+                - ::ket::gate::meta::num_control_qubits<BitInteger, Qubit2, Qubit3, Qubits...>::value;
+              switch (num_target_qubits % BitInteger{4u})
               {
                case BitInteger{0u}:
                 sin_part = i_sin_theta;
+                break;
 
                case BitInteger{1u}:
                 sin_part = -sin_theta;
+                break;
 
                case BitInteger{2u}:
                 sin_part = -i_sin_theta;
+                break;
 
                default: //case BitInteger{3u}:
                 sin_part = sin_theta;
+                break;
               }
 
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
@@ -7401,6 +7417,16 @@ namespace ket
 
             using std::begin;
             using std::end;
+            auto const num_operands = static_cast<bit_integer_type>(
+              std::distance(begin(permutated_qubits), end(permutated_qubits)));
+            if (num_operands > num_nonpage_local_qubits)
+            {
+              ::ket::gate::runtime::nocache::qubit_ranges::gate(
+                parallel_policy, begin(local_state), end(local_state), function,
+                permutated_qubits | boost::adaptors::transformed(
+                  [](permutated_qubit_type const qubit) { return qubit.qubit(); }));
+              return local_state;
+            }
             auto sorted_permutated_operated_qubits = std::vector<permutated_qubit_type>{begin(permutated_qubits), end(permutated_qubits)};
             std::sort(begin(sorted_permutated_operated_qubits), end(sorted_permutated_operated_qubits));
 
@@ -7545,9 +7571,11 @@ namespace ket
 
                 using permutated_control_qubit_type = ::ket::utility::meta::range_value_t<PermutatedControlQubitsRange>;
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, 1u);
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [&one_plus_phase_coefficient, &one_minus_phase_coefficient, num_control_qubits](
+                  [&one_plus_phase_coefficient, &one_minus_phase_coefficient, num_control_qubits, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& modified_unsorted_qubits, auto const& modified_sorted_qubits_with_sentinel,
                     int const)
@@ -7560,13 +7588,13 @@ namespace ket
                     auto const iter0
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index0,
+                            index_wo_qubits, (index0) xor negative_control_mask,
                             begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
                             begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
                     auto const iter1
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index1,
+                            index_wo_qubits, (index1) xor negative_control_mask,
                             begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
                             begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
                     auto const value0 = *iter0;
@@ -7581,9 +7609,11 @@ namespace ket
                       [](permutated_control_qubit_type const permutated_control_qubit)
                       { return ::ket::mpi::remove_control(permutated_control_qubit); })));
 # else // KET_USE_BIT_MASKS_EXPLICITLY
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, 1u);
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [&one_plus_phase_coefficient, &one_minus_phase_coefficient, num_control_qubits](
+                  [&one_plus_phase_coefficient, &one_minus_phase_coefficient, num_control_qubits, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& qubit_masks, auto const& index_masks,
                     int const)
@@ -7596,12 +7626,12 @@ namespace ket
                     auto const iter0
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index0,
+                            index_wo_qubits, (index0) xor negative_control_mask,
                             begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
                     auto const iter1
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index1,
+                            index_wo_qubits, (index1) xor negative_control_mask,
                             begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
                     auto const value0 = *iter0;
 
@@ -7653,9 +7683,11 @@ namespace ket
 
                 using permutated_control_qubit_type = ::ket::utility::meta::range_value_t<PermutatedControlQubitsRange>;
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, static_cast<std::size_t>(std::distance(begin(permutated_target_qubits), end(permutated_target_qubits))));
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [cos_theta, &i_sin_theta, num_target_indices, half_num_target_indices, base_index](
+                  [cos_theta, &i_sin_theta, num_target_indices, half_num_target_indices, base_index, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& modified_unsorted_qubits, auto const& modified_sorted_qubits_with_sentinel,
                     int const)
@@ -7667,13 +7699,13 @@ namespace ket
                       auto iter1
                         = transpage_first
                           + ::ket::gate::utility::index_with_qubits(
-                              index_wo_qubits, base_index + i,
+                              index_wo_qubits, (base_index + i) xor negative_control_mask,
                               begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
                               begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
                       auto iter2
                         = transpage_first
                           + ::ket::gate::utility::index_with_qubits(
-                              index_wo_qubits, base_index + (num_target_indices - std::size_t{1u} - i),
+                              index_wo_qubits, (base_index + (num_target_indices - std::size_t{1u} - i)) xor negative_control_mask,
                               begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
                               begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
                       auto const value1 = *iter1;
@@ -7690,9 +7722,11 @@ namespace ket
                       [](permutated_control_qubit_type const permutated_control_qubit)
                       { return ::ket::mpi::remove_control(permutated_control_qubit); })));
 # else // KET_USE_BIT_MASKS_EXPLICITLY
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, static_cast<std::size_t>(std::distance(begin(permutated_target_qubits), end(permutated_target_qubits))));
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [cos_theta, &i_sin_theta, num_target_indices, half_num_target_indices, base_index](
+                  [cos_theta, &i_sin_theta, num_target_indices, half_num_target_indices, base_index, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& qubit_masks, auto const& index_masks,
                     int const)
@@ -7704,12 +7738,12 @@ namespace ket
                       auto iter1
                         = transpage_first
                           + ::ket::gate::utility::index_with_qubits(
-                              index_wo_qubits, base_index + i,
+                              index_wo_qubits, (base_index + i) xor negative_control_mask,
                               begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
                       auto iter2
                         = transpage_first
                           + ::ket::gate::utility::index_with_qubits(
-                              index_wo_qubits, base_index + (num_target_indices - std::size_t{1u} - i),
+                              index_wo_qubits, (base_index + (num_target_indices - std::size_t{1u} - i)) xor negative_control_mask,
                               begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
                       auto const value1 = *iter1;
 
@@ -7784,9 +7818,11 @@ namespace ket
 
                 using permutated_control_qubit_type = ::ket::utility::meta::range_value_t<PermutatedControlQubitsRange>;
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, static_cast<std::size_t>(std::distance(begin(permutated_target_qubits), end(permutated_target_qubits))));
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [cos_theta, &sin_part, num_target_qubits, num_target_indices, half_num_target_indices, base_index](
+                  [cos_theta, &sin_part, num_target_qubits, num_target_indices, half_num_target_indices, base_index, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& modified_unsorted_qubits, auto const& modified_sorted_qubits_with_sentinel,
                     int const)
@@ -7815,13 +7851,13 @@ namespace ket
                       auto iter1
                         = transpage_first
                           + ::ket::gate::utility::index_with_qubits(
-                              index_wo_qubits, base_index + i,
+                              index_wo_qubits, (base_index + i) xor negative_control_mask,
                               begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
                               begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
                       auto iter2
                         = transpage_first
                           + ::ket::gate::utility::index_with_qubits(
-                              index_wo_qubits, base_index + j,
+                              index_wo_qubits, (base_index + j) xor negative_control_mask,
                               begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
                               begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
                       auto const value1 = *iter1;
@@ -7838,9 +7874,11 @@ namespace ket
                       [](permutated_control_qubit_type const permutated_control_qubit)
                       { return ::ket::mpi::remove_control(permutated_control_qubit); })));
 # else // KET_USE_BIT_MASKS_EXPLICITLY
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, static_cast<std::size_t>(std::distance(begin(permutated_target_qubits), end(permutated_target_qubits))));
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [cos_theta, &sin_part, num_target_qubits, num_target_indices, half_num_target_indices, base_index](
+                  [cos_theta, &sin_part, num_target_qubits, num_target_indices, half_num_target_indices, base_index, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& qubit_masks, auto const& index_masks,
                     int const)
@@ -7869,12 +7907,12 @@ namespace ket
                       auto iter1
                         = transpage_first
                           + ::ket::gate::utility::index_with_qubits(
-                              index_wo_qubits, base_index + i,
+                              index_wo_qubits, (base_index + i) xor negative_control_mask,
                               begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
                       auto iter2
                         = transpage_first
                           + ::ket::gate::utility::index_with_qubits(
-                              index_wo_qubits, base_index + j,
+                              index_wo_qubits, (base_index + j) xor negative_control_mask,
                               begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
                       auto const value1 = *iter1;
 
@@ -7925,9 +7963,11 @@ namespace ket
 
                 using permutated_control_qubit_type = ::ket::utility::meta::range_value_t<PermutatedControlQubitsRange>;
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, static_cast<std::size_t>(std::distance(begin(permutated_target_qubits), end(permutated_target_qubits))));
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [&phase_coefficient, &conj_phase_coefficient, num_target_qubits, num_target_indices, base_index](
+                  [&phase_coefficient, &conj_phase_coefficient, num_target_qubits, num_target_indices, base_index, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& modified_unsorted_qubits, auto const& modified_sorted_qubits_with_sentinel,
                     int const)
@@ -7947,7 +7987,7 @@ namespace ket
                       auto const iter
                         = transpage_first
                           + ::ket::gate::utility::index_with_qubits(
-                              index_wo_qubits, base_index + i,
+                              index_wo_qubits, (base_index + i) xor negative_control_mask,
                               begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
                               begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
                       *iter *= num_ones_in_i % BitInteger{2u} == BitInteger{0u} ? phase_coefficient : conj_phase_coefficient;
@@ -7959,9 +7999,11 @@ namespace ket
                       [](permutated_control_qubit_type const permutated_control_qubit)
                       { return ::ket::mpi::remove_control(permutated_control_qubit); })));
 # else // KET_USE_BIT_MASKS_EXPLICITLY
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, static_cast<std::size_t>(std::distance(begin(permutated_target_qubits), end(permutated_target_qubits))));
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [&phase_coefficient, &conj_phase_coefficient, num_target_qubits, num_target_indices, base_index](
+                  [&phase_coefficient, &conj_phase_coefficient, num_target_qubits, num_target_indices, base_index, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& qubit_masks, auto const& index_masks,
                     int const)
@@ -7981,7 +8023,7 @@ namespace ket
                       auto const iter
                         = transpage_first
                           + ::ket::gate::utility::index_with_qubits(
-                              index_wo_qubits, base_index + i,
+                              index_wo_qubits, (base_index + i) xor negative_control_mask,
                               begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
                       *iter *= num_ones_in_i % BitInteger{2u} == BitInteger{0u} ? phase_coefficient : conj_phase_coefficient;
                     }
@@ -8025,9 +8067,11 @@ namespace ket
                 using permutated_control_qubit_type = ::ket::utility::meta::range_value_t<PermutatedControlQubitsRange>;
 
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, 2u);
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [&phase_coefficient, &i_sin_theta, num_control_qubits](
+                  [&phase_coefficient, &i_sin_theta, num_control_qubits, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& modified_unsorted_qubits, auto const& modified_sorted_qubits_with_sentinel,
                     int const)
@@ -8046,13 +8090,13 @@ namespace ket
                     auto const iter00
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index00,
+                            index_wo_qubits, (index00) xor negative_control_mask,
                             begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
                             begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
                     auto const iter11
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index11,
+                            index_wo_qubits, (index11) xor negative_control_mask,
                             begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
                             begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
                     *iter00 *= phase_coefficient;
@@ -8061,13 +8105,13 @@ namespace ket
                     auto const iter01
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index01,
+                            index_wo_qubits, (index01) xor negative_control_mask,
                             begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
                             begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
                     auto const iter10
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index10,
+                            index_wo_qubits, (index10) xor negative_control_mask,
                             begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
                             begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
                     auto const value01 = *iter01;
@@ -8083,9 +8127,11 @@ namespace ket
                       [](permutated_control_qubit_type const permutated_control_qubit)
                       { return ::ket::mpi::remove_control(permutated_control_qubit); })));
 # else // KET_USE_BIT_MASKS_EXPLICITLY
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, 2u);
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [&phase_coefficient, &i_sin_theta, num_control_qubits](
+                  [&phase_coefficient, &i_sin_theta, num_control_qubits, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& qubit_masks, auto const& index_masks,
                     int const)
@@ -8104,12 +8150,12 @@ namespace ket
                     auto const iter00
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index00,
+                            index_wo_qubits, (index00) xor negative_control_mask,
                             begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
                     auto const iter11
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index11,
+                            index_wo_qubits, (index11) xor negative_control_mask,
                             begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
                     *iter00 *= phase_coefficient;
                     *iter11 *= phase_coefficient;
@@ -8117,12 +8163,12 @@ namespace ket
                     auto const iter01
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index01,
+                            index_wo_qubits, (index01) xor negative_control_mask,
                             begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
                     auto const iter10
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index10,
+                            index_wo_qubits, (index10) xor negative_control_mask,
                             begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
                     auto const value01 = *iter01;
                     using std::real;
@@ -8164,9 +8210,11 @@ namespace ket
                 auto const index = (std::size_t{1u} << num_control_qubits) - std::size_t{1u};
 
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, 0u);
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [&phase_coefficient, index](
+                  [&phase_coefficient, index, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& modified_unsorted_qubits, auto const& modified_sorted_qubits_with_sentinel,
                     int const)
@@ -8176,7 +8224,7 @@ namespace ket
                     auto const iter
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index,
+                            index_wo_qubits, (index) xor negative_control_mask,
                             begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
                             begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
                     *iter *= phase_coefficient;
@@ -8185,9 +8233,11 @@ namespace ket
                     [](permutated_control_qubit_type const permutated_control_qubit)
                     { return ::ket::mpi::remove_control(permutated_control_qubit); }));
 # else // KET_USE_BIT_MASKS_EXPLICITLY
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, 0u);
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [&phase_coefficient, index](
+                  [&phase_coefficient, index, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& qubit_masks, auto const& index_masks,
                     int const)
@@ -8197,7 +8247,7 @@ namespace ket
                     auto const iter
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index,
+                            index_wo_qubits, (index) xor negative_control_mask,
                             begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
                     *iter *= phase_coefficient;
                   },
@@ -8223,9 +8273,11 @@ namespace ket
 
                 using permutated_control_qubit_type = ::ket::utility::meta::range_value_t<PermutatedControlQubitsRange>;
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, 1u);
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [&phase_coefficient, index](
+                  [&phase_coefficient, index, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& modified_unsorted_qubits, auto const& modified_sorted_qubits_with_sentinel,
                     int const)
@@ -8235,7 +8287,7 @@ namespace ket
                     auto const iter
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index,
+                            index_wo_qubits, (index) xor negative_control_mask,
                             begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
                             begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
                     *iter *= phase_coefficient;
@@ -8246,9 +8298,11 @@ namespace ket
                       [](permutated_control_qubit_type const permutated_control_qubit)
                       { return ::ket::mpi::remove_control(permutated_control_qubit); })));
 # else // KET_USE_BIT_MASKS_EXPLICITLY
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, 1u);
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [&phase_coefficient, index](
+                  [&phase_coefficient, index, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& qubit_masks, auto const& index_masks,
                     int const)
@@ -8258,7 +8312,7 @@ namespace ket
                     auto const iter
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index,
+                            index_wo_qubits, (index) xor negative_control_mask,
                             begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
                     *iter *= phase_coefficient;
                   },
@@ -8296,9 +8350,11 @@ namespace ket
                 auto const num_control_qubits = static_cast<BitInteger>(std::distance(begin(permutated_control_qubits), end(permutated_control_qubits)));
                 using permutated_control_qubit_type = ::ket::utility::meta::range_value_t<PermutatedControlQubitsRange>;
 
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, 1u);
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [num_control_qubits, &modified_phase_coefficient1, &phase_coefficient2](
+                  [num_control_qubits, &modified_phase_coefficient1, &phase_coefficient2, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& qubits, auto const& index_masks, int const)
                   {
@@ -8309,11 +8365,11 @@ namespace ket
                     auto const iter0
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index0, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
+                            index_wo_qubits, (index0) xor negative_control_mask, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
                     auto const iter1
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index1, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
+                            index_wo_qubits, (index1) xor negative_control_mask, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
                     auto const value0 = *iter0;
                     *iter0 -= phase_coefficient2 * *iter1;
                     *iter0 *= one_div_root_two<Real>();
@@ -8354,9 +8410,11 @@ namespace ket
                 auto const num_control_qubits = static_cast<BitInteger>(std::distance(begin(permutated_control_qubits), end(permutated_control_qubits)));
                 using permutated_control_qubit_type = ::ket::utility::meta::range_value_t<PermutatedControlQubitsRange>;
 
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, 1u);
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [num_control_qubits, &phase_coefficient1, &modified_phase_coefficient2](
+                  [num_control_qubits, &phase_coefficient1, &modified_phase_coefficient2, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& qubits, auto const& index_masks, int const)
                   {
@@ -8367,11 +8425,11 @@ namespace ket
                     auto const iter0
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index0, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
+                            index_wo_qubits, (index0) xor negative_control_mask, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
                     auto const iter1
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index1, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
+                            index_wo_qubits, (index1) xor negative_control_mask, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
                     auto const value0 = *iter0;
                     *iter0 += phase_coefficient1 * *iter1;
                     *iter0 *= one_div_root_two<Real>();
@@ -8417,9 +8475,11 @@ namespace ket
                 auto const num_control_qubits = static_cast<BitInteger>(std::distance(begin(permutated_control_qubits), end(permutated_control_qubits)));
                 using permutated_control_qubit_type = ::ket::utility::meta::range_value_t<PermutatedControlQubitsRange>;
 
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, 1u);
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [num_control_qubits, sine, cosine, &phase_coefficient2, &sine_phase_coefficient3, &cosine_phase_coefficient3](
+                  [num_control_qubits, sine, cosine, &phase_coefficient2, &sine_phase_coefficient3, &cosine_phase_coefficient3, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& qubits, auto const& index_masks, int const)
                   {
@@ -8430,11 +8490,11 @@ namespace ket
                     auto const iter0
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index0, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
+                            index_wo_qubits, (index0) xor negative_control_mask, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
                     auto const iter1
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index1, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
+                            index_wo_qubits, (index1) xor negative_control_mask, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
                     auto const value0 = *iter0;
                     *iter0 *= cosine;
                     *iter0 -= sine_phase_coefficient3 * *iter1;
@@ -8480,9 +8540,11 @@ namespace ket
                 auto const num_control_qubits = static_cast<BitInteger>(std::distance(begin(permutated_control_qubits), end(permutated_control_qubits)));
                 using permutated_control_qubit_type = ::ket::utility::meta::range_value_t<PermutatedControlQubitsRange>;
 
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, 1u);
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [num_control_qubits, sine, cosine, &sine_phase_coefficient2, &cosine_phase_coefficient2, &phase_coefficient3](
+                  [num_control_qubits, sine, cosine, &sine_phase_coefficient2, &cosine_phase_coefficient2, &phase_coefficient3, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& qubits, auto const& index_masks, int const)
                   {
@@ -8493,11 +8555,11 @@ namespace ket
                     auto const iter0
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index0, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
+                            index_wo_qubits, (index0) xor negative_control_mask, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
                     auto const iter1
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index1, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
+                            index_wo_qubits, (index1) xor negative_control_mask, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
                     auto const value0 = *iter0;
                     *iter0 *= cosine;
                     *iter0 += sine_phase_coefficient2 * *iter1;
@@ -8532,9 +8594,11 @@ namespace ket
                 using std::end;
                 auto const num_control_qubits = static_cast<BitInteger>(std::distance(begin(permutated_control_qubits), end(permutated_control_qubits)));
 
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, 1u);
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [num_control_qubits](
+                  [num_control_qubits, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& qubits, auto const& index_masks, int const)
                   {
@@ -8545,11 +8609,11 @@ namespace ket
                     auto const iter0
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index0, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
+                            index_wo_qubits, (index0) xor negative_control_mask, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
                     auto const iter1
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index1, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
+                            index_wo_qubits, (index1) xor negative_control_mask, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
                     auto const value0 = *iter0;
 
                     using real_type = ::ket::utility::meta::real_t<Complex>;
@@ -8588,9 +8652,11 @@ namespace ket
                 using std::end;
                 auto const num_control_qubits = static_cast<BitInteger>(std::distance(begin(permutated_control_qubits), end(permutated_control_qubits)));
 
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, 1u);
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [num_control_qubits](
+                  [num_control_qubits, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& qubits, auto const& index_masks, int const)
                   {
@@ -8601,11 +8667,11 @@ namespace ket
                     auto const iter0
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index0, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
+                            index_wo_qubits, (index0) xor negative_control_mask, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
                     auto const iter1
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index1, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
+                            index_wo_qubits, (index1) xor negative_control_mask, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
                     auto const value0 = *iter0;
 
                     using real_type = ::ket::utility::meta::real_t<Complex>;
@@ -8644,9 +8710,11 @@ namespace ket
                 using std::end;
                 auto const num_control_qubits = static_cast<BitInteger>(std::distance(begin(permutated_control_qubits), end(permutated_control_qubits)));
 
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, 1u);
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [num_control_qubits](
+                  [num_control_qubits, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& qubits, auto const& index_masks, int const)
                   {
@@ -8657,11 +8725,11 @@ namespace ket
                     auto const iter0
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index0, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
+                            index_wo_qubits, (index0) xor negative_control_mask, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
                     auto const iter1
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index1, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
+                            index_wo_qubits, (index1) xor negative_control_mask, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
                     auto const value0 = *iter0;
 
                     using real_type = ::ket::utility::meta::real_t<Complex>;
@@ -8698,9 +8766,11 @@ namespace ket
                 using std::end;
                 auto const num_control_qubits = static_cast<BitInteger>(std::distance(begin(permutated_control_qubits), end(permutated_control_qubits)));
 
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, 1u);
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [num_control_qubits](
+                  [num_control_qubits, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& qubits, auto const& index_masks, int const)
                   {
@@ -8711,11 +8781,11 @@ namespace ket
                     auto const iter0
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index0, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
+                            index_wo_qubits, (index0) xor negative_control_mask, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
                     auto const iter1
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index1, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
+                            index_wo_qubits, (index1) xor negative_control_mask, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
                     auto const value0 = *iter0;
 
                     using real_type = ::ket::utility::meta::real_t<Complex>;
@@ -8752,9 +8822,11 @@ namespace ket
                 using std::end;
                 auto const num_control_qubits = static_cast<BitInteger>(std::distance(begin(permutated_control_qubits), end(permutated_control_qubits)));
 
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, 1u);
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [num_control_qubits](
+                  [num_control_qubits, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& qubits, auto const& index_masks, int const)
                   {
@@ -8765,11 +8837,11 @@ namespace ket
                     auto const iter0
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index0, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
+                            index_wo_qubits, (index0) xor negative_control_mask, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
                     auto const iter1
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index1, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
+                            index_wo_qubits, (index1) xor negative_control_mask, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
                     auto const value0 = *iter0;
 
                     using real_type = ::ket::utility::meta::real_t<Complex>;
@@ -8806,9 +8878,11 @@ namespace ket
                 using std::end;
                 auto const num_control_qubits = static_cast<BitInteger>(std::distance(begin(permutated_control_qubits), end(permutated_control_qubits)));
 
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, 1u);
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [num_control_qubits](
+                  [num_control_qubits, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& qubits, auto const& index_masks, int const)
                   {
@@ -8819,11 +8893,11 @@ namespace ket
                     auto const iter0
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index0, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
+                            index_wo_qubits, (index0) xor negative_control_mask, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
                     auto const iter1
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index1, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
+                            index_wo_qubits, (index1) xor negative_control_mask, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
                     auto const value0 = *iter0;
 
                     using real_type = ::ket::utility::meta::real_t<Complex>;
@@ -8860,9 +8934,11 @@ namespace ket
                 using std::end;
                 auto const num_control_qubits = static_cast<BitInteger>(std::distance(begin(permutated_control_qubits), end(permutated_control_qubits)));
 
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, 1u);
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [num_control_qubits](
+                  [num_control_qubits, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& qubits, auto const& index_masks, int const)
                   {
@@ -8873,11 +8949,11 @@ namespace ket
                     auto const iter0
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index0, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
+                            index_wo_qubits, (index0) xor negative_control_mask, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
                     auto const iter1
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index1, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
+                            index_wo_qubits, (index1) xor negative_control_mask, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
                     auto const value0 = *iter0;
 
                     using real_type = ::ket::utility::meta::real_t<Complex>;
@@ -8915,9 +8991,11 @@ namespace ket
                 using std::end;
                 auto const num_control_qubits = static_cast<BitInteger>(std::distance(begin(permutated_control_qubits), end(permutated_control_qubits)));
 
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, 1u);
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [num_control_qubits](
+                  [num_control_qubits, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& qubits, auto const& index_masks, int const)
                   {
@@ -8928,11 +9006,11 @@ namespace ket
                     auto const iter0
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index0, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
+                            index_wo_qubits, (index0) xor negative_control_mask, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
                     auto const iter1
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index1, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
+                            index_wo_qubits, (index1) xor negative_control_mask, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
                     auto const value0 = *iter0;
 
                     using real_type = ::ket::utility::meta::real_t<Complex>;
@@ -8973,9 +9051,11 @@ namespace ket
                 auto const num_control_qubits = static_cast<BitInteger>(std::distance(begin(permutated_control_qubits), end(permutated_control_qubits)));
                 auto const index = (std::size_t{1u} << num_control_qubits) - std::size_t{1u};
 
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, 0u);
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [index](
+                  [index, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& qubits, auto const& index_masks, int const)
                   {
@@ -8984,7 +9064,7 @@ namespace ket
                     auto const iter
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
+                            index_wo_qubits, (index) xor negative_control_mask, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
                     *iter *= ::ket::utility::imaginary_unit<Complex>();
                   },
                   permutated_control_qubits | boost::adaptors::transformed(
@@ -9011,9 +9091,11 @@ namespace ket
                 auto const num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
                 using permutated_control_qubit_type = ::ket::utility::meta::range_value_t<PermutatedControlQubitsRange>;
 
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, static_cast<std::size_t>(std::distance(begin(permutated_target_qubits), end(permutated_target_qubits))));
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [num_target_qubits, num_control_qubits, num_target_indices](
+                  [num_target_qubits, num_control_qubits, num_target_indices, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& qubits, auto const& index_masks, int const)
                   {
@@ -9047,7 +9129,7 @@ namespace ket
                       auto const iter
                         = transpage_first
                           + ::ket::gate::utility::index_with_qubits(
-                              index_wo_qubits, base_index + i,
+                              index_wo_qubits, (base_index + i) xor negative_control_mask,
                               begin(qubits), end(qubits), begin(index_masks), end(index_masks));
                       *iter *= coefficient;
                     }
@@ -9082,9 +9164,11 @@ namespace ket
                 auto const num_control_qubits = static_cast<BitInteger>(std::distance(begin(permutated_control_qubits), end(permutated_control_qubits)));
                 auto const index = (std::size_t{1u} << num_control_qubits) - std::size_t{1u};
 
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, 0u);
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [index](
+                  [index, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& qubits, auto const& index_masks, int const)
                   {
@@ -9093,7 +9177,7 @@ namespace ket
                     auto const iter
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
+                            index_wo_qubits, (index) xor negative_control_mask, begin(qubits), end(qubits), begin(index_masks), end(index_masks));
                     *iter *= ::ket::utility::minus_imaginary_unit<Complex>();
                   },
                   permutated_control_qubits | boost::adaptors::transformed(
@@ -9120,9 +9204,11 @@ namespace ket
                 auto const num_target_indices = ::ket::utility::integer_exp2<std::size_t>(num_target_qubits);
                 using permutated_control_qubit_type = ::ket::utility::meta::range_value_t<PermutatedControlQubitsRange>;
 
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, static_cast<std::size_t>(std::distance(begin(permutated_target_qubits), end(permutated_target_qubits))));
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [num_target_qubits, num_control_qubits, num_target_indices](
+                  [num_target_qubits, num_control_qubits, num_target_indices, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& qubits, auto const& index_masks, int const)
                   {
@@ -9156,7 +9242,7 @@ namespace ket
                       auto const iter
                         = transpage_first
                           + ::ket::gate::utility::index_with_qubits(
-                              index_wo_qubits, base_index + i,
+                              index_wo_qubits, (base_index + i) xor negative_control_mask,
                               begin(qubits), end(qubits), begin(index_masks), end(index_masks));
                       *iter *= coefficient;
                     }
@@ -9189,9 +9275,11 @@ namespace ket
 
                 using permutated_control_qubit_type = ::ket::utility::meta::range_value_t<PermutatedControlQubitsRange>;
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, 1u);
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [num_control_qubits](
+                  [num_control_qubits, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& modified_unsorted_qubits, auto const& modified_sorted_qubits_with_sentinel,
                     int const)
@@ -9204,13 +9292,13 @@ namespace ket
                     auto const iter0
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index0,
+                            index_wo_qubits, (index0) xor negative_control_mask,
                             begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
                             begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
                     auto const iter1
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index1,
+                            index_wo_qubits, (index1) xor negative_control_mask,
                             begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
                             begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
                     auto const value0 = *iter0;
@@ -9228,9 +9316,11 @@ namespace ket
                       [](permutated_control_qubit_type const permutated_control_qubit)
                       { return ::ket::mpi::remove_control(permutated_control_qubit); })));
 # else // KET_USE_BIT_MASKS_EXPLICITLY
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, 1u);
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [num_control_qubits](
+                  [num_control_qubits, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& qubit_masks, auto const& index_masks,
                     int const)
@@ -9243,12 +9333,12 @@ namespace ket
                     auto const iter0
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index0,
+                            index_wo_qubits, (index0) xor negative_control_mask,
                             begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
                     auto const iter1
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index1,
+                            index_wo_qubits, (index1) xor negative_control_mask,
                             begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
                     auto const value0 = *iter0;
 
@@ -9298,9 +9388,11 @@ namespace ket
 
                 using permutated_control_qubit_type = ::ket::utility::meta::range_value_t<PermutatedControlQubitsRange>;
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, static_cast<std::size_t>(std::distance(begin(permutated_target_qubits), end(permutated_target_qubits))));
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [num_target_indices, half_num_target_indices, base_index](
+                  [num_target_indices, half_num_target_indices, base_index, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& modified_unsorted_qubits, auto const& modified_sorted_qubits_with_sentinel,
                     int const)
@@ -9311,12 +9403,12 @@ namespace ket
                       std::iter_swap(
                         transpage_first
                           + ::ket::gate::utility::index_with_qubits(
-                              index_wo_qubits, base_index + i,
+                              index_wo_qubits, (base_index + i) xor negative_control_mask,
                               begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
                               begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel)),
                         transpage_first
                           + ::ket::gate::utility::index_with_qubits(
-                              index_wo_qubits, base_index + (num_target_indices - std::size_t{1u} - i),
+                              index_wo_qubits, (base_index + (num_target_indices - std::size_t{1u} - i)) xor negative_control_mask,
                               begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
                               begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel)));
                   },
@@ -9326,9 +9418,11 @@ namespace ket
                       [](permutated_control_qubit_type const permutated_control_qubit)
                       { return ::ket::mpi::remove_control(permutated_control_qubit); })));
 # else // KET_USE_BIT_MASKS_EXPLICITLY
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, static_cast<std::size_t>(std::distance(begin(permutated_target_qubits), end(permutated_target_qubits))));
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [num_target_indices, half_num_target_indices, base_index](
+                  [num_target_indices, half_num_target_indices, base_index, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& qubit_masks, auto const& index_masks,
                     int const)
@@ -9339,11 +9433,11 @@ namespace ket
                       std::iter_swap(
                         transpage_first
                           + ::ket::gate::utility::index_with_qubits(
-                              index_wo_qubits, base_index + i,
+                              index_wo_qubits, (base_index + i) xor negative_control_mask,
                               begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks)),
                         transpage_first
                           + ::ket::gate::utility::index_with_qubits(
-                              index_wo_qubits, base_index + (num_target_indices - std::size_t{1u} - i),
+                              index_wo_qubits, (base_index + (num_target_indices - std::size_t{1u} - i)) xor negative_control_mask,
                               begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks)));
                   },
                   boost::join(
@@ -9395,9 +9489,11 @@ namespace ket
 
                 using permutated_control_qubit_type = ::ket::utility::meta::range_value_t<PermutatedControlQubitsRange>;
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, static_cast<std::size_t>(std::distance(begin(permutated_target_qubits), end(permutated_target_qubits))));
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [num_target_qubits, num_target_indices, half_num_target_indices, base_index, coefficient](
+                  [num_target_qubits, num_target_indices, half_num_target_indices, base_index, coefficient, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& modified_unsorted_qubits, auto const& modified_sorted_qubits_with_sentinel,
                     int const)
@@ -9426,13 +9522,13 @@ namespace ket
                       auto iter1
                         = transpage_first
                           + ::ket::gate::utility::index_with_qubits(
-                              index_wo_qubits, base_index + i,
+                              index_wo_qubits, (base_index + i) xor negative_control_mask,
                               begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
                               begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
                       auto iter2
                         = transpage_first
                           + ::ket::gate::utility::index_with_qubits(
-                              index_wo_qubits, base_index + j,
+                              index_wo_qubits, (base_index + j) xor negative_control_mask,
                               begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
                               begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
                       std::iter_swap(iter1, iter2);
@@ -9446,9 +9542,11 @@ namespace ket
                       [](permutated_control_qubit_type const permutated_control_qubit)
                       { return ::ket::mpi::remove_control(permutated_control_qubit); })));
 # else // KET_USE_BIT_MASKS_EXPLICITLY
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, static_cast<std::size_t>(std::distance(begin(permutated_target_qubits), end(permutated_target_qubits))));
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [num_target_qubits, num_target_indices, half_num_target_indices, base_index, coefficient](
+                  [num_target_qubits, num_target_indices, half_num_target_indices, base_index, coefficient, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& qubit_masks, auto const& index_masks,
                     int const)
@@ -9477,12 +9575,12 @@ namespace ket
                       auto iter1
                         = transpage_first
                           + ::ket::gate::utility::index_with_qubits(
-                              index_wo_qubits, base_index + i,
+                              index_wo_qubits, (base_index + i) xor negative_control_mask,
                               begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
                       auto iter2
                         = transpage_first
                           + ::ket::gate::utility::index_with_qubits(
-                              index_wo_qubits, base_index + j,
+                              index_wo_qubits, (base_index + j) xor negative_control_mask,
                               begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
                       std::iter_swap(iter1, iter2);
                       *iter1 *= (num_target_qubits - num_ones_in_i) % BitInteger{2u} == BitInteger{0u} ? coefficient : -coefficient;
@@ -9522,16 +9620,18 @@ namespace ket
                 auto const base_index = (std::size_t{1u} << num_control_qubits) - std::size_t{1u};
 
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, 0u);
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [base_index](auto const transpage_first, StateInteger const index_wo_qubits, auto const& modified_unsorted_qubits, auto const& modified_sorted_qubits_with_sentinel, int const)
+                  [base_index, negative_control_mask](auto const transpage_first, StateInteger const index_wo_qubits, auto const& modified_unsorted_qubits, auto const& modified_sorted_qubits_with_sentinel, int const)
                   {
                     using std::begin;
                     using std::end;
                     auto const iter
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, base_index,
+                            index_wo_qubits, (base_index) xor negative_control_mask,
                             begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
                             begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
                     *iter *= real_type{-1};
@@ -9540,16 +9640,18 @@ namespace ket
                     [](permutated_control_qubit_type const permutated_control_qubit)
                     { return ::ket::mpi::remove_control(permutated_control_qubit); }));
 # else // KET_USE_BIT_MASKS_EXPLICITLY
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, 0u);
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [base_index](auto const transpage_first, StateInteger const index_wo_qubits, auto const& qubit_masks, auto const& index_masks, int const)
+                  [base_index, negative_control_mask](auto const transpage_first, StateInteger const index_wo_qubits, auto const& qubit_masks, auto const& index_masks, int const)
                   {
                     using std::begin;
                     using std::end;
                     auto const iter
                       = transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, base_index,
+                            index_wo_qubits, (base_index) xor negative_control_mask,
                             begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
                     *iter *= real_type{-1};
                   },
@@ -9581,9 +9683,11 @@ namespace ket
 
                 using permutated_control_qubit_type = ::ket::utility::meta::range_value_t<PermutatedControlQubitsRange>;
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, static_cast<std::size_t>(std::distance(begin(permutated_target_qubits), end(permutated_target_qubits))));
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [num_target_qubits, num_target_indices, base_index](
+                  [num_target_qubits, num_target_indices, base_index, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& modified_unsorted_qubits, auto const& modified_sorted_qubits_with_sentinel,
                     int const)
@@ -9606,7 +9710,7 @@ namespace ket
                         auto const iter
                           = transpage_first
                             + ::ket::gate::utility::index_with_qubits(
-                                index_wo_qubits, base_index + i,
+                                index_wo_qubits, (base_index + i) xor negative_control_mask,
                                 begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
                                 begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel));
                         *iter *= real_type{-1};
@@ -9619,9 +9723,11 @@ namespace ket
                       [](permutated_control_qubit_type const permutated_control_qubit)
                       { return ::ket::mpi::remove_control(permutated_control_qubit); })));
 # else // KET_USE_BIT_MASKS_EXPLICITLY
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, static_cast<std::size_t>(std::distance(begin(permutated_target_qubits), end(permutated_target_qubits))));
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [num_target_qubits, num_target_indices, base_index](
+                  [num_target_qubits, num_target_indices, base_index, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& qubit_masks, auto const& index_masks,
                     int const)
@@ -9644,7 +9750,7 @@ namespace ket
                         auto const iter
                           = transpage_first
                             + ::ket::gate::utility::index_with_qubits(
-                                index_wo_qubits, base_index + i,
+                                index_wo_qubits, (base_index + i) xor negative_control_mask,
                                 begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks));
                         *iter *= real_type{-1};
                       }
@@ -9687,9 +9793,11 @@ namespace ket
 
                 using permutated_control_qubit_type = ::ket::utility::meta::range_value_t<PermutatedControlQubitsRange>;
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, 2u);
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [index01, index10](
+                  [index01, index10, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& modified_unsorted_qubits, auto const& modified_sorted_qubits_with_sentinel,
                     int const)
@@ -9699,12 +9807,12 @@ namespace ket
                     std::iter_swap(
                       transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index01,
+                            index_wo_qubits, (index01) xor negative_control_mask,
                             begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
                             begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel)),
                       transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index10,
+                            index_wo_qubits, (index10) xor negative_control_mask,
                             begin(modified_unsorted_qubits), end(modified_unsorted_qubits),
                             begin(modified_sorted_qubits_with_sentinel), end(modified_sorted_qubits_with_sentinel)));
                   },
@@ -9714,9 +9822,11 @@ namespace ket
                       [](permutated_control_qubit_type const permutated_control_qubit)
                       { return ::ket::mpi::remove_control(permutated_control_qubit); })));
 # else // KET_USE_BIT_MASKS_EXPLICITLY
+                auto const negative_control_mask
+                  = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(permutated_control_qubits, 2u);
                 return ::ket::mpi::gate::runtime::local::transpage_gate(
                   parallel_policy, local_state,
-                  [index01, index10](
+                  [index01, index10, negative_control_mask](
                     auto const transpage_first, StateInteger const index_wo_qubits,
                     auto const& qubit_masks, auto const& index_masks,
                     int const)
@@ -9726,11 +9836,11 @@ namespace ket
                     std::iter_swap(
                       transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index01,
+                            index_wo_qubits, (index01) xor negative_control_mask,
                             begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks)),
                       transpage_first
                         + ::ket::gate::utility::index_with_qubits(
-                            index_wo_qubits, index10,
+                            index_wo_qubits, (index10) xor negative_control_mask,
                             begin(qubit_masks), end(qubit_masks), begin(index_masks), end(index_masks)));
                   },
                   boost::join(

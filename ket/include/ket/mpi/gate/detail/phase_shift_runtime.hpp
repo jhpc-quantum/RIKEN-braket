@@ -17,6 +17,10 @@
 # include <boost/range/join.hpp>
 
 # include <ket/control.hpp>
+# include <ket/mpi/gate/detail/dispatch_control_values.hpp>
+# ifdef KET_USE_DIAGONAL_LOOP
+#   include <ket/mpi/gate/page/phase_shift_diagonal.hpp>
+# endif
 # include <ket/mpi/gate/detail/global_phase_runtime.hpp>
 # include <ket/gate/phase_shift.hpp>
 # include <ket/mpi/gate/detail/append_qubits_string.hpp>
@@ -366,69 +370,73 @@ namespace ket
             ControlQubitsRange const& control_qubits)
           -> bool
           {
-            using std::begin;
-            using std::end;
-            auto const control_qubit_first = begin(control_qubits);
-            auto const num_control_qubits = std::distance(control_qubit_first, end(control_qubits));
-
-            if (num_control_qubits == 0)
-            {
-              ::ket::mpi::utility::diagonal_loop(
-                mpi_policy, parallel_policy,
-                local_state, permutation, communicator, environment,
-                [&phase_coefficient](auto const iter, StateInteger const) { *iter *= phase_coefficient; });
-              return true;
-            }
-
-            if (num_control_qubits == 1)
-            {
-              auto const control_qubit = *control_qubit_first;
-              auto const permutated_control_qubit = permutation[control_qubit];
-              if (::ket::mpi::page::is_on_page(permutated_control_qubit, local_state))
-                ::ket::mpi::gate::page::phase_shift_coeff(
-                  parallel_policy, local_state, phase_coefficient, permutated_control_qubit);
-              else
-                ::ket::mpi::utility::diagonal_loop(
-                  mpi_policy, parallel_policy,
-                  local_state, permutation, communicator, environment,
-                  [&phase_coefficient](auto const iter, StateInteger const) { *iter *= phase_coefficient; },
-                  control_qubit);
-              return true;
-            }
-
-            if (num_control_qubits == 2)
-            {
-              auto const control_qubit1 = *control_qubit_first;
-              auto const control_qubit2 = *std::next(control_qubit_first);
-              auto const permutated_control_qubit1 = permutation[control_qubit1];
-              auto const permutated_control_qubit2 = permutation[control_qubit2];
-              if (::ket::mpi::page::is_on_page(permutated_control_qubit1, local_state))
+            return ::ket::mpi::gate::detail::try_positive_control_range(
+              [&](auto const& control_qubits) -> bool
               {
-                if (::ket::mpi::page::is_on_page(permutated_control_qubit2, local_state))
-                  ::ket::mpi::gate::page::cphase_shift_coeff_2p(
-                    parallel_policy, local_state,
-                    phase_coefficient, permutated_control_qubit1, permutated_control_qubit2);
-                else
-                  ::ket::mpi::gate::page::cphase_shift_coeff_p(
-                    mpi_policy, parallel_policy, local_state,
-                    phase_coefficient, permutated_control_qubit1, permutated_control_qubit2,
-                    communicator.rank(environment));
-              }
-              else if (::ket::mpi::page::is_on_page(permutated_control_qubit2, local_state))
-                ::ket::mpi::gate::page::cphase_shift_coeff_p(
-                  mpi_policy, parallel_policy, local_state,
-                  phase_coefficient, permutated_control_qubit2, permutated_control_qubit1,
-                  communicator.rank(environment));
-              else
-                ::ket::mpi::utility::diagonal_loop(
-                  mpi_policy, parallel_policy,
-                  local_state, permutation, communicator, environment,
-                  [&phase_coefficient](auto const iter, StateInteger const) { *iter *= phase_coefficient; },
-                  control_qubit1, control_qubit2);
-              return true;
-            }
+                using std::begin;
+                using std::end;
+                auto const control_qubit_first = begin(control_qubits);
+                auto const num_control_qubits = std::distance(control_qubit_first, end(control_qubits));
 
-            return false;
+                if (num_control_qubits == 0)
+                {
+                  ::ket::mpi::utility::diagonal_loop(
+                    mpi_policy, parallel_policy,
+                    local_state, permutation, communicator, environment,
+                    [&phase_coefficient](auto const iter, StateInteger const) { *iter *= phase_coefficient; });
+                  return true;
+                }
+
+                if (num_control_qubits == 1)
+                {
+                  auto const control_qubit = *control_qubit_first;
+                  auto const permutated_control_qubit = permutation[control_qubit];
+                  if (::ket::mpi::page::is_on_page(permutated_control_qubit, local_state))
+                    ::ket::mpi::gate::page::phase_shift_coeff(
+                      parallel_policy, local_state, phase_coefficient, permutated_control_qubit);
+                  else
+                    ::ket::mpi::utility::diagonal_loop(
+                      mpi_policy, parallel_policy,
+                      local_state, permutation, communicator, environment,
+                      [&phase_coefficient](auto const iter, StateInteger const) { *iter *= phase_coefficient; },
+                      control_qubit);
+                  return true;
+                }
+
+                if (num_control_qubits == 2)
+                {
+                  auto const control_qubit1 = *control_qubit_first;
+                  auto const control_qubit2 = *std::next(control_qubit_first);
+                  auto const permutated_control_qubit1 = permutation[control_qubit1];
+                  auto const permutated_control_qubit2 = permutation[control_qubit2];
+                  if (::ket::mpi::page::is_on_page(permutated_control_qubit1, local_state))
+                  {
+                    if (::ket::mpi::page::is_on_page(permutated_control_qubit2, local_state))
+                      ::ket::mpi::gate::page::cphase_shift_coeff_2p(
+                        parallel_policy, local_state,
+                        phase_coefficient, permutated_control_qubit1, permutated_control_qubit2);
+                    else
+                      ::ket::mpi::gate::page::cphase_shift_coeff_p(
+                        mpi_policy, parallel_policy, local_state,
+                        phase_coefficient, permutated_control_qubit1, permutated_control_qubit2,
+                        communicator.rank(environment));
+                  }
+                  else if (::ket::mpi::page::is_on_page(permutated_control_qubit2, local_state))
+                    ::ket::mpi::gate::page::cphase_shift_coeff_p(
+                      mpi_policy, parallel_policy, local_state,
+                      phase_coefficient, permutated_control_qubit2, permutated_control_qubit1,
+                      communicator.rank(environment));
+                  else
+                    ::ket::mpi::utility::diagonal_loop(
+                      mpi_policy, parallel_policy,
+                      local_state, permutation, communicator, environment,
+                      [&phase_coefficient](auto const iter, StateInteger const) { *iter *= phase_coefficient; },
+                      control_qubit1, control_qubit2);
+                  return true;
+                }
+
+                return false;
+              }, control_qubits);
           }
 
           // Case 2: the first argument of qubits is ket::qubit<S, B>
@@ -446,59 +454,63 @@ namespace ket
             ControlQubitsRange const& control_qubits)
           -> bool
           {
-            using std::begin;
-            using std::end;
-            auto const control_qubit_first = begin(control_qubits);
-            auto const num_control_qubits = std::distance(control_qubit_first, end(control_qubits));
-
-            if (num_control_qubits == 0)
-            {
-              auto const permutated_target_qubit = permutation[target_qubit];
-              if (::ket::mpi::page::is_on_page(permutated_target_qubit, local_state))
-                ::ket::mpi::gate::page::phase_shift_coeff(
-                  parallel_policy, local_state, phase_coefficient, permutated_target_qubit);
-              else
-                ::ket::mpi::utility::diagonal_loop(
-                  mpi_policy, parallel_policy,
-                  local_state, permutation, communicator, environment, target_qubit,
-                  [](auto const, StateInteger const) { },
-                  [&phase_coefficient](auto const iter, StateInteger const) { *iter *= phase_coefficient; });
-              return true;
-            }
-
-            if (num_control_qubits == 1)
-            {
-              auto const control_qubit = *control_qubit_first;
-              auto const permutated_target_qubit = permutation[target_qubit];
-              auto const permutated_control_qubit = permutation[control_qubit];
-              if (::ket::mpi::page::is_on_page(permutated_target_qubit, local_state))
+            return ::ket::mpi::gate::detail::try_positive_control_range(
+              [&](auto const& control_qubits) -> bool
               {
-                if (::ket::mpi::page::is_on_page(permutated_control_qubit, local_state))
-                  ::ket::mpi::gate::page::cphase_shift_coeff_tcp(
-                    parallel_policy, local_state,
-                    phase_coefficient, permutated_target_qubit, permutated_control_qubit);
-                else
-                  ::ket::mpi::gate::page::cphase_shift_coeff_tp(
-                    mpi_policy, parallel_policy, local_state,
-                    phase_coefficient, permutated_target_qubit, permutated_control_qubit,
-                    communicator.rank(environment));
-              }
-              else if (::ket::mpi::page::is_on_page(permutated_control_qubit, local_state))
-                ::ket::mpi::gate::page::cphase_shift_coeff_cp(
-                  mpi_policy, parallel_policy, local_state,
-                  phase_coefficient, permutated_target_qubit, permutated_control_qubit,
-                  communicator.rank(environment));
-              else
-                ::ket::mpi::utility::diagonal_loop(
-                  mpi_policy, parallel_policy,
-                  local_state, permutation, communicator, environment, target_qubit,
-                  [](auto const, StateInteger const) { },
-                  [&phase_coefficient](auto const iter, StateInteger const) { *iter *= phase_coefficient; },
-                  control_qubit);
-              return true;
-            }
+                using std::begin;
+                using std::end;
+                auto const control_qubit_first = begin(control_qubits);
+                auto const num_control_qubits = std::distance(control_qubit_first, end(control_qubits));
 
-            return false;
+                if (num_control_qubits == 0)
+                {
+                  auto const permutated_target_qubit = permutation[target_qubit];
+                  if (::ket::mpi::page::is_on_page(permutated_target_qubit, local_state))
+                    ::ket::mpi::gate::page::phase_shift_coeff(
+                      parallel_policy, local_state, phase_coefficient, permutated_target_qubit);
+                  else
+                    ::ket::mpi::utility::diagonal_loop(
+                      mpi_policy, parallel_policy,
+                      local_state, permutation, communicator, environment, target_qubit,
+                      [](auto const, StateInteger const) { },
+                      [&phase_coefficient](auto const iter, StateInteger const) { *iter *= phase_coefficient; });
+                  return true;
+                }
+
+                if (num_control_qubits == 1)
+                {
+                  auto const control_qubit = *control_qubit_first;
+                  auto const permutated_target_qubit = permutation[target_qubit];
+                  auto const permutated_control_qubit = permutation[control_qubit];
+                  if (::ket::mpi::page::is_on_page(permutated_target_qubit, local_state))
+                  {
+                    if (::ket::mpi::page::is_on_page(permutated_control_qubit, local_state))
+                      ::ket::mpi::gate::page::cphase_shift_coeff_tcp(
+                        parallel_policy, local_state,
+                        phase_coefficient, permutated_target_qubit, permutated_control_qubit);
+                    else
+                      ::ket::mpi::gate::page::cphase_shift_coeff_tp(
+                        mpi_policy, parallel_policy, local_state,
+                        phase_coefficient, permutated_target_qubit, permutated_control_qubit,
+                        communicator.rank(environment));
+                  }
+                  else if (::ket::mpi::page::is_on_page(permutated_control_qubit, local_state))
+                    ::ket::mpi::gate::page::cphase_shift_coeff_cp(
+                      mpi_policy, parallel_policy, local_state,
+                      phase_coefficient, permutated_target_qubit, permutated_control_qubit,
+                      communicator.rank(environment));
+                  else
+                    ::ket::mpi::utility::diagonal_loop(
+                      mpi_policy, parallel_policy,
+                      local_state, permutation, communicator, environment, target_qubit,
+                      [](auto const, StateInteger const) { },
+                      [&phase_coefficient](auto const iter, StateInteger const) { *iter *= phase_coefficient; },
+                      control_qubit);
+                  return true;
+                }
+
+                return false;
+              }, control_qubits);
           }
 # endif // KET_USE_DIAGONAL_LOOP
 
@@ -2782,6 +2794,73 @@ namespace ket
         -> RandomAccessRange&
         { return ::ket::mpi::gate::runtime::ranges::adj_phase_shift3(mpi_policy, parallel_policy, local_state, permutation, buffer, datatype, communicator, environment, phase1, phase2, phase3, target_qubit); }
       } // namespace runtime
+      namespace detail
+      {
+        template <typename LocalState>
+        struct value_control_dispatch<phase_shift_coeff_tag, LocalState>
+        {
+          template <typename... Args>
+          static auto call(Args&&... args) -> LocalState&
+          { return ::ket::mpi::gate::runtime::ranges::phase_shift_coeff(std::forward<Args>(args)...); }
+        };
+
+        template <typename LocalState>
+        struct value_control_dispatch<adj_phase_shift_coeff_tag, LocalState>
+        {
+          template <typename... Args>
+          static auto call(Args&&... args) -> LocalState&
+          { return ::ket::mpi::gate::runtime::ranges::adj_phase_shift_coeff(std::forward<Args>(args)...); }
+        };
+
+        template <typename LocalState>
+        struct value_control_dispatch<phase_shift_tag, LocalState>
+        {
+          template <typename... Args>
+          static auto call(Args&&... args) -> LocalState&
+          { return ::ket::mpi::gate::runtime::ranges::phase_shift(std::forward<Args>(args)...); }
+        };
+
+        template <typename LocalState>
+        struct value_control_dispatch<adj_phase_shift_tag, LocalState>
+        {
+          template <typename... Args>
+          static auto call(Args&&... args) -> LocalState&
+          { return ::ket::mpi::gate::runtime::ranges::adj_phase_shift(std::forward<Args>(args)...); }
+        };
+
+        template <typename LocalState>
+        struct value_control_dispatch<phase_shift2_tag, LocalState>
+        {
+          template <typename... Args>
+          static auto call(Args&&... args) -> LocalState&
+          { return ::ket::mpi::gate::runtime::ranges::phase_shift2(std::forward<Args>(args)...); }
+        };
+
+        template <typename LocalState>
+        struct value_control_dispatch<adj_phase_shift2_tag, LocalState>
+        {
+          template <typename... Args>
+          static auto call(Args&&... args) -> LocalState&
+          { return ::ket::mpi::gate::runtime::ranges::adj_phase_shift2(std::forward<Args>(args)...); }
+        };
+
+        template <typename LocalState>
+        struct value_control_dispatch<phase_shift3_tag, LocalState>
+        {
+          template <typename... Args>
+          static auto call(Args&&... args) -> LocalState&
+          { return ::ket::mpi::gate::runtime::ranges::phase_shift3(std::forward<Args>(args)...); }
+        };
+
+        template <typename LocalState>
+        struct value_control_dispatch<adj_phase_shift3_tag, LocalState>
+        {
+          template <typename... Args>
+          static auto call(Args&&... args) -> LocalState&
+          { return ::ket::mpi::gate::runtime::ranges::adj_phase_shift3(std::forward<Args>(args)...); }
+        };
+
+      } // namespace detail
     } // namespace gate
   } // namespace mpi
 } // namespace ket

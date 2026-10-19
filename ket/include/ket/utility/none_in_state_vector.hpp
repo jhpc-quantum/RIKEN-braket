@@ -7,6 +7,7 @@
 # include <type_traits>
 
 # include <ket/utility/variadic/all_of.hpp>
+# include <ket/utility/all_in_state_vector.hpp>
 
 
 namespace ket
@@ -21,11 +22,11 @@ namespace ket
       {
         BitInteger num_qubits_;
 
-        not_is_in_state_vector(BitInteger const num_qubits) : num_qubits_{num_qubits} { }
+        constexpr not_is_in_state_vector(BitInteger const num_qubits) : num_qubits_{num_qubits} { }
 
         template <typename Qubit>
         constexpr auto operator()(Qubit&& qubit) const noexcept
-        { return std::forward<Qubit>(qubit) >= std::remove_cv_t<std::remove_reference_t<decltype(qubit)>>{num_qubits_}; }
+        { return not ::ket::utility::all_in_state_vector_detail::is_wire_in_state_vector(num_qubits_, qubit); }
       }; // struct is_in_state_vector<BitInteger>
     } // namespace none_in_state_vector_detail
 
@@ -36,11 +37,11 @@ namespace ket
 # if __cpp_constexpr >= 201603L
 #   if __cpp_generic_lambdas >= 201707L
       return ::ket::utility::variadic::all_of(
-        [num_qubits]<typename Qubit_>(Qubit_&& qubit) { return std::forward<Qubit_>(qubit) >= std::remove_cv_t<std::remove_reference_t<Qubit_>>{num_qubits}; },
+        [num_qubits]<typename Qubit_>(Qubit_&& qubit) { return not ::ket::utility::all_in_state_vector_detail::is_wire_in_state_vector(num_qubits, qubit); },
         std::forward<Qubits>(qubits)...);
 #   else // __cpp_generic_lambdas >= 201707L
       return ::ket::utility::variadic::all_of(
-        [num_qubits](auto&& qubit) { return std::forward<decltype(qubit)>(qubit) >= std::remove_cv_t<std::remove_reference_t<decltype(qubit)>>{num_qubits}; },
+        [num_qubits](auto&& qubit) { return not ::ket::utility::all_in_state_vector_detail::is_wire_in_state_vector(num_qubits, qubit); },
         std::forward<Qubits>(qubits)...);
 #   endif // __cpp_generic_lambdas >= 201707L
 # else // __cpp_constexpr >= 201603L
@@ -56,7 +57,8 @@ namespace ket
       inline constexpr auto none_in_state_vector(BitInteger const num_qubits, QubitIterator const qubit_first, QubitIterator const qubit_last) -> bool
       {
         using qubit_type = typename std::iterator_traits<QubitIterator>::value_type;
-        return std::none_of(qubit_first, qubit_last, [num_qubits](qubit_type const qubit) { return qubit < qubit_type{num_qubits}; });
+        return std::none_of(qubit_first, qubit_last, [num_qubits](qubit_type const qubit)
+          { return ::ket::utility::all_in_state_vector_detail::is_wire_in_state_vector(num_qubits, qubit); });
       }
 
       template <typename BitInteger, typename StateInteger, typename ControlQubitIterator>

@@ -2,6 +2,7 @@
 # define KET_MPI_UTILITY_APPLY_LOCAL_GATE_HPP
 
 # include <cstddef>
+# include <algorithm>
 # include <array>
 # include <vector>
 # include <iterator>
@@ -12,6 +13,7 @@
 # include <boost/range/adaptor/transformed.hpp>
 
 # include <ket/utility/meta/ranges.hpp>
+# include <ket/gate/utility/control_mask.hpp>
 # include <ket/mpi/qubit_permutation.hpp>
 # include <ket/mpi/utility/simple_mpi.hpp>
 
@@ -28,6 +30,16 @@ namespace ket
     {
       namespace apply_local_gate_detail
       {
+        template <typename Legacy, typename ValueAware>
+        inline auto dispatch_control_values(std::true_type, Legacy&& legacy, ValueAware&&)
+        -> decltype(legacy(std::true_type{}))
+        { return legacy(std::true_type{}); }
+
+        template <typename Legacy, typename ValueAware>
+        inline auto dispatch_control_values(std::false_type, Legacy&& legacy, ValueAware&& value_aware)
+        -> decltype(legacy(std::true_type{}))
+        { return value_aware(std::false_type{}); }
+
         template <std::size_t index, std::size_t num_operated_qubits>
         struct apply_local_gate
         {
@@ -275,15 +287,32 @@ namespace ket
         LocalGate&& local_gate, Qubits&&... qubits)
       -> RandomAccessRange&
       {
-        auto const global_qubit_value = static_cast<StateInteger>(::ket::mpi::utility::policy::global_qubit_value(mpi_policy, communicator, environment));
-        auto const data_block_size = ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment);
-        auto const least_permutated_unit_qubit = ::ket::mpi::make_permutated(::ket::make_qubit<StateInteger>(static_cast<BitInteger>(::ket::mpi::utility::policy::num_local_qubits(mpi_policy, data_block_size))));
-        auto const least_permutated_global_qubit = ::ket::mpi::make_permutated(::ket::make_qubit<StateInteger>(static_cast<BitInteger>(::ket::mpi::utility::policy::num_nonglobal_qubits(mpi_policy, data_block_size))));
+        return ::ket::mpi::utility::apply_local_gate_detail::dispatch_control_values(
+          ::ket::gate::utility::all_default_control_operands<std::decay_t<Qubits>...>{},
+          [&](auto) -> RandomAccessRange&
+          {
+            auto const global_qubit_value = static_cast<StateInteger>(::ket::mpi::utility::policy::global_qubit_value(mpi_policy, communicator, environment));
+            auto const data_block_size = ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment);
+            auto const least_permutated_unit_qubit = ::ket::mpi::make_permutated(::ket::make_qubit<StateInteger>(static_cast<BitInteger>(::ket::mpi::utility::policy::num_local_qubits(mpi_policy, data_block_size))));
+            auto const least_permutated_global_qubit = ::ket::mpi::make_permutated(::ket::make_qubit<StateInteger>(static_cast<BitInteger>(::ket::mpi::utility::policy::num_nonglobal_qubits(mpi_policy, data_block_size))));
 
-        return ::ket::mpi::utility::apply_local_gate_detail::apply_local_gate<0u, sizeof...(Qubits)>::call(
-          mpi_policy, parallel_policy, local_state, permutation, buffer, communicator, environment,
-          StateInteger{0u}, global_qubit_value, least_permutated_unit_qubit, least_permutated_global_qubit,
-          std::forward<LocalGate>(local_gate), std::forward<Qubits>(qubits)...);
+            return ::ket::mpi::utility::apply_local_gate_detail::apply_local_gate<0u, sizeof...(Qubits)>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, communicator, environment,
+              StateInteger{0u}, global_qubit_value, least_permutated_unit_qubit, least_permutated_global_qubit,
+              std::forward<LocalGate>(local_gate), std::forward<Qubits>(qubits)...);
+          },
+          [&](auto) -> RandomAccessRange&
+          {
+            // Nondefault controls stay explicit local operands. Their values
+            // must not be discarded by the positive-only unit/rank filters.
+            ::ket::mpi::utility::maybe_interchange_qubits(
+              mpi_policy, parallel_policy, local_state, permutation, buffer,
+              communicator, environment, ::ket::remove_control(qubits)...);
+            local_gate(
+              mpi_policy, parallel_policy, local_state, buffer, communicator, environment,
+              StateInteger{0u}, permutation[qubits]...);
+            return local_state;
+          });
       }
 
       template <
@@ -301,15 +330,32 @@ namespace ket
         LocalGate&& local_gate, Qubits&&... qubits)
       -> RandomAccessRange&
       {
-        auto const global_qubit_value = static_cast<StateInteger>(::ket::mpi::utility::policy::global_qubit_value(mpi_policy, communicator, environment));
-        auto const data_block_size = ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment);
-        auto const least_permutated_unit_qubit = ::ket::mpi::make_permutated(::ket::make_qubit<StateInteger>(static_cast<BitInteger>(::ket::mpi::utility::policy::num_local_qubits(mpi_policy, data_block_size))));
-        auto const least_permutated_global_qubit = ::ket::mpi::make_permutated(::ket::make_qubit<StateInteger>(static_cast<BitInteger>(::ket::mpi::utility::policy::num_nonglobal_qubits(mpi_policy, data_block_size))));
+        return ::ket::mpi::utility::apply_local_gate_detail::dispatch_control_values(
+          ::ket::gate::utility::all_default_control_operands<std::decay_t<Qubits>...>{},
+          [&](auto) -> RandomAccessRange&
+          {
+            auto const global_qubit_value = static_cast<StateInteger>(::ket::mpi::utility::policy::global_qubit_value(mpi_policy, communicator, environment));
+            auto const data_block_size = ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment);
+            auto const least_permutated_unit_qubit = ::ket::mpi::make_permutated(::ket::make_qubit<StateInteger>(static_cast<BitInteger>(::ket::mpi::utility::policy::num_local_qubits(mpi_policy, data_block_size))));
+            auto const least_permutated_global_qubit = ::ket::mpi::make_permutated(::ket::make_qubit<StateInteger>(static_cast<BitInteger>(::ket::mpi::utility::policy::num_nonglobal_qubits(mpi_policy, data_block_size))));
 
-        return ::ket::mpi::utility::apply_local_gate_detail::apply_local_gate<0u, sizeof...(Qubits)>::call(
-          mpi_policy, parallel_policy, local_state, permutation, buffer, datatype, communicator, environment,
-          StateInteger{0u}, global_qubit_value, least_permutated_unit_qubit, least_permutated_global_qubit,
-          std::forward<LocalGate>(local_gate), std::forward<Qubits>(qubits)...);
+            return ::ket::mpi::utility::apply_local_gate_detail::apply_local_gate<0u, sizeof...(Qubits)>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, datatype, communicator, environment,
+              StateInteger{0u}, global_qubit_value, least_permutated_unit_qubit, least_permutated_global_qubit,
+              std::forward<LocalGate>(local_gate), std::forward<Qubits>(qubits)...);
+          },
+          [&](auto) -> RandomAccessRange&
+          {
+            // Nondefault controls stay explicit local operands. Their values
+            // must not be discarded by the positive-only unit/rank filters.
+            ::ket::mpi::utility::maybe_interchange_qubits(
+              mpi_policy, parallel_policy, local_state, permutation, buffer,
+              datatype, communicator, environment, ::ket::remove_control(qubits)...);
+            local_gate(
+              mpi_policy, parallel_policy, local_state, buffer, communicator, environment,
+              StateInteger{0u}, permutation[qubits]...);
+            return local_state;
+          });
       }
 
 
@@ -333,6 +379,19 @@ namespace ket
           {
             using qubit_type = ::ket::utility::meta::range_value_t<Qubits>;
             using control_qubit_type = ::ket::utility::meta::range_value_t<ControlQubits>;
+
+            // The generic local callback only accepts an all-one unit mask.
+            // Localize zero controls before that filtering stage, preserving
+            // descriptors for the value-aware kernel instead of dropping them.
+            using std::begin;
+            using std::end;
+            if (std::any_of(begin(control_qubits), end(control_qubits),
+                  [](control_qubit_type const control) { return ::ket::control_value(control) == 0u; }))
+              ::ket::mpi::utility::runtime::ranges::maybe_interchange_qubits(
+                mpi_policy, parallel_policy, local_state, permutation, buffer,
+                communicator, environment,
+                boost::join(qubits, control_qubits | boost::adaptors::transformed(
+                  [](control_qubit_type const control) { return ::ket::remove_control(control); })));
 
             auto const global_qubit_value = static_cast<StateInteger>(::ket::mpi::utility::policy::global_qubit_value(mpi_policy, communicator, environment));
             auto const data_block_size = ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment);
@@ -429,6 +488,19 @@ namespace ket
           {
             using qubit_type = ::ket::utility::meta::range_value_t<Qubits>;
             using control_qubit_type = ::ket::utility::meta::range_value_t<ControlQubits>;
+
+            // The generic local callback only accepts an all-one unit mask.
+            // Localize zero controls before that filtering stage, preserving
+            // descriptors for the value-aware kernel instead of dropping them.
+            using std::begin;
+            using std::end;
+            if (std::any_of(begin(control_qubits), end(control_qubits),
+                  [](control_qubit_type const control) { return ::ket::control_value(control) == 0u; }))
+              ::ket::mpi::utility::runtime::ranges::maybe_interchange_qubits(
+                mpi_policy, parallel_policy, local_state, permutation, buffer,
+                datatype, communicator, environment,
+                boost::join(qubits, control_qubits | boost::adaptors::transformed(
+                  [](control_qubit_type const control) { return ::ket::remove_control(control); })));
 
             auto const global_qubit_value = static_cast<StateInteger>(::ket::mpi::utility::policy::global_qubit_value(mpi_policy, communicator, environment));
             auto const data_block_size = ::ket::mpi::utility::policy::data_block_size(mpi_policy, local_state, communicator, environment);

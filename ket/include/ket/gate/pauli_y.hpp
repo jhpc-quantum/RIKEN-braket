@@ -14,6 +14,7 @@
 
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
+# include <ket/gate/utility/control_mask.hpp>
 # include <ket/gate/gate.hpp>
 # include <ket/gate/utility/index_with_qubits.hpp>
 # include <ket/gate/meta/num_control_qubits.hpp>
@@ -130,12 +131,12 @@ namespace ket
     // CY_{tc}, CY1_{tc}, C1Y_{tc}, or C1Y1_{tc}
     // CY_{1,2} (a_{00} |00> + a_{01} |01> + a_{10} |10> + a{11} |11>)
     //   = a_{00} |00> + a_{01} |01> - i a_{11} |10> + i a_{10} |11>
-    template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger>
+    template <typename ParallelPolicy, typename RandomAccessIterator, typename StateInteger, typename BitInteger, StateInteger control_value>
     inline auto pauli_y(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit)
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger>, control_value> const control_qubit)
     -> void
     {
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
@@ -168,7 +169,7 @@ namespace ket
               bitor ((value_wo_qubits bitand middle_bits_mask) << 1u)
               bitor (value_wo_qubits bitand lower_bits_mask);
           // xxx0_txxx1_cxxx
-          auto const control_on_index = base_index bitor control_qubit_mask;
+          auto const control_on_index = base_index bitor (control_qubit_mask * control_value);
           // xxx1_txxx1_cxxx
           auto const target_control_on_index = control_on_index bitor target_qubit_mask;
           auto const control_on_iter = first + control_on_index;
@@ -190,6 +191,7 @@ namespace ket
       ::ket::qubit<StateInteger, BitInteger> const qubit1, Qubit2 const qubit2, Qubit3 const qubit3, Qubits const... qubits)
     -> void
     {
+      auto const negative_control_mask = ::ket::gate::utility::negative_control_mask<std::size_t>(qubit1, qubit2, qubit3, qubits...);
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
       assert(
@@ -206,7 +208,7 @@ namespace ket
 
       ::ket::gate::nocache::gate(
         parallel_policy, first, last,
-        [](
+        [negative_control_mask](
           auto const first, StateInteger const index_wo_qubits,
           std::array<qubit_type, num_operated_qubits> const& unsorted_qubits,
           std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& sorted_qubits_with_sentinel,
@@ -248,10 +250,10 @@ namespace ket
             using std::end;
             auto iter1
               = first
-                + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, base_index + i, unsorted_qubits, sorted_qubits_with_sentinel);
+                + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (base_index + i xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
             auto iter2
               = first
-                + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, base_index + j, unsorted_qubits, sorted_qubits_with_sentinel);
+                + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (base_index + j xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
             std::iter_swap(iter1, iter2);
             *iter1 *= (num_target_qubits - num_ones_in_i) % BitInteger{2u} == BitInteger{0u} ? coefficient : -coefficient;
             *iter2 *= (num_target_qubits - num_ones_in_j) % BitInteger{2u} == BitInteger{0u} ? coefficient : -coefficient;
@@ -267,7 +269,7 @@ namespace ket
 
       ::ket::gate::nocache::gate(
         parallel_policy, first, last,
-        [](
+        [negative_control_mask](
           auto const first, StateInteger const index_wo_qubits,
           std::array<StateInteger, num_operated_qubits> const& qubit_masks,
           std::array<StateInteger, num_operated_qubits + 1u> const& index_masks,
@@ -310,10 +312,10 @@ namespace ket
             using std::end;
             auto iter1
               = first
-                + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, base_index + i, qubit_masks, index_masks);
+                + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (base_index + i xor negative_control_mask), qubit_masks, index_masks);
             auto iter2
               = first
-                + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, base_index + j, qubit_masks, index_masks);
+                + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (base_index + j xor negative_control_mask), qubit_masks, index_masks);
             std::iter_swap(iter1, iter2);
             *iter1 *= (num_target_qubits - num_ones_in_i) % BitInteger{2u} == BitInteger{0u} ? coefficient : -coefficient;
             *iter2 *= (num_target_qubits - num_ones_in_j) % BitInteger{2u} == BitInteger{0u} ? coefficient : -coefficient;
@@ -336,7 +338,7 @@ namespace ket
       inline auto pauli_y(
         ParallelPolicy const parallel_policy, RandomAccessRange& state,
         ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
-      -> RandomAccessRange&
+      -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
       {
         using std::begin;
         using std::end;
@@ -370,7 +372,7 @@ namespace ket
       inline auto adj_pauli_y(
         ParallelPolicy const parallel_policy, RandomAccessRange& state,
         ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
-      -> RandomAccessRange&
+      -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
       { return ::ket::gate::ranges::pauli_y(parallel_policy, state, qubit, qubits...); }
 
       template <typename RandomAccessRange, typename StateInteger, typename BitInteger, typename... Qubits>
@@ -391,13 +393,14 @@ namespace ket
           QubitsRange const& target_qubits, ControlQubitsRange const& control_qubits)
         -> void
         {
+          auto const negative_control_mask = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(control_qubits, static_cast<std::size_t>(std::distance(std::begin(target_qubits), std::end(target_qubits))));
           using qubit_type = ::ket::utility::meta::range_value_t<QubitsRange>;
-          using control_qubit_type = ::ket::control<qubit_type>;
+          using control_qubit_type = ::ket::utility::meta::range_value_t<ControlQubitsRange>;
           using state_integer_type = ::ket::meta::state_integer_t<qubit_type>;
           using bit_integer_type = ::ket::meta::bit_integer_t<qubit_type>;
           static_assert(std::is_unsigned<state_integer_type>::value, "The state_integer_type of the value_type of QubitsRange should be unsigned");
           static_assert(std::is_unsigned<bit_integer_type>::value, "The bit_integer_type of the value_type of QubitsRange should be unsigned");
-          static_assert(std::is_same< ::ket::utility::meta::range_value_t<ControlQubitsRange>, control_qubit_type >::value, "The value_type of ControlQubitsRange should be the same as the value_type of Qubits");
+          static_assert(::ket::gate::utility::is_control_of<control_qubit_type, qubit_type>::value, "The value_type of ControlQubitsRange should be the same as the value_type of Qubits");
 
           assert(
             ::ket::utility::integer_exp2<state_integer_type>(::ket::utility::integer_log2<bit_integer_type>(last - first))
@@ -412,7 +415,7 @@ namespace ket
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
           ::ket::gate::runtime::nocache::qubit_ranges::gate(
             parallel_policy, first, last,
-            [num_target_qubits, num_control_qubits, num_target_indices, half_num_target_indices](
+            [num_target_qubits, num_control_qubits, num_target_indices, half_num_target_indices, negative_control_mask](
               auto const first, state_integer_type const index_wo_qubits,
               auto const& unsorted_qubits, auto const& sorted_qubits_with_sentinel,
               int const)
@@ -451,10 +454,10 @@ namespace ket
                         : ::ket::utility::minus_imaginary_unit<complex_type>();
                 auto iter1
                   = first
-                    + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, base_index + i, unsorted_qubits, sorted_qubits_with_sentinel);
+                    + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (base_index + i xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
                 auto iter2
                   = first
-                    + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, base_index + j, unsorted_qubits, sorted_qubits_with_sentinel);
+                    + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (base_index + j xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
                 std::iter_swap(iter1, iter2);
                 *iter1 *= (num_target_qubits - num_ones_in_i) % bit_integer_type{2u} == bit_integer_type{0u} ? coefficient : -coefficient;
                 *iter2 *= (num_target_qubits - num_ones_in_j) % bit_integer_type{2u} == bit_integer_type{0u} ? coefficient : -coefficient;
@@ -467,7 +470,7 @@ namespace ket
 # else // KET_USE_BIT_MASKS_EXPLICITLY
           ::ket::gate::runtime::nocache::qubit_ranges::gate(
             parallel_policy, first, last,
-            [num_target_qubits, num_control_qubits, num_target_indices, half_num_target_indices](
+            [num_target_qubits, num_control_qubits, num_target_indices, half_num_target_indices, negative_control_mask](
               auto const first, state_integer_type const index_wo_qubits,
               auto const& qubit_masks, auto const& index_masks,
               int const)
@@ -507,10 +510,10 @@ namespace ket
 
                 auto iter1
                   = first
-                    + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, base_index + i, qubit_masks, index_masks);
+                    + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (base_index + i xor negative_control_mask), qubit_masks, index_masks);
                 auto iter2
                   = first
-                    + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, base_index + j, qubit_masks, index_masks);
+                    + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (base_index + j xor negative_control_mask), qubit_masks, index_masks);
                 std::iter_swap(iter1, iter2);
                 *iter1 *= (num_target_qubits - num_ones_in_i) % bit_integer_type{2u} == bit_integer_type{0u} ? coefficient : -coefficient;
                 *iter2 *= (num_target_qubits - num_ones_in_j) % bit_integer_type{2u} == bit_integer_type{0u} ? coefficient : -coefficient;
@@ -607,7 +610,7 @@ namespace ket
         inline auto pauli_y(
           ParallelPolicy const parallel_policy,
           RandomAccessRange& state, QubitsRange const& target_qubits, ControlQubitsRange const& control_qubits)
-        -> RandomAccessRange&
+        -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
         {
           using std::begin;
           using std::end;
@@ -618,7 +621,7 @@ namespace ket
         template <typename ParallelPolicy, typename RandomAccessRange, typename QubitsRange>
         inline auto pauli_y(
           ParallelPolicy const parallel_policy, RandomAccessRange& state, QubitsRange const& target_qubits)
-        -> RandomAccessRange&
+        -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
         {
           using std::begin;
           using std::end;
@@ -712,11 +715,11 @@ namespace ket
       namespace ranges
       {
         template <typename ParallelPolicy, typename RandomAccessRange, typename QubitsRange, typename ControlQubitsRange>
-        inline auto adj_pauli_y(ParallelPolicy const parallel_policy, RandomAccessRange& state, QubitsRange const& target_qubits, ControlQubitsRange const& control_qubits) -> RandomAccessRange&
+        inline auto adj_pauli_y(ParallelPolicy const parallel_policy, RandomAccessRange& state, QubitsRange const& target_qubits, ControlQubitsRange const& control_qubits) -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
         { return ::ket::gate::runtime::ranges::pauli_y(parallel_policy, state, target_qubits, control_qubits); }
 
         template <typename ParallelPolicy, typename RandomAccessRange, typename QubitsRange>
-        inline auto adj_pauli_y(ParallelPolicy const parallel_policy, RandomAccessRange& state, QubitsRange const& target_qubits) -> RandomAccessRange&
+        inline auto adj_pauli_y(ParallelPolicy const parallel_policy, RandomAccessRange& state, QubitsRange const& target_qubits) -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
         { return ::ket::gate::runtime::ranges::pauli_y(parallel_policy, state, target_qubits); }
 
         template <typename RandomAccessRange, typename QubitsRange, typename ControlQubitsRange>

@@ -15,6 +15,7 @@
 
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
+# include <ket/mpi/gate/detail/dispatch_control_values.hpp>
 # ifdef KET_PRINT_LOG
 #   include <ket/qubit_io.hpp>
 #   include <ket/control_io.hpp>
@@ -215,7 +216,7 @@ namespace ket
           if (::ket::mpi::page::any_on_page(local_state, permutation[qubit1], permutation[qubit2], permutation[qubit3], permutation[qubits]...))
           {
             using local_state_type = std::remove_const_t<std::remove_reference_t<RandomAccessRange>>;
-            ::ket::mpi::gate::local::dispatch::transpage_exponential_pauli_z_coeff<local_state_type>::call(
+            return ::ket::mpi::gate::local::dispatch::transpage_exponential_pauli_z_coeff<local_state_type>::call(
               parallel_policy, local_state, phase_coefficient,
               permutation[qubit1], permutation[qubit2], permutation[qubit3], permutation[qubits]...);
           }
@@ -392,18 +393,28 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
       -> RandomAccessRange&
       {
-        constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(
-            ::ket::mpi::utility::generate_logger_string(
-              std::string(num_control_qubits, 'C').append("e").append(sizeof...(Qubits) + 1u - num_control_qubits, 'Z'),
-              "(coeff) ", phase_coefficient),
-            qubit, qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const qubit, auto const... qubits) -> RandomAccessRange&
+          {
+            constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(
+                  std::string(num_control_qubits, 'C').append("e").append(sizeof...(Qubits) + 1u - num_control_qubits, 'Z'),
+                  "(coeff) ", phase_coefficient),
+                qubit, qubits...),
+              environment};
 
-        return ::ket::mpi::gate::exponential_pauli_z_detail::exponential_pauli_z_coeff(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, communicator, environment, phase_coefficient, qubit, qubits...);
+            return ::ket::mpi::gate::exponential_pauli_z_detail::exponential_pauli_z_coeff(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment, phase_coefficient, qubit, qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::exponential_pauli_z_coeff_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, communicator, environment, phase_coefficient, value_targets, value_controls);
+          }, qubit, qubits...);
       }
 
       template <
@@ -421,18 +432,28 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
       -> RandomAccessRange&
       {
-        constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(
-            ::ket::mpi::utility::generate_logger_string(
-              std::string(num_control_qubits, 'C').append("e").append(sizeof...(Qubits) + 1u - num_control_qubits, 'Z'),
-              "(coeff) ", phase_coefficient),
-            qubit, qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const qubit, auto const... qubits) -> RandomAccessRange&
+          {
+            constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(
+                  std::string(num_control_qubits, 'C').append("e").append(sizeof...(Qubits) + 1u - num_control_qubits, 'Z'),
+                  "(coeff) ", phase_coefficient),
+                qubit, qubits...),
+              environment};
 
-        return ::ket::mpi::gate::exponential_pauli_z_detail::exponential_pauli_z_coeff(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, datatype, communicator, environment, phase_coefficient, qubit, qubits...);
+            return ::ket::mpi::gate::exponential_pauli_z_detail::exponential_pauli_z_coeff(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment, phase_coefficient, qubit, qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::exponential_pauli_z_coeff_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, datatype, communicator, environment, phase_coefficient, value_targets, value_controls);
+          }, qubit, qubits...);
       }
 
       template <
@@ -821,18 +842,28 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
       -> RandomAccessRange&
       {
-        constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(
-            ::ket::mpi::utility::generate_logger_string(
-              std::string{"Adj("}.append(num_control_qubits, 'C').append("e").append(sizeof...(Qubits) + 1u - num_control_qubits, 'Z'),
-              "(coeff)) ", phase_coefficient),
-            qubit, qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const qubit, auto const... qubits) -> RandomAccessRange&
+          {
+            constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(
+                  std::string{"Adj("}.append(num_control_qubits, 'C').append("e").append(sizeof...(Qubits) + 1u - num_control_qubits, 'Z'),
+                  "(coeff)) ", phase_coefficient),
+                qubit, qubits...),
+              environment};
 
-        return ::ket::mpi::gate::exponential_pauli_z_detail::adj_exponential_pauli_z_coeff(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, communicator, environment, phase_coefficient, qubit, qubits...);
+            return ::ket::mpi::gate::exponential_pauli_z_detail::adj_exponential_pauli_z_coeff(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment, phase_coefficient, qubit, qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::adj_exponential_pauli_z_coeff_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, communicator, environment, phase_coefficient, value_targets, value_controls);
+          }, qubit, qubits...);
       }
 
       template <
@@ -850,18 +881,28 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
       -> RandomAccessRange&
       {
-        constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(
-            ::ket::mpi::utility::generate_logger_string(
-              std::string{"Adj("}.append(num_control_qubits, 'C').append("e").append(sizeof...(Qubits) + 1u - num_control_qubits, 'Z'),
-              "(coeff)) ", phase_coefficient),
-            qubit, qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const qubit, auto const... qubits) -> RandomAccessRange&
+          {
+            constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(
+                  std::string{"Adj("}.append(num_control_qubits, 'C').append("e").append(sizeof...(Qubits) + 1u - num_control_qubits, 'Z'),
+                  "(coeff)) ", phase_coefficient),
+                qubit, qubits...),
+              environment};
 
-        return ::ket::mpi::gate::exponential_pauli_z_detail::adj_exponential_pauli_z_coeff(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, datatype, communicator, environment, phase_coefficient, qubit, qubits...);
+            return ::ket::mpi::gate::exponential_pauli_z_detail::adj_exponential_pauli_z_coeff(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment, phase_coefficient, qubit, qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::adj_exponential_pauli_z_coeff_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, datatype, communicator, environment, phase_coefficient, value_targets, value_controls);
+          }, qubit, qubits...);
       }
 
       template <
@@ -1251,17 +1292,27 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
       -> RandomAccessRange&
       {
-        constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(
-            ::ket::mpi::utility::generate_logger_string(
-              std::string(num_control_qubits, 'C').append("e").append(sizeof...(Qubits) + 1u - num_control_qubits, 'Z'), ' ', phase),
-            qubit, qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const qubit, auto const... qubits) -> RandomAccessRange&
+          {
+            constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(
+                  std::string(num_control_qubits, 'C').append("e").append(sizeof...(Qubits) + 1u - num_control_qubits, 'Z'), ' ', phase),
+                qubit, qubits...),
+              environment};
 
-        return ::ket::mpi::gate::exponential_pauli_z_detail::exponential_pauli_z(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, communicator, environment, phase, qubit, qubits...);
+            return ::ket::mpi::gate::exponential_pauli_z_detail::exponential_pauli_z(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment, phase, qubit, qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::exponential_pauli_z_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, communicator, environment, phase, value_targets, value_controls);
+          }, qubit, qubits...);
       }
 
       template <
@@ -1279,17 +1330,27 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
       -> RandomAccessRange&
       {
-        constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(
-            ::ket::mpi::utility::generate_logger_string(
-              std::string(num_control_qubits, 'C').append("e").append(sizeof...(Qubits) + 1u - num_control_qubits, 'Z'), ' ', phase),
-            qubit, qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const qubit, auto const... qubits) -> RandomAccessRange&
+          {
+            constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(
+                  std::string(num_control_qubits, 'C').append("e").append(sizeof...(Qubits) + 1u - num_control_qubits, 'Z'), ' ', phase),
+                qubit, qubits...),
+              environment};
 
-        return ::ket::mpi::gate::exponential_pauli_z_detail::exponential_pauli_z(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, datatype, communicator, environment, phase, qubit, qubits...);
+            return ::ket::mpi::gate::exponential_pauli_z_detail::exponential_pauli_z(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment, phase, qubit, qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::exponential_pauli_z_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, datatype, communicator, environment, phase, value_targets, value_controls);
+          }, qubit, qubits...);
       }
 
       template <
@@ -1676,17 +1737,27 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
       -> RandomAccessRange&
       {
-        constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(
-            ::ket::mpi::utility::generate_logger_string(
-              std::string{"Adj("}.append(num_control_qubits, 'C').append("e").append(sizeof...(Qubits) + 1u - num_control_qubits, 'Z'), ") ", phase),
-            qubit, qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const qubit, auto const... qubits) -> RandomAccessRange&
+          {
+            constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(
+                  std::string{"Adj("}.append(num_control_qubits, 'C').append("e").append(sizeof...(Qubits) + 1u - num_control_qubits, 'Z'), ") ", phase),
+                qubit, qubits...),
+              environment};
 
-        return ::ket::mpi::gate::exponential_pauli_z_detail::adj_exponential_pauli_z(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, communicator, environment, phase, qubit, qubits...);
+            return ::ket::mpi::gate::exponential_pauli_z_detail::adj_exponential_pauli_z(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, communicator, environment, phase, qubit, qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::adj_exponential_pauli_z_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, communicator, environment, phase, value_targets, value_controls);
+          }, qubit, qubits...);
       }
 
       template <
@@ -1704,17 +1775,27 @@ namespace ket
         ::ket::qubit<StateInteger, BitInteger> const qubit, Qubits const... qubits)
       -> RandomAccessRange&
       {
-        constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
-        ::ket::mpi::utility::log_with_time_guard<char> print{
-          ::ket::mpi::gate::detail::append_qubits_string(
-            ::ket::mpi::utility::generate_logger_string(
-              std::string{"Adj("}.append(num_control_qubits, 'C').append("e").append(sizeof...(Qubits) + 1u - num_control_qubits, 'Z'), ") ", phase),
-            qubit, qubits...),
-          environment};
+        return ::ket::mpi::gate::detail::dispatch_control_values< ::ket::qubit<StateInteger, BitInteger> >(
+          [&](auto const qubit, auto const... qubits) -> RandomAccessRange&
+          {
+            constexpr auto num_control_qubits = ::ket::gate::meta::num_control_qubits<BitInteger, Qubits...>::value;
+            ::ket::mpi::utility::log_with_time_guard<char> print{
+              ::ket::mpi::gate::detail::append_qubits_string(
+                ::ket::mpi::utility::generate_logger_string(
+                  std::string{"Adj("}.append(num_control_qubits, 'C').append("e").append(sizeof...(Qubits) + 1u - num_control_qubits, 'Z'), ") ", phase),
+                qubit, qubits...),
+              environment};
 
-        return ::ket::mpi::gate::exponential_pauli_z_detail::adj_exponential_pauli_z(
-          mpi_policy, parallel_policy,
-          local_state, permutation, buffer, datatype, communicator, environment, phase, qubit, qubits...);
+            return ::ket::mpi::gate::exponential_pauli_z_detail::adj_exponential_pauli_z(
+              mpi_policy, parallel_policy,
+              local_state, permutation, buffer, datatype, communicator, environment, phase, qubit, qubits...);
+          },
+          [&](auto const& value_targets, auto const& value_controls) -> RandomAccessRange&
+          {
+            return ::ket::mpi::gate::detail::value_control_dispatch<
+              ::ket::mpi::gate::detail::adj_exponential_pauli_z_tag, RandomAccessRange>::call(
+              mpi_policy, parallel_policy, local_state, permutation, buffer, datatype, communicator, environment, phase, value_targets, value_controls);
+          }, qubit, qubits...);
       }
 
       template <
@@ -3164,6 +3245,41 @@ namespace ket
             local_state, permutation, buffer, std::forward<Args>(args)...);
         }
       } // namespace runtime
+      namespace detail
+      {
+        template <typename LocalState>
+        struct value_control_dispatch<exponential_pauli_z_coeff_tag, LocalState>
+        {
+          template <typename... Args>
+          static auto call(Args&&... args) -> LocalState&
+          { return ::ket::mpi::gate::runtime::ranges::exponential_pauli_z_coeff(std::forward<Args>(args)...); }
+        };
+
+        template <typename LocalState>
+        struct value_control_dispatch<adj_exponential_pauli_z_coeff_tag, LocalState>
+        {
+          template <typename... Args>
+          static auto call(Args&&... args) -> LocalState&
+          { return ::ket::mpi::gate::runtime::ranges::adj_exponential_pauli_z_coeff(std::forward<Args>(args)...); }
+        };
+
+        template <typename LocalState>
+        struct value_control_dispatch<exponential_pauli_z_tag, LocalState>
+        {
+          template <typename... Args>
+          static auto call(Args&&... args) -> LocalState&
+          { return ::ket::mpi::gate::runtime::ranges::exponential_pauli_z(std::forward<Args>(args)...); }
+        };
+
+        template <typename LocalState>
+        struct value_control_dispatch<adj_exponential_pauli_z_tag, LocalState>
+        {
+          template <typename... Args>
+          static auto call(Args&&... args) -> LocalState&
+          { return ::ket::mpi::gate::runtime::ranges::adj_exponential_pauli_z(std::forward<Args>(args)...); }
+        };
+
+      } // namespace detail
     } // namespace gate
   } // namespace mpi
 } // namespace ket

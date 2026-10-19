@@ -2,6 +2,8 @@
 # define KET_MPI_PAGE_TRANSPAGE_ITERATOR_HPP
 
 # include <vector>
+# include <algorithm>
+# include <cassert>
 # include <iterator>
 # include <numeric>
 # include <functional>
@@ -116,32 +118,23 @@ namespace ket
         auto result = std::vector<permutated_qubit_type>(num_operated_page_qubits);
 
         auto possible_mapped_permutated_nonpage_qubit = least_permutated_page_qubit;
-        auto permutated_operated_nonpage_qubit_iter = permutated_operated_nonpage_qubit_last;
 
         using std::rbegin;
         using std::rend;
         auto const rlast = rend(result);
         for (auto riter = rbegin(result); riter != rlast; ++riter)
         {
-          --possible_mapped_permutated_nonpage_qubit;
-          if (possible_mapped_permutated_nonpage_qubit < *permutated_operated_nonpage_qubit_first)
+          // Search from the current candidate each time. Advancing a separate
+          // operated-qubit iterator here can skip an occupied wire when two
+          // or more page qubits need mappings. Empty nonpage ranges are valid.
+          do
           {
-            *riter = possible_mapped_permutated_nonpage_qubit;
-            continue;
-          }
-
-          if (permutated_operated_nonpage_qubit_iter != permutated_operated_nonpage_qubit_first)
-            --permutated_operated_nonpage_qubit_iter;
-
-          while (possible_mapped_permutated_nonpage_qubit == *permutated_operated_nonpage_qubit_iter)
-          {
+            assert(possible_mapped_permutated_nonpage_qubit > permutated_qubit_type{BitInteger{0u}});
             --possible_mapped_permutated_nonpage_qubit;
-
-            if (permutated_operated_nonpage_qubit_iter == permutated_operated_nonpage_qubit_first)
-              break;
-
-            --permutated_operated_nonpage_qubit_iter;
           }
+          while (std::binary_search(
+            permutated_operated_nonpage_qubit_first, permutated_operated_nonpage_qubit_last,
+            possible_mapped_permutated_nonpage_qubit));
 
           *riter = possible_mapped_permutated_nonpage_qubit;
         }

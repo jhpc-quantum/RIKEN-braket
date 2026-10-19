@@ -163,13 +163,25 @@ namespace ket
 
       auto operator[](qubit_type const from) const -> const_reference
       { return data_[static_cast<BitInteger>(from)]; }
-      auto operator[](control_qubit_type const from) const -> permutated_control_qubit_type
-      { return ::ket::mpi::make_permutated(::ket::make_control(data_[static_cast<BitInteger>(from.qubit())].qubit())); }
+      template <StateInteger control_value>
+      auto operator[](::ket::control<qubit_type, control_value> const from) const
+      -> ::ket::mpi::permutated< ::ket::control<qubit_type, control_value> >
+      { return ::ket::mpi::make_permutated(::ket::make_control<control_value>((*this)[from.qubit()].qubit())); }
+
+      auto operator[](::ket::runtime_control<qubit_type> const from) const
+      -> ::ket::mpi::permutated< ::ket::runtime_control<qubit_type> >
+      { return ::ket::mpi::make_permutated(::ket::make_runtime_control((*this)[from.qubit()].qubit(), ::ket::control_value(from))); }
 
       auto at(qubit_type const from) const -> const_reference
       { return data_.at(static_cast<BitInteger>(from)); }
-      auto at(control_qubit_type const from) const -> permutated_control_qubit_type
-      { return ::ket::mpi::make_permutated(::ket::make_control(data_.at(static_cast<BitInteger>(from.qubit())).qubit())); }
+      template <StateInteger control_value>
+      auto at(::ket::control<qubit_type, control_value> const from) const
+      -> ::ket::mpi::permutated< ::ket::control<qubit_type, control_value> >
+      { return ::ket::mpi::make_permutated(::ket::make_control<control_value>(at(from.qubit()).qubit())); }
+
+      auto at(::ket::runtime_control<qubit_type> const from) const
+      -> ::ket::mpi::permutated< ::ket::runtime_control<qubit_type> >
+      { return ::ket::mpi::make_permutated(::ket::make_runtime_control(at(from.qubit()).qubit(), ::ket::control_value(from))); }
 
       auto front() const -> const_reference { return data_.front(); }
       auto back() const -> const_reference { return data_.back(); }
@@ -205,13 +217,25 @@ namespace ket
 
         auto operator[](permutated_qubit_type const to) const -> typename inverse_data_type::const_reference
         { return inverse_data_[static_cast<BitInteger>(to.qubit())]; }
-        auto operator[](permutated_control_qubit_type const to) const -> control_qubit_type
-        { return ::ket::make_control(inverse_data_[static_cast<BitInteger>(to.qubit().qubit())]); }
+        template <StateInteger control_value>
+        auto operator[](::ket::mpi::permutated< ::ket::control<qubit_type, control_value> > const to) const
+        -> ::ket::control<qubit_type, control_value>
+        { return ::ket::make_control<control_value>((*this)[::ket::mpi::remove_control(to)]); }
+
+        auto operator[](::ket::mpi::permutated< ::ket::runtime_control<qubit_type> > const to) const
+        -> ::ket::runtime_control<qubit_type>
+        { return ::ket::make_runtime_control((*this)[::ket::mpi::remove_control(to)], ::ket::mpi::control_value(to)); }
 
         auto at(permutated_qubit_type const to) const -> typename inverse_data_type::const_reference
         { return inverse_data_.at(static_cast<BitInteger>(to.qubit())); }
-        auto at(permutated_control_qubit_type const to) const -> control_qubit_type
-        { return ::ket::make_control(inverse_data_.at(static_cast<BitInteger>(to.qubit().qubit()))); }
+        template <StateInteger control_value>
+        auto at(::ket::mpi::permutated< ::ket::control<qubit_type, control_value> > const to) const
+        -> ::ket::control<qubit_type, control_value>
+        { return ::ket::make_control<control_value>(at(::ket::mpi::remove_control(to))); }
+
+        auto at(::ket::mpi::permutated< ::ket::runtime_control<qubit_type> > const to) const
+        -> ::ket::runtime_control<qubit_type>
+        { return ::ket::make_runtime_control(at(::ket::mpi::remove_control(to)), ::ket::mpi::control_value(to)); }
 
         auto front() const -> typename inverse_data_type::const_reference { return inverse_data_.front(); }
         auto back() const -> typename inverse_data_type::const_reference { return inverse_data_.back(); }
@@ -251,12 +275,16 @@ namespace ket
           data_[static_cast<BitInteger>(qubit2)]);
       }
 
-      auto permutate(control_qubit_type const control_qubit, qubit_type const qubit) -> void
-      { permutate(control_qubit.qubit(), qubit); }
-      auto permutate(qubit_type const qubit, control_qubit_type const control_qubit) -> void
-      { permutate(qubit, control_qubit.qubit()); }
-      auto permutate(control_qubit_type const control_qubit1, control_qubit_type const control_qubit2) -> void
-      { permutate(control_qubit1.qubit(), control_qubit2.qubit()); }
+      template <typename Control, std::enable_if_t< ::ket::meta::is_control<Control>::value, int> = 0>
+      auto permutate(Control const control_qubit, qubit_type const qubit) -> void
+      { permutate(::ket::remove_control(control_qubit), qubit); }
+      template <typename Control, std::enable_if_t< ::ket::meta::is_control<Control>::value, int> = 0>
+      auto permutate(qubit_type const qubit, Control const control_qubit) -> void
+      { permutate(qubit, ::ket::remove_control(control_qubit)); }
+      template <typename Control1, typename Control2,
+        std::enable_if_t< ::ket::meta::is_control<Control1>::value and ::ket::meta::is_control<Control2>::value, int> = 0>
+      auto permutate(Control1 const control_qubit1, Control2 const control_qubit2) -> void
+      { permutate(::ket::remove_control(control_qubit1), ::ket::remove_control(control_qubit2)); }
 
      private:
       auto generate_identity_permutation(size_type const size) -> data_type

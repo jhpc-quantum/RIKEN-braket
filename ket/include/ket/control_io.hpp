@@ -9,17 +9,17 @@
 
 namespace ket
 {
-  template <typename Character, typename CharacterTraits, typename Qubit>
+  template <typename Character, typename CharacterTraits, typename Qubit, ::ket::meta::state_integer_t<Qubit> control_value>
   inline auto operator<<(
     std::basic_ostream<Character, CharacterTraits>& output_stream,
-    ::ket::control<Qubit> const control_qubit)
+    ::ket::control<Qubit, control_value> const control_qubit)
   -> std::basic_ostream<Character, CharacterTraits>&
   { return output_stream << control_qubit.qubit(); }
 
-  template <typename Character, typename CharacterTraits, typename Qubit>
+  template <typename Character, typename CharacterTraits, typename Qubit, ::ket::meta::state_integer_t<Qubit> control_value>
   inline auto operator>>(
     std::basic_ostream<Character, CharacterTraits>& input_stream,
-    ::ket::control<Qubit>& control_qubit)
+    ::ket::control<Qubit, control_value>& control_qubit)
   -> std::basic_istream<Character, CharacterTraits>&
   { return input_stream >> control_qubit.qubit(); }
 } // namespace ket

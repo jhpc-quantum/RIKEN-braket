@@ -18,6 +18,7 @@
 
 # include <ket/qubit.hpp>
 # include <ket/control.hpp>
+# include <ket/gate/utility/control_mask.hpp>
 # include <ket/gate/global_phase.hpp>
 # include <ket/gate/gate.hpp>
 # include <ket/gate/utility/index_with_qubits.hpp>
@@ -48,12 +49,12 @@ namespace ket
 
     // U1_i(theta)
     // U1_1(theta) (a_0 |0> + a_1 |1>) = a_0 |0> + e^{i theta} a_1 |1>
-    template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger>
+    template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger, StateInteger control_value>
     inline auto phase_shift_coeff(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
-      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit)
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger>, control_value> const control_qubit)
     -> void
     {
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
@@ -76,7 +77,7 @@ namespace ket
         [first, &phase_coefficient, qubit_mask, lower_bits_mask, upper_bits_mask](StateInteger const value_wo_qubit, int const)
         {
           // xxxxx1xxxxxx
-          auto const one_index = ((value_wo_qubit bitand upper_bits_mask) << 1u) bitor (value_wo_qubit bitand lower_bits_mask) bitor qubit_mask;
+          auto const one_index = ((value_wo_qubit bitand upper_bits_mask) << 1u) bitor (value_wo_qubit bitand lower_bits_mask) bitor (qubit_mask * control_value);
           *(first + one_index) *= phase_coefficient;
         });
     }
@@ -84,13 +85,13 @@ namespace ket
     // CU1_{cc'}(theta) or C1U1_{cc'}(theta)
     // CU1_{1,2}(theta) (a_{00} |00> + a_{01} |01> + a_{10} |10> + a{11} |11>)
     //   = a_{00} |00> + a_{01} |01> + a_{10} |10> + e^{i thta} a_{11} |11>
-    template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger>
+    template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger, StateInteger control_value1, StateInteger control_value2>
     inline auto phase_shift_coeff(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
-      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
-      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2)
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger>, control_value1> const control_qubit1,
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger>, control_value2> const control_qubit2)
     -> void
     {
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
@@ -106,7 +107,7 @@ namespace ket
         ::ket::utility::integer_exp2<StateInteger>(::ket::utility::integer_log2<BitInteger>(last - first))
         == static_cast<StateInteger>(last - first));
 
-      auto const minmax_qubits = std::minmax(control_qubit1, control_qubit2);
+      auto const minmax_qubits = std::minmax(control_qubit1.qubit(), control_qubit2.qubit());
       auto const control_qubit1_mask = ::ket::utility::integer_exp2<StateInteger>(control_qubit1);
       auto const control_qubit2_mask = ::ket::utility::integer_exp2<StateInteger>(control_qubit2);
       auto const lower_bits_mask = ::ket::utility::integer_exp2<StateInteger>(minmax_qubits.first) - StateInteger{1u};
@@ -125,23 +126,25 @@ namespace ket
             = ((value_wo_qubits bitand upper_bits_mask) << 2u)
               bitor ((value_wo_qubits bitand middle_bits_mask) << 1u)
               bitor (value_wo_qubits bitand lower_bits_mask)
-              bitor control_qubit1_mask bitor control_qubit2_mask;
+              bitor (control_qubit1_mask * control_value1) bitor (control_qubit2_mask * control_value2);
           *(first + index11) *= phase_coefficient;
         });
     }
 
     // C...CU1_{c0,c...c'}(theta) or CnU1_{c0,c...c'}(theta)
-    template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger, typename... Qubits>
+    template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger, StateInteger control_value1, StateInteger control_value2, StateInteger control_value3, typename... Qubits,
+              std::enable_if_t< ::ket::gate::utility::all_controls<Qubits...>::value, int> = 0>
     inline auto phase_shift_coeff(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
-      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
-      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2,
-      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit3,
-      ::ket::control<Qubits> const... control_qubits)
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger>, control_value1> const control_qubit1,
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger>, control_value2> const control_qubit2,
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger>, control_value3> const control_qubit3,
+      Qubits const... control_qubits)
     -> void
     {
+      auto const negative_control_mask = ::ket::gate::utility::negative_control_mask<std::size_t>(control_qubit1, control_qubit2, control_qubit3, control_qubits...);
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
       static_assert(
@@ -158,7 +161,7 @@ namespace ket
 
       ::ket::gate::nocache::gate(
         parallel_policy, first, last,
-        [&phase_coefficient](
+        [&phase_coefficient, negative_control_mask](
           auto const first, StateInteger const index_wo_qubits,
           std::array<qubit_type, num_operated_qubits> const& unsorted_qubits,
           std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& sorted_qubits_with_sentinel,
@@ -171,7 +174,7 @@ namespace ket
           using std::end;
           auto const iter
             = first
-              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index, unsorted_qubits, sorted_qubits_with_sentinel);
+              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
           *iter *= phase_coefficient;
         },
         control_qubit1, control_qubit2, control_qubit3, control_qubits...);
@@ -181,7 +184,7 @@ namespace ket
 
       ::ket::gate::nocache::gate(
         parallel_policy, first, last,
-        [&phase_coefficient](
+        [&phase_coefficient, negative_control_mask](
           auto const first, StateInteger const index_wo_qubits,
           std::array<StateInteger, num_operated_qubits> const& qubit_masks,
           std::array<StateInteger, num_operated_qubits + 1u> const& index_masks,
@@ -194,29 +197,31 @@ namespace ket
           using std::end;
           auto const iter
             = first
-              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index, qubit_masks, index_masks);
+              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index xor negative_control_mask), qubit_masks, index_masks);
           *iter *= phase_coefficient;
         },
         control_qubit1, control_qubit2, control_qubit3, control_qubits...);
 # endif // KET_USE_BIT_MASKS_EXPLICITLY
     }
 
-    template <typename RandomAccessIterator, typename Complex, typename... Qubits>
+    template <typename RandomAccessIterator, typename Complex, typename... Qubits,
+              std::enable_if_t< ::ket::gate::utility::all_controls<Qubits...>::value, int> = 0>
     inline auto phase_shift_coeff(
       RandomAccessIterator const first, RandomAccessIterator const last,
       Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
-      ::ket::control<Qubits> const... control_qubits)
+      Qubits const... control_qubits)
     -> void
     { ::ket::gate::phase_shift_coeff(::ket::utility::policy::make_sequential(), first, last, phase_coefficient, control_qubits...); }
 
     namespace ranges
     {
-      template <typename ParallelPolicy, typename RandomAccessRange, typename Complex, typename... Qubits>
+      template <typename ParallelPolicy, typename RandomAccessRange, typename Complex, typename... Qubits,
+                std::enable_if_t< ::ket::gate::utility::all_controls<Qubits...>::value, int> = 0>
       inline auto phase_shift_coeff(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& state,
         Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
-        ::ket::control<Qubits> const... control_qubits)
+        Qubits const... control_qubits)
       -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
       {
         using std::begin;
@@ -225,48 +230,53 @@ namespace ket
         return state;
       }
 
-      template <typename RandomAccessRange, typename Complex, typename... Qubits>
+      template <typename RandomAccessRange, typename Complex, typename... Qubits,
+                std::enable_if_t< ::ket::gate::utility::all_controls<Qubits...>::value, int> = 0>
       inline auto phase_shift_coeff(
         RandomAccessRange& state,
         Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
-        ::ket::control<Qubits> const... control_qubits)
+        Qubits const... control_qubits)
       -> RandomAccessRange&
       { return ::ket::gate::ranges::phase_shift_coeff(::ket::utility::policy::make_sequential(), state, phase_coefficient, control_qubits...); }
     } // namespace ranges
 
-    template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename... Qubits>
+    template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename... Qubits,
+              std::enable_if_t< ::ket::gate::utility::all_controls<Qubits...>::value, int> = 0>
     inline auto adj_phase_shift_coeff(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
-      ::ket::control<Qubits> const... control_qubits)
+      Qubits const... control_qubits)
     -> void
     { using std::conj; ::ket::gate::phase_shift_coeff(parallel_policy, first, last, conj(phase_coefficient), control_qubits...); }
 
-    template <typename RandomAccessIterator, typename Complex, typename... Qubits>
+    template <typename RandomAccessIterator, typename Complex, typename... Qubits,
+              std::enable_if_t< ::ket::gate::utility::all_controls<Qubits...>::value, int> = 0>
     inline auto adj_phase_shift_coeff(
       RandomAccessIterator const first, RandomAccessIterator const last,
       Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
-      ::ket::control<Qubits> const... control_qubits)
+      Qubits const... control_qubits)
     -> void
     { using std::conj; ::ket::gate::phase_shift_coeff(first, last, conj(phase_coefficient), control_qubits...); }
 
     namespace ranges
     {
-      template <typename ParallelPolicy, typename RandomAccessRange, typename Complex, typename... Qubits>
+      template <typename ParallelPolicy, typename RandomAccessRange, typename Complex, typename... Qubits,
+                std::enable_if_t< ::ket::gate::utility::all_controls<Qubits...>::value, int> = 0>
       inline auto adj_phase_shift_coeff(
         ParallelPolicy const parallel_policy,
         RandomAccessRange& state,
         Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
-        ::ket::control<Qubits> const... control_qubits)
+        Qubits const... control_qubits)
       -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
       { using std::conj; return ::ket::gate::ranges::phase_shift_coeff(parallel_policy, state, conj(phase_coefficient), control_qubits...); }
 
-      template <typename RandomAccessRange, typename Complex, typename... Qubits>
+      template <typename RandomAccessRange, typename Complex, typename... Qubits,
+                std::enable_if_t< ::ket::gate::utility::all_controls<Qubits...>::value, int> = 0>
       inline auto adj_phase_shift_coeff(
         RandomAccessRange& state,
         Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
-        ::ket::control<Qubits> const... control_qubits)
+        Qubits const... control_qubits)
       -> RandomAccessRange&
       { using std::conj; return ::ket::gate::ranges::phase_shift_coeff(state, conj(phase_coefficient), control_qubits...); }
     } // namespace ranges
@@ -310,13 +320,13 @@ namespace ket
     // CU1_{tc}(theta) or C1U1_{tc}(theta)
     // CU1_{1,2}(theta) (a_{00} |00> + a_{01} |01> + a_{10} |10> + a{11} |11>)
     //   = a_{00} |00> + a_{01} |01> + a_{10} |10> + e^{i thta} a_{11} |11>
-    template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger>
+    template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger, StateInteger control_value>
     inline auto phase_shift_coeff(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
       ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit)
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger>, control_value> const control_qubit)
     -> void
     {
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
@@ -351,22 +361,24 @@ namespace ket
             = ((value_wo_qubits bitand upper_bits_mask) << 2u)
               bitor ((value_wo_qubits bitand middle_bits_mask) << 1u)
               bitor (value_wo_qubits bitand lower_bits_mask)
-              bitor control_qubit_mask bitor target_qubit_mask;
+              bitor (control_qubit_mask * control_value) bitor target_qubit_mask;
           *(first + target_control_on_index) *= phase_coefficient;
         });
     }
 
     // C...CU1_{tc...c'}(theta) or CnU1_{tc...c'}(theta)
-    template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger, typename... ControlQubits>
+    template <typename ParallelPolicy, typename RandomAccessIterator, typename Complex, typename StateInteger, typename BitInteger, StateInteger control_value1, StateInteger control_value2, typename... ControlQubits>
     inline auto phase_shift_coeff(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Complex const& phase_coefficient, // exp(i theta) = cos(theta) + i sin(theta)
       ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
-      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2, ControlQubits const... control_qubits)
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger>, control_value1> const control_qubit1,
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger>, control_value2> const control_qubit2, ControlQubits const... control_qubits)
     -> void
     {
+      static_assert(::ket::gate::utility::all_controls<ControlQubits...>::value, "Targets must precede controls");
+      auto const negative_control_mask = ::ket::gate::utility::negative_control_mask<std::size_t>(target_qubit, control_qubit1, control_qubit2, control_qubits...);
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
       static_assert(
@@ -383,7 +395,7 @@ namespace ket
 
       ::ket::gate::nocache::gate(
         parallel_policy, first, last,
-        [&phase_coefficient](
+        [&phase_coefficient, negative_control_mask](
           auto const first, StateInteger const index_wo_qubits,
           std::array<qubit_type, num_operated_qubits> const& unsorted_qubits,
           std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& sorted_qubits_with_sentinel,
@@ -396,7 +408,7 @@ namespace ket
           using std::end;
           auto const iter
             = first
-              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index, unsorted_qubits, sorted_qubits_with_sentinel);
+              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
           *iter *= phase_coefficient;
         },
         target_qubit, control_qubit1, control_qubit2, control_qubits...);
@@ -406,7 +418,7 @@ namespace ket
 
       ::ket::gate::nocache::gate(
         parallel_policy, first, last,
-        [&phase_coefficient](
+        [&phase_coefficient, negative_control_mask](
           auto const first, StateInteger const index_wo_qubits,
           std::array<StateInteger, num_operated_qubits> const& qubit_masks,
           std::array<StateInteger, num_operated_qubits + 1u> const& index_masks,
@@ -419,7 +431,7 @@ namespace ket
           using std::end;
           auto const iter
             = first
-              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index, qubit_masks, index_masks);
+              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index xor negative_control_mask), qubit_masks, index_masks);
           *iter *= phase_coefficient;
         },
         target_qubit, control_qubit1, control_qubit2, control_qubits...);
@@ -498,21 +510,23 @@ namespace ket
 
     // phase_shift
     // Case 1: the first argument of qubits is ket::control<ket::qubit<S, B>>
-    template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename... Qubits>
+    template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename... Qubits,
+              std::enable_if_t< ::ket::gate::utility::all_controls<Qubits...>::value, int> = 0>
     inline auto phase_shift(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
-      Real const phase, ::ket::control<Qubits> const... control_qubits)
+      Real const phase, Qubits const... control_qubits)
     -> void
     {
       using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
       ::ket::gate::phase_shift_coeff(parallel_policy, first, last, ::ket::utility::exp_i<complex_type>(phase), control_qubits...);
     }
 
-    template <typename RandomAccessIterator, typename Real, typename... Qubits>
+    template <typename RandomAccessIterator, typename Real, typename... Qubits,
+              std::enable_if_t< ::ket::gate::utility::all_controls<Qubits...>::value, int> = 0>
     inline auto phase_shift(
       RandomAccessIterator const first, RandomAccessIterator const last,
-      Real const phase, ::ket::control<Qubits> const... control_qubits)
+      Real const phase, Qubits const... control_qubits)
     -> void
     {
       using complex_type = typename std::iterator_traits<RandomAccessIterator>::value_type;
@@ -521,50 +535,56 @@ namespace ket
 
     namespace ranges
     {
-      template <typename ParallelPolicy, typename RandomAccessRange, typename Real, typename... Qubits>
+      template <typename ParallelPolicy, typename RandomAccessRange, typename Real, typename... Qubits,
+                std::enable_if_t< ::ket::gate::utility::all_controls<Qubits...>::value, int> = 0>
       inline auto phase_shift(
         ParallelPolicy const parallel_policy,
-        RandomAccessRange& state, Real const phase, ::ket::control<Qubits> const... control_qubits)
+        RandomAccessRange& state, Real const phase, Qubits const... control_qubits)
       -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
       {
         using complex_type = ::ket::utility::meta::range_value_t<RandomAccessRange>;
         return ::ket::gate::ranges::phase_shift_coeff(parallel_policy, state, ::ket::utility::exp_i<complex_type>(phase), control_qubits...);
       }
 
-      template <typename RandomAccessRange, typename Real, typename... Qubits>
-      inline auto phase_shift(RandomAccessRange& state, Real const phase, ::ket::control<Qubits> const... control_qubits) -> RandomAccessRange&
+      template <typename RandomAccessRange, typename Real, typename... Qubits,
+                std::enable_if_t< ::ket::gate::utility::all_controls<Qubits...>::value, int> = 0>
+      inline auto phase_shift(RandomAccessRange& state, Real const phase, Qubits const... control_qubits) -> RandomAccessRange&
       {
         using complex_type = ::ket::utility::meta::range_value_t<RandomAccessRange>;
         return ::ket::gate::ranges::phase_shift_coeff(state, ::ket::utility::exp_i<complex_type>(phase), control_qubits...);
       }
     } // namespace ranges
 
-    template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename... Qubits>
+    template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename... Qubits,
+              std::enable_if_t< ::ket::gate::utility::all_controls<Qubits...>::value, int> = 0>
     inline auto adj_phase_shift(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
-      Real const phase, ::ket::control<Qubits> const... control_qubits)
+      Real const phase, Qubits const... control_qubits)
     -> void
     { ::ket::gate::phase_shift(parallel_policy, first, last, -phase, control_qubits...); }
 
-    template <typename RandomAccessIterator, typename Real, typename... Qubits>
+    template <typename RandomAccessIterator, typename Real, typename... Qubits,
+              std::enable_if_t< ::ket::gate::utility::all_controls<Qubits...>::value, int> = 0>
     inline auto adj_phase_shift(
       RandomAccessIterator const first, RandomAccessIterator const last,
-      Real const phase, ::ket::control<Qubits> const... control_qubits)
+      Real const phase, Qubits const... control_qubits)
     -> void
     { ::ket::gate::phase_shift(first, last, -phase, control_qubits...); }
 
     namespace ranges
     {
-      template <typename ParallelPolicy, typename RandomAccessRange, typename Real, typename... Qubits>
+      template <typename ParallelPolicy, typename RandomAccessRange, typename Real, typename... Qubits,
+                std::enable_if_t< ::ket::gate::utility::all_controls<Qubits...>::value, int> = 0>
       inline auto adj_phase_shift(
         ParallelPolicy const parallel_policy,
-        RandomAccessRange& state, Real const phase, ::ket::control<Qubits> const... control_qubits)
+        RandomAccessRange& state, Real const phase, Qubits const... control_qubits)
       -> std::enable_if_t< ::ket::utility::policy::meta::is_loop_n_policy<ParallelPolicy>::value, RandomAccessRange& >
       { return ::ket::gate::ranges::phase_shift(parallel_policy, state, -phase, control_qubits...); }
 
-      template <typename RandomAccessRange, typename Real, typename... Qubits>
-      inline auto adj_phase_shift(RandomAccessRange& state, Real const phase, ::ket::control<Qubits> const... control_qubits) -> RandomAccessRange&
+      template <typename RandomAccessRange, typename Real, typename... Qubits,
+                std::enable_if_t< ::ket::gate::utility::all_controls<Qubits...>::value, int> = 0>
+      inline auto adj_phase_shift(RandomAccessRange& state, Real const phase, Qubits const... control_qubits) -> RandomAccessRange&
       { return ::ket::gate::ranges::phase_shift(state, -phase, control_qubits...); }
     } // namespace ranges
 
@@ -703,13 +723,13 @@ namespace ket
     //     + (e^{i theta} a_{10} + e^{i(theta + theta')} a_{11})/sqrt(2) |11>
     template <
       typename ParallelPolicy, typename RandomAccessIterator, typename Real,
-      typename StateInteger, typename BitInteger>
+      typename StateInteger, typename BitInteger, StateInteger control_value>
     inline auto phase_shift2(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Real const phase1, Real const phase2,
       ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit)
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger>, control_value> const control_qubit)
     -> void
     {
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
@@ -753,7 +773,7 @@ namespace ket
               bitor ((value_wo_qubits bitand middle_bits_mask) << 1u)
               bitor (value_wo_qubits bitand lower_bits_mask);
           // xxx0_txxx1_cxxx
-          auto const control_on_index = base_index bitor control_qubit_mask;
+          auto const control_on_index = base_index bitor (control_qubit_mask * control_value);
           // xxx1_txxx1_cxxx
           auto const target_control_on_index = control_on_index bitor target_qubit_mask;
           auto const control_on_iter = first + control_on_index;
@@ -769,16 +789,18 @@ namespace ket
     }
 
     // C...CU2_{tc...c'}(theta, theta') or CnU2_{tc...c'}(theta, theta')
-    template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
+    template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger, StateInteger control_value1, StateInteger control_value2, typename... ControlQubits>
     inline auto phase_shift2(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Real const phase1, Real const phase2,
       ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
-      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2, ControlQubits const... control_qubits)
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger>, control_value1> const control_qubit1,
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger>, control_value2> const control_qubit2, ControlQubits const... control_qubits)
     -> void
     {
+      static_assert(::ket::gate::utility::all_controls<ControlQubits...>::value, "Targets must precede controls");
+      auto const negative_control_mask = ::ket::gate::utility::negative_control_mask<std::size_t>(target_qubit, control_qubit1, control_qubit2, control_qubits...);
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
 
@@ -809,7 +831,7 @@ namespace ket
 
       ::ket::gate::nocache::gate(
         parallel_policy, first, last,
-        [&modified_phase_coefficient1, &phase_coefficient2](
+        [&modified_phase_coefficient1, &phase_coefficient2, negative_control_mask](
           auto const first, StateInteger const index_wo_qubits,
           std::array<qubit_type, num_operated_qubits> const& unsorted_qubits,
           std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& sorted_qubits_with_sentinel,
@@ -824,10 +846,10 @@ namespace ket
           using std::end;
           auto const iter0
             = first
-              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index0, unsorted_qubits, sorted_qubits_with_sentinel);
+              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index0 xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
           auto const iter1
             = first
-              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index1, unsorted_qubits, sorted_qubits_with_sentinel);
+              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index1 xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
           auto const value0 = *iter0;
 
           *iter0 -= phase_coefficient2 * *iter1;
@@ -849,7 +871,7 @@ namespace ket
 
       ::ket::gate::nocache::gate(
         parallel_policy, first, last,
-        [&modified_phase_coefficient1, &phase_coefficient2](
+        [&modified_phase_coefficient1, &phase_coefficient2, negative_control_mask](
           auto const first, StateInteger const index_wo_qubits,
           std::array<StateInteger, num_operated_qubits> const& qubit_masks,
           std::array<StateInteger, num_operated_qubits + 1u> const& index_masks,
@@ -864,10 +886,10 @@ namespace ket
           using std::end;
           auto const iter0
             = first
-              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index0, qubit_masks, index_masks);
+              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index0 xor negative_control_mask), qubit_masks, index_masks);
           auto const iter1
             = first
-              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index1, qubit_masks, index_masks);
+              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index1 xor negative_control_mask), qubit_masks, index_masks);
           auto const value0 = *iter0;
 
           *iter0 -= phase_coefficient2 * *iter1;
@@ -974,13 +996,13 @@ namespace ket
     //     + (-e^{-i theta'} a_{10} + e^{-i(theta + theta')} a_{11})/sqrt(2) |11>
     template <
       typename ParallelPolicy, typename RandomAccessIterator, typename Real,
-      typename StateInteger, typename BitInteger>
+      typename StateInteger, typename BitInteger, StateInteger control_value>
     inline auto adj_phase_shift2(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Real const phase1, Real const phase2,
       ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit)
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger>, control_value> const control_qubit)
     -> void
     {
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
@@ -1024,7 +1046,7 @@ namespace ket
               bitor ((value_wo_qubits bitand middle_bits_mask) << 1u)
               bitor (value_wo_qubits bitand lower_bits_mask);
           // xxx0_txxx1_cxxx
-          auto const control_on_index = base_index bitor control_qubit_mask;
+          auto const control_on_index = base_index bitor (control_qubit_mask * control_value);
           // xxx1_txxx1_cxxx
           auto const target_control_on_index = control_on_index bitor target_qubit_mask;
           auto const control_on_iter = first + control_on_index;
@@ -1040,16 +1062,18 @@ namespace ket
     }
 
     // C...CU2+_{tc...c'}(theta, theta'), or CnU2+_{tc...c'}(theta, theta')
-    template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
+    template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger, StateInteger control_value1, StateInteger control_value2, typename... ControlQubits>
     inline auto adj_phase_shift2(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Real const phase1, Real const phase2,
       ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
-      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2, ControlQubits const... control_qubits)
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger>, control_value1> const control_qubit1,
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger>, control_value2> const control_qubit2, ControlQubits const... control_qubits)
     -> void
     {
+      static_assert(::ket::gate::utility::all_controls<ControlQubits...>::value, "Targets must precede controls");
+      auto const negative_control_mask = ::ket::gate::utility::negative_control_mask<std::size_t>(target_qubit, control_qubit1, control_qubit2, control_qubits...);
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
 
@@ -1080,7 +1104,7 @@ namespace ket
 
       ::ket::gate::nocache::gate(
         parallel_policy, first, last,
-        [&phase_coefficient1, &modified_phase_coefficient2](
+        [&phase_coefficient1, &modified_phase_coefficient2, negative_control_mask](
           auto const first, StateInteger const index_wo_qubits,
           std::array<qubit_type, num_operated_qubits> const& unsorted_qubits,
           std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& sorted_qubits_with_sentinel,
@@ -1095,10 +1119,10 @@ namespace ket
           using std::end;
           auto const iter0
             = first
-              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index0, unsorted_qubits, sorted_qubits_with_sentinel);
+              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index0 xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
           auto const iter1
             = first
-              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index1, unsorted_qubits, sorted_qubits_with_sentinel);
+              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index1 xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
           auto const value0 = *iter0;
 
           *iter0 += phase_coefficient1 * *iter1;
@@ -1120,7 +1144,7 @@ namespace ket
 
       ::ket::gate::nocache::gate(
         parallel_policy, first, last,
-        [&phase_coefficient1, &modified_phase_coefficient2](
+        [&phase_coefficient1, &modified_phase_coefficient2, negative_control_mask](
           auto const first, StateInteger const index_wo_qubits,
           std::array<StateInteger, num_operated_qubits> const& qubit_masks,
           std::array<StateInteger, num_operated_qubits + 1u> const& index_masks,
@@ -1135,10 +1159,10 @@ namespace ket
           using std::end;
           auto const iter0
             = first
-              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index0, qubit_masks, index_masks);
+              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index0 xor negative_control_mask), qubit_masks, index_masks);
           auto const iter1
             = first
-              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index1, qubit_masks, index_masks);
+              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index1 xor negative_control_mask), qubit_masks, index_masks);
           auto const value0 = *iter0;
 
           *iter0 += phase_coefficient1 * *iter1;
@@ -1248,13 +1272,13 @@ namespace ket
     //     + (e^{i theta'} sin(theta/2) a_{10} + e^{i(theta' + theta'')} cos(theta/2) a_{11}) |11>
     template <
       typename ParallelPolicy, typename RandomAccessIterator, typename Real,
-      typename StateInteger, typename BitInteger>
+      typename StateInteger, typename BitInteger, StateInteger control_value>
     inline auto phase_shift3(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Real const phase1, Real const phase2, Real const phase3,
       ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit)
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger>, control_value> const control_qubit)
     -> void
     {
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
@@ -1305,7 +1329,7 @@ namespace ket
               bitor ((value_wo_qubits bitand middle_bits_mask) << 1u)
               bitor (value_wo_qubits bitand lower_bits_mask);
           // xxx0_txxx1_cxxx
-          auto const control_on_index = base_index bitor control_qubit_mask;
+          auto const control_on_index = base_index bitor (control_qubit_mask * control_value);
           // xxx1_txxx1_cxxx
           auto const target_control_on_index = control_on_index bitor target_qubit_mask;
           auto const control_on_iter = first + control_on_index;
@@ -1321,16 +1345,18 @@ namespace ket
     }
 
     // C...CU3_{tc...c'}(theta, theta', theta''), or CnU3_{tc...c'}(theta, theta', theta'')
-    template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
+    template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger, StateInteger control_value1, StateInteger control_value2, typename... ControlQubits>
     inline auto phase_shift3(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Real const phase1, Real const phase2, Real const phase3,
       ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
-      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2, ControlQubits const... control_qubits)
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger>, control_value1> const control_qubit1,
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger>, control_value2> const control_qubit2, ControlQubits const... control_qubits)
     -> void
     {
+      static_assert(::ket::gate::utility::all_controls<ControlQubits...>::value, "Targets must precede controls");
+      auto const negative_control_mask = ::ket::gate::utility::negative_control_mask<std::size_t>(target_qubit, control_qubit1, control_qubit2, control_qubits...);
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
 
@@ -1367,7 +1393,7 @@ namespace ket
 
       ::ket::gate::nocache::gate(
         parallel_policy, first, last,
-        [sine, cosine, &phase_coefficient2, &sine_phase_coefficient3, &cosine_phase_coefficient3](
+        [sine, cosine, &phase_coefficient2, &sine_phase_coefficient3, &cosine_phase_coefficient3, negative_control_mask](
           auto const first, StateInteger const index_wo_qubits,
           std::array<qubit_type, num_operated_qubits> const& unsorted_qubits,
           std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& sorted_qubits_with_sentinel,
@@ -1382,10 +1408,10 @@ namespace ket
           using std::end;
           auto const iter0
             = first
-              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index0, unsorted_qubits, sorted_qubits_with_sentinel);
+              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index0 xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
           auto const iter1
             = first
-              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index1, unsorted_qubits, sorted_qubits_with_sentinel);
+              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index1 xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
           auto const value0 = *iter0;
 
           *iter0 *= cosine;
@@ -1413,7 +1439,7 @@ namespace ket
 
       ::ket::gate::nocache::gate(
         parallel_policy, first, last,
-        [sine, cosine, &phase_coefficient2, &sine_phase_coefficient3, &cosine_phase_coefficient3](
+        [sine, cosine, &phase_coefficient2, &sine_phase_coefficient3, &cosine_phase_coefficient3, negative_control_mask](
           auto const first, StateInteger const index_wo_qubits,
           std::array<StateInteger, num_operated_qubits> const& qubit_masks,
           std::array<StateInteger, num_operated_qubits + 1u> const& index_masks,
@@ -1428,10 +1454,10 @@ namespace ket
           using std::end;
           auto const iter0
             = first
-              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index0, qubit_masks, index_masks);
+              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index0 xor negative_control_mask), qubit_masks, index_masks);
           auto const iter1
             = first
-              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index1, qubit_masks, index_masks);
+              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index1 xor negative_control_mask), qubit_masks, index_masks);
           auto const value0 = *iter0;
 
           *iter0 *= cosine;
@@ -1542,13 +1568,13 @@ namespace ket
     //     + (-e^{-i theta''} sin(theta/2) a_{10} + e^{-i(theta' + theta'')} cos(theta/2) a_{11}) |11>
     template <
       typename ParallelPolicy, typename RandomAccessIterator, typename Real,
-      typename StateInteger, typename BitInteger>
+      typename StateInteger, typename BitInteger, StateInteger control_value>
     inline auto adj_phase_shift3(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Real const phase1, Real const phase2, Real const phase3,
       ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit)
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger>, control_value> const control_qubit)
     -> void
     {
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
@@ -1599,7 +1625,7 @@ namespace ket
               bitor ((value_wo_qubits bitand middle_bits_mask) << 1u)
               bitor (value_wo_qubits bitand lower_bits_mask);
           // xxx0_txxx1_cxxx
-          auto const control_on_index = base_index bitor control_qubit_mask;
+          auto const control_on_index = base_index bitor (control_qubit_mask * control_value);
           // xxx1_txxx1_cxxx
           auto const target_control_on_index = control_on_index bitor target_qubit_mask;
           auto const control_on_iter = first + control_on_index;
@@ -1615,16 +1641,18 @@ namespace ket
     }
 
     // C...CU3+_{tc...c'}(theta, theta', theta''), or CnU3+_{tc...c'}(theta, theta', theta'')
-    template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger, typename... ControlQubits>
+    template <typename ParallelPolicy, typename RandomAccessIterator, typename Real, typename StateInteger, typename BitInteger, StateInteger control_value1, StateInteger control_value2, typename... ControlQubits>
     inline auto adj_phase_shift3(
       ParallelPolicy const parallel_policy,
       RandomAccessIterator const first, RandomAccessIterator const last,
       Real const phase1, Real const phase2, Real const phase3,
       ::ket::qubit<StateInteger, BitInteger> const target_qubit,
-      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit1,
-      ::ket::control< ::ket::qubit<StateInteger, BitInteger> > const control_qubit2, ControlQubits const... control_qubits)
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger>, control_value1> const control_qubit1,
+      ::ket::control< ::ket::qubit<StateInteger, BitInteger>, control_value2> const control_qubit2, ControlQubits const... control_qubits)
     -> void
     {
+      static_assert(::ket::gate::utility::all_controls<ControlQubits...>::value, "Targets must precede controls");
+      auto const negative_control_mask = ::ket::gate::utility::negative_control_mask<std::size_t>(target_qubit, control_qubit1, control_qubit2, control_qubits...);
       static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
       static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
 
@@ -1661,7 +1689,7 @@ namespace ket
 
       ::ket::gate::nocache::gate(
         parallel_policy, first, last,
-        [sine, cosine, &sine_phase_coefficient2, &cosine_phase_coefficient2, &phase_coefficient3](
+        [sine, cosine, &sine_phase_coefficient2, &cosine_phase_coefficient2, &phase_coefficient3, negative_control_mask](
           auto const first, StateInteger const index_wo_qubits,
           std::array<qubit_type, num_operated_qubits> const& unsorted_qubits,
           std::array<qubit_type, num_operated_qubits + BitInteger{1u}> const& sorted_qubits_with_sentinel,
@@ -1676,10 +1704,10 @@ namespace ket
           using std::end;
           auto const iter0
             = first
-              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index0, unsorted_qubits, sorted_qubits_with_sentinel);
+              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index0 xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
           auto const iter1
             = first
-              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index1, unsorted_qubits, sorted_qubits_with_sentinel);
+              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index1 xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
           auto const value0 = *iter0;
 
           *iter0 *= cosine;
@@ -1707,7 +1735,7 @@ namespace ket
 
       ::ket::gate::nocache::gate(
         parallel_policy, first, last,
-        [sine, cosine, &sine_phase_coefficient2, &cosine_phase_coefficient2, &phase_coefficient3](
+        [sine, cosine, &sine_phase_coefficient2, &cosine_phase_coefficient2, &phase_coefficient3, negative_control_mask](
           auto const first, StateInteger const index_wo_qubits,
           std::array<StateInteger, num_operated_qubits> const& qubit_masks,
           std::array<StateInteger, num_operated_qubits + 1u> const& index_masks,
@@ -1722,10 +1750,10 @@ namespace ket
           using std::end;
           auto const iter0
             = first
-              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index0, qubit_masks, index_masks);
+              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index0 xor negative_control_mask), qubit_masks, index_masks);
           auto const iter1
             = first
-              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index1, qubit_masks, index_masks);
+              + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index1 xor negative_control_mask), qubit_masks, index_masks);
           auto const value0 = *iter0;
 
           *iter0 *= cosine;
@@ -1785,6 +1813,7 @@ namespace ket
           ControlQubitsRange const& control_qubits)
         -> void
         {
+          auto const negative_control_mask = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(control_qubits, 0);
           using control_qubit_type = ::ket::utility::meta::range_value_t<ControlQubitsRange>;
           using state_integer_type = ::ket::meta::state_integer_t<control_qubit_type>;
           using bit_integer_type = ::ket::meta::bit_integer_t<control_qubit_type>;
@@ -1801,7 +1830,7 @@ namespace ket
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
           ::ket::gate::runtime::nocache::qubit_ranges::gate(
             parallel_policy, first, last,
-            [num_control_qubits, &phase_coefficient](
+            [num_control_qubits, &phase_coefficient, negative_control_mask](
               auto const first, state_integer_type const index_wo_qubits,
               auto const& unsorted_qubits, auto const& sorted_qubits_with_sentinel,
               int const)
@@ -1811,7 +1840,7 @@ namespace ket
 
               auto const iter
                 = first
-                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index, unsorted_qubits, sorted_qubits_with_sentinel);
+                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
               *iter *= phase_coefficient;
             },
             control_qubits | boost::adaptors::transformed(
@@ -1819,7 +1848,7 @@ namespace ket
 # else // KET_USE_BIT_MASKS_EXPLICITLY
           ::ket::gate::runtime::nocache::qubit_ranges::gate(
             parallel_policy, first, last,
-            [num_control_qubits, &phase_coefficient](
+            [num_control_qubits, &phase_coefficient, negative_control_mask](
               auto const first, state_integer_type const index_wo_qubits,
               auto const& qubit_masks, auto const& index_masks,
               int const)
@@ -1829,7 +1858,7 @@ namespace ket
 
               auto const iter
                 = first
-                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index, qubit_masks, index_masks);
+                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index xor negative_control_mask), qubit_masks, index_masks);
               *iter *= phase_coefficient;
             },
             control_qubits | boost::adaptors::transformed(
@@ -2021,11 +2050,12 @@ namespace ket
           ControlQubitsRange const& control_qubits)
         -> void
         {
+          auto const negative_control_mask = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(control_qubits, 1);
           using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-          using control_qubit_type = ::ket::control<qubit_type>;
+          using control_qubit_type = ::ket::utility::meta::range_value_t<ControlQubitsRange>;
           static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
           static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
-          static_assert(std::is_same< ::ket::utility::meta::range_value_t<ControlQubitsRange>, control_qubit_type >::value, "The value_type of ControlQubitsRange should be the same as ket::control<ket::qubit<S, B> >");
+          static_assert(::ket::gate::utility::is_control_of<control_qubit_type, qubit_type>::value, "Control range must contain controls of the target qubit type");
 
           assert(
             ::ket::utility::integer_exp2<StateInteger>(::ket::utility::integer_log2<BitInteger>(last - first))
@@ -2038,7 +2068,7 @@ namespace ket
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
           ::ket::gate::runtime::nocache::qubit_ranges::gate(
             parallel_policy, first, last,
-            [num_operated_qubits, &phase_coefficient](
+            [num_operated_qubits, &phase_coefficient, negative_control_mask](
               auto const first, StateInteger const index_wo_qubits,
               auto const& unsorted_qubits, auto const& sorted_qubits_with_sentinel,
               int const)
@@ -2048,7 +2078,7 @@ namespace ket
 
               auto const iter
                 = first
-                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index, unsorted_qubits, sorted_qubits_with_sentinel);
+                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
               *iter *= phase_coefficient;
             },
             boost::join(
@@ -2058,7 +2088,7 @@ namespace ket
 # else // KET_USE_BIT_MASKS_EXPLICITLY
           ::ket::gate::runtime::nocache::qubit_ranges::gate(
             parallel_policy, first, last,
-            [num_operated_qubits, &phase_coefficient](
+            [num_operated_qubits, &phase_coefficient, negative_control_mask](
               auto const first, StateInteger const index_wo_qubits,
               auto const& qubit_masks, auto const& index_masks,
               int const)
@@ -2068,7 +2098,7 @@ namespace ket
 
               auto const iter
                 = first
-                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index, qubit_masks, index_masks);
+                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index xor negative_control_mask), qubit_masks, index_masks);
               *iter *= phase_coefficient;
             },
             boost::join(
@@ -2799,11 +2829,12 @@ namespace ket
           ControlQubitsRange const& control_qubits)
         -> void
         {
+          auto const negative_control_mask = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(control_qubits, 1);
           using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-          using control_qubit_type = ::ket::control<qubit_type>;
+          using control_qubit_type = ::ket::utility::meta::range_value_t<ControlQubitsRange>;
           static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
           static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
-          static_assert(std::is_same< ::ket::utility::meta::range_value_t<ControlQubitsRange>, control_qubit_type >::value, "The value_type of ControlQubitsRange should be the same as ket::control<ket::qubit<S, B> >");
+          static_assert(::ket::gate::utility::is_control_of<control_qubit_type, qubit_type>::value, "Control range must contain controls of the target qubit type");
 
           assert(::ket::utility::integer_exp2<StateInteger>(target_qubit) < static_cast<StateInteger>(last - first));
           assert(
@@ -2827,7 +2858,7 @@ namespace ket
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
           ::ket::gate::runtime::nocache::qubit_ranges::gate(
             parallel_policy, first, last,
-            [num_control_qubits, &modified_phase_coefficient1, &phase_coefficient2](
+            [num_control_qubits, &modified_phase_coefficient1, &phase_coefficient2, negative_control_mask](
               auto const first, StateInteger const index_wo_qubits,
               auto const& unsorted_qubits, auto const& sorted_qubits_with_sentinel,
               int const)
@@ -2839,10 +2870,10 @@ namespace ket
 
               auto const iter0
                 = first
-                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index0, unsorted_qubits, sorted_qubits_with_sentinel);
+                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index0 xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
               auto const iter1
                 = first
-                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index1, unsorted_qubits, sorted_qubits_with_sentinel);
+                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index1 xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
               auto const value0 = *iter0;
 
               *iter0 -= phase_coefficient2 * *iter1;
@@ -2858,7 +2889,7 @@ namespace ket
 # else // KET_USE_BIT_MASKS_EXPLICITLY
           ::ket::gate::runtime::nocache::qubit_ranges::gate(
             parallel_policy, first, last,
-            [num_control_qubits, &modified_phase_coefficient1, &phase_coefficient2](
+            [num_control_qubits, &modified_phase_coefficient1, &phase_coefficient2, negative_control_mask](
               auto const first, StateInteger const index_wo_qubits,
               auto const& qubit_masks, auto const& index_masks,
               int const)
@@ -2870,10 +2901,10 @@ namespace ket
 
               auto const iter0
                 = first
-                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index0, qubit_masks, index_masks);
+                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index0 xor negative_control_mask), qubit_masks, index_masks);
               auto const iter1
                 = first
-                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index1, qubit_masks, index_masks);
+                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index1 xor negative_control_mask), qubit_masks, index_masks);
               auto const value0 = *iter0;
 
               *iter0 -= phase_coefficient2 * *iter1;
@@ -3046,11 +3077,12 @@ namespace ket
           ControlQubitsRange const& control_qubits)
         -> void
         {
+          auto const negative_control_mask = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(control_qubits, 1);
           using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-          using control_qubit_type = ::ket::control<qubit_type>;
+          using control_qubit_type = ::ket::utility::meta::range_value_t<ControlQubitsRange>;
           static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
           static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
-          static_assert(std::is_same< ::ket::utility::meta::range_value_t<ControlQubitsRange>, control_qubit_type >::value, "The value_type of ControlQubitsRange should be the same as ket::control<ket::qubit<S, B> >");
+          static_assert(::ket::gate::utility::is_control_of<control_qubit_type, qubit_type>::value, "Control range must contain controls of the target qubit type");
 
           assert(::ket::utility::integer_exp2<StateInteger>(target_qubit) < static_cast<StateInteger>(last - first));
           assert(
@@ -3074,7 +3106,7 @@ namespace ket
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
           ::ket::gate::runtime::nocache::qubit_ranges::gate(
             parallel_policy, first, last,
-            [num_control_qubits, &phase_coefficient1, &modified_phase_coefficient2](
+            [num_control_qubits, &phase_coefficient1, &modified_phase_coefficient2, negative_control_mask](
               auto const first, StateInteger const index_wo_qubits,
               auto const& unsorted_qubits, auto const& sorted_qubits_with_sentinel,
               int const)
@@ -3086,10 +3118,10 @@ namespace ket
 
               auto const iter0
                 = first
-                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index0, unsorted_qubits, sorted_qubits_with_sentinel);
+                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index0 xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
               auto const iter1
                 = first
-                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index1, unsorted_qubits, sorted_qubits_with_sentinel);
+                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index1 xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
               auto const value0 = *iter0;
 
               *iter0 += phase_coefficient1 * *iter1;
@@ -3105,7 +3137,7 @@ namespace ket
 # else // KET_USE_BIT_MASKS_EXPLICITLY
           ::ket::gate::runtime::nocache::qubit_ranges::gate(
             parallel_policy, first, last,
-            [num_control_qubits, &phase_coefficient1, &modified_phase_coefficient2](
+            [num_control_qubits, &phase_coefficient1, &modified_phase_coefficient2, negative_control_mask](
               auto const first, StateInteger const index_wo_qubits,
               auto const& qubit_masks, auto const& index_masks,
               int const)
@@ -3117,10 +3149,10 @@ namespace ket
 
               auto const iter0
                 = first
-                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index0, qubit_masks, index_masks);
+                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index0 xor negative_control_mask), qubit_masks, index_masks);
               auto const iter1
                 = first
-                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index1, qubit_masks, index_masks);
+                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index1 xor negative_control_mask), qubit_masks, index_masks);
               auto const value0 = *iter0;
 
               *iter0 += phase_coefficient1 * *iter1;
@@ -3294,11 +3326,12 @@ namespace ket
           ControlQubitsRange const& control_qubits)
         -> void
         {
+          auto const negative_control_mask = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(control_qubits, 1);
           using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-          using control_qubit_type = ::ket::control<qubit_type>;
+          using control_qubit_type = ::ket::utility::meta::range_value_t<ControlQubitsRange>;
           static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
           static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
-          static_assert(std::is_same< ::ket::utility::meta::range_value_t<ControlQubitsRange>, control_qubit_type >::value, "The value_type of ControlQubitsRange should be the same as ket::control<ket::qubit<S, B> >");
+          static_assert(::ket::gate::utility::is_control_of<control_qubit_type, qubit_type>::value, "Control range must contain controls of the target qubit type");
 
           using std::begin;
           using std::end;
@@ -3328,7 +3361,7 @@ namespace ket
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
           ::ket::gate::runtime::nocache::qubit_ranges::gate(
             parallel_policy, first, last,
-            [num_control_qubits, sine, cosine, &phase_coefficient2, &sine_phase_coefficient3, &cosine_phase_coefficient3](
+            [num_control_qubits, sine, cosine, &phase_coefficient2, &sine_phase_coefficient3, &cosine_phase_coefficient3, negative_control_mask](
               auto const first, StateInteger const index_wo_qubits,
               auto const& unsorted_qubits, auto const& sorted_qubits_with_sentinel,
               int const)
@@ -3340,10 +3373,10 @@ namespace ket
 
               auto const iter0
                 = first
-                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index0, unsorted_qubits, sorted_qubits_with_sentinel);
+                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index0 xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
               auto const iter1
                 = first
-                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index1, unsorted_qubits, sorted_qubits_with_sentinel);
+                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index1 xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
               auto const value0 = *iter0;
 
               *iter0 *= cosine;
@@ -3359,7 +3392,7 @@ namespace ket
 # else // KET_USE_BIT_MASKS_EXPLICITLY
           ::ket::gate::runtime::nocache::qubit_ranges::gate(
             parallel_policy, first, last,
-            [num_control_qubits, sine, cosine, &phase_coefficient2, &sine_phase_coefficient3, &cosine_phase_coefficient3](
+            [num_control_qubits, sine, cosine, &phase_coefficient2, &sine_phase_coefficient3, &cosine_phase_coefficient3, negative_control_mask](
               auto const first, StateInteger const index_wo_qubits,
               auto const& qubit_masks, auto const& index_masks,
               int const)
@@ -3371,10 +3404,10 @@ namespace ket
 
               auto const iter0
                 = first
-                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index0, qubit_masks, index_masks);
+                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index0 xor negative_control_mask), qubit_masks, index_masks);
               auto const iter1
                 = first
-                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index1, qubit_masks, index_masks);
+                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index1 xor negative_control_mask), qubit_masks, index_masks);
               auto const value0 = *iter0;
 
               *iter0 *= cosine;
@@ -3548,11 +3581,12 @@ namespace ket
           ControlQubitsRange const& control_qubits)
         -> void
         {
+          auto const negative_control_mask = ::ket::gate::utility::negative_control_mask_from_range<std::size_t>(control_qubits, 1);
           using qubit_type = ::ket::qubit<StateInteger, BitInteger>;
-          using control_qubit_type = ::ket::control<qubit_type>;
+          using control_qubit_type = ::ket::utility::meta::range_value_t<ControlQubitsRange>;
           static_assert(std::is_unsigned<StateInteger>::value, "StateInteger should be unsigned");
           static_assert(std::is_unsigned<BitInteger>::value, "BitInteger should be unsigned");
-          static_assert(std::is_same< ::ket::utility::meta::range_value_t<ControlQubitsRange>, control_qubit_type >::value, "The value_type of ControlQubitsRange should be the same as ket::control<ket::qubit<S, B> >");
+          static_assert(::ket::gate::utility::is_control_of<control_qubit_type, qubit_type>::value, "Control range must contain controls of the target qubit type");
 
           assert(::ket::utility::integer_exp2<StateInteger>(target_qubit) < static_cast<StateInteger>(last - first));
           assert(
@@ -3582,7 +3616,7 @@ namespace ket
 # ifndef KET_USE_BIT_MASKS_EXPLICITLY
           ::ket::gate::runtime::nocache::qubit_ranges::gate(
             parallel_policy, first, last,
-            [num_control_qubits, sine, cosine, &sine_phase_coefficient2, &cosine_phase_coefficient2, &phase_coefficient3](
+            [num_control_qubits, sine, cosine, &sine_phase_coefficient2, &cosine_phase_coefficient2, &phase_coefficient3, negative_control_mask](
               auto const first, StateInteger const index_wo_qubits,
               auto const& unsorted_qubits, auto const& sorted_qubits_with_sentinel,
               int const)
@@ -3594,10 +3628,10 @@ namespace ket
 
               auto const iter0
                 = first
-                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index0, unsorted_qubits, sorted_qubits_with_sentinel);
+                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index0 xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
               auto const iter1
                 = first
-                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index1, unsorted_qubits, sorted_qubits_with_sentinel);
+                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index1 xor negative_control_mask), unsorted_qubits, sorted_qubits_with_sentinel);
               auto const value0 = *iter0;
 
               *iter0 *= cosine;
@@ -3613,7 +3647,7 @@ namespace ket
 # else // KET_USE_BIT_MASKS_EXPLICITLY
           ::ket::gate::runtime::nocache::qubit_ranges::gate(
             parallel_policy, first, last,
-            [num_control_qubits, sine, cosine, &sine_phase_coefficient2, &cosine_phase_coefficient2, &phase_coefficient3](
+            [num_control_qubits, sine, cosine, &sine_phase_coefficient2, &cosine_phase_coefficient2, &phase_coefficient3, negative_control_mask](
               auto const first, StateInteger const index_wo_qubits,
               auto const& qubit_masks, auto const& index_masks,
               int const)
@@ -3625,10 +3659,10 @@ namespace ket
 
               auto const iter0
                 = first
-                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index0, qubit_masks, index_masks);
+                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index0 xor negative_control_mask), qubit_masks, index_masks);
               auto const iter1
                 = first
-                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, index1, qubit_masks, index_masks);
+                  + ::ket::gate::utility::ranges::index_with_qubits(index_wo_qubits, (index1 xor negative_control_mask), qubit_masks, index_masks);
               auto const value0 = *iter0;
 
               *iter0 *= cosine;
