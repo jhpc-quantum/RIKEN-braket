@@ -92,6 +92,10 @@ def run(command, program):
 
 def check(command, program, expected):
     result = run(command, program + 'DO AMPLITUDES\n')
+    check_result(result, program, expected)
+
+
+def check_result(result, program, expected):
     actual = {int(bits, 2): complex(float(real), float(imag)) for bits, real, imag in
               re.findall(r'^([01]+) => (\S+) \+ (\S+) i$', result.stdout, re.MULTILINE)}
     if result.returncode or set(actual) != set(range(len(expected))) or any(
