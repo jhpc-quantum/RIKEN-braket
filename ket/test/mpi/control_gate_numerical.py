@@ -102,6 +102,11 @@ void invalid(yampi::communicator const& comm, yampi::environment const& env) {
             subprocess.run(flags + ['-DKET_TEST_NEGATIVE_CONTROLS',
                                     str(tests / 'fused_runtime_gate_numerical.cpp'), '-o', binary], check=True)
             subprocess.run([args.mpiexec, '-n', '2', binary], check=True)
+            subprocess.run(flags + ['-DKET_ENABLE_CACHE_AWARE_GATE_FUNCTION',
+                                    '-DKET_DEFAULT_NUM_ON_CACHE_QUBITS=3',
+                                    '-DKET_TEST_LOCAL_QUBITS=4', '-DKET_TEST_RUNTIME_CONTROLS',
+                                    str(tests / 'fused_runtime_gate_numerical.cpp'), '-o', binary], check=True)
+            subprocess.run([args.mpiexec, '-n', '2', binary], check=True)
 
 
 if __name__ == '__main__':

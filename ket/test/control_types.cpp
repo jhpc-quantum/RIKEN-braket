@@ -12,6 +12,7 @@
 #include <ket/qubit_io.hpp>
 #include <ket/runtime_control.hpp>
 #include <ket/meta/bit_integer_of.hpp>
+#include <ket/utility/none_in_state_vector.hpp>
 #include <ket/utility/meta/is_control_qubits_range.hpp>
 
 namespace
@@ -68,6 +69,10 @@ namespace
   static_assert(ket::control_value(runtime{negative{3_q}}) == 0u, "explicit conversion");
   static_assert(ket::control_value(ket::make_runtime_control(negative{3_q})) == 0u, "conversion helper");
   static_assert(ket::control_value(ket::make_runtime_control(3_q, 0)) == 0u, "runtime helper");
+  static_assert(ket::utility::none_in_state_vector(3u, runtime{3_q, 0u}), "Negative runtime wire outside vector");
+  static_assert(not ket::utility::none_in_state_vector(3u, runtime{2_q, 1u}), "Positive runtime wire inside vector");
+  static_assert(ket::utility::none_in_state_vector(3u, negative{3_q}, positive{4_q}), "Bounds ignore control values");
+  static_assert(ket::utility::none_in_state_vector(3u, 4u), "Raw positional bounds remain supported");
   static_assert(ket::remove_control(negative{3_q}) == 3_q, "explicit removal");
   static_assert(ket::remove_control(runtime{3_q, 0}) == 3_q, "runtime removal");
   static_assert(ket::meta::is_control<negative>::value, "negative trait");
@@ -145,6 +150,10 @@ int main()
   assert(ket::control_value(controls[1]) == 0u and ket::remove_control(controls[1]) == 6_q);
   std::sort(controls.begin(), controls.end());
   assert(ket::remove_control(controls.back()) == 6_q and ket::control_value(controls.back()) == 0u);
+  assert(ket::utility::runtime::ranges::none_in_state_vector(3u, controls));
+  assert(not ket::utility::runtime::ranges::none_in_state_vector(4u, controls));
+  auto empty_controls = std::vector<runtime>{};
+  assert(ket::utility::runtime::ranges::none_in_state_vector(3u, empty_controls));
   check_invalid(-1);
   check_invalid(2);
   check_invalid(2u);

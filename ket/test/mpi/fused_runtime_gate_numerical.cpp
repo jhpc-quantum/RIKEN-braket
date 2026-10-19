@@ -15,6 +15,7 @@
 #include <vector>
 
 #include <ket/control.hpp>
+#include <ket/runtime_control.hpp>
 #include <ket/gate/exponential_pauli_x.hpp>
 #include <ket/gate/exponential_pauli_z.hpp>
 #include <ket/gate/exponential_swap.hpp>
@@ -42,21 +43,34 @@ namespace
   using state_integer_type = std::uint64_t;
   using bit_integer_type = unsigned int;
   using qubit_type = ket::qubit<state_integer_type, bit_integer_type>;
-#ifdef KET_TEST_NEGATIVE_CONTROLS
+#ifdef KET_TEST_RUNTIME_CONTROLS
+  using control_qubit_type = ket::runtime_control<qubit_type>;
+#elif defined(KET_TEST_NEGATIVE_CONTROLS)
   using control_qubit_type = ket::control<qubit_type, 0u>;
 #else
   using control_qubit_type = ket::control<qubit_type>;
 #endif
   constexpr auto operator"" _test_cq(unsigned long long const bit) -> control_qubit_type
-  { return control_qubit_type{static_cast<bit_integer_type>(bit)}; }
+  {
+#ifdef KET_TEST_RUNTIME_CONTROLS
+    return control_qubit_type{qubit_type{static_cast<bit_integer_type>(bit)}, 0u};
+#else
+    return control_qubit_type{static_cast<bit_integer_type>(bit)};
+#endif
+  }
   using permutation_type = ket::mpi::qubit_permutation<state_integer_type, bit_integer_type>;
 
   using namespace ket::literals::control_literals;
   using namespace ket::literals::qubit_literals;
   using namespace yampi::literals::rank_literals;
 
-  constexpr auto total_qubits = bit_integer_type{4u};
-  constexpr auto local_qubits = bit_integer_type{3u};
+#ifndef KET_TEST_LOCAL_QUBITS
+# define KET_TEST_LOCAL_QUBITS 3u
+#endif
+  constexpr auto local_qubits = bit_integer_type{KET_TEST_LOCAL_QUBITS};
+  constexpr auto total_qubits = local_qubits + 1u;
+  constexpr auto rank_qubit = qubit_type{local_qubits};
+  constexpr auto rank_control = operator"" _test_cq(local_qubits);
   constexpr auto total_state_size = std::size_t{1u} << total_qubits;
   constexpr auto local_state_size = std::size_t{1u} << local_qubits;
 
@@ -166,7 +180,7 @@ int main(int argc, char** argv)
     communicator, environment,
     [](auto& local_state, auto& permutation, auto& buffer, auto const& comm, auto const& env)
     {
-      auto const qubits = std::vector<qubit_type>{3_q};
+      auto const qubits = std::vector<qubit_type>{rank_qubit};
       auto const controls = make_controls({0_test_cq});
       ket::mpi::gate::runtime::ranges::gate(
         ket::mpi::utility::policy::make_simple_mpi(), ket::utility::policy::make_sequential(),
@@ -176,14 +190,14 @@ int main(int argc, char** argv)
         qubits, controls);
     },
     [](auto& reference_state)
-    { ket::gate::runtime::ranges::hadamard(ket::utility::policy::make_sequential(), reference_state, 3_q, make_controls({0_test_cq})); }));
+    { ket::gate::runtime::ranges::hadamard(ket::utility::policy::make_sequential(), reference_state, rank_qubit, make_controls({0_test_cq})); }));
 
   run(run_case(
     "mpi generic gate + fused pauli_x",
     communicator, environment,
     [](auto& local_state, auto& permutation, auto& buffer, auto const& comm, auto const& env)
     {
-      auto const qubits = std::vector<qubit_type>{0_q, 3_q};
+      auto const qubits = std::vector<qubit_type>{0_q, rank_qubit};
       auto const controls = make_controls({1_test_cq});
       ket::mpi::gate::runtime::ranges::gate(
         ket::mpi::utility::policy::make_simple_mpi(), ket::utility::policy::make_sequential(),
@@ -193,14 +207,14 @@ int main(int argc, char** argv)
         qubits, controls);
     },
     [](auto& reference_state)
-    { ket::gate::runtime::ranges::pauli_x(ket::utility::policy::make_sequential(), reference_state, std::vector<qubit_type>{0_q, 3_q}, make_controls({1_test_cq})); }));
+    { ket::gate::runtime::ranges::pauli_x(ket::utility::policy::make_sequential(), reference_state, std::vector<qubit_type>{0_q, rank_qubit}, make_controls({1_test_cq})); }));
 
   run(run_case(
     "mpi generic gate + fused swap",
     communicator, environment,
     [](auto& local_state, auto& permutation, auto& buffer, auto const& comm, auto const& env)
     {
-      auto const qubits = std::vector<qubit_type>{0_q, 3_q};
+      auto const qubits = std::vector<qubit_type>{0_q, rank_qubit};
       auto const controls = make_controls({1_test_cq});
       ket::mpi::gate::runtime::ranges::gate(
         ket::mpi::utility::policy::make_simple_mpi(), ket::utility::policy::make_sequential(),
@@ -210,14 +224,14 @@ int main(int argc, char** argv)
         qubits, controls);
     },
     [](auto& reference_state)
-    { ket::gate::runtime::ranges::swap(ket::utility::policy::make_sequential(), reference_state, 0_q, 3_q, make_controls({1_test_cq})); }));
+    { ket::gate::runtime::ranges::swap(ket::utility::policy::make_sequential(), reference_state, 0_q, rank_qubit, make_controls({1_test_cq})); }));
 
   run(run_case(
     "mpi generic gate + fused exponential_pauli_x",
     communicator, environment,
     [](auto& local_state, auto& permutation, auto& buffer, auto const& comm, auto const& env)
     {
-      auto const qubits = std::vector<qubit_type>{0_q, 3_q};
+      auto const qubits = std::vector<qubit_type>{0_q, rank_qubit};
       auto const controls = make_controls({1_test_cq});
       ket::mpi::gate::runtime::ranges::gate(
         ket::mpi::utility::policy::make_simple_mpi(), ket::utility::policy::make_sequential(),
@@ -227,14 +241,14 @@ int main(int argc, char** argv)
         qubits, controls);
     },
     [](auto& reference_state)
-    { ket::gate::runtime::ranges::exponential_pauli_x(ket::utility::policy::make_sequential(), reference_state, 0.25, std::vector<qubit_type>{0_q, 3_q}, make_controls({1_test_cq})); }));
+    { ket::gate::runtime::ranges::exponential_pauli_x(ket::utility::policy::make_sequential(), reference_state, 0.25, std::vector<qubit_type>{0_q, rank_qubit}, make_controls({1_test_cq})); }));
 
   run(run_case(
     "mpi generic gate + fused exponential_pauli_z",
     communicator, environment,
     [](auto& local_state, auto& permutation, auto& buffer, auto const& comm, auto const& env)
     {
-      auto const qubits = std::vector<qubit_type>{0_q, 3_q};
+      auto const qubits = std::vector<qubit_type>{0_q, rank_qubit};
       auto const controls = make_controls({1_test_cq});
       ket::mpi::gate::runtime::ranges::gate(
         ket::mpi::utility::policy::make_simple_mpi(), ket::utility::policy::make_sequential(),
@@ -244,14 +258,14 @@ int main(int argc, char** argv)
         qubits, controls);
     },
     [](auto& reference_state)
-    { ket::gate::runtime::ranges::exponential_pauli_z(ket::utility::policy::make_sequential(), reference_state, 0.25, std::vector<qubit_type>{0_q, 3_q}, make_controls({1_test_cq})); }));
+    { ket::gate::runtime::ranges::exponential_pauli_z(ket::utility::policy::make_sequential(), reference_state, 0.25, std::vector<qubit_type>{0_q, rank_qubit}, make_controls({1_test_cq})); }));
 
   run(run_case(
     "mpi generic gate + fused exponential_swap",
     communicator, environment,
     [](auto& local_state, auto& permutation, auto& buffer, auto const& comm, auto const& env)
     {
-      auto const qubits = std::vector<qubit_type>{0_q, 3_q};
+      auto const qubits = std::vector<qubit_type>{0_q, rank_qubit};
       auto const controls = make_controls({1_test_cq});
       ket::mpi::gate::runtime::ranges::gate(
         ket::mpi::utility::policy::make_simple_mpi(), ket::utility::policy::make_sequential(),
@@ -261,9 +275,9 @@ int main(int argc, char** argv)
         qubits, controls);
     },
     [](auto& reference_state)
-    { ket::gate::runtime::ranges::exponential_swap(ket::utility::policy::make_sequential(), reference_state, 0.25, 0_q, 3_q, make_controls({1_test_cq})); }));
+    { ket::gate::runtime::ranges::exponential_swap(ket::utility::policy::make_sequential(), reference_state, 0.25, 0_q, rank_qubit, make_controls({1_test_cq})); }));
 
-#ifdef KET_TEST_NEGATIVE_CONTROLS
+#if defined(KET_TEST_NEGATIVE_CONTROLS) || defined(KET_TEST_RUNTIME_CONTROLS)
   run(run_case(
     "mpi generic gate with a negative rank control",
     communicator, environment,
@@ -274,10 +288,10 @@ int main(int argc, char** argv)
         local_state, permutation, buffer, comm, env,
         [](auto const first, auto const fused_index, auto const& unsorted, auto const& sorted, int const)
         { ket::gate::fused::runtime::ranges::hadamard(first, fused_index, unsorted, sorted, 0_q, local_fused_controls({1_test_cq})); },
-        std::vector<qubit_type>{0_q}, make_controls({3_test_cq}));
+        std::vector<qubit_type>{0_q}, make_controls({rank_control}));
     },
     [](auto& reference_state)
-    { ket::gate::runtime::ranges::hadamard(ket::utility::policy::make_sequential(), reference_state, 0_q, make_controls({3_test_cq})); }));
+    { ket::gate::runtime::ranges::hadamard(ket::utility::policy::make_sequential(), reference_state, 0_q, make_controls({rank_control})); }));
 
   run(run_case(
     "mpi variadic generic gate with a negative rank control",
@@ -288,11 +302,11 @@ int main(int argc, char** argv)
         ket::mpi::utility::policy::make_simple_mpi(), ket::utility::policy::make_sequential(),
         local_state, permutation, buffer, comm, env,
         [](auto const first, auto const fused_index, auto const& unsorted, auto const& sorted, int const)
-        { ket::gate::fused::hadamard(first, fused_index, unsorted, sorted, 0_q, 1_test_cq); },
-        0_q, 3_test_cq);
+        { ket::gate::fused::hadamard(first, fused_index, unsorted, sorted, 0_q, ket::make_control<0u>(1_q)); },
+        0_q, rank_control);
     },
     [](auto& reference_state)
-    { ket::gate::runtime::ranges::hadamard(ket::utility::policy::make_sequential(), reference_state, 0_q, make_controls({3_test_cq})); }));
+    { ket::gate::runtime::ranges::hadamard(ket::utility::policy::make_sequential(), reference_state, 0_q, make_controls({rank_control})); }));
 #endif
 
   if (rank == 0_r and not failed)
