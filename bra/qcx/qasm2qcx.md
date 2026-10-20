@@ -72,6 +72,8 @@ The converter currently covers:
 - `negctrl` modifiers and combinations of `inv`, `ctrl`, and `negctrl`;
 - constant and runtime integer `pow` modifiers on supported gates and `gphase`,
   including nested powers and combinations with inverse and control modifiers;
+- constant floating-point `pow` modifiers on selected fixed gate families,
+  with principal spectral powers and ordered modifier evaluation;
 - literal indices, static index ranges, discrete index sets, and complete
   qubit registers as gate operands;
 - equal-sized register-selection gate broadcasting;
@@ -1450,9 +1452,9 @@ families use the `#0` operand suffix to select zero-controls.
 when `k` is a supported constant or runtime integer expression. Previously
 declared `const int` and `const uint` values, scalar `int`, `uint`, and supported
 `uint[n]` variables, integer array elements and loop iterators, supported integer
-arithmetic, and explicit integer casts may supply the exponent. Floating-point,
-Boolean, and complex exponents are rejected unless explicitly converted to a
-supported integer type.
+arithmetic, and explicit integer casts may supply the exponent. Boolean and
+complex exponents require an explicit supported numeric cast. Floating-point
+exponents follow the separate, narrower subset described below.
 
 Positive powers apply the complete gate repeatedly. Negative powers apply its
 inverse repeatedly. Exponent zero emits no quantum instruction, but does not
@@ -1466,6 +1468,10 @@ Integer powers commute with adding controls. Control groups retain their
 source order and polarities regardless of interleaved `pow` and `inv`
 modifiers. Every exponent and control count is checked, including when an
 outer zero power would otherwise discard the operation.
+
+These product/sign simplifications apply only to integer-only modifier chains.
+If any exponent has floating-point type (even `2.0`), modifier order is preserved
+instead, as described under [constant floating-point powers](#constant-floating-point-gate-powers).
 
 The converter simplifies exact unitary identities before bounding expansion:
 
@@ -1572,10 +1578,118 @@ Enclosing loop-output budgets also apply. Exceeding a limit reports a
 conversion error; the CLI emits no partial QCX program. This limit does not
 change the behavior of statements without `pow`.
 
-This implements the integer subset of OpenQASM's power modifier.
-Floating-point/fractional gate powers remain unsupported.
 Scalar arithmetic exponentiation (`**`) is a separate feature described above.
 No new QCX instruction is required.
+
+### Constant floating-point gate powers
+
+Finite compile-time floating-point exponents are supported on the following
+fixed gates. All require `include "stdgates.inc";`.
+
+| Gate family | Nonzero principal eigenphase before modifiers |
+| --- | --- |
+| `id` | None: identity |
+| `x`, `y`, `z`, `h`, `swap` | `pi` |
+| `s`, `sdg` | `pi / 2`, `-pi / 2`, respectively |
+| `t`, `tdg` | `pi / 4`, `-pi / 4`, respectively |
+| `sx` | `pi / 2` |
+
+Intrinsic controlled forms `cx`/`CX`, `cy`, `cz`, `ch`, `ccx`, and `cswap`
+are supported too. Additional `ctrl` and `negctrl` modifiers, including mixed
+polarities and constant counts, act on the full powered operation. The other
+eigenphases are zero, including those of inactive control subspaces.
+
+Exponents may use literals, previously declared `const float` values, supported
+constant arithmetic, and explicit numeric casts. For example, `pow(1.0 / 2)`
+and `pow(float(2))` are supported. A `float` variable initialized to a literal
+is still runtime-valued and is not accepted. NaN and infinities, including
+overflowing constant expressions, are rejected. Positive and negative zero
+are accepted.
+
+#### Spectral convention and modifier order
+
+For a gate matrix
+
+\[
+G=V\operatorname{diag}(e^{i\theta_j})V^\dagger,
+\]
+
+choose each eigenphase in `(-pi, pi]`, assigning `+pi` to eigenvalue `-1`.
+The floating-point power is
+
+\[
+G^r=V\operatorname{diag}(e^{ir\theta_j})V^\dagger.
+\]
+
+This branch convention is an explicit converter policy. The OpenQASM
+[power-modifier specification](https://openqasm.com/versions/3.0/language/gates.html#power-modifier)
+permits floating-point exponents but does not explicitly prescribe this branch.
+Global phase is retained, not discarded as an unobservable equivalence.
+
+Modifiers act from the innermost (rightmost) outward. Each power selects the
+principal eigenphases of its input operation again. Nested powers are not
+generally flattened, and inversion is not generally absorbed into an exponent:
+
+| Modifier chain on `x` | Result |
+| --- | --- |
+| `pow(0.5) @` | `sx` |
+| `pow(0.5) @ pow(2) @` | Identity: `(x^2)^0.5` |
+| `pow(2) @ pow(0.5) @` | `x`: `(x^0.5)^2` |
+| `pow(0.5) @ inv @` | `sx`: inverse `x` is still `x` |
+| `inv @ pow(0.5) @` | Inverse `sx` |
+
+An integral-valued float such as `2.0` still selects ordered spectral handling;
+an explicit `int(2.0)` cast supplies an integer exponent instead. Integer-only
+chains retain their existing product/sign rules.
+
+#### Lowering, validation, and limits
+
+The converter uses existing QCX gates for a basis change, a diagonal phase,
+and the inverse basis change. Added and intrinsic controls condition only the
+diagonal phase; the unconditional basis changes cancel in inactive subspaces.
+For `swap`, a `CX`/`H` basis change isolates the antisymmetric subspace, on which
+the diagonal controlled phase acts. No arbitrary-matrix instruction or new bra
+feature is required. Result names such as `sx` in the table describe matrix
+equivalence, not a promise to emit that particular mnemonic.
+
+Eigenphase calculations use exact rational multiples of `pi` and the exact
+binary value of each evaluated host float. Only the final QCX angle is rounded
+using the host float representation of `pi`; basis-change angles and backend
+gate execution also have ordinary floating-point rounding. Declared floating
+widths are not newly enforced. Generated circuit size is independent of
+exponent magnitude. The existing gate-power and enclosing loop-output budgets
+apply, including all broadcast copies.
+
+Zero and identity powers still validate modifier arguments, includes, gate
+arity, qubit operands, distinct wires, and broadcasting. Static literal operand
+checks also run in empty loops; named or compound selections in constant
+unrolled loops are checked when an iteration is expanded. Supported powers
+work in branches, loops, and register broadcasting without runtime exponent
+evaluation or additional classical scratch storage.
+
+The following remain unsupported, including when an outer power is zero:
+
+- runtime floating-point exponents;
+- runtime integer factors or loop-iterator factors in a chain containing a
+  floating-point power, even if the loop is unrolled;
+- floating-point powers of `p`/`phase`/`u1`, rotations, `u2`/`u3`, built-in `U`,
+  `cu`, their parameterized controlled forms, and `gphase`.
+
+These are explicit conversion errors, not approximate angle-scaling fallbacks.
+The CLI emits no partial QCX program on failure.
+
+<!-- floating-power-example -->
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+const float HALF = 0.5;
+qubit[3] q;
+pow(HALF) @ pow(2) @ x q[0];               // identity
+pow(2) @ pow(HALF) @ x q[1];               // X on wire 1
+negctrl @ pow(HALF) @ x q[0], q[2];
+inv @ negctrl @ pow(HALF) @ x q[0], q[2];   // cancels preceding operation
+// Final state: |010>, including its phase, with wire 0 on the right.
+```
 
 ## Static indexing
 
@@ -2596,8 +2710,9 @@ The current prototype does not reliably support:
 - delays, iteration over arrays other than the supported
   `int`/`uint`/`float`/`bool`/`complex` subset,
   alias iteration, or `switch` statements;
-- user-defined gates, gate durations, floating-point/fractional
-  `pow` exponents, or runtime-dependent control counts;
+- user-defined gates, gate durations, runtime floating-point `pow` exponents,
+  mixed runtime-integer/floating-point power chains, floating-point powers
+  outside the fixed-family subset above, or runtime-dependent control counts;
 - runtime qubit indices, dynamic register ranges or discrete sets, ranges with
   omitted bounds, or multidimensional indexing;
 - classical arrays beyond the one-dimensional `int`, `uint`, `float`, `bool`, and
@@ -2687,6 +2802,17 @@ broadcasting, indexed expressions, integer loop iterators, source-value
 preservation, and executed/skipped parameter checks. Unit tests additionally
 check private storage lifetime, zero guards, separate nested counters,
 constant-factor limits, and conversion of the documented runtime example.
+
+`bra/test/qasm2qcx_float_power_numerical.py` uses independent analytic spectral
+projectors and exact rational eigenphases. It checks principal-branch endpoints,
+both sides of the cut, nested powers and inversion order, and preservation of
+global phase. With `--bra`, it compares converted circuits with the spectral
+matrices for every supported fixed family, intrinsic and added controls,
+mixed polarities, basis and complex input states, extreme exponents,
+broadcasting, classical control flow, unrolled-loop qubit indices, and the
+documented floating-power example. Without `--bra`, only its 14 reference
+tests run. Unit tests also cover rejected types/families, zero validation,
+temporary cleanup, output budgets, and CLI failures without partial output.
 
 `bra/test/negative_controls_numerical.py` tests the native QCX syntax and gate
 families directly, both normally and inside fusion blocks, including adjoints,
@@ -2972,6 +3098,7 @@ python3 bra/test/qasm2qcx_control_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_negative_control_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_power_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_power_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_float_power_numerical.py --bra bra/bin/bra
 python3 bra/test/negative_controls_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_integer_remainder_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_integer_power_numerical.py --bra bra/bin/bra
