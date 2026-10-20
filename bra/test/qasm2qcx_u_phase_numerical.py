@@ -156,6 +156,14 @@ class BackendTests(unittest.TestCase):
                 self.check_source(f'qubit[2] q; h q[0]; {modifier} @ U(0, 0, pi) q[0], q[1];',
                                   [scale, scale, 0, 0])
 
+    def test_documented_u_family_phase_example(self):
+        document = pathlib.Path(qasm2qcx.__file__).with_suffix('.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- u-family-phase-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        scale = 1 / math.sqrt(2)
+        self.check_qcx(qasm2qcx.convert(examples[0]), [scale, scale, 0, 0])
+
     def test_cu_follows_published_mathematical_active_block(self):
         scale = 1 / math.sqrt(2)
         state = [scale, scale, 0, 0]
