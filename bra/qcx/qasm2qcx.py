@@ -217,11 +217,25 @@ class _RuntimeIteratorBinding:
 
 
 @dataclasses.dataclass(frozen=True)
+class _RuntimeGateExponent:
+    expression: ast.Expression
+    value_type: ValueType
+
+
+@dataclasses.dataclass(frozen=True)
+class _CapturedGateExponent:
+    storage: str
+    value_type: ValueType
+
+
+@dataclasses.dataclass(frozen=True)
 class _GateModifierInfo:
     # Integer powers and inversion commute with adding controls. Keep control
     # groups in source order, since each group prepends its own operands.
     power: int
     controls: tuple[tuple[int, int], ...]
+    # Keep runtime factors separate: their product need not fit a native type.
+    runtime_exponents: tuple[_RuntimeGateExponent, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -2015,21 +2029,28 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __power_modifier_exponent(
             self, modifier: ast.QuantumGateModifier,
-            iterators: set[str] | dict[str, ValueType] | None = None) -> int:
+            iterators: set[str] | dict[str, ValueType] | None = None, *,
+            allow_runtime: bool = False) -> int | _RuntimeGateExponent:
         expression = modifier.argument
         if expression is None:
             raise UnsupportedOpenQASMError('pow modifier requires an exponent')
         iterator_names = set(iterators or ()) | {name for scope in self.__loop_bindings for name in scope}
-        if self.__loop_bound_names(expression) & iterator_names:
+        depends_on_iterator = bool(self.__loop_bound_names(expression) & iterator_names)
+        if depends_on_iterator and not allow_runtime:
             raise UnsupportedOpenQASMError('pow exponent must not depend on a loop iterator')
         value_type, runtime = self.__loop_expression_info(expression, iterators)
-        if value_type not in (ValueType.INT, ValueType.UINT) or runtime:
-            raise UnsupportedOpenQASMError('pow exponent must be a constant integer')
+        if value_type not in (ValueType.INT, ValueType.UINT):
+            raise UnsupportedOpenQASMError('pow exponent must be an integer')
+        if runtime or depends_on_iterator:
+            if not allow_runtime:
+                raise UnsupportedOpenQASMError('pow exponent must be a constant integer')
+            return _RuntimeGateExponent(expression, value_type)
         return self.__constant_loop_integer(expression, 'pow exponent', kind='modifier')
 
     def __analyze_gate_modifiers(
             self, modifiers: list[ast.QuantumGateModifier],
-            iterators: set[str] | dict[str, ValueType] | None = None) -> _GateModifierInfo:
+            iterators: set[str] | dict[str, ValueType] | None = None, *,
+            allow_runtime: bool = False) -> _GateModifierInfo:
         for modifier in modifiers:
             if modifier.modifier not in (
                     ast.GateModifierName.inv, ast.GateModifierName.ctrl,
@@ -2041,11 +2062,55 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             modifier for modifier in modifiers if modifier.modifier in (
                 ast.GateModifierName.ctrl, ast.GateModifierName.negctrl)], iterators)
         power = -1 if inverse else 1
+        runtime_exponents = []
         for modifier in modifiers:
             if modifier.modifier == ast.GateModifierName.pow:
                 # Do not short-circuit at zero: every exponent must be valid.
-                power *= self.__power_modifier_exponent(modifier, iterators)
-        return _GateModifierInfo(power, tuple(controls))
+                exponent = self.__power_modifier_exponent(modifier, iterators, allow_runtime=allow_runtime)
+                if isinstance(exponent, _RuntimeGateExponent):
+                    runtime_exponents.append(exponent)
+                else:
+                    power *= exponent
+        return _GateModifierInfo(power, tuple(controls), tuple(runtime_exponents))
+
+    @contextlib.contextmanager
+    def __captured_gate_exponents(
+            self, exponents: tuple[_RuntimeGateExponent, ...]) -> Iterator[tuple[_CapturedGateExponent, ...]]:
+        # Snapshots stay reserved through the caller's complete gate emission,
+        # not merely until the next exponent has been evaluated.
+        previous_used = self.__used_temporary_variables.copy()
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        captured = []
+        try:
+            try:
+                for exponent in exponents:
+                    before_expression = self.__used_temporary_variables.copy()
+                    self.__expression_kind = ExpressionKind.ARITHMETIC
+                    self.__value = self.__value_type = self.__value_kind = None
+                    self.__evaluate_constant = True
+                    self.visit(exponent.expression)
+                    if (self.__value_type != exponent.value_type
+                            or self.__value_type not in (ValueType.INT, ValueType.UINT)
+                            or self.__value_kind is None or self.__value is None):
+                        raise UnsupportedOpenQASMError('pow exponent must be an integer')
+                    if self.__value_kind == ValueKind.LITERAL:
+                        minimum, maximum = ((self.QCX_INT_MIN, self.QCX_INT_MAX)
+                                            if exponent.value_type == ValueType.INT else (0, self.QCX_UINT_MAX))
+                        if not minimum <= int(self.__value) <= maximum:
+                            raise UnsupportedOpenQASMError('captured pow exponent outside its native integer range')
+                    storage = self.__add_new_temporary_variable(exponent.value_type)
+                    self.__qcx_lines.append(f'LET {storage} := {self.__value}')
+                    captured.append(_CapturedGateExponent(storage, exponent.value_type))
+                    for temporary in self.__used_temporary_variables - before_expression - {storage}:
+                        self.__release_temporary_variable(temporary)
+            finally:
+                (self.__expression_kind, self.__value, self.__value_type,
+                 self.__value_kind, self.__evaluate_constant) = previous
+            yield tuple(captured)
+        finally:
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
 
     @staticmethod
     def __condition_qubits(qubits: list[str], controls: tuple[tuple[int, int], ...]) -> list[str]:
