@@ -1294,6 +1294,15 @@ class IntegerPowerModifierSimplificationTests(unittest.TestCase):
 class RuntimeIntegerPowerModifierLoweringTests(unittest.TestCase):
     assert_clean_conversion = InverseModifierLoweringTests.assert_clean_conversion
 
+    def test_documented_runtime_integer_power_example(self) -> None:
+        document = CONVERTER_PATH.with_suffix('.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- runtime-integer-power-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        lines = self.assert_clean_conversion(examples[0].split('\n', 1)[1])
+        self.assertIn('CU3 2#0 0 THETA31 0.4 0.6', lines)
+        self.assertIn('CU3+ 2#0 0 THETA31 0.4 0.6', lines)
+
     def test_signed_runtime_loop_contains_complete_forward_and_inverse_sequences(self) -> None:
         lines = self.assert_clean_conversion('qubit q; int n = -2; pow(n) @ U(1, 2, 3) q;')
         phase = lines.index('PHASE 3.0')

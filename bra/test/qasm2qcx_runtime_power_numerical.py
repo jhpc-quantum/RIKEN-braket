@@ -7,6 +7,7 @@
 
 import argparse
 import pathlib
+import re
 import resource
 import subprocess
 
@@ -175,6 +176,13 @@ def main():
             check_amplitudes(bra, f'qubit[{qubits}] q; int n = -2; int m = 3; int k = -1; '
                 + preparation + f'negctrl @ {modifiers} @ {gate}{arguments} {quantum_arguments};', expected)
             checked += 1
+    document = pathlib.Path(qasm2qcx.__file__).with_suffix('.md').read_text(encoding='utf-8')
+    examples = re.findall(r'<!-- runtime-integer-power-example -->\s*```qasm\n(.*?)\n```',
+                          document, flags=re.DOTALL)
+    if len(examples) != 1:
+        raise AssertionError('Expected one documented runtime-integer power example')
+    check_amplitudes(bra, examples[0].split('\n', 1)[1], [complex(2 ** -1.5)] * 8)
+    checked += 1
     print(f'{checked} runtime-integer gate power checks passed')
 
 
