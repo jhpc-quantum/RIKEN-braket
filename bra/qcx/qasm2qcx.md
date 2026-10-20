@@ -1611,14 +1611,14 @@ are accepted.
 For a gate matrix
 
 $$
-G=V\operatorname{diag}(e^{i\theta_j})V^\dagger,
+G=V\mathrm{diag}(e^{i\theta_j})V^\dagger,
 $$
 
 choose each eigenphase in `(-pi, pi]`, assigning `+pi` to eigenvalue `-1`.
 The floating-point power is
 
 $$
-G^r=V\operatorname{diag}(e^{ir\theta_j})V^\dagger.
+G^r=V\mathrm{diag}(e^{ir\theta_j})V^\dagger.
 $$
 
 This branch convention is an explicit converter policy. The OpenQASM
