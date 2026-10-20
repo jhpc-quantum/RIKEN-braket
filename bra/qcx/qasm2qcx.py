@@ -217,6 +217,14 @@ class _RuntimeIteratorBinding:
 
 
 @dataclasses.dataclass(frozen=True)
+class _GateModifierInfo:
+    # Integer powers and inversion commute with adding controls. Keep control
+    # groups in source order, since each group prepends its own operands.
+    power: int
+    controls: tuple[tuple[int, int], ...]
+
+
+@dataclasses.dataclass(frozen=True)
 class _LoopContext:
     # Control-flow targets are independent of iterator bindings.
     # A for-loop continues at the iteration end; a while-loop at its condition.
@@ -1995,6 +2003,40 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # controlled by the remaining condition qubits (not by an extra target).
         return 'U1' if num_controls == 1 else cls.__controlled_gate_name('U1', num_controls - 1)
 
+    def __power_modifier_exponent(
+            self, modifier: ast.QuantumGateModifier,
+            iterators: set[str] | dict[str, ValueType] | None = None) -> int:
+        expression = modifier.argument
+        if expression is None:
+            raise UnsupportedOpenQASMError('pow modifier requires an exponent')
+        iterator_names = set(iterators or ()) | {name for scope in self.__loop_bindings for name in scope}
+        if self.__loop_bound_names(expression) & iterator_names:
+            raise UnsupportedOpenQASMError('pow exponent must not depend on a loop iterator')
+        value_type, runtime = self.__loop_expression_info(expression, iterators)
+        if value_type not in (ValueType.INT, ValueType.UINT) or runtime:
+            raise UnsupportedOpenQASMError('pow exponent must be a constant integer')
+        return self.__constant_loop_integer(expression, 'pow exponent', kind='modifier')
+
+    def __analyze_gate_modifiers(
+            self, modifiers: list[ast.QuantumGateModifier],
+            iterators: set[str] | dict[str, ValueType] | None = None) -> _GateModifierInfo:
+        for modifier in modifiers:
+            if modifier.modifier not in (
+                    ast.GateModifierName.inv, ast.GateModifierName.ctrl,
+                    ast.GateModifierName.negctrl, ast.GateModifierName.pow):
+                raise UnsupportedOpenQASMError(f'gate modifier {modifier.modifier.name}')
+        inverse = self.__inverse_modifier_parity([
+            modifier for modifier in modifiers if modifier.modifier == ast.GateModifierName.inv])
+        controls = self.__control_modifiers([
+            modifier for modifier in modifiers if modifier.modifier in (
+                ast.GateModifierName.ctrl, ast.GateModifierName.negctrl)], iterators)
+        power = -1 if inverse else 1
+        for modifier in modifiers:
+            if modifier.modifier == ast.GateModifierName.pow:
+                # Do not short-circuit at zero: every exponent must be valid.
+                power *= self.__power_modifier_exponent(modifier, iterators)
+        return _GateModifierInfo(power, tuple(controls))
+
     def __gate_modifiers(
             self, modifiers: list[ast.QuantumGateModifier],
             iterators: set[str] | dict[str, ValueType] | None = None
@@ -2003,11 +2045,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if modifier.modifier not in (
                     ast.GateModifierName.inv, ast.GateModifierName.ctrl, ast.GateModifierName.negctrl):
                 raise UnsupportedOpenQASMError(f'gate modifier {modifier.modifier.name}')
-        inverse = self.__inverse_modifier_parity([
-            modifier for modifier in modifiers if modifier.modifier == ast.GateModifierName.inv])
-        controls = self.__control_modifiers([
-            modifier for modifier in modifiers if modifier.modifier != ast.GateModifierName.inv], iterators)
-        return inverse, controls
+        # Until power emission is available, reject pow above rather than
+        # accidentally emitting a single application of an analyzed power.
+        info = self.__analyze_gate_modifiers(modifiers, iterators)
+        return info.power < 0, list(info.controls)
 
     @staticmethod
     def __condition_qubits(qubits: list[str], controls: list[tuple[int, int]]) -> list[str]:

@@ -17,6 +17,139 @@ def convert(source: str) -> list[str]:
     return qasm2qcx.convert(source)
 
 
+class IntegerPowerModifierFoundationTests(unittest.TestCase):
+    @staticmethod
+    def converter(source: str = ''):
+        program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; ' + source)
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        return converter
+
+    @staticmethod
+    def modifiers(source: str):
+        return qasm2qcx.openqasm3.parser.parse(
+            'OPENQASM 3; ' + source + ' @ x q;').statements[0].modifiers
+
+    def analyze(self, converter, source: str, iterators=None):
+        return converter._QASM2QCXConverter__analyze_gate_modifiers(
+            self.modifiers(source), iterators)
+
+    def test_signed_powers_nested_powers_and_inverse_parity(self) -> None:
+        converter = self.converter()
+        self.assertEqual(converter._QASM2QCXConverter__analyze_gate_modifiers([]),
+                         qasm2qcx._GateModifierInfo(1, ()))
+        for source, expected in (
+                ('pow(0)', 0), ('pow(1)', 1), ('pow(3)', 3), ('pow(-3)', -3),
+                ('inv', -1), ('inv @ inv', 1), ('inv @ pow(3)', -3),
+                ('pow(-3) @ inv', 3), ('pow(2) @ pow(-3)', -6),
+                ('inv @ pow(-2) @ inv @ pow(-3)', 6), ('pow(0) @ inv @ pow(-3)', 0)):
+            with self.subTest(source=source):
+                self.assertEqual(self.analyze(converter, source), qasm2qcx._GateModifierInfo(expected, ()))
+
+    def test_constant_integer_expressions_and_explicit_integer_casts(self) -> None:
+        converter = self.converter('const int N = 2; const uint M = 3;')
+        for expression, expected in (
+                ('N', 2), ('N + M', 5), ('N * 2 - 1', 3), ('-N', -2),
+                ('int(2.5)', 2), ('int(true)', 1), ('uint[2](5)', 1), ('2 ** 3', 8)):
+            with self.subTest(expression=expression):
+                self.assertEqual(self.analyze(converter, f'pow({expression})').power, expected)
+
+    def test_control_order_is_preserved_across_power_and_inverse_modifiers(self) -> None:
+        converter = self.converter()
+        for source in ('ctrl(2) @ pow(-3) @ negctrl @ inv @ ctrl',
+                       'pow(-3) @ inv @ ctrl(2) @ negctrl @ ctrl',
+                       'ctrl(2) @ negctrl @ ctrl @ inv @ pow(-3)'):
+            with self.subTest(source=source):
+                modifiers = self.modifiers(source)
+                before = repr(modifiers)
+                self.assertEqual(converter._QASM2QCXConverter__analyze_gate_modifiers(modifiers),
+                                 qasm2qcx._GateModifierInfo(3, ((1, 2), (0, 1), (1, 1))))
+                self.assertEqual(repr(modifiers), before)
+
+    def test_large_nested_powers_remain_exact_without_emitting_or_expanding(self) -> None:
+        converter = self.converter(f'const uint N = {qasm2qcx.QASM2QCXConverter.QCX_UINT_MAX};')
+        maximum = converter.QCX_UINT_MAX
+        lines = converter._QASM2QCXConverter__qcx_lines.copy()
+        self.assertEqual(self.analyze(converter, 'pow(N) @ pow(N)').power, maximum * maximum)
+        self.assertEqual(self.analyze(converter, f'pow({converter.QCX_INT_MIN})').power,
+                         converter.QCX_INT_MIN)
+        self.assertEqual(self.analyze(converter, f'ctrl({converter.QCX_INT_MAX}) @ pow(0)'),
+                         qasm2qcx._GateModifierInfo(0, ((1, converter.QCX_INT_MAX),)))
+        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'total control count'):
+            self.analyze(converter, f'pow(0) @ ctrl({converter.QCX_INT_MAX}) @ ctrl')
+        self.assertEqual(converter._QASM2QCXConverter__qcx_lines, lines)
+
+    def test_runtime_noninteger_unknown_and_array_exponents_are_rejected(self) -> None:
+        converter = self.converter('int n = 2; uint u = 2; float f = 2; bool b = true; '
+            'bit bit_value; array[int, 1] values = {2}; const float F = 2;')
+        for expression in ('n', 'u', 'f', 'b', 'bit_value', 'values[0]', 'missing',
+                           '2.0', 'F', 'true', '1.0im', 'n / 0'):
+            with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.analyze(converter, f'pow({expression})')
+
+    def test_loop_iterator_dependencies_are_rejected_even_when_unrolled(self) -> None:
+        converter = self.converter('const int N = 2;')
+        for value_type in qasm2qcx.ValueType:
+            with self.subTest(value_type=value_type), self.assertRaisesRegex(
+                    qasm2qcx.UnsupportedOpenQASMError, 'loop iterator'):
+                self.analyze(converter, 'pow(N)', {'N': value_type})
+        with converter._QASM2QCXConverter__iterator_binding('N', 2):
+            with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'loop iterator'):
+                self.analyze(converter, 'pow(N)')
+
+    def test_forward_constant_reference_is_rejected(self) -> None:
+        converter = qasm2qcx.QASM2QCXConverter(
+            qasm2qcx.openqasm3.parser.parse('OPENQASM 3; const int N = 2;'))
+        with self.assertRaises(qasm2qcx.NoVariableNameException):
+            self.analyze(converter, 'pow(N)')
+
+    def test_zero_power_does_not_hide_invalid_exponents_or_control_counts(self) -> None:
+        converter = self.converter('int n = 2;')
+        for source in ('pow(0) @ pow(n)', 'pow(n) @ pow(0)', 'pow(0) @ pow(2.0)',
+                       'pow(0) @ pow(1 / 0)', 'pow(1 / 0) @ pow(0)',
+                       'pow(0) @ ctrl(0)', 'negctrl(0) @ pow(0)',
+                       'pow(0) @ ctrl(n)', 'inv @ inv @ pow(0) @ pow(missing)'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.analyze(converter, source)
+
+    def test_missing_power_argument_and_invalid_inverse_arguments_are_rejected(self) -> None:
+        converter = self.converter()
+        missing = qasm2qcx.ast.QuantumGateModifier(qasm2qcx.ast.GateModifierName.pow)
+        invalid = qasm2qcx.ast.QuantumGateModifier(
+            qasm2qcx.ast.GateModifierName.inv, qasm2qcx.ast.IntegerLiteral(1))
+        zero = self.modifiers('pow(0)')
+        for modifier in (missing, invalid):
+            with self.subTest(modifier=modifier), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                converter._QASM2QCXConverter__analyze_gate_modifiers(zero + [modifier])
+
+    def test_analysis_preserves_expression_state_caller_temporaries_and_output(self) -> None:
+        converter = self.converter('const int N = 2;')
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        fields = ('__expression_kind', '__value', '__value_type', '__value_kind', '__evaluate_constant')
+        converter._QASM2QCXConverter__evaluate_constant = False
+        previous = [getattr(converter, '_QASM2QCXConverter' + name) for name in fields]
+        lines = converter._QASM2QCXConverter__qcx_lines.copy()
+        for source in ('pow(N + 1) @ inv', 'pow(1 / 0)', 'pow(0) @ pow(true)'):
+            with self.subTest(source=source):
+                if source == 'pow(N + 1) @ inv':
+                    self.assertEqual(self.analyze(converter, source).power, -3)
+                else:
+                    with self.assertRaises(qasm2qcx.QASM2QCXError):
+                        self.analyze(converter, source)
+                self.assertEqual([getattr(converter, '_QASM2QCXConverter' + name) for name in fields], previous)
+                self.assertEqual(converter._QASM2QCXConverter__qcx_lines, lines)
+                self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+
+    def test_conversion_rejects_power_until_its_lowering_is_implemented(self) -> None:
+        for exponent in (0, 1, -1, 2):
+            for operation in ('x q', 'gphase(0.5)'):
+                for wrapper in ('{}', 'for int i in [1:0] {{ {} }}'):
+                    with self.subTest(exponent=exponent, operation=operation, wrapper=wrapper):
+                        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'gate modifier pow'):
+                            convert('OPENQASM 3; include "stdgates.inc"; qubit q; '
+                                    + wrapper.format(f'pow({exponent}) @ {operation};'))
+
+
 class ControlModifierFoundationTests(unittest.TestCase):
     @staticmethod
     def control_count(converter, modifiers, iterators=None):
