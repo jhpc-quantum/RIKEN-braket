@@ -2,6 +2,7 @@
 
 import importlib.util
 import ctypes
+import re
 from pathlib import Path
 import unittest
 from unittest.mock import mock_open, patch
@@ -1075,12 +1076,32 @@ class IntegerPowerModifierSimplificationTests(unittest.TestCase):
                     qasm2qcx.UnsupportedOpenQASMError, 'gate power expansion'):
                 convert(f'OPENQASM 3; pow({power}) @ gphase(0.5);')
 
+    def test_rounded_angle_products_and_integer_narrowing_keep_original_operands(self) -> None:
+        for angle in ('1e100', '0.1', '9007199254740993'):
+            for gate, mnemonic in (('p', 'U1'), ('gphase', 'PHASE')):
+                call = f'{gate}({angle})' + (' q' if gate == 'p' else '')
+                with self.subTest(angle=angle, gate=gate):
+                    lines = self.assert_clean_conversion('include "stdgates.inc"; qubit q; '
+                        f'pow(3) @ {call};')
+                    gates = [line for line in lines if line.startswith(mnemonic + ' ')]
+                    self.assertEqual(len(gates), 3)
+                    self.assertEqual(len(set(gates)), 1)
+                    self.assertEqual(gates[0].split()[-1], str(float(angle)) if 'e' in angle else angle)
+
     def test_identity_reductions_do_not_hide_invalid_operations(self) -> None:
         for call in ('pow(2) @ swap q[0], q[0]', 'pow(2) @ cx q[0], q[0]',
                      'pow(2) @ x missing', 'pow(4) @ s q[2]', 'pow(8) @ t(true) q[0]',
                      'pow(2) @ negctrl @ h q[0], q[0]'):
             with self.subTest(call=call), self.assertRaises(qasm2qcx.QASM2QCXError):
                 convert('OPENQASM 3; include "stdgates.inc"; qubit[2] q; ' + call + ';')
+
+    def test_documented_integer_power_example(self) -> None:
+        document = CONVERTER_PATH.with_suffix('.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- integer-power-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        self.assertEqual(convert(examples[0]), ['QUBITS 3', 'Z 0', 'S 0', 'T 0',
+                                              'CX 1#0 2', 'EZ+ 2 -0.75', 'PHASE 0.5'])
 
 
 class UnsignedIntegerFoundationTests(unittest.TestCase):

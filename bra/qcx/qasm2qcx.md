@@ -69,6 +69,9 @@ The converter currently covers:
 - `inv` modifiers on supported gates and `gphase`, including repeated inversions;
 - `ctrl` modifiers with constant counts on supported gates and `gphase`, including
   repeated controls and controls added to already-controlled gates;
+- `negctrl` modifiers and combinations of `inv`, `ctrl`, and `negctrl`;
+- constant-integer `pow` modifiers on supported gates and `gphase`, including
+  nested powers and combinations with inverse and control modifiers;
 - literal indices, static index ranges, discrete index sets, and complete
   qubit registers as gate operands;
 - equal-sized register-selection gate broadcasting;
@@ -1193,9 +1196,10 @@ OpenQASM `gphase(angle)` is emitted as the QCX global-phase instruction
 `PHASE angle`.
 
 OpenQASM barriers accept scalar qubits and qubit-register selections. A
-barrier without operands is also accepted. Because the converter preserves
-source order and does not optimize or reorder operations, barriers emit no QCX
-instruction; their explicit operands are nevertheless validated.
+barrier without operands is also accepted. Because QCX execution preserves
+instruction order, barriers emit no QCX instruction; their explicit operands
+are nevertheless validated. Gate-power simplification does not move operations
+across barriers.
 
 ### Inverse gate modifiers
 
@@ -1380,9 +1384,92 @@ parameter computations. Controlled gates work in all supported loops, including
 are validated even inside empty enclosing loops. Successful and failed lowering
 release gate-owned temporaries while preserving caller-owned storage.
 
-`pow`, user-defined gates, gate durations, and runtime-dependent control counts
+User-defined gates, gate durations, and runtime-dependent control counts
 remain unsupported. No new QCX mnemonic is introduced: the native control
 families use the `#0` operand suffix to select zero-controls.
+
+### Integer-power gate modifiers
+
+`pow(k) @` is supported on every currently supported gate and on `gphase`
+when `k` is a compile-time integer expression. Previously declared `const int`
+and `const uint` values, supported integer arithmetic, and explicit integer
+casts may supply the exponent. Floating-point, Boolean, and complex exponents
+are rejected unless explicitly converted to a supported integer type. Runtime
+variables and active loop iterators cannot supply the exponent, even when a
+loop is unrolled or an iterator shadows a constant.
+
+Positive powers apply the complete gate repeatedly. Negative powers apply its
+inverse repeatedly. Exponent zero emits no quantum instruction, but does not
+bypass validation of modifiers, gate availability, arity, parameter types,
+qubit operands, or broadcasting. Parameters retain their usual evaluation and
+checks, including for zero powers and inactive quantum controls. An unexecuted
+classical branch or loop body skips runtime parameter evaluation as before.
+
+Nested powers multiply their integer exponents; each `inv` changes the sign.
+Integer powers commute with adding controls. Control groups retain their
+source order and polarities regardless of interleaved `pow` and `inv`
+modifiers. Every exponent and control count is checked, including when an
+outer zero power would otherwise discard the operation.
+
+The converter simplifies exact unitary identities before bounding expansion:
+
+| Gate family | Reduction |
+| --- | --- |
+| `id` | No quantum instruction |
+| `x`, `y`, `z`, `h`, `swap`, and their supported controlled forms | Exponent modulo 2 |
+| `s`, `sdg` | Exponent modulo 4, using `S`, `Z`, or `S+` |
+| `t`, `tdg` | Exponent modulo 8, using existing gates or a two-gate sequence |
+| `sx` | Exponent modulo 4, using `SX`, `X`, or `SX+` |
+
+These identities retain global phase, so they also hold with added positive
+or negative controls. Distinct-wire validation still runs when a gate reduces
+to identity. Periodic reductions do not rely on a floating-point approximation
+of the exponent, and large nested powers need not generate large circuits.
+
+Constant angles are scaled for `p`/`phase`/`u1`, `rx`/`ry`/`rz`, their supported
+controlled forms, and `gphase`, when the multiplier is exactly representable
+as a Python float and multiplication produces an exact, finite host-float
+result. Inexact integer-to-float conversion is not introduced by this
+optimization. A rounded product of a large angle could otherwise change its
+phase arbitrarily modulo `2*pi`, despite remaining finite.
+Runtime-valued angles retain bounded repetition: scaling an unknown angle
+could overflow even when every original application has a finite angle.
+Unrepresentable multipliers and rounded or overflowing literal products also
+fall back to repetition. General `U`, `u2`, `u3`, and `cu` parameters are not scaled.
+
+<!-- integer-power-example -->
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+const int N = 3;
+qubit[3] q;
+pow(2) @ x q[0];                             // identity: no instruction
+pow(-2) @ s q[0];                            // Z 0
+pow(N) @ t q[0];                             // S 0; T 0
+negctrl @ pow(2) @ sx q[1], q[2];            // CX 1#0 2
+pow(-3) @ rz(0.5) q[2];                      // EZ+ 2 -0.75
+pow(2) @ gphase(0.25);                       // PHASE 0.5
+```
+
+The fallback repeats the entire lowered sequence for each broadcast operand
+tuple. Built-in `U` includes its global-phase correction on every repetition;
+`cu` includes its control-phase correction. Inversion reverses and adjoints
+the complete sequence before repetition. Runtime parameter expressions are
+evaluated once per source application, with private temporaries reserved
+through every component, repetition, and broadcast copy.
+
+After simplification, `MAX_GATE_POWER_OUTPUT_LINES` limits the generated
+quantum instructions from each source statement containing `pow` to 100,000
+QCX lines, including all broadcast elements and phase corrections. The
+converter checks the budget before allocating a repeated instruction list.
+Enclosing loop-output budgets also apply. Exceeding a limit reports a
+conversion error; the CLI emits no partial QCX program. This limit does not
+change the behavior of statements without `pow`.
+
+This implements only the constant-integer subset of OpenQASM's power modifier.
+Runtime exponents and floating-point/fractional gate powers remain unsupported.
+Scalar arithmetic exponentiation (`**`) is a separate feature described above.
+No new QCX instruction is required.
 
 ## Static indexing
 
@@ -2403,8 +2490,8 @@ The current prototype does not reliably support:
 - delays, iteration over arrays other than the supported
   `int`/`uint`/`float`/`bool`/`complex` subset,
   alias iteration, or `switch` statements;
-- user-defined gates, gate durations, `pow` modifiers, or runtime-dependent
-  control counts;
+- user-defined gates, gate durations, runtime or floating-point/fractional
+  `pow` exponents, or runtime-dependent control counts;
 - runtime qubit indices, dynamic register ranges or discrete sets, ranges with
   omitted bounds, or multidimensional indexing;
 - classical arrays beyond the one-dimensional `int`, `uint`, `float`, `bool`, and
@@ -2465,6 +2552,17 @@ broadcasting, loops, and executed/skipped parameter checks. The references
 retain global phase. Unit tests additionally check compact maximum-size counts,
 invalid modifiers/counts, arity, duplicate operands, loop-iterator shadowing,
 temporary lifetime, and CLI failures without partial output.
+
+`bra/test/qasm2qcx_power_numerical.py` checks integer powers of every supported
+gate against independent complex matrix references on basis states and complex
+superpositions, retaining global and relative phases. It covers positive,
+negative, and zero powers, periodic reductions, scaled constant angles, runtime
+parameters, mixed controls, nested powers, broadcasting, loop re-entry, skipped
+parameter checks, and finite angles whose scaled product would round or
+overflow. Unit tests additionally check exponent
+validation, empty loops, zero/identity validation, parameter capture and storage
+lifetime, expansion budgets, large nested powers, the documented example,
+and CLI failures without partial output.
 
 `bra/test/negative_controls_numerical.py` tests the native QCX syntax and gate
 families directly, both normally and inside fusion blocks, including adjoints,
@@ -2747,6 +2845,7 @@ python3 bra/test/qasm2qcx_if_else_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_inverse_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_control_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_negative_control_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_power_numerical.py --bra bra/bin/bra
 python3 bra/test/negative_controls_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_integer_remainder_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_integer_power_numerical.py --bra bra/bin/bra

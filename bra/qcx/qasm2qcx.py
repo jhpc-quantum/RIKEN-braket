@@ -2212,8 +2212,25 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             coefficient = float(multiplier)
             if not math.isfinite(coefficient) or coefficient != multiplier:
                 return None
-            result = float(operand) * coefficient
-            return str(result) if math.isfinite(result) else None
+            angle = float(operand)
+            # Do not narrow an integer literal that a higher-precision bra
+            # backend could otherwise read directly.
+            try:
+                integer = int(operand)
+            except ValueError:
+                integer = None
+            if integer is not None and angle != integer:
+                return None
+            result = angle * coefficient
+            if not math.isfinite(result):
+                return None
+            numerator, denominator = angle.as_integer_ratio()
+            product_numerator, product_denominator = result.as_integer_ratio()
+            # A rounded product of a large angle can change its phase by an
+            # arbitrary amount modulo 2*pi. Require an exact binary product.
+            if product_numerator * denominator != numerator * multiplier * product_denominator:
+                return None
+            return str(result)
         except (OverflowError, ValueError):
             return None
 

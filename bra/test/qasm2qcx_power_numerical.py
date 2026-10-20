@@ -78,19 +78,38 @@ def main():
         + 'negctrl @ pow(2) @ inv @ pow(3) @ U(0.2, 0.4, 0.6) q[{3,2}], q[0:1];', expected)
     checked += 1
 
-    # Finite angles whose scaled product overflows must retain the original
-    # finite-angle applications, for literal and runtime-valued parameters.
+    # Reached loop entries must recompute runtime parameters, while repeated
+    # gates within one entry reuse that entry's snapshots.
+    preparation, state = prepared_state(3)
+    expected = state
+    for theta in (0.2, 0.3):
+        for _ in range(2):
+            expected = conditioned(expected, 'U', (theta, theta + 1, theta + 2),
+                                   (2,), (0,), (0,), True)
+    for header in ('for int i in [0:1]', 'for int i in [0:stop]',
+                   'for int i in {0, stop}', 'while (visits < 2)'):
+        check_amplitudes(bra, 'qubit[3] q; float theta = 0.2; int stop = 1; int visits = 0; '
+            + preparation + header + ' { negctrl @ pow(-2) @ U(theta, theta + 1, theta + 2) q[2], q[0]; '
+            'theta += 0.1; visits += 1; }', expected)
+        checked += 1
+    check_amplitudes(bra, 'qubit[3] q; array[float, 1] angles = {0.2}; int bad = 9; '
+        + preparation + 'if (false) { pow(3) @ rx(angles[bad]) q[0]; }', state)
+    checked += 1
+
+    # Rounded/overflowing scaled angles must retain the original applications,
+    # for literal and runtime-valued parameters alike.
     preparation, state = prepared_state(1)
     for gate in ('p', 'rx', 'gphase'):
-        expected = state
-        for _ in range(2):
-            expected = (phase_reference(expected, (), (), 1e308) if gate == 'gphase'
-                        else conditioned(expected, gate, (1e308,), (), (0,), ()))
-        for expression in ('1e308', 'theta'):
-            operands = '' if gate == 'gphase' else 'q[0]'
-            check_amplitudes(bra, 'qubit q; float theta = 1e308; ' + preparation
-                + f'pow(2) @ {gate}({expression}) {operands};', expected)
-            checked += 1
+        for angle, exponent in ((1e308, 2), (1e100, 3)):
+            expected = state
+            for _ in range(exponent):
+                expected = (phase_reference(expected, (), (), angle) if gate == 'gphase'
+                            else conditioned(expected, gate, (angle,), (), (0,), ()))
+            for expression in (str(angle), 'theta'):
+                operands = '' if gate == 'gphase' else 'q[0]'
+                check_amplitudes(bra, f'qubit q; float theta = {angle}; ' + preparation
+                    + f'pow({exponent}) @ {gate}({expression}) {operands};', expected)
+                checked += 1
     print(f'{checked} integer-power modifier amplitude comparisons passed')
 
 
