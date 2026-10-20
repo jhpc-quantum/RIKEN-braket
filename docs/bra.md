@@ -223,6 +223,112 @@ fused block rather than factoring them into its positive-only outer mask.
 * `ASSERT lhs op rhs`: checks a comparison using the same operand types and operators as `JUMPIF`. The `lhs` must be an `INT`, `UINT`, or `REAL` variable, optionally indexed; the `rhs` may be a compatible variable, indexed element, literal, or built-in constant. If the comparison is false, it throws `bra::assertion_error` (a `std::runtime_error`) identifying the failed instruction and evaluated operands. A successful assertion does not change classical variables or jump state. Assertions skipped by control flow are not evaluated. This is a runtime instruction and remains enabled in release builds; for example, `ASSERT STEP \= 0` checks that an integer step is nonzero.
 * `PRINT var [...]`/`PRINTLN var [...]`: prints classical variables `var`, `...` with single-space separators.
 
+### Classical function invocation (implementation in progress)
+
+The following is the implementation contract for `APPLY`. Parsing and execution
+are not available yet. It introduces function invocation without changing the
+existing `LET` operations or conversion/component-extraction operands.
+
+```text
+APPLY destination... <- function operand...
+```
+
+`<-` is a separate token delimiting destinations from the function name. Names
+follow the assembler's case-insensitive convention. The function signature
+specifies the exact number and types of operands and destinations. Initially
+every function returns one result, but the syntax and signature representation
+allow multiple results in future extensions. Neither nested function calls nor
+general expressions are operands; use temporary variables for intermediate
+results. Destinations are mutable classical variables or indexed elements,
+not literals, casts, or built-in constants.
+
+#### Initial signatures and operand typing
+
+| Function | Operand types | Result types |
+|---|---|---|
+| `EXP` | `REAL` | `REAL` |
+| `EXP` | `COMPLEX` | `COMPLEX` |
+| `ARG` | `COMPLEX` | `REAL` |
+
+Only operand types select an overload. Destination types must then match the
+result types exactly; they never select an overload. There is no implicit
+numeric promotion. Use existing explicit casts such as `:REAL:N` or
+`:COMPLEX:X` when a conversion is required.
+
+For `APPLY`, a bare decimal integer literal, optionally signed, has type `INT`
+and must fit native `INT`. A decimal floating-point literal containing a decimal
+point or exponent has type `REAL`. Explicit typed operands such as `:UINT:1`,
+`:REAL:1`, and `:COMPLEX:1` determine their corresponding types. Variables,
+indexed elements, and built-in symbols retain their declared types. `:REAL:Z`
+and `:IMAG:Z` continue to extract real and imaginary components of a complex
+operand; they are not new functions.
+
+For example, assuming `X` and `Y` are `REAL`, `N` is `INT`, and `Z` is `COMPLEX`:
+
+```text
+APPLY Y <- EXP X
+APPLY Y <- EXP 1.0
+APPLY Y <- EXP :REAL:N
+APPLY Z <- EXP :COMPLEX:X
+APPLY Y <- ARG Z
+APPLY X <- EXP X
+```
+
+`APPLY Y <- EXP 1` has no matching overload (`INT` input). A complex destination
+does not make `EXP X` use complex arithmetic: `APPLY Z <- EXP X` is a result-type
+error, not an implicit conversion.
+
+#### Evaluation and destination updates
+
+Resolve destination locations from left to right, then read operands from left
+to right, all against the pre-invocation state. Resolve each destination once
+and capture each operand once. Evaluate and validate every result before
+writing any destination. Destinations may overlap inputs, allowing in-place
+calls. Reject destinations resolving to the same storage location, even when
+their textual indices differ. A failed invocation leaves all destinations
+unchanged. Future multiple-result calls follow the same rules.
+
+Instructions skipped by classical control flow evaluate neither operands nor
+destination indices. Syntax errors can still be detected while parsing the
+program; skipping does not make malformed instruction syntax valid. Initial
+functions are deterministic and side-effect-free. Stateful and user-defined
+functions are outside this initial implementation.
+
+#### Numerical behavior and diagnostics
+
+Functions use bra's configured `REAL` and `COMPLEX` precision. Reject nonfinite
+inputs, including a complex input with either component nonfinite. Reject
+invalid domains and overflow/nonfinite results before updating destinations.
+Ordinary underflow, including subnormal results and zero, is allowed. These
+checks must remain effective in supported release builds. Existing `LET`
+floating-point arithmetic is unchanged.
+
+`EXP` computes the real or complex exponential according to the input type.
+Complex `EXP` must agree with the backend's complex exponential for purely
+imaginary arguments, including very large finite angles; do not first reduce
+the angle modulo a machine approximation of $2\pi$.
+
+`ARG` computes the complex argument in radians and rejects zero, including all
+combinations of signed-zero components. For a negative real component,
+an imaginary component of `+0` gives $+\pi$ and `-0` gives $-\pi$. For a positive
+real component it preserves the sign of an imaginary zero in the resulting
+zero angle. Nearby values retain their side of the branch cut; do not apply
+tolerance-based snapping. Converter-specific normalization of exact
+negative-real eigenvalues to $+\pi$ is separate from general `ARG` semantics.
+
+Diagnostics must identify the failed `APPLY` invocation and distinguish:
+
+- Malformed syntax or an unknown function name.
+- Unsupported operand signatures or wrong operand counts.
+- Wrong destination counts/types or duplicate destination locations.
+- Operand conversion/index errors.
+- Nonfinite inputs, domain errors, and overflow/nonfinite results.
+
+Exception classes and exact diagnostic wording will be specified with the
+runtime implementation. Public classification predicates (`ISFINITE`, `ISNAN`,
+and `ISINF`) are deferred until native `BOOL` and predicate result types are
+settled; internal numerical checks do not require these functions.
+
 ### Phase-exponent gates
 
 For `R`, `R+`, and their controlled forms, the magnitude of the `INT` exponent

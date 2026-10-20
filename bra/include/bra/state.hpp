@@ -34,6 +34,7 @@
 # endif // BRA_NO_MPI
 
 # include <bra/types.hpp>
+# include <bra/variable_type.hpp>
 # include <bra/pauli_string_space.hpp>
 
 # ifndef BRA_NO_MPI
@@ -45,9 +46,6 @@
 
 namespace bra
 {
-  enum class variable_type : int
-  { real = 0, complex_ = 1, integer = 2, pauli_string_space = 3, unsigned_integer = 4 };
-
   enum class assign_operation_type : int
   {
     assign = 0, plus_assign = 1, minus_assign = 2, multiplies_assign = 3, divides_assign = 4,
