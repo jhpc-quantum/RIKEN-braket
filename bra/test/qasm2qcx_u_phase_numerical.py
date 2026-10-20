@@ -21,8 +21,8 @@ Convention audit:
   inconsistent source relations to infer U's phase correction.
   https://github.com/openqasm/openqasm/blob/main/examples/stdgates.inc
 
-The old inverse/power references deliberately preserve the converter's existing
-phase convention. Do not import their expected matrices into this audit.
+Expected matrices must not be derived from emitted QCX phase corrections.
+The inverse/control/power drivers reuse these independent matrix definitions.
 """
 
 import argparse
@@ -168,6 +168,59 @@ class BackendTests(unittest.TestCase):
                 arguments = 'theta, phi, lam, gamma' if runtime else '0.7, 0.4, -0.2, 0.3'
                 self.check_source('qubit[2] q; ' + declarations + 'h q[0]; '
                                   + f'cu({arguments}) q[0], q[1];', expected)
+
+    def test_modified_integer_powers_preserve_the_complete_matrix(self):
+        profiles = (('', (), False), ('inv @ ', (), True),
+                    ('ctrl @ ', (1,), False), ('negctrl @ inv @ ', (0,), True),
+                    ('negctrl @ ctrl @ ', (0, 1), False))
+        for gate in ('U', 'cu'):
+            angles = (0.7, 0.4, -0.2) + ((0.3,) if gate == 'cu' else ())
+            matrix = (builtin_u_matrix(*angles) if gate == 'U'
+                      else documented_cu_active_matrix(*angles))
+            base_qubits = 1 if gate == 'U' else 2
+            for prefix, values, inverse in profiles:
+                qubits = max(2, base_qubits + len(values))
+                # Keep the target at wire 0 and prepend outer controls in
+                # descending order, with cu's intrinsic control at wire 1.
+                wires = tuple(reversed(range(base_qubits, base_qubits + len(values))))
+                controls = tuple(zip(wires, values)) + (((1, 1),) if gate == 'cu' else ())
+                operands = ', '.join(f'q[{wire}]' for wire in wires + ((1, 0) if gate == 'cu' else (0,)))
+                state = [cmath.exp(1j * ((math.pi / 2 if index & 1 else 0)
+                                        + (math.pi / 4 if index & (1 << (qubits - 1)) else 0)))
+                         / math.sqrt(1 << qubits) for index in range(1 << qubits)]
+                for runtime in (False, True):
+                    arguments = ('theta, phi, lam' + (', gamma' if gate == 'cu' else '') if runtime
+                                 else ', '.join(map(str, angles)))
+                    declarations = ('float theta = 0.7; float phi = 0.4; float lam = -0.2; '
+                                    'float gamma = 0.3; ') if runtime else ''
+                    for exponent in (-2, 0, 3):
+                        with self.subTest(gate=gate, prefix=prefix, runtime=runtime, exponent=exponent):
+                            operation = ([[matrix[column][row].conjugate() for column in range(2)]
+                                          for row in range(2)] if inverse != (exponent < 0) else matrix)
+                            expected = state
+                            for _ in range(abs(exponent)):
+                                expected = apply_matrix(expected, operation, 0, controls)
+                            power = 'n' if runtime else str(exponent)
+                            self.check_source(f'qubit[{qubits}] q; ' + declarations + f'int n = {exponent}; '
+                                + f'h q; s q[0]; t q[{qubits - 1}]; '
+                                + f'{prefix}pow({power}) @ {gate}({arguments}) {operands};', expected)
+
+    def test_indexed_parameter_capture_and_broadcasting(self):
+        angles = (0.7, 0.4, -0.2, 0.3)
+        for gate in ('U', 'cu'):
+            with self.subTest(gate=gate):
+                matrix = (builtin_u_matrix(*angles[:3]) if gate == 'U'
+                          else documented_cu_active_matrix(*angles))
+                adjoint = [[matrix[column][row].conjugate() for column in range(2)] for row in range(2)]
+                state = [complex(0.5)] * 4
+                for target in ((0, 1) if gate == 'U' else (1,)):
+                    for _ in range(2):
+                        state = apply_matrix(state, adjoint, target, ((0, 1),) if gate == 'cu' else ())
+                operands = 'q' if gate == 'U' else 'q[0], q[1]'
+                arguments = ', '.join(f'angles[index + {offset}]' for offset in range(3 if gate == 'U' else 4))
+                self.check_source('qubit[2] q; h q; int n = -2; int index = 0; '
+                    'array[float, 4] angles = {0.7, 0.4, -0.2, 0.3}; '
+                    + f'pow(n) @ {gate}({arguments}) {operands};', state)
 
 
 def main():

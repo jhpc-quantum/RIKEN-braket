@@ -16,21 +16,20 @@ import subprocess
 
 from qasm2qcx_integer_array_numerical import check_error
 from qasm2qcx_runtime_for_numerical import check_program, qasm2qcx
+from qasm2qcx_u_phase_numerical import (
+    builtin_u_matrix, conventional_u3_matrix, documented_cu_active_matrix)
 
 
 def matrix(gate: str, parameters: tuple[float, ...]) -> list[list[complex]]:
     if gate in ('U', 'u3', 'cu', 'u2'):
         theta, phi, lam = ((math.pi / 2, *parameters) if gate == 'u2' else parameters[:3])
-        c, s = math.cos(theta / 2), math.sin(theta / 2)
-        result = [[c, -cmath.exp(1j * lam) * s],
-                  [cmath.exp(1j * phi) * s, cmath.exp(1j * (phi + lam)) * c]]
-        # Preserve the converter's existing standard-library phase relation:
-        # U = exp(i*(theta+phi+lambda)/2) * u3; cu adds gamma on its control.
-        # Do not derive this reference by inspecting emitted QCX instructions.
-        phase = ((theta + phi + lam) / 2 if gate in ('U', 'cu') else 0)
+        # Use the independently transcribed published matrix, rather than
+        # mirroring the converter's QCX phase-correction calculation.
+        if gate == 'U':
+            return builtin_u_matrix(theta, phi, lam)
         if gate == 'cu':
-            phase += parameters[3]
-        return [[cmath.exp(1j * phase) * value for value in row] for row in result]
+            return documented_cu_active_matrix(*parameters)
+        return conventional_u3_matrix(theta, phi, lam)
     if gate in ('p', 'phase', 'u1', 's', 'sdg', 't', 'tdg', 'z'):
         phase = {'s': math.pi / 2, 'sdg': -math.pi / 2,
                  't': math.pi / 4, 'tdg': -math.pi / 4, 'z': math.pi}.get(gate)

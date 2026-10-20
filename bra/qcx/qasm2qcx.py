@@ -1925,23 +1925,18 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __cu_control_phase(
             self, parameters: list[tuple[str | int | float, ValueType, ValueKind]],
             converted_parameters: list[str]) -> tuple[str, ValueKind]:
-        # QCX CU3 uses the OpenQASM 2 u3 convention.  Since
-        # u3(theta, phi, lambda) = exp(-i (theta + phi + lambda) / 2)
-        # U(theta, phi, lambda), cu needs this additional control phase.
-        theta, phi, lambda_, gamma = parameters
+        # Follow the published cu matrix: its active block is exp(i*gamma)*U.
+        # QCX CU3 uses conventional u3, and U = exp(i*theta/2)*u3.
+        # The upstream example stdgates.inc uses a different cu convention;
+        # see the independent audit in test/qasm2qcx_u_phase_numerical.py.
+        theta, _, _, gamma = parameters
         if all(parameter[2] == ValueKind.LITERAL for parameter in parameters):
-            phase = (
-                float(gamma[0])
-                + (float(theta[0]) + float(phi[0]) + float(lambda_[0])) / 2.0)
+            phase = float(gamma[0]) + float(theta[0]) / 2.0
             return str(phase), ValueKind.LITERAL
 
         temporary = self.__add_new_temporary_variable(ValueType.FLOAT)
         self.__qcx_lines.append(
             f'LET {temporary} := {converted_parameters[0]}')
-        self.__qcx_lines.append(
-            f'LET {temporary} += {converted_parameters[1]}')
-        self.__qcx_lines.append(
-            f'LET {temporary} += {converted_parameters[2]}')
         self.__qcx_lines.append(f'LET {temporary} /= 2.0')
         self.__qcx_lines.append(
             f'LET {temporary} += {converted_parameters[3]}')
@@ -1951,20 +1946,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self, parameters: list[
                 tuple[str | int | float, ValueType, ValueKind]],
             converted_parameters: list[str]) -> tuple[str, ValueKind]:
-        # QCX U3 uses the OpenQASM 2 u3 convention.  Since
-        # u3(theta, phi, lambda) = exp(-i (theta + phi + lambda) / 2)
-        # U(theta, phi, lambda), U needs this additional global phase.
+        # The published built-in U matrix is exp(i*theta/2) times the
+        # conventional OpenQASM 2 matrix implemented by QCX U3.
         if all(parameter[2] == ValueKind.LITERAL for parameter in parameters):
-            phase = sum(float(parameter[0]) for parameter in parameters) / 2.0
+            phase = float(parameters[0][0]) / 2.0
             return str(phase), ValueKind.LITERAL
 
         temporary = self.__add_new_temporary_variable(ValueType.FLOAT)
         self.__qcx_lines.append(
             f'LET {temporary} := {converted_parameters[0]}')
-        self.__qcx_lines.append(
-            f'LET {temporary} += {converted_parameters[1]}')
-        self.__qcx_lines.append(
-            f'LET {temporary} += {converted_parameters[2]}')
         self.__qcx_lines.append(f'LET {temporary} /= 2.0')
         return temporary, ValueKind.TEMPORARY
 
