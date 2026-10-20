@@ -373,6 +373,13 @@ class FloatingPowerModifierLoweringTests(unittest.TestCase):
     def assert_clean_conversion(self, source):
         return InverseModifierLoweringTests.assert_clean_conversion(self, source)
 
+    def test_documented_floating_power_example(self):
+        document = CONVERTER_PATH.with_suffix('.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- floating-power-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        self.assert_clean_conversion(examples[0].split('\n', 1)[1])
+
     def test_fixed_basis_changes_use_existing_qcx_gates(self):
         for gate, expected in (
                 ('x', ['H 0', f'U1 0 {math.pi / 2}', 'H 0']),

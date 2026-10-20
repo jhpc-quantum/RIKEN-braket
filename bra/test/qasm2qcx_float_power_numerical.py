@@ -18,6 +18,7 @@ import argparse
 from fractions import Fraction
 import math
 import pathlib
+import re
 import resource
 import unittest
 
@@ -327,6 +328,13 @@ class BackendTests(unittest.TestCase):
                 matrix = reference_matrix('x', (('pow', exponent),))
                 self.check_source('qubit q; const float F = 0.5; const int N = 2; '
                                   + f'pow({expression}) @ x q;', [row[0] for row in matrix])
+
+    def test_documented_floating_power_example(self):
+        document = (pathlib.Path(__file__).parents[1] / 'qcx' / 'qasm2qcx.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- floating-power-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        self.check_source(examples[0].split('\n', 1)[1], [complex(index == 2) for index in range(8)])
 
     def test_broadcasting(self):
         # Each operation acts on a different pair, including intrinsic controls.
