@@ -3,6 +3,7 @@
 import importlib.util
 import ctypes
 import math
+from fractions import Fraction
 import re
 from pathlib import Path
 import unittest
@@ -240,6 +241,127 @@ class FloatingPowerModifierFoundationTests(unittest.TestCase):
             with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
                 convert('OPENQASM 3; include "stdgates.inc"; qubit q; '
                         + wrapper.format('pow(0.5) @ x q;'))
+
+
+class FloatingPowerModifierOrderingTests(unittest.TestCase):
+    converter = staticmethod(IntegerPowerModifierFoundationTests.converter)
+    modifiers = staticmethod(IntegerPowerModifierFoundationTests.modifiers)
+
+    def analyze(self, converter, source, iterators=None):
+        return converter._QASM2QCXConverter__analyze_gate_modifiers(
+            self.modifiers(source), iterators, allow_runtime=True, allow_float=True)
+
+    def phases(self, source, initial=(Fraction(0), Fraction(1))):
+        converter = self.converter()
+        info = self.analyze(converter, source)
+        self.assertIsInstance(info, qasm2qcx._OrderedGateModifierInfo)
+        return converter._QASM2QCXConverter__ordered_gate_eigenphases(initial, info)
+
+    def test_representation_preserves_every_modifier_and_argument_in_source_order(self):
+        converter = self.converter()
+        modifiers = self.modifiers('negctrl @ pow(0.5) @ inv @ ctrl(2) @ pow(-3) @ pow(2.0)')
+        original = repr(modifiers)
+        info = converter._QASM2QCXConverter__analyze_gate_modifiers(
+            modifiers, allow_runtime=True, allow_float=True)
+        self.assertIsInstance(info, qasm2qcx._OrderedGateModifierInfo)
+        self.assertEqual([modifier.kind for modifier in info.modifiers], [modifier.modifier for modifier in modifiers])
+        self.assertEqual([modifier.argument for modifier in info.modifiers], [1, 0.5, None, 2, -3, 2.0])
+        self.assertIs(type(info.modifiers[-1].argument), float)
+        self.assertIs(type(info.modifiers[-2].argument), int)
+        self.assertEqual(info.controls, ((0, 1), (1, 2)))
+        self.assertEqual(repr(modifiers), original)
+        self.assertFalse(hasattr(info, 'power'))
+
+    def test_float_typed_whole_numbers_still_select_the_ordered_path(self):
+        converter = self.converter('const float F = 2.0;')
+        for source in ('pow(2.0)', 'pow(F)', 'pow(float(2))', 'pow(-0.0)'):
+            with self.subTest(source=source):
+                self.assertIsInstance(self.analyze(converter, source), qasm2qcx._OrderedGateModifierInfo)
+        self.assertIsInstance(self.analyze(converter, 'pow(2)'), qasm2qcx._GateModifierInfo)
+
+    def test_integer_only_analysis_returns_the_unchanged_legacy_info(self):
+        converter = self.converter('int n = 2; uint u = 3;')
+        for source in ('inv @ pow(-3) @ ctrl @ pow(2)',
+                       'negctrl @ pow(n) @ inv @ pow(u) @ pow(-3)',
+                       'pow(0) @ pow(n) @ ctrl(2)'):
+            with self.subTest(source=source):
+                expected = converter._QASM2QCXConverter__analyze_gate_modifiers(
+                    self.modifiers(source), allow_runtime=True)
+                self.assertEqual(self.analyze(converter, source), expected)
+
+    def test_nested_powers_are_applied_from_the_inside(self):
+        self.assertEqual(self.phases('pow(0.5) @ pow(2)'), (0, 0))
+        self.assertEqual(self.phases('pow(2) @ pow(0.5)'), (0, 1))
+        self.assertEqual(self.phases('pow(0.5) @ pow(2.0)'), (0, 0))
+
+    def test_inverse_order_is_not_replaced_by_exponent_sign(self):
+        self.assertEqual(self.phases('pow(0.5) @ inv'), (0, Fraction(1, 2)))
+        self.assertEqual(self.phases('inv @ pow(0.5)'), (0, Fraction(-1, 2)))
+        self.assertEqual(self.phases('pow(-0.5)'), (0, Fraction(-1, 2)))
+        self.assertEqual(self.phases('inv @ pow(0.5) @ inv'), (0, Fraction(-1, 2)))
+
+    def test_each_power_reselects_the_principal_phase(self):
+        self.assertEqual(self.phases('pow(0.5) @ pow(6)', (Fraction(0), Fraction(1, 4))),
+                         (0, Fraction(-1, 4)))
+        self.assertEqual(self.phases('pow(0.5) @ pow(3)', (Fraction(0), Fraction(-1, 2))),
+                         (0, Fraction(1, 4)))
+
+    def test_principal_branch_endpoint_and_nearby_values_are_exact(self):
+        wrap = qasm2qcx.QASM2QCXConverter._QASM2QCXConverter__principal_gate_phase
+        epsilon = Fraction(1, 2 ** 55)
+        for phase, expected in ((-1, 1), (1, 1), (3, 1), (-3, 1), (2, 0),
+                                (1 - epsilon, 1 - epsilon), (1 + epsilon, -1 + epsilon),
+                                (-1 - epsilon, 1 - epsilon), (-1 + epsilon, -1 + epsilon)):
+            with self.subTest(phase=phase):
+                self.assertEqual(wrap(Fraction(phase)), expected)
+
+    def test_exact_float_ratio_and_large_exponents_do_not_overflow(self):
+        self.assertEqual(self.phases('pow(0.1)'), (0, Fraction(0.1)))
+        self.assertEqual(self.phases('pow(1e308)'), (0, 0))
+        self.assertEqual(self.phases('pow(1e-308)'), (0, Fraction(1e-308)))
+        # Integer factors are not rounded through float while constructing info.
+        self.assertEqual(self.phases(f'pow(0.5) @ pow({2 ** 100 + 1})'), (0, Fraction(1, 2)))
+
+    def test_controls_keep_order_and_do_not_change_active_eigenphases(self):
+        converter = self.converter()
+        for source in ('negctrl @ pow(0.5) @ ctrl(2)', 'pow(0.5) @ negctrl @ ctrl(2)',
+                       'negctrl @ ctrl(2) @ pow(0.5)'):
+            with self.subTest(source=source):
+                info = self.analyze(converter, source)
+                self.assertEqual(info.controls, ((0, 1), (1, 2)))
+                self.assertEqual(converter._QASM2QCXConverter__ordered_gate_eigenphases(
+                    (Fraction(0), Fraction(1)), info), (0, Fraction(1, 2)))
+
+    def test_runtime_integer_factors_are_preserved_but_not_evaluated_as_constants(self):
+        converter = self.converter('int n = 3;')
+        info = self.analyze(converter, 'pow(0.5) @ inv @ pow(n)')
+        self.assertIsInstance(info.modifiers[-1].argument, qasm2qcx._RuntimeGateExponent)
+        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'runtime integer factors'):
+            converter._QASM2QCXConverter__ordered_gate_eigenphases((Fraction(0), Fraction(1)), info)
+
+    def test_zero_factors_do_not_hide_invalid_modifiers_or_dependencies(self):
+        converter = self.converter('int n = 1; float f = 0.5;')
+        for source in ('pow(0.0) @ pow(missing)', 'pow(0.0) @ pow(1e309)',
+                       'pow(0.0) @ pow(f)', 'pow(0.0) @ ctrl(0)',
+                       'pow(0.0) @ ctrl(n)', 'pow(0.0) @ pow(true)'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.analyze(converter, source)
+        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'compile-time constant'):
+            self.analyze(converter, 'pow(0.0) @ pow(float(i))', {'i': qasm2qcx.ValueType.INT})
+
+    def test_analysis_emits_nothing_and_preserves_expression_state_and_storage(self):
+        converter = self.converter('const float F = 0.5;')
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        fields = ('__expression_kind', '__value', '__value_type', '__value_kind', '__evaluate_constant')
+        converter._QASM2QCXConverter__evaluate_constant = False
+        previous = [getattr(converter, '_QASM2QCXConverter' + name) for name in fields]
+        lines = converter._QASM2QCXConverter__qcx_lines.copy()
+        self.analyze(converter, 'negctrl @ pow(F) @ inv @ pow(2)')
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            self.analyze(converter, 'pow(F) @ pow(1.0 / 0.0)')
+        self.assertEqual([getattr(converter, '_QASM2QCXConverter' + name) for name in fields], previous)
+        self.assertEqual(converter._QASM2QCXConverter__qcx_lines, lines)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
 
 
 class RuntimeIntegerPowerModifierFoundationTests(unittest.TestCase):

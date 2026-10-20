@@ -5,6 +5,7 @@ import enum
 import dataclasses
 import contextlib
 import ctypes
+from fractions import Fraction
 from collections.abc import Iterator
 
 import openqasm3.parser
@@ -245,6 +246,19 @@ class _GateModifierInfo:
     # Keep runtime factors separate: their product need not fit a native type.
     runtime_exponents: tuple[_RuntimeGateExponent, ...] = ()
     constant_factors: tuple[int, ...] = ()
+
+
+@dataclasses.dataclass(frozen=True)
+class _OrderedGateModifier:
+    kind: ast.GateModifierName
+    argument: int | float | _RuntimeGateExponent | None = None
+
+
+@dataclasses.dataclass(frozen=True)
+class _OrderedGateModifierInfo:
+    # Source order, not execution order: the last modifier acts first.
+    modifiers: tuple[_OrderedGateModifier, ...]
+    controls: tuple[tuple[int, int], ...]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -2077,7 +2091,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __analyze_gate_modifiers(
             self, modifiers: list[ast.QuantumGateModifier],
             iterators: set[str] | dict[str, ValueType] | None = None, *,
-            allow_runtime: bool = False) -> _GateModifierInfo:
+            allow_runtime: bool = False, allow_float: bool = False
+            ) -> _GateModifierInfo | _OrderedGateModifierInfo:
         for modifier in modifiers:
             if modifier.modifier not in (
                     ast.GateModifierName.inv, ast.GateModifierName.ctrl,
@@ -2091,17 +2106,56 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         power = -1 if inverse else 1
         runtime_exponents = []
         constant_factors = []
+        ordered = []
+        control_groups = iter(controls)
+        has_float = False
         for modifier in modifiers:
             if modifier.modifier == ast.GateModifierName.pow:
                 # Do not short-circuit at zero: every exponent must be valid.
-                exponent = self.__power_modifier_exponent(modifier, iterators, allow_runtime=allow_runtime)
+                exponent = self.__power_modifier_exponent(
+                    modifier, iterators, allow_runtime=allow_runtime, allow_float=allow_float)
+                ordered.append(_OrderedGateModifier(modifier.modifier, exponent))
                 if isinstance(exponent, _RuntimeGateExponent):
                     runtime_exponents.append(exponent)
+                elif isinstance(exponent, float):
+                    has_float = True
                 else:
                     power *= exponent
                     constant_factors.append(exponent)
+            elif modifier.modifier == ast.GateModifierName.inv:
+                ordered.append(_OrderedGateModifier(modifier.modifier))
+            else:
+                _, count = next(control_groups)
+                ordered.append(_OrderedGateModifier(modifier.modifier, count))
+        if has_float:
+            # Do not use the integer product or inverse parity for this path.
+            # An intermediate operation may cross the principal branch cut.
+            return _OrderedGateModifierInfo(tuple(ordered), tuple(controls))
         return _GateModifierInfo(power, tuple(controls), tuple(runtime_exponents),
                                  tuple(constant_factors) if runtime_exponents else ())
+
+    @staticmethod
+    def __principal_gate_phase(phase: Fraction) -> Fraction:
+        # Eigenphases are rational multiples of pi for the initial fixed gate
+        # subset. Exact arithmetic fixes -1's phase at +pi, without a tolerance
+        # that could accidentally select the wrong side of the branch cut.
+        result = phase % 2
+        return result - 2 if result > 1 else result
+
+    @classmethod
+    def __ordered_gate_eigenphases(
+            cls, phases: tuple[Fraction, ...], info: _OrderedGateModifierInfo) -> tuple[Fraction, ...]:
+        for modifier in reversed(info.modifiers):
+            if modifier.kind == ast.GateModifierName.inv:
+                phases = tuple(-phase for phase in phases)
+            elif modifier.kind == ast.GateModifierName.pow:
+                if isinstance(modifier.argument, _RuntimeGateExponent):
+                    raise UnsupportedOpenQASMError('runtime integer factors in floating-point pow chains')
+                exponent = Fraction(modifier.argument)
+                phases = tuple(cls.__principal_gate_phase(phase) * exponent for phase in phases)
+            # Controls add inactive eigenvalues of 1, which every real power
+            # and inverse leaves at 1. Their polarity/order is kept in info.
+        return tuple(cls.__principal_gate_phase(phase) for phase in phases)
 
     @contextlib.contextmanager
     def __captured_gate_exponents(
