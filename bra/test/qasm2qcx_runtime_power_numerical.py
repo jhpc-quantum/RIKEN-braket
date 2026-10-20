@@ -97,7 +97,7 @@ def main():
         modifiers = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; pow(n) @ gphase(0.5);').statements[0].modifiers
         info = converter._QASM2QCXConverter__analyze_gate_modifiers(modifiers, allow_runtime=True)
         with converter._QASM2QCXConverter__runtime_gate_power(info) as runtime:
-            converter._QASM2QCXConverter__qcx_lines.append(f'PRINTLN {runtime.magnitude}')
+            converter._QASM2QCXConverter__qcx_lines.append(f'PRINTLN {runtime.magnitudes[0]}')
         result = subprocess.run([str(bra)], input='\n'.join(converter) + '\n', text=True,
                                 capture_output=True, check=True, timeout=30)
         if result.stdout.strip() != str(abs(value)):
@@ -105,6 +105,76 @@ def main():
         checked += 1
     check_error(bra, 'qubit q; int n = 0; array[float, 1] angles = {0.2}; int bad = 9; '
                 'pow(n) @ U(angles[bad], 0, 0) q;', 'assertion failed in ASSERT')
+
+    for gate in ('U', 'cu', 't', 'sx', 'rz', 'gphase'):
+        parameter_count, base_qubits = ((1, 0) if gate == 'gphase'
+                                        else limits.gate_signatures[gate])
+        parameters = tuple((index + 1) / 5 for index in range(parameter_count))
+        arguments = '(' + ', '.join(map(str, parameters)) + ')' if parameters else ''
+        for prefix, values, inverse in profiles:
+            qubits = max(1, base_qubits + len(values))
+            order = tuple(reversed(range(base_qubits + len(values))))
+            controls, operands = order[:len(values)], order[len(values):]
+            quantum_arguments = ', '.join(f'q[{wire}]' for wire in order)
+            preparation, state = prepared_state(qubits)
+            for n, m in ((-2, -3), (-2, 3), (2, -3), (0, 3), (3, 0), (2, 3)):
+                exponent = n * m
+                expected = state
+                if gate == 'gphase':
+                    expected = phase_reference(state, controls, values, (-1 if inverse else 1) * exponent * parameters[0])
+                else:
+                    for _ in range(abs(exponent)):
+                        expected = conditioned(expected, gate, parameters, controls, operands,
+                                               values, inverse != (exponent < 0))
+                m_type = 'uint[3]' if m >= 0 else 'int'
+                check_amplitudes(bra, f'qubit[{qubits}] q; int n = {n}; {m_type} m = {m}; '
+                    + preparation + f'{prefix}pow(n) @ pow(m) @ {gate}{arguments} {quantum_arguments};', expected)
+                checked += 1
+
+    # Periodic reductions must work at native boundaries without executing
+    # billions of gates, or multiplying full-width counts in QCX.
+    for gate, period in (('x', 2), ('s', 4), ('t', 8), ('sx', 4), ('cx', 2), ('ccx', 2)):
+        base_qubits = limits.gate_signatures[gate][1]
+        qubits = base_qubits + 1
+        order = tuple(reversed(range(qubits)))
+        controls, operands = order[:1], order[1:]
+        preparation, state = prepared_state(qubits)
+        for n in (limits.QCX_INT_MIN, -1, limits.QCX_INT_MAX):
+            expected = state
+            for _ in range((abs(n) * limits.QCX_UINT_MAX) % period):
+                expected = conditioned(expected, gate, (), controls, operands, (0,), n < 0)
+            quantum_arguments = ', '.join(f'q[{wire}]' for wire in order)
+            check_amplitudes(bra, f'qubit[{qubits}] q; int n = {n}; uint m = {limits.QCX_UINT_MAX}; '
+                + preparation + f'negctrl @ pow(n) @ pow(m) @ {gate} {quantum_arguments};', expected)
+            checked += 1
+
+    preparation, state = prepared_state(1)
+    for factors in (f'pow(large) @ pow(zero)', f'pow(zero) @ pow(large)',
+                    f'pow({1 << (limits.QCX_UINT_WIDTH // 2)}) @ pow(zero) @ pow({1 << (limits.QCX_UINT_WIDTH // 2)})'):
+        check_amplitudes(bra, f'qubit q; uint large = {limits.QCX_UINT_MAX}; int zero = 0; '
+            + preparation + factors + ' @ U(0.2, 0.4, 0.6) q;', state)
+        checked += 1
+    check_error(bra, 'qubit q; int zero = 0; array[int, 1] counts = {2}; int bad = 9; '
+                'pow(zero) @ pow(counts[bad]) @ U(1, 2, 3) q;', 'assertion failed in ASSERT')
+    for gate in ('U', 'cu', 'gphase'):
+        parameter_count, base_qubits = ((1, 0) if gate == 'gphase' else limits.gate_signatures[gate])
+        parameters = tuple((index + 1) / 5 for index in range(parameter_count))
+        arguments = '(' + ', '.join(map(str, parameters)) + ')'
+        qubits = base_qubits + 1
+        preparation, state = prepared_state(qubits)
+        controls, operands = (qubits - 1,), tuple(range(base_qubits))
+        quantum_arguments = ', '.join(f'q[{wire}]' for wire in controls + operands)
+        for modifiers, exponent in (('pow(-2) @ pow(n) @ pow(m)', 12),
+                                    ('pow(n) @ pow(m) @ pow(k)', 6)):
+            expected = state
+            if gate == 'gphase':
+                expected = phase_reference(state, controls, (0,), exponent * parameters[0])
+            else:
+                for _ in range(exponent):
+                    expected = conditioned(expected, gate, parameters, controls, operands, (0,))
+            check_amplitudes(bra, f'qubit[{qubits}] q; int n = -2; int m = 3; int k = -1; '
+                + preparation + f'negctrl @ {modifiers} @ {gate}{arguments} {quantum_arguments};', expected)
+            checked += 1
     print(f'{checked} runtime-integer gate power checks passed')
 
 

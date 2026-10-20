@@ -230,8 +230,10 @@ class _CapturedGateExponent:
 
 @dataclasses.dataclass(frozen=True)
 class _RuntimeGatePower:
-    magnitude: str
+    magnitudes: tuple[str, ...]
+    # A sign carrier (0 or -1), not a product of signed exponents.
     signed_exponent: str | None
+    constant_factors: tuple[int, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -242,6 +244,7 @@ class _GateModifierInfo:
     controls: tuple[tuple[int, int], ...]
     # Keep runtime factors separate: their product need not fit a native type.
     runtime_exponents: tuple[_RuntimeGateExponent, ...] = ()
+    constant_factors: tuple[int, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -2070,6 +2073,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 ast.GateModifierName.ctrl, ast.GateModifierName.negctrl)], iterators)
         power = -1 if inverse else 1
         runtime_exponents = []
+        constant_factors = []
         for modifier in modifiers:
             if modifier.modifier == ast.GateModifierName.pow:
                 # Do not short-circuit at zero: every exponent must be valid.
@@ -2078,7 +2082,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     runtime_exponents.append(exponent)
                 else:
                     power *= exponent
-        return _GateModifierInfo(power, tuple(controls), tuple(runtime_exponents))
+                    constant_factors.append(exponent)
+        return _GateModifierInfo(power, tuple(controls), tuple(runtime_exponents),
+                                 tuple(constant_factors) if runtime_exponents else ())
 
     @contextlib.contextmanager
     def __captured_gate_exponents(
@@ -2130,11 +2136,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             offset += count
         return result
 
-    @staticmethod
-    def __validate_runtime_gate_power(info: _GateModifierInfo) -> None:
-        if len(info.runtime_exponents) > 1:
-            raise UnsupportedOpenQASMError('nested runtime pow exponents')
-
     def __gate_power_label(self) -> str:
         index = self.__gate_power_index
         self.__gate_power_index += 1
@@ -2142,23 +2143,28 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     @contextlib.contextmanager
     def __runtime_gate_power(self, info: _GateModifierInfo) -> Iterator[_RuntimeGatePower | None]:
-        self.__validate_runtime_gate_power(info)
         with self.__captured_gate_exponents(info.runtime_exponents) as captured:
             if not captured:
                 yield None
                 return
-            exponent = captured[0]
-            if exponent.value_type == ValueType.UINT:
-                yield _RuntimeGatePower(exponent.storage, None)
-                return
-            magnitude = self.__add_new_temporary_variable(ValueType.UINT)
-            ready = self.__gate_power_label() + '_READY'
-            self.__qcx_lines.extend([
-                f'LET {magnitude} := :UINT:{exponent.storage}',
-                f'JUMPIF {ready} {exponent.storage} >= 0',
-                f'LET {magnitude} := 0', f'LET {magnitude} -= :UINT:{exponent.storage}',
-                f'@{ready}'])
-            yield _RuntimeGatePower(magnitude, exponent.storage)
+            sign = None
+            if any(exponent.value_type == ValueType.INT for exponent in captured):
+                sign = self.__add_new_temporary_variable(ValueType.INT)
+                self.__qcx_lines.append(f'LET {sign} := 0')
+            magnitudes = []
+            for exponent in captured:
+                if exponent.value_type == ValueType.UINT:
+                    magnitudes.append(exponent.storage)
+                    continue
+                magnitude = self.__add_new_temporary_variable(ValueType.UINT)
+                ready = self.__gate_power_label() + '_READY'
+                self.__qcx_lines.extend([
+                    f'LET {magnitude} := :UINT:{exponent.storage}',
+                    f'JUMPIF {ready} {exponent.storage} >= 0',
+                    f'LET {magnitude} := 0', f'LET {magnitude} -= :UINT:{exponent.storage}',
+                    f'LET {sign} ^= -1', f'@{ready}'])
+                magnitudes.append(magnitude)
+            yield _RuntimeGatePower(tuple(magnitudes), sign, info.constant_factors)
 
     def __qubit_operand_tuples(self, qubits, *, distinct: bool = False) -> Iterator[list[str]]:
         operands = [self.__qubit_operand_indices(qubit) for qubit in qubits]
@@ -2284,7 +2290,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             else:
                 adjoint = (self.__lower_gate_sequence(sequence, not inverse, condition_qubits, inverse_phase)
                            if runtime.signed_exponent is not None else lowered)
-                self.__emit_runtime_gate_power(lowered, adjoint, repetitions, runtime, output_start)
+                root, _ = self.qcx_controlled_gate_families[qcx_gate_name]
+                cycle = self.qcx_gate_power_cycles.get(root.rstrip('+'))
+                period = len(cycle) // math.gcd(len(cycle), info.power) if cycle else None
+                self.__emit_runtime_gate_power(lowered, adjoint, repetitions, runtime, output_start, period)
 
         for temporary_variable in temporary_variables:
             self.__release_temporary_variable(temporary_variable)
@@ -2308,17 +2317,52 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             lowered.append(f'{mnemonic} {" ".join(arguments)}')
         return lowered
 
+    def __prepare_runtime_power_counts(
+            self, runtime: _RuntimeGatePower, repetitions: int, period: int | None) -> tuple[list[str], int]:
+        magnitudes = list(runtime.magnitudes)
+        if period is not None:
+            reduced = self.__add_new_temporary_variable(ValueType.UINT)
+            factor = self.__add_new_temporary_variable(ValueType.UINT)
+            self.__qcx_lines.append(f'LET {reduced} := 1')
+            for magnitude in magnitudes:
+                # Known periods are 1, 2, 4, or 8, so a mask gives the residue.
+                # Reduce both factors first: their product is at most 7*7.
+                self.__qcx_lines.extend([
+                    f'LET {factor} := {magnitude}', f'LET {factor} &= {period - 1}',
+                    f'LET {reduced} *= {factor}', f'LET {reduced} &= {period - 1}'])
+            magnitudes = [reduced]
+        elif repetitions > 1:
+            # Keep source constant factors separate too: their Python
+            # product may exceed UINT even when each factor fits.
+            for value in runtime.constant_factors:
+                value = abs(value)
+                if value <= 1:
+                    continue
+                if value > self.QCX_UINT_MAX:
+                    raise UnsupportedOpenQASMError('runtime pow constant factor exceeds native UINT range')
+                magnitude = self.__add_new_temporary_variable(ValueType.UINT)
+                self.__qcx_lines.append(f'LET {magnitude} := {value}')
+                magnitudes.append(magnitude)
+            repetitions = 1
+        return magnitudes, repetitions
+
     def __emit_runtime_gate_power(
             self, forward: list[str], adjoint: list[str], repetitions: int,
-            runtime: _RuntimeGatePower, output_start: int | None) -> None:
+            runtime: _RuntimeGatePower, output_start: int | None, period: int | None = None) -> None:
         if repetitions == 0 or not forward:
             return
-        counter = self.__add_new_temporary_variable(ValueType.UINT)
+        previous_used = self.__used_temporary_variables.copy()
         prefix = self.__gate_power_label()
         try:
-            self.__qcx_lines.extend([
-                f'LET {counter} := {runtime.magnitude}', f'@{prefix}_LOOP',
-                f'JUMPIF {prefix}_END {counter} == 0'])
+            magnitudes, repetitions = self.__prepare_runtime_power_counts(runtime, repetitions, period)
+            # Declare every counter before the first runtime jump. Inner
+            # counters reset inside outer loops, but declarations must not.
+            counters = [self.__add_new_temporary_variable(ValueType.UINT) for _ in magnitudes]
+            self.__qcx_lines.extend(f'JUMPIF {prefix}_DONE {value} == 0' for value in magnitudes)
+            for depth, (counter, magnitude) in enumerate(zip(counters, magnitudes)):
+                self.__qcx_lines.extend([
+                    f'LET {counter} := {magnitude}', f'@{prefix}_{depth}_LOOP',
+                    f'JUMPIF {prefix}_{depth}_END {counter} == 0'])
             if runtime.signed_exponent is not None:
                 self.__qcx_lines.append(f'JUMPIF {prefix}_INVERSE {runtime.signed_exponent} < 0')
             self.__emit_gate_power(forward, repetitions, output_start)
@@ -2326,11 +2370,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__qcx_lines.extend([f'JUMP {prefix}_NEXT', f'@{prefix}_INVERSE'])
                 self.__emit_gate_power(adjoint, repetitions, output_start)
                 self.__qcx_lines.append(f'@{prefix}_NEXT')
-            tail = [f'LET {counter} -= 1', f'JUMP {prefix}_LOOP', f'@{prefix}_END']
+            tail = []
+            for depth in reversed(range(len(counters))):
+                tail.extend([f'LET {counters[depth]} -= 1', f'JUMP {prefix}_{depth}_LOOP', f'@{prefix}_{depth}_END'])
+            tail.append(f'@{prefix}_DONE')
             self.__check_gate_power_output(len(tail), output_start)
             self.__qcx_lines.extend(tail)
         finally:
-            self.__release_temporary_variable(counter)
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
 
     @classmethod
     def __gate_power_plan(cls, mnemonic: str, repetitions: int) -> tuple[list[str], int]:
@@ -3391,7 +3439,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                             raise InvalidQubitOperandException(f'{name} is not a declared qubit operand')
             if isinstance(child, ast.QuantumGate):
                 modifier_info = self.__analyze_gate_modifiers(child.modifiers, iterators, allow_runtime=True)
-                self.__validate_runtime_gate_power(modifier_info)
                 control_groups = modifier_info.controls
                 controls = sum(count for _, count in control_groups)
                 if child.duration is not None:
@@ -3409,7 +3456,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                                                   len(child.arguments), len(child.qubits))
             if isinstance(child, ast.QuantumPhase):
                 modifier_info = self.__analyze_gate_modifiers(child.modifiers, iterators, allow_runtime=True)
-                self.__validate_runtime_gate_power(modifier_info)
                 control_groups = modifier_info.controls
                 controls = sum(count for _, count in control_groups)
                 if not controls and child.qubits:
