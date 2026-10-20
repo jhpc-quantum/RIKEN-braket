@@ -13,10 +13,14 @@ import tempfile
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--cxx', default='g++')
+    parser.add_argument('--std', default='c++14', choices=['c++14', 'c++17'])
+    parser.add_argument('--ubsan', action='store_true')
     args = parser.parse_args()
     ket = Path(__file__).resolve().parents[1]
-    flags = [args.cxx, '-std=c++14', '-Wall', '-Wextra', '-pedantic',
+    flags = [args.cxx, '-std=' + args.std, '-Wall', '-Wextra', '-pedantic',
              '-I' + str(ket / 'include')]
+    if args.ubsan:
+        flags += ['-fsanitize=undefined', '-fno-sanitize-recover=all']
     preamble = '#include <ket/runtime_control.hpp>\nusing Q = ket::qubit<>;\n'
     invalid = {
         'value outside base': 'ket::control<Q, 2> c;',

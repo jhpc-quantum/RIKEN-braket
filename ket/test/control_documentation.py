@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compile-check the control-value examples in docs/ket.md; run the non-MPI example."""
+"""Compile-check control-value examples in docs/ket.md; run non-MPI and I/O examples."""
 
 import argparse
 from pathlib import Path
@@ -18,7 +18,7 @@ def main():
     ket = Path(__file__).resolve().parents[1]
     document = (ket.parent / 'docs' / 'ket.md').read_text(encoding='utf-8')
     examples = {}
-    for name in ['nonmpi', 'mpi']:
+    for name in ['nonmpi', 'io', 'mpi']:
         matches = re.findall(r'<!-- control-example: ' + name + r' -->\s*```c\+\+\n(.*?)\n```',
                              document, flags=re.DOTALL)
         if len(matches) != 1:
@@ -29,9 +29,10 @@ def main():
         for standard in ['c++14', 'c++17']:
             for masks in [[], ['-DKET_USE_BIT_MASKS_EXPLICITLY']]:
                 flags = ['-std=' + standard, '-O0', '-pthread', '-I' + str(ket / 'include')] + masks
-                subprocess.run([args.cxx] + flags + ['-x', 'c++', '-', '-o', binary],
-                               input=examples['nonmpi'], text=True, check=True)
-                subprocess.run([binary], check=True)
+                for name in ['nonmpi', 'io']:
+                    subprocess.run([args.cxx] + flags + ['-x', 'c++', '-', '-o', binary],
+                                   input=examples[name], text=True, check=True)
+                    subprocess.run([binary], check=True)
                 if args.mpi:
                     yampi = args.yampi or ket.parent.parent / 'yampi' / 'include'
                     subprocess.run([args.mpicxx] + flags + ['-I' + str(yampi), '-x', 'c++',
