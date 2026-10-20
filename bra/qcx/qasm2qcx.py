@@ -2030,7 +2030,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __power_modifier_exponent(
             self, modifier: ast.QuantumGateModifier,
             iterators: set[str] | dict[str, ValueType] | None = None, *,
-            allow_runtime: bool = False) -> int | _RuntimeGateExponent:
+            allow_runtime: bool = False, allow_float: bool = False) -> int | float | _RuntimeGateExponent:
         expression = modifier.argument
         if expression is None:
             raise UnsupportedOpenQASMError('pow modifier requires an exponent')
@@ -2039,6 +2039,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if depends_on_iterator and not allow_runtime:
             raise UnsupportedOpenQASMError('pow exponent must not depend on a loop iterator')
         value_type, runtime = self.__loop_expression_info(expression, iterators)
+        if allow_float and value_type == ValueType.FLOAT:
+            if runtime or depends_on_iterator:
+                raise UnsupportedOpenQASMError('floating-point pow exponent must be a compile-time constant')
+            return self.__constant_float_gate_exponent(expression)
         if value_type not in (ValueType.INT, ValueType.UINT):
             raise UnsupportedOpenQASMError('pow exponent must be an integer')
         if runtime or depends_on_iterator:
@@ -2046,6 +2050,29 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 raise UnsupportedOpenQASMError('pow exponent must be a constant integer')
             return _RuntimeGateExponent(expression, value_type)
         return self.__constant_loop_integer(expression, 'pow exponent', kind='modifier')
+
+    def __constant_float_gate_exponent(self, expression: ast.Expression) -> float:
+        # Analyze only when explicitly requested by the floating-power path.
+        # In particular, never multiply this value into integer modifier info.
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        try:
+            self.__expression_kind = ExpressionKind.CONST_ARITHMETIC
+            self.__value = self.__value_type = self.__value_kind = None
+            self.__evaluate_constant = True
+            try:
+                self.visit(expression)
+                if self.__value_type != ValueType.FLOAT or self.__value_kind != ValueKind.LITERAL:
+                    raise UnsupportedOpenQASMError('floating-point pow exponent must be a compile-time constant')
+                value = float(self.__value)
+            except (OverflowError, ValueError, ZeroDivisionError) as error:
+                raise UnsupportedOpenQASMError('invalid constant floating-point pow exponent') from error
+            if not math.isfinite(value):
+                raise UnsupportedOpenQASMError('floating-point pow exponent must be finite')
+            return value
+        finally:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
 
     def __analyze_gate_modifiers(
             self, modifiers: list[ast.QuantumGateModifier],

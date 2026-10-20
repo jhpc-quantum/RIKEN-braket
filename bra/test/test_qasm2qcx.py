@@ -2,6 +2,7 @@
 
 import importlib.util
 import ctypes
+import math
 import re
 from pathlib import Path
 import unittest
@@ -150,6 +151,95 @@ class IntegerPowerModifierFoundationTests(unittest.TestCase):
                                         + wrapper.format(f'pow({exponent}) @ {operation};'))
                         if wrapper != '{}' or exponent == 0:
                             self.assertEqual(lines, ['QUBITS 1'])
+
+
+class FloatingPowerModifierFoundationTests(unittest.TestCase):
+    converter = staticmethod(IntegerPowerModifierFoundationTests.converter)
+    modifiers = staticmethod(IntegerPowerModifierFoundationTests.modifiers)
+
+    def exponent(self, converter, source, iterators=None):
+        return converter._QASM2QCXConverter__power_modifier_exponent(
+            self.modifiers(source)[0], iterators, allow_runtime=True, allow_float=True)
+
+    def test_finite_constant_float_expressions_keep_their_type(self):
+        converter = self.converter('const float F = 0.25; const int N = 2;')
+        for expression, expected in (('0.5', 0.5), ('-0.5', -0.5), ('2.0', 2.0),
+                                     ('F + 0.25', 0.5), ('1.0 / N', 0.5),
+                                     ('float(N)', 2.0), ('float(true)', 1.0),
+                                     ('pi / 2', math.pi / 2), ('1e308', 1e308)):
+            with self.subTest(expression=expression):
+                value = self.exponent(converter, f'pow({expression})')
+                self.assertIs(type(value), float)
+                self.assertEqual(value, expected)
+        self.assertEqual(math.copysign(1, self.exponent(converter, 'pow(-0.0)')), -1)
+
+    def test_nan_infinity_and_overflow_are_rejected(self):
+        converter = self.converter()
+        for value in (math.nan, math.inf, -math.inf):
+            modifier = qasm2qcx.ast.QuantumGateModifier(
+                qasm2qcx.ast.GateModifierName.pow, qasm2qcx.ast.FloatLiteral(value))
+            with self.subTest(value=value), self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'finite'):
+                converter._QASM2QCXConverter__power_modifier_exponent(modifier, allow_float=True)
+        for expression in ('1e309', '-1e309', '1e308 * 1e308', '1e309 - 1e309', '1.0 / 0.0'):
+            with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.exponent(converter, f'pow({expression})')
+
+    def test_runtime_float_expressions_are_rejected_without_evaluation(self):
+        converter = self.converter('float f = 0.5; int n = 2; array[float, 1] values = {0.5};')
+        lines = converter._QASM2QCXConverter__qcx_lines.copy()
+        for expression in ('f', 'f / 0.0', 'float(n)', 'values[0]'):
+            with self.subTest(expression=expression), self.assertRaisesRegex(
+                    qasm2qcx.UnsupportedOpenQASMError, 'compile-time constant'):
+                self.exponent(converter, f'pow({expression})')
+        self.assertEqual(converter._QASM2QCXConverter__qcx_lines, lines)
+
+    def test_iterator_dependent_float_is_not_a_constant_even_when_unrolled(self):
+        converter = self.converter('const float F = 0.5;')
+        for source, iterators in (('pow(F)', {'F': qasm2qcx.ValueType.FLOAT}),
+                                  ('pow(float(i))', {'i': qasm2qcx.ValueType.INT})):
+            with self.subTest(source=source), self.assertRaisesRegex(
+                    qasm2qcx.UnsupportedOpenQASMError, 'compile-time constant'):
+                self.exponent(converter, source, iterators)
+        with converter._QASM2QCXConverter__iterator_binding('i', 1):
+            with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'compile-time constant'):
+                self.exponent(converter, 'pow(float(i))')
+
+    def test_invalid_types_names_and_missing_arguments_still_fail(self):
+        converter = self.converter()
+        for expression in ('true', '1.0im', 'missing'):
+            with self.subTest(expression=expression), self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.exponent(converter, f'pow({expression})')
+        missing = qasm2qcx.ast.QuantumGateModifier(qasm2qcx.ast.GateModifierName.pow)
+        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'requires an exponent'):
+            converter._QASM2QCXConverter__power_modifier_exponent(missing, allow_float=True)
+
+    def test_analysis_restores_expression_state_and_preserves_caller_storage(self):
+        converter = self.converter('const float F = 0.5;')
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        fields = ('__expression_kind', '__value', '__value_type', '__value_kind', '__evaluate_constant')
+        converter._QASM2QCXConverter__evaluate_constant = False
+        previous = [getattr(converter, '_QASM2QCXConverter' + name) for name in fields]
+        lines = converter._QASM2QCXConverter__qcx_lines.copy()
+        self.assertEqual(self.exponent(converter, 'pow(F + 0.5)'), 1.0)
+        for expression in ('1.0 / 0.0', '1e309', 'missing'):
+            with self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.exponent(converter, f'pow({expression})')
+            self.assertEqual([getattr(converter, '_QASM2QCXConverter' + name) for name in fields], previous)
+            self.assertEqual(converter._QASM2QCXConverter__qcx_lines, lines)
+            self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+
+    def test_integer_analysis_is_not_promoted_to_float(self):
+        converter = self.converter('int n = 2;')
+        value = self.exponent(converter, f'pow({2 ** 100})')
+        self.assertIs(type(value), int)
+        self.assertEqual(value, 2 ** 100)
+        self.assertIsInstance(self.exponent(converter, 'pow(n)'), qasm2qcx._RuntimeGateExponent)
+
+    def test_public_conversion_is_not_enabled_before_ordered_lowering(self):
+        for wrapper in ('{}', 'for int i in [1:0] {{ {} }}'):
+            with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                convert('OPENQASM 3; include "stdgates.inc"; qubit q; '
+                        + wrapper.format('pow(0.5) @ x q;'))
 
 
 class RuntimeIntegerPowerModifierFoundationTests(unittest.TestCase):
