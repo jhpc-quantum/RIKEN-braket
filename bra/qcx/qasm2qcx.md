@@ -1201,6 +1201,63 @@ instruction order, barriers emit no QCX instruction; their explicit operands
 are nevertheless validated. Gate-power simplification does not move operations
 across barriers.
 
+### U-family phase conventions
+
+QCX `U3` and the converter's `u3` alias implement the conventional matrix
+
+\[
+W(\theta,\phi,\lambda)=
+\begin{pmatrix}
+\cos(\theta/2)&-e^{i\lambda}\sin(\theta/2)\\
+e^{i\phi}\sin(\theta/2)&e^{i(\phi+\lambda)}\cos(\theta/2)
+\end{pmatrix}.
+\]
+
+The `u2(phi, lambda)` alias uses this matrix with `theta = pi / 2`.
+These conventional aliases and the native QCX gates are unchanged.
+
+The converter follows the published OpenQASM 3 built-in matrix for `U`:
+
+\[
+U(\theta,\phi,\lambda)=e^{i\theta/2}W(\theta,\phi,\lambda).
+\]
+
+It also follows the published mathematical definition of `cu`: the inactive
+control block is identity, and the active block is
+`exp(i * gamma) * U(theta, phi, lambda)`. Thus, lowering adds a global phase
+of `theta / 2` for `U`, or a phase of `gamma + theta / 2` on the original
+control for `cu`. See the [built-in matrix definition](https://openqasm.com/versions/3.0/language/gates.html#built-in-gates)
+and the [standard-library mathematical definition of `cu`](https://openqasm.com/language/standard_library.html#gate-cu).
+
+Upstream sources are inconsistent here. The example
+[`stdgates.inc`](https://github.com/openqasm/openqasm/blob/main/examples/stdgates.inc)
+defines `cu` using `p(gamma - theta / 2)` before controlled `U`, which instead
+gives active block `exp(i * gamma) * W`. Its `u2`/`u3` phase corrections also
+conflict with the stated OpenQASM 2 compatibility when combined with the
+published built-in `U` matrix. The converter uses the explicit mathematical
+`U` and `cu` definitions above and preserves conventional `u2`/`u3`; it does
+not expand these inconsistent example-library definitions.
+
+This corrects the previous converter behavior, which added
+`(theta + phi + lambda) / 2` for `U` and
+`gamma + (theta + phi + lambda) / 2` for `cu`. Regenerate affected QCX programs
+from their OpenQASM sources. The correction matters even without controls for
+absolute amplitudes; under controls it becomes an observable relative phase.
+
+For example, `U(0, 0, pi)` is exactly `Z`, not `i * Z`. Both controlled
+operations below leave the target in `|0>` and preserve the control's phase:
+
+<!-- u-family-phase-example -->
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+qubit[2] q;
+h q[0];
+ctrl @ U(0, 0, pi) q[0], q[1];
+cu(0, 0, pi, 0) q[0], q[1];
+// Final state: (|00> + |01>) / sqrt(2), with wire 0 on the right.
+```
+
 ### Inverse gate modifiers
 
 `inv @` is supported on every currently supported built-in and standard-library
@@ -1232,13 +1289,13 @@ mnemonics (`H`, `X`, `Y`, `Z`, `I`, `SWAP`, and supported controlled forms);
 the converter does not emit unsupported aliases such as `H+` or `CX+`.
 
 Lowering reverses each multi-instruction sequence and adjoints its components.
-The existing forward phase conventions are preserved:
+The forward phase conventions above apply to the full sequence:
 
 - Built-in `U(theta, phi, lambda)` lowers to `PHASE phase` followed by `U3`,
-  where `phase = (theta + phi + lambda) / 2`. Its inverse emits `U3+` followed
+  where `phase = theta / 2`. Its inverse emits `U3+` followed
   by `PHASE -phase`, with the same three gate parameters.
 - `cu(theta, phi, lambda, gamma)` lowers to a control-qubit `U1` followed by
-  `CU3`, where the control phase is `gamma + (theta + phi + lambda) / 2`.
+  `CU3`, where the control phase is `gamma + theta / 2`.
   Its inverse emits `CU3+` followed by the control-qubit `U1+`, keeping that
   phase operand unchanged.
 - `inv @ gphase(angle)` emits `PHASE` with the negated angle. Runtime
@@ -1334,24 +1391,23 @@ modifiers cancel in pairs without removing any controls. The `#` suffix belongs
 to QCX, not OpenQASM syntax; runtime qubit indices remain unsupported.
 
 Controlling an operation conditions its entire lowered sequence, including
-every phase correction. The existing forward phase conventions described above
-remain unchanged:
+every phase correction. The forward phase conventions described above apply:
 
 - `ctrl @ U(theta, phi, lambda) c, t` emits `U1 c phase` and
-  `CU3 c t theta phi lambda`, with `phase = (theta + phi + lambda) / 2`.
+  `CU3 c t theta phi lambda`, with `phase = theta / 2`.
   The correction is a phase on the added control, not a global `PHASE`.
 - `ctrl @ cu(theta, phi, lambda, gamma) extra, c, t` emits
   `CU1 extra c phase` and `C2U3 extra c t theta phi lambda`, where
-  `phase = gamma + (theta + phi + lambda) / 2`. The correction requires both
+  `phase = gamma + theta / 2`. The correction requires both
   the added control and the original control to be one.
 - `ctrl @ gphase(angle) c` emits `U1 c angle`; it needs no extra target.
   With `n` controls, the converter emits a `U1` conditioned on the other
   `n - 1` control operands, so only the all-one basis component acquires the phase.
 
 The same phase conditioning applies to negative and mixed controls. For
-example, `negctrl @ U(1, 2, 3) c, t` emits `U1 c#0 3.0` and
+example, `negctrl @ U(1, 2, 3) c, t` emits `U1 c#0 0.5` and
 `CU3 c#0 t 1 2 3`. Its inverse emits `CU3+ c#0 t 1 2 3` followed by
-`U1 c#0 -3.0`, negating the phase correction exactly once. For `cu`, added
+`U1 c#0 -0.5`, negating the phase correction exactly once. For `cu`, added
 negative controls do not change the original positive control's polarity.
 `negctrl @ ctrl @ gphase(angle) a, b` emits `CU1 a#0 b angle`: only the
 component with `a=0` and `b=1` acquires the phase, with no additional target.
@@ -2568,10 +2624,19 @@ It also executes the complete Boolean example above. These tests cover the
 converter's supported Boolean subset; the limitations above remain explicit
 future work.
 
+`bra/test/qasm2qcx_u_phase_numerical.py` independently transcribes the published
+built-in `U` matrix and the mathematical active block of `cu`. It verifies the
+native QCX `U2`/`U3` matrices and converter aliases, absolute and controlled
+relative phases, constant/runtime parameters, indexed expressions,
+broadcasting, inversion, mixed controls, and constant/runtime integer powers.
+It also executes the U-family phase example above and records the conflicting
+upstream `cu` definition explicitly. Without `--bra`, only its three reference
+tests run; backend-dependent tests are skipped.
+
 `bra/test/qasm2qcx_inverse_numerical.py` checks each supported gate against
 independently calculated complex matrices on every three-qubit basis state and
 a complex superposition. It covers odd/even repeated inversions, runtime
-parameters, `gphase`, single- and controlled-gate broadcasting, and the existing
+parameters, `gphase`, single- and controlled-gate broadcasting, and the published
 forward `U`/`cu` phase conventions described above. Amplitudes are compared
 directly, without removing global phase. Integration cases cover every supported
 loop type, nested transfers, measurement-controlled branching, skipped runtime
@@ -2586,7 +2651,7 @@ basis state and a complex superposition with independently conditioned base
 matrices. It covers one/two added controls, repeated controls, constant counts,
 runtime parameters, already-controlled gates, operand permutations, `gphase`,
 and control/target/paired-register broadcasting. The references preserve the
-existing `U`/`cu` phase conventions and compare amplitudes without discarding
+published `U`/`cu` matrices and compare amplitudes without discarding
 global or relative phase. Integration cases cover all supported loop types,
 nested transfers, indexed parameters, measurement-controlled branches, skipped
 checks, source preservation, and executed failures even with inactive quantum
@@ -2901,6 +2966,7 @@ python3 bra/test/integer_division_numerical.py --bra bra/bin/bra
 python3 bra/test/integer_bitwise_numerical.py --bra bra/bin/bra
 python3 bra/test/integer_shift_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_if_else_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_u_phase_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_inverse_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_control_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_negative_control_numerical.py --bra bra/bin/bra

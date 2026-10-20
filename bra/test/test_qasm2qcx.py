@@ -492,12 +492,12 @@ class ControlModifierLoweringTests(unittest.TestCase):
 
     def test_builtin_u_conditions_global_phase_on_only_the_added_controls(self) -> None:
         self.assertEqual(self.assert_clean_conversion('qubit[3] q; ctrl(2) @ U(1, 2, 3) q[0], q[1], q[2];'),
-                         ['QUBITS 3', 'CU1 0 1 3.0', 'C2U3 0 1 2 1 2 3'])
+                         ['QUBITS 3', 'CU1 0 1 0.5', 'C2U3 0 1 2 1 2 3'])
 
     def test_cu_conditions_control_phase_on_added_and_original_controls(self) -> None:
         self.assertEqual(self.assert_clean_conversion('include "stdgates.inc"; qubit[4] q; '
             'ctrl(2) @ cu(1, 2, 3, 4) q[0], q[1], q[2], q[3];'),
-                         ['QUBITS 4', 'C2U1 0 1 2 7.0', 'C3U3 0 1 2 3 1 2 3'])
+                         ['QUBITS 4', 'C2U1 0 1 2 4.5', 'C3U3 0 1 2 3 1 2 3'])
 
     def test_controlled_global_phase_uses_no_additional_target(self) -> None:
         for controls, operands, expected in ((1, 'q[0]', 'U1 0 1'),
@@ -681,21 +681,21 @@ class NegativeControlModifierTests(unittest.TestCase):
 
     def test_inverted_builtin_u_and_cu_keep_conditioned_phase_corrections(self) -> None:
         self.assertEqual(self.assert_clean_conversion('qubit[2] q; ctrl @ inv @ U(1, 2, 3) q[0], q[1];'),
-                         ['QUBITS 2', 'CU3+ 0 1 1 2 3', 'U1 0 -3.0'])
+                         ['QUBITS 2', 'CU3+ 0 1 1 2 3', 'U1 0 -0.5'])
         for modifiers in ('inv @ negctrl', 'negctrl @ inv', 'inv @ inv @ negctrl @ inv'):
             with self.subTest(modifiers=modifiers):
                 self.assertEqual(self.assert_clean_conversion('qubit[2] q; '
                     + modifiers + ' @ U(1, 2, 3) q[0], q[1];'),
-                    ['QUBITS 2', 'CU3+ 0#0 1 1 2 3', 'U1 0#0 -3.0'])
+                    ['QUBITS 2', 'CU3+ 0#0 1 1 2 3', 'U1 0#0 -0.5'])
                 self.assertEqual(self.assert_clean_conversion('include "stdgates.inc"; qubit[3] q; '
                     + modifiers + ' @ cu(1, 2, 3, 4) q[0], q[1], q[2];'),
-                    ['QUBITS 3', 'C2U3+ 0#0 1 2 1 2 3', 'CU1+ 0#0 1 7.0'])
+                    ['QUBITS 3', 'C2U3+ 0#0 1 2 1 2 3', 'CU1+ 0#0 1 4.5'])
 
     def test_negative_global_phase_and_broadcasting(self) -> None:
         self.assertEqual(self.assert_clean_conversion('qubit[2] c; qubit t; '
             'negctrl @ U(1, 2, 3) c, t; negctrl @ inv @ gphase(2) c;'),
-            ['QUBITS 3', 'U1 0#0 3.0', 'CU3 0#0 2 1 2 3',
-             'U1 1#0 3.0', 'CU3 1#0 2 1 2 3', 'U1 0#0 -2.0', 'U1 1#0 -2.0'])
+            ['QUBITS 3', 'U1 0#0 0.5', 'CU3 0#0 2 1 2 3',
+             'U1 1#0 0.5', 'CU3 1#0 2 1 2 3', 'U1 0#0 -2.0', 'U1 1#0 -2.0'])
         self.assertEqual(self.assert_clean_conversion('qubit[3] q; '
             'negctrl @ ctrl @ inv @ gphase(2) q[2], q[0];'),
             ['QUBITS 3', 'CU1 2#0 0 -2.0'])
@@ -860,12 +860,12 @@ class InverseModifierLoweringTests(unittest.TestCase):
 
     def test_builtin_u_inverts_full_sequence_and_global_phase(self) -> None:
         lines = self.assert_clean_conversion('qubit q; inv @ U(1, 2, 3) q;')
-        self.assertEqual(lines, ['QUBITS 1', 'U3+ 0 1 2 3', 'PHASE -3.0'])
+        self.assertEqual(lines, ['QUBITS 1', 'U3+ 0 1 2 3', 'PHASE -0.5'])
 
     def test_cu_inverts_sequence_and_control_phase(self) -> None:
         lines = self.assert_clean_conversion('include "stdgates.inc"; qubit[2] q; '
             'inv @ cu(1, 2, 3, 4) q[0], q[1];')
-        self.assertEqual(lines, ['QUBITS 2', 'CU3+ 0 1 1 2 3', 'U1+ 0 7.0'])
+        self.assertEqual(lines, ['QUBITS 2', 'CU3+ 0 1 1 2 3', 'U1+ 0 4.5'])
 
     def test_inverse_rotations_keep_existing_half_angle_conversion(self) -> None:
         lines = self.assert_clean_conversion('include "stdgates.inc"; qubit[2] q; float theta = 2; '
@@ -1030,9 +1030,9 @@ class IntegerPowerModifierLoweringTests(unittest.TestCase):
     def test_general_positive_and_negative_powers_repeat_complete_lowered_sequences(self) -> None:
         for gate, forward, inverse in (
                 ('u3(1, 2, 3) q[0]', ['U3 0 1 2 3'], ['U3+ 0 1 2 3']),
-                ('U(1, 2, 3) q[0]', ['PHASE 3.0', 'U3 0 1 2 3'], ['U3+ 0 1 2 3', 'PHASE -3.0']),
-                ('cu(1, 2, 3, 4) q[0], q[1]', ['U1 0 7.0', 'CU3 0 1 1 2 3'],
-                 ['CU3+ 0 1 1 2 3', 'U1+ 0 7.0'])):
+                ('U(1, 2, 3) q[0]', ['PHASE 0.5', 'U3 0 1 2 3'], ['U3+ 0 1 2 3', 'PHASE -0.5']),
+                ('cu(1, 2, 3, 4) q[0], q[1]', ['U1 0 4.5', 'CU3 0 1 1 2 3'],
+                 ['CU3+ 0 1 1 2 3', 'U1+ 0 4.5'])):
             for exponent in (2, -3):
                 with self.subTest(gate=gate, exponent=exponent):
                     lines = self.assert_clean_conversion('include "stdgates.inc"; qubit[2] q; '
@@ -1050,10 +1050,10 @@ class IntegerPowerModifierLoweringTests(unittest.TestCase):
     def test_controls_apply_to_every_instruction_in_each_repetition(self) -> None:
         lines = self.assert_clean_conversion('qubit[3] q; '
             'negctrl @ pow(-2) @ ctrl @ U(1, 2, 3) q[2], q[0], q[1];')
-        self.assertEqual(lines, ['QUBITS 3'] + ['C2U3+ 2#0 0 1 1 2 3', 'CU1 2#0 0 -3.0'] * 2)
+        self.assertEqual(lines, ['QUBITS 3'] + ['C2U3+ 2#0 0 1 1 2 3', 'CU1 2#0 0 -0.5'] * 2)
         lines = self.assert_clean_conversion('include "stdgates.inc"; qubit[3] q; '
             'pow(-2) @ negctrl @ cu(1, 2, 3, 4) q[2], q[0], q[1];')
-        self.assertEqual(lines, ['QUBITS 3'] + ['C2U3+ 2#0 0 1 1 2 3', 'CU1+ 2#0 0 7.0'] * 2)
+        self.assertEqual(lines, ['QUBITS 3'] + ['C2U3+ 2#0 0 1 1 2 3', 'CU1+ 2#0 0 4.5'] * 2)
 
     def test_runtime_parameter_expressions_are_evaluated_once_and_storage_is_retained(self) -> None:
         lines = self.assert_clean_conversion('qubit q; float theta = 0.2; '
@@ -1305,10 +1305,10 @@ class RuntimeIntegerPowerModifierLoweringTests(unittest.TestCase):
 
     def test_signed_runtime_loop_contains_complete_forward_and_inverse_sequences(self) -> None:
         lines = self.assert_clean_conversion('qubit q; int n = -2; pow(n) @ U(1, 2, 3) q;')
-        phase = lines.index('PHASE 3.0')
-        self.assertEqual(lines[phase:phase + 2], ['PHASE 3.0', 'U3 0 1 2 3'])
+        phase = lines.index('PHASE 0.5')
+        self.assertEqual(lines[phase:phase + 2], ['PHASE 0.5', 'U3 0 1 2 3'])
         inverse = lines.index('U3+ 0 1 2 3')
-        self.assertEqual(lines[inverse:inverse + 2], ['U3+ 0 1 2 3', 'PHASE -3.0'])
+        self.assertEqual(lines[inverse:inverse + 2], ['U3+ 0 1 2 3', 'PHASE -0.5'])
         self.assertTrue(any(line.endswith(' < 0') and line.startswith('JUMPIF ') for line in lines))
         self.assertTrue(any(line.endswith(' == 0') and line.startswith('JUMPIF ') for line in lines))
         self.assertTrue(any(line.startswith('LET QASM2QCX_UINT_') and line.endswith(' -= 1') for line in lines))
@@ -1352,10 +1352,10 @@ class RuntimeIntegerPowerModifierLoweringTests(unittest.TestCase):
     def test_controlled_cu_preserves_both_phase_corrected_directions(self) -> None:
         lines = self.assert_clean_conversion('include "stdgates.inc"; qubit[3] q; int n = -2; '
             'negctrl @ pow(n) @ cu(1, 2, 3, 4) q[2], q[0], q[1];')
-        forward = lines.index('CU1 2#0 0 7.0')
-        self.assertEqual(lines[forward:forward + 2], ['CU1 2#0 0 7.0', 'C2U3 2#0 0 1 1 2 3'])
+        forward = lines.index('CU1 2#0 0 4.5')
+        self.assertEqual(lines[forward:forward + 2], ['CU1 2#0 0 4.5', 'C2U3 2#0 0 1 1 2 3'])
         inverse = lines.index('C2U3+ 2#0 0 1 1 2 3')
-        self.assertEqual(lines[inverse:inverse + 2], ['C2U3+ 2#0 0 1 1 2 3', 'CU1+ 2#0 0 7.0'])
+        self.assertEqual(lines[inverse:inverse + 2], ['C2U3+ 2#0 0 1 1 2 3', 'CU1+ 2#0 0 4.5'])
 
     def test_constant_factor_and_inverse_signs_are_combined_without_runtime_products(self) -> None:
         lines = self.assert_clean_conversion('qubit q; int n = 2; inv @ pow(-2) @ pow(n) @ U(1, 2, 3) q;')
@@ -9700,8 +9700,8 @@ class GateConversionTests(unittest.TestCase):
             "U3 0 :REAL:THETA31 :REAL:PHI7 :REAL:LAMBDA63", lines)
         self.assertIn("CU1 0 1 :REAL:THETA31", lines)
         self.assertIn("LET QASM2QCX_REAL_0 := :REAL:THETA31", lines)
-        self.assertIn("LET QASM2QCX_REAL_0 += :REAL:PHI7", lines)
-        self.assertIn("LET QASM2QCX_REAL_0 += :REAL:LAMBDA63", lines)
+        self.assertNotIn("LET QASM2QCX_REAL_0 += :REAL:PHI7", lines)
+        self.assertNotIn("LET QASM2QCX_REAL_0 += :REAL:LAMBDA63", lines)
         self.assertIn("LET QASM2QCX_REAL_0 += :REAL:GAMMA31", lines)
         self.assertEqual(
             lines[-1],
@@ -9749,7 +9749,7 @@ class GateConversionTests(unittest.TestCase):
 
         self.assertEqual(
             convert(source),
-            ["QUBITS 2", "U1 0 7.0", "CU3 0 1 1 2 3"],
+            ["QUBITS 2", "U1 0 4.5", "CU3 0 1 1 2 3"],
         )
 
     def test_reuses_runtime_cu_phase_when_broadcasting(self) -> None:
@@ -9767,8 +9767,8 @@ class GateConversionTests(unittest.TestCase):
 
         lines = convert(source)
         self.assertIn("LET QASM2QCX_REAL_0 := THETA31", lines)
-        self.assertIn("LET QASM2QCX_REAL_0 += PHI7", lines)
-        self.assertIn("LET QASM2QCX_REAL_0 += LAMBDA63", lines)
+        self.assertNotIn("LET QASM2QCX_REAL_0 += PHI7", lines)
+        self.assertNotIn("LET QASM2QCX_REAL_0 += LAMBDA63", lines)
         self.assertIn("LET QASM2QCX_REAL_0 /= 2.0", lines)
         self.assertIn("LET QASM2QCX_REAL_0 += GAMMA31", lines)
         self.assertEqual(
@@ -9799,7 +9799,7 @@ class GateConversionTests(unittest.TestCase):
                 "U1 0 0.1",
                 "U2 0 0.2 0.3",
                 "U3 0 0.4 0.5 0.6",
-                "PHASE 1.2",
+                "PHASE 0.35",
                 "U3 0 0.7 0.8 0.9",
             ],
         )
@@ -9816,8 +9816,8 @@ class GateConversionTests(unittest.TestCase):
 
         lines = convert(source)
         self.assertIn("LET QASM2QCX_REAL_0 := THETA31", lines)
-        self.assertIn("LET QASM2QCX_REAL_0 += :REAL:PHI7", lines)
-        self.assertIn("LET QASM2QCX_REAL_0 += LAMBDA63", lines)
+        self.assertNotIn("LET QASM2QCX_REAL_0 += :REAL:PHI7", lines)
+        self.assertNotIn("LET QASM2QCX_REAL_0 += LAMBDA63", lines)
         self.assertIn("LET QASM2QCX_REAL_0 /= 2.0", lines)
         self.assertEqual(
             lines[-2:],
@@ -9838,9 +9838,9 @@ class GateConversionTests(unittest.TestCase):
             convert(source),
             [
                 "QUBITS 2",
-                "PHASE 3.0",
+                "PHASE 0.5",
                 "U3 0 1 2 3",
-                "PHASE 3.0",
+                "PHASE 0.5",
                 "U3 1 1 2 3",
             ],
         )
