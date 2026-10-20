@@ -31,7 +31,7 @@ def main():
     }
     with tempfile.TemporaryDirectory(prefix='ket-control-types-') as directory:
         binary = str(Path(directory) / 'control_types')
-        for source in ['control_types.cpp', 'runtime_control_io.cpp']:
+        for source in ['control_types.cpp', 'control_io.cpp', 'runtime_control_io.cpp']:
             subprocess.run(flags + [str(ket / 'test' / source), '-o', binary], check=True)
             subprocess.run([binary], check=True)
         for name, declaration in invalid.items():

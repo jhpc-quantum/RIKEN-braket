@@ -167,5 +167,5 @@ int main()
   auto negative_control = negative{3_q};
   auto stream = std::stringstream{};
   stream << negative_control;
-  assert(stream.str() == "3");
+  assert(stream.str() == "3#0");
 }
