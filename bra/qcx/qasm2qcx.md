@@ -1207,22 +1207,22 @@ across barriers.
 
 QCX `U3` and the converter's `u3` alias implement the conventional matrix
 
-\[
+$$
 W(\theta,\phi,\lambda)=
 \begin{pmatrix}
 \cos(\theta/2)&-e^{i\lambda}\sin(\theta/2)\\
 e^{i\phi}\sin(\theta/2)&e^{i(\phi+\lambda)}\cos(\theta/2)
 \end{pmatrix}.
-\]
+$$
 
 The `u2(phi, lambda)` alias uses this matrix with `theta = pi / 2`.
 These conventional aliases and the native QCX gates are unchanged.
 
 The converter follows the published OpenQASM 3 built-in matrix for `U`:
 
-\[
+$$
 U(\theta,\phi,\lambda)=e^{i\theta/2}W(\theta,\phi,\lambda).
-\]
+$$
 
 It also follows the published mathematical definition of `cu`: the inactive
 control block is identity, and the active block is
@@ -1610,16 +1610,16 @@ are accepted.
 
 For a gate matrix
 
-\[
+$$
 G=V\operatorname{diag}(e^{i\theta_j})V^\dagger,
-\]
+$$
 
 choose each eigenphase in `(-pi, pi]`, assigning `+pi` to eigenvalue `-1`.
 The floating-point power is
 
-\[
+$$
 G^r=V\operatorname{diag}(e^{ir\theta_j})V^\dagger.
-\]
+$$
 
 This branch convention is an explicit converter policy. The OpenQASM
 [power-modifier specification](https://openqasm.com/versions/3.0/language/gates.html#power-modifier)
