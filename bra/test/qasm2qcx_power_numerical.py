@@ -31,7 +31,10 @@ def main():
             order = tuple(reversed(range(qubits)))
             controls, operands = order[:len(values)], order[len(values):]
             quantum_arguments = ', '.join(f'q[{wire}]' for wire in order)
-            for exponent in (-3, -1, 0, 1, 2, 3):
+            exponents = (-3, -1, 0, 1, 2, 3)
+            if gate in ('s', 'sdg', 't', 'tdg', 'sx'):
+                exponents += (-9, -8, -7, -5, -4, -2, 4, 5, 6, 7, 8, 9)
+            for exponent in exponents:
                 for basis in (None, 0, (1 << qubits) - 1):
                     preparation, state = prepared_state(qubits, basis)
                     expected = state
@@ -74,6 +77,20 @@ def main():
     check_amplitudes(bra, 'qubit[4] q; ' + preparation
         + 'negctrl @ pow(2) @ inv @ pow(3) @ U(0.2, 0.4, 0.6) q[{3,2}], q[0:1];', expected)
     checked += 1
+
+    # Finite angles whose scaled product overflows must retain the original
+    # finite-angle applications, for literal and runtime-valued parameters.
+    preparation, state = prepared_state(1)
+    for gate in ('p', 'rx', 'gphase'):
+        expected = state
+        for _ in range(2):
+            expected = (phase_reference(expected, (), (), 1e308) if gate == 'gphase'
+                        else conditioned(expected, gate, (1e308,), (), (0,), ()))
+        for expression in ('1e308', 'theta'):
+            operands = '' if gate == 'gphase' else 'q[0]'
+            check_amplitudes(bra, 'qubit q; float theta = 1e308; ' + preparation
+                + f'pow(2) @ {gate}({expression}) {operands};', expected)
+            checked += 1
     print(f'{checked} integer-power modifier amplitude comparisons passed')
 
 
