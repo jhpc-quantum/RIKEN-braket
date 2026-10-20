@@ -121,10 +121,56 @@ Zero controls are selected directly by the kernels, without applying surrounding
 
 ### Stream representation
 
-Include `<ket/runtime_control_io.hpp>` for runtime-control stream insertion and extraction.
-The format contains both fields, `wire:value`, for example `3:0`.
-Malformed input, an out-of-range wire representation, or an invalid required value sets `failbit` and leaves the destination unchanged; normal stream exception masks still apply.
-The existing compile-time-control output in `<ket/control_io.hpp>` remains position-only, since its required value is part of its type.
+Include `<ket/control_io.hpp>` for compile-time-control stream insertion and extraction, or `<ket/runtime_control_io.hpp>` for runtime controls.
+Both use `wire#value`: a positive control on wire 3 prints as `3#1`, and a negative control prints as `3#0`.
+The required value is always explicit, including for compile-time controls.
+These operators support narrow (`char`) and wide (`wchar_t`) streams without requiring `<ket/qubit_io.hpp>`.
+
+Extraction requires both fields and the `#` separator.
+For `ket::control<Q,control_value>`, the input value must match `control_value`; for `ket::runtime_control<Q>`, it must be less than `ket::meta::base_v<Q>`.
+Missing or malformed fields, negative fields, out-of-range wire representations, and invalid or mismatched required values set `failbit` and leave the destination unchanged.
+Normal stream exception masks apply; the destination also remains unchanged if extraction throws.
+Formatted extraction follows the stream's whitespace, integer-base, and locale settings, and leaves trailing delimiters for subsequent extraction.
+Output preserves numeric flags and locale; width and fill apply to the entire `wire#value` operand.
+
+This is an intentional stream-format compatibility change: position-only compile-time-control input and the old runtime-control `wire:value` form are not accepted.
+Update saved control operands and downstream output expectations accordingly.
+The QCX format is separate: it still accepts bare positive-control wires and uses bare wires for their canonical representation (see [bra control operands](bra.md#quantum-assembler)).
+
+<!-- control-example: io -->
+```c++
+#include <cassert>
+#include <sstream>
+#include <ket/control_io.hpp>
+#include <ket/runtime_control_io.hpp>
+
+int main()
+{
+  using Q = ket::qubit<>;
+  auto const negative = ket::control<Q, 0u>{Q{3u}};
+  std::stringstream stream;
+  stream << negative;
+  assert(stream.str() == "3#0");
+
+  auto dynamic = ket::runtime_control<Q>{};
+  stream >> dynamic;
+  assert(not stream.fail() and dynamic.qubit() == Q{3u} and dynamic.value() == 0u);
+
+  auto positive = ket::control<Q>{Q{7u}};
+  std::istringstream mismatch{"3#0"};
+  mismatch >> positive;
+  assert(mismatch.fail() and positive.qubit() == Q{7u});
+
+  std::wstringstream wide;
+  wide << dynamic;
+  assert(wide.str() == L"3#0");
+}
+```
+
+With `KET_PRINT_LOG` defined, MPI gate diagnostic logs also retain control values.
+For example, a target on wire 0 with negative control 2 and positive control 3 is logged with operands `0 2#0 3#1`.
+This applies to variadic and runtime-range interfaces; targets remain bare wire indices.
+When logging is disabled, the diagnostic-formatting helpers still return only the base gate description.
 
 ## Nompi version
 
@@ -290,16 +336,18 @@ See "Page method" for more details.
 
 ## Control-value regression tests
 
-Run these commands from the repository root with Python 3 and a C++14 compiler:
+Run these commands from the repository root with Python 3 and a C++14-capable compiler (C++17 support is needed for `--std c++17`):
 
 ```sh
 python3 ket/test/control_types.py
+python3 ket/test/control_types.py --std c++17 --ubsan
 python3 ket/test/control_documentation.py
 python3 ket/test/control_gate_numerical.py
 python3 ket/test/fused_control_gate_numerical.py
 ```
 
 The numerical drivers also accept `--std c++17`, `--bit-masks`, `--ubsan`, and `--group` to select a smaller gate group.
+The type suite also accepts `--std c++17` and `--ubsan`; it covers narrow/wide control I/O, unchanged destinations on extraction failure, and diagnostic formatting with logging enabled and disabled.
 The type and numerical suites cover invalid API uses, control values, positional comparisons, and ordinary/fused gate results.
 
 MPI tests additionally require an MPI C++ compiler, an MPI launcher, and YAMPI headers (default: `../yampi/include`; override with `--yampi`):
@@ -310,11 +358,12 @@ python3 ket/test/control_documentation.py --mpi
 python3 ket/test/mpi/control_gate_numerical.py --variant variadic --basis 128
 python3 ket/test/mpi/control_gate_numerical.py --variant iterators --unit --datatype --ranks 4
 python3 ket/test/mpi/control_gate_numerical.py --variant homogeneous --diagonal --bit-masks --ubsan
+python3 ket/test/mpi/control_gate_numerical.py --print-log --group 1
 ```
 
 These exercise local/page/rank wire layouts, permutation preservation, both control values, and mixed controls.
 `--regressions` also runs existing positive-control cases and generic/fused negative-control cases, including runtime descriptors with cache-aware dispatch.
 `--basis 128` adds all computational-basis inputs for the two-rank test layout, in addition to a complex superposition.
 Other useful options include `--variant runtime-variadic`, `--aliases` for controlled-gate aliases in variadic mode, and `--page-qubits 4` to exercise wide-page fallbacks.
-These tests require no change to QCX or the OpenQASM converter: exposing negative controls in those languages is separate work, as is qudit simulation.
+Ket stream and diagnostic formatting is independent of QCX and OpenQASM conversion; their existing negative-control support is unchanged. Qudit simulation remains separate work.
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compile/run control type tests and verify invalid APIs fail to compile.
+"""Compile/run control type, I/O, and logging tests; reject invalid APIs.
 
 Run from any directory: python3 ket/test/control_types.py [--cxx g++]
 """
@@ -13,10 +13,14 @@ import tempfile
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--cxx', default='g++')
+    parser.add_argument('--std', default='c++14', choices=['c++14', 'c++17'])
+    parser.add_argument('--ubsan', action='store_true')
     args = parser.parse_args()
     ket = Path(__file__).resolve().parents[1]
-    flags = [args.cxx, '-std=c++14', '-Wall', '-Wextra', '-pedantic',
+    flags = [args.cxx, '-std=' + args.std, '-Wall', '-Wextra', '-pedantic',
              '-I' + str(ket / 'include')]
+    if args.ubsan:
+        flags += ['-fsanitize=undefined', '-fno-sanitize-recover=all']
     preamble = '#include <ket/runtime_control.hpp>\nusing Q = ket::qubit<>;\n'
     invalid = {
         'value outside base': 'ket::control<Q, 2> c;',
@@ -31,8 +35,12 @@ def main():
     }
     with tempfile.TemporaryDirectory(prefix='ket-control-types-') as directory:
         binary = str(Path(directory) / 'control_types')
-        for source in ['control_types.cpp', 'runtime_control_io.cpp']:
+        for source in ['control_types.cpp', 'control_io.cpp', 'runtime_control_io.cpp']:
             subprocess.run(flags + [str(ket / 'test' / source), '-o', binary], check=True)
+            subprocess.run([binary], check=True)
+        for defines in [[], ['-DKET_PRINT_LOG']]:
+            subprocess.run(flags + defines + [str(ket / 'test' / 'control_logging.cpp'),
+                                              '-o', binary], check=True)
             subprocess.run([binary], check=True)
         for name, declaration in invalid.items():
             result = subprocess.run(flags + ['-x', 'c++', '-fsyntax-only', '-'],
@@ -40,7 +48,7 @@ def main():
                                     text=True, capture_output=True)
             if result.returncode == 0:
                 raise AssertionError('Unexpected compilation success: ' + name)
-    print('Control type/I/O tests and {} compile-failure checks passed'.format(len(invalid)))
+    print('Control type/I/O/logging tests and {} compile-failure checks passed'.format(len(invalid)))
 
 
 if __name__ == '__main__':
