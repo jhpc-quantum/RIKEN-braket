@@ -2,8 +2,10 @@
 
 """Independent spectral references for constant floating-point gate powers.
 
-Stage 1 checks the reference semantics without a converter or backend:
+Check the reference semantics without a converter or backend:
   python3 bra/test/qasm2qcx_float_power_numerical.py
+Also execute converted circuits against those references:
+  python3 bra/test/qasm2qcx_float_power_numerical.py --bra /path/to/bra
 
 Fixed-family eigenphases are represented exactly as rational multiples of pi.
 This avoids using a floating-point eigensolver (and its branch-cut tolerance)
@@ -12,8 +14,11 @@ tuples are in source order, with the innermost modifier applied first.
 """
 
 import cmath
+import argparse
 from fractions import Fraction
 import math
+import pathlib
+import resource
 import unittest
 
 
@@ -250,5 +255,133 @@ class SpectralReferenceTests(unittest.TestCase):
                                        [0, 0, 0, 1]])
 
 
+class BackendTests(unittest.TestCase):
+    bra = None
+    checked = 0
+
+    def setUp(self):
+        if self.bra is None:
+            self.skipTest('pass --bra to execute converted circuits')
+
+    def check_source(self, source, expected):
+        # Reuse only the backend runner, never its expected-matrix helpers.
+        from qasm2qcx_inverse_numerical import check_amplitudes
+        check_amplitudes(self.bra, source, expected)
+        type(self).checked += 1
+
+    def check_gate(self, gate, modifiers, basis=None):
+        matrix = reference_matrix(gate, modifiers)
+        size = len(matrix)
+        qubits = size.bit_length() - 1
+        if basis is None:
+            state = [cmath.exp(1j * sum(0.17 * (wire + 1) for wire in range(qubits)
+                                        if index & (1 << wire))) / math.sqrt(size) for index in range(size)]
+            preparation = 'h q; ' + ' '.join(f'p({0.17 * (wire + 1)}) q[{wire}];' for wire in range(qubits))
+        else:
+            state = [complex(index == basis) for index in range(size)]
+            preparation = ' '.join(f'x q[{wire}];' for wire in range(qubits) if basis & (1 << wire))
+        expected = [sum(matrix[row][column] * state[column] for column in range(size)) for row in range(size)]
+        prefix = ''.join('inv @ ' if kind == 'inv' else f'{kind}({argument}) @ ' for kind, argument in modifiers)
+        operands = ', '.join(f'q[{wire}]' for wire in reversed(range(qubits)))
+        self.check_source(f'qubit[{qubits}] q; {preparation} {prefix}{gate} {operands};', expected)
+
+    def test_fixed_families_and_intrinsic_controls(self):
+        gates = SpectralReferenceTests.gates + ('cx', 'CX', 'cy', 'cz', 'ch', 'ccx', 'cswap')
+        for gate in gates:
+            size = len(reference_matrix(gate))
+            for exponent in (-1.5, -0.5, -0.0, 0.5, 1.5, 2.0):
+                for basis in (0, size - 1, None):
+                    with self.subTest(gate=gate, exponent=exponent, basis=basis):
+                        self.check_gate(gate, (('pow', exponent),), basis)
+
+    def test_nested_powers_and_inverse_order(self):
+        profiles = ((('pow', 0.5), ('pow', 2)), (('pow', 2), ('pow', 0.5)),
+                    (('pow', 0.5), ('pow', 6)), (('pow', 0.5), ('inv', None)),
+                    (('inv', None), ('pow', 0.5)), (('inv', None), ('pow', 0.5), ('inv', None)),
+                    (('pow', -0.5), ('pow', 3)), (('pow', 1.5), ('pow', 0.5), ('pow', -2)),
+                    (('pow', 0.5), ('pow', math.nextafter(1.0, math.inf))),
+                    (('pow', 0.5), ('pow', math.nextafter(1.0, 0.0))))
+        for gate in SpectralReferenceTests.gates:
+            for modifiers in profiles:
+                with self.subTest(gate=gate, modifiers=modifiers):
+                    self.check_gate(gate, modifiers)
+
+    def test_added_controls_and_mixed_polarities(self):
+        profiles = ((('ctrl', 1), ('pow', 0.5)), (('negctrl', 1), ('pow', 0.5)),
+                    (('negctrl', 1), ('ctrl', 1), ('pow', -0.5)),
+                    (('pow', 0.5), ('negctrl', 1), ('inv', None), ('ctrl', 1)))
+        for gate in SpectralReferenceTests.gates + ('cx', 'cy', 'ch', 'ccx', 'cswap'):
+            for modifiers in profiles:
+                with self.subTest(gate=gate, modifiers=modifiers):
+                    self.check_gate(gate, modifiers)
+
+    def test_large_and_small_finite_exponents(self):
+        for gate in ('x', 't', 'sx', 'swap'):
+            for exponent in (1e308, -1e308, 1e-308, 5e-324, 0.1):
+                with self.subTest(gate=gate, exponent=exponent):
+                    self.check_gate(gate, (('pow', exponent),))
+
+    def test_constant_expressions_and_casts(self):
+        for expression, exponent in (('F + 0.25', 0.75), ('1.0 / N', 0.5), ('float(N)', 2.0)):
+            with self.subTest(expression=expression):
+                matrix = reference_matrix('x', (('pow', exponent),))
+                self.check_source('qubit q; const float F = 0.5; const int N = 2; '
+                                  + f'pow({expression}) @ x q;', [row[0] for row in matrix])
+
+    def test_broadcasting(self):
+        # Each operation acts on a different pair, including intrinsic controls.
+        for gate, operands in (('x', 'q[0:1]'), ('swap', 'q[0:1], q[2:3]'),
+                               ('cx', 'q[0:1], q[2:3]')):
+            with self.subTest(gate=gate):
+                matrix = reference_matrix(gate, (('pow', 0.5),))
+                state = [complex(index == 0) for index in range(16)]
+                preparation = ''
+                if gate in ('swap', 'cx'):
+                    preparation = 'x q[0]; x q[1]; '
+                    state = [complex(index == 3) for index in range(16)]
+                for wires in ((0,), (1,)) if gate == 'x' else ((0, 2), (1, 3)):
+                    updated = [0j] * 16
+                    for source, amplitude in enumerate(state):
+                        column = sum(((source >> wire) & 1) << (len(wires) - 1 - index)
+                                     for index, wire in enumerate(wires))
+                        for row in range(len(matrix)):
+                            destination = source
+                            for index, wire in enumerate(wires):
+                                destination = ((destination & ~(1 << wire))
+                                               | (((row >> (len(wires) - 1 - index)) & 1) << wire))
+                            updated[destination] += matrix[row][column] * amplitude
+                    state = updated
+                self.check_source('qubit[4] q; ' + preparation + f'pow(0.5) @ {gate} {operands};', state)
+
+    def test_classical_control_flow(self):
+        for header, declarations, update in (('for int i in [0:1]', '', ''),
+                ('for int i in [0:stop]', 'int stop = 1;', ''),
+                ('while (i < 2)', 'int i = 0;', 'i += 1;')):
+            with self.subTest(header=header):
+                self.check_source('qubit q; ' + declarations + header + ' { pow(0.5) @ x q; '
+                                  + update + ' }', [0, 1])
+        self.check_source('qubit q; if (false) { pow(0.5) @ x q; }', [1, 0])
+        matrix = reference_matrix('x', (('pow', 0.5),))
+        a, b = matrix[0][0], matrix[1][0]
+        expected = [a * a, b * a, a * b, b * b]
+        self.check_source('qubit[2] q; for int i in [0:1] { pow(0.5) @ x q[i]; }', expected)
+        self.check_source('qubit[2] q; for int i in [0:0] { for int j in [0:1] '
+                          '{ pow(0.5) @ x q[i + j]; } }', expected)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--bra', type=pathlib.Path)
+    args = parser.parse_args()
+    if args.bra is not None:
+        BackendTests.bra = args.bra.resolve()
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    suite = unittest.defaultTestLoader.loadTestsFromModule(__import__(__name__))
+    result = unittest.TextTestRunner(verbosity=2).run(suite)
+    if args.bra is not None:
+        print(f'{BackendTests.checked} floating-power amplitude comparisons passed')
+    raise SystemExit(0 if result.wasSuccessful() else 1)
+
+
 if __name__ == '__main__':
-    unittest.main()
+    main()

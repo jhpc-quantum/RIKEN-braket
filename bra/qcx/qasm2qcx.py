@@ -1659,6 +1659,19 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return self.__constant_loop_integer(expression, f'{kind} index')
         raise UnsupportedOpenQASMError(f'non-literal {kind} index')
 
+    @classmethod
+    def __is_literal_qubit_selector(cls, expression: ast.QASMNode) -> bool:
+        if isinstance(expression, ast.IntegerLiteral):
+            return True
+        if isinstance(expression, ast.UnaryExpression):
+            return expression.op.name == '-' and isinstance(expression.expression, ast.IntegerLiteral)
+        if isinstance(expression, ast.RangeDefinition):
+            return all(part is None or cls.__is_literal_qubit_selector(part)
+                       for part in (expression.start, expression.step, expression.end))
+        if isinstance(expression, ast.DiscreteSet):
+            return all(cls.__is_literal_qubit_selector(value) for value in expression.values)
+        return False
+
     def __index_selection(
             self, index, size: int, kind: str, container: str,
             invalid_operand_exception: type[QASM2QCXError]
@@ -2264,14 +2277,18 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__release_temporary_variable(temporary)
 
     def __emit_quantum_gate(self, statement: ast.QuantumGate) -> None:
-        info = self.__analyze_gate_modifiers(statement.modifiers, allow_runtime=True)
+        info = self.__analyze_gate_modifiers(statement.modifiers, allow_runtime=True, allow_float=True)
+        if isinstance(info, _OrderedGateModifierInfo):
+            self.__emit_quantum_gate_operation(statement, info, None)
+            return
         with self.__runtime_gate_power(info) as runtime:
             self.__emit_quantum_gate_operation(statement, info, runtime)
 
     def __emit_quantum_gate_operation(
-            self, statement: ast.QuantumGate, info: _GateModifierInfo, runtime: _RuntimeGatePower | None) -> None:
+            self, statement: ast.QuantumGate, info: _GateModifierInfo | _OrderedGateModifierInfo,
+            runtime: _RuntimeGatePower | None) -> None:
         qasm_gate_name: str = statement.name.name
-        inverse, control_groups = info.power < 0, info.controls
+        control_groups = info.controls
         controls = sum(count for _, count in control_groups)
         if statement.duration is not None:
             raise UnsupportedOpenQASMError(f'duration on gate {qasm_gate_name}')
@@ -2290,6 +2307,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise WrongGateArityException(
                 qasm_gate_name, expected_parameters, expected_qubits,
                 len(statement.arguments), len(statement.qubits))
+
+        if isinstance(info, _OrderedGateModifierInfo):
+            self.__emit_floating_gate_power(statement, info, qcx_gate_name)
+            return
+        inverse = info.power < 0
 
         parameters: list[
             tuple[str | int | float | complex, ValueType, ValueKind]
@@ -2368,6 +2390,55 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
         for temporary_variable in temporary_variables:
             self.__release_temporary_variable(temporary_variable)
+
+    def __floating_gate_power_phase(self, mnemonic: str, info: _OrderedGateModifierInfo) -> Fraction:
+        root, _ = self.qcx_controlled_gate_families[mnemonic]
+        phases = {'I1': Fraction(0), 'X': Fraction(1), 'Y': Fraction(1),
+                  'Z': Fraction(1), 'H': Fraction(1), 'SWAP': Fraction(1),
+                  'S': Fraction(1, 2), 'S+': Fraction(-1, 2),
+                  'T': Fraction(1, 4), 'T+': Fraction(-1, 4), 'SX': Fraction(1, 2)}
+        if root not in phases:
+            raise UnsupportedOpenQASMError(f'floating-point pow on QCX gate family {root}')
+        # Every supported family has one nontrivial eigenphase. All remaining
+        # phases are zero and remain zero under powers, inversion, and controls.
+        return self.__ordered_gate_eigenphases((phases[root],), info)[0]
+
+    def __emit_floating_gate_power(
+            self, statement: ast.QuantumGate, info: _OrderedGateModifierInfo, mnemonic: str) -> None:
+        phase = self.__floating_gate_power_phase(mnemonic, info)
+        root, intrinsic_controls = self.qcx_controlled_gate_families[mnemonic]
+        added_controls = sum(count for _, count in info.controls)
+        output_start = len(self.__qcx_lines)
+        # Multiply exactly by the host pi approximation before the one float
+        # rounding. This also avoids prematurely underflowing tiny pi fractions.
+        angle = repr(float(phase * Fraction(math.pi)))
+        for qubits in self.__qubit_operand_tuples(statement.qubits, distinct=True):
+            conditions = self.__condition_qubits(qubits[:added_controls], info.controls)
+            conditions += qubits[added_controls:added_controls + intrinsic_controls]
+            targets = qubits[added_controls + intrinsic_controls:]
+            sequence = []
+            if phase:
+                target = targets[0]
+                before, after = [], []
+                if root in ('X', 'SX'):
+                    before, after = [f'H {target}'], [f'H {target}']
+                elif root == 'Y':
+                    before, after = [f'S+ {target}', f'H {target}'], [f'H {target}', f'S {target}']
+                elif root == 'H':
+                    before = [f'EY {target} {math.pi / 8}']
+                    after = [f'EY {target} {-math.pi / 8}']
+                elif root == 'SWAP':
+                    other = targets[1]
+                    before = [f'CX {target} {other}', f'H {target}']
+                    after = [f'H {target}', f'CX {target} {other}']
+                    conditions += [target]
+                    target = other
+                diagonal = self.__controlled_gate_name('U1', len(conditions)) if conditions else 'U1'
+                # Only the diagonal phase is controlled. When inactive, the
+                # unconditional basis changes cancel, including for SWAP.
+                sequence = before + [f'{diagonal} {" ".join(conditions + [target])} {angle}'] + after
+            # Even identity powers above must validate operands/broadcasting.
+            self.__emit_gate_power(sequence, 1, output_start)
 
     def __lower_gate_sequence(
             self, sequence: list[tuple[str, list[str]]], inverse: bool,
@@ -2537,7 +2608,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__release_temporary_variable(temporary)
 
     def __emit_quantum_phase(self, statement: ast.QuantumPhase) -> None:
-        info = self.__analyze_gate_modifiers(statement.modifiers, allow_runtime=True)
+        info = self.__analyze_gate_modifiers(statement.modifiers, allow_runtime=True, allow_float=True)
+        if isinstance(info, _OrderedGateModifierInfo):
+            raise UnsupportedOpenQASMError('floating-point pow on gphase')
         with self.__runtime_gate_power(info) as runtime:
             self.__emit_quantum_phase_operation(statement, info, runtime)
 
@@ -3509,7 +3582,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                         if name in iterators or name not in self.__declared_quantum_registers:
                             raise InvalidQubitOperandException(f'{name} is not a declared qubit operand')
             if isinstance(child, ast.QuantumGate):
-                modifier_info = self.__analyze_gate_modifiers(child.modifiers, iterators, allow_runtime=True)
+                modifier_info = self.__analyze_gate_modifiers(
+                    child.modifiers, iterators, allow_runtime=True, allow_float=True)
                 control_groups = modifier_info.controls
                 controls = sum(count for _, count in control_groups)
                 if child.duration is not None:
@@ -3525,8 +3599,23 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 if len(child.arguments) != parameters or len(child.qubits) != qubits:
                     raise WrongGateArityException(child.name.name, parameters, qubits,
                                                   len(child.arguments), len(child.qubits))
+                if isinstance(modifier_info, _OrderedGateModifierInfo):
+                    mnemonic = (self.default_gates_qcx_map | self.stdgates_qcx_map)[child.name.name]
+                    self.__floating_gate_power_phase(mnemonic, modifier_info)
+                    indices = [index for qubit in child.qubits if isinstance(qubit, ast.IndexedIdentifier)
+                               for group in qubit.indices
+                               for index in (group if isinstance(group, list) else [group])]
+                    # Named/compound selections use the actual expansion's
+                    # constant-index context. No iterator value exists here.
+                    literal_indices = all(self.__is_literal_qubit_selector(index) for index in indices)
+                    if not self.__is_initialization_process and literal_indices:
+                        for _ in self.__qubit_operand_tuples(child.qubits, distinct=True):
+                            pass
             if isinstance(child, ast.QuantumPhase):
-                modifier_info = self.__analyze_gate_modifiers(child.modifiers, iterators, allow_runtime=True)
+                modifier_info = self.__analyze_gate_modifiers(
+                    child.modifiers, iterators, allow_runtime=True, allow_float=True)
+                if isinstance(modifier_info, _OrderedGateModifierInfo):
+                    raise UnsupportedOpenQASMError('floating-point pow on gphase')
                 control_groups = modifier_info.controls
                 controls = sum(count for _, count in control_groups)
                 if not controls and child.qubits:
