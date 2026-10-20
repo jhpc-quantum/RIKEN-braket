@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compile/run control type tests and verify invalid APIs fail to compile.
+"""Compile/run control type, I/O, and logging tests; reject invalid APIs.
 
 Run from any directory: python3 ket/test/control_types.py [--cxx g++]
 """
@@ -34,13 +34,17 @@ def main():
         for source in ['control_types.cpp', 'control_io.cpp', 'runtime_control_io.cpp']:
             subprocess.run(flags + [str(ket / 'test' / source), '-o', binary], check=True)
             subprocess.run([binary], check=True)
+        for defines in [[], ['-DKET_PRINT_LOG']]:
+            subprocess.run(flags + defines + [str(ket / 'test' / 'control_logging.cpp'),
+                                              '-o', binary], check=True)
+            subprocess.run([binary], check=True)
         for name, declaration in invalid.items():
             result = subprocess.run(flags + ['-x', 'c++', '-fsyntax-only', '-'],
                                     input=preamble + declaration + '\n',
                                     text=True, capture_output=True)
             if result.returncode == 0:
                 raise AssertionError('Unexpected compilation success: ' + name)
-    print('Control type/I/O tests and {} compile-failure checks passed'.format(len(invalid)))
+    print('Control type/I/O/logging tests and {} compile-failure checks passed'.format(len(invalid)))
 
 
 if __name__ == '__main__':

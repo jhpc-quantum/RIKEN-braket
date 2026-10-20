@@ -6,6 +6,7 @@ Examples:
   python3 ket/test/mpi/control_gate_numerical.py --variant variadic --basis 128
   python3 ket/test/mpi/control_gate_numerical.py --variant iterators --unit --datatype --ranks 4
   python3 ket/test/mpi/control_gate_numerical.py --bit-masks --ubsan --std c++17
+  python3 ket/test/mpi/control_gate_numerical.py --print-log --group 1
 """
 
 import argparse
@@ -34,6 +35,7 @@ def main():
     parser.add_argument('--aliases', action='store_true', help='also exercise controlled gate aliases in variadic mode')
     parser.add_argument('--page-qubits', type=int, default=2, choices=range(1, 6))
     parser.add_argument('--regressions', action='store_true')
+    parser.add_argument('--print-log', action='store_true', help='enable MPI gate diagnostic logging')
     args = parser.parse_args()
     if args.basis < 0:
         parser.error('--basis must be nonnegative')
@@ -54,6 +56,7 @@ def main():
                             (args.diagonal, 'KET_USE_DIAGONAL_LOOP'),
                             (args.unit, 'KET_MPI_TEST_UNIT'),
                             (args.datatype, 'KET_MPI_TEST_DATATYPE'),
+                            (args.print_log, 'KET_PRINT_LOG'),
                             (args.aliases, 'KET_MPI_TEST_ALIASES')]:
         if enabled:
             flags.append('-D' + define)
