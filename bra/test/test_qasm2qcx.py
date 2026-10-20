@@ -332,10 +332,10 @@ class RuntimeIntegerPowerModifierFoundationTests(unittest.TestCase):
         self.assertEqual(converter._QASM2QCXConverter__qcx_lines, before)
         self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
 
-    def test_runtime_conversion_remains_guarded_until_repetition_lowering_is_available(self) -> None:
+    def test_runtime_conversion_accepts_single_factors_and_validates_empty_loops(self) -> None:
         for call in ('pow(n) @ x q;', 'pow(n) @ gphase(0.5);', 'pow(0) @ pow(n) @ x q;'):
             for wrapper in ('{}', 'for int i in [1:0] {{ {} }}'):
-                with self.subTest(call=call, wrapper=wrapper), self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                with self.subTest(call=call, wrapper=wrapper):
                     convert('OPENQASM 3; include "stdgates.inc"; qubit q; int n = 2; ' + wrapper.format(call))
 
 
@@ -1289,6 +1289,133 @@ class IntegerPowerModifierSimplificationTests(unittest.TestCase):
         self.assertEqual(len(examples), 1)
         self.assertEqual(convert(examples[0]), ['QUBITS 3', 'Z 0', 'S 0', 'T 0',
                                               'CX 1#0 2', 'EZ+ 2 -0.75', 'PHASE 0.5'])
+
+
+class RuntimeIntegerPowerModifierLoweringTests(unittest.TestCase):
+    assert_clean_conversion = InverseModifierLoweringTests.assert_clean_conversion
+
+    def test_signed_runtime_loop_contains_complete_forward_and_inverse_sequences(self) -> None:
+        lines = self.assert_clean_conversion('qubit q; int n = -2; pow(n) @ U(1, 2, 3) q;')
+        phase = lines.index('PHASE 3.0')
+        self.assertEqual(lines[phase:phase + 2], ['PHASE 3.0', 'U3 0 1 2 3'])
+        inverse = lines.index('U3+ 0 1 2 3')
+        self.assertEqual(lines[inverse:inverse + 2], ['U3+ 0 1 2 3', 'PHASE -3.0'])
+        self.assertTrue(any(line.endswith(' < 0') and line.startswith('JUMPIF ') for line in lines))
+        self.assertTrue(any(line.endswith(' == 0') and line.startswith('JUMPIF ') for line in lines))
+        self.assertTrue(any(line.startswith('LET QASM2QCX_UINT_') and line.endswith(' -= 1') for line in lines))
+
+    def test_unsigned_runtime_exponents_are_not_narrowed_through_int(self) -> None:
+        lines = self.assert_clean_conversion(f'qubit q; uint n = {qasm2qcx.QASM2QCXConverter.QCX_UINT_MAX}; '
+            'pow(n) @ U(1, 2, 3) q;')
+        self.assertFalse(any(':INT:' in line for line in lines))
+        self.assertFalse(any('_INVERSE' in line for line in lines))
+        self.assertIn('U3 0 1 2 3', lines)
+        self.assertNotIn('U3+ 0 1 2 3', lines)
+        self.assertEqual(sum(line.endswith(' := N1') for line in lines), 1)
+
+    def test_signed_magnitude_uses_unsigned_subtraction_including_int_min(self) -> None:
+        lines = self.assert_clean_conversion(f'qubit q; int n = {qasm2qcx.QASM2QCXConverter.QCX_INT_MIN}; '
+            'pow(n) @ U(1, 2, 3) q;')
+        self.assertTrue(any(line.startswith('LET QASM2QCX_UINT_') and ' -= :UINT:QASM2QCX_INT_' in line for line in lines))
+        self.assertFalse(any(line.startswith('LET QASM2QCX_INT_') and ' *= ' in line for line in lines))
+        self.assertEqual(sum(line.endswith(' := N1') for line in lines), 1)
+
+    def test_generated_code_size_does_not_depend_on_runtime_exponent_value(self) -> None:
+        sizes = []
+        for n in (-2147483648, -3, 0, 1, 2147483647):
+            lines = self.assert_clean_conversion(f'qubit q; int n = {n}; pow(n) @ U(1, 2, 3) q;')
+            sizes.append(len(lines))
+        self.assertEqual(len(set(sizes)), 1)
+
+    def test_indexed_exponent_and_gate_parameters_are_each_captured_once(self) -> None:
+        lines = self.assert_clean_conversion('qubit q; int i = 0; array[int, 1] counts = {-2}; '
+            'array[float, 3] angles = {0.2, 0.4, 0.6}; '
+            'pow(counts[i]) @ U(angles[i], angles[i + 1], angles[i + 2]) q;')
+        self.assertEqual(sum(line.endswith(' := I1') for line in lines), 4)
+        self.assertEqual(sum(line.startswith('ASSERT ') for line in lines), 8)
+        forward = next(line for line in lines if line.startswith('U3 ')).split()[2:]
+        inverse = next(line for line in lines if line.startswith('U3+ ')).split()[2:]
+        self.assertEqual(forward, inverse)
+        self.assertEqual(len(set(forward)), 3)
+        loop = next(i for i, line in enumerate(lines) if line.startswith('@QASM2QCX_GATE_POWER_') and line.endswith('_LOOP'))
+        self.assertFalse(any(line.startswith(('LET QASM2QCX_REAL_', 'ASSERT ', 'VAR ')) for line in lines[loop:]))
+
+    def test_controlled_cu_preserves_both_phase_corrected_directions(self) -> None:
+        lines = self.assert_clean_conversion('include "stdgates.inc"; qubit[3] q; int n = -2; '
+            'negctrl @ pow(n) @ cu(1, 2, 3, 4) q[2], q[0], q[1];')
+        forward = lines.index('CU1 2#0 0 7.0')
+        self.assertEqual(lines[forward:forward + 2], ['CU1 2#0 0 7.0', 'C2U3 2#0 0 1 1 2 3'])
+        inverse = lines.index('C2U3+ 2#0 0 1 1 2 3')
+        self.assertEqual(lines[inverse:inverse + 2], ['C2U3+ 2#0 0 1 1 2 3', 'CU1+ 2#0 0 7.0'])
+
+    def test_constant_factor_and_inverse_signs_are_combined_without_runtime_products(self) -> None:
+        lines = self.assert_clean_conversion('qubit q; int n = 2; inv @ pow(-2) @ pow(n) @ U(1, 2, 3) q;')
+        self.assertEqual(lines.count('U3 0 1 2 3'), 2)
+        self.assertEqual(lines.count('U3+ 0 1 2 3'), 2)
+        self.assertFalse(any(line.startswith('LET QASM2QCX_INT_') and ' *= ' in line for line in lines))
+
+    def test_phase_and_broadcast_loops_reuse_one_exponent_snapshot(self) -> None:
+        lines = self.assert_clean_conversion('qubit[2] q; int n = -2; float theta = 0.3; '
+            'negctrl @ pow(n) @ gphase(theta) q;')
+        self.assertEqual(sum(line.endswith(' := N1') for line in lines), 1)
+        self.assertEqual(sum(line.startswith('@QASM2QCX_GATE_POWER_') and line.endswith('_LOOP') for line in lines), 2)
+        self.assertEqual(sum(line.startswith('U1 ') for line in lines), 4)
+        self.assertEqual(sum(line.endswith(' *= -1.0') for line in lines), 1)
+
+    def test_runtime_powers_in_loops_hoist_declarations_and_keep_unique_labels(self) -> None:
+        for header in ('for int i in [-1:1]', 'for int i in [first:last]',
+                       'for int i in {first, last}', 'while (false)'):
+            with self.subTest(header=header):
+                lines = self.assert_clean_conversion('qubit q; int first = -1; int last = 1; int n = 2; float theta = 0.3; '
+                    + header + ' { pow(n) @ U(theta + 1, 2, 3) q; pow(n) @ gphase(theta); }')
+                if header == 'for int i in [-1:1]':
+                    # Unrolled bodies are emitted sequentially. Declarations
+                    # may follow a preceding power's END, but not enter its loop.
+                    for i, line in enumerate(lines):
+                        if line.startswith('@QASM2QCX_GATE_POWER_') and line.endswith('_LOOP'):
+                            end = lines.index(line[:-5] + '_END', i)
+                            self.assertFalse(any(code.startswith('VAR ') for code in lines[i:end]))
+                else:
+                    first_label = next(i for i, line in enumerate(lines) if line.startswith('@'))
+                    self.assertFalse(any(line.startswith('VAR QASM2QCX_') for line in lines[first_label:]))
+
+    def test_iterator_exponents_support_unrolled_runtime_and_unsigned_collection_bindings(self) -> None:
+        for header, declarations in (('for int n in [-1:1]', ''),
+                                     ('for int n in [first:last]', 'int first = -1; int last = 1;'),
+                                     ('for uint[3] n in values', 'array[uint[3], 2] values = {1, 2};')):
+            with self.subTest(header=header):
+                self.assert_clean_conversion('qubit q; ' + declarations + header + ' { pow(n) @ U(1, 2, 3) q; }')
+
+    def test_invalid_types_and_nested_runtime_factors_are_rejected_even_in_empty_loops(self) -> None:
+        for modifier in ('pow(flag)', 'pow(2.0)', 'pow(missing)', 'pow(n) @ pow(n + 1)'):
+            for wrapper in ('{}', 'for int i in [1:0] {{ {} }}'):
+                with self.subTest(modifier=modifier, wrapper=wrapper), self.assertRaises(qasm2qcx.QASM2QCXError):
+                    convert('OPENQASM 3; qubit q; int n = 2; bool flag = true; '
+                            + wrapper.format(modifier + ' @ U(1, 2, 3) q;'))
+
+    def test_runtime_zero_does_not_hide_invalid_operations_and_constant_zero_emits_no_gate(self) -> None:
+        for call in ('pow(n) @ U(true, 0, 0) q;', 'pow(n) @ U(0, 0, 0) missing;',
+                     'pow(n) @ gphase(true);', 'pow(n) @ ctrl @ U(1, 2, 3) q, q;'):
+            with self.subTest(call=call), self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert('OPENQASM 3; qubit q; int n = 0; ' + call)
+        lines = self.assert_clean_conversion('qubit q; int n = 2; pow(0) @ pow(n) @ U(1, 2, 3) q;')
+        self.assertFalse(any(line.startswith(('U3 ', 'U3+ ', 'PHASE ')) for line in lines))
+        self.assertEqual(sum(line.endswith(' := N1') for line in lines), 1)
+
+    def test_runtime_failure_cleans_up_and_cli_does_not_emit_partial_output(self) -> None:
+        converter = RuntimeIntegerPowerModifierFoundationTests.converter('qubit q; int n = 2; float theta = 0.3;')
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        statement = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; pow(n) @ U(theta + 1, 0, 0) q;').statements[0]
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'MAX_GATE_POWER_OUTPUT_LINES', 5):
+            with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                converter.visit(statement)
+            self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+            self.assertIsNone(converter._QASM2QCXConverter__expression_kind)
+            with patch('builtins.open', mock_open(read_data='OPENQASM 3; qubit q; int n = 2; pow(n) @ U(1, 2, 3) q;')), \
+                    patch('builtins.print') as output:
+                with self.assertRaises(SystemExit):
+                    qasm2qcx.main(['runtime-power.qasm'])
+                output.assert_not_called()
 
 
 class UnsignedIntegerFoundationTests(unittest.TestCase):

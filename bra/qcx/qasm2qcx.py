@@ -229,6 +229,12 @@ class _CapturedGateExponent:
 
 
 @dataclasses.dataclass(frozen=True)
+class _RuntimeGatePower:
+    magnitude: str
+    signed_exponent: str | None
+
+
+@dataclasses.dataclass(frozen=True)
 class _GateModifierInfo:
     # Integer powers and inversion commute with adding controls. Keep control
     # groups in source order, since each group prepends its own operands.
@@ -372,6 +378,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__array_index: int = 0
         self.__register_shift_index: int = 0
         self.__power_index: int = 0
+        self.__gate_power_index: int = 0
         self.__condition_index: int = 0
         self.__branch_depth: int = 0
         self.__boolean_expression_index: int = 0
@@ -2123,6 +2130,36 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             offset += count
         return result
 
+    @staticmethod
+    def __validate_runtime_gate_power(info: _GateModifierInfo) -> None:
+        if len(info.runtime_exponents) > 1:
+            raise UnsupportedOpenQASMError('nested runtime pow exponents')
+
+    def __gate_power_label(self) -> str:
+        index = self.__gate_power_index
+        self.__gate_power_index += 1
+        return f'QASM2QCX_GATE_POWER_{index}'
+
+    @contextlib.contextmanager
+    def __runtime_gate_power(self, info: _GateModifierInfo) -> Iterator[_RuntimeGatePower | None]:
+        self.__validate_runtime_gate_power(info)
+        with self.__captured_gate_exponents(info.runtime_exponents) as captured:
+            if not captured:
+                yield None
+                return
+            exponent = captured[0]
+            if exponent.value_type == ValueType.UINT:
+                yield _RuntimeGatePower(exponent.storage, None)
+                return
+            magnitude = self.__add_new_temporary_variable(ValueType.UINT)
+            ready = self.__gate_power_label() + '_READY'
+            self.__qcx_lines.extend([
+                f'LET {magnitude} := :UINT:{exponent.storage}',
+                f'JUMPIF {ready} {exponent.storage} >= 0',
+                f'LET {magnitude} := 0', f'LET {magnitude} -= :UINT:{exponent.storage}',
+                f'@{ready}'])
+            yield _RuntimeGatePower(magnitude, exponent.storage)
+
     def __qubit_operand_tuples(self, qubits, *, distinct: bool = False) -> Iterator[list[str]]:
         operands = [self.__qubit_operand_indices(qubit) for qubit in qubits]
         register_sizes = [len(indices) for indices, is_register in operands if is_register]
@@ -2150,8 +2187,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__release_temporary_variable(temporary)
 
     def __emit_quantum_gate(self, statement: ast.QuantumGate) -> None:
+        info = self.__analyze_gate_modifiers(statement.modifiers, allow_runtime=True)
+        with self.__runtime_gate_power(info) as runtime:
+            self.__emit_quantum_gate_operation(statement, info, runtime)
+
+    def __emit_quantum_gate_operation(
+            self, statement: ast.QuantumGate, info: _GateModifierInfo, runtime: _RuntimeGatePower | None) -> None:
         qasm_gate_name: str = statement.name.name
-        info = self.__analyze_gate_modifiers(statement.modifiers)
         inverse, control_groups = info.power < 0, info.controls
         controls = sum(count for _, count in control_groups)
         if statement.duration is not None:
@@ -2201,13 +2243,14 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 temporary_variables.add(cu_control_phase)
 
         u_global_phase: str | None = None
+        inverse_phase: str | None = None
         if qasm_gate_name == 'U':
             u_global_phase, value_kind = self.__u_global_phase(
                 parameters, converted_parameters)
             if value_kind == ValueKind.TEMPORARY:
                 temporary_variables.add(u_global_phase)
-            if inverse:
-                u_global_phase = self.__negated_phase_operand(u_global_phase, value_kind)
+            if inverse or (runtime is not None and runtime.signed_exponent is not None):
+                inverse_phase = self.__negated_phase_operand(u_global_phase, value_kind)
 
         powered = any(modifier.modifier == ast.GateModifierName.pow for modifier in statement.modifiers)
         mnemonics, repetitions = [qcx_gate_name], abs(info.power)
@@ -2235,21 +2278,59 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 if u_global_phase is not None:
                     sequence.append(('PHASE', [u_global_phase]))
                 sequence.extend((mnemonic, qubit_indices + converted_parameters) for mnemonic in mnemonics)
-            # Invert the complete lowered sequence, including the control
-            # phase of cu. PHASE operands have already been negated above.
-            lowered = []
-            for mnemonic, arguments in reversed(sequence) if inverse else sequence:
-                if inverse and mnemonic != 'PHASE':
-                    mnemonic = self.__adjoint_gate_name(mnemonic)
-                if controls:
-                    mnemonic = (self.__controlled_phase_gate_name(controls) if mnemonic == 'PHASE'
-                                else self.__controlled_gate_name(mnemonic, controls))
-                    arguments = condition_qubits + arguments
-                lowered.append(f'{mnemonic} {" ".join(arguments)}')
-            self.__emit_gate_power(lowered, repetitions, output_start)
+            lowered = self.__lower_gate_sequence(sequence, inverse, condition_qubits, inverse_phase)
+            if runtime is None:
+                self.__emit_gate_power(lowered, repetitions, output_start)
+            else:
+                adjoint = (self.__lower_gate_sequence(sequence, not inverse, condition_qubits, inverse_phase)
+                           if runtime.signed_exponent is not None else lowered)
+                self.__emit_runtime_gate_power(lowered, adjoint, repetitions, runtime, output_start)
 
         for temporary_variable in temporary_variables:
             self.__release_temporary_variable(temporary_variable)
+
+    def __lower_gate_sequence(
+            self, sequence: list[tuple[str, list[str]]], inverse: bool,
+            conditions: list[str], inverse_phase: str | None) -> list[str]:
+        lowered = []
+        for mnemonic, arguments in reversed(sequence) if inverse else sequence:
+            if inverse:
+                if mnemonic == 'PHASE':
+                    if inverse_phase is None:
+                        raise UninitializedValueException
+                    arguments = [inverse_phase]
+                else:
+                    mnemonic = self.__adjoint_gate_name(mnemonic)
+            if conditions:
+                mnemonic = (self.__controlled_phase_gate_name(len(conditions)) if mnemonic == 'PHASE'
+                            else self.__controlled_gate_name(mnemonic, len(conditions)))
+                arguments = conditions + arguments
+            lowered.append(f'{mnemonic} {" ".join(arguments)}')
+        return lowered
+
+    def __emit_runtime_gate_power(
+            self, forward: list[str], adjoint: list[str], repetitions: int,
+            runtime: _RuntimeGatePower, output_start: int | None) -> None:
+        if repetitions == 0 or not forward:
+            return
+        counter = self.__add_new_temporary_variable(ValueType.UINT)
+        prefix = self.__gate_power_label()
+        try:
+            self.__qcx_lines.extend([
+                f'LET {counter} := {runtime.magnitude}', f'@{prefix}_LOOP',
+                f'JUMPIF {prefix}_END {counter} == 0'])
+            if runtime.signed_exponent is not None:
+                self.__qcx_lines.append(f'JUMPIF {prefix}_INVERSE {runtime.signed_exponent} < 0')
+            self.__emit_gate_power(forward, repetitions, output_start)
+            if runtime.signed_exponent is not None:
+                self.__qcx_lines.extend([f'JUMP {prefix}_NEXT', f'@{prefix}_INVERSE'])
+                self.__emit_gate_power(adjoint, repetitions, output_start)
+                self.__qcx_lines.append(f'@{prefix}_NEXT')
+            tail = [f'LET {counter} -= 1', f'JUMP {prefix}_LOOP', f'@{prefix}_END']
+            self.__check_gate_power_output(len(tail), output_start)
+            self.__qcx_lines.extend(tail)
+        finally:
+            self.__release_temporary_variable(counter)
 
     @classmethod
     def __gate_power_plan(cls, mnemonic: str, repetitions: int) -> tuple[list[str], int]:
@@ -2299,10 +2380,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         except (OverflowError, ValueError):
             return None
 
-    def __emit_gate_power(self, sequence: list[str], repetitions: int, output_start: int | None) -> None:
-        # Check before allocating a repeated list or entering a repetition
-        # loop. Include all broadcast elements in the same expansion budget.
-        count = len(sequence) * repetitions
+    def __check_gate_power_output(self, count: int, output_start: int | None) -> None:
         if (output_start is not None
                 and count + len(self.__qcx_lines) - output_start > self.MAX_GATE_POWER_OUTPUT_LINES):
             raise UnsupportedOpenQASMError(
@@ -2310,6 +2388,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.__inside_expanded_loop() and count + len(self.__qcx_lines) > self.MAX_LOOP_OUTPUT_LINES:
             raise InvalidLoopRangeException(
                 f'For-loop output exceeds {self.MAX_LOOP_OUTPUT_LINES} QCX lines')
+
+    def __emit_gate_power(self, sequence: list[str], repetitions: int, output_start: int | None) -> None:
+        # Check before allocating a repeated list or entering a repetition
+        # loop. Include all broadcast elements in the same expansion budget.
+        count = len(sequence) * repetitions
+        self.__check_gate_power_output(count, output_start)
         if count:
             self.__qcx_lines.extend(sequence * repetitions)
 
@@ -2334,7 +2418,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__release_temporary_variable(temporary)
 
     def __emit_quantum_phase(self, statement: ast.QuantumPhase) -> None:
-        info = self.__analyze_gate_modifiers(statement.modifiers)
+        info = self.__analyze_gate_modifiers(statement.modifiers, allow_runtime=True)
+        with self.__runtime_gate_power(info) as runtime:
+            self.__emit_quantum_phase_operation(statement, info, runtime)
+
+    def __emit_quantum_phase_operation(
+            self, statement: ast.QuantumPhase, info: _GateModifierInfo, runtime: _RuntimeGatePower | None) -> None:
         inverse, control_groups = info.power < 0, info.controls
         controls = sum(count for _, count in control_groups)
         if not controls and statement.qubits:
@@ -2359,15 +2448,25 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             scaled = self.__scaled_phase_operand(phase, self.__value_kind, repetitions)
             if scaled is not None:
                 phase, repetitions = scaled, 1
+        opposite_phase = (self.__negated_phase_operand(phase, self.__value_kind)
+                          if runtime is not None and runtime.signed_exponent is not None else phase)
         output_start = len(self.__qcx_lines) if powered else None
         if controls:
             mnemonic = self.__controlled_phase_gate_name(controls)
             for qubits in self.__qubit_operand_tuples(statement.qubits, distinct=True):
                 conditions = self.__condition_qubits(qubits, control_groups)
-                self.__emit_gate_power([f'{mnemonic} {" ".join(conditions)} {phase}'],
-                                       repetitions, output_start)
+                forward = [f'{mnemonic} {" ".join(conditions)} {phase}']
+                if runtime is None:
+                    self.__emit_gate_power(forward, repetitions, output_start)
+                else:
+                    self.__emit_runtime_gate_power(forward, [f'{mnemonic} {" ".join(conditions)} {opposite_phase}'],
+                                                   repetitions, runtime, output_start)
         else:
-            self.__emit_gate_power([f'PHASE {phase}'], repetitions, output_start)
+            if runtime is None:
+                self.__emit_gate_power([f'PHASE {phase}'], repetitions, output_start)
+            else:
+                self.__emit_runtime_gate_power([f'PHASE {phase}'], [f'PHASE {opposite_phase}'],
+                                               repetitions, runtime, output_start)
         if self.__value_kind == ValueKind.TEMPORARY:
             self.__release_temporary_variable(str(self.__value))
 
@@ -3291,7 +3390,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                         if name in iterators or name not in self.__declared_quantum_registers:
                             raise InvalidQubitOperandException(f'{name} is not a declared qubit operand')
             if isinstance(child, ast.QuantumGate):
-                control_groups = self.__analyze_gate_modifiers(child.modifiers, iterators).controls
+                modifier_info = self.__analyze_gate_modifiers(child.modifiers, iterators, allow_runtime=True)
+                self.__validate_runtime_gate_power(modifier_info)
+                control_groups = modifier_info.controls
                 controls = sum(count for _, count in control_groups)
                 if child.duration is not None:
                     raise UnsupportedOpenQASMError('gate duration in a loop')
@@ -3307,7 +3408,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     raise WrongGateArityException(child.name.name, parameters, qubits,
                                                   len(child.arguments), len(child.qubits))
             if isinstance(child, ast.QuantumPhase):
-                control_groups = self.__analyze_gate_modifiers(child.modifiers, iterators).controls
+                modifier_info = self.__analyze_gate_modifiers(child.modifiers, iterators, allow_runtime=True)
+                self.__validate_runtime_gate_power(modifier_info)
+                control_groups = modifier_info.controls
                 controls = sum(count for _, count in control_groups)
                 if not controls and child.qubits:
                     raise UnsupportedOpenQASMError('qubit operands on gphase')
