@@ -24,8 +24,15 @@ namespace ket
         static constexpr auto call(Real const real)
         noexcept(noexcept(std::exp(std::complex<Real>{Real{0}, real}))) -> std::complex<Real>
         {
-          using std::exp;
-          return exp(std::complex<Real>{Real{0}, real});
+          // Keep the library boundary: under fast-math GCC can otherwise
+          // lower exp(i*real) to x87 FSINCOS, whose argument range and range
+          // reduction accuracy are insufficient for large finite phases.
+          // Direct sin/cos calls can undergo the same transformation. An
+          // indirect call retains the library's full-range reduction without
+          // changing compiler options or reducing modulo an approximate 2*pi.
+          using function_type = std::complex<Real> (*)(std::complex<Real> const&);
+          function_type volatile function = &std::exp<Real>;
+          return function(std::complex<Real>{Real{0}, real});
         }
       };
     }
