@@ -5,9 +5,8 @@
   python3 bra/test/qasm2qcx_rotation_power_numerical.py
   python3 bra/test/qasm2qcx_rotation_power_numerical.py --bra /path/to/bra
 
-The public converter does not enable rotation powers yet. The optional backend
-audit checks existing ordinary/inverse rotations and Stage 2 paired-phase
-preparation separately, not a not-yet-implemented rotation-gate lowering.
+The optional backend audit checks existing ordinary/inverse rotations,
+paired-phase preparation, and public conversion of rotation-gate powers.
 Use a default-double, non-MPI executable for this audit.
 The reference-only run needs only Python's standard library.
 
@@ -32,6 +31,7 @@ import argparse
 import cmath
 import math
 import pathlib
+import re
 import resource
 import subprocess
 import unittest
@@ -476,6 +476,167 @@ class LoweringAuditTests(unittest.TestCase):
         self.assertEqual(result.stdout, '')
 
 
+class ConversionAuditTests(unittest.TestCase):
+    bra = None
+    checked = 0
+
+    def setUp(self):
+        if self.bra is None:
+            self.skipTest('pass --bra to audit converted rotation powers')
+        from qasm2qcx_runtime_for_numerical import qasm2qcx
+        self.module = qasm2qcx
+
+    @staticmethod
+    def apply(matrix, state):
+        return [sum(value * amplitude for value, amplitude in zip(row, state)) for row in matrix]
+
+    def check_source(self, source, expected, *, fused=False):
+        lines = self.module.convert('OPENQASM 3; include "stdgates.inc"; ' + source)
+        if fused:
+            lines.insert(1, 'BEGIN FUSION')
+            lines.append('END FUSION')
+        result = subprocess.run([str(self.bra)], input='\n'.join(lines + ['DO AMPLITUDES']) + '\n',
+                                text=True, capture_output=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr + '\n' + source)
+        actual = {int(index, 2): complex(float(real), float(imaginary))
+                  for index, real, imaginary in re.findall(
+                      r'^([01]+) => (\S+) \+ (\S+) i$', result.stdout, re.MULTILINE)}
+        self.assertEqual(set(actual), set(range(len(expected))), result.stdout)
+        for index, wanted in enumerate(expected):
+            self.assertTrue(cmath.isclose(actual[index], wanted, rel_tol=1e-5, abs_tol=2e-6),
+                            (source, index, actual[index], wanted))
+        type(self).checked += 1
+
+    def check_gate(self, gate, theta, modifiers, *, basis=None, runtime=True, fused=False):
+        operation = reference_matrix(gate, lambda: theta, modifiers)
+        size = len(operation)
+        qubits = size.bit_length() - 1
+        if basis is None:
+            preparation = 'h q; s q[0]; '
+            state = [(1j if index & 1 else 1) / math.sqrt(size) for index in range(size)]
+        else:
+            preparation = ''.join(f'x q[{index}]; ' for index in range(qubits) if basis & (1 << index))
+            state = [complex(index == basis) for index in range(size)]
+        prefix = ' @ '.join(kind if kind == 'inv' else f'{kind}({argument!r})' for kind, argument in modifiers)
+        operands = ', '.join(f'q[{index}]' for index in reversed(range(qubits)))
+        argument = 'theta' if runtime else repr(theta)
+        self.check_source(f'qubit[{qubits}] q; float theta = {theta!r}; ' + preparation
+                          + f'{prefix} @ {gate}({argument}) {operands};',
+                          self.apply(operation, state), fused=fused)
+
+    def test_rotation_families_against_analytic_projectors(self):
+        angles = (0.0, -0.0, 0.7, -0.7, math.pi, math.tau, -math.tau,
+                  3 * math.pi, math.nextafter(math.tau, 0), math.nextafter(math.tau, math.inf),
+                  1e20, -1e20, 1e100, -1e100, 1e308, -1e308)
+        chains = ((('pow', 0.5),), (('pow', -0.5),), (('pow', 0.0),),
+                  (('pow', 0.5), ('pow', 6)), (('pow', 6), ('pow', 0.5)),
+                  (('inv', None), ('pow', 0.5)), (('pow', 0.5), ('inv', None)))
+        for gate in ROTATIONS:
+            size = 4 if gate.startswith('cr') else 2
+            for theta in angles:
+                bases = (*range(size), None) if theta in (0.7, 3 * math.pi) else (None,)
+                for modifiers in chains:
+                    for runtime in (False, True):
+                        for basis in bases:
+                            with self.subTest(gate=gate, theta=theta, modifiers=modifiers, runtime=runtime, basis=basis):
+                                self.check_gate(gate, theta, modifiers, runtime=runtime, basis=basis)
+
+    def test_mixed_controls_matrix_columns_and_fusion(self):
+        for gate in ROTATIONS:
+            for values in ((0,), (1,), (0, 1), (1, 0)):
+                controls = tuple(('ctrl' if value else 'negctrl', 1) for value in values)
+                modifiers = (controls[0], ('pow', 0.5), *controls[1:], ('pow', 6))
+                size = len(reference_matrix(gate, lambda: math.pi / 2, modifiers))
+                for fused in (False, True):
+                    for basis in (*range(size), None):
+                        with self.subTest(gate=gate, values=values, fused=fused, basis=basis):
+                            self.check_gate(gate, math.pi / 2, modifiers, basis=basis, fused=fused)
+            modifiers = (('ctrl', 2), ('pow', 0.5), ('negctrl', 1))
+            for fused in (False, True):
+                self.check_gate(gate, 3 * math.pi, modifiers, fused=fused)
+
+    def test_finite_eigenangles_with_an_overflowing_difference(self):
+        for gate in ROTATIONS:
+            for fused in (False, True):
+                with self.subTest(gate=gate, fused=fused):
+                    self.check_gate(gate, 3.0, (('pow', 1e308),), fused=fused)
+
+    def test_noncontiguous_wires_and_spectators(self):
+        for axis in PAULI:
+            target = reference_matrix('r' + axis, lambda: 3 * math.pi, (('pow', 0.5),))
+            initial = [(1j if index & 1 else 1) * (-1j if index & 4 else 1) / 4 for index in range(16)]
+            expected = initial.copy()
+            for index in range(16):
+                if index & 8 and not index & 4 and not index & 2:
+                    pair = self.apply(target, (initial[index], initial[index | 2]))
+                    expected[index], expected[index | 2] = pair
+            for fused in (False, True):
+                self.check_source('qubit[4] q; h q; s q[0]; sdg q[2]; '
+                    + f'negctrl @ pow(0.5) @ cr{axis}({3 * math.pi!r}) q[2], q[3], q[1];', expected, fused=fused)
+
+    def test_broadcast_arrays_reused_temporaries_and_integer_angles(self):
+        angle = 0.7
+        operation = reference_matrix('rx', lambda: angle, (('pow', 0.5),))
+        local = self.apply(operation, (1 / math.sqrt(2), 1 / math.sqrt(2)))
+        self.check_source('qubit[2] q; h q; float theta = 0.7; pow(0.5) @ rx(theta) q;',
+                          [local[high] * local[low] for high in range(2) for low in range(2)])
+        state = (1 / math.sqrt(2), 1j / math.sqrt(2))
+        for gate, theta, power in (('rx', 0.7, 0.5), ('ry', 1.2, -0.5), ('rz', -0.7, 1.0)):
+            state = self.apply(reference_matrix(gate, lambda: theta, (('pow', power),)), state)
+        for fused in (False, True):
+            self.check_source('qubit q; h q; s q; array[float, 2] values = {0.7, 1.2}; int index = 0; '
+                'pow(0.5) @ rx(values[index]) q; index = 1; pow(-0.5) @ ry(values[index]) q; '
+                'rz(-values[0]) q;', state, fused=fused)
+        for name, declaration, theta in (
+                ('n', f'int n = {self.module.QASM2QCXConverter.QCX_INT_MIN};', float(self.module.QASM2QCXConverter.QCX_INT_MIN)),
+                ('u', 'uint u = uint(-1);', float(self.module.QASM2QCXConverter.QCX_UINT_MAX))):
+            for axis in PAULI:
+                expected = self.apply(reference_matrix('r' + axis, lambda: theta, (('pow', 0.5),)),
+                                      (1 / math.sqrt(2), 1j / math.sqrt(2)))
+                self.check_source('qubit q; h q; s q; ' + declaration + f'pow(0.5) @ r{axis}({name}) q;', expected)
+
+    def test_runtime_loops_break_continue_and_skipped_paths(self):
+        state = (1 / math.sqrt(2), 1j / math.sqrt(2))
+        for theta in (1.0, 2.0, 3.0):
+            state = self.apply(reference_matrix('ry', lambda: theta, (('pow', 0.5),)), state)
+        self.check_source('qubit q; h q; s q; int first = 1; int last = 3; '
+                          'for int i in [first:last] { pow(0.5) @ ry(float(i)) q; }', state)
+        state = (1 / math.sqrt(2), 1j / math.sqrt(2))
+        for theta in (0.7, 1.2):
+            state = self.apply(reference_matrix('rx', lambda: theta, (('pow', 0.5),)), state)
+        self.check_source('qubit q; h q; s q; int count = 0; float theta = 0.7; '
+            'while (count < 3) { count += 1; if (count == 2) { continue; } '
+            'pow(0.5) @ rx(theta) q; theta += 0.5; if (count == 3) { break; } }', state)
+        expected = self.apply(reference_matrix('ry', lambda: 0.7, (('pow', 0.5),)), (1, 0))
+        for body in ('pow(0.5) @ rx(1.0 / 0.0) q;', 'pow(0.0) @ rz(1e308 * 1e308) q;',
+                     'pow(0.0) @ pow(1e308) @ ry(6.0) q;'):
+            for wrapper in ('if (flag) {{ {} }}', 'while (flag) {{ {} }}', 'for int i in [1:0] {{ {} }}'):
+                self.check_source('qubit q; bool flag = false; ' + wrapper.format(body) + 'pow(0.5) @ ry(0.7) q;', expected)
+
+    def test_nonfinite_angles_and_intermediate_overflow_fail_even_when_inactive(self):
+        for gate in ROTATIONS:
+            operands = 'q[1], q[0]' if gate.startswith('cr') else 'q[0]'
+            for declaration in ('float theta = 1.0 / 0.0;', 'float theta = -1.0 / 0.0;',
+                                'float theta = 0.0 / 0.0;', 'float theta = 1e308; theta *= 1e308;'):
+                for control in ('', 'ctrl @ ', 'negctrl @ '):
+                    actual_operands = 'q[2], ' + operands if control else operands
+                    setup = 'x q[2]; ' if control.startswith('negctrl') else ''
+                    source = ('OPENQASM 3; include "stdgates.inc"; qubit[3] q; ' + declaration + setup
+                              + f'{control}pow(0.0) @ {gate}(theta) {actual_operands};')
+                    lines = self.module.convert(source)
+                    result = subprocess.run([str(self.bra)], input='\n'.join(lines) + '\n',
+                                            text=True, capture_output=True, timeout=30)
+                    self.assertNotEqual(result.returncode, 0, source)
+                    self.assertIn('nonfinite', result.stderr)
+                    self.assertEqual(result.stdout, '')
+            source = ('OPENQASM 3; include "stdgates.inc"; qubit[2] q; '
+                      + f'pow(0.0) @ pow(1e308) @ {gate}(6.0) {operands};')
+            result = subprocess.run([str(self.bra)], input='\n'.join(self.module.convert(source)) + '\n',
+                                    text=True, capture_output=True, timeout=30)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('nonfinite', result.stderr)
+
+
 class BackendAuditTests(unittest.TestCase):
     bra = None
     checked = 0
@@ -521,6 +682,7 @@ def main():
     if options.bra is not None:
         BackendAuditTests.bra = options.bra.resolve()
         LoweringAuditTests.bra = options.bra.resolve()
+        ConversionAuditTests.bra = options.bra.resolve()
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     suite = unittest.defaultTestLoader.loadTestsFromModule(__import__(__name__))
     result = unittest.TextTestRunner(verbosity=2).run(suite)
@@ -528,6 +690,8 @@ def main():
         print(f'Existing ordinary/inverse rotation circuits checked: {BackendAuditTests.checked}')
     if LoweringAuditTests.checked:
         print(f'Prepared rotation eigenphase pairs checked: {LoweringAuditTests.checked}')
+    if ConversionAuditTests.checked:
+        print(f'Converted rotation-power circuits checked: {ConversionAuditTests.checked}')
     raise SystemExit(0 if result.wasSuccessful() else 1)
 
 
