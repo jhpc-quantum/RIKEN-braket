@@ -13,8 +13,9 @@ The intrinsic positive control and any added controls leave inactive blocks
 exactly identity; a scalar active block is still a relative controlled phase.
 
 The optional default-double, non-MPI audit exercises existing ordinary/integer
-cu conversion and raw QCX basis/projector-phase instructions. It does not
-enable floating cu conversion. Ordinary cu currently forms gamma+theta/2;
+cu conversion, raw QCX basis/projector-phase instructions, and private runtime
+spectral preparation. It does not enable floating cu conversion.
+Ordinary cu currently forms gamma+theta/2;
 its audit uses profiles where that sum is well conditioned. Independent
 references also cover loss/overflow in that sum, which must not be inherited
 by the new floating path. No ordinary-path numerical fix is made here.
@@ -252,6 +253,101 @@ class ReferenceTests(unittest.TestCase):
         self.assertEqual(calls, [0, 1, 2, 3])
 
 
+class PreparationAuditTests(unittest.TestCase):
+    bra = None
+    checked = 0
+    print_prepared = uref.PreparationAuditTests.print_prepared
+    execute = uref.PreparationAuditTests.execute
+    check = uref.PreparationAuditTests.check
+
+    def setUp(self):
+        if self.bra is None:
+            self.skipTest('pass --bra to audit runtime cu spectral preparation')
+        from qasm2qcx_runtime_for_numerical import qasm2qcx
+        self.module = qasm2qcx
+
+    def fixture(self, gate, arguments, modifiers, source=''):
+        self.assertEqual(gate, 'cu')
+        controls = sum(count for kind, count in modifiers if kind in ('ctrl', 'negctrl'))
+        qubits = controls + 2
+        program = self.module.openqasm3.parser.parse(f'OPENQASM 3; qubit[{qubits}] q; ' + source)
+        converter = self.module.QASM2QCXConverter(program)
+        converter.visit(program)
+        prefix = ' @ '.join(kind if kind == 'inv' else f'{kind}({argument!r})' for kind, argument in modifiers)
+        operands = ', '.join(f'q[{wire}]' for wire in reversed(range(qubits)))
+        statement = self.module.openqasm3.parser.parse(
+            f'OPENQASM 3; {prefix} @ cu({arguments}) {operands};').statements[0]
+        info = converter._QASM2QCXConverter__analyze_gate_modifiers(
+            statement.modifiers, allow_runtime=True, allow_float=True)
+        return converter, statement, info
+
+    def program(self, parameters, modifiers=(('pow', 0.5),), **options):
+        return uref.PreparationAuditTests.program(self, 'cu', parameters, modifiers, **options)
+
+    def test_full_gamma_factor_and_shared_basis_match_independent_reference(self):
+        maximum = float.fromhex('0x1.fffffffffffffp+1023')
+        profiles = ((0.7, 0.4, -0.2, 0.9), (0, 0, 0, 0), (0, 0, 0, 0.7),
+                    (0, 0, 0, math.nextafter(math.pi, 0)), (0, 0, 0, math.nextafter(math.pi, math.inf)),
+                    (0, 0, 1.5 * math.pi, -0.75 * math.pi), (0.7, 0.4, -0.2, 1e20),
+                    (1e20, -1e20, 1e20, -1e20), (maximum,) * 4,
+                    (1e308, 1e308, -1e308, -1e308), (0, maximum, -maximum, maximum),
+                    (1e-200, 0, 0, math.pi), (1e-12, 0, 0, math.pi - 5e-13))
+        chains = ((('pow', 0.5),), (('pow', -0.5),), (('pow', 0.0),),
+                  (('pow', 0.5), ('inv', None)), (('inv', None), ('pow', 0.5)),
+                  (('pow', 0.5), ('pow', 6)), (('pow', 6), ('pow', 0.5)),
+                  (('negctrl', 1), ('pow', 0.5), ('ctrl', 1)))
+        for parameters in profiles:
+            for modifiers in chains:
+                for runtime in (False, True):
+                    with self.subTest(parameters=parameters, modifiers=modifiers, runtime=runtime):
+                        self.check(self.program(parameters, modifiers, runtime=runtime), spectrum(parameters), modifiers, parameters)
+
+    def test_array_arithmetic_integer_and_unsigned_gamma_parameters(self):
+        maximum_uint = self.module.QASM2QCXConverter.QCX_UINT_MAX
+        minimum_int = self.module.QASM2QCXConverter.QCX_INT_MIN
+        cases = (
+            (', '.join(f'values[index + {offset}]' for offset in range(4)),
+             'array[float, 4] values = {0.7, 0.4, -0.2, 0.9}; int index = 0;', (0.7, 0.4, -0.2, 0.9)),
+            ('p0, p1, p2, p3 + 0.1', '', (0.7, 0.4, -0.2, 1.0)),
+            ('p0, p1, p2, p0', '', (0.7, 0.4, -0.2, 0.7)),
+            ('p0, p1, p2, n', f'int n = {minimum_int};', (0.7, 0.4, -0.2, minimum_int)),
+            ('p0, p1, p2, u', 'uint u = uint(-1);', (0.7, 0.4, -0.2, maximum_uint)),
+        )
+        original = (0.7, 0.4, -0.2, 0.9)
+        modifiers = (('pow', 0.5), ('inv', None), ('pow', 6))
+        for arguments, extra, parameters in cases:
+            self.check(self.program(original, modifiers, arguments=arguments, extra_source=extra),
+                       spectrum(parameters), modifiers, original)
+
+    def test_finite_active_eigenphases_need_no_finite_difference(self):
+        parameters = (3.0, 0, 0, -1.5)
+        modifiers = (('pow', 1e308),)
+        self.check(self.program(parameters, modifiers), spectrum(parameters), modifiers, parameters)
+
+    def test_nonfinite_inputs_and_intermediate_products_cannot_hide(self):
+        for index in range(4):
+            for expression in ('1.0 / 0.0', '-1.0 / 0.0', '0.0 / 0.0', '1e308 * 1e308'):
+                arguments = ['0.7'] * 4
+                arguments[index] = expression
+                for modifiers in ((('pow', 0.0),), (('ctrl', 1), ('pow', 0.0)),
+                                  (('negctrl', 1), ('pow', 0.0))):
+                    result = self.execute(self.program((0.7,) * 4, modifiers, arguments=', '.join(arguments)))
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn('nonfinite', result.stderr)
+                    self.assertEqual(result.stdout, '')
+                skipped = self.execute(self.program((0.7,) * 4, arguments=', '.join(arguments), skip=True))
+                self.assertEqual(skipped.returncode, 0, skipped.stderr)
+                self.assertEqual(skipped.stdout.strip(), '99')
+        parameters, modifiers = (0, 0, 0, 3.0), (('pow', 0.0), ('pow', 1e308))
+        result = self.execute(self.program(parameters, modifiers))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('nonfinite', result.stderr)
+        self.assertEqual(result.stdout, '')
+        skipped = self.execute(self.program(parameters, modifiers, skip=True))
+        self.assertEqual(skipped.returncode, 0, skipped.stderr)
+        self.assertEqual(skipped.stdout.strip(), '99')
+
+
 class BackendAuditTests(unittest.TestCase):
     bra = None
     checked = 0
@@ -333,11 +429,14 @@ def main():
     options = parser.parse_args()
     if options.bra is not None:
         BackendAuditTests.bra = options.bra.resolve()
+        PreparationAuditTests.bra = options.bra.resolve()
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     suite = unittest.defaultTestLoader.loadTestsFromModule(__import__(__name__))
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     if BackendAuditTests.checked:
         print(f'Existing cu/intrinsic-projector circuits checked: {BackendAuditTests.checked}')
+    if PreparationAuditTests.checked:
+        print(f'Prepared cu spectra checked: {PreparationAuditTests.checked}')
     raise SystemExit(0 if result.wasSuccessful() else 1)
 
 

@@ -2634,19 +2634,27 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             ) -> Iterator[tuple[str, str, str, str]]:
         factors = self.__phase_power_factors(info)
         name = statement.name.name
-        if name not in ('u2', 'u3', 'U'):
+        if name not in ('u2', 'u3', 'U', 'cu'):
             raise UnsupportedOpenQASMError(f'U-family spectrum for {name}')
-        expected = 2 if name == 'u2' else 3
+        expected = 2 if name == 'u2' else 4 if name == 'cu' else 3
         if len(statement.arguments) != expected:
-            raise WrongGateArityException(name, expected, 1, len(statement.arguments), len(statement.qubits))
+            qubits = (2 if name == 'cu' else 1) + sum(count for _, count in info.controls)
+            raise WrongGateArityException(name, expected, qubits, len(statement.arguments), len(statement.qubits))
         with contextlib.ExitStack() as stack:
             # Nested capture scopes retain every source snapshot and indexed
             # expression temporary until the full modifier/broadcast lifetime,
             # restoring the caller's expression state even on exceptions.
             captured = [stack.enter_context(self.__evaluated_phase_angle(expression))
                         for expression in statement.arguments]
-            scalar, vector, overall = self.__emit_u_gate_quaternion(name, captured)
+            core_name, core_parameters = ('U', captured[:3]) if name == 'cu' else (name, captured)
+            scalar, vector, overall = self.__emit_u_gate_quaternion(core_name, core_parameters)
             beta, eta, coefficients = self.__emit_u_gate_eigenbasis(scalar, vector, overall)
+            if name == 'cu':
+                # Gamma's ORIGINAL full-angle factor belongs to both active
+                # eigenvalues before any principal argument or modifier. Do
+                # not halve it, mix it into phi/lambda, or add gamma+theta/2.
+                gamma = captured[3][1]
+                self.__qcx_lines.extend(f'LET {coefficient} *= {gamma}' for coefficient in coefficients)
             phases = tuple((self.__add_new_temporary_variable(ValueType.FLOAT), coefficient)
                            for coefficient in coefficients)
             for angle, coefficient in phases:
