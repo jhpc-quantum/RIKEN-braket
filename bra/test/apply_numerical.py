@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""End-to-end APPLY calls and ARG(EXP(i*theta)) versus native phase gates.
+"""End-to-end APPLY calls, complex magnitudes, and phase-gate equivalence.
 
   python3 bra/test/apply_numerical.py --bra /path/to/default-double/bra
 
@@ -129,7 +129,32 @@ def main():
         check_values(bra, SETUP + f'LET COUT := {source}\nAPPLY COUT <- EXP COUT\nPRINTLN :REAL:COUT :IMAG:COUT\n',
                      [expected.real, expected.imag])
         check_values(bra, SETUP + f'APPLY OUT <- ARG {source}\nPRINTLN OUT\n', [cmath.phase(value)])
-        calls += 3
+        check_values(bra, SETUP + f'apply r:n:n <- abs {source}\nPRINTLN R:2\n', [abs(value)])
+        calls += 4
+    for re_part, im_part, scale, expected in ((3, 4, 1, 5), (-3, -4, 1, 5),
+            (1e200, -1e200, 1e200, math.sqrt(2)),
+            (1e-200, -1e-200, 1e-200, math.sqrt(2)),
+            (1e308, 1e308, 1e308, math.sqrt(2)), (0, 0, 1, 0)):
+        check_values(bra, SETUP + f'LET COUT := :I\nLET COUT *= :COMPLEX:{im_part!r}\n'
+                     f'LET COUT += :COMPLEX:{re_part!r}\nAPPLY OUT <- ABS COUT\n'
+                     f'LET OUT /= {scale!r}\nPRINTLN OUT :REAL:COUT :IMAG:COUT\n',
+                     [expected, re_part, im_part])
+        calls += 1
+    check_values(bra, SETUP + 'APPLY OUT <- ABS :COMPLEX:-3\nPRINTLN OUT\n', [3])
+    check_values(bra, SETUP + 'APPLY R:1 <- ABS :COMPLEX:R:1\nPRINTLN R:1\n', [0.5])
+    calls += 2
+    for fused in (False, True):
+        begin, end = ('BEGIN FUSION\n', 'END FUSION\n') if fused else ('', '')
+        program = (SETUP + 'LET COUT := :I\nLET COUT *= :COMPLEX:0.4\n'
+                   'LET COUT += :COMPLEX:0.3\nH 0\nH 1\n' + begin
+                   + 'APPLY OUT <- ABS COUT\nU1 0 OUT\n'
+                   'APPLY OUT <- ABS :COMPLEX:-0.7\nU1 1 OUT\n' + end)
+        expected = [cmath.exp(1j * (0.5 * bool(index & 1) + 0.7 * bool(index & 2))) / 2
+                    for index in range(4)]
+        actual = amplitudes(bra, program)
+        if any(not cmath.isclose(a, e, rel_tol=1e-5, abs_tol=2e-6) for a, e in zip(actual, expected)):
+            raise RuntimeError(f'ABS gate parameter mismatch: {fused=}, {actual=}, {expected=}')
+        calls += 1
     check_values(bra, SETUP + 'APPLY R:N:N <- EXP R:N:N\nPRINTLN R:0 R:1 R:2 N:0 N:1 N:2\n',
                  [0.25, -0.5, math.exp(0.75), 1, 2, 0])
     check_values(bra, SETUP + 'APPLY OUT <- ARG :COMPLEX:-1\nPRINTLN OUT\n', [math.pi])
@@ -142,6 +167,16 @@ def main():
         ('APPLY OUT <- EXP U', 'unsupported operand signature', ''),
         ('APPLY COUT <- EXP R:0', 'wrong destination type', ''),
         ('APPLY OUT <- ARG R:0', 'unsupported operand signature', ''),
+        ('APPLY OUT <- ABS R:0', 'unsupported operand signature', ''),
+        ('APPLY OUT <- ABS 1', 'unsupported operand signature', ''),
+        ('APPLY OUT <- ABS U', 'unsupported operand signature', ''),
+        ('APPLY COUT <- ABS Z:0', 'wrong destination type', ''),
+        ('APPLY OUT OUT <- ABS Z:0', 'wrong destination count', ''),
+        ('APPLY OUT <- ABS Z:0 Z:1', 'wrong operand count', ''),
+        ('APPLY R:999 <- ABS Z:0', 'index out of range', ''),
+        ('APPLY OUT <- ABS Z:999', 'index out of range', ''),
+        ('APPLY OUT <- ABS COUT', 'overflow/nonfinite result',
+         'LET COUT := :I\nLET COUT *= :COMPLEX:1.3e308\nLET COUT += :COMPLEX:1.3e308\n'),
         ('APPLY OUT OUT <- EXP 1.0', 'wrong destination count', ''),
         ('APPLY OUT <- EXP 1.0 2.0', 'wrong operand count', ''),
         ('APPLY R:-1 <- EXP 1.0', 'negative index', ''),
@@ -161,6 +196,7 @@ def main():
             ('APPLY R:0 <- EXP OUT', 'nonfinite input', preparation),
             ('APPLY Z:0 <- EXP COUT', 'nonfinite input', preparation),
             ('APPLY R:0 <- ARG COUT', 'nonfinite input', preparation),
+            ('APPLY R:0 <- ABS COUT', 'nonfinite input', preparation),
         ))
     for instruction, reason, preparation in failures:
         check_failure(bra, instruction, reason, preparation)

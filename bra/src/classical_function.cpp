@@ -48,6 +48,18 @@ namespace bra
       function_type volatile function = &std::exp< ::bra::real_type >;
       return function(value);
     }
+
+    auto library_complex_abs(::bra::complex_type const& value) -> ::bra::real_type
+    {
+      // Preserve the scaled library algorithm. Under fast-math, inlining a
+      // complex absolute value can instead square its components directly,
+      // overflowing/underflowing even when the magnitude is representable.
+      // As with EXP, keep the function boundary without changing build flags
+      // or the caller's floating-point environment.
+      using function_type = ::bra::real_type (*)(::bra::real_type, ::bra::real_type);
+      function_type volatile function = &std::hypot;
+      return function(value.real(), value.imag());
+    }
   }
 
   auto evaluate_classical_function(::bra::classical_function_call const& call)
@@ -74,6 +86,13 @@ namespace bra
     auto const value = boost::get< ::bra::complex_type >(operand);
     if (not finite(value))
       throw std::domain_error{"nonfinite input to " + std::string{::bra::classical_function_name(signature.function)}};
+    if (signature.function == ::bra::classical_function_id::abs)
+    {
+      auto const result = library_complex_abs(value);
+      if (not boost::math::isfinite(result))
+        throw std::overflow_error{"overflow/nonfinite result from ABS"};
+      return {result};
+    }
     // Snapshot the representation-derived signs as integers before classifying
     // zeros. GCC fast-math can otherwise replace signbit(x) by false on a path
     // where x was classified as zero (observed for x87 long double). Volatile
