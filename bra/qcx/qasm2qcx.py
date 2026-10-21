@@ -2314,6 +2314,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__emit_parameterized_phase_gate(statement, info, qcx_gate_name)
             elif family in ('EX', 'EY', 'EZ'):
                 self.__emit_floating_rotation_gate(statement, info, qcx_gate_name)
+            elif qasm_gate_name in ('u2', 'u3', 'U'):
+                self.__emit_floating_u_gate(statement, info)
             else:
                 self.__emit_floating_gate_power(statement, info, qcx_gate_name)
             return
@@ -2513,7 +2515,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __emit_phase_modifiers(
             self, phases: tuple[tuple[str, str], ...], info: _OrderedGateModifierInfo,
-            factors: tuple[float | None, ...]) -> None:
+            factors: tuple[float | None, ...], *, preserve_inverse_coefficients: bool = False) -> None:
         # Finish and validate each modifier for every eigenvalue before moving
         # outward. Neither a later zero nor the other eigenvalue may hide an
         # intermediate nonfinite product. Select each principal phase separately:
@@ -2527,7 +2529,130 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                     self.__qcx_lines.append(f'LET {angle} *= {factor!r}')
                 else:
                     self.__qcx_lines.append(f'LET {angle} *= -1.0')
+                    if preserve_inverse_coefficients:
+                        # General eigenvalues are constructed algebraically,
+                        # not from this angle. Conjugate them directly: EXP of
+                        # a rounded argument could move an exact cut eigenvalue
+                        # to one side, changing the next principal power.
+                        self.__emit_conjugate_coefficient(coefficient)
+                        continue
                 self.__emit_phase_coefficient(angle, coefficient)
+
+    def __emit_complex_components(self, destination: str, real: str, imaginary: str) -> None:
+        # The scalar components must survive overwriting destination.
+        self.__qcx_lines.extend([
+            f'LET {destination} := :I', f'LET {destination} *= :COMPLEX:{imaginary}',
+            f'LET {destination} += :COMPLEX:{real}'])
+
+    def __emit_conjugate_coefficient(self, coefficient: str) -> None:
+        real = self.__add_new_temporary_variable(ValueType.FLOAT)
+        imaginary = self.__add_new_temporary_variable(ValueType.FLOAT)
+        try:
+            self.__qcx_lines.extend([
+                f'LET {real} := :REAL:{coefficient}', f'LET {imaginary} := :IMAG:{coefficient}',
+                f'LET {imaginary} *= -1.0'])
+            self.__emit_complex_components(coefficient, real, imaginary)
+        finally:
+            self.__release_temporary_variable(real)
+            self.__release_temporary_variable(imaginary)
+
+    def __emit_u_gate_quaternion(
+            self, name: str, captured: list[tuple[str, str]]) -> tuple[str, tuple[str, str, str], str]:
+        # All original angles have already been captured and checked. Form
+        # half-angle unit factors separately, never sums/differences of large
+        # source angles. W = overall * (scalar I - i vector . Pauli).
+        for angle, coefficient in captured:
+            self.__qcx_lines.append(f'LET {angle} *= 0.5')
+            self.__emit_phase_coefficient(angle, coefficient)
+        phi, lam = (coefficient for _, coefficient in captured[-2:])
+        summed = self.__add_new_temporary_variable(ValueType.COMPLEX)
+        difference = self.__add_new_temporary_variable(ValueType.COMPLEX)
+        self.__qcx_lines.extend([f'LET {summed} := {phi}', f'LET {summed} *= {lam}',
+                                 f'LET {difference} := {lam}'])
+        self.__emit_conjugate_coefficient(difference)
+        self.__qcx_lines.append(f'LET {difference} *= {phi}')
+
+        cosine = self.__add_new_temporary_variable(ValueType.FLOAT)
+        sine = self.__add_new_temporary_variable(ValueType.FLOAT)
+        if name == 'u2':
+            # Native U2 has identical sine/cosine = 1/sqrt(2). ABS supplies
+            # sqrt(2) in native precision without needing a new SQRT function.
+            diagonal = self.__add_new_temporary_variable(ValueType.COMPLEX)
+            self.__qcx_lines.extend([
+                f'LET {diagonal} := :I', f'LET {diagonal} += :COMPLEX:1.0',
+                f'APPLY {sine} <- ABS {diagonal}', f'LET {cosine} := 1.0',
+                f'LET {cosine} /= {sine}', f'LET {sine} := {cosine}'])
+        else:
+            theta = captured[0][1]
+            self.__qcx_lines.extend([
+                f'LET {cosine} := :REAL:{theta}', f'LET {sine} := :IMAG:{theta}'])
+
+        scalar, x, y, z = (self.__add_new_temporary_variable(ValueType.FLOAT) for _ in range(4))
+        self.__qcx_lines.extend([
+            f'LET {scalar} := :REAL:{summed}', f'LET {scalar} *= {cosine}',
+            f'LET {x} := :IMAG:{difference}', f'LET {x} *= {sine}', f'LET {x} *= -1.0',
+            f'LET {y} := :REAL:{difference}', f'LET {y} *= {sine}',
+            f'LET {z} := :IMAG:{summed}', f'LET {z} *= {cosine}'])
+        if name == 'U':
+            self.__qcx_lines.append(f'LET {summed} *= {captured[0][1]}')
+        return scalar, (x, y, z), summed
+
+    def __emit_u_gate_eigenbasis(
+            self, scalar: str, vector: tuple[str, str, str], overall: str
+            ) -> tuple[str, str, tuple[str, str]]:
+        x, y, z = vector
+        xy = self.__add_new_temporary_variable(ValueType.COMPLEX)
+        zr = self.__add_new_temporary_variable(ValueType.COMPLEX)
+        radial = self.__add_new_temporary_variable(ValueType.FLOAT)
+        length = self.__add_new_temporary_variable(ValueType.FLOAT)
+        beta = self.__add_new_temporary_variable(ValueType.FLOAT)
+        eta = self.__add_new_temporary_variable(ValueType.FLOAT)
+        self.__emit_complex_components(xy, x, y)
+        self.__qcx_lines.append(f'APPLY {radial} <- ABS {xy}')
+        self.__emit_complex_components(zr, z, radial)
+        self.__qcx_lines.append(f'APPLY {length} <- ABS {zr}')
+        ready = self.__gate_power_label() + '_U_BASIS'
+        polar = self.__gate_power_label() + '_U_POLAR'
+        self.__qcx_lines.extend([
+            f'LET {beta} := 0.0', f'LET {eta} := 0.0',
+            f'JUMPIF {ready} {length} == 0.0', f'JUMPIF {polar} {radial} == 0.0',
+            f'APPLY {eta} <- ARG {xy}', f'@{polar}', f'APPLY {beta} <- ARG {zr}', f'@{ready}'])
+        # Exactly scalar => identity basis and equal full eigenvalues. Polar
+        # axes skip only the undefined azimuth. No epsilon-based merging and
+        # no division by the eigenvalue gap or tiny vector components.
+        plus = self.__add_new_temporary_variable(ValueType.COMPLEX)
+        minus = self.__add_new_temporary_variable(ValueType.COMPLEX)
+        self.__emit_complex_components(minus, scalar, length)
+        self.__qcx_lines.append(f'LET {length} *= -1.0')
+        self.__emit_complex_components(plus, scalar, length)
+        self.__qcx_lines.extend([f'LET {plus} *= {overall}', f'LET {minus} *= {overall}'])
+        return beta, eta, (plus, minus)
+
+    @contextlib.contextmanager
+    def __powered_u_gate_spectrum(
+            self, statement: ast.QuantumGate, info: _OrderedGateModifierInfo
+            ) -> Iterator[tuple[str, str, str, str]]:
+        factors = self.__phase_power_factors(info)
+        name = statement.name.name
+        if name not in ('u2', 'u3', 'U'):
+            raise UnsupportedOpenQASMError(f'U-family spectrum for {name}')
+        expected = 2 if name == 'u2' else 3
+        if len(statement.arguments) != expected:
+            raise WrongGateArityException(name, expected, 1, len(statement.arguments), len(statement.qubits))
+        with contextlib.ExitStack() as stack:
+            # Nested capture scopes retain every source snapshot and indexed
+            # expression temporary until the full modifier/broadcast lifetime,
+            # restoring the caller's expression state even on exceptions.
+            captured = [stack.enter_context(self.__evaluated_phase_angle(expression))
+                        for expression in statement.arguments]
+            scalar, vector, overall = self.__emit_u_gate_quaternion(name, captured)
+            beta, eta, coefficients = self.__emit_u_gate_eigenbasis(scalar, vector, overall)
+            phases = tuple((self.__add_new_temporary_variable(ValueType.FLOAT), coefficient)
+                           for coefficient in coefficients)
+            for angle, coefficient in phases:
+                self.__emit_principal_phase(angle, coefficient)
+            self.__emit_phase_modifiers(phases, info, factors, preserve_inverse_coefficients=True)
+            yield beta, eta, phases[0][0], phases[1][0]
 
     @contextlib.contextmanager
     def __powered_phase_angle(
@@ -2593,6 +2718,25 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 one = ' '.join(conditions + [target])
                 sequence = before + [f'{diagonal} {zero} {plus_angle}',
                                      f'{diagonal} {one} {minus_angle}'] + after
+                self.__emit_gate_power(sequence, 1, output_start)
+
+    def __emit_floating_u_gate(self, statement: ast.QuantumGate, info: _OrderedGateModifierInfo) -> None:
+        controls = sum(count for _, count in info.controls)
+        output_start = len(self.__qcx_lines)
+        with self.__powered_u_gate_spectrum(statement, info) as (beta, eta, plus_angle, minus_angle):
+            for qubits in self.__qubit_operand_tuples(statement.qubits, distinct=True):
+                conditions = self.__condition_qubits(qubits[:controls], info.controls)
+                target = qubits[-1]
+                diagonal = self.__controlled_phase_gate_name(controls + 1)
+                zero = ' '.join(conditions + [f'{target}#0'])
+                one = ' '.join(conditions + [target])
+                # V diag(exp(i alpha+), exp(i alpha-)) V-dagger. Controls
+                # condition both full eigenphases, not the basis changes.
+                # QCX U3 is conventional W even when the source gate is U;
+                # U's extra global factor is already in both eigenvalues.
+                sequence = [f'U3+ {target} {beta} {eta} 0.0',
+                            f'{diagonal} {zero} {plus_angle}', f'{diagonal} {one} {minus_angle}',
+                            f'U3 {target} {beta} {eta} 0.0']
                 self.__emit_gate_power(sequence, 1, output_start)
 
     def __emit_floating_quantum_phase(
@@ -3809,7 +3953,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                                                   len(child.arguments), len(child.qubits))
                 if isinstance(modifier_info, _OrderedGateModifierInfo):
                     mnemonic = (self.default_gates_qcx_map | self.stdgates_qcx_map)[child.name.name]
-                    if self.qcx_controlled_gate_families[mnemonic][0] in ('U1', 'EX', 'EY', 'EZ'):
+                    if (self.qcx_controlled_gate_families[mnemonic][0] in ('U1', 'EX', 'EY', 'EZ')
+                            or child.name.name in ('u2', 'u3', 'U')):
                         self.__phase_power_factors(modifier_info)
                     else:
                         self.__floating_gate_power_phase(mnemonic, modifier_info)
