@@ -375,8 +375,8 @@ class LoweringAuditTests(unittest.TestCase):
         if skip:
             lines.append('JUMP SKIPPED')
         with converter._QASM2QCXConverter__powered_rotation_angles(expression, info) as angles:
-            # Evaluate the prepared angles independently, just as the eventual
-            # phase gates will; no rotation emission is enabled in Stage 2.
+            # Evaluate the prepared angles independently of quantum gate
+            # emission, using the same exponential as the final phase gates.
             for angle in angles:
                 coefficient = converter._QASM2QCXConverter__add_new_temporary_variable(self.module.ValueType.COMPLEX)
                 converter._QASM2QCXConverter__emit_phase_coefficient(angle, coefficient)
@@ -491,7 +491,8 @@ class ConversionAuditTests(unittest.TestCase):
         return [sum(value * amplitude for value, amplitude in zip(row, state)) for row in matrix]
 
     def check_source(self, source, expected, *, fused=False):
-        lines = self.module.convert('OPENQASM 3; include "stdgates.inc"; ' + source)
+        program = source if source.startswith('OPENQASM ') else 'OPENQASM 3; include "stdgates.inc"; ' + source
+        lines = self.module.convert(program)
         if fused:
             lines.insert(1, 'BEGIN FUSION')
             lines.append('END FUSION')
@@ -540,6 +541,14 @@ class ConversionAuditTests(unittest.TestCase):
                         for basis in bases:
                             with self.subTest(gate=gate, theta=theta, modifiers=modifiers, runtime=runtime, basis=basis):
                                 self.check_gate(gate, theta, modifiers, runtime=runtime, basis=basis)
+
+    def test_documented_rotation_power_example(self):
+        document = (pathlib.Path(__file__).parents[1] / 'qcx/qasm2qcx.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- rotation-power-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        for fused in (False, True):
+            self.check_source(examples[0], [-1, 0, 0, 0, 0, 0, 0, 0], fused=fused)
 
     def test_mixed_controls_matrix_columns_and_fusion(self):
         for gate in ROTATIONS:

@@ -421,9 +421,17 @@ class RotationPowerFoundationTests(unittest.TestCase):
         self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
         self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], previous)
 
+
 class RotationPowerLoweringTests(unittest.TestCase):
     def clean(self, source):
         return InverseModifierLoweringTests.assert_clean_conversion(self, source)
+
+    def test_documented_rotation_power_example(self):
+        document = CONVERTER_PATH.with_suffix('.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- rotation-power-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        self.clean(examples[0].split('\n', 1)[1])
 
     def test_rotation_families_emit_both_projector_phases(self):
         for gate in ('rx', 'ry', 'rz', 'crx', 'cry', 'crz'):
