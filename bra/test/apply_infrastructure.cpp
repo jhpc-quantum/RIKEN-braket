@@ -151,6 +151,23 @@ int main()
   check_call({"R"}, function::exp, {"1e"}, "invalid numeric literal");
   check_call({"R"}, function::exp, {"1.0x"}, "invalid numeric literal");
   check_call({"R"}, function::exp, {":REAL:R::INT:1e100"}, "REAL to INT conversion out of range");
+  // Exercise numeric failures through the state/interpreter-facing entry point,
+  // including separate complex destinations and an in-place failed invocation.
+  state.invoke_assign_operation("RESULT", bra::assign_operation_type::assign, "1.0");
+  state.invoke_assign_operation("RESULT", bra::assign_operation_type::divides_assign, "0.0");
+  state.invoke_assign_operation("CRESULT", bra::assign_operation_type::assign, ":COMPLEX:RESULT");
+  check_call({"R:N"}, function::exp, {"RESULT"}, "nonfinite input");
+  check_call({"R:N"}, function::arg, {"CRESULT"}, "nonfinite input");
+  check_call({"Z:1"}, function::exp, {"CRESULT"}, "nonfinite input");
+  state.generate_new_variable("INSPECT", type::real, 1);
+  state.invoke_assign_operation("INSPECT", bra::assign_operation_type::assign, ":REAL:Z:1");
+  state.invoke_assert_operation("INSPECT", bra::compare_operation_type::equal_to, "1");
+  state.invoke_assign_operation("INSPECT", bra::assign_operation_type::assign, ":IMAG:Z:1");
+  state.invoke_assert_operation("INSPECT", bra::compare_operation_type::equal_to, "0");
+  state.invoke_assign_operation("RESULT", bra::assign_operation_type::assign, "1000000");
+  expect_failure([&] { state.invoke_apply_operation({"RESULT"}, function::exp, {"RESULT"}); },
+                 "APPLY RESULT <- EXP RESULT: overflow/nonfinite result");
+  state.invoke_assert_operation("RESULT", bra::compare_operation_type::equal_to, "1000000");
   state.generate_new_variable("R", type::integer, 1);
   expect_failure([&] { state.invoke_apply_operation({"Z"}, function::exp, {"R"}); }, "ambiguous variable type");
 

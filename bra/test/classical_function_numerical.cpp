@@ -127,11 +127,15 @@ int main()
     auto const actual = complex_exp(z), expected = std::exp(z);
     require(close(actual.real(), expected.real()) and close(actual.imag(), expected.imag()), "wrong complex EXP");
   }
+  // exp_i is compiled in this independent, non-fast-math oracle to check the
+  // intended exponential. Actual native gate equivalence is audited separately
+  // in apply_numerical.py with the default-double executable; the optimized
+  // long-double backend has a documented, pre-existing extreme-angle problem.
   for (auto const angle: {static_cast<real>(1e20L), static_cast<real>(-1e20L), maximum, -maximum})
   {
     auto const actual = complex_exp(complex{0, angle});
     auto const expected = ket::utility::exp_i<complex>(angle);
-    require(close(actual.real(), expected.real()) and close(actual.imag(), expected.imag()), "EXP differs from backend for huge angle");
+    require(close(actual.real(), expected.real()) and close(actual.imag(), expected.imag()), "EXP differs from reference exponential for huge angle");
   }
   require(argument(complex{-1, positive_zero}) == pi, "ARG lost upper branch endpoint");
   require(argument(complex{-1, negative_zero}) == -pi, "ARG lost lower branch endpoint");

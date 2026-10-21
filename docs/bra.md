@@ -213,6 +213,7 @@ fused block rather than factoring them into its positive-only outer mask.
   Bitwise AND `&=`, OR `|=`, and XOR `^=` require an `INT` or `UINT` destination, optionally indexed. For an `INT` destination, the RHS accepts integer literals, `INT` variables or indexed elements, integer built-in symbols, and explicit `:INT:...` casts using the existing conversion rules. For a `UINT` destination, it accepts unsigned integer literals, `UINT` variables or indexed elements, and explicit `:UINT:...` casts. Mixing `INT` and `UINT` operands requires an explicit cast. Bare `REAL`, `COMPLEX`, or `PAULISS` operands are rejected. A non-integer destination throws `bra::wrong_assignment_argument_error`; failed RHS evaluation leaves the destination unchanged. Operands are evaluated only when the instruction executes, so skipped instructions do not trigger these errors.
   `INT` uses native signed C++ `int`; a compile-time check requires two's-complement representation. These bitwise operators support negative values and integer endpoints without arithmetic overflow. They do not enforce a user-selected bit width or add general overflow checks to arithmetic or casts. `LET N ^= -1` complements every integer bit. For a value restricted to zero or one, `LET B ^= 1` flips just its single bit.
   Left shift `<<=` and right shift `>>=` require an `INT` or `UINT` destination, optionally indexed. The count independently accepts an `INT` or `UINT` variable or indexed element, integer literal, integer built-in symbol, or explicit integer cast; it does not change the destination's type. Bare non-integer operands are rejected. For native width $W$, the count must satisfy $0 \leq k < W$; a negative or oversized count throws `std::out_of_range`. An `INT` left shift computes exact multiplication by $2^k$, including for negative values, and throws `std::overflow_error` if the result cannot fit `INT`. An `INT` right shift sign-extends and rounds division by $2^k$ toward negative infinity, so `-3 >>= 1` produces `-2`. A `UINT` left shift discards high bits, and a `UINT` right shift fills with zeroes. Count and overflow checks happen before modifying the destination and only when the instruction executes; skipped shifts do not throw. Diagnostic messages identify the failed `LET` instruction. These checks do not add general signed-arithmetic overflow checking.
+* `APPLY destination... <- function operand...`: invokes a typed classical function. See [Classical function invocation](#classical-function-invocation) for signatures, conversions, and numerical behavior.
 * `@label`: declares label `label`. Do not insert any spaces between `@` and `label`.
 * `JUMP label`/`JUMPIF label lhs op rhs`: jumps to the label `label`. In the case of `JUMPIF`, one can specify a condition to jump by `lhs op rhs`, where possible `op`'s are `==`, `\=`, `>`, `<`, `<=`, and `>=`. The `lhs` operand must be an `INT`, `UINT`, or `REAL` variable, optionally with an array index. The `rhs` operand may be a compatible variable, indexed element, literal, or built-in constant. `COMPLEX` comparisons are not supported.
 * `EXPECTATION operator q1 q2 q3 q4`: calculates expectation value of `operator` for the present circuit[^1]. This `operator` should be a classical variable of type `PAULISS`, and its length of Pauli string should be equal to the number of qubits specified in this instruction (`q1 q2 q3 q4` in this example). The result of this instruction is assigned to `:RESULT` whose type is `COMPLEX`.
@@ -321,9 +322,9 @@ Extremely negative real arguments are bounded within the already-underflowing
 region before library evaluation, avoiding overflow in optimized range
 reduction. The library and current environment still determine the underflow
 result; the imaginary argument is not changed.
-Complex `EXP` must agree with the backend's complex exponential for purely
-imaginary arguments, including very large finite angles; do not first reduce
-the angle modulo a machine approximation of $2\pi$.
+For imaginary operands, `EXP` evaluates the complex exponential directly,
+including large finite angles; it does not first reduce the angle modulo a
+machine approximation of $2\pi$.
 
 `ARG` computes the complex argument in radians and rejects zero, including all
 combinations of signed-zero components. For a negative real component,
@@ -355,6 +356,56 @@ unknown function names are also rejected during parsing. Public classification
 predicates (`ISFINITE`, `ISNAN`, and `ISINF`) are deferred until native `BOOL`
 and predicate result types are settled; internal numerical checks do not require
 these functions.
+
+#### Example: using a phase angle's principal argument
+
+```text
+QUBITS 1
+VAR THETA REAL
+VAR COEFFICIENT COMPLEX
+VAR BETA REAL
+LET THETA := :TWO_PI
+LET THETA *= 0.75
+LET COEFFICIENT := :I
+LET COEFFICIENT *= :COMPLEX:THETA
+APPLY COEFFICIENT <- EXP COEFFICIENT
+APPLY BETA <- ARG COEFFICIENT
+H 0
+U1 0 BETA
+DO AMPLITUDES
+```
+
+`BETA` is approximately $-\pi/2$, and `THETA` is unchanged. Evaluating the complex
+exponential first follows the intended phase-gate exponential for very large
+angles; reducing modulo a machine approximation of $2\pi$ need not do so.
+This example does not impose the separate branch-endpoint policy needed for
+fractional gate powers.
+
+Native phase-gate equivalence is tested with the default-double executable.
+There is a separate, pre-existing backend limitation: on GCC/x86, the optimized
+long-double `ket::utility::exp_i` path can produce a nonfinite coefficient for
+extremely large angles such as `1e20L`. `APPLY` does not reproduce this faulty
+behavior or change the native gate implementation.
+
+#### Tests
+
+With a default-double, non-MPI executable:
+
+```bash
+python3 bra/test/apply_infrastructure.py --bra /path/to/bra
+python3 bra/test/apply_numerical.py --bra /path/to/bra
+```
+
+The standalone numerical kernel tests build their own executables for `float`,
+`double`, and `long double`, using the existing debug/release options. They also
+check that floating-point control modes remain unchanged:
+
+```bash
+python3 bra/test/classical_function_numerical.py
+python3 bra/test/classical_function_numerical.py --sanitize
+```
+
+The second command enables UBSan and requires a compiler supporting its flags.
 
 ### Phase-exponent gates
 
