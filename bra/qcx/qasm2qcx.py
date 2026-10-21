@@ -1,6 +1,7 @@
 import sys
 import itertools
 import math
+import cmath
 import enum
 import dataclasses
 import contextlib
@@ -172,6 +173,9 @@ class InvalidNegationException(QASM2QCXError):
 
 class InvalidFunctionCallException(QASM2QCXError):
     """A known built-in function has invalid arity or operand types."""
+
+class InvalidConstantFunctionException(QASM2QCXError):
+    """A constant built-in call has an invalid value or overflowing result."""
 
 class WrongConstantVariableException(QASM2QCXError):
     def __str__(self):
@@ -4747,10 +4751,66 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         raise UnsupportedOpenQASMError('durationof expression')
 
     def visit_FunctionCall(self, expression: ast.FunctionCall) -> None:
-        self.__function_call_info(expression)
-        # Shared type validation is available before constant evaluation and
-        # runtime lowering are added in the next implementation stages.
-        raise UnsupportedOpenQASMError(f'evaluation of function {expression.name.name}')
+        signature, runtime = self.__function_call_info(expression)
+        if self.__expression_kind != ExpressionKind.CONST_ARITHMETIC:
+            # Even literal arguments in executable code need native evaluation:
+            # host folding would change precision and reached-path failures.
+            raise UnsupportedOpenQASMError(f'runtime evaluation of function {expression.name.name}')
+        if runtime:
+            raise NoConstantExpressionException
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        previous_used = self.__used_temporary_variables.copy()
+        try:
+            operands = []
+            for argument, target_type in zip(expression.arguments, signature.operand_types):
+                self.visit(argument)
+                if self.__value_kind != ValueKind.LITERAL:
+                    raise NoConstantExpressionException
+                # A skipped constant Boolean operand is still validated, but
+                # does not perform casts or numerical function evaluation.
+                if not self.__evaluate_constant:
+                    continue
+                try:
+                    operands.append(complex(self.__value) if target_type == ValueType.COMPLEX else float(self.__value))
+                except (OverflowError, ValueError) as error:
+                    raise InvalidConstantFunctionException(
+                        f'Function {expression.name.name}: operand outside supported constant precision') from error
+            result = complex() if signature.result_type == ValueType.COMPLEX else 0.0
+            if self.__evaluate_constant:
+                result = self.__fold_builtin_function(expression.name.name, signature, tuple(operands))
+            self.__value, self.__value_type, self.__value_kind = result, signature.result_type, ValueKind.LITERAL
+        except Exception:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+            raise
+        finally:
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
+
+    @staticmethod
+    def __fold_builtin_function(
+            name: str, signature: _BuiltinFunctionSignature, operands: tuple[float | complex, ...]
+            ) -> float | complex:
+        # Compile-time arithmetic uses Python float/complex precision, just as
+        # existing constant arithmetic does. Runtime calls must use bra instead.
+        value = operands[0]
+        if signature.component is not None:
+            # Component extraction is LET, not APPLY: preserve its IEEE values
+            # (including signed zeros/nonfinite components), without EXP checks.
+            return value.real if signature.component == 'REAL' else value.imag
+        if signature.qcx_function != 'EXP':
+            raise UnsupportedOpenQASMError(f'constant evaluation of function {name}')
+        is_complex = signature.operand_types[0] == ValueType.COMPLEX
+        if not cmath.isfinite(value):
+            raise InvalidConstantFunctionException(f'Function {name}: nonfinite input')
+        try:
+            result = cmath.exp(value) if is_complex else math.exp(value)
+        except (OverflowError, ValueError) as error:
+            raise InvalidConstantFunctionException(f'Function {name}: overflow/nonfinite result') from error
+        if not cmath.isfinite(result):
+            raise InvalidConstantFunctionException(f'Function {name}: overflow/nonfinite result')
+        return result
 
     def visit_IndexExpression(self, expression: ast.IndexExpression) -> None:
         if self.__expression_kind is None:
