@@ -5,8 +5,8 @@
   python3 bra/test/qasm2qcx_phase_power_numerical.py
   python3 bra/test/qasm2qcx_phase_power_numerical.py --bra /path/to/bra
 
-The public converter feature is not enabled yet. With --bra, audit existing
-native phase gates and the Stage 2 EXP/ARG lowering helpers separately.
+With --bra, audit existing native phase gates, the EXP/ARG lowering helpers,
+and public conversion of parameterized phase-gate powers.
 
 Policy for the parameterized floating-power path:
 * Exponents are finite compile-time floats or constant integers. Runtime
@@ -45,6 +45,7 @@ import cmath
 import math
 import pathlib
 import resource
+import re
 import subprocess
 import unittest
 
@@ -319,6 +320,137 @@ class LoweringAuditTests(unittest.TestCase):
         self.assertEqual(result.stdout, '')
 
 
+class ConversionAuditTests(unittest.TestCase):
+    bra = None
+    checked = 0
+
+    def setUp(self):
+        if self.bra is None:
+            self.skipTest('pass --bra to audit converted phase-gate powers')
+        from qasm2qcx_runtime_for_numerical import qasm2qcx
+        self.module = qasm2qcx
+
+    def check(self, source, expected, *, fused=False):
+        lines = self.module.convert('OPENQASM 3; include "stdgates.inc"; ' + source)
+        if fused:
+            lines.insert(1, 'BEGIN FUSION')
+            lines.append('END FUSION')
+        lines.append('DO AMPLITUDES')
+        result = subprocess.run([str(self.bra)], input='\n'.join(lines) + '\n',
+                                capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr + '\n' + source)
+        actual = {int(index, 2): complex(float(real), float(imaginary))
+                  for index, real, imaginary in re.findall(
+                      r'^([01]+) => (\S+) \+ (\S+) i$', result.stdout, re.MULTILINE)}
+        self.assertEqual(set(actual), set(range(len(expected))), result.stdout)
+        for index, value in enumerate(expected):
+            self.assertTrue(cmath.isclose(actual[index], value, rel_tol=1e-5, abs_tol=2e-6),
+                            (source, index, actual[index], value))
+        type(self).checked += 1
+
+    @staticmethod
+    def modifier_source(modifiers):
+        return ' @ '.join(kind if kind == 'inv' else f'{kind}({argument!r})'
+                          for kind, argument in modifiers)
+
+    def test_phase_aliases_and_global_phase_against_independent_oracle(self):
+        chains = ((('pow', 0.5),), (('pow', -0.5),), (('pow', 0.0),),
+                  (('pow', 0.5), ('pow', 6)), (('pow', 6), ('pow', 0.5)),
+                  (('inv', None), ('pow', 0.5)), (('pow', 0.5), ('inv', None)))
+        angles = (0.0, -0.0, 0.7, 1.5 * math.pi, math.pi, -math.pi,
+                  math.nextafter(math.pi, 0), math.nextafter(math.pi, math.inf),
+                  1e20, -1e20, 1e100, -1e100, 1e308, -1e308)
+        for gate in ('p', 'phase', 'u1', 'cp', 'cphase', 'gphase'):
+            for angle in angles:
+                for runtime in (False, True):
+                    for chain in chains:
+                        with self.subTest(gate=gate, angle=angle, runtime=runtime, chain=chain):
+                            factor = powered_phase_factor(lambda: angle, chain)
+                            diagonal = reference_diagonal(gate, factor)
+                            if gate == 'gphase':
+                                diagonal = [factor, factor]
+                            qubits = len(diagonal).bit_length() - 1
+                            operand = '' if gate == 'gphase' else 'q[1], q[0]' if gate in ('cp', 'cphase') else 'q[0]'
+                            argument = 'theta' if runtime else repr(angle)
+                            self.check(f'qubit[{qubits}] q; float theta = {angle!r}; h q; '
+                                       + f'{self.modifier_source(chain)} @ {gate}({argument}) {operand};',
+                                       [value / math.sqrt(len(diagonal)) for value in diagonal])
+
+    def test_control_patterns_and_fusion(self):
+        for gate in ('p', 'cp', 'gphase'):
+            for values in ((0,), (1,), (0, 1), (1, 0)):
+                controls = tuple(('ctrl' if value else 'negctrl', 1) for value in values)
+                # Interleave a power with the control modifiers.
+                modifiers = (controls[0], ('pow', 0.5), *controls[1:], ('pow', 6))
+                factor = powered_phase_factor(lambda: math.pi / 4, modifiers)
+                diagonal = reference_diagonal(gate, factor, values)
+                qubits = len(diagonal).bit_length() - 1
+                operands = ', '.join(f'q[{index}]' for index in reversed(range(qubits)))
+                for fused in (False, True):
+                    with self.subTest(gate=gate, values=values, fused=fused):
+                        self.check(f'qubit[{qubits}] q; float theta = {math.pi / 4!r}; h q; '
+                                   + f'{self.modifier_source(modifiers)} @ {gate}(theta) {operands};',
+                                   [value / math.sqrt(len(diagonal)) for value in diagonal], fused=fused)
+
+    def test_broadcast_arrays_source_preservation_and_runtime_loops(self):
+        root = powered_phase_factor(lambda: 0.7, (('pow', 0.5),))
+        self.check('qubit[2] q; float theta = 0.7; h q; pow(0.5) @ p(theta) q;',
+                   [0.5, root / 2, root / 2, root * root / 2])
+        for fused in (False, True):
+            self.check('qubit q; array[float, 2] angles = {0.7, 1.2}; int i = 0; h q; '
+                       'pow(0.5) @ p(angles[i]) q; p(-angles[i]) q; '
+                       'i = 1; pow(0.5) @ gphase(angles[i]);',
+                       [cmath.exp(0.6j) / math.sqrt(2), cmath.exp(0.25j) / math.sqrt(2)], fused=fused)
+            # The captured REAL temporary is reused by the following call.
+            # Deferred fused execution must retain each gate's own angle.
+            self.check('qubit q; float theta = 0.7; h q; pow(0.5) @ p(theta) q; '
+                       'theta = 1.2; pow(-0.5) @ p(theta) q;',
+                       [1 / math.sqrt(2), cmath.exp(-0.25j) / math.sqrt(2)], fused=fused)
+        factor = 1
+        for i in range(1, 5):
+            factor *= powered_phase_factor(lambda: float(i), (('pow', 0.5),))
+        self.check('qubit q; int first = 1; int last = 4; h q; '
+                   'for int i in [first:last] { pow(0.5) @ p(float(i)) q; }',
+                   [1 / math.sqrt(2), factor / math.sqrt(2)])
+        self.check('qubit q; int count = 0; float theta = 0.7; h q; '
+                   'while (count < 3) { count += 1; if (count == 2) { continue; } '
+                   'pow(0.5) @ p(theta) q; theta += 0.5; if (count == 3) { break; } }',
+                   [1 / math.sqrt(2), cmath.exp(0.95j) / math.sqrt(2)])
+
+    def test_nonfinite_angles_products_and_skipped_paths(self):
+        prefix = 'OPENQASM 3; include "stdgates.inc"; qubit[2] q; '
+        calls = ('pow(0.0) @ p(theta) q[0];',
+                 'ctrl @ pow(0.0) @ p(theta) q[1], q[0];',
+                 'negctrl @ pow(0.0) @ p(theta) q[1], q[0];',
+                 'pow(0.0) @ gphase(theta);',
+                 'ctrl @ pow(0.0) @ gphase(theta) q[1];')
+        for declaration in ('float theta = 1.0 / 0.0;', 'float theta = -1.0 / 0.0;',
+                            'float theta = 0.0 / 0.0;', 'float theta = 1e308; theta *= 1e308;'):
+            for call in calls:
+                preparation = 'x q[1];' if call.startswith('negctrl') else ''
+                lines = self.module.convert(prefix + declaration + preparation + call)
+                result = subprocess.run([str(self.bra)], input='\n'.join(lines) + '\n',
+                                        text=True, capture_output=True, timeout=30)
+                self.assertNotEqual(result.returncode, 0, call)
+                self.assertIn('nonfinite', result.stderr)
+        for call in ('pow(0.0) @ pow(1e308) @ p(3.0) q[0];',
+                     'pow(0.0) @ pow(1e308) @ gphase(3.0);',
+                     'pow(0.0) @ p(1e308 * 1e308) q[0];'):
+            result = subprocess.run([str(self.bra)],
+                input='\n'.join(self.module.convert(prefix + call)) + '\n',
+                text=True, capture_output=True, timeout=30)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('nonfinite', result.stderr)
+        for body in ('pow(0.5) @ p(1.0 / 0.0) q;', 'pow(0.0) @ gphase(1e308 * 1e308);',
+                     'pow(0.0) @ pow(1e308) @ p(3.0) q;'):
+            for wrapper in ('if (flag) {{ {} }}', 'while (flag) {{ {} }}', 'for int i in [1:0] {{ {} }}'):
+                self.check('qubit q; bool flag = false; h q; ' + wrapper.format(body),
+                           [1 / math.sqrt(2), 1 / math.sqrt(2)])
+                self.check('qubit q; bool flag = false; h q; ' + wrapper.format(body)
+                           + 'pow(0.5) @ p(0.7) q;',
+                           [1 / math.sqrt(2), cmath.exp(0.35j) / math.sqrt(2)])
+
+
 class BackendAuditTests(unittest.TestCase):
     bra = None
 
@@ -352,9 +484,12 @@ def main():
     if args.bra is not None:
         BackendAuditTests.bra = args.bra.resolve()
         LoweringAuditTests.bra = args.bra.resolve()
+        ConversionAuditTests.bra = args.bra.resolve()
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     suite = unittest.defaultTestLoader.loadTestsFromModule(__import__(__name__))
     result = unittest.TextTestRunner(verbosity=2).run(suite)
+    if ConversionAuditTests.checked:
+        print(f'Converted phase-power circuits checked: {ConversionAuditTests.checked}')
     raise SystemExit(0 if result.wasSuccessful() else 1)
 
 
