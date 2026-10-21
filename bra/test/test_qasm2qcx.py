@@ -564,6 +564,23 @@ class CUPhaseFactorLoweringTests(unittest.TestCase):
             with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
                 convert(source)
 
+    def test_each_argument_is_visited_once_and_caller_owned_storage_survives(self):
+        for modifiers in ('', 'inv @ ', 'pow(-2) @ ', 'pow(n) @ '):
+            converter = IntegerPowerModifierFoundationTests.converter('include "stdgates.inc"; '
+                'qubit[2] q; float theta = 0.7; float gamma = 1e20; int n = -2;')
+            caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+            statement = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; ' + modifiers
+                + 'cu(theta + 1, theta + 2, theta + 3, gamma + 4) q[1], q[0];').statements[0]
+            start = len(converter._QASM2QCXConverter__qcx_lines)
+            with self.subTest(modifiers=modifiers), patch.object(converter, 'visit', wraps=converter.visit) as visit:
+                converter.visit(statement)
+                visited = [call.args[0] for call in visit.call_args_list
+                           if any(call.args[0] is argument for argument in statement.arguments)]
+                self.assertEqual([id(argument) for argument in visited], [id(argument) for argument in statement.arguments])
+                self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+                self.assertFalse(any(line.startswith(f'LET {caller} ') for line in
+                                     converter._QASM2QCXConverter__qcx_lines[start:]))
+
 
 class CUPowerFoundationTests(unittest.TestCase):
     converter = staticmethod(IntegerPowerModifierFoundationTests.converter)
