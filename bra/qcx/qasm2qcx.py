@@ -170,9 +170,20 @@ class InvalidPowerException(QASM2QCXError):
 class InvalidNegationException(QASM2QCXError):
     """Native INT negation has an unrepresentable operand or result."""
 
+class InvalidFunctionCallException(QASM2QCXError):
+    """A known built-in function has invalid arity or operand types."""
+
 class WrongConstantVariableException(QASM2QCXError):
     def __str__(self):
         return 'Wrong constant variable'
+
+
+@dataclasses.dataclass(frozen=True)
+class _BuiltinFunctionSignature:
+    operand_types: tuple[ValueType, ...]
+    result_type: ValueType
+    qcx_function: str | None = None
+    component: str | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -282,6 +293,16 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     MAX_LOOP_OUTPUT_LINES = 1000000
     MAX_GATE_POWER_OUTPUT_LINES = 100000
     default_gates_qcx_map: dict[str, str] = {'U': 'U3'}
+
+    # OpenQASM overload order is significant: inputs, never the destination,
+    # select the first signature permitting all implicit promotions. Native
+    # APPLY itself does not promote, so lowering must make those casts explicit.
+    builtin_function_signatures: dict[str, tuple[_BuiltinFunctionSignature, ...]] = {
+        'exp': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='EXP'),
+                _BuiltinFunctionSignature((ValueType.COMPLEX,), ValueType.COMPLEX, qcx_function='EXP')),
+        'real': (_BuiltinFunctionSignature((ValueType.COMPLEX,), ValueType.FLOAT, component='REAL'),),
+        'imag': (_BuiltinFunctionSignature((ValueType.COMPLEX,), ValueType.FLOAT, component='IMAG'),),
+    }
 
     stdgates_qcx_map: dict[str, str] = {
             'p': 'U1', 'phase': 'U1', 'u1': 'U1', 'u2': 'U2', 'u3': 'U3',
@@ -3568,6 +3589,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 return value_type, False
         if isinstance(expression, ast.Cast):
             return self.__loop_cast_info(expression, iterators)
+        if isinstance(expression, ast.FunctionCall):
+            signature, runtime = self.__function_call_info(expression, iterators)
+            return signature.result_type, runtime
         if isinstance(expression, ast.UnaryExpression):
             return self.__loop_unary_info(expression, iterators)
         if isinstance(expression, ast.BinaryExpression):
@@ -3575,6 +3599,47 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if isinstance(expression, ast.IndexExpression) and isinstance(expression.collection, ast.Identifier):
             return self.__loop_index_info(expression, iterators)
         raise UnsupportedOpenQASMError(f'loop expression {type(expression).__name__}')
+
+    @classmethod
+    def __builtin_function_overloads(cls, name: str, arity: int) -> tuple[_BuiltinFunctionSignature, ...]:
+        overloads = cls.builtin_function_signatures.get(name)
+        if overloads is None:
+            raise UnsupportedOpenQASMError(f'function {name}')
+        matching = tuple(signature for signature in overloads if len(signature.operand_types) == arity)
+        if not matching:
+            expected = ', '.join(str(count) for count in sorted({len(signature.operand_types) for signature in overloads}))
+            raise InvalidFunctionCallException(f'Function {name} expects {expected} argument(s), but got {arity}')
+        return matching
+
+    @staticmethod
+    def __function_operand_promotes(source: ValueType, target: ValueType) -> bool:
+        # Standard classical types use C99-style promotion. A scalar bit is
+        # a special OpenQASM type, not an implicit integer/Boolean here.
+        if source == target:
+            return True
+        if source in (ValueType.BOOL, ValueType.INT, ValueType.UINT):
+            return target in (ValueType.FLOAT, ValueType.COMPLEX)
+        return source == ValueType.FLOAT and target == ValueType.COMPLEX
+
+    @classmethod
+    def __resolve_builtin_function(cls, name: str, operands: tuple[ValueType, ...]) -> _BuiltinFunctionSignature:
+        for signature in cls.__builtin_function_overloads(name, len(operands)):
+            if all(cls.__function_operand_promotes(source, target)
+                   for source, target in zip(operands, signature.operand_types)):
+                return signature
+        types = ', '.join(value_type.name.lower() for value_type in operands)
+        raise InvalidFunctionCallException(f'Function {name} has no matching overload for ({types})')
+
+    def __function_call_info(
+            self, expression: ast.FunctionCall, iterators: set[str] | dict[str, ValueType] | None = None
+            ) -> tuple[_BuiltinFunctionSignature, bool]:
+        # Diagnose the function/arity before inspecting its arguments. This
+        # path must not visit/evaluate operands or allocate scratch storage.
+        name = expression.name.name
+        self.__builtin_function_overloads(name, len(expression.arguments))
+        operands = [self.__loop_expression_info(argument, iterators) for argument in expression.arguments]
+        signature = self.__resolve_builtin_function(name, tuple(value_type for value_type, _ in operands))
+        return signature, any(runtime for _, runtime in operands)
 
     def __loop_identifier_info(
             self, expression: ast.Identifier, iterators: set[str] | dict[str, ValueType] | None
@@ -3783,8 +3848,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if isinstance(node, ast.Expression) and not isinstance(node, (
                 ast.Identifier, ast.IntegerLiteral, ast.FloatLiteral,
                 ast.ImaginaryLiteral, ast.BooleanLiteral, ast.BitstringLiteral,
-                ast.UnaryExpression, ast.BinaryExpression, ast.Cast, ast.IndexExpression)):
+                ast.UnaryExpression, ast.BinaryExpression, ast.Cast, ast.IndexExpression, ast.FunctionCall)):
             raise UnsupportedOpenQASMError(f'loop expression {type(node).__name__}')
+        if isinstance(node, ast.FunctionCall):
+            self.__builtin_function_overloads(node.name.name, len(node.arguments))
         if isinstance(node, ast.BinaryExpression) and node.op.name not in (
                 '+', '-', '*', '/', '%', '**', '&', '|', '^', '<<', '>>',
                 '==', '!=', '<', '<=', '>', '>=', '&&', '||'):
@@ -3811,6 +3878,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __loop_bound_names(self, node: ast.QASMNode) -> set[str]:
         if isinstance(node, ast.Identifier):
             return {node.name}
+        if isinstance(node, ast.FunctionCall):
+            # A callee identifier is not a variable or iterator dependency.
+            return set().union(*(self.__loop_bound_names(argument) for argument in node.arguments))
         names: set[str] = set()
         for field in dataclasses.fields(node):
             value = getattr(node, field.name)
@@ -4100,7 +4170,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return
         # Logical values and casts also need type checking when a body is
         # empty; this inspects types without executing skipped arithmetic.
-        if ((isinstance(node, ast.UnaryExpression) and node.op.name in ('~', '-', '!'))
+        if (isinstance(node, ast.FunctionCall)
+                or (isinstance(node, ast.UnaryExpression) and node.op.name in ('~', '-', '!'))
                 or (isinstance(node, ast.Cast) and isinstance(node.type, (ast.BoolType, ast.BitType)))
                 or (isinstance(node, ast.BinaryExpression) and node.op.name in (
                     '&', '|', '^', '<<', '>>', '**', '%', '&&', '||', '==', '!=', '<', '<=', '>', '>='))):
@@ -4676,7 +4747,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         raise UnsupportedOpenQASMError('durationof expression')
 
     def visit_FunctionCall(self, expression: ast.FunctionCall) -> None:
-        raise UnsupportedOpenQASMError('function call')
+        self.__function_call_info(expression)
+        # Shared type validation is available before constant evaluation and
+        # runtime lowering are added in the next implementation stages.
+        raise UnsupportedOpenQASMError(f'evaluation of function {expression.name.name}')
 
     def visit_IndexExpression(self, expression: ast.IndexExpression) -> None:
         if self.__expression_kind is None:
