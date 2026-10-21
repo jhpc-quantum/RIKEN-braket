@@ -6,9 +6,9 @@
   python3 bra/test/qasm2qcx_u_power_numerical.py --bra /path/to/bra
 
 The reference-only run needs Python's standard library, not the parser or bra.
-Optional default-double, non-MPI audits exercise EXISTING ordinary/inverse
-U-family conversion and QCX eigenbasis/projector-phase gates. Public conversion
-of floating U-family powers is intentionally not enabled by this stage.
+Optional default-double, non-MPI audits exercise existing ordinary/inverse
+U-family conversion, QCX eigenbasis/projector-phase gates, and private runtime
+spectral preparation. Public floating-power conversion is not enabled yet.
 
 Conventions match qasm2qcx.md: u3 is conventional W, u2 fixes theta=pi/2,
 and built-in U=exp(i*theta/2)*W. Derive the spectrum from the SU(2) quaternion,
@@ -471,6 +471,172 @@ class ReferenceTests(unittest.TestCase):
                                      condition_matrix(powered, values))
 
 
+class PreparationAuditTests(unittest.TestCase):
+    bra = None
+    checked = 0
+
+    def setUp(self):
+        if self.bra is None:
+            self.skipTest('pass --bra to audit runtime U-family spectral preparation')
+        from qasm2qcx_runtime_for_numerical import qasm2qcx
+        self.module = qasm2qcx
+
+    def fixture(self, gate, arguments, modifiers, source=''):
+        module = self.module
+        program = module.openqasm3.parser.parse('OPENQASM 3; qubit q; ' + source)
+        converter = module.QASM2QCXConverter(program)
+        converter.visit(program)
+        prefix = ' @ '.join(kind if kind == 'inv' else f'{kind}({argument!r})'
+                            for kind, argument in modifiers)
+        statement = module.openqasm3.parser.parse(
+            f'OPENQASM 3; {prefix} @ {gate}({arguments}) q;').statements[0]
+        info = converter._QASM2QCXConverter__analyze_gate_modifiers(
+            statement.modifiers, allow_runtime=True, allow_float=True)
+        return converter, statement, info
+
+    def print_prepared(self, converter, prepared, sources=()):
+        beta, eta, plus, minus = prepared
+        lines = converter._QASM2QCXConverter__qcx_lines
+        lines.extend([f'PRINTLN {beta}', f'PRINTLN {eta}'])
+        for angle in (plus, minus):
+            coefficient = converter._QASM2QCXConverter__add_new_temporary_variable(self.module.ValueType.COMPLEX)
+            converter._QASM2QCXConverter__emit_phase_coefficient(angle, coefficient)
+            lines.extend([f'PRINTLN :REAL:{coefficient}', f'PRINTLN :IMAG:{coefficient}'])
+        lines.extend('PRINTLN ' + converter._QASM2QCXConverter__capitalize_variable_name(name) for name in sources)
+
+    def program(self, gate, parameters, modifiers=(('pow', 0.5),), *, runtime=True,
+                arguments=None, extra_source='', sources=None, skip=False):
+        declarations = ''.join(f'float p{index} = {value!r}; ' for index, value in enumerate(parameters))
+        if arguments is None:
+            arguments = ', '.join(f'p{index}' if runtime else repr(value) for index, value in enumerate(parameters))
+        if sources is None:
+            sources = tuple(f'p{index}' for index in range(len(parameters)))
+        converter, statement, info = self.fixture(gate, arguments, modifiers, declarations + extra_source)
+        if skip:
+            converter._QASM2QCXConverter__qcx_lines.append('JUMP SKIPPED')
+        with converter._QASM2QCXConverter__powered_u_gate_spectrum(statement, info) as prepared:
+            self.print_prepared(converter, prepared, sources)
+        if skip:
+            converter._QASM2QCXConverter__qcx_lines.extend(['@SKIPPED', 'PRINTLN :INT:99'])
+        return '\n'.join(converter._QASM2QCXConverter__qcx_lines) + '\n'
+
+    def execute(self, program):
+        return subprocess.run([str(self.bra)], input=program, capture_output=True, text=True, timeout=30)
+
+    def check(self, program, data, modifiers, sources):
+        result = self.execute(program)
+        self.assertEqual(result.returncode, 0, result.stderr + '\n' + program)
+        values = list(map(float, result.stdout.split()))
+        self.assertEqual(len(values), 6 + len(sources), result.stdout)
+        expected = modified_coefficients(data.coefficients, validated_modifiers(modifiers))
+        for actual, wanted in zip(values[:2], (data.beta, data.eta)):
+            self.assertTrue(math.isclose(actual, wanted, rel_tol=1e-5, abs_tol=2e-6), (values, data))
+        for actual, wanted in zip((complex(*values[2:4]), complex(*values[4:6])), expected):
+            self.assertTrue(cmath.isclose(actual, wanted, rel_tol=1e-5, abs_tol=2e-6),
+                            (actual, wanted, data, modifiers))
+        for actual, wanted in zip(values[6:], sources):
+            self.assertTrue(math.isclose(actual, wanted, rel_tol=1e-5, abs_tol=2e-6), result.stdout)
+        type(self).checked += 1
+
+    def test_runtime_spectra_match_independent_reference(self):
+        maximum = float.fromhex('0x1.fffffffffffffp+1023')
+        profiles = ((0.7, 0.4, -0.2), (0, 0, 0), (0, 0.4, -1.6), (0, 0, 1.5 * math.pi),
+                    (3 * math.pi, 0, 0), (math.tau, 0, 0),
+                    (math.nextafter(math.tau, 0), 0, 0), (math.nextafter(math.tau, math.inf), 0, 0),
+                    (1e-200, 0, 0), (1e20, -1e20, 1e20), (1e308, 1e308, -1e308),
+                    (maximum, maximum, maximum), (0, maximum, -maximum))
+        chains = ((('pow', 0.5),), (('pow', -0.5),), (('pow', 0.0),),
+                  (('pow', 0.5), ('inv', None)), (('inv', None), ('pow', 0.5)),
+                  (('pow', 0.5), ('pow', 6)), (('pow', 6), ('pow', 0.5)))
+        for gate in ('u2', 'u3', 'U'):
+            for angles in profiles:
+                parameters = angles[1:] if gate == 'u2' else angles
+                data = spectrum(gate, parameters)
+                for modifiers in chains:
+                    for runtime in (False, True):
+                        with self.subTest(gate=gate, parameters=parameters, modifiers=modifiers, runtime=runtime):
+                            self.check(self.program(gate, parameters, modifiers, runtime=runtime), data, modifiers, parameters)
+
+    def test_arrays_arithmetic_and_native_integer_parameters(self):
+        cases = (
+            ('values[index], values[index + 1], values[index + 2]',
+             'array[float, 3] values = {0.7, 0.4, -0.2}; int index = 0;', (0.7, 0.4, -0.2)),
+            ('p0 + 0.1, p1, -p2', '', (0.8, 0.4, 0.2)),
+            ('n, u, 0', 'int n = -2; uint u = uint(-1);', (-2, self.module.QASM2QCXConverter.QCX_UINT_MAX, 0)),
+        )
+        for arguments, extra, parameters in cases:
+            modifiers = (('pow', 0.5), ('inv', None), ('pow', 6))
+            self.check(self.program('U', (0.7, 0.4, -0.2), modifiers, arguments=arguments, extra_source=extra),
+                       spectrum('U', parameters), modifiers, (0.7, 0.4, -0.2))
+
+    def test_hadamard_specializations_and_diagonal_branch_neighbors(self):
+        for gate in ('u2', 'u3', 'U'):
+            parameters = (0, math.pi) if gate == 'u2' else (math.pi / 2, 0, math.pi)
+            modifiers = (('pow', 0.5),)
+            self.check(self.program(gate, parameters), spectrum(gate, parameters), modifiers, parameters)
+        for gate in ('u3', 'U'):
+            for sign in (1, -1):
+                for lam in (math.nextafter(math.pi, 0), math.nextafter(math.pi, math.inf)):
+                    parameters = (0, 0, sign * lam)
+                    modifiers = (('pow', 0.5), ('inv', None))
+                    self.check(self.program(gate, parameters, modifiers), spectrum(gate, parameters), modifiers, parameters)
+
+    def test_exact_scalar_polar_and_tiny_axes(self):
+        for scalar, vector, overall in ((1, (0, 0, 0), 1), (-1, (0, 0, 0), 1),
+                (1, (0, 0, 0), phase_factor(0.7)), (-1, (0, 0, 0), phase_factor(-1.2)),
+                (0, (0, 0, 1), 1), (0, (0, 0, -1), 1),
+                (-1, (0, 1e-300, 0), 1), (0, (1e-300, 0, 1), 1)):
+            for modifiers in ((('pow', 0.5),), (('pow', 0.5), ('inv', None)),
+                              (('inv', None), ('pow', 0.5))):
+                converter, _, info = self.fixture('U', '0, 0, 0', modifiers)
+                scalar_name, x, y, z = (converter._QASM2QCXConverter__add_new_temporary_variable(self.module.ValueType.FLOAT)
+                                       for _ in range(4))
+                overall_name = converter._QASM2QCXConverter__add_new_temporary_variable(self.module.ValueType.COMPLEX)
+                lines = converter._QASM2QCXConverter__qcx_lines
+                lines.extend(f'LET {name} := {value!r}' for name, value in zip((scalar_name, x, y, z), (scalar, *vector)))
+                converter._QASM2QCXConverter__emit_complex_components(
+                    overall_name, repr(complex(overall).real), repr(complex(overall).imag))
+                beta, eta, coefficients = converter._QASM2QCXConverter__emit_u_gate_eigenbasis(
+                    scalar_name, (x, y, z), overall_name)
+                phases = tuple((converter._QASM2QCXConverter__add_new_temporary_variable(self.module.ValueType.FLOAT), coefficient)
+                               for coefficient in coefficients)
+                for angle, coefficient in phases:
+                    converter._QASM2QCXConverter__emit_principal_phase(angle, coefficient)
+                converter._QASM2QCXConverter__emit_phase_modifiers(
+                    phases, info, converter._QASM2QCXConverter__phase_power_factors(info), preserve_inverse_coefficients=True)
+                self.print_prepared(converter, (beta, eta, phases[0][0], phases[1][0]))
+                self.check('\n'.join(lines) + '\n', quaternion_spectrum(scalar, vector, overall), modifiers, ())
+
+    def test_finite_eigenphases_with_overflowing_difference(self):
+        modifiers = (('pow', 1e308),)
+        self.check(self.program('u3', (3.0, 0, 0), modifiers), spectrum('u3', (3.0, 0, 0)), modifiers, (3.0, 0, 0))
+
+    def test_nonfinite_original_parameters_and_products_cannot_hide(self):
+        for gate in ('u2', 'u3', 'U'):
+            for index in range(parameter_count(gate)):
+                for expression in ('1.0 / 0.0', '-1.0 / 0.0', '0.0 / 0.0', '1e308 * 1e308'):
+                    arguments = ['0.7'] * parameter_count(gate)
+                    arguments[index] = expression
+                    for modifiers in ((('pow', 0.0),), (('ctrl', 1), ('pow', 0.0))):
+                        program = self.program(gate, (0.7,) * len(arguments), modifiers, arguments=', '.join(arguments))
+                        result = self.execute(program)
+                        self.assertNotEqual(result.returncode, 0)
+                        self.assertIn('nonfinite', result.stderr)
+                        self.assertEqual(result.stdout, '')
+                    skipped = self.execute(self.program(gate, (0.7,) * len(arguments), arguments=', '.join(arguments), skip=True))
+                    self.assertEqual(skipped.returncode, 0, skipped.stderr)
+                    self.assertEqual(skipped.stdout.strip(), '99')
+        for gate, parameters in (('u2', (0, math.pi)), ('u3', (6.0, 0, 0)), ('U', (0, 0, 3.0))):
+            modifiers = (('pow', 0.0), ('pow', 1e308))
+            result = self.execute(self.program(gate, parameters, modifiers))
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('nonfinite', result.stderr)
+            self.assertEqual(result.stdout, '')
+            skipped = self.execute(self.program(gate, parameters, modifiers, skip=True))
+            self.assertEqual(skipped.returncode, 0, skipped.stderr)
+            self.assertEqual(skipped.stdout.strip(), '99')
+
+
 class BackendAuditTests(unittest.TestCase):
     bra = None
     checked = 0
@@ -578,11 +744,14 @@ def main():
     options = parser.parse_args()
     if options.bra is not None:
         BackendAuditTests.bra = options.bra.resolve()
+        PreparationAuditTests.bra = options.bra.resolve()
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     suite = unittest.defaultTestLoader.loadTestsFromModule(__import__(__name__))
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     if BackendAuditTests.checked:
         print(f'Existing U-family/eigenbasis circuits checked: {BackendAuditTests.checked}')
+    if PreparationAuditTests.checked:
+        print(f'Prepared U-family spectra checked: {PreparationAuditTests.checked}')
     raise SystemExit(0 if result.wasSuccessful() else 1)
 
 
