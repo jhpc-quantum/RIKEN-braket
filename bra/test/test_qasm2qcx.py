@@ -321,6 +321,18 @@ class ParameterizedPhasePowerLoweringTests(unittest.TestCase):
     def clean(self, source):
         return InverseModifierLoweringTests.assert_clean_conversion(self, source)
 
+    def test_documented_parameterized_phase_power_example(self):
+        document = CONVERTER_PATH.with_suffix('.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- parameterized-phase-power-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        self.clean(examples[0].split('\n', 1)[1])
+
+    def test_builtin_global_phase_needs_neither_stdgates_nor_declared_qubits(self):
+        lines = self.clean('pow(0.5) @ gphase(0.7);')
+        self.assertEqual(lines[0], 'QUBITS 0')
+        self.assertTrue(lines[-1].startswith('PHASE '))
+
     def test_phase_family_aliases_use_checked_runtime_lowering(self):
         for gate, operands, mnemonic in (('p', 'q[0]', 'U1'), ('phase', 'q[0]', 'U1'),
                 ('u1', 'q[0]', 'U1'), ('cp', 'q[1], q[0]', 'CU1'), ('cphase', 'q[1], q[0]', 'CU1')):

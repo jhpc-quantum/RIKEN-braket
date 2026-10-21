@@ -73,6 +73,7 @@ The converter currently covers:
 - constant and runtime integer `pow` modifiers on supported gates and `gphase`,
   including nested powers and combinations with inverse and control modifiers;
 - constant floating-point `pow` modifiers on selected fixed gate families,
+  `p`/`phase`/`u1`, `cp`/`cphase`, and `gphase`,
   with principal spectral powers and ordered modifier evaluation;
 - literal indices, static index ranges, discrete index sets, and complete
   qubit registers as gate operands;
@@ -1584,7 +1585,8 @@ No new QCX instruction is required.
 ### Constant floating-point gate powers
 
 Finite compile-time floating-point exponents are supported on the following
-fixed gates. All require `include "stdgates.inc";`.
+fixed gates and on the parameterized phase gates described below. The fixed
+gates require `include "stdgates.inc";`.
 
 | Gate family | Nonzero principal eigenphase before modifiers |
 | --- | --- |
@@ -1644,17 +1646,17 @@ chains retain their existing product/sign rules.
 
 #### Lowering, validation, and limits
 
-The converter uses existing QCX gates for a basis change, a diagonal phase,
-and the inverse basis change. Added and intrinsic controls condition only the
+For the fixed families, the converter uses existing QCX gates for a basis
+change, a diagonal phase, and the inverse basis change. Added and intrinsic controls condition only the
 diagonal phase; the unconditional basis changes cancel in inactive subspaces.
 For `swap`, a `CX`/`H` basis change isolates the antisymmetric subspace, on which
 the diagonal controlled phase acts. No arbitrary-matrix instruction or new bra
 feature is required. Result names such as `sx` in the table describe matrix
 equivalence, not a promise to emit that particular mnemonic.
 
-Eigenphase calculations use exact rational multiples of `pi` and the exact
-binary value of each evaluated host float. Only the final QCX angle is rounded
-using the host float representation of `pi`; basis-change angles and backend
+Fixed-family eigenphase calculations use exact rational multiples of `pi` and
+the exact binary value of each evaluated host float. Only the final QCX angle
+is rounded using the host float representation of `pi`; basis-change angles and backend
 gate execution also have ordinary floating-point rounding. Declared floating
 widths are not newly enforced. Generated circuit size is independent of
 exponent magnitude. The existing gate-power and enclosing loop-output budgets
@@ -1664,16 +1666,17 @@ Zero and identity powers still validate modifier arguments, includes, gate
 arity, qubit operands, distinct wires, and broadcasting. Static literal operand
 checks also run in empty loops; named or compound selections in constant
 unrolled loops are checked when an iteration is expanded. Supported powers
-work in branches, loops, and register broadcasting without runtime exponent
-evaluation or additional classical scratch storage.
+work in branches, loops, and register broadcasting. Fixed-family lowering
+requires no runtime exponent evaluation or additional classical scratch storage;
+parameterized phase powers use the runtime preparation described below.
 
 The following remain unsupported, including when an outer power is zero:
 
 - runtime floating-point exponents;
 - runtime integer factors or loop-iterator factors in a chain containing a
   floating-point power, even if the loop is unrolled;
-- floating-point powers of `p`/`phase`/`u1`, rotations, `u2`/`u3`, built-in `U`,
-  `cu`, their parameterized controlled forms, and `gphase`.
+- floating-point powers of rotations, `u2`/`u3`, built-in `U`, `cu`, and their
+  parameterized controlled forms.
 
 These are explicit conversion errors, not approximate angle-scaling fallbacks.
 The CLI emits no partial QCX program on failure.
@@ -1690,6 +1693,103 @@ negctrl @ pow(HALF) @ x q[0], q[2];
 inv @ negctrl @ pow(HALF) @ x q[0], q[2];   // cancels preceding operation
 // Final state: |010>, including its phase, with wire 0 on the right.
 ```
+
+#### Parameterized phase gates
+
+Floating-point powers also support `p(angle)`, `phase(angle)`, `u1(angle)`,
+`cp(angle)`, `cphase(angle)`, and `gphase(angle)`. The named standard-library
+gates require `include "stdgates.inc";`; built-in `gphase` does not. Additional
+`ctrl` and `negctrl` modifiers may be interleaved with powers and inversions.
+Intrinsic controls on `cp`/`cphase` remain positive controls.
+
+The angle may be a supported scalar `float`, `int`, or `uint` expression,
+including runtime variables, indexed array elements, and supported loop
+iterators. Bare Boolean, bit, complex, and whole-array parameters are rejected;
+explicit casts must follow the existing scalar-cast rules. The angle is
+evaluated once per reached source application and copied to private storage
+before processing the modifiers. Broadcasting reuses that snapshot, and source
+variables and array elements are not modified.
+
+The converter forms `exp(i * angle)` with QCX `APPLY ... <- EXP ...`, then
+uses `APPLY ... <- ARG ...` to select its principal argument before every
+power. It does not simply scale the original angle or reduce it modulo a
+machine approximation of `2*pi`. For example, the principal square root of
+`p(3*pi/2)` has nontrivial phase `-pi/4`, not `3*pi/4`.
+Nested powers select the current coefficient's principal argument again;
+inversion negates the current angle without commuting past a power.
+
+An exactly negative-real coefficient uses `+PI` for either sign of imaginary
+zero. Nearby coefficients are not tolerance-snapped to the cut, even when
+their argument rounds to machine `-PI`. For example, the usual binary64
+approximation of the angle `-pi` produces a coefficient with a tiny negative
+imaginary component. Its principal root can differ from that of the exact
+fixed `z` gate. This is a numerical distinction in the evaluated coefficient,
+not a different branch policy for the two families.
+
+All exponent expressions must be compile-time constants. In a chain containing
+a floating-point power, each integer factor is promoted separately to a host
+Python float and must fit its finite range; an oversized integer factor is a
+conversion error, including in an empty loop or behind an outer zero power.
+Factors are never multiplied together during conversion. Folded numeric angle
+literals are also serialized using host-float precision; runtime arithmetic and
+generated phase preparation use the backend's native `REAL` precision.
+Declared OpenQASM floating-point widths are not newly enforced.
+
+`EXP` checks the initial angle and each intermediate modified phase. A nonfinite
+angle or overflowing intermediate product is a runtime error, including under
+an inactive quantum control or when an outer power is zero. This deliberately
+rejects some mathematically finite powers with enormous intermediate products;
+extended-range multiplication is separate work. Underflow follows the backend's
+floating-point environment. Reached failures occur before the powered quantum
+operation is emitted to the state; the CLI currently leaves native `APPLY`
+exceptions uncaught.
+
+Skipped classical branches and loop bodies do not execute angle preparation or
+its runtime checks. Conversion-time validation of modifier arguments, parameter
+types, names, gate arity, and supported qubit operands still applies. Only
+temporary declarations may be hoisted out of a skipped body. The existing
+integer-only and fixed-family power paths are unchanged.
+
+The generated program uses `REAL` and `COMPLEX` temporaries, `APPLY`, component
+extraction, and ordinary QCX branches; no arbitrary-matrix instruction or
+OpenQASM classical-function support is added. Use a bra version with `APPLY`,
+`EXP`, and `ARG` support; see
+[classical functions in bra](../../docs/bra.md#classical-function-invocation).
+There is no repetition proportional to the exponent's magnitude. For this
+parameterized floating-power path, `MAX_GATE_POWER_OUTPUT_LINES` also counts
+the generated phase preparation, including all broadcast gate instructions.
+Enclosing loop-output budgets still apply.
+
+<!-- parameterized-phase-power-example -->
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+const float HALF = 0.5;
+qubit[3] q;
+float theta = 3 * pi / 2;
+h q;
+pow(HALF) @ p(theta) q[0];                 // nontrivial phase is -pi/4
+inv @ pow(HALF) @ p(theta) q[0];
+negctrl @ pow(HALF) @ cp(theta) q[2], q[1], q[0];
+inv @ negctrl @ pow(HALF) @ cp(theta) q[2], q[1], q[0];
+pow(HALF) @ gphase(theta);
+inv @ pow(HALF) @ gphase(theta);
+h q;
+// Final state: |000>, including its global phase; theta is unchanged.
+```
+
+The independent phase-power policy and numerical audit can be run with:
+
+```bash
+python3 bra/test/qasm2qcx_phase_power_numerical.py
+python3 bra/test/qasm2qcx_phase_power_numerical.py --bra /path/to/bra
+```
+
+The second command uses a default-double, non-MPI executable. It checks actual
+complex amplitudes without aligning away global phase, including branch-cut
+boundaries, very large angles, nested modifiers, mixed controls, broadcasting,
+arrays, classical control flow, fusion, and runtime failures. The reference-only
+command does not require the OpenQASM parser or a backend executable.
 
 ## Static indexing
 

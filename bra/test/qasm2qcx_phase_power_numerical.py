@@ -331,7 +331,8 @@ class ConversionAuditTests(unittest.TestCase):
         self.module = qasm2qcx
 
     def check(self, source, expected, *, fused=False):
-        lines = self.module.convert('OPENQASM 3; include "stdgates.inc"; ' + source)
+        program = source if source.startswith('OPENQASM ') else 'OPENQASM 3; include "stdgates.inc"; ' + source
+        lines = self.module.convert(program)
         if fused:
             lines.insert(1, 'BEGIN FUSION')
             lines.append('END FUSION')
@@ -339,9 +340,9 @@ class ConversionAuditTests(unittest.TestCase):
         result = subprocess.run([str(self.bra)], input='\n'.join(lines) + '\n',
                                 capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stderr + '\n' + source)
-        actual = {int(index, 2): complex(float(real), float(imaginary))
+        actual = {int(index or '0', 2): complex(float(real), float(imaginary))
                   for index, real, imaginary in re.findall(
-                      r'^([01]+) => (\S+) \+ (\S+) i$', result.stdout, re.MULTILINE)}
+                      r'^([01]*) => (\S+) \+ (\S+) i$', result.stdout, re.MULTILINE)}
         self.assertEqual(set(actual), set(range(len(expected))), result.stdout)
         for index, value in enumerate(expected):
             self.assertTrue(cmath.isclose(actual[index], value, rel_tol=1e-5, abs_tol=2e-6),
@@ -391,6 +392,17 @@ class ConversionAuditTests(unittest.TestCase):
                         self.check(f'qubit[{qubits}] q; float theta = {math.pi / 4!r}; h q; '
                                    + f'{self.modifier_source(modifiers)} @ {gate}(theta) {operands};',
                                    [value / math.sqrt(len(diagonal)) for value in diagonal], fused=fused)
+
+    def test_documented_parameterized_phase_power_example(self):
+        document = (pathlib.Path(__file__).parents[1] / 'qcx/qasm2qcx.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- parameterized-phase-power-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        for fused in (False, True):
+            self.check(examples[0], [1, 0, 0, 0, 0, 0, 0, 0], fused=fused)
+
+    def test_builtin_global_phase_without_stdgates_or_declared_qubits(self):
+        self.check('OPENQASM 3; pow(0.5) @ gphase(0.7);', [cmath.exp(0.35j)])
 
     def test_broadcast_arrays_source_preservation_and_runtime_loops(self):
         root = powered_phase_factor(lambda: 0.7, (('pow', 0.5),))
