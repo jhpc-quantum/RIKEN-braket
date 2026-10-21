@@ -31,6 +31,49 @@ ket
 * `ket/include/ket/mpi/gate`: MPI versions of quantum gate functions
 * `ket/include/ket/mpi/utility/`: some utility function/classes for MPI-related operations, especially policy classes `ket::mpi::utility::policy::simple_mpi` and `ket::mpi::utility::policy::unit_mpi<S,B,N>`
 
+## Phase coefficients
+
+Include `<ket/utility/exp_i.hpp>` to evaluate a phase coefficient with
+`ket::utility::exp_i<std::complex<Real>>(phase)`, where `Real` is `float`,
+`double`, or `long double`. It evaluates the complex exponential of an imaginary
+angle, without first reducing the angle modulo a floating-point approximation
+of $2\pi$. Such preliminary reduction can lose accuracy for large finite angles.
+Phase gates and their adjoints use these coefficients, including controlled and
+fused execution.
+
+The implementation preserves the standard-library complex-exponential call
+boundary through a volatile function pointer. This addresses #349: with
+GCC 11.4 on x86 and `-Ofast`, the original expression was lowered to the x87
+`FSINCOS` instruction. That path lost accuracy at angles such as `1e10L` and
+produced nonfinite results at `1e20L`, instead of a unit-magnitude coefficient.
+Direct sine/cosine expressions underwent the same transformation. The fix
+retains the library's full-range argument reduction without changing build
+options, the public interface, or floating-point control modes. It does not
+introduce additional input validation or an exception policy.
+
+Run the standalone regression matrix from the repository root:
+
+```bash
+python3 ket/test/exp_i_numerical.py
+python3 ket/test/exp_i_numerical.py --bit-masks
+python3 ket/test/exp_i_numerical.py --sanitize
+python3 ket/test/exp_i_numerical.py --sanitize --bit-masks
+```
+
+These tests require a C++14 compiler and Boost headers; no simulator or MPI build
+is needed. Use `--cxx` to select the compiler. They cover `float`, `double`, and
+`long double` in debug (`-O0`) and release (`-Ofast -DNDEBUG`) configurations.
+The reference and checks are compiled separately without fast-math and without
+LTO, while the subject and linker retain the tested configuration's flags.
+Coverage includes positive and negative angles, signed zero, values near
+$\pi$, very large finite values, global phase, positive/negative/mixed controls,
+adjoints, and fusion with an unfused spectator. Amplitudes are compared directly,
+without aligning away global phase, and forward/adjoint round trips are checked.
+
+Run the ordinary release matrix even when UBSan checks pass: sanitizer
+instrumentation changed code generation and masked the original failure on
+the affected compiler.
+
 ## Control qubits
 
 For a qubit, a positive control activates a gate when its wire is `1`, and a negative control activates it when its wire is `0`.

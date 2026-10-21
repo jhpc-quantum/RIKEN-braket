@@ -129,8 +129,8 @@ int main()
   }
   // exp_i is compiled in this independent, non-fast-math oracle to check the
   // intended exponential. Actual native gate equivalence is audited separately
-  // in apply_numerical.py with the default-double executable; the optimized
-  // long-double backend has a documented, pre-existing extreme-angle problem.
+  // in apply_numerical.py with the default-double executable and in
+  // ket/test/exp_i_numerical.py across precisions and optimization modes.
   for (auto const angle: {static_cast<real>(1e20L), static_cast<real>(-1e20L), maximum, -maximum})
   {
     auto const actual = complex_exp(complex{0, angle});

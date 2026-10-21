@@ -382,10 +382,12 @@ This example does not impose the separate branch-endpoint policy needed for
 fractional gate powers.
 
 Native phase-gate equivalence is tested with the default-double executable.
-There is a separate, pre-existing backend limitation: on GCC/x86, the optimized
-long-double `ket::utility::exp_i` path can produce a nonfinite coefficient for
-extremely large angles such as `1e20L`. `APPLY` does not reproduce this faulty
-behavior or change the native gate implementation.
+The native `ket::utility::exp_i` implementation also preserves the complex
+exponential's library call boundary. This avoids an optimized GCC/x86
+long-double calculation that previously lost accuracy or produced nonfinite
+coefficients for large finite angles. Its standalone tests cover all three
+precisions and ordinary/fused phase gates; see
+[phase coefficients in ket](ket.md#phase-coefficients).
 
 #### Tests
 

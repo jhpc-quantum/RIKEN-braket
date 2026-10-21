@@ -1,5 +1,5 @@
-#include <cmath>
 #include <array>
+#include <cmath>
 #include <complex>
 #include <iomanip>
 #include <iostream>
@@ -42,6 +42,7 @@ int main()
       auto const actual = exp_i_subject(phase);
       ++count;
       if (not std::isfinite(expected.real()) or not std::isfinite(expected.imag())
+          or not std::isfinite(trigonometric.real()) or not std::isfinite(trigonometric.imag())
           or std::abs(expected - trigonometric) > tolerance)
       {
         std::cerr << "Invalid oracle for phase " << phase << '\n';
