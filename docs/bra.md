@@ -223,13 +223,10 @@ fused block rather than factoring them into its positive-only outer mask.
 * `ASSERT lhs op rhs`: checks a comparison using the same operand types and operators as `JUMPIF`. The `lhs` must be an `INT`, `UINT`, or `REAL` variable, optionally indexed; the `rhs` may be a compatible variable, indexed element, literal, or built-in constant. If the comparison is false, it throws `bra::assertion_error` (a `std::runtime_error`) identifying the failed instruction and evaluated operands. A successful assertion does not change classical variables or jump state. Assertions skipped by control flow are not evaluated. This is a runtime instruction and remains enabled in release builds; for example, `ASSERT STEP \= 0` checks that an integer step is nonzero.
 * `PRINT var [...]`/`PRINTLN var [...]`: prints classical variables `var`, `...` with single-space separators.
 
-### Classical function invocation (implementation in progress)
+### Classical function invocation
 
-The following is the implementation contract for `APPLY`. Parsing and typed
-invocation preparation are implemented; numerical evaluation is not available
-yet, and executing a valid call reports this explicitly. It introduces function
-invocation without changing the existing `LET` operations or
-conversion/component-extraction operands.
+`APPLY` invokes a typed classical function without changing the existing `LET`
+operations or conversion/component-extraction operands.
 
 ```text
 APPLY destination... <- function operand...
@@ -308,10 +305,22 @@ Functions use bra's configured `REAL` and `COMPLEX` precision. Reject nonfinite
 inputs, including a complex input with either component nonfinite. Reject
 invalid domains and overflow/nonfinite results before updating destinations.
 Ordinary underflow, including subnormal results and zero, is allowed. These
-checks must remain effective in supported release builds. Existing `LET`
-floating-point arithmetic is unchanged.
+checks must remain effective in supported release builds. `LET` does not gain
+new domain or finiteness checks.
+
+`APPLY` uses the existing build options and floating-point environment, without
+changing compiler options or floating-point control modes. Underflow follows
+that environment: subnormal results can be retained or flushed to zero, and
+subnormal operands can be treated as zero in library arithmetic. Gradual
+underflow is not guaranteed in every release configuration. Nonfinite and
+exact-zero classification, and the explicit axis rules for `ARG`, inspect the
+stored values rather than relying on arithmetic comparisons under fast-math.
 
 `EXP` computes the real or complex exponential according to the input type.
+Extremely negative real arguments are bounded within the already-underflowing
+region before library evaluation, avoiding overflow in optimized range
+reduction. The library and current environment still determine the underflow
+result; the imaginary argument is not changed.
 Complex `EXP` must agree with the backend's complex exponential for purely
 imaginary arguments, including very large finite angles; do not first reduce
 the angle modulo a machine approximation of $2\pi$.
@@ -323,6 +332,13 @@ real component it preserves the sign of an imaginary zero in the resulting
 zero angle. Nearby values retain their side of the branch cut; do not apply
 tolerance-based snapping. Converter-specific normalization of exact
 negative-real eigenvalues to $+\pi$ is separate from general `ARG` semantics.
+Away from the explicit axis rules, `ARG` uses the magnitude from the library's
+`atan2` operation and restores the stored imaginary sign; computations involving
+subnormal components inherit the environment limitations described above.
+Stored nonzero subnormal inputs are not rejected as an exactly zero complex
+input. If library arithmetic on such components
+produces a nonfinite result, `APPLY` reports a nonfinite-result error even though
+the stored inputs are finite.
 
 Diagnostics must identify the failed `APPLY` invocation and distinguish:
 
@@ -332,10 +348,13 @@ Diagnostics must identify the failed `APPLY` invocation and distinguish:
 - Operand conversion/index errors.
 - Nonfinite inputs, domain errors, and overflow/nonfinite results.
 
-Exception classes and exact diagnostic wording will be specified with the
-runtime implementation. Public classification predicates (`ISFINITE`, `ISNAN`,
-and `ISINF`) are deferred until native `BOOL` and predicate result types are
-settled; internal numerical checks do not require these functions.
+Runtime invocation failures throw `bra::apply_error` (a `std::runtime_error`)
+whose message identifies the instruction and reason. Malformed instruction
+syntax is rejected during parsing using the existing interpreter diagnostics;
+unknown function names are also rejected during parsing. Public classification
+predicates (`ISFINITE`, `ISNAN`, and `ISINF`) are deferred until native `BOOL`
+and predicate result types are settled; internal numerical checks do not require
+these functions.
 
 ### Phase-exponent gates
 

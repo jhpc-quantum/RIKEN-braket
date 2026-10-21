@@ -1,5 +1,7 @@
 // Compile with bra's macros and link with non-MPI objects excluding bra.o.
 #include <limits>
+#include <cmath>
+#include <iomanip>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -83,10 +85,14 @@ int main()
   state.generate_new_variable("N", type::integer, 2);
   state.generate_new_variable("U", type::unsigned_integer, 1);
   state.generate_new_variable("P", type::pauli_string_space, 1);
+  state.generate_new_variable("RESULT", type::real, 1);
+  state.generate_new_variable("CRESULT", type::complex_, 1);
   state.invoke_assign_operation("R:0", bra::assign_operation_type::assign, "3");
   state.invoke_assign_operation("R:1", bra::assign_operation_type::assign, "7");
   state.invoke_assign_operation("N:0", bra::assign_operation_type::assign, "1");
   state.invoke_assign_operation("N:1", bra::assign_operation_type::assign, "0");
+  state.invoke_assign_operation("Z:0", bra::assign_operation_type::assign, ":I");
+  state.invoke_assign_operation("Z:1", bra::assign_operation_type::assign, ":COMPLEX:1");
   state.invoke_jump_operation("PENDING");
 
   auto check_call = [&](std::vector<std::string> const& destinations, function const fn,
@@ -98,12 +104,32 @@ int main()
     state.invoke_assert_operation("R:1", bra::compare_operation_type::equal_to, "7");
     require(state.maybe_label() and *state.maybe_label() == "PENDING");
   };
-  for (auto const& operand: {"R", "R:N", "R:N:N", ":REAL:N", ":REAL:U", ":REAL:Z:1", ":IMAG:Z:N",
-                            ":REAL:4294967295", ":PI", "1.0", ".5", "-1E+2", ":REAL:R::INT:1.9"})
-    check_call({"R:N"}, function::exp, {operand}, "numerical function evaluation is not implemented yet");
-  for (auto const& operand: {"Z", "Z:N:N", ":COMPLEX:R:N", ":COMPLEX:4294967295", ":I"})
-    check_call({"Z:1"}, function::exp, {operand}, "numerical function evaluation is not implemented yet");
-  check_call({"R"}, function::arg, {"Z:N"}, "numerical function evaluation is not implemented yet");
+  auto check_close = [&](std::string const& name, bra::real_type const expected)
+  {
+    auto const tolerance = 32 * std::numeric_limits<bra::real_type>::epsilon() * (1 + std::abs(expected));
+    auto lower = std::ostringstream{}, upper = std::ostringstream{};
+    lower << std::setprecision(std::numeric_limits<bra::real_type>::max_digits10) << expected - tolerance;
+    upper << std::setprecision(std::numeric_limits<bra::real_type>::max_digits10) << expected + tolerance;
+    state.invoke_assert_operation(name, bra::compare_operation_type::greater_equal, lower.str());
+    state.invoke_assert_operation(name, bra::compare_operation_type::less_equal, upper.str());
+  };
+  for (auto const& entry: std::vector<std::pair<std::string, bra::real_type>>{
+      {"R", 3}, {"R:N", 7}, {"R:N:N", 3}, {":REAL:N", 1}, {":REAL:U", 0}, {":REAL:Z:1", 1},
+      {":IMAG:Z:N", 0}, {"1.0", 1}, {".5", 0.5}, {"-1E+2", -100}, {":REAL:R::INT:1.9", 7}})
+  {
+    state.invoke_apply_operation({"RESULT"}, function::exp, {entry.first});
+    check_close("RESULT", std::exp(entry.second));
+  }
+  for (auto const& operand: {"Z", "Z:N:N", ":COMPLEX:R:N", ":I"})
+    state.invoke_apply_operation({"CRESULT"}, function::exp, {operand});
+  state.invoke_apply_operation({"RESULT"}, function::arg, {"Z:N"});
+  check_close("RESULT", 0);
+  state.invoke_apply_operation({"R:N:N"}, function::exp, {"R:N:N"});
+  check_close("R:0", std::exp(bra::real_type{3}));
+  state.invoke_assign_operation("R:0", bra::assign_operation_type::assign, "3");
+  check_call({"R:N"}, function::exp, {":REAL:4294967295"}, "overflow/nonfinite result");
+  check_call({"Z:1"}, function::exp, {":COMPLEX:4294967295"}, "overflow/nonfinite result");
+  check_call({"R:N"}, function::arg, {":COMPLEX:0"}, "ARG domain error");
   check_call({"R"}, function::exp, {}, "wrong operand count");
   check_call({}, function::exp, {"R"}, "wrong destination count");
   check_call({"R", "R:0"}, function::exp, {"R"}, "wrong destination count");

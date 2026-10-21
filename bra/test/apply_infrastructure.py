@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 
-"""Check APPLY syntax and skipped execution before numerical evaluation lands.
+"""Check APPLY syntax, basic evaluation, and skipped execution.
 
   python3 bra/test/apply_infrastructure.py --bra /path/to/bra
 """
 
 import argparse
+import math
 import pathlib
 import resource
 import subprocess
@@ -47,13 +48,9 @@ PRINTLN R
     if result.returncode == 0 or 'unknown function BOGUS' not in result.stderr:
         raise RuntimeError(f'unknown function was not rejected while parsing: {result}')
 
-    # Stage 2 must explicitly refuse valid calls, rather than execute an
-    # unchecked numerical implementation. Replace this check in Stage 3.
     result = run(setup + 'apply r <- exp r\nPRINTLN R\n')
-    if (result.returncode == 0
-            or 'APPLY R <- EXP R: numerical function evaluation is not implemented yet' not in result.stderr
-            or result.stdout.strip()):
-        raise RuntimeError(f'pending evaluator did not fail explicitly: {result}')
+    if result.returncode != 0 or not math.isclose(float(result.stdout.strip()), math.exp(2), rel_tol=1e-5):
+        raise RuntimeError(f'in-place EXP failed: {result}')
     print('APPLY infrastructure CLI checks passed')
 
 
