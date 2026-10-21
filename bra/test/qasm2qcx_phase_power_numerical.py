@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 
-"""Numerical-policy references for future floating powers of phase gates.
+"""Numerical-policy references and lowering helpers for phase-gate powers.
 
   python3 bra/test/qasm2qcx_phase_power_numerical.py
   python3 bra/test/qasm2qcx_phase_power_numerical.py --bra /path/to/bra
 
-Stage 1 does not enable the converter feature. With --bra, the audit checks
-existing native phase gates, not a not-yet-implemented power lowering.
+The public converter feature is not enabled yet. With --bra, audit existing
+native phase gates and the Stage 2 EXP/ARG lowering helpers separately.
 
 Policy for the parameterized floating-power path:
 * Exponents are finite compile-time floats or constant integers. Runtime
@@ -36,8 +36,8 @@ Policy for the parameterized floating-power path:
   extending that range is separate numerical work. Underflow follows ordinary
   floating-point rounding. Existing integer-only/fixed-family paths are unchanged.
 
-Native support for argument/exp-based reduction is still a Stage 2 design
-decision. This oracle does not import converter reduction or power helpers.
+The mathematical oracle does not import converter reduction or power helpers.
+The separate lowering audit executes emitted QCX against this oracle.
 """
 
 import argparse
@@ -45,6 +45,7 @@ import cmath
 import math
 import pathlib
 import resource
+import subprocess
 import unittest
 
 
@@ -224,6 +225,100 @@ class ReferenceTests(unittest.TestCase):
         self.assertEqual(reference_diagonal('p', factor, (0, 1)), [1, 1, 1, factor, 1, 1, 1, 1])
 
 
+class LoweringAuditTests(unittest.TestCase):
+    bra = None
+
+    def setUp(self):
+        if self.bra is None:
+            self.skipTest('pass --bra to audit EXP/ARG lowering helpers')
+        from qasm2qcx_runtime_for_numerical import qasm2qcx
+        self.module = qasm2qcx
+
+    def program(self, angle, modifiers, *, coefficient_setup=None, skip=False, setup=None):
+        module = self.module
+        program = module.openqasm3.parser.parse('OPENQASM 3; qubit q;')
+        converter = module.QASM2QCXConverter(program)
+        converter.visit(program)
+        lines = converter._QASM2QCXConverter__qcx_lines
+        lines.extend(['VAR SOURCE REAL', f'LET SOURCE := {angle!r}'])
+        if setup:
+            lines.extend(setup)
+        if skip:
+            lines.append('JUMP SKIPPED')
+        with converter._QASM2QCXConverter__captured_phase_angle(
+                ('SOURCE', module.ValueType.FLOAT, module.ValueKind.LVALUE)) as (storage, coefficient):
+            if coefficient_setup:
+                lines.extend(line.format(coefficient=coefficient) for line in coefficient_setup)
+            for kind, exponent in reversed(modifiers):
+                if kind == 'pow':
+                    converter._QASM2QCXConverter__emit_principal_phase(storage, coefficient)
+                    lines.append(f'LET {storage} *= {float(exponent)!r}')
+                elif kind == 'inv':
+                    lines.append(f'LET {storage} *= -1.0')
+                else:
+                    continue
+                converter._QASM2QCXConverter__emit_phase_coefficient(storage, coefficient)
+            lines.extend([f'PRINTLN :REAL:{coefficient}', f'PRINTLN :IMAG:{coefficient}', 'PRINTLN SOURCE'])
+        if skip:
+            lines.extend(['@SKIPPED', 'PRINTLN :INT:99'])
+        return '\n'.join(lines) + '\n'
+
+    def execute(self, program):
+        return subprocess.run([str(self.bra)], input=program, text=True, capture_output=True, timeout=30)
+
+    def test_ordered_powers_match_independent_reference(self):
+        angles = (0.0, -0.0, 0.7, -0.7, math.pi, -math.pi, 1.5 * math.pi,
+                  math.nextafter(math.pi, 0), math.nextafter(math.pi, math.inf),
+                  1e20, -1e20, 1e100, -1e100, 1e308, -1e308)
+        chains = ((('pow', 0.5),), (('pow', -0.5),), (('pow', 0.0),),
+                  (('pow', 0.5), ('pow', 6)), (('inv', None), ('pow', 0.5)),
+                  (('pow', 0.5), ('inv', None)))
+        for angle in angles:
+            for modifiers in chains:
+                with self.subTest(angle=angle, modifiers=modifiers):
+                    program = self.program(angle, modifiers)
+                    result = self.execute(program)
+                    self.assertEqual(result.returncode, 0, result.stderr + program)
+                    real, imaginary, source = map(float, result.stdout.split())
+                    self.assertTrue(cmath.isclose(complex(real, imaginary),
+                        powered_phase_factor(lambda: angle, modifiers), rel_tol=1e-5, abs_tol=2e-6), result.stdout)
+                    self.assertTrue(math.isclose(source, angle, rel_tol=1e-5, abs_tol=2e-6))
+
+    def test_exact_negative_real_endpoints_and_nearby_coefficients(self):
+        # Build the coefficient without an approximate PI angle. Subnormal
+        # arithmetic follows the backend environment; these near-cut probes
+        # use normal values, including values whose ARG rounds to -PI.
+        for imaginary in (0.0, -0.0, 1e-300, -1e-300, 1e-12, -1e-12):
+            setup = ['LET {coefficient} := ' + (':MINUS_I' if math.copysign(1, imaginary) < 0 else ':I'),
+                     'LET {coefficient} *= :COMPLEX:' + repr(abs(imaginary)),
+                     'LET {coefficient} -= :COMPLEX:1.0']
+            with self.subTest(imaginary=imaginary):
+                result = self.execute(self.program(0.0, (('pow', 0.5),), coefficient_setup=setup))
+                self.assertEqual(result.returncode, 0, result.stderr)
+                real, imaginary_result, _ = map(float, result.stdout.split())
+                expected = cmath.exp(0.5j * principal_argument(complex(-1, imaginary)))
+                self.assertTrue(cmath.isclose(complex(real, imaginary_result), expected,
+                                             rel_tol=1e-5, abs_tol=2e-6), result.stdout)
+
+    def test_nonfinite_angles_and_intermediate_products_are_not_hidden(self):
+        for initial, setup in ((1.0, ['LET SOURCE /= 0.0']),
+                               (-1.0, ['LET SOURCE /= 0.0']),
+                               (0.0, ['LET SOURCE /= 0.0'])):
+            for modifiers in ((('pow', 0.0),), (('ctrl', 1), ('pow', 0.0))):
+                with self.subTest(initial=initial, modifiers=modifiers):
+                    result = self.execute(self.program(initial, modifiers, setup=setup))
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn('nonfinite', result.stderr)
+                    self.assertEqual(result.stdout, '')
+                    skipped = self.execute(self.program(initial, modifiers, setup=setup, skip=True))
+                    self.assertEqual(skipped.returncode, 0, skipped.stderr)
+                    self.assertEqual(skipped.stdout.strip(), '99')
+        result = self.execute(self.program(3.0, (('pow', 0.0), ('pow', 1e308))))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('nonfinite', result.stderr)
+        self.assertEqual(result.stdout, '')
+
+
 class BackendAuditTests(unittest.TestCase):
     bra = None
 
@@ -256,6 +351,7 @@ def main():
     args = parser.parse_args()
     if args.bra is not None:
         BackendAuditTests.bra = args.bra.resolve()
+        LoweringAuditTests.bra = args.bra.resolve()
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     suite = unittest.defaultTestLoader.loadTestsFromModule(__import__(__name__))
     result = unittest.TextTestRunner(verbosity=2).run(suite)

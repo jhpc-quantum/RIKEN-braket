@@ -246,6 +246,77 @@ class FloatingPowerModifierFoundationTests(unittest.TestCase):
                 self.assertEqual(lines, ['QUBITS 1'])
 
 
+class ParameterizedPhasePowerFoundationTests(unittest.TestCase):
+    converter = staticmethod(IntegerPowerModifierFoundationTests.converter)
+
+    def test_angle_is_snapshotted_once_and_source_storage_is_not_modified(self):
+        converter = self.converter()
+        lines = converter._QASM2QCXConverter__qcx_lines
+        with converter._QASM2QCXConverter__captured_phase_angle(
+                ('SOURCE', qasm2qcx.ValueType.FLOAT, qasm2qcx.ValueKind.LVALUE)) as (angle, coefficient):
+            self.assertNotEqual(angle, 'SOURCE')
+            self.assertEqual(lines.count(f'LET {angle} := SOURCE'), 1)
+            self.assertEqual(lines[-3:], [f'LET {coefficient} := :I',
+                f'LET {coefficient} *= :COMPLEX:{angle}', f'APPLY {coefficient} <- EXP {coefficient}'])
+            self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {angle, coefficient})
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertFalse(any(line.startswith('LET SOURCE ') for line in lines))
+
+    def test_integer_inputs_are_explicitly_promoted_and_literals_are_real(self):
+        for value_type, value, kind, expected in (
+                (qasm2qcx.ValueType.INT, 'N', qasm2qcx.ValueKind.LVALUE, ':REAL:N'),
+                (qasm2qcx.ValueType.UINT, 'U', qasm2qcx.ValueKind.LVALUE, ':REAL:U'),
+                (qasm2qcx.ValueType.INT, 2, qasm2qcx.ValueKind.LITERAL, '2.0'),
+                (qasm2qcx.ValueType.FLOAT, -0.0, qasm2qcx.ValueKind.LITERAL, '-0.0')):
+            converter = self.converter()
+            with self.subTest(value_type=value_type, value=value):
+                with converter._QASM2QCXConverter__captured_phase_angle((value, value_type, kind)) as (angle, _):
+                    self.assertIn(f'LET {angle} := {expected}', converter._QASM2QCXConverter__qcx_lines)
+
+    def test_wrong_types_are_rejected_without_emitting_code(self):
+        converter = self.converter()
+        before = converter._QASM2QCXConverter__qcx_lines.copy()
+        for value_type in (qasm2qcx.ValueType.BIT, qasm2qcx.ValueType.BOOL, qasm2qcx.ValueType.COMPLEX):
+            with self.subTest(value_type=value_type), self.assertRaises(qasm2qcx.WrongParameterTypeException):
+                with converter._QASM2QCXConverter__captured_phase_angle(('BAD', value_type, qasm2qcx.ValueKind.LVALUE)):
+                    self.fail('invalid type accepted')
+        self.assertEqual(converter._QASM2QCXConverter__qcx_lines, before)
+
+    def test_principal_phase_uses_components_not_an_angle_tolerance(self):
+        converter = self.converter()
+        with converter._QASM2QCXConverter__captured_phase_angle(
+                (0.7, qasm2qcx.ValueType.FLOAT, qasm2qcx.ValueKind.LITERAL)) as (angle, coefficient):
+            reserved = converter._QASM2QCXConverter__used_temporary_variables.copy()
+            for _ in range(2):
+                converter._QASM2QCXConverter__emit_principal_phase(angle, coefficient)
+                self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, reserved)
+            lines = converter._QASM2QCXConverter__qcx_lines
+            self.assertEqual(lines.count(f'APPLY {angle} <- ARG {coefficient}'), 2)
+            self.assertEqual(lines.count(f'LET {angle} := :PI'), 2)
+            self.assertEqual(sum(line.endswith(f':IMAG:{coefficient}') for line in lines), 2)
+            self.assertEqual(sum(line.endswith(f':REAL:{coefficient}') for line in lines), 2)
+            jumps = [line for line in lines if line.startswith('JUMPIF ')]
+            self.assertTrue(all(line.endswith(('\\= 0.0', '>= 0.0')) for line in jumps))
+            labels = [line for line in lines if line.startswith('@')]
+            self.assertEqual(len(labels), len(set(labels)))
+
+    def test_capture_preserves_caller_temporaries_on_normal_and_exceptional_exit(self):
+        converter = self.converter()
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        for failure in (False, True):
+            try:
+                with converter._QASM2QCXConverter__captured_phase_angle(
+                        (caller, qasm2qcx.ValueType.FLOAT, qasm2qcx.ValueKind.TEMPORARY)) as (angle, coefficient):
+                    converter._QASM2QCXConverter__emit_principal_phase(angle, coefficient)
+                    self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller, angle, coefficient})
+                    if failure:
+                        raise RuntimeError('caller failed')
+            except RuntimeError:
+                if not failure:
+                    raise
+            self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+
+
 class FloatingPowerModifierOrderingTests(unittest.TestCase):
     converter = staticmethod(IntegerPowerModifierFoundationTests.converter)
     modifiers = staticmethod(IntegerPowerModifierFoundationTests.modifiers)

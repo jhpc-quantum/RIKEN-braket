@@ -2391,6 +2391,58 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         for temporary_variable in temporary_variables:
             self.__release_temporary_variable(temporary_variable)
 
+    @contextlib.contextmanager
+    def __captured_phase_angle(
+            self, parameter: tuple[str | int | float | complex, ValueType, ValueKind]
+            ) -> Iterator[tuple[str, str]]:
+        # The caller evaluates the source expression once. Reserve its snapshot
+        # and coefficient through the entire modifier chain and broadcasting.
+        # EXP validates even a zero power or an inactive quantum control. These
+        # instructions must remain inside the reached classical path.
+        if parameter[1] not in (ValueType.INT, ValueType.UINT, ValueType.FLOAT):
+            raise WrongParameterTypeException(parameter[0])
+        previous_used = self.__used_temporary_variables.copy()
+        try:
+            operand, _ = self.__converted_operand(*parameter, ValueType.FLOAT)
+            angle = self.__add_new_temporary_variable(ValueType.FLOAT)
+            coefficient = self.__add_new_temporary_variable(ValueType.COMPLEX)
+            self.__qcx_lines.append(f'LET {angle} := {operand}')
+            self.__emit_phase_coefficient(angle, coefficient)
+            yield angle, coefficient
+        finally:
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
+
+    def __emit_phase_coefficient(self, angle: str, coefficient: str) -> None:
+        # Do not use arithmetic modulo a machine approximation of 2*pi.
+        # Recompute after each modifier so an intermediate nonfinite product
+        # fails before a later zero power could hide it.
+        self.__qcx_lines.extend([
+            f'LET {coefficient} := :I',
+            f'LET {coefficient} *= :COMPLEX:{angle}',
+            f'APPLY {coefficient} <- EXP {coefficient}'])
+
+    def __emit_principal_phase(self, angle: str, coefficient: str) -> None:
+        # ARG preserves the side of the cut, including a nearby eigenvalue
+        # whose argument rounds to -PI. Only an exactly negative-real
+        # coefficient selects the gate-power convention +PI for either zero
+        # sign. Inspect components, not angle == -PI or an epsilon window.
+        previous_used = self.__used_temporary_variables.copy()
+        try:
+            imaginary = self.__add_new_temporary_variable(ValueType.FLOAT)
+            real = self.__add_new_temporary_variable(ValueType.FLOAT)
+            ready = self.__gate_power_label() + '_PRINCIPAL'
+            self.__qcx_lines.extend([
+                f'APPLY {angle} <- ARG {coefficient}',
+                f'LET {imaginary} := :IMAG:{coefficient}',
+                f'JUMPIF {ready} {imaginary} \\= 0.0',
+                f'LET {real} := :REAL:{coefficient}',
+                f'JUMPIF {ready} {real} >= 0.0',
+                f'LET {angle} := :PI', f'@{ready}'])
+        finally:
+            for temporary in self.__used_temporary_variables - previous_used:
+                self.__release_temporary_variable(temporary)
+
     def __floating_gate_power_phase(self, mnemonic: str, info: _OrderedGateModifierInfo) -> Fraction:
         root, _ = self.qcx_controlled_gate_families[mnemonic]
         phases = {'I1': Fraction(0), 'X': Fraction(1), 'Y': Fraction(1),
