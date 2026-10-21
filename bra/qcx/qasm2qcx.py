@@ -2314,6 +2314,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__emit_parameterized_phase_gate(statement, info, qcx_gate_name)
             elif family in ('EX', 'EY', 'EZ'):
                 self.__emit_floating_rotation_gate(statement, info, qcx_gate_name)
+            elif qasm_gate_name in ('u2', 'u3', 'U'):
+                self.__emit_floating_u_gate(statement, info)
             else:
                 self.__emit_floating_gate_power(statement, info, qcx_gate_name)
             return
@@ -2716,6 +2718,25 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 one = ' '.join(conditions + [target])
                 sequence = before + [f'{diagonal} {zero} {plus_angle}',
                                      f'{diagonal} {one} {minus_angle}'] + after
+                self.__emit_gate_power(sequence, 1, output_start)
+
+    def __emit_floating_u_gate(self, statement: ast.QuantumGate, info: _OrderedGateModifierInfo) -> None:
+        controls = sum(count for _, count in info.controls)
+        output_start = len(self.__qcx_lines)
+        with self.__powered_u_gate_spectrum(statement, info) as (beta, eta, plus_angle, minus_angle):
+            for qubits in self.__qubit_operand_tuples(statement.qubits, distinct=True):
+                conditions = self.__condition_qubits(qubits[:controls], info.controls)
+                target = qubits[-1]
+                diagonal = self.__controlled_phase_gate_name(controls + 1)
+                zero = ' '.join(conditions + [f'{target}#0'])
+                one = ' '.join(conditions + [target])
+                # V diag(exp(i alpha+), exp(i alpha-)) V-dagger. Controls
+                # condition both full eigenphases, not the basis changes.
+                # QCX U3 is conventional W even when the source gate is U;
+                # U's extra global factor is already in both eigenvalues.
+                sequence = [f'U3+ {target} {beta} {eta} 0.0',
+                            f'{diagonal} {zero} {plus_angle}', f'{diagonal} {one} {minus_angle}',
+                            f'U3 {target} {beta} {eta} 0.0']
                 self.__emit_gate_power(sequence, 1, output_start)
 
     def __emit_floating_quantum_phase(
@@ -3932,7 +3953,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                                                   len(child.arguments), len(child.qubits))
                 if isinstance(modifier_info, _OrderedGateModifierInfo):
                     mnemonic = (self.default_gates_qcx_map | self.stdgates_qcx_map)[child.name.name]
-                    if self.qcx_controlled_gate_families[mnemonic][0] in ('U1', 'EX', 'EY', 'EZ'):
+                    if (self.qcx_controlled_gate_families[mnemonic][0] in ('U1', 'EX', 'EY', 'EZ')
+                            or child.name.name in ('u2', 'u3', 'U')):
                         self.__phase_power_factors(modifier_info)
                     else:
                         self.__floating_gate_power_phase(mnemonic, modifier_info)
