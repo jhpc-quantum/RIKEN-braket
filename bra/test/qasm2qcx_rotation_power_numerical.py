@@ -5,8 +5,9 @@
   python3 bra/test/qasm2qcx_rotation_power_numerical.py
   python3 bra/test/qasm2qcx_rotation_power_numerical.py --bra /path/to/bra
 
-Stage 1 does not enable rotation power conversion. The optional backend audit
-checks existing ordinary/inverse rx/ry/rz and crx/cry/crz, not power lowering.
+The public converter does not enable rotation powers yet. The optional backend
+audit checks existing ordinary/inverse rotations and Stage 2 paired-phase
+preparation separately, not a not-yet-implemented rotation-gate lowering.
 Use a default-double, non-MPI executable for this audit.
 The reference-only run needs only Python's standard library.
 
@@ -32,6 +33,7 @@ import cmath
 import math
 import pathlib
 import resource
+import subprocess
 import unittest
 
 
@@ -343,6 +345,137 @@ class ReferenceTests(unittest.TestCase):
         self.assertGreater(abs(actual[2][2] - naive[2][2]), 1)
 
 
+class LoweringAuditTests(unittest.TestCase):
+    bra = None
+    checked = 0
+
+    def setUp(self):
+        if self.bra is None:
+            self.skipTest('pass --bra to audit paired rotation-phase preparation')
+        from qasm2qcx_runtime_for_numerical import qasm2qcx
+        self.module = qasm2qcx
+
+    def fixture(self, source, modifiers, expression):
+        module = self.module
+        program = module.openqasm3.parser.parse('OPENQASM 3; qubit q; ' + source)
+        converter = module.QASM2QCXConverter(program)
+        converter.visit(program)
+        prefix = ' @ '.join(kind if kind == 'inv' else f'{kind}({argument!r})'
+                            for kind, argument in modifiers)
+        gate = module.openqasm3.parser.parse('OPENQASM 3; ' + prefix + f' @ rx({expression}) q;').statements[0]
+        info = converter._QASM2QCXConverter__analyze_gate_modifiers(
+            gate.modifiers, allow_runtime=True, allow_float=True)
+        return converter, info, gate.arguments[0]
+
+    def program(self, theta, modifiers, *, expression='theta', extra_source='', setup=(), skip=False):
+        converter, info, expression = self.fixture(f'float theta = {theta!r}; ' + extra_source, modifiers, expression)
+        lines = converter._QASM2QCXConverter__qcx_lines
+        source = converter._QASM2QCXConverter__capitalize_variable_name('theta')
+        lines.extend(line.format(theta=source) for line in setup)
+        if skip:
+            lines.append('JUMP SKIPPED')
+        with converter._QASM2QCXConverter__powered_rotation_angles(expression, info) as angles:
+            # Evaluate the prepared angles independently, just as the eventual
+            # phase gates will; no rotation emission is enabled in Stage 2.
+            for angle in angles:
+                coefficient = converter._QASM2QCXConverter__add_new_temporary_variable(self.module.ValueType.COMPLEX)
+                converter._QASM2QCXConverter__emit_phase_coefficient(angle, coefficient)
+                lines.extend([f'PRINTLN :REAL:{coefficient}', f'PRINTLN :IMAG:{coefficient}'])
+            lines.append(f'PRINTLN {source}')
+        if skip:
+            lines.extend(['@SKIPPED', 'PRINTLN :INT:99'])
+        return '\n'.join(lines) + '\n'
+
+    def execute(self, program):
+        return subprocess.run([str(self.bra)], input=program, text=True, capture_output=True, timeout=30)
+
+    def check_pair(self, program, expected, source=None):
+        result = self.execute(program)
+        self.assertEqual(result.returncode, 0, result.stderr + '\n' + program)
+        values = list(map(float, result.stdout.split()))
+        self.assertEqual(len(values), 4 if source is None else 5, result.stdout)
+        actual = (complex(*values[:2]), complex(*values[2:4]))
+        for value, wanted in zip(actual, expected):
+            self.assertTrue(cmath.isclose(value, wanted, rel_tol=1e-5, abs_tol=2e-6), (actual, expected))
+        if source is not None:
+            self.assertTrue(math.isclose(values[-1], source, rel_tol=1e-5, abs_tol=2e-6), result.stdout)
+        type(self).checked += 1
+
+    def test_prepared_pairs_match_analytic_reference(self):
+        angles = (0.0, -0.0, 0.7, -0.7, math.pi, math.tau, -math.tau,
+                  3 * math.pi, math.nextafter(math.tau, 0), math.nextafter(math.tau, math.inf),
+                  1e20, -1e20, 1e100, -1e100, 1e308, -1e308)
+        chains = ((('pow', 0.5),), (('pow', -0.5),), (('pow', 0.0),),
+                  (('pow', 0.5), ('pow', 6)), (('pow', 6), ('pow', 0.5)),
+                  (('inv', None), ('pow', 0.5)), (('pow', 0.5), ('inv', None)))
+        for theta in angles:
+            for modifiers in chains:
+                with self.subTest(theta=theta, modifiers=modifiers):
+                    expected = tuple(map(phase_factor, modified_eigenangles(theta, validated_modifiers(modifiers))))
+                    self.check_pair(self.program(theta, modifiers), expected, theta)
+
+    def test_indexed_integer_and_unsigned_expressions(self):
+        modifiers = (('pow', 0.5),)
+        for expression, extra, angle in (
+                ('values[index]', 'array[float, 2] values = {0.7, 1.2}; int index = 0;', 0.7),
+                ('theta + 0.1', '', 0.8), ('n', 'int n = -2;', -2.0),
+                ('u', 'uint u = 2;', 2.0), ('2', '', 2.0)):
+            with self.subTest(expression=expression):
+                program = self.program(0.7, modifiers, expression=expression, extra_source=extra)
+                expected = tuple(map(phase_factor, modified_eigenangles(angle, validated_modifiers(modifiers))))
+                self.check_pair(program, expected, 0.7)
+
+    def test_large_finite_pairs_do_not_require_a_finite_phase_difference(self):
+        modifiers = (('pow', 1e308),)
+        angles = modified_eigenangles(3.0, validated_modifiers(modifiers))
+        self.assertFalse(math.isfinite(angles[1] - angles[0]))
+        self.check_pair(self.program(3.0, modifiers), tuple(map(phase_factor, angles)), 3.0)
+
+    def test_exact_and_nearby_negative_real_coefficients_are_processed_independently(self):
+        for imaginary_parts in ((0.0, -0.0), (-0.0, 0.0), (-1e-300, 1e-300), (1e-12, -1e-12)):
+            converter, info, _ = self.fixture('', (('pow', 0.5),), '0.0')
+            lines = converter._QASM2QCXConverter__qcx_lines
+            phases = []
+            for imaginary in imaginary_parts:
+                angle = converter._QASM2QCXConverter__add_new_temporary_variable(self.module.ValueType.FLOAT)
+                coefficient = converter._QASM2QCXConverter__add_new_temporary_variable(self.module.ValueType.COMPLEX)
+                unit = ':MINUS_I' if math.copysign(1, imaginary) < 0 else ':I'
+                lines.extend([f'LET {coefficient} := {unit}',
+                              f'LET {coefficient} *= :COMPLEX:{abs(imaginary)!r}',
+                              f'LET {coefficient} -= :COMPLEX:1.0'])
+                phases.append((angle, coefficient))
+            converter._QASM2QCXConverter__emit_phase_modifiers(
+                tuple(phases), info, converter._QASM2QCXConverter__phase_power_factors(info))
+            for _, coefficient in phases:
+                lines.extend([f'PRINTLN :REAL:{coefficient}', f'PRINTLN :IMAG:{coefficient}'])
+            expected = tuple(cmath.exp(0.5j * principal_argument(complex(-1, imaginary))) for imaginary in imaginary_parts)
+            self.check_pair('\n'.join(lines) + '\n', expected)
+
+    def test_nonfinite_angles_and_intermediate_products_cannot_hide(self):
+        for theta in (1.0, -1.0, 0.0):
+            for modifiers in ((('pow', 0.0),), (('ctrl', 1), ('pow', 0.0)),
+                              (('negctrl', 1), ('pow', 0.5))):
+                program = self.program(theta, modifiers, setup=('LET {theta} /= 0.0',))
+                result = self.execute(program)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('nonfinite', result.stderr)
+                self.assertEqual(result.stdout, '')
+                skipped = self.execute(self.program(theta, modifiers, setup=('LET {theta} /= 0.0',), skip=True))
+                self.assertEqual(skipped.returncode, 0, skipped.stderr)
+                self.assertEqual(skipped.stdout.strip(), '99')
+        for expression in ('1.0 / 0.0', '0.0 / 0.0', '1e308 * 1e308'):
+            result = self.execute(self.program(0.7, (('pow', 0.0),), expression=expression))
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('nonfinite', result.stderr)
+            skipped = self.execute(self.program(0.7, (('pow', 0.0),), expression=expression, skip=True))
+            self.assertEqual(skipped.returncode, 0, skipped.stderr)
+            self.assertEqual(skipped.stdout.strip(), '99')
+        result = self.execute(self.program(6.0, (('pow', 0.0), ('pow', 1e308))))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('nonfinite', result.stderr)
+        self.assertEqual(result.stdout, '')
+
+
 class BackendAuditTests(unittest.TestCase):
     bra = None
     checked = 0
@@ -387,11 +520,14 @@ def main():
     options = parser.parse_args()
     if options.bra is not None:
         BackendAuditTests.bra = options.bra.resolve()
+        LoweringAuditTests.bra = options.bra.resolve()
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     suite = unittest.defaultTestLoader.loadTestsFromModule(__import__(__name__))
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     if BackendAuditTests.checked:
         print(f'Existing ordinary/inverse rotation circuits checked: {BackendAuditTests.checked}')
+    if LoweringAuditTests.checked:
+        print(f'Prepared rotation eigenphase pairs checked: {LoweringAuditTests.checked}')
     raise SystemExit(0 if result.wasSuccessful() else 1)
 
 

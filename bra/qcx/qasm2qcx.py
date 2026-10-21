@@ -2490,9 +2490,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         return tuple(factors)
 
     @contextlib.contextmanager
-    def __powered_phase_angle(
-            self, expression: ast.Expression, info: _OrderedGateModifierInfo) -> Iterator[str]:
-        factors = self.__phase_power_factors(info)
+    def __evaluated_phase_angle(self, expression: ast.Expression) -> Iterator[tuple[str, str]]:
         previous_used = self.__used_temporary_variables.copy()
         previous = (self.__expression_kind, self.__value, self.__value_type,
                     self.__value_kind, self.__evaluate_constant)
@@ -2502,22 +2500,60 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self.__value = self.__value_type = self.__value_kind = None
             self.visit(expression)
             parameter = (self.__value, self.__value_type, self.__value_kind)
-            with self.__captured_phase_angle(parameter) as (angle, coefficient):
-                for modifier, factor in reversed(tuple(zip(info.modifiers, factors))):
-                    if modifier.kind == ast.GateModifierName.pow:
-                        self.__emit_principal_phase(angle, coefficient)
-                        self.__qcx_lines.append(f'LET {angle} *= {factor!r}')
-                    elif modifier.kind == ast.GateModifierName.inv:
-                        self.__qcx_lines.append(f'LET {angle} *= -1.0')
-                    else:
-                        continue
-                    self.__emit_phase_coefficient(angle, coefficient)
-                yield angle
+            with self.__captured_phase_angle(parameter) as captured:
+                yield captured
         finally:
             (self.__expression_kind, self.__value, self.__value_type,
              self.__value_kind, self.__evaluate_constant) = previous
             for temporary in self.__used_temporary_variables - previous_used:
                 self.__release_temporary_variable(temporary)
+
+    def __emit_phase_modifiers(
+            self, phases: tuple[tuple[str, str], ...], info: _OrderedGateModifierInfo,
+            factors: tuple[float | None, ...]) -> None:
+        # Finish and validate each modifier for every eigenvalue before moving
+        # outward. Neither a later zero nor the other eigenvalue may hide an
+        # intermediate nonfinite product. Select each principal phase separately:
+        # even conjugate coefficients can both select +PI at the exact cut.
+        for modifier, factor in reversed(tuple(zip(info.modifiers, factors))):
+            if modifier.kind not in (ast.GateModifierName.pow, ast.GateModifierName.inv):
+                continue
+            for angle, coefficient in phases:
+                if modifier.kind == ast.GateModifierName.pow:
+                    self.__emit_principal_phase(angle, coefficient)
+                    self.__qcx_lines.append(f'LET {angle} *= {factor!r}')
+                else:
+                    self.__qcx_lines.append(f'LET {angle} *= -1.0')
+                self.__emit_phase_coefficient(angle, coefficient)
+
+    @contextlib.contextmanager
+    def __powered_phase_angle(
+            self, expression: ast.Expression, info: _OrderedGateModifierInfo) -> Iterator[str]:
+        factors = self.__phase_power_factors(info)
+        with self.__evaluated_phase_angle(expression) as (angle, coefficient):
+            self.__emit_phase_modifiers(((angle, coefficient),), info, factors)
+            yield angle
+
+    @contextlib.contextmanager
+    def __powered_rotation_angles(
+            self, expression: ast.Expression, info: _OrderedGateModifierInfo) -> Iterator[tuple[str, str]]:
+        factors = self.__phase_power_factors(info)
+        # The shared context snapshots and checks theta before it is halved,
+        # preserving the source and the caller's expression/temporary state.
+        with self.__evaluated_phase_angle(expression) as (plus_angle, plus_coefficient):
+            minus_angle = self.__add_new_temporary_variable(ValueType.FLOAT)
+            minus_coefficient = self.__add_new_temporary_variable(ValueType.COMPLEX)
+            # R_P(theta) has phases -theta/2 on P=+1 and +theta/2 on P=-1.
+            # Form the second initial phase before modifying the first, and keep
+            # both independently thereafter. No phase difference is necessary.
+            self.__qcx_lines.extend([
+                f'LET {plus_angle} *= -0.5',
+                f'LET {minus_angle} := {plus_angle}', f'LET {minus_angle} *= -1.0'])
+            phases = ((plus_angle, plus_coefficient), (minus_angle, minus_coefficient))
+            for angle, coefficient in phases:
+                self.__emit_phase_coefficient(angle, coefficient)
+            self.__emit_phase_modifiers(phases, info, factors)
+            yield plus_angle, minus_angle
 
     def __emit_parameterized_phase_gate(
             self, statement: ast.QuantumGate, info: _OrderedGateModifierInfo, mnemonic: str) -> None:

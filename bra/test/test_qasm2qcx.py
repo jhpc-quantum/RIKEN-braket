@@ -317,6 +317,120 @@ class ParameterizedPhasePowerFoundationTests(unittest.TestCase):
             self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
 
 
+class RotationPowerFoundationTests(unittest.TestCase):
+    converter = staticmethod(IntegerPowerModifierFoundationTests.converter)
+
+    @staticmethod
+    def expression(source):
+        return qasm2qcx.openqasm3.parser.parse('OPENQASM 3; rx(' + source + ') q;').statements[0].arguments[0]
+
+    @staticmethod
+    def info(converter, source='pow(0.5)'):
+        return converter._QASM2QCXConverter__analyze_gate_modifiers(
+            IntegerPowerModifierFoundationTests.modifiers(source), allow_runtime=True, allow_float=True)
+
+    def test_source_expression_is_evaluated_once_and_caller_state_is_restored(self):
+        converter = self.converter('float theta = 0.7;')
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        info = self.info(converter)
+        expression = self.expression('theta + 0.1')
+        converter._QASM2QCXConverter__evaluate_constant = False
+        fields = ('__expression_kind', '__value', '__value_type', '__value_kind', '__evaluate_constant')
+        previous = [getattr(converter, '_QASM2QCXConverter' + field) for field in fields]
+        start = len(converter._QASM2QCXConverter__qcx_lines)
+        with patch.object(converter, 'visit', wraps=converter.visit) as visit:
+            with converter._QASM2QCXConverter__powered_rotation_angles(expression, info) as angles:
+                self.assertEqual(len(set(angles)), 2)
+                self.assertNotIn(caller, angles)
+                used = converter._QASM2QCXConverter__used_temporary_variables
+                self.assertTrue({caller, *angles} <= used)
+                extra = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+                self.assertNotIn(extra, angles)
+                converter._QASM2QCXConverter__release_temporary_variable(extra)
+            self.assertEqual(sum(call.args[0] is expression for call in visit.call_args_list), 1)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], previous)
+        lines = converter._QASM2QCXConverter__qcx_lines[start:]
+        self.assertEqual(sum(line.endswith('+= 0.1') for line in lines), 1)
+        source = converter._QASM2QCXConverter__capitalize_variable_name('theta')
+        self.assertFalse(any(line.startswith(f'LET {source} ') for line in lines))
+
+    def test_each_modifier_is_applied_to_both_independent_eigenphases(self):
+        converter = self.converter()
+        info = self.info(converter, 'pow(0.5) @ inv @ pow(6)')
+        with converter._QASM2QCXConverter__powered_rotation_angles(self.expression('0.7'), info) as angles:
+            plus, minus = angles
+            lines = converter._QASM2QCXConverter__qcx_lines
+            factors = [(line.split()[1], line.split()[-1]) for line in lines
+                       if line.startswith('LET ') and ' *= ' in line and line.split()[1] in angles]
+            self.assertEqual(factors, [(plus, '-0.5'), (minus, '-1.0'),
+                (plus, '6.0'), (minus, '6.0'), (plus, '-1.0'), (minus, '-1.0'),
+                (plus, '0.5'), (minus, '0.5')])
+            self.assertEqual(sum(line.startswith(f'APPLY {plus} <- ARG ') for line in lines), 2)
+            self.assertEqual(sum(line.startswith(f'APPLY {minus} <- ARG ') for line in lines), 2)
+            self.assertEqual(sum(' <- EXP ' in line for line in lines), 9)
+            self.assertFalse(any(' -= ' in line for line in lines))
+            ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_integer_and_unsigned_sources_are_promoted_before_halving(self):
+        for name in ('n', 'u'):
+            converter = self.converter(f'int n = {qasm2qcx.QASM2QCXConverter.QCX_INT_MIN}; uint u = uint(-1);')
+            info = self.info(converter)
+            with converter._QASM2QCXConverter__powered_rotation_angles(self.expression(name), info):
+                source = converter._QASM2QCXConverter__capitalize_variable_name(name)
+                self.assertEqual(sum(line.endswith(f':= :REAL:{source}')
+                                     for line in converter._QASM2QCXConverter__qcx_lines), 1)
+
+    def test_runtime_array_index_is_captured_and_checked_once(self):
+        converter = self.converter('array[float, 2] values = {0.7, 1.2}; int index = 0;')
+        info = self.info(converter)
+        start = len(converter._QASM2QCXConverter__qcx_lines)
+        with converter._QASM2QCXConverter__powered_rotation_angles(self.expression('values[index]'), info):
+            lines = converter._QASM2QCXConverter__qcx_lines[start:]
+            self.assertEqual(sum(line.startswith('ASSERT ') for line in lines), 2)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_invalid_factors_fail_before_angle_evaluation(self):
+        converter = self.converter('int n = 2;')
+        info = self.info(converter, 'pow(0.0) @ pow(0.5) @ pow(n)')
+        before = converter._QASM2QCXConverter__qcx_lines.copy()
+        with patch.object(converter, 'visit', wraps=converter.visit) as visit:
+            with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'runtime integer factors'):
+                with converter._QASM2QCXConverter__powered_rotation_angles(self.expression('missing'), info):
+                    self.fail('runtime factor accepted')
+            visit.assert_not_called()
+        self.assertEqual(converter._QASM2QCXConverter__qcx_lines, before)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+
+    def test_failures_do_not_release_caller_temporaries_or_leak_expression_state(self):
+        converter = self.converter()
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.COMPLEX)
+        info = self.info(converter)
+        fields = ('__expression_kind', '__value', '__value_type', '__value_kind', '__evaluate_constant')
+        previous = [getattr(converter, '_QASM2QCXConverter' + field) for field in fields]
+        for source in ('true', '1im', 'missing'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.QASM2QCXError):
+                with converter._QASM2QCXConverter__powered_rotation_angles(self.expression(source), info):
+                    self.fail('invalid angle accepted')
+            self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+            self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], previous)
+        with self.assertRaisesRegex(RuntimeError, 'caller failed'):
+            with converter._QASM2QCXConverter__powered_rotation_angles(self.expression('0.7'), info):
+                raise RuntimeError('caller failed')
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], previous)
+
+    def test_public_rotation_powers_are_not_enabled_in_stage_two(self):
+        for gate in ('rx', 'ry', 'rz', 'crx', 'cry', 'crz'):
+            operands = 'q[1], q[0]' if gate.startswith('cr') else 'q[0]'
+            for wrapper in ('{}', 'for int i in [1:0] {{ {} }}'):
+                with self.subTest(gate=gate, wrapper=wrapper), self.assertRaisesRegex(
+                        qasm2qcx.UnsupportedOpenQASMError, 'floating-point pow'):
+                    convert('OPENQASM 3; include "stdgates.inc"; qubit[2] q; '
+                            + wrapper.format(f'pow(0.5) @ {gate}(0.7) {operands};'))
+
+
 class ParameterizedPhasePowerLoweringTests(unittest.TestCase):
     def clean(self, source):
         return InverseModifierLoweringTests.assert_clean_conversion(self, source)
