@@ -10,10 +10,9 @@ from the independent direct cu matrix and integer matrix products, not from
 converter phase operands or floating-power spectral preparation. Compare
 complex amplitudes without aligning away global or controlled relative phase.
 
-Stage 1 marks the four known converter failures with expectedFailure. Remove
-those markers when Stage 2 separates the two control-phase corrections. The
-native audit already demonstrates the proposed factorization, including
-inverse/integer sequences and fusion, without modifying the converter.
+The converter regressions check literal and runtime parameters. The native
+audit independently verifies the separate-factor instruction sequence,
+including inverse/integer sequences and fusion.
 """
 
 import argparse
@@ -90,19 +89,15 @@ class BackendTests(unittest.TestCase):
                           + f'cu({arguments}) q[1], q[0];',
                           self.apply(cref.integer_reference(parameters, 1), initial))
 
-    @unittest.expectedFailure  # #360: remove when the phase sum is eliminated.
     def test_literal_cu_retains_small_theta_beside_large_gamma(self):
         self.check_ordinary_conversion(LOSS, runtime=False)
 
-    @unittest.expectedFailure  # #360: remove when the phase sum is eliminated.
     def test_runtime_cu_retains_small_theta_beside_large_gamma(self):
         self.check_ordinary_conversion(LOSS, runtime=True)
 
-    @unittest.expectedFailure  # #360: remove when the phase sum is eliminated.
     def test_literal_cu_accepts_finite_parameters_with_overflowing_sum(self):
         self.check_ordinary_conversion(OVERFLOW, runtime=False)
 
-    @unittest.expectedFailure  # #360: remove when the phase sum is eliminated.
     def test_runtime_cu_accepts_finite_parameters_with_overflowing_sum(self):
         self.check_ordinary_conversion(OVERFLOW, runtime=True)
 

@@ -1949,26 +1949,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
         return temporary_variable, temporaries
 
-    def __cu_control_phase(
-            self, parameters: list[tuple[str | int | float, ValueType, ValueKind]],
-            converted_parameters: list[str]) -> tuple[str, ValueKind]:
-        # Follow the published cu matrix: its active block is exp(i*gamma)*U.
-        # QCX CU3 uses conventional u3, and U = exp(i*theta/2)*u3.
-        # The upstream example stdgates.inc uses a different cu convention;
-        # see the independent audit in test/qasm2qcx_u_phase_numerical.py.
-        theta, _, _, gamma = parameters
-        if all(parameter[2] == ValueKind.LITERAL for parameter in parameters):
-            phase = float(gamma[0]) + float(theta[0]) / 2.0
-            return str(phase), ValueKind.LITERAL
-
-        temporary = self.__add_new_temporary_variable(ValueType.FLOAT)
-        self.__qcx_lines.append(
-            f'LET {temporary} := {converted_parameters[0]}')
-        self.__qcx_lines.append(f'LET {temporary} /= 2.0')
-        self.__qcx_lines.append(
-            f'LET {temporary} += {converted_parameters[3]}')
-        return temporary, ValueKind.TEMPORARY
-
     def __u_global_phase(
             self, parameters: list[
                 tuple[str | int | float, ValueType, ValueKind]],
@@ -2342,21 +2322,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             converted_parameters.append(converted_parameter)
             temporary_variables.update(parameter_temporaries)
 
-        cu_control_phase: str | None = None
-        if qasm_gate_name == 'cu':
-            cu_control_phase, value_kind = self.__cu_control_phase(
-                parameters, converted_parameters)
-            if value_kind == ValueKind.TEMPORARY:
-                temporary_variables.add(cu_control_phase)
-
         u_global_phase: str | None = None
         inverse_phase: str | None = None
-        if qasm_gate_name == 'U':
+        if qasm_gate_name in ('U', 'cu'):
             u_global_phase, value_kind = self.__u_global_phase(
                 parameters, converted_parameters)
             if value_kind == ValueKind.TEMPORARY:
                 temporary_variables.add(u_global_phase)
-            if inverse or (runtime is not None and runtime.signed_exponent is not None):
+            if qasm_gate_name == 'U' and (
+                    inverse or (runtime is not None and runtime.signed_exponent is not None)):
                 inverse_phase = self.__negated_phase_operand(u_global_phase, value_kind)
 
         powered = any(modifier.modifier == ast.GateModifierName.pow for modifier in statement.modifiers)
@@ -2378,7 +2352,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if not mnemonics:
                 sequence = []
             elif qasm_gate_name == 'cu':
-                sequence = [('U1', [qubit_indices[0], cu_control_phase]),
+                # The active block is exp(i*gamma)*U, with
+                # U = exp(i*theta/2)*conventional-u3. Keep both phases
+                # separate: gamma+theta/2 can lose theta's correction or
+                # overflow even when each original parameter is finite.
+                sequence = [('U1', [qubit_indices[0], converted_parameters[3]]),
+                            ('U1', [qubit_indices[0], u_global_phase]),
                             ('CU3', qubit_indices + converted_parameters[:3])]
             else:
                 sequence = []
