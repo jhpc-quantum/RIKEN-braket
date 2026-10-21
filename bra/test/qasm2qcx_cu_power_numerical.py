@@ -13,8 +13,8 @@ The intrinsic positive control and any added controls leave inactive blocks
 exactly identity; a scalar active block is still a relative controlled phase.
 
 The optional default-double, non-MPI audit exercises existing ordinary/integer
-cu conversion, raw QCX basis/projector-phase instructions, and private runtime
-spectral preparation. It does not enable floating cu conversion.
+cu conversion, raw QCX basis/projector-phase instructions, private runtime
+spectral preparation, and complete converted floating-power circuits.
 Ordinary cu currently forms gamma+theta/2;
 its audit uses profiles where that sum is well conditioned. Independent
 references also cover loss/overflow in that sum, which must not be inherited
@@ -27,6 +27,7 @@ import math
 import pathlib
 import random
 import resource
+import subprocess
 import unittest
 
 import qasm2qcx_u_power_numerical as uref
@@ -423,6 +424,165 @@ class BackendAuditTests(unittest.TestCase):
                                 self.check([f'QUBITS {qubits}', *preparation, *sequence], self.apply(operation, initial))
 
 
+class ConversionAuditTests(unittest.TestCase):
+    bra = None
+    checked = 0
+    check = BackendAuditTests.check
+    apply = staticmethod(BackendAuditTests.apply)
+    inputs = staticmethod(BackendAuditTests.inputs)
+    check_source = uref.ConversionAuditTests.check_source
+
+    def setUp(self):
+        if self.bra is None:
+            self.skipTest('pass --bra to audit converted cu powers')
+        from qasm2qcx_runtime_for_numerical import qasm2qcx
+        self.module = qasm2qcx
+
+    def check_gate(self, parameters, modifiers=(('pow', 0.5),), *, runtime=True, basis=None, fused=False):
+        operation = powered(parameters, modifiers)
+        qubits = len(operation).bit_length() - 1
+        _, initial = self.inputs(qubits, basis)
+        preparation = ('h q; s q[0]; ' if basis is None else
+                       ''.join(f'x q[{wire}]; ' for wire in range(qubits) if basis & (1 << wire)))
+        declarations = ''.join(f'float p{index} = {value!r}; ' for index, value in enumerate(parameters))
+        arguments = ', '.join(f'p{index}' if runtime else repr(value) for index, value in enumerate(parameters))
+        prefix = ' @ '.join(kind if kind == 'inv' else f'{kind}({argument!r})' for kind, argument in modifiers)
+        operands = ', '.join(f'q[{wire}]' for wire in reversed(range(qubits)))
+        self.check_source(f'qubit[{qubits}] q; ' + declarations + preparation
+                          + f'{prefix} @ cu({arguments}) {operands};', self.apply(operation, initial), fused=fused)
+
+    def test_full_circuits_against_analytic_spectra(self):
+        maximum = float.fromhex('0x1.fffffffffffffp+1023')
+        profiles = ((0.7, 0.4, -0.2, 0.9), (0, 0, 0, 0), (0, 0, 0, 0.7),
+                    (0, 0, 1.5 * math.pi, -0.75 * math.pi),
+                    (math.pi / 2, 0, math.pi, 0), (1e-200, 0, 0, math.pi),
+                    (1e-12, 0, 0, math.pi - 5e-13),
+                    (0, 0, 0, math.nextafter(math.pi, 0)),
+                    (0, 0, 0, math.nextafter(math.pi, math.inf)),
+                    (0.7, 0.4, -0.2, 1e20), (1e20, -1e20, 1e20, -1e20),
+                    (maximum,) * 4, (1e308, 1e308, -1e308, -1e308),
+                    (0, maximum, -maximum, maximum))
+        chains = ((('pow', 0.5),), (('pow', -0.5),), (('pow', 0.0),),
+                  (('pow', 2.0),), (('pow', 0.5), ('inv', None)),
+                  (('inv', None), ('pow', 0.5)), (('pow', 0.5), ('pow', 6)),
+                  (('pow', 6), ('pow', 0.5)))
+        for index, parameters in enumerate(profiles):
+            for modifiers in chains:
+                for runtime in (False, True):
+                    for basis in ((*range(4), None) if index < 5 else (None,)):
+                        with self.subTest(parameters=parameters, modifiers=modifiers, runtime=runtime, basis=basis):
+                            self.check_gate(parameters, modifiers, runtime=runtime, basis=basis)
+        for fused in (False, True):
+            self.check_gate((3.0, 0, 0, -1.5), (('pow', 1e308),), fused=fused)
+
+    def test_seeded_circuits_against_independent_quadratic_solver(self):
+        rng = random.Random(3580)
+        for _ in range(20):
+            parameters = tuple(rng.uniform(-5, 5) for _ in range(4))
+            for exponent in (0.5, -0.75):
+                operation = uref.condition_matrix(uref.quadratic_power(direct_active_matrix(parameters), exponent), (1,))
+                _, initial = self.inputs(2, None)
+                arguments = ', '.join(map(repr, parameters))
+                for fused in (False, True):
+                    self.check_source(f'qubit[2] q; h q; s q[0]; pow({exponent!r}) @ cu({arguments}) q[1], q[0];',
+                                      self.apply(operation, initial), fused=fused)
+
+    def test_mixed_controls_and_scalar_relative_phase_with_fusion(self):
+        for parameters in ((0.7, 0.4, -0.2, 0.9), (0, 0, 0, 0.7)):
+            for values in ((), (0,), (1,), (0, 1), (1, 0)):
+                controls = tuple(('ctrl' if value else 'negctrl', 1) for value in values)
+                modifiers = (('pow', 0.5), *controls, ('inv', None))
+                qubits = len(values) + 2
+                for fused in (False, True):
+                    for basis in (*range(1 << qubits), None):
+                        self.check_gate(parameters, modifiers, basis=basis, fused=fused)
+        for fused in (False, True):
+            for basis in (*range(32), None):
+                self.check_gate((0.7, 0.4, -0.2, 0.9),
+                                (('ctrl', 2), ('pow', 0.5), ('negctrl', 1)), basis=basis, fused=fused)
+
+    def test_noncontiguous_wires_and_spectators(self):
+        active = uref.quadratic_power(direct_active_matrix((0.7, 0.4, -0.2, 0.9)), 0.5)
+        initial = [(1j if index & 1 else 1) * (-1j if index & 4 else 1) / math.sqrt(32) for index in range(32)]
+        expected = initial.copy()
+        for index in range(32):
+            if not index & 4 and index & 8 and index & 16 and not index & 2:
+                expected[index], expected[index | 2] = self.apply(active, (initial[index], initial[index | 2]))
+        for fused in (False, True):
+            self.check_source('qubit[5] q; h q; s q[0]; sdg q[2]; '
+                'negctrl @ pow(0.5) @ ctrl @ cu(0.7, 0.4, -0.2, 0.9) q[2], q[3], q[4], q[1];', expected, fused=fused)
+
+    def test_broadcast_arrays_and_reused_temporaries(self):
+        parameters = (0.7, 0.4, -0.2, 0.9)
+        operation = powered(parameters)
+        _, pair = self.inputs(2, None)
+        low = self.apply(operation, pair)
+        high = self.apply(operation, (0.5,) * 4)
+        self.check_source('qubit[2] lo; qubit[2] hi; h lo; h hi; s lo[0]; '
+            'pow(0.5) @ cu(0.7, 0.4, -0.2, 0.9) hi, lo;',
+            [high[(h << 1) | l] * low[(i << 1) | j]
+             for h in range(2) for i in range(2) for l in range(2) for j in range(2)])
+        # The tensor factors above occupy interleaved physical pairs:
+        # (hi[0],lo[0]) and (hi[1],lo[1]), not adjacent register halves.
+        _, state = self.inputs(2, None)
+        for gamma, exponent in ((0.9, 0.5), (1.2, -0.5), (0.7, 0.5)):
+            state = self.apply(powered((0.7, 0.4, -0.2, gamma), (('pow', exponent),)), state)
+        for fused in (False, True):
+            self.check_source('qubit[2] q; h q; s q[0]; array[float, 4] values = {0.7, 0.4, -0.2, 0.9}; int index = 0; '
+                'pow(0.5) @ cu(values[index], values[index+1], values[index+2], values[index+3]) q[1], q[0]; '
+                'values[3] = 1.2; pow(-0.5) @ cu(values[0], values[1], values[2], values[3]) q[1], q[0]; '
+                'pow(0.5) @ cu(values[0], values[1], values[2], values[0]) q[1], q[0];', state, fused=fused)
+        for declaration, gamma in (('int n = -2;', -2), ('uint n = uint(-1);', self.module.QASM2QCXConverter.QCX_UINT_MAX)):
+            self.check_source('qubit[2] q; h q; s q[0]; ' + declaration
+                + 'pow(0.5) @ cu(0.7, 0.4, -0.2, n) q[1], q[0];',
+                self.apply(powered((0.7, 0.4, -0.2, gamma)), pair))
+
+    def test_runtime_loops_and_skipped_invalid_arithmetic(self):
+        _, initial = self.inputs(2, None)
+        state = initial
+        for gamma in (1.0, 2.0, 3.0):
+            state = self.apply(powered((0.7, 0.4, -0.2, gamma)), state)
+        self.check_source('qubit[2] q; h q; s q[0]; int first = 1; int last = 3; '
+            'for int i in [first:last] { pow(0.5) @ cu(0.7, 0.4, -0.2, float(i)) q[1], q[0]; }', state)
+        state = initial
+        for gamma in (0.9, 1.4):
+            state = self.apply(powered((0.7, 0.4, -0.2, gamma)), state)
+        self.check_source('qubit[2] q; h q; s q[0]; int count = 0; float gamma = 0.9; '
+            'while (count < 3) { count += 1; if (count == 2) { continue; } '
+            'pow(0.5) @ cu(0.7, 0.4, -0.2, gamma) q[1], q[0]; gamma += 0.5; if (count == 3) { break; } }', state)
+        for call in ('pow(0.0) @ cu(0, 0, 0, 1.0 / 0.0) q[1], q[0];',
+                     'pow(0.0) @ pow(1e308) @ cu(0, 0, 0, 3.0) q[1], q[0];'):
+            for wrapper in ('if (flag) {{ {} }}', 'while (flag) {{ {} }}', 'for int i in [1:0] {{ {} }}'):
+                self.check_source('qubit[2] q; h q; s q[0]; bool flag = false; ' + wrapper.format(call), initial)
+
+    def test_nonfinite_parameters_fail_even_with_inactive_controls_and_zero_power(self):
+        for index in range(4):
+            for expression in ('1.0 / 0.0', '-1.0 / 0.0', '0.0 / 0.0', 'large * large'):
+                arguments = ['0.7'] * 4
+                arguments[index] = 'bad'
+                for prefix, operands in (('', 'q[1], q[0]'), ('ctrl @ ', 'q[2], q[1], q[0]'),
+                                         ('negctrl @ ', 'q[2], q[1], q[0]')):
+                    source = ('OPENQASM 3; include "stdgates.inc"; qubit[3] q; float large = 1e308; '
+                        + f'float bad = {expression}; {prefix}pow(0.0) @ cu({", ".join(arguments)}) {operands};')
+                    result = subprocess.run([str(self.bra)], input='\n'.join(self.module.convert(source)) + '\n',
+                                            text=True, capture_output=True, timeout=30)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn('nonfinite', result.stderr)
+                    self.assertEqual(result.stdout, '')
+
+
+    def test_intermediate_overflow_cannot_be_hidden_by_outer_zero(self):
+        for prefix, operands in (('', 'q[1], q[0]'), ('ctrl @ ', 'q[2], q[1], q[0]'),
+                                 ('negctrl @ ', 'q[2], q[1], q[0]')):
+            source = ('OPENQASM 3; include "stdgates.inc"; qubit[3] q; ' + prefix
+                      + f'pow(0.0) @ pow(1e308) @ cu(0, 0, 0, 3.0) {operands};')
+            result = subprocess.run([str(self.bra)], input='\n'.join(self.module.convert(source)) + '\n',
+                                    text=True, capture_output=True, timeout=30)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('nonfinite', result.stderr)
+            self.assertEqual(result.stdout, '')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--bra', type=pathlib.Path)
@@ -430,6 +590,7 @@ def main():
     if options.bra is not None:
         BackendAuditTests.bra = options.bra.resolve()
         PreparationAuditTests.bra = options.bra.resolve()
+        ConversionAuditTests.bra = options.bra.resolve()
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     suite = unittest.defaultTestLoader.loadTestsFromModule(__import__(__name__))
     result = unittest.TextTestRunner(verbosity=2).run(suite)
@@ -437,6 +598,8 @@ def main():
         print(f'Existing cu/intrinsic-projector circuits checked: {BackendAuditTests.checked}')
     if PreparationAuditTests.checked:
         print(f'Prepared cu spectra checked: {PreparationAuditTests.checked}')
+    if ConversionAuditTests.checked:
+        print(f'Converted cu power circuits checked: {ConversionAuditTests.checked}')
     raise SystemExit(0 if result.wasSuccessful() else 1)
 
 
