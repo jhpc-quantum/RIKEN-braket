@@ -2314,7 +2314,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__emit_parameterized_phase_gate(statement, info, qcx_gate_name)
             elif family in ('EX', 'EY', 'EZ'):
                 self.__emit_floating_rotation_gate(statement, info, qcx_gate_name)
-            elif qasm_gate_name in ('u2', 'u3', 'U'):
+            elif qasm_gate_name in ('u2', 'u3', 'U', 'cu'):
                 self.__emit_floating_u_gate(statement, info)
             else:
                 self.__emit_floating_gate_power(statement, info, qcx_gate_name)
@@ -2634,19 +2634,27 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             ) -> Iterator[tuple[str, str, str, str]]:
         factors = self.__phase_power_factors(info)
         name = statement.name.name
-        if name not in ('u2', 'u3', 'U'):
+        if name not in ('u2', 'u3', 'U', 'cu'):
             raise UnsupportedOpenQASMError(f'U-family spectrum for {name}')
-        expected = 2 if name == 'u2' else 3
+        expected = 2 if name == 'u2' else 4 if name == 'cu' else 3
         if len(statement.arguments) != expected:
-            raise WrongGateArityException(name, expected, 1, len(statement.arguments), len(statement.qubits))
+            qubits = (2 if name == 'cu' else 1) + sum(count for _, count in info.controls)
+            raise WrongGateArityException(name, expected, qubits, len(statement.arguments), len(statement.qubits))
         with contextlib.ExitStack() as stack:
             # Nested capture scopes retain every source snapshot and indexed
             # expression temporary until the full modifier/broadcast lifetime,
             # restoring the caller's expression state even on exceptions.
             captured = [stack.enter_context(self.__evaluated_phase_angle(expression))
                         for expression in statement.arguments]
-            scalar, vector, overall = self.__emit_u_gate_quaternion(name, captured)
+            core_name, core_parameters = ('U', captured[:3]) if name == 'cu' else (name, captured)
+            scalar, vector, overall = self.__emit_u_gate_quaternion(core_name, core_parameters)
             beta, eta, coefficients = self.__emit_u_gate_eigenbasis(scalar, vector, overall)
+            if name == 'cu':
+                # Gamma's ORIGINAL full-angle factor belongs to both active
+                # eigenvalues before any principal argument or modifier. Do
+                # not halve it, mix it into phi/lambda, or add gamma+theta/2.
+                gamma = captured[3][1]
+                self.__qcx_lines.extend(f'LET {coefficient} *= {gamma}' for coefficient in coefficients)
             phases = tuple((self.__add_new_temporary_variable(ValueType.FLOAT), coefficient)
                            for coefficient in coefficients)
             for angle, coefficient in phases:
@@ -2721,19 +2729,23 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 self.__emit_gate_power(sequence, 1, output_start)
 
     def __emit_floating_u_gate(self, statement: ast.QuantumGate, info: _OrderedGateModifierInfo) -> None:
-        controls = sum(count for _, count in info.controls)
+        added_controls = sum(count for _, count in info.controls)
+        intrinsic_controls = 1 if statement.name.name == 'cu' else 0
         output_start = len(self.__qcx_lines)
         with self.__powered_u_gate_spectrum(statement, info) as (beta, eta, plus_angle, minus_angle):
             for qubits in self.__qubit_operand_tuples(statement.qubits, distinct=True):
-                conditions = self.__condition_qubits(qubits[:controls], info.controls)
+                conditions = self.__condition_qubits(qubits[:added_controls], info.controls)
+                conditions += qubits[added_controls:added_controls + intrinsic_controls]
                 target = qubits[-1]
-                diagonal = self.__controlled_phase_gate_name(controls + 1)
+                diagonal = self.__controlled_phase_gate_name(len(conditions) + 1)
                 zero = ' '.join(conditions + [f'{target}#0'])
                 one = ' '.join(conditions + [target])
                 # V diag(exp(i alpha+), exp(i alpha-)) V-dagger. Controls
                 # condition both full eigenphases, not the basis changes.
                 # QCX U3 is conventional W even when the source gate is U;
-                # U's extra global factor is already in both eigenvalues.
+                # U's extra global factor (and cu's full gamma factor) is
+                # already in both eigenvalues. cu's intrinsic control stays
+                # positive independently of added ctrl/negctrl modifiers.
                 sequence = [f'U3+ {target} {beta} {eta} 0.0',
                             f'{diagonal} {zero} {plus_angle}', f'{diagonal} {one} {minus_angle}',
                             f'U3 {target} {beta} {eta} 0.0']
@@ -3954,7 +3966,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 if isinstance(modifier_info, _OrderedGateModifierInfo):
                     mnemonic = (self.default_gates_qcx_map | self.stdgates_qcx_map)[child.name.name]
                     if (self.qcx_controlled_gate_families[mnemonic][0] in ('U1', 'EX', 'EY', 'EZ')
-                            or child.name.name in ('u2', 'u3', 'U')):
+                            or child.name.name in ('u2', 'u3', 'U', 'cu')):
                         self.__phase_power_factors(modifier_info)
                     else:
                         self.__floating_gate_power_phase(mnemonic, modifier_info)
