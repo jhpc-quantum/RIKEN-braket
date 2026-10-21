@@ -15,10 +15,9 @@ exactly identity; a scalar active block is still a relative controlled phase.
 The optional default-double, non-MPI audit exercises existing ordinary/integer
 cu conversion, raw QCX basis/projector-phase instructions, private runtime
 spectral preparation, and complete converted floating-power circuits.
-Ordinary cu currently forms gamma+theta/2;
-its audit uses profiles where that sum is well conditioned. Independent
-references also cover loss/overflow in that sum, which must not be inherited
-by the new floating path. No ordinary-path numerical fix is made here.
+Independent references also cover why combining gamma+theta/2 loses
+information or overflows. Ordinary/integer phase-factor regressions are
+audited separately by qasm2qcx_cu_phase_numerical.py (issue #360).
 """
 
 import argparse
