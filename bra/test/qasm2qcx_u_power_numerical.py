@@ -806,6 +806,28 @@ class ConversionAuditTests(unittest.TestCase):
                         self.check_source('qubit q; ' + preparation + f'pow({exponent!r}) @ {gate}({arguments}) q;',
                                           self.apply(operation, initial), fused=fused)
 
+    def test_documented_u_family_power_example(self):
+        document = (pathlib.Path(__file__).parents[1] / 'qcx/qasm2qcx.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- u-family-power-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        for fused in (False, True):
+            self.check_source(examples[0], [1j, 0, 0, 0, 0, 0, 0, 0], fused=fused)
+
+    def test_seeded_generic_matrices_against_quadratic_reference(self):
+        rng = random.Random(354)
+        for gate in ('u2', 'u3', 'U'):
+            for _ in range(20):
+                parameters = tuple(rng.uniform(-5, 5) for _ in range(parameter_count(gate)))
+                arguments = ', '.join(map(repr, parameters))
+                for exponent in (0.5, -0.75):
+                    operation = quadratic_power(direct_matrix(gate, parameters), exponent)
+                    initial = (1 / math.sqrt(2), 1j / math.sqrt(2))
+                    for fused in (False, True):
+                        with self.subTest(gate=gate, parameters=parameters, exponent=exponent, fused=fused):
+                            self.check_source('qubit q; h q; s q; '
+                                + f'pow({exponent!r}) @ {gate}({arguments}) q;', self.apply(operation, initial), fused=fused)
+
     def test_mixed_control_patterns_and_fusion(self):
         for gate in ('u2', 'u3', 'U'):
             parameters = (0.4, -0.2) if gate == 'u2' else (0.7, 0.4, -0.2)

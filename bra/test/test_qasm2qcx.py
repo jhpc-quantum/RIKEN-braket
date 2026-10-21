@@ -521,6 +521,13 @@ class UPowerLoweringTests(unittest.TestCase):
     def clean(self, source):
         return InverseModifierLoweringTests.assert_clean_conversion(self, source)
 
+    def test_documented_u_family_power_example(self):
+        document = CONVERTER_PATH.with_suffix('.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- u-family-power-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        self.clean(examples[0].split('\n', 1)[1])
+
     def test_all_three_families_use_conventional_basis_changes_and_two_full_phases(self):
         for call in ('u2(phi, lam)', 'u3(theta, phi, lam)', 'U(theta, phi, lam)'):
             lines = self.clean('include "stdgates.inc"; qubit q; float theta = 0.7; float phi = 0.4; '

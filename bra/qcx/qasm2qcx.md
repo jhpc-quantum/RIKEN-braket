@@ -74,7 +74,7 @@ The converter currently covers:
   including nested powers and combinations with inverse and control modifiers;
 - constant floating-point `pow` modifiers on selected fixed gate families,
   `p`/`phase`/`u1`, `cp`/`cphase`, `gphase`, and
-  `rx`/`ry`/`rz`/`crx`/`cry`/`crz`,
+  `rx`/`ry`/`rz`/`crx`/`cry`/`crz`, `u2`, `u3`, and built-in `U`,
   with principal spectral powers and ordered modifier evaluation;
 - literal indices, static index ranges, discrete index sets, and complete
   qubit registers as gate operands;
@@ -1586,7 +1586,8 @@ No new QCX instruction is required.
 ### Constant floating-point gate powers
 
 Finite compile-time floating-point exponents are supported on the following
-fixed gates and on the parameterized phase and rotation gates described below.
+fixed gates and on the parameterized phase, rotation, and U-family gates
+described below.
 The fixed gates require `include "stdgates.inc";`.
 
 | Gate family | Nonzero principal eigenphase before modifiers |
@@ -1669,16 +1670,15 @@ checks also run in empty loops; named or compound selections in constant
 unrolled loops are checked when an iteration is expanded. Supported powers
 work in branches, loops, and register broadcasting. Fixed-family lowering
 requires no runtime exponent evaluation or additional classical scratch storage;
-parameterized phase and rotation powers use the runtime preparation described
-below.
+parameterized phase, rotation, and U-family powers use the runtime preparation
+described below.
 
 The following remain unsupported, including when an outer power is zero:
 
 - runtime floating-point exponents;
 - runtime integer factors or loop-iterator factors in a chain containing a
   floating-point power, even if the loop is unrolled;
-- floating-point powers of `u2`/`u3`, built-in `U`, `cu`, and their additional
-  controlled forms.
+- floating-point powers of `cu`, including additional controlled forms.
 
 These are explicit conversion errors, not approximate angle-scaling fallbacks.
 The CLI emits no partial QCX program on failure.
@@ -1871,6 +1871,112 @@ The reference-only command uses Python's standard library and needs neither
 the parser nor bra. The second command uses a default-double, non-MPI bra
 executable with `APPLY`, `EXP`, `ARG`, negative controls, and fusion support.
 It compares actual complex amplitudes without aligning away global phase.
+
+#### Parameterized U-family gates
+
+Floating-point powers support `u2(phi, lambda)`, `u3(theta, phi, lambda)`, and
+built-in `U(theta, phi, lambda)`. The aliases require `include "stdgates.inc";`;
+built-in `U` does not. Powers may be interleaved with `inv`, `ctrl`, and
+`negctrl`, including mixed control polarities and constant counts. Floating
+powers of `cu` remain unsupported, even behind an outer zero power.
+
+These gates retain the [existing U-family phase conventions](#u-family-phase-conventions):
+`u3` is conventional `W`, `u2` fixes its `theta` to `pi/2`, and built-in `U`
+is `exp(i * theta/2) * W`. Its extra phase is part of both eigenvalues; it is
+not factored out and powered separately. Principal powers do not generally
+distribute over such a factorization.
+
+The shared analytic decomposition uses
+
+$$
+t=\frac{\theta}{2},\qquad
+a=\frac{\phi+\lambda}{2},\qquad b=\frac{\phi-\lambda}{2},
+$$
+
+$$
+h=\cos t\cos a,\qquad
+\boldsymbol v=(-\sin t\sin b,\ \sin t\cos b,\ \cos t\sin a),
+\qquad q=\|\boldsymbol v\|.
+$$
+
+Writing `W = exp(i*a) * (h*I - i*v.Pauli)`, the full eigenvalues are
+
+$$
+\mu_\pm=e^{i\delta}(h\mp iq),\qquad
+\delta=\begin{cases}a&\text{for u2 and u3},\\a+t&\text{for built-in U}.\end{cases}
+$$
+
+These sums describe the mathematics, not the runtime arithmetic. Preparation
+multiplies separate half-angle unit factors instead of adding or subtracting
+large source angles. `ABS` computes the vector magnitudes without directly
+squaring tiny or large components. `ARG` supplies the eigenbasis angles and
+selects each full eigenvalue's principal argument before every power. Inversions
+conjugate the current eigenvalue coefficients directly, avoiding a reconstruction
+from rounded arguments that could change a subsequent branch-cut decision.
+
+For nonzero `q`, a conventional `u3(beta, eta, 0)` supplies the eigenbasis,
+with `eta = atan2(v_y, v_x)` and
+`beta = atan2(hypot(v_x, v_y), v_z)`. These formulas are implemented through
+`ABS` and `ARG`, not new `ATAN2` or `HYPOT` instructions. An exactly scalar
+gate uses the identity basis and two equal full eigenvalues. A Z-axis vector
+uses `eta = 0`. Both cases avoid `ARG(0)` and division by a small eigenvalue
+gap. There is no epsilon-based merging or branch-cut snapping.
+
+Chronologically, lowering emits `U3+`, separate `U1`-family phases on target
+values zero and one, then `U3`. Added controls condition both phases; the basis
+changes remain unconditional and cancel in inactive control subspaces. No
+global phase is discarded, and no difference between the two eigenphases is
+formed. Fusion uses the same lowering, without new quantum instructions.
+
+Each original numeric scalar parameter is evaluated and checked once, from
+left to right, before any halving or spectral construction. Supported `float`,
+`int`, and `uint` expressions include indexed array elements and loop iterators;
+bare Boolean, bit, complex, and whole-array parameters are rejected. Private
+snapshots preserve source variables and are shared across broadcast copies.
+The constant-factor restrictions, native precision and underflow behavior,
+runtime failure rules, skipped-classical-path behavior, and output budgets
+are the same as for parameterized phase powers. Checks still run under inactive
+quantum controls or an outer zero power; skipped classical paths do not run
+them. Budgets include preparation, its private declarations, and all broadcast
+gate copies. Integer-only powers remain unchanged.
+
+Near a degeneracy at the negative-real branch cut, arbitrarily close gates can
+have very different principal roots. Floating-point preparation determines the
+evaluated eigenvalues and hence their branches; it does not promise exact-real
+arithmetic at such boundaries. Very large exponents can also magnify ordinary
+phase roundoff. Do not use an epsilon to turn these cases into scalar gates or
+merge their eigenphases. Use a bra version supporting `APPLY`, `EXP`, `ARG`, and
+complex `ABS`.
+
+<!-- u-family-power-example -->
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+const float HALF = 0.5;
+qubit[3] q;
+float theta = 0.7;
+float phi = 0.4;
+float lam = -0.2;
+h q;
+pow(HALF) @ u2(0, pi) q[0];
+pow(HALF) @ u2(0, pi) q[0];               // two roots give conventional H
+h q[0];                                 // cancels that H
+negctrl @ pow(HALF) @ ctrl @ u3(theta, phi, lam) q[2], q[1], q[0];
+inv @ negctrl @ pow(HALF) @ ctrl @ u3(theta, phi, lam) q[2], q[1], q[0];
+pow(2.0) @ U(pi / 2, 0, pi) q[0];        // i*I, not I
+h q;
+// Final state: i|000>; theta, phi, and lam are unchanged.
+```
+
+The independent references and default-double, non-MPI audit can be run with:
+
+```bash
+python3 bra/test/qasm2qcx_u_power_numerical.py
+python3 bra/test/qasm2qcx_u_power_numerical.py --bra /path/to/bra
+```
+
+The reference-only command needs only Python's standard library. The backend
+audit checks actual complex amplitudes, retaining their absolute phase.
 
 ## Static indexing
 
@@ -2893,8 +2999,8 @@ The current prototype does not reliably support:
   alias iteration, or `switch` statements;
 - user-defined gates, gate durations, runtime floating-point `pow` exponents,
   mixed runtime-integer/floating-point power chains, floating-point powers
-  outside the fixed, phase, and Pauli-rotation families above, or runtime-dependent
-  control counts;
+  outside the fixed, phase, Pauli-rotation, and `u2`/`u3`/`U` families above, or
+  runtime-dependent control counts;
 - runtime qubit indices, dynamic register ranges or discrete sets, ranges with
   omitted bounds, or multidimensional indexing;
 - classical arrays beyond the one-dimensional `int`, `uint`, `float`, `bool`, and
@@ -3012,6 +3118,19 @@ broadcasting, loops, skipped/reached runtime failures, fusion, and the documente
 rotation example. Without `--bra`, only the 18 reference tests run. Unit tests
 additionally check temporary lifetime, once-only capture, type/operand validation
 in empty loops, output budgets, and unchanged integer-only lowering.
+
+`bra/test/qasm2qcx_u_power_numerical.py` checks the shared U-family spectrum
+against independent direct matrices, known Hadamard roots, and a separate
+quadratic eigensolver for well-separated cases. Its 19 standard-library-only
+reference tests cover phase conventions, scalar/polar and nearly degenerate
+cases, principal branches, nested modifiers, and large finite parameters.
+With `--bra`, it audits existing ordinary/inverse gates, runtime spectral
+preparation, and public floating-power conversion. Coverage includes full
+matrix columns and complex states, mixed controls, noncontiguous wires,
+arrays, broadcasting, source preservation, loop re-entry, reached/skipped
+failures, large exponents, fusion, and the documented example. Unit tests also
+check temporary cleanup, once-only evaluation, empty-loop validation, output
+budgets, CLI failures without partial output, and unchanged integer-only paths.
 
 `bra/test/negative_controls_numerical.py` tests the native QCX syntax and gate
 families directly, both normally and inside fusion blocks, including adjoints,
