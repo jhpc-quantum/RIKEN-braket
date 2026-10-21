@@ -34,6 +34,8 @@
 # endif // BRA_NO_MPI
 
 # include <bra/types.hpp>
+# include <bra/variable_type.hpp>
+# include <bra/classical_function_call.hpp>
 # include <bra/pauli_string_space.hpp>
 
 # ifndef BRA_NO_MPI
@@ -45,9 +47,6 @@
 
 namespace bra
 {
-  enum class variable_type : int
-  { real = 0, complex_ = 1, integer = 2, pauli_string_space = 3, unsigned_integer = 4 };
-
   enum class assign_operation_type : int
   {
     assign = 0, plus_assign = 1, minus_assign = 2, multiplies_assign = 3, divides_assign = 4,
@@ -729,10 +728,18 @@ namespace bra
     void invoke_jump_operation(std::string const& label);
     void invoke_jump_operation(std::string const& label, std::string const& lhs_variable_name, ::bra::compare_operation_type const op, std::string const& rhs_literal_or_variable_name);
     void invoke_assert_operation(std::string const& lhs_variable_name, ::bra::compare_operation_type const op, std::string const& rhs_literal_or_variable_name);
+    void invoke_apply_operation(std::vector<std::string> const& destinations, ::bra::classical_function_id function,
+                                std::vector<std::string> const& operands);
     boost::optional<std::string> const& maybe_label() const { return maybe_label_; }
     void delete_label() { maybe_label_ = boost::none; }
 
    private:
+    auto apply_operand_type(std::string const& operand) const -> ::bra::variable_type;
+    auto apply_variable_type(std::string const& name) const -> ::bra::variable_type;
+    auto resolve_apply_destination(std::string const& destination) -> ::bra::classical_function_destination;
+    auto read_apply_operand(std::string const& operand) -> ::bra::classical_function_value;
+    auto read_apply_index(std::string const& operand) -> int_type;
+
     bool evaluate_comparison(std::string const& lhs_variable_name, ::bra::compare_operation_type const op,
                              std::string const& rhs_literal_or_variable_name, std::string* evaluated_operands = nullptr);
 

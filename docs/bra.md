@@ -213,6 +213,7 @@ fused block rather than factoring them into its positive-only outer mask.
   Bitwise AND `&=`, OR `|=`, and XOR `^=` require an `INT` or `UINT` destination, optionally indexed. For an `INT` destination, the RHS accepts integer literals, `INT` variables or indexed elements, integer built-in symbols, and explicit `:INT:...` casts using the existing conversion rules. For a `UINT` destination, it accepts unsigned integer literals, `UINT` variables or indexed elements, and explicit `:UINT:...` casts. Mixing `INT` and `UINT` operands requires an explicit cast. Bare `REAL`, `COMPLEX`, or `PAULISS` operands are rejected. A non-integer destination throws `bra::wrong_assignment_argument_error`; failed RHS evaluation leaves the destination unchanged. Operands are evaluated only when the instruction executes, so skipped instructions do not trigger these errors.
   `INT` uses native signed C++ `int`; a compile-time check requires two's-complement representation. These bitwise operators support negative values and integer endpoints without arithmetic overflow. They do not enforce a user-selected bit width or add general overflow checks to arithmetic or casts. `LET N ^= -1` complements every integer bit. For a value restricted to zero or one, `LET B ^= 1` flips just its single bit.
   Left shift `<<=` and right shift `>>=` require an `INT` or `UINT` destination, optionally indexed. The count independently accepts an `INT` or `UINT` variable or indexed element, integer literal, integer built-in symbol, or explicit integer cast; it does not change the destination's type. Bare non-integer operands are rejected. For native width $W$, the count must satisfy $0 \leq k < W$; a negative or oversized count throws `std::out_of_range`. An `INT` left shift computes exact multiplication by $2^k$, including for negative values, and throws `std::overflow_error` if the result cannot fit `INT`. An `INT` right shift sign-extends and rounds division by $2^k$ toward negative infinity, so `-3 >>= 1` produces `-2`. A `UINT` left shift discards high bits, and a `UINT` right shift fills with zeroes. Count and overflow checks happen before modifying the destination and only when the instruction executes; skipped shifts do not throw. Diagnostic messages identify the failed `LET` instruction. These checks do not add general signed-arithmetic overflow checking.
+* `APPLY destination... <- function operand...`: invokes a typed classical function. See [Classical function invocation](#classical-function-invocation) for signatures, conversions, and numerical behavior.
 * `@label`: declares label `label`. Do not insert any spaces between `@` and `label`.
 * `JUMP label`/`JUMPIF label lhs op rhs`: jumps to the label `label`. In the case of `JUMPIF`, one can specify a condition to jump by `lhs op rhs`, where possible `op`'s are `==`, `\=`, `>`, `<`, `<=`, and `>=`. The `lhs` operand must be an `INT`, `UINT`, or `REAL` variable, optionally with an array index. The `rhs` operand may be a compatible variable, indexed element, literal, or built-in constant. `COMPLEX` comparisons are not supported.
 * `EXPECTATION operator q1 q2 q3 q4`: calculates expectation value of `operator` for the present circuit[^1]. This `operator` should be a classical variable of type `PAULISS`, and its length of Pauli string should be equal to the number of qubits specified in this instruction (`q1 q2 q3 q4` in this example). The result of this instruction is assigned to `:RESULT` whose type is `COMPLEX`.
@@ -222,6 +223,189 @@ fused block rather than factoring them into its positive-only outer mask.
 * `FIDELITY (n | ALL) [operator q1 q2 q3 q4]`: calculates fidelity of two or more quantum states, or norm of inner product. See the description of `INNERPROD ...` for more detail. Note that the result is assigned to a complex variable `:RESULT` although fidelity itself is actually real.
 * `ASSERT lhs op rhs`: checks a comparison using the same operand types and operators as `JUMPIF`. The `lhs` must be an `INT`, `UINT`, or `REAL` variable, optionally indexed; the `rhs` may be a compatible variable, indexed element, literal, or built-in constant. If the comparison is false, it throws `bra::assertion_error` (a `std::runtime_error`) identifying the failed instruction and evaluated operands. A successful assertion does not change classical variables or jump state. Assertions skipped by control flow are not evaluated. This is a runtime instruction and remains enabled in release builds; for example, `ASSERT STEP \= 0` checks that an integer step is nonzero.
 * `PRINT var [...]`/`PRINTLN var [...]`: prints classical variables `var`, `...` with single-space separators.
+
+### Classical function invocation
+
+`APPLY` invokes a typed classical function without changing the existing `LET`
+operations or conversion/component-extraction operands.
+
+```text
+APPLY destination... <- function operand...
+```
+
+`<-` is a separate token delimiting destinations from the function name. Names
+follow the assembler's case-insensitive convention. The function signature
+specifies the exact number and types of operands and destinations. Initially
+every function returns one result, but the syntax and signature representation
+allow multiple results in future extensions. Neither nested function calls nor
+general expressions are operands; use temporary variables for intermediate
+results. Destinations are mutable classical variables or indexed elements,
+not literals, casts, or built-in constants.
+
+#### Initial signatures and operand typing
+
+| Function | Operand types | Result types |
+|---|---|---|
+| `EXP` | `REAL` | `REAL` |
+| `EXP` | `COMPLEX` | `COMPLEX` |
+| `ARG` | `COMPLEX` | `REAL` |
+
+Only operand types select an overload. Destination types must then match the
+result types exactly; they never select an overload. There is no implicit
+numeric promotion. Use existing explicit casts such as `:REAL:N` or
+`:COMPLEX:X` when a conversion is required.
+
+For `APPLY`, a bare decimal integer literal, optionally signed, has type `INT`
+and must fit native `INT`. A decimal floating-point literal containing a decimal
+point or exponent has type `REAL`. Explicit typed operands such as `:UINT:1`,
+`:REAL:1`, and `:COMPLEX:1` determine their corresponding types. Variables,
+indexed elements, and built-in symbols retain their declared types. `:REAL:Z`
+and `:IMAG:Z` continue to extract real and imaginary components of a complex
+operand; they are not new functions.
+
+`APPLY` rejects a variable name declared in more than one type-specific storage
+map as ambiguous; casts convert values rather than select a storage map.
+Indices require `INT` values (or explicit `:INT:` casts), and all indexed
+accesses, including nested ones, are bounds-checked. Integer casts used by
+`APPLY` reject nonfinite or out-of-range floating-point values before conversion.
+
+For example, assuming `X` and `Y` are `REAL`, `N` is `INT`, and `Z` is `COMPLEX`:
+
+```text
+APPLY Y <- EXP X
+APPLY Y <- EXP 1.0
+APPLY Y <- EXP :REAL:N
+APPLY Z <- EXP :COMPLEX:X
+APPLY Y <- ARG Z
+APPLY X <- EXP X
+```
+
+`APPLY Y <- EXP 1` has no matching overload (`INT` input). A complex destination
+does not make `EXP X` use complex arithmetic: `APPLY Z <- EXP X` is a result-type
+error, not an implicit conversion.
+
+#### Evaluation and destination updates
+
+Resolve destination locations from left to right, then read operands from left
+to right, all against the pre-invocation state. Resolve each destination once
+and capture each operand once. Evaluate and validate every result before
+writing any destination. Destinations may overlap inputs, allowing in-place
+calls. Reject destinations resolving to the same storage location, even when
+their textual indices differ. A failed invocation leaves all destinations
+unchanged. Future multiple-result calls follow the same rules.
+
+Instructions skipped by classical control flow evaluate neither operands nor
+destination indices. Syntax errors can still be detected while parsing the
+program; skipping does not make malformed instruction syntax valid. Initial
+functions are deterministic and side-effect-free. Stateful and user-defined
+functions are outside this initial implementation.
+
+#### Numerical behavior and diagnostics
+
+Functions use bra's configured `REAL` and `COMPLEX` precision. Reject nonfinite
+inputs, including a complex input with either component nonfinite. Reject
+invalid domains and overflow/nonfinite results before updating destinations.
+Ordinary underflow, including subnormal results and zero, is allowed. These
+checks must remain effective in supported release builds. `LET` does not gain
+new domain or finiteness checks.
+
+`APPLY` uses the existing build options and floating-point environment, without
+changing compiler options or floating-point control modes. Underflow follows
+that environment: subnormal results can be retained or flushed to zero, and
+subnormal operands can be treated as zero in library arithmetic. Gradual
+underflow is not guaranteed in every release configuration. Nonfinite and
+exact-zero classification, and the explicit axis rules for `ARG`, inspect the
+stored values rather than relying on arithmetic comparisons under fast-math.
+
+`EXP` computes the real or complex exponential according to the input type.
+Extremely negative real arguments are bounded within the already-underflowing
+region before library evaluation, avoiding overflow in optimized range
+reduction. The library and current environment still determine the underflow
+result; the imaginary argument is not changed.
+For imaginary operands, `EXP` evaluates the complex exponential directly,
+including large finite angles; it does not first reduce the angle modulo a
+machine approximation of $2\pi$.
+
+`ARG` computes the complex argument in radians and rejects zero, including all
+combinations of signed-zero components. For a negative real component,
+an imaginary component of `+0` gives $+\pi$ and `-0` gives $-\pi$. For a positive
+real component it preserves the sign of an imaginary zero in the resulting
+zero angle. Nearby values retain their side of the branch cut; do not apply
+tolerance-based snapping. Converter-specific normalization of exact
+negative-real eigenvalues to $+\pi$ is separate from general `ARG` semantics.
+Away from the explicit axis rules, `ARG` uses the magnitude from the library's
+`atan2` operation and restores the stored imaginary sign; computations involving
+subnormal components inherit the environment limitations described above.
+Stored nonzero subnormal inputs are not rejected as an exactly zero complex
+input. If library arithmetic on such components
+produces a nonfinite result, `APPLY` reports a nonfinite-result error even though
+the stored inputs are finite.
+
+Diagnostics must identify the failed `APPLY` invocation and distinguish:
+
+- Malformed syntax or an unknown function name.
+- Unsupported operand signatures or wrong operand counts.
+- Wrong destination counts/types or duplicate destination locations.
+- Operand conversion/index errors.
+- Nonfinite inputs, domain errors, and overflow/nonfinite results.
+
+Runtime invocation failures throw `bra::apply_error` (a `std::runtime_error`)
+whose message identifies the instruction and reason. Malformed instruction
+syntax is rejected during parsing using the existing interpreter diagnostics;
+unknown function names are also rejected during parsing. Public classification
+predicates (`ISFINITE`, `ISNAN`, and `ISINF`) are deferred until native `BOOL`
+and predicate result types are settled; internal numerical checks do not require
+these functions.
+
+#### Example: using a phase angle's principal argument
+
+```text
+QUBITS 1
+VAR THETA REAL
+VAR COEFFICIENT COMPLEX
+VAR BETA REAL
+LET THETA := :TWO_PI
+LET THETA *= 0.75
+LET COEFFICIENT := :I
+LET COEFFICIENT *= :COMPLEX:THETA
+APPLY COEFFICIENT <- EXP COEFFICIENT
+APPLY BETA <- ARG COEFFICIENT
+H 0
+U1 0 BETA
+DO AMPLITUDES
+```
+
+`BETA` is approximately $-\pi/2$, and `THETA` is unchanged. Evaluating the complex
+exponential first follows the intended phase-gate exponential for very large
+angles; reducing modulo a machine approximation of $2\pi$ need not do so.
+This example does not impose the separate branch-endpoint policy needed for
+fractional gate powers.
+
+Native phase-gate equivalence is tested with the default-double executable.
+There is a separate, pre-existing backend limitation: on GCC/x86, the optimized
+long-double `ket::utility::exp_i` path can produce a nonfinite coefficient for
+extremely large angles such as `1e20L`. `APPLY` does not reproduce this faulty
+behavior or change the native gate implementation.
+
+#### Tests
+
+With a default-double, non-MPI executable:
+
+```bash
+python3 bra/test/apply_infrastructure.py --bra /path/to/bra
+python3 bra/test/apply_numerical.py --bra /path/to/bra
+```
+
+The standalone numerical kernel tests build their own executables for `float`,
+`double`, and `long double`, using the existing debug/release options. They also
+check that floating-point control modes remain unchanged:
+
+```bash
+python3 bra/test/classical_function_numerical.py
+python3 bra/test/classical_function_numerical.py --sanitize
+```
+
+The second command enables UBSan and requires a compiler supporting its flags.
 
 ### Phase-exponent gates
 
