@@ -45,6 +45,7 @@ int main()
   using type = bra::variable_type;
   using function = bra::classical_function_id;
   require(bra::classical_function_from_name("EXP") == function::exp);
+  require(bra::classical_function_from_name("ABS") == function::abs);
   require(bra::resolve_classical_function(function::arg, {type::complex_}).result_types == std::vector<type>{type::real});
   expect_failure([] { bra::classical_function_from_name("BOGUS"); }, "unknown function");
   expect_failure([] { bra::resolve_classical_function(function::exp, {}); }, "wrong operand count");
@@ -124,6 +125,23 @@ int main()
     state.invoke_apply_operation({"CRESULT"}, function::exp, {operand});
   state.invoke_apply_operation({"RESULT"}, function::arg, {"Z:N"});
   check_close("RESULT", 0);
+  state.invoke_apply_operation({"R:N"}, function::abs, {"Z:N:N"});
+  check_close("R:1", 1);
+  state.invoke_assign_operation("R:1", bra::assign_operation_type::assign, "7");
+  state.invoke_apply_operation({"RESULT"}, function::abs, {":COMPLEX:R:N"});
+  check_close("RESULT", 7);
+  state.invoke_assign_operation("RESULT", bra::assign_operation_type::assign, "-7");
+  state.invoke_apply_operation({"RESULT"}, function::abs, {":COMPLEX:RESULT"});
+  check_close("RESULT", 7);
+  check_call({"R"}, function::abs, {"R"}, "unsupported operand signature");
+  check_call({"R"}, function::abs, {"N"}, "unsupported operand signature");
+  check_call({"R"}, function::abs, {"U"}, "unsupported operand signature");
+  check_call({"Z"}, function::abs, {"Z"}, "wrong destination type");
+  check_call({"R", "R:1"}, function::abs, {"Z"}, "wrong destination count");
+  check_call({"R"}, function::abs, {}, "wrong operand count");
+  check_call({"R"}, function::abs, {"Z", "Z"}, "wrong operand count");
+  check_call({"R:N:999"}, function::abs, {"Z"}, "index out of range");
+  check_call({"R"}, function::abs, {"Z:N:999"}, "index out of range");
   state.invoke_apply_operation({"R:N:N"}, function::exp, {"R:N:N"});
   check_close("R:0", std::exp(bra::real_type{3}));
   state.invoke_assign_operation("R:0", bra::assign_operation_type::assign, "3");
@@ -158,6 +176,7 @@ int main()
   state.invoke_assign_operation("CRESULT", bra::assign_operation_type::assign, ":COMPLEX:RESULT");
   check_call({"R:N"}, function::exp, {"RESULT"}, "nonfinite input");
   check_call({"R:N"}, function::arg, {"CRESULT"}, "nonfinite input");
+  check_call({"R:N"}, function::abs, {"CRESULT"}, "nonfinite input");
   check_call({"Z:1"}, function::exp, {"CRESULT"}, "nonfinite input");
   state.generate_new_variable("INSPECT", type::real, 1);
   state.invoke_assign_operation("INSPECT", bra::assign_operation_type::assign, ":REAL:Z:1");
@@ -168,6 +187,14 @@ int main()
   expect_failure([&] { state.invoke_apply_operation({"RESULT"}, function::exp, {"RESULT"}); },
                  "APPLY RESULT <- EXP RESULT: overflow/nonfinite result");
   state.invoke_assert_operation("RESULT", bra::compare_operation_type::equal_to, "1000000");
+  auto maximum = std::ostringstream{};
+  maximum << std::setprecision(std::numeric_limits<bra::real_type>::max_digits10)
+          << std::numeric_limits<bra::real_type>::max();
+  state.invoke_assign_operation("RESULT", bra::assign_operation_type::assign, maximum.str());
+  state.invoke_assign_operation("CRESULT", bra::assign_operation_type::assign, ":I");
+  state.invoke_assign_operation("CRESULT", bra::assign_operation_type::multiplies_assign, ":COMPLEX:RESULT");
+  state.invoke_assign_operation("CRESULT", bra::assign_operation_type::plus_assign, ":COMPLEX:RESULT");
+  check_call({"R:N"}, function::abs, {"CRESULT"}, "overflow/nonfinite result");
   state.generate_new_variable("R", type::integer, 1);
   expect_failure([&] { state.invoke_apply_operation({"Z"}, function::exp, {"R"}); }, "ambiguous variable type");
 
@@ -175,6 +202,10 @@ int main()
   auto const interpreter = bra::interpreter{stream};
   require(tokens(interpreter.back_circuit().back()->representation()) == std::vector<std::string>{
     "APPLY", "VERY_LONG_DESTINATION:INDEX", "<-", "EXP", ":COMPLEX:SOURCE:INDEX"});
+  auto abs_stream = std::istringstream{"QUBITS 1\napply result:index <- abs source:index\n"};
+  auto const abs_interpreter = bra::interpreter{abs_stream};
+  require(tokens(abs_interpreter.back_circuit().back()->representation()) == std::vector<std::string>{
+    "APPLY", "RESULT:INDEX", "<-", "ABS", "SOURCE:INDEX"});
   for (auto const& malformed: {"APPLY", "APPLY R", "APPLY <- EXP R", "APPLY R <-", "APPLY R <- EXP", "APPLY R := EXP R",
                                "APPLY R <- EXP <- R", "APPLY R<-EXP R"})
     expect_failure([&] { auto input = std::istringstream{std::string{"QUBITS 1\n"} + malformed + "\n"};

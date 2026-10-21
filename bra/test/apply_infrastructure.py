@@ -29,6 +29,7 @@ def main():
 apply missing:n:999 <- exp nonexistent
 APPLY R:N:999 <- ARG R
 APPLY R R <- EXP 1
+APPLY R:N:999 <- ABS nonexistent
 @DONE
 PRINTLN R
 ''')

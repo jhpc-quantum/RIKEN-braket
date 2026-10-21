@@ -86,6 +86,17 @@ namespace
     return result;
   }
 
+  auto magnitude(complex const input) -> real
+  {
+    auto result = real{-77};
+    auto const& signature = bra::resolve_classical_function(function::abs, {type::complex_});
+    auto const call = bra::classical_function_call{signature, {&result}, {input}};
+    call.commit_results(bra::evaluate_classical_function(call));
+    require(boost::math::isfinite(result) and not boost::math::signbit(result),
+            "ABS result must be finite and nonnegative, including positive zero");
+    return result;
+  }
+
   template <typename Exception, typename T>
   void expect_failure(function const id, T const input, std::string const& reason)
   {
@@ -120,6 +131,44 @@ int main()
   auto const positive_zero = real{0};
   auto const negative_zero = std::copysign(real{0}, real{-1});
   auto const maximum = std::numeric_limits<real>::max();
+  for (auto const scale: {real{1}, std::numeric_limits<real>::min(), maximum / real{8}})
+    for (auto const sign_re: {real{1}, real{-1}})
+      for (auto const sign_im: {real{1}, real{-1}})
+      {
+        // Relative checks at both extremes catch naive squaring, even when
+        // an absolute tolerance would accept a spurious zero tiny magnitude.
+        require(close(magnitude(complex{sign_re * real{3} * scale, sign_im * real{4} * scale}) / scale, real{5}),
+                "ABS lost a scaled 3-4-5 magnitude");
+        require(close(magnitude(complex{sign_re * scale, sign_im * scale}) / scale, std::sqrt(real{2})),
+                "ABS lost a scaled equal-component magnitude");
+      }
+  for (auto const scale: {std::numeric_limits<real>::min(), real{1}, maximum})
+    for (auto const sign: {real{1}, real{-1}})
+    {
+      require(magnitude(complex{sign * scale, 0}) == scale, "ABS lost real-axis magnitude");
+      require(magnitude(complex{0, sign * scale}) == scale, "ABS lost imaginary-axis magnitude");
+    }
+  require(close(magnitude(complex{maximum / real{2}, maximum / real{2}}) / (maximum / real{2}), std::sqrt(real{2})),
+          "ABS unnecessarily overflowed near maximum");
+  require(magnitude(complex{maximum, std::numeric_limits<real>::min()}) == maximum,
+          "ABS lost widely separated components");
+  for (auto const re: {positive_zero, negative_zero})
+    for (auto const im: {positive_zero, negative_zero})
+      require(boost::math::fpclassify(magnitude(complex{re, im})) == FP_ZERO, "ABS rejected or changed zero input");
+  auto const denormal = std::numeric_limits<real>::denorm_min();
+  if (boost::math::fpclassify(denormal) != FP_ZERO)
+    for (auto const z: {complex{denormal, 0}, complex{0, -denormal}, complex{denormal, denormal}})
+    {
+      // Match the existing environment on subnormal arithmetic; do not require
+      // gradual underflow or classify a stored subnormal as an invalid input.
+      using hypot_function = real (*)(real, real);
+      hypot_function volatile native_hypot = &std::hypot;
+      auto const expected = native_hypot(z.real(), z.imag());
+      auto const actual = magnitude(z);
+      require(boost::math::fpclassify(actual) == boost::math::fpclassify(expected),
+              "ABS differs from native subnormal magnitude behavior");
+      require(actual == expected, "wrong ABS subnormal magnitude");
+    }
   for (auto const x: {real{0}, real{1}, real{-1}, real{10}, real{-10}})
     require(close(real_exp(x), std::exp(x)), "wrong real EXP");
   for (auto const z: {complex{0, 0}, complex{1, 2}, complex{-1, -2}, complex{0, pi}})
@@ -182,12 +231,17 @@ int main()
     {
       expect_failure<std::domain_error>(function::exp, z, "nonfinite input");
       expect_failure<std::domain_error>(function::arg, z, "nonfinite input");
+      expect_failure<std::domain_error>(function::abs, z, "nonfinite input");
     }
   }
   for (auto const re: {positive_zero, negative_zero})
     for (auto const im: {positive_zero, negative_zero})
       expect_failure<std::domain_error>(function::arg, complex{re, im}, "zero complex input");
   expect_failure<std::overflow_error>(function::exp, maximum, "overflow/nonfinite result");
+  expect_failure<std::overflow_error>(function::abs, complex{maximum, maximum}, "overflow/nonfinite result");
+  expect_failure<std::overflow_error>(function::abs, complex{-maximum, -maximum}, "overflow/nonfinite result");
+  expect_failure<std::domain_error>(function::abs, complex{infinity, nan}, "nonfinite input");
+  expect_failure<std::domain_error>(function::abs, complex{nan, infinity}, "nonfinite input");
   expect_failure<std::overflow_error>(function::exp, complex{maximum, 0}, "overflow/nonfinite result");
   expect_failure<std::overflow_error>(function::exp, complex{maximum, 1}, "overflow/nonfinite result");
   require(real_exp(-maximum) == 0, "real EXP underflow should be allowed");
@@ -214,6 +268,12 @@ int main()
   x = 10;
   call.commit_results(bra::evaluate_classical_function(call));
   require(close(x, std::exp(real{1})), "EXP did not use captured input");
+  auto z = complex{3, 4};
+  auto const abs_call = bra::classical_function_call{
+    bra::resolve_classical_function(function::abs, {type::complex_}), {&x}, {z}};
+  z = complex{0, 0};
+  abs_call.commit_results(bra::evaluate_classical_function(abs_call));
+  require(x == 5, "ABS did not use captured input");
   require(std::fegetround() == rounding, "APPLY changed rounding mode");
 #if defined(__SSE__) && (defined(__i386__) || defined(__x86_64__))
   require((_mm_getcsr() & ~0x3fu) == control_mode, "APPLY changed floating-point control mode");

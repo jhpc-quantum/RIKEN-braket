@@ -19,7 +19,7 @@ int main()
   using type = bra::variable_type;
   using function = bra::classical_function_id;
   auto const& signatures = bra::classical_function_signatures();
-  require(signatures.size() == 3u);
+  require(signatures.size() == 4u);
   require(signatures[0u].function == function::exp);
   require(signatures[0u].operand_types == std::vector<type>{type::real});
   require(signatures[0u].result_types == std::vector<type>{type::real});
@@ -29,8 +29,14 @@ int main()
   require(signatures[2u].function == function::arg);
   require(signatures[2u].operand_types == std::vector<type>{type::complex_});
   require(signatures[2u].result_types == std::vector<type>{type::real});
+  require(signatures[3u].function == function::abs);
+  require(signatures[3u].operand_types == std::vector<type>{type::complex_});
+  require(signatures[3u].result_types == std::vector<type>{type::real});
   require(std::string{bra::classical_function_name(function::exp)} == "EXP");
   require(std::string{bra::classical_function_name(function::arg)} == "ARG");
+  require(std::string{bra::classical_function_name(function::abs)} == "ABS");
+  require(bra::classical_function_from_name("ABS") == function::abs);
+  require(&bra::resolve_classical_function(function::abs, {type::complex_}) == &signatures[3u]);
   for (auto first = signatures.begin(); first != signatures.end(); ++first)
     for (auto second = first + 1; second != signatures.end(); ++second)
       require(first->function != second->function or first->operand_types != second->operand_types);

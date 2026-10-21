@@ -249,6 +249,7 @@ not literals, casts, or built-in constants.
 | `EXP` | `REAL` | `REAL` |
 | `EXP` | `COMPLEX` | `COMPLEX` |
 | `ARG` | `COMPLEX` | `REAL` |
+| `ABS` | `COMPLEX` | `REAL` |
 
 Only operand types select an overload. Destination types must then match the
 result types exactly; they never select an overload. There is no implicit
@@ -277,6 +278,7 @@ APPLY Y <- EXP 1.0
 APPLY Y <- EXP :REAL:N
 APPLY Z <- EXP :COMPLEX:X
 APPLY Y <- ARG Z
+APPLY Y <- ABS Z
 APPLY X <- EXP X
 ```
 
@@ -340,6 +342,17 @@ Stored nonzero subnormal inputs are not rejected as an exactly zero complex
 input. If library arithmetic on such components
 produces a nonfinite result, `APPLY` reports a nonfinite-result error even though
 the stored inputs are finite.
+
+`ABS` computes the complex magnitude as a `REAL`, using a scaled library
+`hypot` calculation rather than directly squaring and adding the components.
+This avoids unnecessary overflow or underflow when the magnitude is
+representable. Both components must be finite; even an infinity paired with
+a NaN is rejected. Zero is valid, and all combinations of signed-zero
+components return positive zero. An overflowing or nonfinite library result
+is an overflow/nonfinite-result error and leaves the destination unchanged.
+Subnormal arithmetic follows the existing environment described
+above. Only the `COMPLEX` overload is currently supported; explicitly cast
+real or integer operands when needed, for example `APPLY Y <- ABS :COMPLEX:X`.
 
 Diagnostics must identify the failed `APPLY` invocation and distinguish:
 
