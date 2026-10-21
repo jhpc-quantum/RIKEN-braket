@@ -18,8 +18,10 @@ and types, indexed arrays, broadcasts, source preservation, and loop re-entry.
 """
 
 import argparse
+import cmath
 import math
 import pathlib
+import re
 import resource
 import unittest
 
@@ -109,7 +111,8 @@ class BackendTests(unittest.TestCase):
         self.module = qasm2qcx
 
     def check_source(self, source, expected, *, fused=False, preserved=()):
-        program = self.module.openqasm3.parser.parse('OPENQASM 3; include "stdgates.inc"; ' + source)
+        source = source if source.startswith('OPENQASM ') else 'OPENQASM 3; include "stdgates.inc"; ' + source
+        program = self.module.openqasm3.parser.parse(source)
         converter = self.module.QASM2QCXConverter(program)
         converter.visit(program)
         lines = list(converter)
@@ -142,6 +145,20 @@ class BackendTests(unittest.TestCase):
 
     def test_runtime_cu_accepts_finite_parameters_with_overflowing_sum(self):
         self.check_ordinary_conversion(OVERFLOW, runtime=True)
+
+    def test_documented_large_gamma_example(self):
+        document = (pathlib.Path(__file__).parents[1] / 'qcx/qasm2qcx.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- cu-phase-factor-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        # Published built-in U matrix on target |0>, with the intrinsic
+        # control in superposition. No gamma+theta/2 correction is used here.
+        theta, gamma = cmath.exp(0.7j), cmath.exp(1e20j)
+        scale = 1 / (2 * math.sqrt(2))
+        expected = [1 / math.sqrt(2), 0, gamma * (1 + theta) * scale, 1j * gamma * (1 - theta) * scale]
+        for fused in (False, True):
+            self.check_source(examples[0], expected, fused=fused,
+                              preserved=(('theta', 0.7), ('gamma', 1e20)))
 
     def test_native_separate_factors_preserve_complete_matrix_and_integer_powers(self):
         for parameters in (LOSS, OVERFLOW, tuple(-value for value in OVERFLOW)):

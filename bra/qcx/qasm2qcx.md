@@ -1229,8 +1229,10 @@ $$
 It also follows the published mathematical definition of `cu`: the inactive
 control block is identity, and the active block is
 `exp(i * gamma) * U(theta, phi, lambda)`. Thus, lowering adds a global phase
-of `theta / 2` for `U`, or a phase of `gamma + theta / 2` on the original
-control for `cu`. See the [built-in matrix definition](https://openqasm.com/versions/3.0/language/gates.html#built-in-gates)
+of `theta / 2` for `U`, or separate phases of `gamma` and `theta / 2` on the
+original control for ordinary/integer-powered `cu`. Their phase factors are
+multiplied without forming the potentially inaccurate or overflowing angle
+sum. See the [built-in matrix definition](https://openqasm.com/versions/3.0/language/gates.html#built-in-gates)
 and the [standard-library mathematical definition of `cu`](https://openqasm.com/language/standard_library.html#gate-cu).
 
 Upstream sources are inconsistent here. The example
@@ -1260,6 +1262,47 @@ h q[0];
 ctrl @ U(0, 0, pi) q[0], q[1];
 cu(0, 0, pi, 0) q[0], q[1];
 // Final state: (|00> + |01>) / sqrt(2), with wire 0 on the right.
+```
+
+For ordinary, inverse, and constant/runtime integer-powered `cu`, lowering
+uses `U1 control gamma`, `U1 control theta_half`, and the conventional `CU3`.
+The half-angle uses private storage when needed; it does not overwrite theta
+or gamma. Parameter expressions are evaluated once in source order and their
+storage is retained across all sequence components and broadcast copies.
+
+Keeping these corrections separate prevents two avoidable numerical failures:
+`gamma = 1e20` can swallow `theta/2 = 0.35` in a combined sum, while
+`gamma = theta = 1.5e308` gives an overflowing sum despite finite inputs.
+Both phase factors can instead be evaluated separately by bra. Ordinary native
+rounding and half-angle underflow remain possible; this is not arbitrary-
+precision arithmetic. Regenerate previously converted QCX to obtain the fix.
+
+<!-- cu-phase-factor-example -->
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+qubit[2] q;
+float theta = 0.7;
+float gamma = 1e20;
+h q[1];
+cu(theta, 0, 0, gamma) q[1], q[0];
+// theta and gamma are unchanged.
+// The active control branch retains exp(i*gamma) * exp(i*theta/2),
+// rather than losing theta/2 by first adding it to gamma.
+```
+
+The distinction is a relative phase between active and inactive control
+subspaces, so checking measurement probabilities alone is insufficient.
+The [floating-point power lowering](#controlled-u-powers) remains different:
+principal powers must act on the full active eigenvalues, not on gamma and
+the remaining factors separately.
+
+Run the independent phase-factor references alone, or also execute the
+default-double, non-MPI audit with bra:
+
+```bash
+python3 bra/test/qasm2qcx_cu_phase_numerical.py
+python3 bra/test/qasm2qcx_cu_phase_numerical.py --bra /path/to/bra
 ```
 
 ### Inverse gate modifiers
@@ -1298,10 +1341,10 @@ The forward phase conventions above apply to the full sequence:
 - Built-in `U(theta, phi, lambda)` lowers to `PHASE phase` followed by `U3`,
   where `phase = theta / 2`. Its inverse emits `U3+` followed
   by `PHASE -phase`, with the same three gate parameters.
-- `cu(theta, phi, lambda, gamma)` lowers to a control-qubit `U1` followed by
-  `CU3`, where the control phase is `gamma + theta / 2`.
-  Its inverse emits `CU3+` followed by the control-qubit `U1+`, keeping that
-  phase operand unchanged.
+- `cu(theta, phi, lambda, gamma)` lowers to control-qubit `U1 gamma`,
+  control-qubit `U1 theta_half`, then `CU3`, where `theta_half = theta / 2`.
+  Its inverse emits `CU3+`, control-qubit `U1+ theta_half`, then
+  control-qubit `U1+ gamma`, keeping both phase operands unchanged.
 - `inv @ gphase(angle)` emits `PHASE` with the negated angle. Runtime
   negation uses private `REAL` storage, preserving the source variable and
   avoiding signed-integer negation overflow.
@@ -1401,9 +1444,9 @@ every phase correction. The forward phase conventions described above apply:
   `CU3 c t theta phi lambda`, with `phase = theta / 2`.
   The correction is a phase on the added control, not a global `PHASE`.
 - `ctrl @ cu(theta, phi, lambda, gamma) extra, c, t` emits
-  `CU1 extra c phase` and `C2U3 extra c t theta phi lambda`, where
-  `phase = gamma + theta / 2`. The correction requires both
-  the added control and the original control to be one.
+  `CU1 extra c gamma`, `CU1 extra c theta_half`, and
+  `C2U3 extra c t theta phi lambda`, where `theta_half = theta / 2`.
+  Both corrections require the added and original controls to be one.
 - `ctrl @ gphase(angle) c` emits `U1 c angle`; it needs no extra target.
   With `n` controls, the converter emits a `U1` conditioned on the other
   `n - 1` control operands, so only the all-one basis component acquires the phase.
@@ -2019,10 +2062,11 @@ constant-exponent restrictions, runtime checks, output budgets, and native
 precision/branch-boundary limitations are the same as for the other U-family
 powers. Nonfinite parameters or intermediate phase products cannot be hidden
 by an outer zero power or inactive quantum controls; skipped classical paths
-do not evaluate them. Ordinary and integer-only `cu` lowering is unchanged:
-it still uses the existing `gamma + theta/2` control-phase correction, with
-that sum's existing rounding and overflow limitations. The floating-power
-path does not inherit that sum.
+do not evaluate them. Ordinary and integer-only `cu` use separate control-phase
+corrections for gamma and `theta/2`, as described under
+[U-family phase conventions](#u-family-phase-conventions). That sequence is
+not used to distribute floating-point powers over those factors; full active
+eigenvalues must be formed before selecting their principal arguments.
 
 <!-- cu-power-example -->
 ```qasm
@@ -3224,6 +3268,19 @@ reached/skipped failures, fusion, and the documented example. Unit tests cover
 once-only captures, temporary cleanup, invalid calls in empty loops, output
 budgets, and CLI errors without partial output.
 
+`bra/test/qasm2qcx_cu_phase_numerical.py` checks the ordinary/integer `cu`
+phase-factor fix against independent direct matrices and integer matrix
+products, without using floating-power spectral preparation. Four reference
+tests need only Python's standard library. With `--bra`, the audit compares
+absolute complex amplitudes for lost-small-angle and overflowing-sum cases,
+both parameter signs, maximum finite angles, literal/runtime parameters,
+inverse and signed/unsigned integer powers, mixed controls, indexed arrays,
+noncontiguous broadcasting, loop re-entry, skipped checks, and fusion.
+Native assertions additionally verify source-variable preservation, including
+after queued fused gates are flushed. The large-gamma example above is tested
+in normal and fused execution. Unit tests also check once-only argument visits,
+temporary ownership, separated operands, and output budgets.
+
 `bra/test/negative_controls_numerical.py` tests the native QCX syntax and gate
 families directly, both normally and inside fusion blocks, including adjoints,
 mixed polarities, aliases, comments and invalid operands. The focused C++ tests
@@ -3510,6 +3567,7 @@ python3 bra/test/qasm2qcx_power_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_power_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_float_power_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_cu_power_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_cu_phase_numerical.py --bra bra/bin/bra
 python3 bra/test/negative_controls_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_integer_remainder_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_integer_power_numerical.py --bra bra/bin/bra

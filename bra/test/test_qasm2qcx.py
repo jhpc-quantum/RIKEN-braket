@@ -521,6 +521,13 @@ class CUPhaseFactorLoweringTests(unittest.TestCase):
     def clean(self, source):
         return InverseModifierLoweringTests.assert_clean_conversion(self, source)
 
+    def test_documented_large_gamma_example(self):
+        document = CONVERTER_PATH.with_suffix('.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- cu-phase-factor-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        self.clean(examples[0].split('\n', 1)[1])
+
     def test_literal_factors_keep_large_finite_angles_separate(self):
         for theta, gamma in ((0.7, 1e20), (1.5e308, 1.5e308), (-1.5e308, -1.5e308)):
             with self.subTest(theta=theta, gamma=gamma):
