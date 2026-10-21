@@ -73,7 +73,8 @@ The converter currently covers:
 - constant and runtime integer `pow` modifiers on supported gates and `gphase`,
   including nested powers and combinations with inverse and control modifiers;
 - constant floating-point `pow` modifiers on selected fixed gate families,
-  `p`/`phase`/`u1`, `cp`/`cphase`, and `gphase`,
+  `p`/`phase`/`u1`, `cp`/`cphase`, `gphase`, and
+  `rx`/`ry`/`rz`/`crx`/`cry`/`crz`,
   with principal spectral powers and ordered modifier evaluation;
 - literal indices, static index ranges, discrete index sets, and complete
   qubit registers as gate operands;
@@ -1585,8 +1586,8 @@ No new QCX instruction is required.
 ### Constant floating-point gate powers
 
 Finite compile-time floating-point exponents are supported on the following
-fixed gates and on the parameterized phase gates described below. The fixed
-gates require `include "stdgates.inc";`.
+fixed gates and on the parameterized phase and rotation gates described below.
+The fixed gates require `include "stdgates.inc";`.
 
 | Gate family | Nonzero principal eigenphase before modifiers |
 | --- | --- |
@@ -1668,15 +1669,16 @@ checks also run in empty loops; named or compound selections in constant
 unrolled loops are checked when an iteration is expanded. Supported powers
 work in branches, loops, and register broadcasting. Fixed-family lowering
 requires no runtime exponent evaluation or additional classical scratch storage;
-parameterized phase powers use the runtime preparation described below.
+parameterized phase and rotation powers use the runtime preparation described
+below.
 
 The following remain unsupported, including when an outer power is zero:
 
 - runtime floating-point exponents;
 - runtime integer factors or loop-iterator factors in a chain containing a
   floating-point power, even if the loop is unrolled;
-- floating-point powers of rotations, `u2`/`u3`, built-in `U`, `cu`, and their
-  parameterized controlled forms.
+- floating-point powers of `u2`/`u3`, built-in `U`, `cu`, and their additional
+  controlled forms.
 
 These are explicit conversion errors, not approximate angle-scaling fallbacks.
 The CLI emits no partial QCX program on failure.
@@ -1790,6 +1792,85 @@ complex amplitudes without aligning away global phase, including branch-cut
 boundaries, very large angles, nested modifiers, mixed controls, broadcasting,
 arrays, classical control flow, fusion, and runtime failures. The reference-only
 command does not require the OpenQASM parser or a backend executable.
+
+#### Parameterized Pauli rotations
+
+Floating-point powers support `rx(theta)`, `ry(theta)`, `rz(theta)`, and their
+intrinsic controlled forms `crx(theta)`, `cry(theta)`, and `crz(theta)`.
+These gates require `include "stdgates.inc";`. Additional `ctrl` and `negctrl`
+modifiers, including mixed polarities and constant counts, may be interleaved
+with powers and inversions. Intrinsic controls remain positive.
+
+For Pauli matrix `P`, the rotation has the spectral decomposition
+
+$$
+R_P(\theta)=e^{-i\theta/2}\frac{I+P}{2}
+             +e^{i\theta/2}\frac{I-P}{2}.
+$$
+
+The converter tracks both eigenphases independently and selects each
+coefficient's principal argument before every power. It does not infer one
+principal phase by negating the other: if both coefficients are exactly `-1`,
+both select `+PI`, so their principal square roots are both `i`. Nor does it
+simply replace `theta` with `r * theta`. For example, the principal square root
+of `rz(3*pi)` differs from `rz(3*pi/2)` by a global factor of `-1`. Under quantum
+controls this becomes a relative phase and cannot be discarded. Numerical
+coefficients at machine approximations of `+/-2*pi` need not be exactly `-1`;
+the same exact-cut and no-tolerance-snapping rules as for phase gates apply.
+
+The angle expressions, compile-time exponent restrictions, once-only snapshot,
+source preservation, broadcasting, precision, runtime finite checks, and
+classical-path rules are the same as for parameterized phase gates above.
+In particular, the original `theta` is checked before halving, and each modified
+eigenphase is checked before the quantum operation, even with an outer zero
+power or inactive quantum controls. Skipped classical paths do not execute
+these runtime checks. Integer-only rotation powers retain their existing
+lowering.
+
+Lowering uses existing QCX basis changes and two separate `U1`-family phases:
+
+| Rotation | Basis change before phases | Basis change after phases |
+| --- | --- | --- |
+| `rx` / `crx` | `H` | `H` |
+| `ry` / `cry` | `S+`, then `H` | `H`, then `S` |
+| `rz` / `crz` | None | None |
+
+In that basis, the `P=+1` phase acts on target value zero (`wire#0`) and the
+`P=-1` phase acts on target value one. All intrinsic and added controls condition
+both projector phases; the basis changes are unconditional and cancel in
+inactive control subspaces. Both phases are retained instead of subtracting
+them: two finite eigenphases can have an overflowing difference, which is not
+a reason to reject the operation. No new bra instruction is required.
+The existing output budgets include phase preparation and all broadcast copies.
+Fusion is supported with the same lowering.
+
+<!-- rotation-power-example -->
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+const float HALF = 0.5;
+qubit[3] q;
+float theta = 3 * pi;
+h q;
+pow(HALF) @ rz(theta) q[0];
+rz(-theta / 2) q[0];                       // together: -I, not I
+negctrl @ pow(HALF) @ cry(theta) q[2], q[1], q[0];
+inv @ negctrl @ pow(HALF) @ cry(theta) q[2], q[1], q[0];
+h q;
+// Final state: -|000>, including its global phase; theta is unchanged.
+```
+
+The independent rotation references and numerical audit can be run with:
+
+```bash
+python3 bra/test/qasm2qcx_rotation_power_numerical.py
+python3 bra/test/qasm2qcx_rotation_power_numerical.py --bra /path/to/bra
+```
+
+The reference-only command uses Python's standard library and needs neither
+the parser nor bra. The second command uses a default-double, non-MPI bra
+executable with `APPLY`, `EXP`, `ARG`, negative controls, and fusion support.
+It compares actual complex amplitudes without aligning away global phase.
 
 ## Static indexing
 
@@ -2812,7 +2893,8 @@ The current prototype does not reliably support:
   alias iteration, or `switch` statements;
 - user-defined gates, gate durations, runtime floating-point `pow` exponents,
   mixed runtime-integer/floating-point power chains, floating-point powers
-  outside the fixed-family subset above, or runtime-dependent control counts;
+  outside the fixed, phase, and Pauli-rotation families above, or runtime-dependent
+  control counts;
 - runtime qubit indices, dynamic register ranges or discrete sets, ranges with
   omitted bounds, or multidimensional indexing;
 - classical arrays beyond the one-dimensional `int`, `uint`, `float`, `bool`, and
@@ -2913,6 +2995,23 @@ broadcasting, classical control flow, unrolled-loop qubit indices, and the
 documented floating-power example. Without `--bra`, only its 14 reference
 tests run. Unit tests also cover rejected types/families, zero validation,
 temporary cleanup, output budgets, and CLI failures without partial output.
+
+`bra/test/qasm2qcx_phase_power_numerical.py` checks parameterized phase powers
+against independent scalar spectral references, including the documented
+example, large angles, cut boundaries, nested modifiers, mixed controls,
+broadcasting, arrays, classical control flow, fusion, and runtime failures.
+
+`bra/test/qasm2qcx_rotation_power_numerical.py` uses independent analytic Pauli
+projectors to check both eigenphases, exact and nearby branch cuts, global
+phase, nested modifiers, and finite phases whose difference overflows. With
+`--bra`, it also audits ordinary/inverse rotation conventions, paired-phase
+preparation, and converted powers of all six supported rotation families.
+Coverage includes matrix columns and complex input states, intrinsic and mixed
+added controls, noncontiguous wires, large angles and exponents, arrays,
+broadcasting, loops, skipped/reached runtime failures, fusion, and the documented
+rotation example. Without `--bra`, only the 18 reference tests run. Unit tests
+additionally check temporary lifetime, once-only capture, type/operand validation
+in empty loops, output budgets, and unchanged integer-only lowering.
 
 `bra/test/negative_controls_numerical.py` tests the native QCX syntax and gate
 families directly, both normally and inside fusion blocks, including adjoints,
