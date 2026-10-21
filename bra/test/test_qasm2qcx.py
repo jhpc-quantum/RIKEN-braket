@@ -615,9 +615,17 @@ class CUPowerFoundationTests(unittest.TestCase):
                 raise RuntimeError('caller failed')
         self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
 
+
 class CUPowerLoweringTests(unittest.TestCase):
     def clean(self, source):
         return InverseModifierLoweringTests.assert_clean_conversion(self, source)
+
+    def test_documented_cu_power_example(self):
+        document = CONVERTER_PATH.with_suffix('.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- cu-power-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        self.clean(examples[0].split('\n', 1)[1])
 
     def test_intrinsic_and_mixed_controls_condition_both_projectors(self):
         for prefix, operands, mnemonic, conditions in (

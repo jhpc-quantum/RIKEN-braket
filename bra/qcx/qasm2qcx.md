@@ -74,7 +74,7 @@ The converter currently covers:
   including nested powers and combinations with inverse and control modifiers;
 - constant floating-point `pow` modifiers on selected fixed gate families,
   `p`/`phase`/`u1`, `cp`/`cphase`, `gphase`, and
-  `rx`/`ry`/`rz`/`crx`/`cry`/`crz`, `u2`, `u3`, and built-in `U`,
+  `rx`/`ry`/`rz`/`crx`/`cry`/`crz`, `u2`, `u3`, built-in `U`, and `cu`,
   with principal spectral powers and ordered modifier evaluation;
 - literal indices, static index ranges, discrete index sets, and complete
   qubit registers as gate operands;
@@ -1677,8 +1677,7 @@ The following remain unsupported, including when an outer power is zero:
 
 - runtime floating-point exponents;
 - runtime integer factors or loop-iterator factors in a chain containing a
-  floating-point power, even if the loop is unrolled;
-- floating-point powers of `cu`, including additional controlled forms.
+  floating-point power, even if the loop is unrolled.
 
 These are explicit conversion errors, not approximate angle-scaling fallbacks.
 The CLI emits no partial QCX program on failure.
@@ -1875,10 +1874,10 @@ It compares actual complex amplitudes without aligning away global phase.
 #### Parameterized U-family gates
 
 Floating-point powers support `u2(phi, lambda)`, `u3(theta, phi, lambda)`, and
-built-in `U(theta, phi, lambda)`. The aliases require `include "stdgates.inc";`;
+built-in `U(theta, phi, lambda)`. Controlled `cu` powers are described
+[below](#controlled-u-powers). The aliases require `include "stdgates.inc";`;
 built-in `U` does not. Powers may be interleaved with `inv`, `ctrl`, and
-`negctrl`, including mixed control polarities and constant counts. Floating
-powers of `cu` remain unsupported, even behind an outer zero power.
+`negctrl`, including mixed control polarities and constant counts.
 
 These gates retain the [existing U-family phase conventions](#u-family-phase-conventions):
 `u3` is conventional `W`, `u2` fixes its `theta` to `pi/2`, and built-in `U`
@@ -1977,6 +1976,86 @@ python3 bra/test/qasm2qcx_u_power_numerical.py --bra /path/to/bra
 
 The reference-only command needs only Python's standard library. The backend
 audit checks actual complex amplitudes, retaining their absolute phase.
+
+#### Controlled U powers
+
+Floating-point powers also support `cu(theta, phi, lambda, gamma)` with
+`include "stdgates.inc";`. Its active block is `exp(i*gamma) * U`, where `U`
+is the built-in gate, not conventional `u3`. The intrinsic control is positive;
+added `ctrl` and `negctrl` operands precede it in source order. For example,
+`negctrl @ ctrl @ pow(0.5) @ cu(...) a, b, c, t` phases the active block only
+when `a=0`, `b=1`, and `c=1`.
+
+Let `mu+` and `mu-` be the full built-in `U` eigenvalues above. The active
+eigenvalues and a single principal power are
+
+$$
+\nu_\pm=e^{i\gamma}\mu_\pm,\qquad
+\mathrm{cu}^{\,r}=\mathrm{diag}\!\left(I_2,
+ V\,\mathrm{diag}\!\left(e^{ir\mathrm{Arg}(\nu_+)},
+ e^{ir\mathrm{Arg}(\nu_-)}\right)V^\dagger\right).
+$$
+
+Gamma rotates both full eigenvalues before their principal arguments are
+selected. Powering gamma separately, or scaling all four source parameters,
+is not equivalent. The eigenbasis `V` is unchanged from built-in `U`.
+Ordered nested powers reselect the current eigenvalues' principal arguments;
+inversions and interleaved controls follow the same rules as other U-family
+powers. Inactive intrinsic and added control subspaces remain identity,
+including when the active block is scalar: its common phase is a relative
+controlled phase and cannot be dropped.
+
+Preparation captures all four numeric parameters once, left to right, and
+validates their original values before any halving. Gamma's full-angle unit
+factor multiplies both built-in `U` eigenvalues before any power is applied.
+It is never halved or added to `theta/2`, so large finite source angles do not
+require a finite or accurately representable combined phase sum. Both full
+eigenphases use `U1`-family gates conditioned on the intrinsic control and
+every added control; the target's unconditional `U3+`/`U3` basis changes cancel
+on inactive subspaces. The same sequence supports fusion.
+
+Numeric parameter types, indexed arrays, broadcast snapshots, loop support,
+constant-exponent restrictions, runtime checks, output budgets, and native
+precision/branch-boundary limitations are the same as for the other U-family
+powers. Nonfinite parameters or intermediate phase products cannot be hidden
+by an outer zero power or inactive quantum controls; skipped classical paths
+do not evaluate them. Ordinary and integer-only `cu` lowering is unchanged:
+it still uses the existing `gamma + theta/2` control-phase correction, with
+that sum's existing rounding and overflow limitations. The floating-power
+path does not inherit that sum.
+
+<!-- cu-power-example -->
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+const float HALF = 0.5;
+qubit[3] q;
+float theta = 0.7;
+float gamma = -0.75 * pi;
+h q;
+pow(HALF) @ cu(0, 0, 1.5 * pi, gamma) q[1], q[0];
+negctrl @ pow(HALF) @ cu(theta, 0.4, -0.2, gamma) q[2], q[1], q[0];
+inv @ negctrl @ pow(HALF) @ cu(theta, 0.4, -0.2, gamma) q[2], q[1], q[0];
+// The last two gates cancel; theta and gamma are unchanged.
+// Final amplitudes are 1/sqrt(8) times:
+//   1                         if q[1] = 0;
+//   exp(-i * 3*pi/8)           if q[1] = 1 and q[0] = 0;
+//   exp(+i * 3*pi/8)           if q[1] = 1 and q[0] = 1.
+```
+
+In this example, gamma moves the active eigenvalues across the principal
+branch before the square root is taken. Separately powering gamma and `U`
+would give the wrong sign for one active eigenvalue. The independent
+references and default-double, non-MPI audit can be run with:
+
+```bash
+python3 bra/test/qasm2qcx_cu_power_numerical.py
+python3 bra/test/qasm2qcx_cu_power_numerical.py --bra /path/to/bra
+```
+
+The reference-only command uses Python's standard library, without the parser
+or bra. The backend audit needs the same native features as U-family powers
+and compares complex amplitudes without removing global phase.
 
 ## Static indexing
 
@@ -3132,6 +3211,19 @@ failures, large exponents, fusion, and the documented example. Unit tests also
 check temporary cleanup, once-only evaluation, empty-loop validation, output
 budgets, CLI failures without partial output, and unchanged integer-only paths.
 
+`bra/test/qasm2qcx_cu_power_numerical.py` adds 17 standard-library-only reference
+tests for the full active spectrum of `cu`, including gamma's effect on both
+principal branches and controlled scalar phases. Independent direct matrices
+and a quadratic eigensolver cross-check the spectral reference. With `--bra`,
+it checks existing ordinary/integer conversion, intrinsic-controlled projector
+instructions, four-parameter runtime preparation, and complete floating-power
+circuits. Coverage includes inactive intrinsic and mixed added controls,
+full matrix columns and complex states, noncontiguous wires, large parameters,
+branch neighbors, arrays, broadcasts, native integer parameters, loop re-entry,
+reached/skipped failures, fusion, and the documented example. Unit tests cover
+once-only captures, temporary cleanup, invalid calls in empty loops, output
+budgets, and CLI errors without partial output.
+
 `bra/test/negative_controls_numerical.py` tests the native QCX syntax and gate
 families directly, both normally and inside fusion blocks, including adjoints,
 mixed polarities, aliases, comments and invalid operands. The focused C++ tests
@@ -3417,6 +3509,7 @@ python3 bra/test/qasm2qcx_negative_control_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_power_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_runtime_power_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_float_power_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_cu_power_numerical.py --bra bra/bin/bra
 python3 bra/test/negative_controls_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_integer_remainder_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_integer_power_numerical.py --bra bra/bin/bra

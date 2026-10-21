@@ -26,6 +26,7 @@ import cmath
 import math
 import pathlib
 import random
+import re
 import resource
 import subprocess
 import unittest
@@ -451,6 +452,16 @@ class ConversionAuditTests(unittest.TestCase):
         self.check_source(f'qubit[{qubits}] q; ' + declarations + preparation
                           + f'{prefix} @ cu({arguments}) {operands};', self.apply(operation, initial), fused=fused)
 
+    def test_documented_cu_power_example(self):
+        document = (pathlib.Path(__file__).parents[1] / 'qcx/qasm2qcx.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- cu-power-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        expected = [(cmath.exp((1j if index & 1 else -1j) * 3 * math.pi / 8)
+                     if index & 2 else 1) / math.sqrt(8) for index in range(8)]
+        for fused in (False, True):
+            self.check_source(examples[0], expected, fused=fused)
+
     def test_full_circuits_against_analytic_spectra(self):
         maximum = float.fromhex('0x1.fffffffffffffp+1023')
         profiles = ((0.7, 0.4, -0.2, 0.9), (0, 0, 0, 0), (0, 0, 0, 0.7),
@@ -569,7 +580,6 @@ class ConversionAuditTests(unittest.TestCase):
                     self.assertNotEqual(result.returncode, 0)
                     self.assertIn('nonfinite', result.stderr)
                     self.assertEqual(result.stdout, '')
-
 
     def test_intermediate_overflow_cannot_be_hidden_by_outer_zero(self):
         for prefix, operands in (('', 'q[1], q[0]'), ('ctrl @ ', 'q[2], q[1], q[0]'),
