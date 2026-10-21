@@ -3,6 +3,7 @@
 
 # include <array>
 # include <stdexcept>
+# include <string>
 # include <vector>
 
 # include <bra/variable_type.hpp>
@@ -42,6 +43,31 @@ namespace bra
       {::bra::classical_function_id::arg, {::bra::variable_type::complex_}, {::bra::variable_type::real}}
     }};
     return signatures;
+  }
+
+  inline auto classical_function_from_name(std::string const& name) -> ::bra::classical_function_id
+  {
+    for (auto const& signature: classical_function_signatures())
+      if (name == classical_function_name(signature.function))
+        return signature.function;
+    throw std::invalid_argument{"unknown function " + name};
+  }
+
+  inline auto resolve_classical_function(
+    ::bra::classical_function_id const function, std::vector< ::bra::variable_type > const& operand_types)
+    -> ::bra::classical_function_signature const&
+  {
+    auto matching_arity = false;
+    for (auto const& signature: classical_function_signatures())
+      if (signature.function == function)
+      {
+        matching_arity = matching_arity or signature.operand_types.size() == operand_types.size();
+        if (signature.operand_types == operand_types)
+          return signature;
+      }
+    if (not matching_arity)
+      throw std::invalid_argument{"wrong operand count for " + std::string{classical_function_name(function)}};
+    throw std::invalid_argument{"unsupported operand signature for " + std::string{classical_function_name(function)}};
   }
 } // namespace bra
 

@@ -225,9 +225,11 @@ fused block rather than factoring them into its positive-only outer mask.
 
 ### Classical function invocation (implementation in progress)
 
-The following is the implementation contract for `APPLY`. Parsing and execution
-are not available yet. It introduces function invocation without changing the
-existing `LET` operations or conversion/component-extraction operands.
+The following is the implementation contract for `APPLY`. Parsing and typed
+invocation preparation are implemented; numerical evaluation is not available
+yet, and executing a valid call reports this explicitly. It introduces function
+invocation without changing the existing `LET` operations or
+conversion/component-extraction operands.
 
 ```text
 APPLY destination... <- function operand...
@@ -262,6 +264,12 @@ point or exponent has type `REAL`. Explicit typed operands such as `:UINT:1`,
 indexed elements, and built-in symbols retain their declared types. `:REAL:Z`
 and `:IMAG:Z` continue to extract real and imaginary components of a complex
 operand; they are not new functions.
+
+`APPLY` rejects a variable name declared in more than one type-specific storage
+map as ambiguous; casts convert values rather than select a storage map.
+Indices require `INT` values (or explicit `:INT:` casts), and all indexed
+accesses, including nested ones, are bounds-checked. Integer casts used by
+`APPLY` reject nonfinite or out-of-range floating-point values before conversion.
 
 For example, assuming `X` and `Y` are `REAL`, `N` is `INT`, and `Z` is `COMPLEX`:
 

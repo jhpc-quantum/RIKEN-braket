@@ -1,0 +1,61 @@
+#!/usr/bin/env python3
+
+"""Check APPLY syntax and skipped execution before numerical evaluation lands.
+
+  python3 bra/test/apply_infrastructure.py --bra /path/to/bra
+"""
+
+import argparse
+import pathlib
+import resource
+import subprocess
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--bra', required=True, type=pathlib.Path)
+    bra = parser.parse_args().bra.resolve()
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+
+    def run(program):
+        return subprocess.run([str(bra)], input=program, text=True, capture_output=True, timeout=10)
+
+    setup = 'QUBITS 1\nVAR R REAL\nVAR N INT\nLET R := 2.0\n'
+    # Known function calls on skipped classical paths must not resolve invalid
+    # operands, destination indices, counts, or types.
+    for jump in ('JUMP DONE', 'JUMPIF DONE N == 0'):
+        result = run(setup + jump + '''
+apply missing:n:999 <- exp nonexistent
+APPLY R:N:999 <- ARG R
+APPLY R R <- EXP 1
+@DONE
+PRINTLN R
+''')
+        if result.returncode != 0 or result.stdout.strip() != '2':
+            raise RuntimeError(f'skipped APPLY evaluated operands: {result}')
+
+    for malformed in (
+        'APPLY', 'APPLY R', 'APPLY <- EXP R', 'APPLY R <-',
+        'APPLY R <- EXP', 'APPLY R := EXP R', 'APPLY R<-EXP R',
+        'APPLY R <- EXP <- R',
+    ):
+        result = run(setup + f'JUMP DONE\n{malformed}\n@DONE\nPRINTLN R\n')
+        if result.returncode == 0 or 'APPLY' not in result.stderr or result.stdout.strip():
+            raise RuntimeError(f'malformed APPLY was not rejected while parsing: {result}')
+
+    result = run(setup + 'JUMP DONE\nAPPLY R <- BOGUS R\n@DONE\n')
+    if result.returncode == 0 or 'unknown function BOGUS' not in result.stderr:
+        raise RuntimeError(f'unknown function was not rejected while parsing: {result}')
+
+    # Stage 2 must explicitly refuse valid calls, rather than execute an
+    # unchecked numerical implementation. Replace this check in Stage 3.
+    result = run(setup + 'apply r <- exp r\nPRINTLN R\n')
+    if (result.returncode == 0
+            or 'APPLY R <- EXP R: numerical function evaluation is not implemented yet' not in result.stderr
+            or result.stdout.strip()):
+        raise RuntimeError(f'pending evaluator did not fail explicitly: {result}')
+    print('APPLY infrastructure CLI checks passed')
+
+
+if __name__ == '__main__':
+    main()

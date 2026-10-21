@@ -322,6 +322,7 @@ namespace bra
 
     void add_var(columns_type const& columns);
     void add_let(columns_type const& columns);
+    void add_apply(columns_type const& columns);
     void add_send(columns_type const& columns);
     void add_receive(columns_type const& columns);
     void add_broadcast(columns_type const& columns);

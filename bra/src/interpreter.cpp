@@ -40,6 +40,7 @@
 #include <bra/gate/gate.hpp>
 #include <bra/gate/var_op.hpp>
 #include <bra/gate/let_op.hpp>
+#include <bra/gate/apply_op.hpp>
 #include <bra/gate/send_op.hpp>
 #include <bra/gate/receive_op.hpp>
 #include <bra/gate/broadcast_op.hpp>
@@ -525,6 +526,8 @@ namespace bra
         add_var(columns);
       else if (mnemonic == "LET")
         add_let(columns);
+      else if (mnemonic == "APPLY")
+        add_apply(columns);
       else if (mnemonic == "SEND")
         add_send(columns);
       else if (mnemonic == "RECEIVE")
@@ -2134,6 +2137,33 @@ namespace bra
                           : throw 1;
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::let_op >(lhs_variable_name, op, rhs_literal_or_variable_name));
+  }
+
+  void interpreter::add_apply(interpreter::columns_type const& columns)
+  {
+    auto const separator = std::find(columns.begin() + 1, columns.end(), "<-");
+    if (separator == columns.end() or separator == columns.begin() + 1
+        or columns.end() - separator < 3
+        or std::find(separator + 1, columns.end(), "<-") != columns.end())
+      throw wrong_mnemonics_error{columns};
+    auto destinations = std::vector<std::string>{columns.begin() + 1, separator};
+    auto operands = std::vector<std::string>{separator + 2, columns.end()};
+    for (auto& destination: destinations)
+      boost::algorithm::to_upper(destination);
+    for (auto& operand: operands)
+      boost::algorithm::to_upper(operand);
+    auto const name = boost::algorithm::to_upper_copy(*(separator + 1));
+    auto function = ::bra::classical_function_id{};
+    try { function = ::bra::classical_function_from_name(name); }
+    catch (std::invalid_argument const& error)
+    {
+      auto instruction = std::string{};
+      for (auto const& column: columns)
+        instruction += (instruction.empty() ? "" : " ") + column;
+      throw ::bra::apply_error{instruction, error.what()};
+    }
+    circuits_[circuit_index_].push_back(
+      std::make_unique< ::bra::gate::apply_op >(std::move(destinations), function, std::move(operands)));
   }
 
   // SEND 1 X REAL ! send value of a real variable X (X:0) to circuit #1
