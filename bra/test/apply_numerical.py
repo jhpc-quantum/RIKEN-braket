@@ -113,6 +113,30 @@ def main():
     bra = parser.parse_args().bra.resolve()
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     calls = 0
+    for name, function in (('CEILING', math.ceil), ('FLOOR', math.floor)):
+        for source, value in (('R:0', 0.25), ('R:N:N', 0.75), (':REAL:N:1', 2), (':REAL:U', 2),
+                              (':REAL:Z:0', 0.25), (':IMAG:Z:0', 1), ('1.0', 1), ('-1.0', -1),
+                              ('1.5', 1.5), ('-1.5', -1.5), ('2147483648.5', 2147483648.5),
+                              ('-2147483648.5', -2147483648.5), ('1e308', 1e308), ('-1e308', -1e308),
+                              (repr(math.nextafter(1.0, 0)), math.nextafter(1.0, 0)),
+                              (repr(math.nextafter(1.0, math.inf)), math.nextafter(1.0, math.inf)),
+                              (repr(math.nextafter(-1.0, 0)), math.nextafter(-1.0, 0)),
+                              (repr(math.nextafter(-1.0, -math.inf)), math.nextafter(-1.0, -math.inf))):
+            check_values(bra, SETUP + f'APPLY OUT <- {name} {source}\nPRINTLN OUT R:0 R:1 R:2 N:1 U\n',
+                         [float(function(value)), 0.25, -0.5, 0.75, 2, 2])
+            calls += 1
+        check_values(bra, SETUP + f'apply r:n:n <- {name.lower()} r:n:n\nPRINTLN R:0 R:1 R:2\n',
+                     [0.25, -0.5, float(function(0.75))])
+        calls += 1
+        for value in (0.0, -0.0, 0.25, -0.25, 5e-324, -5e-324, 1e-310, -1e-310):
+            result = run(bra, SETUP + f'APPLY OUT <- {name} {value!r}\nPRINTLN OUT\n')
+            if result.returncode:
+                raise RuntimeError(f'{name} failed: {result}')
+            actual = float(result.stdout)
+            expected = math.copysign(float(function(value)), value)
+            if actual != expected or math.copysign(1, actual) != math.copysign(1, expected):
+                raise RuntimeError(f'{name} lost rounding value/zero sign: {value!r}, {actual!r} != {expected!r}')
+            calls += 1
     for name, function in (('ARCSIN', math.asin), ('ARCCOS', math.acos), ('ARCTAN', math.atan)):
         profiles = [('R:0', 0.25), ('R:N:N', 0.75), (':REAL:N:0', 1), (':REAL:U', 2),
                     (':REAL:Z:0', 0.25), (':IMAG:Z:0', 1), ('1.0', 1), ('-1.0', -1), ('-0.5', -0.5),
@@ -258,7 +282,8 @@ def main():
             raise RuntimeError(f'LOG gate parameter mismatch: {fused=}, {actual=}, {expected=}')
         calls += 1
         for name, function in (('SIN', math.sin), ('COS', math.cos), ('TAN', math.tan),
-                               ('ARCSIN', math.asin), ('ARCCOS', math.acos), ('ARCTAN', math.atan)):
+                               ('ARCSIN', math.asin), ('ARCCOS', math.acos), ('ARCTAN', math.atan),
+                               ('CEILING', math.ceil), ('FLOOR', math.floor)):
             program = (SETUP + 'H 0\nH 1\n' + begin
                        + f'APPLY OUT <- {name} 0.5\nU1 0 OUT\n' + end)
             expected = [cmath.exp(1j * function(0.5) * bool(index & 1)) / 2 for index in range(4)]
@@ -328,7 +353,7 @@ def main():
         ('APPLY OUT <- EXP 1000000.0', 'overflow/nonfinite result', ''),
         ('APPLY COUT <- EXP :COMPLEX:1000000.0', 'overflow/nonfinite result', ''),
     ]
-    for name in ('SIN', 'COS', 'TAN', 'ARCSIN', 'ARCCOS', 'ARCTAN'):
+    for name in ('SIN', 'COS', 'TAN', 'ARCSIN', 'ARCCOS', 'ARCTAN', 'CEILING', 'FLOOR'):
         failures.extend((
             (f'APPLY OUT <- {name} 1', 'unsupported operand signature', ''),
             (f'APPLY OUT <- {name} U', 'unsupported operand signature', ''),
@@ -345,7 +370,7 @@ def main():
     for numerator in ('1.0', '-1.0', '0.0'):
         preparation = f'LET OUT := {numerator}\nLET OUT /= 0.0\nLET COUT := :COMPLEX:OUT\n'
         failures.extend((f'APPLY R:0 <- {name} OUT', 'nonfinite input', preparation)
-                        for name in ('SIN', 'COS', 'TAN', 'ARCSIN', 'ARCCOS', 'ARCTAN'))
+                        for name in ('SIN', 'COS', 'TAN', 'ARCSIN', 'ARCCOS', 'ARCTAN', 'CEILING', 'FLOOR'))
         failures.extend((
             ('APPLY R:0 <- LOG OUT', 'nonfinite input', preparation),
             ('APPLY Z:0 <- COMPLEX OUT R:0', 'nonfinite input', preparation),

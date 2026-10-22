@@ -75,6 +75,34 @@ namespace bra
       return function(value);
     }
 
+    inline auto rounding_functions(float) -> std::array<float (*)(float), 2u>
+    { return {{&::ceilf, &::floorf}}; }
+
+    inline auto rounding_functions(double) -> std::array<double (*)(double), 2u>
+    { return {{&::ceil, &::floor}}; }
+
+    inline auto rounding_functions(long double) -> std::array<long double (*)(long double), 2u>
+    { return {{&::ceill, &::floorl}}; }
+
+    auto library_real_rounding(::bra::classical_function_id const id, ::bra::real_type const value)
+      -> ::bra::real_type
+    {
+      auto argument = value;
+      // A stored nonzero subnormal must not be rounded as an exact zero
+      // under DAZ. Every value in (0,1), or (-1,0), has the same directed
+      // rounding result: substitute an exact normal representative without
+      // doing arithmetic on the original subnormal or changing control modes.
+      volatile auto const negative = boost::math::signbit(value);
+      if (boost::math::fpclassify(value) == FP_SUBNORMAL)
+        argument = negative ? ::bra::real_type{-0.5} : ::bra::real_type{0.5};
+      auto const functions = rounding_functions(::bra::real_type{});
+      using function_type = ::bra::real_type (*)(::bra::real_type);
+      // Use C entry points to retain signed zeros under fast-math and avoid
+      // compiler expansions that round through native integer conversions.
+      function_type volatile function = id == ::bra::classical_function_id::ceiling ? functions[0u] : functions[1u];
+      return function(argument);
+    }
+
     auto library_real_log(::bra::real_type const value) -> ::bra::real_type
     {
       auto argument = value;
@@ -182,6 +210,15 @@ namespace bra
     {
       if (not boost::math::isfinite(*value))
         throw std::domain_error{"nonfinite input to " + std::string{::bra::classical_function_name(signature.function)}};
+      if (signature.function == ::bra::classical_function_id::ceiling
+          or signature.function == ::bra::classical_function_id::floor)
+      {
+        auto const result = library_real_rounding(signature.function, *value);
+        if (not boost::math::isfinite(result))
+          throw std::overflow_error{"overflow/nonfinite result from "
+            + std::string{::bra::classical_function_name(signature.function)}};
+        return {result};
+      }
       if (signature.function == ::bra::classical_function_id::sin
           or signature.function == ::bra::classical_function_id::cos
           or signature.function == ::bra::classical_function_id::tan
