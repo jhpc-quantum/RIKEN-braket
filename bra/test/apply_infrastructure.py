@@ -41,6 +41,7 @@ APPLY R:N:999 <- ARCCOS nonexistent
 APPLY R:N:999 <- ARCTAN nonexistent
 APPLY R:N:999 <- CEILING nonexistent
 APPLY R:N:999 <- FLOOR nonexistent
+APPLY R:N:999 <- MOD nonexistent R:N:999
 @DONE
 PRINTLN R
 ''')

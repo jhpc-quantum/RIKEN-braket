@@ -114,6 +114,23 @@ int main()
     state.invoke_assert_operation(name, bra::compare_operation_type::greater_equal, lower.str());
     state.invoke_assert_operation(name, bra::compare_operation_type::less_equal, upper.str());
   };
+  state.invoke_apply_operation({"R:N"}, function::mod, {"R:N", "R:N:N"});
+  check_close("R:1", 1);
+  state.invoke_assign_operation("R:1", bra::assign_operation_type::assign, "7");
+  state.invoke_apply_operation({"RESULT"}, function::mod, {"R:N:N", "R:N"});
+  check_close("RESULT", 3);
+  for (auto const& operands: {std::vector<std::string>{"R", "0.0"},
+                             std::vector<std::string>{"R", "-0.0"}})
+    check_call({"R:N"}, function::mod, operands, "MOD domain error: zero divisor");
+  for (auto const& operands: {std::vector<std::string>{"R"},
+                             std::vector<std::string>{"R", "R", "R"}})
+    check_call({"R:N"}, function::mod, operands, "wrong operand count");
+  for (auto const& operands: {std::vector<std::string>{"N", "R"},
+                             std::vector<std::string>{"R", "U"},
+                             std::vector<std::string>{"Z", "R"}})
+    check_call({"R:N"}, function::mod, operands, "unsupported operand signature");
+  check_call({"N"}, function::mod, {"R", "R"}, "wrong destination type");
+  check_call({"R:N"}, function::mod, {"R", "R:N:999"}, "index out of range");
   for (auto const& entry: std::vector<std::pair<std::string, bra::real_type>>{
       {"R", 3}, {"R:N", 7}, {"R:N:N", 3}, {":REAL:N", 1}, {":REAL:U", 0}, {":REAL:Z:1", 1},
       {":IMAG:Z:N", 0}, {"1.0", 1}, {".5", 0.5}, {"-1E+2", -100}, {":REAL:R::INT:1.9", 7}})
@@ -237,6 +254,8 @@ int main()
   // including separate complex destinations and an in-place failed invocation.
   state.invoke_assign_operation("RESULT", bra::assign_operation_type::assign, "1.0");
   state.invoke_assign_operation("RESULT", bra::assign_operation_type::divides_assign, "0.0");
+  check_call({"R:N"}, function::mod, {"RESULT", "R"}, "MOD domain error: nonfinite input");
+  check_call({"R:N"}, function::mod, {"R", "RESULT"}, "MOD domain error: nonfinite input");
   state.invoke_assign_operation("CRESULT", bra::assign_operation_type::assign, ":COMPLEX:RESULT");
   check_call({"R:N"}, function::exp, {"RESULT"}, "nonfinite input");
   check_call({"R:N"}, function::arg, {"CRESULT"}, "nonfinite input");

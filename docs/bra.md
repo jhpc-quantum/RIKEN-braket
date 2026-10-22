@@ -267,6 +267,7 @@ not literals, casts, or built-in constants.
 | `ARCTAN` | `REAL` | `REAL` |
 | `CEILING` | `REAL` | `REAL` |
 | `FLOOR` | `REAL` | `REAL` |
+| `MOD` | `REAL`, `REAL` | `REAL` |
 | `COMPLEX` | `REAL`, `REAL` | `COMPLEX` |
 
 Only operand types select an overload. Destination types must then match the
@@ -438,6 +439,31 @@ Direct C-library calls use the configured `REAL` precision. Results do not
 depend on the caller's rounding direction, and calls do not change compiler
 options or floating-point control modes. Skipped calls do not evaluate
 operands, finiteness checks, or rounding.
+
+`MOD` computes the truncation-toward-zero remainder of its first operand divided
+by its second: `APPLY R <- MOD X Y`. Its only signature is `(REAL, REAL) -> REAL`;
+use explicit casts for integer inputs, or `LET ... %= ...` for integer remainder.
+For example, `MOD -7.5 3.0` gives `-1.5`, while `MOD 7.5 -3.0` gives `1.5`.
+A nonzero result has the dividend's sign, and a zero result preserves that sign,
+including exact `-0` inputs and negative exact multiples of the divisor.
+
+Both inputs must be finite and the divisor must not be either sign of zero.
+Failures leave the destination unchanged and identify the complete `APPLY`
+instruction, with `MOD domain error: nonfinite input` or
+`MOD domain error: zero divisor` as appropriate. Aliasing the destination with
+either input is supported: both values are captured before the result is stored.
+Skipped calls, including those inside fusion, do not evaluate operands or checks.
+
+Evaluation uses the configured precision's C-library `fmod`, not IEEE
+nearest-quotient `remainder` or an explicit division/multiplication/subtraction
+expansion. Large finite ratios do not require a representable intermediate
+quotient. Stored representations are classified independently of arithmetic
+DAZ/FTZ settings, including in mixed optimized/unoptimized builds. A stored
+nonzero subnormal divisor is not rejected as exact zero; normal-significand
+reduction avoids library calculations that could mistake it for zero under DAZ.
+Final subnormal results may still flush to signed zero according to the existing
+underflow environment, and operands already flushed by earlier arithmetic cannot
+be recovered. No compiler options or floating-point control modes are changed.
 
 `ARG` computes the complex argument in radians and rejects zero, including all
 combinations of signed-zero components. For a negative real component,

@@ -137,8 +137,8 @@ QCX `M` operation followed immediately by assignment from `:OUTCOME`.
 
 ### Mathematical function calls
 
-The following unary OpenQASM built-ins are supported. Overloads are selected
-from the input type, never from the assignment destination:
+The following OpenQASM built-ins are supported. Overloads are selected
+from the input types, never from the assignment destination:
 
 | OpenQASM call | Input type | Result type | Runtime QCX operation |
 | --- | --- | --- | --- |
@@ -155,6 +155,8 @@ from the input type, never from the assignment destination:
 | `arctan(x)` | `float` | `float` | `APPLY result <- ARCTAN operand` |
 | `ceiling(x)` | `float` | `float` | `APPLY result <- CEILING operand` |
 | `floor(x)` | `float` | `float` | `APPLY result <- FLOOR operand` |
+| `mod(x, y)` | `int`, `int` | `int` | Copy dividend to a temporary, then `LET temporary %= divisor` |
+| `mod(x, y)` | `float`, `float` | `float` | `APPLY result <- MOD dividend divisor` |
 | `real(z)` | `complex` | `float` | `LET result := :REAL:operand` |
 | `imag(z)` | `complex` | `float` | `LET result := :IMAG:operand` |
 
@@ -176,7 +178,8 @@ arguments. A floating-point result is not itself a Boolean condition: compare
 it with a number or use `bool(...)`.
 
 Constant expressions, such as `const float E = exp(1);`, are evaluated by the
-converter using Python's `float`/`complex` precision. Supported constant calls
+converter using exact integer arithmetic for integer `mod`, and Python's
+`float`/`complex` precision for floating-point functions. Supported constant calls
 can also supply declaration sizes, loop bounds, and modifier arguments where
 their result type is accepted (use an integer cast when required). In
 executable expressions, even literal calls such as `float x = exp(1);` use
@@ -295,6 +298,39 @@ are still validated in skipped code. Native results are independent of the
 caller's rounding direction, and build flags and floating-point control modes
 remain unchanged.
 
+`mod(x, y)` returns the truncation-toward-zero remainder. Its integer overload
+comes first, so `int`, `uint`, and `bool` inputs select the signed `int` result.
+Unsigned arguments must fit native QCX `INT`; conversion is checked and does not
+fall back to the real overload when a value is too large. This differs from
+the unsigned arithmetic promotions of `%`: for example, `mod(uint(-1), 3)` fails
+its signed conversion even though the unsigned `%` operation is supported.
+If either argument is `float`, both are promoted to `float` and the result is
+`float`. Complex arguments are rejected; scalar `bit` arguments require an
+explicit numeric cast. The destination never changes overload selection.
+
+Integer constant evaluation uses exact integer arithmetic without converting
+through floating point. Runtime calls, even with literal inputs, use native
+`LET ... %= ...`; the minimum native signed integer modulo `-1` returns zero.
+Real constant evaluation uses `math.fmod`, not Python's `%`, and runtime calls
+use native `APPLY ... <- MOD ...`. A nonzero remainder has the dividend's sign;
+real zero results preserve that sign, including `mod(-6.0, 3.0) == -0.0`.
+
+Both real inputs must be finite, and both overloads reject zero divisors
+(including either sign of real zero). Invalid evaluated constants fail
+conversion. Reached integer zero-divisor failures identify `LET ... %= ...`;
+real domain failures identify `APPLY ... <- MOD ...`. Calls skipped by branches,
+short-circuiting, or empty loops do not perform arithmetic or conversions, but
+both arguments' names and types are still validated. Temporaries preserve both
+arguments and captured destination indices through nested calls and assignments.
+
+Real calls avoid overflowing intermediate quotients and support stored subnormal
+divisors without mistaking them for exact zero. Native final subnormal results
+may flush to signed zero in the backend's existing arithmetic environment; host
+constant evaluation and runtime need not agree on such underflow. Earlier
+arithmetic that has already flushed an operand cannot be repaired. Declared
+floating-point widths, compiler options, and floating-point control modes remain
+unchanged. Floating-point `%` and `%=` remain unsupported.
+
 The converter uses native `APPLY ... <- COMPLEX real imaginary` to construct
 nontrivial complex literals directly, preserving component signs and avoiding
 arithmetic assembly that could discard zeros or subnormals. This also applies
@@ -394,8 +430,22 @@ rx(ceiling(x)) q;
 rz(SHIFT + floor(x)) q;
 ```
 
+This example combines integer constant evaluation and a real runtime call.
+The rotation angle is `1.5` radians:
+
+<!-- mod-function-example -->
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+const int CONTROL = mod(7, 3);
+qubit[CONTROL + 1] q;
+float x = 7.5;
+float y = 3.0;
+rx(mod(x, y)) q[1];
+```
+
 Use a bra version with native `APPLY`, `EXP`, `SQRT`, `LOG`, `SIN`, `COS`, `TAN`,
-`ARCSIN`, `ARCCOS`, `ARCTAN`, `CEILING`, `FLOOR`, and `COMPLEX` support; see
+`ARCSIN`, `ARCCOS`, `ARCTAN`, `CEILING`, `FLOOR`, `MOD`, integer `%=`, and `COMPLEX` support; see
 [classical functions in bra](../../docs/bra.md#classical-function-invocation).
 `COMPLEX` is also needed for general complex-literal construction in programs
 without `sqrt` calls.
@@ -3495,6 +3545,19 @@ library. Native tests also check every supported precision in debug/release
 builds and UBSan, captured inputs, destination preservation, independence
 from the caller's rounding direction, and unchanged floating-point modes.
 
+`bra/test/qasm2qcx_mod_numerical.py` compares integer and real calls with exact
+integer and binary-ratio references, not `math.fmod`. It checks constants,
+executable literals, live variables, signs and signed zeros, native integer
+endpoints, huge real ratios, subnormals, promotions and checked unsigned
+conversions, nested calls, indexed self-assignment, conditions and runtime loops,
+skipped failures, and gate parameters with and without fusion. Unit tests also
+check once-only argument evaluation, reserved temporary lifetimes, reuse, and
+cleanup when the second argument fails. `bra/test/mod_numerical.py` checks native
+QCX calls independently of the converter. Native kernel tests cover all three
+precisions in debug, optimized, and mixed-build modes, with and without UBSan;
+the mixed mode verifies unoptimized code under release startup's DAZ/FTZ settings
+without changing the production build configuration.
+
 `bra/test/qasm2qcx_u_phase_numerical.py` independently transcribes the published
 built-in `U` matrix and the mathematical active block of `cu`. It verifies the
 native QCX `U2`/`U3` matrices and converter aliases, absolute and controlled
@@ -3908,6 +3971,7 @@ python3 bra/test/jumpif_numerical.py --bra bra/bin/bra
 python3 bra/test/assert_numerical.py --bra bra/bin/bra
 python3 bra/test/integer_division_numerical.py --bra bra/bin/bra
 python3 bra/test/integer_remainder_numerical.py --bra bra/bin/bra
+python3 bra/test/mod_numerical.py --bra bra/bin/bra
 python3 bra/test/integer_bitwise_numerical.py --bra bra/bin/bra
 python3 bra/test/integer_shift_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_if_else_numerical.py --bra bra/bin/bra
@@ -3917,6 +3981,7 @@ python3 bra/test/qasm2qcx_log_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_trigonometric_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_inverse_trigonometric_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_rounding_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_mod_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_u_phase_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_inverse_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_control_numerical.py --bra bra/bin/bra
