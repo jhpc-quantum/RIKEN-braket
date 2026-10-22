@@ -191,6 +191,7 @@ class _BuiltinFunctionSignature:
     component: str | None = None
     integer_remainder: bool = False
     population_count: bool = False
+    rotation: bool = False
 
 
 @dataclasses.dataclass(frozen=True)
@@ -321,6 +322,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         'mod': (_BuiltinFunctionSignature((ValueType.INT, ValueType.INT), ValueType.INT, integer_remainder=True),
                 _BuiltinFunctionSignature((ValueType.FLOAT, ValueType.FLOAT), ValueType.FLOAT, qcx_function='MOD')),
         'popcount': (_BuiltinFunctionSignature((ValueType.BIT_REGISTER,), ValueType.UINT, population_count=True),),
+        'rotl': (_BuiltinFunctionSignature((ValueType.BIT_REGISTER, ValueType.INT), ValueType.BIT_REGISTER, rotation=True),
+                 _BuiltinFunctionSignature((ValueType.UINT, ValueType.INT), ValueType.UINT, rotation=True)),
+        'rotr': (_BuiltinFunctionSignature((ValueType.BIT_REGISTER, ValueType.INT), ValueType.BIT_REGISTER, rotation=True),
+                 _BuiltinFunctionSignature((ValueType.UINT, ValueType.INT), ValueType.UINT, rotation=True)),
         'real': (_BuiltinFunctionSignature((ValueType.COMPLEX,), ValueType.FLOAT, component='REAL'),),
         'imag': (_BuiltinFunctionSignature((ValueType.COMPLEX,), ValueType.FLOAT, component='IMAG'),),
     }
@@ -850,6 +855,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             if expression.width <= 0:
                 raise InvalidBitOperandException('A bit-string operand must have a positive width')
             return expression.width
+        if isinstance(expression, ast.FunctionCall) and expression.name.name in ('rotl', 'rotr'):
+            signature, _ = self.__function_call_info(expression, iterators)
+            if signature.result_type == ValueType.BIT_REGISTER:
+                return self.__bit_register_expression_width(expression.arguments[0], iterators)
+            return None
         if isinstance(expression, ast.UnaryExpression) and expression.op.name == '~':
             width = self.__bit_register_expression_width(expression.expression, iterators)
             if width is not None:
@@ -878,6 +888,19 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         self.__loop_expression_info(expression, iterators)
         self.__validate_bitwise_indices(expression, iterators)
         return None
+
+    @staticmethod
+    def __fold_rotation(value: int, width: int, distance: int, name: str) -> int:
+        # Modulo handles oversized and negative distances without abs/negation
+        # of a possibly minimum native signed integer.
+        count = distance % width
+        if name == 'rotr' and count:
+            count = width - count
+        mask = (1 << width) - 1
+        value &= mask
+        if count == 0:
+            return value
+        return ((value << count) | (value >> (width - count))) & mask
 
     @staticmethod
     def __fold_bit_register_shift(value: int, width: int, count: int, operator: str) -> int:
@@ -1369,7 +1392,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         elif isinstance(expression, ast.Cast):
             source_type = expression.type
         elif isinstance(expression, ast.FunctionCall):
-            # The current UINT-valued built-in, popcount, returns native UINT.
+            if expression.name.name in ('rotl', 'rotr'):
+                _, uint_type, _ = self.__integer_operand_info(expression.arguments[0], iterators)
+                return value_type, uint_type, runtime
+            # popcount returns native UINT, unlike width-preserving rotations.
             return value_type, _UnsignedIntegerType(self.QCX_UINT_WIDTH, False), runtime
         else:
             raise UnsupportedOpenQASMError('unsupported unsigned exponentiation operand')
@@ -3277,6 +3303,12 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __constant_bit_register_value(self, expression: ast.Expression, width: int) -> int:
         if isinstance(expression, ast.BitstringLiteral):
             return expression.value if self.__evaluate_constant else 0
+        if isinstance(expression, ast.FunctionCall) and expression.name.name in ('rotl', 'rotr'):
+            self.__function_call_info(expression)
+            value = self.__constant_bit_register_value(expression.arguments[0], width)
+            distance = self.__constant_rotation_distance(expression.arguments[1])
+            return (self.__fold_rotation(value, width, distance, expression.name.name)
+                    if self.__evaluate_constant else 0)
         if isinstance(expression, ast.UnaryExpression) and expression.op.name == '~':
             value = self.__constant_bit_register_value(expression.expression, width)
             return value ^ ((1 << width) - 1) if self.__evaluate_constant else 0
@@ -3664,6 +3696,20 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # path must not visit/evaluate operands or allocate scratch storage.
         name = expression.name.name
         overloads = self.__builtin_function_overloads(name, len(expression.arguments))
+        if overloads[0].rotation:
+            argument, distance = expression.arguments
+            width = self.__bit_register_expression_width(argument, iterators)
+            if width is not None:
+                source_type = ValueType.BIT_REGISTER
+                source_runtime = self.__register_expression_runtime(argument, iterators)
+            else:
+                source_type, uint_type, source_runtime = self.__integer_operand_info(argument, iterators)
+                if source_type != ValueType.UINT or uint_type is None or not uint_type.is_sized:
+                    raise InvalidFunctionCallException(f'Function {name} requires bit[n] or sized uint[n]')
+            distance_type, distance_runtime = self.__loop_expression_info(distance, iterators)
+            signature = self.__resolve_builtin_function(name, (source_type, distance_type))
+            self.__validate_bitwise_indices(distance, iterators)
+            return signature, source_runtime or distance_runtime
         if overloads[0].population_count:
             argument = expression.arguments[0]
             width = self.__bit_register_expression_width(argument, iterators)
@@ -3787,6 +3833,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return True
         if isinstance(expression, ast.UnaryExpression):
             return self.__register_expression_runtime(expression.expression, iterators)
+        if isinstance(expression, ast.FunctionCall):
+            return self.__function_call_info(expression, iterators)[1]
         lhs = self.__register_expression_runtime(expression.lhs, iterators)
         rhs = (self.__loop_expression_info(expression.rhs, iterators)[1]
                if expression.op.name in ('<<', '>>')
@@ -4169,7 +4217,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if width is None:
             return False  # An active scalar iterator shadows the register.
         if (statement.op.name == '=' and not selected_target
-                and not isinstance(statement.rvalue, (ast.UnaryExpression, ast.BinaryExpression))
+                and not isinstance(statement.rvalue, (ast.UnaryExpression, ast.BinaryExpression, ast.FunctionCall))
                 and not self.__is_register_bit_selection(statement.rvalue)):
             return False  # Preserve the existing literal/copy assignment path.
         expression = (ast.BinaryExpression(ast.BinaryOperator[statement.op.name[:-1]],
@@ -4197,7 +4245,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return
         # Register values need register-aware contexts, not accidental use as
         # scalar loop bounds, casts, or indices.
-        if isinstance(node, ast.FunctionCall) and node.name.name == 'popcount':
+        if isinstance(node, ast.FunctionCall) and node.name.name in ('popcount', 'rotl', 'rotr'):
             # Its register argument is checked as a unit, not as a scalar
             # expression while recursively validating an empty loop body.
             self.__function_call_info(node, iterators)
@@ -4788,6 +4836,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def visit_FunctionCall(self, expression: ast.FunctionCall) -> None:
         signature, runtime = self.__function_call_info(expression)
+        if signature.rotation:
+            self.__visit_constant_rotation(expression, signature, runtime)
+            return
         if signature.population_count:
             self.__visit_population_count(expression, runtime)
             return
@@ -4835,6 +4886,47 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         finally:
             for temporary in self.__used_temporary_variables - previous_used:
                 self.__release_temporary_variable(temporary)
+
+    def __constant_rotation_distance(self, expression: ast.Expression) -> int:
+        self.visit(expression)
+        if self.__value_kind != ValueKind.LITERAL:
+            raise NoConstantExpressionException
+        if not self.__evaluate_constant:
+            return 0
+        distance = int(self.__value)
+        if not self.QCX_INT_MIN <= distance <= self.QCX_INT_MAX:
+            raise InvalidConstantFunctionException('Rotation distance outside QCX INT range')
+        return distance
+
+    def __visit_constant_rotation(
+            self, expression: ast.FunctionCall, signature: _BuiltinFunctionSignature, runtime: bool) -> None:
+        if signature.result_type == ValueType.BIT_REGISTER:
+            raise InvalidBitOperandException('A rotation register result requires a register context')
+        if self.__expression_kind not in (
+                ExpressionKind.CONST_ARITHMETIC, ExpressionKind.ARITHMETIC, ExpressionKind.CONDITIONAL):
+            raise UnsupportedOpenQASMError('function call outside a value expression')
+        if runtime:
+            if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
+                raise NoConstantExpressionException
+            raise UnsupportedOpenQASMError('runtime unsigned rotation is not implemented yet')
+        previous = (self.__expression_kind, self.__value, self.__value_type, self.__value_kind)
+        try:
+            self.__expression_kind = ExpressionKind.CONST_ARITHMETIC
+            argument, distance_expression = expression.arguments
+            _, uint_type, _ = self.__integer_operand_info(argument, None)
+            self.visit(argument)
+            if self.__value_kind != ValueKind.LITERAL:
+                raise NoConstantExpressionException
+            value = int(self.__value)
+            distance = self.__constant_rotation_distance(distance_expression)
+            self.__value = (self.__fold_rotation(value, uint_type.width, distance, expression.name.name)
+                            if self.__evaluate_constant else 0)
+            self.__value_type, self.__value_kind = ValueType.UINT, ValueKind.LITERAL
+            self.__uint_expression_types[id(expression)] = (expression, uint_type)
+            self.__expression_kind = previous[0]
+        except Exception:
+            self.__expression_kind, self.__value, self.__value_type, self.__value_kind = previous
+            raise
 
     def __visit_population_count(self, expression: ast.FunctionCall, runtime: bool) -> None:
         if self.__expression_kind not in (
@@ -5364,6 +5456,19 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             self, expression: ast.Expression) -> Iterator[tuple[str | int, ...]]:
         # The caller validates widths first. Each result owns its temporary
         # bits until the assignment finishes; no destination is written here.
+        if isinstance(expression, ast.FunctionCall) and expression.name.name in ('rotl', 'rotr'):
+            _, runtime = self.__function_call_info(expression)
+            if runtime:
+                raise UnsupportedOpenQASMError('runtime register rotation is not implemented yet')
+            width = self.__bit_register_expression_width(expression)
+            previous = (self.__expression_kind, self.__value, self.__value_type, self.__value_kind)
+            try:
+                self.__expression_kind = ExpressionKind.CONST_ARITHMETIC
+                packed = self.__constant_bit_register_value(expression, width)
+            finally:
+                self.__expression_kind, self.__value, self.__value_type, self.__value_kind = previous
+            yield tuple((packed >> index) & 1 for index in range(width))
+            return
         if isinstance(expression, ast.BitstringLiteral):
             yield tuple((expression.value >> index) & 1 for index in range(expression.width))
             return
@@ -5423,7 +5528,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __emit_bit_value_assignment(
             self, target_names: list[str], target_is_register: bool,
             expression: ast.Expression) -> None:
-        if target_is_register and isinstance(expression, (ast.UnaryExpression, ast.BinaryExpression)):
+        if target_is_register and isinstance(expression, (ast.UnaryExpression, ast.BinaryExpression, ast.FunctionCall)):
             width = self.__bit_register_expression_width(expression)
             if width is None:
                 raise InvalidBitOperandException('A bit-register assignment requires a register value')
