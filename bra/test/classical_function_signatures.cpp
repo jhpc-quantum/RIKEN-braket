@@ -19,7 +19,22 @@ int main()
   using type = bra::variable_type;
   using function = bra::classical_function_id;
   auto const& signatures = bra::classical_function_signatures();
-  require(signatures.size() == 16u);
+  require(signatures.size() == 17u);
+  require(bra::classical_function_from_name("MOD") == function::mod);
+  require(bra::resolve_classical_function(function::mod, {type::real, type::real}).result_types
+            == std::vector<type>{type::real});
+  for (auto const& operands: {std::vector<type>{}, std::vector<type>{type::real},
+                             std::vector<type>{type::integer, type::integer},
+                             std::vector<type>{type::real, type::integer},
+                             std::vector<type>{type::complex_, type::real},
+                             std::vector<type>{type::real, type::real, type::real}})
+  {
+    auto rejected = false;
+    try { bra::resolve_classical_function(function::mod, operands); }
+    catch (std::invalid_argument const&) { rejected = true; }
+    require(rejected);
+  }
+  static_assert(static_cast<int>(function::floor) == 13, "existing function identifier changed");
   require(signatures[0u].function == function::exp);
   require(signatures[0u].operand_types == std::vector<type>{type::real});
   require(signatures[0u].result_types == std::vector<type>{type::real});

@@ -103,6 +103,66 @@ namespace bra
       return function(argument);
     }
 
+    inline auto remainder_function(float) -> float (*)(float, float) { return &::fmodf; }
+    inline auto remainder_function(double) -> double (*)(double, double) { return &::fmod; }
+    inline auto remainder_function(long double) -> long double (*)(long double, long double) { return &::fmodl; }
+
+    auto library_real_mod(::bra::real_type const dividend, ::bra::real_type const divisor) -> ::bra::real_type
+    {
+      // Retain the library's scaled remainder algorithm and signed zeros under
+      // fast-math. Do not expand through a possibly overflowing quotient, use
+      // an inline x87 remainder, or change the floating-point environment.
+      using function_type = ::bra::real_type (*)(::bra::real_type, ::bra::real_type);
+      function_type volatile function = remainder_function(::bra::real_type{});
+      if (zero(dividend)) return dividend;
+      auto const dividend_subnormal = boost::math::fpclassify(dividend) == FP_SUBNORMAL;
+      if (boost::math::fpclassify(divisor) != FP_SUBNORMAL)
+        return dividend_subnormal ? dividend : function(dividend, divisor);
+
+      // Some libm implementations see a subnormal divisor as zero under DAZ.
+      // Reduce normal significands instead. Extract a subnormal fraction from
+      // its representation as for LOG, without arithmetic on the tiny input.
+      using limits = std::numeric_limits< ::bra::real_type >;
+      if (not limits::is_iec559 or limits::radix != 2)
+        throw std::domain_error{"MOD cannot normalize subnormal input with this REAL representation"};
+      auto fraction = [](::bra::real_type const value)
+      {
+        volatile auto const negative = boost::math::signbit(value);
+        auto const magnitude = negative ? boost::math::changesign(value) : value;
+        auto const unit = ::bra::real_type{1};
+        unsigned char bits[sizeof(value)], unit_bits[sizeof(unit)];
+        std::memcpy(bits, &magnitude, sizeof(value));
+        std::memcpy(unit_bits, &unit, sizeof(unit));
+        for (auto index = std::size_t{0u}; index < sizeof(value); ++index)
+          bits[index] |= unit_bits[index];
+        auto normal = ::bra::real_type{};
+        std::memcpy(&normal, bits, sizeof(normal));
+        return normal - unit;
+      };
+      auto result = ::bra::real_type{};
+      if (dividend_subnormal)
+        result = std::ldexp(function(fraction(dividend), fraction(divisor)), limits::min_exponent - 1);
+      else
+      {
+        auto dividend_exponent = int{}, divisor_exponent = int{};
+        auto const dividend_fraction = std::frexp(std::abs(dividend), &dividend_exponent);
+        auto const divisor_fraction = std::frexp(fraction(divisor), &divisor_exponent);
+        divisor_exponent += limits::min_exponent - 1;
+        result = function(dividend_fraction, divisor_fraction);
+        // Each scaling is exact and stays normal; a huge quotient is never
+        // formed. Only the final rescaling may underflow in the caller's mode.
+        for (auto remaining = dividend_exponent - divisor_exponent; remaining > 0 and not zero(result); )
+        {
+          auto const step = remaining < 32 ? remaining : 32;
+          result = function(std::ldexp(result, step), divisor_fraction);
+          remaining -= step;
+        }
+        result = std::ldexp(result, divisor_exponent);
+      }
+      volatile auto const negative = boost::math::signbit(dividend);
+      return negative ? boost::math::changesign(result) : result;
+    }
+
     auto library_real_log(::bra::real_type const value) -> ::bra::real_type
     {
       auto argument = value;
@@ -195,6 +255,19 @@ namespace bra
     auto const& registered = ::bra::resolve_classical_function(signature.function, signature.operand_types);
     if (signature.result_types != registered.result_types)
       throw std::invalid_argument{"unsupported result signature"};
+    if (signature.function == ::bra::classical_function_id::mod)
+    {
+      auto const dividend = boost::get< ::bra::real_type >(call.operands()[0u]);
+      auto const divisor = boost::get< ::bra::real_type >(call.operands()[1u]);
+      if (not boost::math::isfinite(dividend) or not boost::math::isfinite(divisor))
+        throw std::domain_error{"MOD domain error: nonfinite input"};
+      if (zero(divisor))
+        throw std::domain_error{"MOD domain error: zero divisor"};
+      auto const result = library_real_mod(dividend, divisor);
+      if (not boost::math::isfinite(result))
+        throw std::overflow_error{"MOD overflow/nonfinite result"};
+      return {result};
+    }
     if (signature.function == ::bra::classical_function_id::complex_)
     {
       auto const real = boost::get< ::bra::real_type >(call.operands()[0u]);

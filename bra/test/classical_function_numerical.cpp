@@ -40,6 +40,15 @@ namespace
                                        * (real{1} + std::abs(expected));
   }
 
+  auto real_mod(real const dividend, real const divisor) -> real
+  {
+    auto result = real{-77};
+    auto const& signature = bra::resolve_classical_function(function::mod, {type::real, type::real});
+    auto const call = bra::classical_function_call{signature, {&result}, {dividend, divisor}};
+    call.commit_results(bra::evaluate_classical_function(call));
+    return result;
+  }
+
   auto real_exp(real const input) -> real
   {
     auto result = real{-77};
@@ -183,10 +192,77 @@ int main()
 {
   auto const rounding = std::fegetround();
 #if defined(__SSE__) && (defined(__i386__) || defined(__x86_64__))
+  auto const initial_control = _mm_getcsr();
   // Ignore accrued exception-status bits; FTZ, DAZ, rounding, and masks must
   // remain exactly as selected by the caller/build's startup environment.
-  auto const control_mode = _mm_getcsr() & ~0x3fu;
+  auto const control_mode = initial_control & ~0x3fu;
 #endif
+  for (auto const dividend: {real{-7.5}, real{-6}, real{-0.0}, real{0.0}, real{6}, real{7.5},
+                              std::numeric_limits<real>::max(), std::numeric_limits<real>::min()})
+    for (auto const divisor: {real{-3}, real{-1}, real{1}, real{3},
+                             std::numeric_limits<real>::max(), std::numeric_limits<real>::min()})
+    {
+      auto const expected = std::fmod(dividend, divisor);
+      auto const result = real_mod(dividend, divisor);
+      require(result == expected and boost::math::signbit(result) == boost::math::signbit(expected),
+              "MOD changed remainder or zero sign");
+    }
+  for (auto const dividend: {real{1}, std::numeric_limits<real>::infinity(),
+                             -std::numeric_limits<real>::infinity(), std::numeric_limits<real>::quiet_NaN()})
+    for (auto const divisor: {real{3}, real{0}, real{-0.0}, std::numeric_limits<real>::infinity(),
+                              -std::numeric_limits<real>::infinity(), std::numeric_limits<real>::quiet_NaN()})
+    {
+      if (dividend == real{1} and divisor == real{3}) continue;
+      auto result = real{-77};
+      auto const& signature = bra::resolve_classical_function(function::mod, {type::real, type::real});
+      auto const call = bra::classical_function_call{signature, {&result}, {dividend, divisor}};
+      auto rejected = false;
+      try { call.commit_results(bra::evaluate_classical_function(call)); }
+      catch (std::domain_error const&) { rejected = true; }
+      require(rejected and result == real{-77}, "MOD accepted invalid input or changed destination");
+    }
+  // Audit subnormal operands separately: the build's arithmetic environment
+  // may flush a subnormal result, but a stored nonzero divisor is not zero.
+  if (std::numeric_limits<real>::has_denorm == std::denorm_present)
+  {
+#if defined(__SSE__) && (defined(__i386__) || defined(__x86_64__))
+    // The oracle alone uses gradual underflow, then restores the selected
+    // environment before calling the evaluator. Production never changes it.
+    _mm_setcsr(initial_control & ~0x8040u);
+#endif
+    auto const tiny = std::numeric_limits<real>::denorm_min();
+    auto const near_normal = std::nextafter(std::numeric_limits<real>::min(), real{0});
+    auto const values = std::vector<real>{tiny, tiny * 3, tiny * 7, near_normal, -tiny, -tiny * 3, -near_normal, real{1},
+                                        std::numeric_limits<real>::max()};
+    for (auto const dividend: values)
+      for (auto const divisor: values)
+        for (auto const negative: {false, true})
+        {
+          auto const input = negative ? -dividend : dividend;
+          auto const expected = std::fmod(input, divisor);
+#if defined(__SSE__) && (defined(__i386__) || defined(__x86_64__))
+          _mm_setcsr(initial_control);
+#endif
+          auto const result = real_mod(input, divisor);
+#if defined(__SSE__) && (defined(__i386__) || defined(__x86_64__))
+          require((_mm_getcsr() & ~0x3fu) == control_mode, "MOD changed floating-point control mode");
+          _mm_setcsr(initial_control & ~0x8040u);
+#endif
+          auto flushed = false;
+#if defined(__SSE__) && (defined(__i386__) || defined(__x86_64__))
+          flushed = (initial_control & 0x8000u) != 0u
+                 and std::numeric_limits<real>::min_exponent >= std::numeric_limits<double>::min_exponent
+                 and boost::math::fpclassify(result) == FP_ZERO
+                 and boost::math::fpclassify(expected) == FP_SUBNORMAL;
+#endif
+          require((result == expected or flushed)
+                    and boost::math::signbit(result) == boost::math::signbit(expected),
+                  "MOD changed subnormal remainder or zero sign");
+        }
+#if defined(__SSE__) && (defined(__i386__) || defined(__x86_64__))
+    _mm_setcsr(initial_control);
+#endif
+  }
   auto const pi = boost::math::constants::pi<real>();
   auto const positive_zero = real{0};
   auto const negative_zero = std::copysign(real{0}, real{-1});
@@ -626,6 +702,12 @@ int main()
   require(imaginary_zero == 0 and boost::math::signbit(imaginary_zero), "complex EXP lost imaginary signed zero");
   // In-place calls use the captured input, not the current destination value.
   auto x = real{1};
+  auto divisor = real{3};
+  auto const mod_call = bra::classical_function_call{
+    bra::resolve_classical_function(function::mod, {type::real, type::real}), {&divisor}, {real{7}, divisor}};
+  divisor = 0;
+  mod_call.commit_results(bra::evaluate_classical_function(mod_call));
+  require(divisor == real{1}, "MOD did not use captured divisor for aliased destination");
   auto const call = bra::classical_function_call{
     bra::resolve_classical_function(function::exp, {type::real}), {&x}, {x}};
   x = 10;
