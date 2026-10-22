@@ -14,7 +14,8 @@ import openqasm3.ast as ast
 import openqasm3.visitor as visitor
 
 ValueType = enum.Enum(
-    'ValueType', [('INT', 1), ('FLOAT', 2), ('BIT', 3), ('COMPLEX', 4), ('BOOL', 5), ('UINT', 6)])
+    'ValueType', [('INT', 1), ('FLOAT', 2), ('BIT', 3), ('COMPLEX', 4), ('BOOL', 5), ('UINT', 6),
+                  ('BIT_REGISTER', 7)])  # Signature marker, not scalar QCX storage.
 ValueKind = enum.Enum('ValueKind', [('LITERAL', 1), ('TEMPORARY', 2), ('LVALUE', 3)])
 # CONST_ARITHMETIC => ARITHMETIC
 ExpressionKind = enum.Enum('ExpressionKind', [('ARITHMETIC', 1), ('CONST_ARITHMETIC', 2), ('CONDITIONAL', 3)])
@@ -189,6 +190,7 @@ class _BuiltinFunctionSignature:
     qcx_function: str | None = None
     component: str | None = None
     integer_remainder: bool = False
+    population_count: bool = False
 
 
 @dataclasses.dataclass(frozen=True)
@@ -318,6 +320,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         'floor': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='FLOOR'),),
         'mod': (_BuiltinFunctionSignature((ValueType.INT, ValueType.INT), ValueType.INT, integer_remainder=True),
                 _BuiltinFunctionSignature((ValueType.FLOAT, ValueType.FLOAT), ValueType.FLOAT, qcx_function='MOD')),
+        'popcount': (_BuiltinFunctionSignature((ValueType.BIT_REGISTER,), ValueType.UINT, population_count=True),),
         'real': (_BuiltinFunctionSignature((ValueType.COMPLEX,), ValueType.FLOAT, component='REAL'),),
         'imag': (_BuiltinFunctionSignature((ValueType.COMPLEX,), ValueType.FLOAT, component='IMAG'),),
     }
@@ -1365,6 +1368,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             return value_type, uint_type, runtime
         elif isinstance(expression, ast.Cast):
             source_type = expression.type
+        elif isinstance(expression, ast.FunctionCall):
+            # The current UINT-valued built-in, popcount, returns native UINT.
+            return value_type, _UnsignedIntegerType(self.QCX_UINT_WIDTH, False), runtime
         else:
             raise UnsupportedOpenQASMError('unsupported unsigned exponentiation operand')
         return value_type, self.__unsigned_integer_type(source_type, iterators), runtime
@@ -3657,7 +3663,15 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         # Diagnose the function/arity before inspecting its arguments. This
         # path must not visit/evaluate operands or allocate scratch storage.
         name = expression.name.name
-        self.__builtin_function_overloads(name, len(expression.arguments))
+        overloads = self.__builtin_function_overloads(name, len(expression.arguments))
+        if overloads[0].population_count:
+            argument = expression.arguments[0]
+            width = self.__bit_register_expression_width(argument, iterators)
+            if width is None:
+                raise InvalidFunctionCallException('Function popcount requires a bit-register operand')
+            if width > self.QCX_UINT_MAX:
+                raise InvalidFunctionCallException('Function popcount operand width exceeds QCX UINT range')
+            return overloads[0], self.__register_expression_runtime(argument, iterators)
         operands = [self.__loop_expression_info(argument, iterators) for argument in expression.arguments]
         signature = self.__resolve_builtin_function(name, tuple(value_type for value_type, _ in operands))
         return signature, any(runtime for _, runtime in operands)
@@ -4181,8 +4195,13 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if isinstance(node, ast.ForInLoop):
             self.__validate_bitwise_types(node.set_declaration, iterators)
             return
-        # Register values are accepted only in assignment/comparison contexts,
-        # not accidentally as scalar loop bounds, casts, or indices.
+        # Register values need register-aware contexts, not accidental use as
+        # scalar loop bounds, casts, or indices.
+        if isinstance(node, ast.FunctionCall) and node.name.name == 'popcount':
+            # Its register argument is checked as a unit, not as a scalar
+            # expression while recursively validating an empty loop body.
+            self.__function_call_info(node, iterators)
+            return
         if isinstance(node, ast.ClassicalAssignment) and self.__validate_register_operator_assignment(node, iterators):
             return
         if (isinstance(node, ast.BinaryExpression)
@@ -4769,6 +4788,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def visit_FunctionCall(self, expression: ast.FunctionCall) -> None:
         signature, runtime = self.__function_call_info(expression)
+        if signature.population_count:
+            self.__visit_population_count(expression, runtime)
+            return
         if self.__expression_kind != ExpressionKind.CONST_ARITHMETIC:
             if self.__expression_kind not in (ExpressionKind.ARITHMETIC, ExpressionKind.CONDITIONAL):
                 raise UnsupportedOpenQASMError('function call outside a value expression')
@@ -4813,6 +4835,50 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         finally:
             for temporary in self.__used_temporary_variables - previous_used:
                 self.__release_temporary_variable(temporary)
+
+    def __visit_population_count(self, expression: ast.FunctionCall, runtime: bool) -> None:
+        if self.__expression_kind not in (
+                ExpressionKind.CONST_ARITHMETIC, ExpressionKind.ARITHMETIC, ExpressionKind.CONDITIONAL):
+            raise UnsupportedOpenQASMError('function call outside a value expression')
+        if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC and runtime:
+            raise NoConstantExpressionException
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        previous_used = self.__used_temporary_variables.copy()
+        result = None
+        kind = ValueKind.LITERAL
+        keep = False
+        try:
+            argument = expression.arguments[0]
+            if self.__expression_kind == ExpressionKind.CONST_ARITHMETIC:
+                width = self.__bit_register_expression_width(argument)
+                packed = self.__constant_bit_register_value(argument, width)
+                result = packed.bit_count() if self.__evaluate_constant else 0
+            else:
+                self.__expression_kind = ExpressionKind.ARITHMETIC
+                with self.__bit_register_expression_value(argument) as values:
+                    # A register can be wider than a packed UINT. Count its
+                    # individual bits without shifting or packing the register.
+                    result = self.__add_new_temporary_variable(ValueType.UINT)
+                    literal_count = sum(value for value in values if isinstance(value, int))
+                    self.__qcx_lines.append(f'LET {result} := {literal_count}')
+                    for value in values:
+                        if isinstance(value, str):
+                            self.__qcx_lines.append(f'LET {result} += :UINT:{value}')
+                kind = ValueKind.TEMPORARY
+            self.__expression_kind = previous[0]
+            self.__value, self.__value_type, self.__value_kind = result, ValueType.UINT, kind
+            self.__uint_expression_types[id(expression)] = (
+                expression, _UnsignedIntegerType(self.QCX_UINT_WIDTH, False))
+            keep = True
+        except Exception:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+            raise
+        finally:
+            for temporary in self.__used_temporary_variables - previous_used:
+                if not keep or kind != ValueKind.TEMPORARY or temporary != result:
+                    self.__release_temporary_variable(temporary)
 
     def __emit_function_real_literal(self, destination: str, value: int | float) -> None:
         # QCX has no portable inf/nan literal. Materialize nonfinite values

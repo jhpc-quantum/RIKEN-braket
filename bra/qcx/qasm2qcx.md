@@ -157,6 +157,7 @@ from the input types, never from the assignment destination:
 | `floor(x)` | `float` | `float` | `APPLY result <- FLOOR operand` |
 | `mod(x, y)` | `int`, `int` | `int` | Copy dividend to a temporary, then `LET temporary %= divisor` |
 | `mod(x, y)` | `float`, `float` | `float` | `APPLY result <- MOD dividend divisor` |
+| `popcount(bits)` | `bit[n]` | `uint` | Unsigned accumulation over register bits |
 | `real(z)` | `complex` | `float` | `LET result := :REAL:operand` |
 | `imag(z)` | `complex` | `float` | `LET result := :IMAG:operand` |
 
@@ -174,7 +175,8 @@ Scalar `bit` arguments require an explicit numeric cast.
 Calls can be nested and used in assignments, indexed array elements and
 initializers, gate parameters, numeric comparisons, explicit casts, and
 supported loop expressions. Whole arrays and bit registers are not scalar
-arguments. A floating-point result is not itself a Boolean condition: compare
+arguments; `popcount` explicitly accepts a register rather than a scalar.
+A floating-point result is not itself a Boolean condition: compare
 it with a number or use `bool(...)`.
 
 Constant expressions, such as `const float E = exp(1);`, are evaluated by the
@@ -330,6 +332,40 @@ constant evaluation and runtime need not agree on such underflow. Earlier
 arithmetic that has already flushed an operand cannot be repaired. Declared
 floating-point widths, compiler options, and floating-point control modes remain
 unchanged. Floating-point `%` and `%=` remain unsupported.
+
+`popcount(bits)` counts the set (`1`) bits of a bit register without modifying
+it. It returns native, unspecified-width `uint`, independently of the destination
+type. Inputs can be bit-string literals, whole registers (including `bit[1]`),
+static range/set selections, or supported register `~`, `&`, `|`, `^`, `<<`, and
+`>>` expressions. Repeated positions in a discrete selection are counted each
+time they appear. Scalar `bit`, scalar register elements, integers, Booleans,
+and whole classical arrays are not register arguments; use a one-position range
+such as `bits[0:0]` when a one-bit register selection is intended.
+
+Constant calls accept literal register expressions, using exact bit counting.
+Named bit registers are runtime values even if their initializers are literals;
+`const bit[n]` declarations remain unsupported. Runtime calls use a `UINT`
+temporary initialized to the literal-bit subtotal, then add each live bit with
+an explicit unsigned cast. Registers wider than native `UINT` are supported
+without packing their contents into an integer; the register/selection width
+must fit the native `UINT` range so the count cannot overflow.
+
+The result works in unsigned arithmetic, powers, casts, numeric conditions,
+indexed assignments, and supported loop expressions. As with other numeric
+results, compare it with a number or use `bool(...)` for a Boolean condition.
+Register-expression and count temporaries remain reserved through counting.
+Skipped calls do not evaluate runtime shifts or their errors, but names, types,
+widths, and static selections are validated even in empty loops. Runtime-dependent
+register selections, concatenation, and casts to a whole register remain outside
+the supported subset. No new native bra instruction is required.
+
+<!-- popcount-example -->
+```qasm
+OPENQASM 3.0;
+bit[8] flags = "10110100";
+uint count = popcount(flags);          // 4
+uint selected = popcount(flags[2:5]); // 3
+```
 
 The converter uses native `APPLY ... <- COMPLEX real imaginary` to construct
 nontrivial complex literals directly, preserving component signs and avoiding
@@ -718,12 +754,12 @@ are checked even in skipped branches and empty loop bodies. Register sizes
 remain tied to declaration scope when iterators shadow size constants, and
 active iterators remain read-only.
 
-Register values are supported in register assignments and the equality
+Register values are supported in `popcount`, register assignments, and the equality
 comparisons described below; they are not bare conditions. Integer/register casts,
 indexing of computed results, or register expressions as loop bounds or
 iteration collections remain unsupported. Static selection operations are described below.
 Concatenation, aliases, `const bit[n]` declarations,
-and functions such as `popcount` remain outside this subset. Existing direct
+and register rotations remain outside this subset. Existing direct
 bit-register copies and indexed scalar-bit operations retain their behavior.
 
 ### Whole-bit-register shifts
@@ -3558,6 +3594,14 @@ precisions in debug, optimized, and mixed-build modes, with and without UBSan;
 the mixed mode verifies unoptimized code under release startup's DAZ/FTZ settings
 without changing the production build configuration.
 
+`bra/test/qasm2qcx_popcount_numerical.py` checks literal, constant, and live-register
+counts, including registers wider than native `UINT`, static selections with
+repeated positions, register expressions and runtime shifts, unsigned arithmetic,
+array assignments, nested functions, loops, measurement, skipped shift errors,
+and the example above with and without fusion. Unit tests also cover scalar
+versus register typing, result-width metadata, non-evaluating validation, iterator
+shadowing, and temporary cleanup on failure.
+
 `bra/test/qasm2qcx_u_phase_numerical.py` independently transcribes the published
 built-in `U` matrix and the mathematical active block of `cu`. It verifies the
 native QCX `U2`/`U3` matrices and converter aliases, absolute and controlled
@@ -3982,6 +4026,7 @@ python3 bra/test/qasm2qcx_trigonometric_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_inverse_trigonometric_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_rounding_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_mod_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_popcount_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_u_phase_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_inverse_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_control_numerical.py --bra bra/bin/bra
