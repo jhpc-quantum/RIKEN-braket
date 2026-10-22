@@ -33,7 +33,7 @@ class BuiltinFunctionSignatureTests(unittest.TestCase):
     def test_registry_records_input_selected_signatures_and_native_operations(self):
         registry = qasm2qcx.QASM2QCXConverter.builtin_function_signatures
         self.assertEqual(set(registry), {'exp', 'sqrt', 'log', 'sin', 'cos', 'tan',
-                                        'arcsin', 'arccos', 'arctan', 'ceiling', 'floor', 'mod', 'real', 'imag'})
+                                        'arcsin', 'arccos', 'arctan', 'ceiling', 'floor', 'mod', 'popcount', 'real', 'imag'})
         resolve = qasm2qcx.QASM2QCXConverter._QASM2QCXConverter__resolve_builtin_function
         real_exp = resolve('exp', (qasm2qcx.ValueType.FLOAT,))
         complex_exp = resolve('exp', (qasm2qcx.ValueType.COMPLEX,))
@@ -510,6 +510,143 @@ class TrigonometricConstantTests(unittest.TestCase):
                 with patch('builtins.print') as output, self.assertRaisesRegex(SystemExit, name + '.*nonfinite input'):
                     qasm2qcx.main(['trig.qasm'])
                 output.assert_not_called()
+
+
+class PopcountTests(unittest.TestCase):
+    expression = staticmethod(BuiltinFunctionSignatureTests.expression)
+    converter = staticmethod(BuiltinFunctionSignatureTests.converter)
+    evaluate = BuiltinFunctionConstantTests.evaluate
+    value = BuiltinFunctionConstantTests.value
+
+    def test_signature_has_register_input_and_unsigned_result(self):
+        resolve = qasm2qcx.QASM2QCXConverter._QASM2QCXConverter__resolve_builtin_function
+        signature = resolve('popcount', (qasm2qcx.ValueType.BIT_REGISTER,))
+        self.assertTrue(signature.population_count)
+        self.assertEqual(signature.result_type, qasm2qcx.ValueType.UINT)
+        self.assertIsNone(signature.qcx_function)
+        for scalar in (qasm2qcx.ValueType.BIT, qasm2qcx.ValueType.BOOL, qasm2qcx.ValueType.INT,
+                       qasm2qcx.ValueType.UINT, qasm2qcx.ValueType.FLOAT, qasm2qcx.ValueType.COMPLEX):
+            with self.assertRaises(qasm2qcx.InvalidFunctionCallException):
+                resolve('popcount', (scalar,))
+
+    def test_constant_literals_and_register_expressions(self):
+        for source, expected in (('"0"', 0), ('"1"', 1), ('"10110100"', 4),
+                                  ('~"10110100"', 4), ('"1111" & "0101"', 2),
+                                  ('("1111" ^ "0101") | "0001"', 3),
+                                  ('"1111" << 2', 2), ('"1111" >> 8', 0),
+                                  ('"1111" << popcount("11")', 2), ('"1" & "1"', 1)):
+            self.assertEqual(self.value(f'popcount({source})'), (expected, qasm2qcx.ValueType.UINT))
+        literal = '1' * (qasm2qcx.QASM2QCXConverter.QCX_UINT_WIDTH + 17)
+        self.assertEqual(self.value(f'popcount("{literal}")')[0], len(literal))
+
+    def test_unsigned_width_metadata_in_arithmetic_and_powers(self):
+        for source in ('popcount("11") + 1', 'popcount("11") ** 3',
+                       'uint[8](1) + popcount("11")', 'popcount("11") << 1'):
+            converter = self.evaluate(source)
+            self.assertEqual(converter._QASM2QCXConverter__value_type, qasm2qcx.ValueType.UINT)
+        source = 'bit[4] flags = "1011"; uint out = popcount(flags) ** 2; '
+        lines = convert('OPENQASM 3; ' + source)
+        self.assertTrue(any(line.startswith('LET QASM2QCX_UINT_') for line in lines))
+        self.assertIn('VAR OUT7 UINT', lines)
+
+    def test_register_reads_use_unsigned_accumulation_and_do_not_modify_input(self):
+        lines = convert('OPENQASM 3; bit[3] b = "101"; uint out = popcount(b);')
+        self.assertEqual(lines[-5:], ['LET QASM2QCX_UINT_0 := 0',
+            'LET QASM2QCX_UINT_0 += :UINT:B1:0', 'LET QASM2QCX_UINT_0 += :UINT:B1:1',
+            'LET QASM2QCX_UINT_0 += :UINT:B1:2', 'LET OUT7 := QASM2QCX_UINT_0'])
+        self.assertFalse(any(line.startswith('APPLY ') for line in lines))
+        self.assertEqual([line for line in lines if line.startswith('LET B1:')],
+                         ['LET B1:0 := 1', 'LET B1:1 := 0', 'LET B1:2 := 1'])
+
+    def test_scalar_bit_and_one_element_register_remain_distinct(self):
+        for source in ('bit b = 1; uint out = popcount(b);',
+                       'bit[2] b = "11"; uint out = popcount(b[0]);'):
+            with self.assertRaisesRegex(qasm2qcx.InvalidFunctionCallException, 'bit-register operand'):
+                convert('OPENQASM 3; ' + source)
+        for source in ('bit[1] b = "1"; uint out = popcount(b);',
+                       'bit[2] b = "11"; uint out = popcount(b[0:0]);'):
+            self.assertIn('VAR OUT7 UINT', convert('OPENQASM 3; ' + source))
+
+    def test_type_information_is_non_evaluating_and_tracks_runtime_dependencies(self):
+        converter = self.converter('bit[4] b; int n = 1;')
+        for source, runtime in (('popcount("1011")', False), ('popcount(b)', True),
+                                ('popcount(b[0:2])', True), ('popcount("1111" << n)', True),
+                                ('popcount("1111" << (1 / 0))', False)):
+            with patch.object(converter, 'visit', side_effect=AssertionError('evaluated')):
+                signature, actual = converter._QASM2QCXConverter__function_call_info(self.expression(source))
+                self.assertEqual((signature.result_type, actual), (qasm2qcx.ValueType.UINT, runtime))
+        self.assertEqual(converter._QASM2QCXConverter__loop_bound_names(self.expression('popcount(b << n)')), {'b', 'n'})
+
+    def test_invalid_operands_names_arity_and_widths(self):
+        for source in ('popcount()', 'popcount(missing, missing)'):
+            with self.assertRaisesRegex(qasm2qcx.InvalidFunctionCallException, 'expects 1 argument'):
+                self.value(source)
+        for source in ('popcount(1)', 'popcount(true)', 'popcount(uint(3))', 'popcount(1im)',
+                       'popcount(missing)', 'popcount("11" & "1")', 'popcount("11" << 1.5)',
+                       'popcount("11" + "11")', 'popcount(popcount("1"))'):
+            with self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.value(source)
+        with patch.object(qasm2qcx.QASM2QCXConverter, 'QCX_UINT_MAX', 2):
+            with self.assertRaisesRegex(qasm2qcx.InvalidFunctionCallException, 'width exceeds'):
+                self.value('popcount("111")')
+        with self.assertRaises(qasm2qcx.NoConstantExpressionException):
+            self.converter('bit[4] b = "1111"; const uint C = popcount(b);')
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            convert('OPENQASM 3; uint n = popcount(b); bit[4] b;')
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            convert('OPENQASM 3; array[int, 2] a; uint n = popcount(a);')
+
+    def test_skipped_constants_and_empty_loops_validate_without_evaluation(self):
+        self.converter('const bool C = false && (popcount("11" << (7 / 0)) > 0);')
+        for body in ('n = popcount(b[0:2]);', 'n = popcount(~b);',
+                     'n = popcount(b << (7 / 0));', 'n = popcount(b) ** 2;'):
+            lines = convert('OPENQASM 3; bit[4] b; uint n = 0; for int i in [1:0] { ' + body + ' }')
+            self.assertFalse(any(line.startswith('VAR QASM2QCX_') for line in lines))
+        for call in ('popcount(b[0])', 'popcount(missing)', 'popcount(b << 1.5)'):
+            with self.assertRaises(qasm2qcx.QASM2QCXError):
+                convert('OPENQASM 3; bit[4] b; uint n; for int i in [1:0] { n = ' + call + '; }')
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            convert('OPENQASM 3; bit[4] b; uint n; for int b in [1:0] { n = popcount(b); }')
+
+    def test_register_expression_storage_and_caller_temporaries_are_released(self):
+        program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; bit[4] b = "1011"; uint n = 1; '
+            'n = popcount(b << n) + popcount(~b); n = popcount(b) ** 2;')
+        converter = qasm2qcx.QASM2QCXConverter(program)
+        converter.visit(program)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+        self.assertIsNone(converter._QASM2QCXConverter__expression_kind)
+        converter = self.converter('bit[4] b; uint n = 1;')
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.UINT)
+        fields = ('__expression_kind', '__value', '__value_type', '__value_kind', '__evaluate_constant')
+        before = [getattr(converter, '_QASM2QCXConverter' + field) for field in fields]
+        allocate = converter._QASM2QCXConverter__add_new_temporary_variable
+        calls = 0
+        def fail_after_partial_operand(*arguments):
+            nonlocal calls
+            calls += 1
+            if calls == 3:
+                raise RuntimeError('injected allocation failure')
+            return allocate(*arguments)
+        with patch.object(converter, '_QASM2QCXConverter__add_new_temporary_variable',
+                          side_effect=fail_after_partial_operand):
+            with self.assertRaisesRegex(RuntimeError, 'injected allocation failure'):
+                converter.visit(self.expression('popcount(~b)'))
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], before)
+
+    def test_shift_count_is_evaluated_once_and_repeated_calls_reuse_storage(self):
+        converter = self.converter('bit[4] b = "1011"; int n = 1;')
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        expression = self.expression('popcount(b << (n + 1))')
+        count = expression.arguments[0].rhs
+        with patch.object(converter, 'visit', wraps=converter.visit) as visit:
+            converter.visit(expression)
+        self.assertEqual(sum(call.args[0] is count for call in visit.call_args_list), 1)
+        prefix = 'OPENQASM 3; bit[4] b = "1011"; uint n = 0; '
+        statement = 'n = popcount(~b);'
+        self.assertEqual([line for line in convert(prefix + statement) if line.startswith('VAR QASM2QCX_')],
+                         [line for line in convert(prefix + statement * 10) if line.startswith('VAR QASM2QCX_')])
 
 
 class ModConstantTests(unittest.TestCase):
