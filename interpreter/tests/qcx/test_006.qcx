@@ -1,0 +1,3 @@
+QUBITS         2
+CZ             0 1
+BEGIN MEASUREMENT
