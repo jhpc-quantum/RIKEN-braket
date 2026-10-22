@@ -489,14 +489,84 @@ class LogConstantTests(unittest.TestCase):
             self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
             self.assertEqual(converter._QASM2QCXConverter__qcx_lines, before_lines)
 
-    def test_cli_errors_are_atomic_and_runtime_lowering_is_staged(self):
+    def test_cli_errors_are_atomic(self):
         with patch('builtins.open', mock_open(read_data='OPENQASM 3; qubit q; const float C = log(0);')):
             with patch('builtins.print') as output, self.assertRaisesRegex(SystemExit, 'log.*nonpositive real input'):
                 qasm2qcx.main(['log.qasm'])
             output.assert_not_called()
-        for source in ('float x = log(2);', 'float x = 2; float y = log(x);'):
-            with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'runtime evaluation of function log'):
-                self.converter(source)
+
+
+class LogRuntimeTests(unittest.TestCase):
+    converter = staticmethod(BuiltinFunctionSignatureTests.converter)
+    expression = staticmethod(BuiltinFunctionSignatureTests.expression)
+
+    def clean(self, source):
+        return InverseModifierLoweringTests.assert_clean_conversion(self, source)
+
+    def test_input_based_signature_and_promotions(self):
+        for declaration, operand in (('int x = 2;', ':REAL:X1'), ('uint x = 2;', ':REAL:X1'),
+                                     ('bool x = true;', ':REAL:X1'), ('float x = 2;', 'X1')):
+            lines = self.clean(declaration + ' complex out = log(x);')
+            call = next(line.split() for line in lines if ' <- LOG ' in line)
+            self.assertIn(f'VAR {call[1]} REAL', lines)
+            self.assertEqual(call[4], operand)
+        self.clean('bit b = 1; float out = log(float(b));')
+        for source in ('bit b; float out = log(b);', 'complex z = 2; complex out = log(z);'):
+            with self.assertRaises(qasm2qcx.InvalidFunctionCallException):
+                self.clean(source)
+
+    def test_literals_are_evaluated_natively_without_host_folding(self):
+        for argument in ('2', '-1', '0', '-0.0', '1e309', '-1e309', '0.0 / 0.0'):
+            with self.subTest(argument=argument), patch.object(qasm2qcx.math, 'log', side_effect=AssertionError('host log')):
+                lines = self.clean(f'float out = log({argument});')
+            self.assertEqual(sum(' <- LOG ' in line for line in lines), 1)
+            self.assertFalse(any(re.search(r'\b(?:inf|nan)\b', line, re.IGNORECASE) for line in lines))
+        value = (1 << 60) + 1
+        self.assertTrue(any(line.endswith(f':= :REAL:{value}')
+                            for line in self.clean(f'float out = log({value});')))
+
+    def test_nested_calls_visit_once_and_preserve_caller_storage(self):
+        converter = self.converter('float x = 2;')
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        expression = self.expression('log(sqrt(exp(x)))')
+        arguments = (expression.arguments[0], expression.arguments[0].arguments[0],
+                     expression.arguments[0].arguments[0].arguments[0])
+        with patch.object(converter, 'visit', wraps=converter.visit) as visit:
+            converter.visit(expression)
+        for argument in arguments:
+            self.assertEqual(sum(call.args[0] is argument for call in visit.call_args_list), 1)
+        result = converter._QASM2QCXConverter__value
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller, result})
+        self.assertEqual(converter._QASM2QCXConverter__value_type, qasm2qcx.ValueType.FLOAT)
+
+    def test_arrays_gates_and_control_flow(self):
+        lines = self.clean('array[float, 2] values = {2, 3}; array[complex, 2] zs = {2, 3im}; int i = 0; '
+                           'values[i] = log(values[i]) + log(real(zs[i]));')
+        self.assertEqual(sum(line.startswith('ASSERT ') for line in lines), 6)
+        self.assertEqual(sum(line.endswith(' := I1') for line in lines), 3)
+        self.assertEqual(sum(' <- LOG ' in line for line in lines), 2)
+        self.clean('include "stdgates.inc"; qubit q; float x = 3; '
+                   'while (log(x) > 0) { x -= 1; } '
+                   'for int i in [0:int(log(x))] { rz(log(x)) q; }')
+
+    def test_short_circuits_resolve_jumps(self):
+        for expression in ('false && bool(log(0))', 'true || (log(-1) > 0)'):
+            lines = self.clean('bool out = ' + expression + ';')
+            self.assertTrue(any(' <- LOG ' in line for line in lines))
+            ForLoopControlLoweringTests.assert_resolved_jumps(lines)
+
+    def test_failure_restores_expression_state_and_caller_temporaries(self):
+        converter = self.converter('float x = 2;')
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        fields = ('__expression_kind', '__value', '__value_type', '__value_kind', '__evaluate_constant')
+        before = [getattr(converter, '_QASM2QCXConverter' + field) for field in fields]
+        with patch.object(converter, '_QASM2QCXConverter__runtime_function_operand', side_effect=RuntimeError('conversion failed')):
+            with self.assertRaisesRegex(RuntimeError, 'conversion failed'):
+                converter.visit(self.expression('log(x + 1)'))
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], before)
 
 
 class SquareRootConstantTests(unittest.TestCase):

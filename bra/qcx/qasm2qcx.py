@@ -4759,10 +4759,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def visit_FunctionCall(self, expression: ast.FunctionCall) -> None:
         signature, runtime = self.__function_call_info(expression)
         if self.__expression_kind != ExpressionKind.CONST_ARITHMETIC:
-            # Executable LOG lowering and its reached-path checks are verified
-            # in the next integration stage, separately from constant folding.
-            if signature.qcx_function == 'LOG':
-                raise UnsupportedOpenQASMError('runtime evaluation of function log')
             if self.__expression_kind not in (ExpressionKind.ARITHMETIC, ExpressionKind.CONDITIONAL):
                 raise UnsupportedOpenQASMError('function call outside a value expression')
             self.__visit_runtime_function(expression, signature)
