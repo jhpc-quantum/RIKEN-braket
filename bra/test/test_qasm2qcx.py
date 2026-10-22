@@ -32,7 +32,7 @@ class BuiltinFunctionSignatureTests(unittest.TestCase):
 
     def test_registry_records_input_selected_signatures_and_native_operations(self):
         registry = qasm2qcx.QASM2QCXConverter.builtin_function_signatures
-        self.assertEqual(set(registry), {'exp', 'real', 'imag'})
+        self.assertEqual(set(registry), {'exp', 'sqrt', 'real', 'imag'})
         resolve = qasm2qcx.QASM2QCXConverter._QASM2QCXConverter__resolve_builtin_function
         real_exp = resolve('exp', (qasm2qcx.ValueType.FLOAT,))
         complex_exp = resolve('exp', (qasm2qcx.ValueType.COMPLEX,))
@@ -330,6 +330,176 @@ class BuiltinFunctionConstantTests(unittest.TestCase):
             with self.assertRaisesRegex(SystemExit, 'exp.*overflow/nonfinite result'):
                 qasm2qcx.main(['functions.qasm'])
             output.assert_not_called()
+
+
+class SquareRootConstantTests(unittest.TestCase):
+    expression = staticmethod(BuiltinFunctionSignatureTests.expression)
+    converter = staticmethod(BuiltinFunctionSignatureTests.converter)
+    evaluate = BuiltinFunctionConstantTests.evaluate
+    value = BuiltinFunctionConstantTests.value
+
+    def test_input_selected_signatures_and_promotions(self):
+        resolve = qasm2qcx.QASM2QCXConverter._QASM2QCXConverter__resolve_builtin_function
+        for operand in (qasm2qcx.ValueType.FLOAT, qasm2qcx.ValueType.COMPLEX,
+                        qasm2qcx.ValueType.INT, qasm2qcx.ValueType.UINT, qasm2qcx.ValueType.BOOL):
+            signature = resolve('sqrt', (operand,))
+            expected = qasm2qcx.ValueType.COMPLEX if operand == qasm2qcx.ValueType.COMPLEX else qasm2qcx.ValueType.FLOAT
+            self.assertEqual((signature.operand_types, signature.result_type, signature.qcx_function, signature.component),
+                             ((expected,), expected, 'SQRT', None))
+        converter = self.converter('complex z = 1im; float x = 4;')
+        for source, expected, runtime in (('sqrt(4)', qasm2qcx.ValueType.FLOAT, False),
+                                        ('sqrt(x)', qasm2qcx.ValueType.FLOAT, True),
+                                        ('sqrt(z)', qasm2qcx.ValueType.COMPLEX, True),
+                                        ('real(sqrt(z))', qasm2qcx.ValueType.FLOAT, True)):
+            self.assertEqual(converter._QASM2QCXConverter__loop_expression_info(self.expression(source)), (expected, runtime))
+
+    def test_real_roots_and_promoted_scalar_arguments(self):
+        for source, expected in (('sqrt(0)', 0.0), ('sqrt(4)', 2.0), ('sqrt(0.25)', 0.5),
+                                 ('sqrt(true)', 1.0), ('sqrt(false)', 0.0), ('sqrt(uint[3](17))', 1.0),
+                                 ('sqrt(float(bit(true)))', 1.0)):
+            with self.subTest(source=source):
+                value, value_type = self.value(source)
+                self.assertEqual((value, value_type), (expected, qasm2qcx.ValueType.FLOAT))
+                self.assertIsInstance(value, float)
+
+    def test_complex_roots_and_nested_functions(self):
+        for source, expected in (('sqrt(complex(-4))', 2j), ('sqrt(-3 + 4im)', 1 + 2j),
+                                 ('sqrt(-3 - 4im)', 1 - 2j), ('sqrt(3 + 4im)', 2 + 1j),
+                                 ('sqrt(sqrt(complex(16)))', 2 + 0j), ('sqrt(exp(complex(0)))', 1 + 0j)):
+            with self.subTest(source=source):
+                value, value_type = self.value(source)
+                self.assertAlmostEqual(value, expected)
+                self.assertEqual(value_type, qasm2qcx.ValueType.COMPLEX)
+        self.assertEqual(self.value('real(sqrt(-3 + 4im))')[0], 1)
+        self.assertEqual(self.value('imag(sqrt(-3 + 4im))')[0], 2)
+
+    def test_real_and_complex_signed_zeros_and_branch_endpoints(self):
+        value, _ = self.value('sqrt(-0.0)')
+        self.assertEqual(value, 0)
+        self.assertEqual(math.copysign(1, value), -1)
+        for source, imaginary in (('sqrt(complex(-4))', 2), ('sqrt(-complex(4))', -2)):
+            value, _ = self.value(source)
+            self.assertEqual(value, complex(0, imaginary))
+            self.assertEqual(math.copysign(1, value.real), 1)
+        for re_part in (0.0, -0.0):
+            for im_part in (0.0, -0.0):
+                signature = qasm2qcx.QASM2QCXConverter._QASM2QCXConverter__resolve_builtin_function(
+                    'sqrt', (qasm2qcx.ValueType.COMPLEX,))
+                value = qasm2qcx.QASM2QCXConverter._QASM2QCXConverter__fold_builtin_function(
+                    'sqrt', signature, (complex(re_part, im_part),))
+                self.assertEqual(value, 0j)
+                self.assertEqual(math.copysign(1, value.real), 1)
+                self.assertEqual(math.copysign(1, value.imag), math.copysign(1, im_part))
+
+    def test_branch_cut_neighbors_are_not_snapped(self):
+        for imaginary in (1e-12, -1e-12):
+            value, _ = self.value(f'sqrt(-1 + ({imaginary!r}) * 1im)')
+            self.assertGreater(value.real, 0)
+            self.assertAlmostEqual(value.real / (abs(imaginary) / 2), 1)
+            self.assertAlmostEqual(value.imag, math.copysign(1, imaginary))
+
+    def test_extreme_magnitudes_and_subnormal_constants(self):
+        for number in (1e308, 1e-300, float.fromhex('0x0.0000000000001p-1022')):
+            value, _ = self.value(f'sqrt({number!r})')
+            self.assertGreater(value, 0)
+            self.assertAlmostEqual(value / math.sqrt(number), 1)
+        value, _ = self.value('sqrt(1e308 + 1e308im)')
+        self.assertAlmostEqual(value.real / 1e154, math.sqrt((math.sqrt(2) + 1) / 2))
+        self.assertAlmostEqual(value.imag / 1e154, math.sqrt((math.sqrt(2) - 1) / 2))
+
+    def test_destination_type_does_not_change_the_overload(self):
+        with patch.object(qasm2qcx.math, 'sqrt', wraps=math.sqrt) as real_sqrt:
+            with patch.object(qasm2qcx.cmath, 'sqrt', wraps=cmath.sqrt) as complex_sqrt:
+                converter = self.converter('const complex C = sqrt(4);')
+                self.assertEqual(converter._QASM2QCXConverter__const_complex_variable_name_values_map['C'], [2 + 0j])
+                real_sqrt.assert_called_once_with(4.0)
+                complex_sqrt.assert_not_called()
+        with self.assertRaisesRegex(qasm2qcx.InvalidConstantFunctionException, 'sqrt.*negative real input'):
+            self.converter('const complex C = sqrt(-1);')
+        with self.assertRaises(qasm2qcx.NoImplicitCastException):
+            self.converter('const float C = sqrt(complex(4));')
+
+    def test_invalid_domain_nonfinite_inputs_and_host_precision_errors(self):
+        for source, reason in (('sqrt(-1)', 'negative real input'), ('sqrt(-5e-324)', 'negative real input'),
+                               ('sqrt(1e309)', 'nonfinite input'), ('sqrt(-1e309)', 'nonfinite input'),
+                               ('sqrt(1e309im)', 'nonfinite input'),
+                               ('sqrt(' + str(10 ** 400) + ')', 'outside supported constant precision')):
+            with self.subTest(source=source), self.assertRaisesRegex(qasm2qcx.InvalidConstantFunctionException, 'sqrt.*' + reason):
+                self.value(source)
+        for argument in (qasm2qcx.ast.FloatLiteral(math.nan), qasm2qcx.ast.ImaginaryLiteral(math.nan)):
+            call = qasm2qcx.ast.FunctionCall(qasm2qcx.ast.Identifier('sqrt'), [argument])
+            with self.assertRaisesRegex(qasm2qcx.InvalidConstantFunctionException, 'sqrt.*nonfinite input'):
+                self.value(call)
+
+    def test_invalid_arity_types_and_names(self):
+        for source, error in (('sqrt()', qasm2qcx.InvalidFunctionCallException),
+                              ('sqrt(1, 2)', qasm2qcx.InvalidFunctionCallException),
+                              ('sqrt(bit(true))', qasm2qcx.InvalidFunctionCallException),
+                              ('SQRT(1)', qasm2qcx.UnsupportedOpenQASMError)):
+            with self.subTest(source=source), self.assertRaises(error):
+                self.value(source)
+        converter = self.converter('array[float, 1] values = {4}; bit[1] register;')
+        for source in ('sqrt(values)', 'sqrt(register)'):
+            with self.assertRaises(qasm2qcx.QASM2QCXError):
+                converter._QASM2QCXConverter__function_call_info(self.expression(source))
+
+    def test_constants_feed_declarations_loops_and_gate_modifiers(self):
+        self.assertEqual(convert('OPENQASM 3; include "stdgates.inc"; const float C = sqrt(4); '
+            'const complex Z = sqrt(-3 + 4im); const float R = real(Z); '
+            'qubit[int(C)] q; for int i in [0:int(sqrt(1))] { x q[i]; } '
+            'pow(int(C)) @ x q[0]; rz(R) q[0];'),
+            ['QUBITS 2', 'X 0', 'X 1', 'EZ 0 -0.5'])
+
+    def test_nonconstant_arguments_are_rejected_in_constant_declarations(self):
+        for call in ('sqrt(x)', 'real(sqrt(z))', 'sqrt(values[0])'):
+            with self.subTest(call=call), self.assertRaises(qasm2qcx.NoConstantExpressionException):
+                self.converter('float x = 4; complex z = 1im; array[float, 1] values = {4}; const float C = ' + call + ';')
+
+    def test_skipped_constant_calls_validate_but_do_not_evaluate(self):
+        huge = str(10 ** 400)
+        for source in ('false && (sqrt(-1) > 0)', 'true || (sqrt(1e309) > 0)',
+                       'false && (real(sqrt(1e309im)) > 0)', f'true || (sqrt({huge}) > 0)'):
+            with patch.object(qasm2qcx.math, 'sqrt', side_effect=AssertionError('evaluated')):
+                with patch.object(qasm2qcx.cmath, 'sqrt', side_effect=AssertionError('evaluated')):
+                    self.converter('const bool C = ' + source + ';')
+        for source in ('false && (sqrt(missing) > 0)', 'true || (sqrt(bit(true)) > 0)', 'false && (sqrt(1, 2) > 0)'):
+            with self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter('const bool C = ' + source + ';')
+        lines = convert('OPENQASM 3; float x = 0; for int i in [1:0] { x = sqrt(-1); }')
+        self.assertFalse(any(' <- SQRT ' in line for line in lines))
+        with self.assertRaises(qasm2qcx.InvalidFunctionCallException):
+            convert('OPENQASM 3; float x = 0; for int i in [1:0] { x = sqrt(bit(true)); }')
+
+    def test_constant_argument_is_visited_once_without_emission_or_temp_leaks(self):
+        converter = self.converter()
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.CONST_ARITHMETIC
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        lines = converter._QASM2QCXConverter__qcx_lines.copy()
+        expression = self.expression('real(sqrt(3 + 4im))')
+        arguments = (expression.arguments[0], expression.arguments[0].arguments[0])
+        with patch.object(converter, 'visit', wraps=converter.visit) as visit:
+            converter.visit(expression)
+            for argument in arguments:
+                self.assertEqual(sum(call.args[0] is argument for call in visit.call_args_list), 1)
+        self.assertEqual(converter._QASM2QCXConverter__value, 2)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertEqual(converter._QASM2QCXConverter__qcx_lines, lines)
+        fields = ('__expression_kind', '__value', '__value_type', '__value_kind', '__evaluate_constant')
+        before = [getattr(converter, '_QASM2QCXConverter' + field) for field in fields]
+        with self.assertRaises(qasm2qcx.InvalidConstantFunctionException):
+            converter.visit(self.expression('sqrt(-1)'))
+        self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], before)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+        self.assertEqual(converter._QASM2QCXConverter__qcx_lines, lines)
+
+    def test_cli_error_has_no_partial_output_and_runtime_support_is_staged(self):
+        with patch('builtins.open', mock_open(read_data='OPENQASM 3; qubit q; const float C = sqrt(-1);')):
+            with patch('builtins.print') as output, self.assertRaisesRegex(SystemExit, 'sqrt.*negative real input'):
+                qasm2qcx.main(['sqrt.qasm'])
+            output.assert_not_called()
+        for source in ('float x = sqrt(4);', 'complex z = sqrt(complex(-1));'):
+            with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'runtime evaluation of function sqrt'):
+                self.converter(source)
 
 
 class BuiltinFunctionRuntimeTests(unittest.TestCase):

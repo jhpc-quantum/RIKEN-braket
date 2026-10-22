@@ -304,6 +304,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     builtin_function_signatures: dict[str, tuple[_BuiltinFunctionSignature, ...]] = {
         'exp': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='EXP'),
                 _BuiltinFunctionSignature((ValueType.COMPLEX,), ValueType.COMPLEX, qcx_function='EXP')),
+        'sqrt': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='SQRT'),
+                 _BuiltinFunctionSignature((ValueType.COMPLEX,), ValueType.COMPLEX, qcx_function='SQRT')),
         'real': (_BuiltinFunctionSignature((ValueType.COMPLEX,), ValueType.FLOAT, component='REAL'),),
         'imag': (_BuiltinFunctionSignature((ValueType.COMPLEX,), ValueType.FLOAT, component='IMAG'),),
     }
@@ -4753,6 +4755,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def visit_FunctionCall(self, expression: ast.FunctionCall) -> None:
         signature, runtime = self.__function_call_info(expression)
         if self.__expression_kind != ExpressionKind.CONST_ARITHMETIC:
+            # Runtime SQRT operand preparation is added in the next stage;
+            # in particular, complex signed zeros must survive lowering.
+            if signature.qcx_function == 'SQRT':
+                raise UnsupportedOpenQASMError('runtime evaluation of function sqrt')
             if self.__expression_kind not in (ExpressionKind.ARITHMETIC, ExpressionKind.CONDITIONAL):
                 raise UnsupportedOpenQASMError('function call outside a value expression')
             self.__visit_runtime_function(expression, signature)
@@ -4874,13 +4880,17 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # Component extraction is LET, not APPLY: preserve its IEEE values
             # (including signed zeros/nonfinite components), without EXP checks.
             return value.real if signature.component == 'REAL' else value.imag
-        if signature.qcx_function != 'EXP':
+        functions = {'EXP': (math.exp, cmath.exp), 'SQRT': (math.sqrt, cmath.sqrt)}
+        if signature.qcx_function not in functions:
             raise UnsupportedOpenQASMError(f'constant evaluation of function {name}')
         is_complex = signature.operand_types[0] == ValueType.COMPLEX
         if not cmath.isfinite(value):
             raise InvalidConstantFunctionException(f'Function {name}: nonfinite input')
+        if signature.qcx_function == 'SQRT' and not is_complex and value < 0:
+            raise InvalidConstantFunctionException(f'Function {name}: negative real input')
         try:
-            result = cmath.exp(value) if is_complex else math.exp(value)
+            real_function, complex_function = functions[signature.qcx_function]
+            result = complex_function(value) if is_complex else real_function(value)
         except (OverflowError, ValueError) as error:
             raise InvalidConstantFunctionException(f'Function {name}: overflow/nonfinite result') from error
         if not cmath.isfinite(result):
