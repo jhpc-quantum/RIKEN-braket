@@ -43,14 +43,14 @@ namespace bra
     // Select C entry points, not C++ overload wrappers: an address-taken
     // std::sin(long double) wrapper can itself contain an x87 FSIN under
     // fast-math, defeating the indirect-call boundary.
-    inline auto trigonometric_functions(float) -> std::array<float (*)(float), 3u>
-    { return {{&::sinf, &::cosf, &::tanf}}; }
+    inline auto trigonometric_functions(float) -> std::array<float (*)(float), 6u>
+    { return {{&::sinf, &::cosf, &::tanf, &::asinf, &::acosf, &::atanf}}; }
 
-    inline auto trigonometric_functions(double) -> std::array<double (*)(double), 3u>
-    { return {{&::sin, &::cos, &::tan}}; }
+    inline auto trigonometric_functions(double) -> std::array<double (*)(double), 6u>
+    { return {{&::sin, &::cos, &::tan, &::asin, &::acos, &::atan}}; }
 
-    inline auto trigonometric_functions(long double) -> std::array<long double (*)(long double), 3u>
-    { return {{&::sinl, &::cosl, &::tanl}}; }
+    inline auto trigonometric_functions(long double) -> std::array<long double (*)(long double), 6u>
+    { return {{&::sinl, &::cosl, &::tanl, &::asinl, &::acosl, &::atanl}}; }
 
     auto library_real_trigonometric(::bra::classical_function_id const id, ::bra::real_type const value)
       -> ::bra::real_type
@@ -67,6 +67,9 @@ namespace bra
       case ::bra::classical_function_id::sin: function = functions[0u]; break;
       case ::bra::classical_function_id::cos: function = functions[1u]; break;
       case ::bra::classical_function_id::tan: function = functions[2u]; break;
+      case ::bra::classical_function_id::arcsin: function = functions[3u]; break;
+      case ::bra::classical_function_id::arccos: function = functions[4u]; break;
+      case ::bra::classical_function_id::arctan: function = functions[5u]; break;
       default: throw std::invalid_argument{"unsupported trigonometric function evaluation"};
       }
       return function(value);
@@ -181,8 +184,16 @@ namespace bra
         throw std::domain_error{"nonfinite input to " + std::string{::bra::classical_function_name(signature.function)}};
       if (signature.function == ::bra::classical_function_id::sin
           or signature.function == ::bra::classical_function_id::cos
-          or signature.function == ::bra::classical_function_id::tan)
+          or signature.function == ::bra::classical_function_id::tan
+          or signature.function == ::bra::classical_function_id::arcsin
+          or signature.function == ::bra::classical_function_id::arccos
+          or signature.function == ::bra::classical_function_id::arctan)
       {
+        if ((signature.function == ::bra::classical_function_id::arcsin
+             or signature.function == ::bra::classical_function_id::arccos)
+            and (*value < ::bra::real_type{-1} or *value > ::bra::real_type{1}))
+          throw std::domain_error{std::string{::bra::classical_function_name(signature.function)}
+            + " domain error: real input outside [-1, 1]"};
         auto const result = library_real_trigonometric(signature.function, *value);
         if (not boost::math::isfinite(result))
           throw std::overflow_error{"overflow/nonfinite result from "

@@ -36,6 +36,9 @@ APPLY R:N:999 <- LOG nonexistent
 APPLY R:N:999 <- SIN nonexistent
 APPLY R:N:999 <- COS nonexistent
 APPLY R:N:999 <- TAN nonexistent
+APPLY R:N:999 <- ARCSIN nonexistent
+APPLY R:N:999 <- ARCCOS nonexistent
+APPLY R:N:999 <- ARCTAN nonexistent
 @DONE
 PRINTLN R
 ''')

@@ -19,7 +19,7 @@ int main()
   using type = bra::variable_type;
   using function = bra::classical_function_id;
   auto const& signatures = bra::classical_function_signatures();
-  require(signatures.size() == 11u);
+  require(signatures.size() == 14u);
   require(signatures[0u].function == function::exp);
   require(signatures[0u].operand_types == std::vector<type>{type::real});
   require(signatures[0u].result_types == std::vector<type>{type::real});
@@ -41,7 +41,7 @@ int main()
   require(bra::classical_function_from_name("SQRT") == function::sqrt);
   require(bra::classical_function_from_name("COMPLEX") == function::complex_);
   require(bra::classical_function_from_name("LOG") == function::log);
-  for (auto const id: {function::sin, function::cos, function::tan})
+  for (auto const id: {function::sin, function::cos, function::tan, function::arcsin, function::arccos, function::arctan})
   {
     require(bra::classical_function_from_name(bra::classical_function_name(id)) == id);
     require(bra::resolve_classical_function(id, {type::real}).result_types == std::vector<type>{type::real});
@@ -58,6 +58,9 @@ int main()
   require(std::string{bra::classical_function_name(function::sin)} == "SIN");
   require(std::string{bra::classical_function_name(function::cos)} == "COS");
   require(std::string{bra::classical_function_name(function::tan)} == "TAN");
+  require(std::string{bra::classical_function_name(function::arcsin)} == "ARCSIN");
+  require(std::string{bra::classical_function_name(function::arccos)} == "ARCCOS");
+  require(std::string{bra::classical_function_name(function::arctan)} == "ARCTAN");
   require(std::string{bra::classical_function_name(function::log)} == "LOG");
   require(bra::resolve_classical_function(function::log, {type::real}).result_types == std::vector<type>{type::real});
   for (auto const& operands: {std::vector<type>{}, std::vector<type>{type::integer},

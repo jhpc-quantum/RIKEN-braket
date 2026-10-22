@@ -132,6 +132,9 @@ namespace
     case function::sin: return std::sin(input);
     case function::cos: return std::cos(input);
     case function::tan: return std::tan(input);
+    case function::arcsin: return std::asin(input);
+    case function::arccos: return std::acos(input);
+    case function::arctan: return std::atan(input);
     default: throw std::invalid_argument{"not a trigonometric function"};
     }
   }
@@ -235,6 +238,64 @@ int main()
   require(close(trigonometric(function::sin, pi / real{6}), real{0.5}), "wrong known SIN");
   require(close(trigonometric(function::cos, pi / real{3}), real{0.5}), "wrong known COS");
   require(close(trigonometric(function::tan, pi / real{4}), real{1}), "wrong known TAN");
+  for (auto const id: {function::arcsin, function::arccos, function::arctan})
+  {
+    for (auto const input: {positive_zero, negative_zero, real{-1}, real{1}, real{-0.5}, real{0.5},
+                           std::nextafter(real{1}, real{0}), std::nextafter(real{-1}, real{0}),
+                           std::numeric_limits<real>::min(), -std::numeric_limits<real>::min()})
+    {
+      auto const result = trigonometric(id, input);
+      auto const expected = reference_trigonometric(id, input);
+      require(close(result, expected), "inverse trigonometric result differs from native reference");
+      if (expected != 0)
+        require(close(result / expected, real{1}), "inverse trigonometric function lost relative accuracy");
+      if (input == 0 and id != function::arccos)
+        require(boost::math::fpclassify(result) == FP_ZERO
+                and boost::math::signbit(result) == boost::math::signbit(input),
+                "inverse trigonometric function lost signed zero");
+      if (id == function::arccos)
+        require(result >= 0 and result <= pi, "ARCCOS outside principal range");
+      else
+        require(result >= -pi / real{2} and result <= pi / real{2}, "inverse trigonometric result outside principal range");
+    }
+    for (auto const input: {std::numeric_limits<real>::denorm_min(), -std::numeric_limits<real>::denorm_min()})
+    {
+      auto const result = trigonometric(id, input);
+      auto const expected = reference_trigonometric(id, input);
+      require(close(result, expected)
+              and boost::math::fpclassify(result) == boost::math::fpclassify(expected)
+              and boost::math::signbit(result) == boost::math::signbit(expected),
+              "inverse trigonometric subnormal behavior differs from native library");
+    }
+    for (auto const invalid: {std::numeric_limits<real>::infinity(), -std::numeric_limits<real>::infinity(),
+                             std::numeric_limits<real>::quiet_NaN()})
+      expect_failure<std::domain_error>(id, invalid, "nonfinite input");
+    if (id != function::arctan)
+      for (auto const invalid: {std::nextafter(real{1}, maximum), std::nextafter(real{-1}, -maximum),
+                               real{2}, real{-2}, maximum, -maximum})
+        expect_failure<std::domain_error>(id, invalid, "real input outside [-1, 1]");
+    auto in_place = real{0.5};
+    auto const captured = bra::classical_function_call{
+      bra::resolve_classical_function(id, {type::real}), {&in_place}, {in_place}};
+    in_place = real{0.25};
+    captured.commit_results(bra::evaluate_classical_function(captured));
+    require(close(in_place, reference_trigonometric(id, real{0.5})), "inverse trigonometric function lost captured input");
+  }
+  for (auto const input: {real{2}, real{-2}, real{1e20}, real{-1e20}, maximum, -maximum})
+  {
+    auto const result = trigonometric(function::arctan, input);
+    require(close(result, std::atan(input)), "ARCTAN lost large finite input");
+    require(result >= -pi / real{2} and result <= pi / real{2}, "ARCTAN outside rounded principal range");
+  }
+  require(close(trigonometric(function::arcsin, real{0.5}), pi / real{6}), "wrong known ARCSIN");
+  require(close(trigonometric(function::arccos, real{0.5}), pi / real{3}), "wrong known ARCCOS");
+  require(close(trigonometric(function::arctan, real{1}), pi / real{4}), "wrong known ARCTAN");
+  require(close(trigonometric(function::arcsin, real{-1}), -pi / real{2}), "wrong ARCSIN lower endpoint");
+  require(close(trigonometric(function::arcsin, real{1}), pi / real{2}), "wrong ARCSIN upper endpoint");
+  require(close(trigonometric(function::arccos, real{-1}), pi), "wrong ARCCOS upper endpoint");
+  auto const arccos_zero = trigonometric(function::arccos, real{1});
+  require(boost::math::fpclassify(arccos_zero) == FP_ZERO and not boost::math::signbit(arccos_zero),
+          "ARCCOS(1) must be positive zero");
   for (auto const input: {real{0.25}, real{0.5}, real{1}, real{2}, real{10},
                          std::numeric_limits<real>::min(), maximum})
     require(close(natural_log(input), std::log(input)), "wrong real LOG");

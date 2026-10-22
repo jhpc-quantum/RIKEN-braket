@@ -143,6 +143,20 @@ int main()
     check_call({"R:N"}, id, {"Z"}, "unsupported operand signature");
     check_call({"CRESULT"}, id, {"R"}, "wrong destination type");
   }
+  for (auto const id: {function::arcsin, function::arccos, function::arctan})
+  {
+    state.invoke_apply_operation({"RESULT"}, id, {":REAL:0.5"});
+    auto const input = bra::real_type{0.5};
+    auto const expected = id == function::arcsin ? std::asin(input)
+      : id == function::arccos ? std::acos(input) : std::atan(input);
+    check_close("RESULT", expected);
+    check_call({"R:N"}, id, {"N"}, "unsupported operand signature");
+    check_call({"R:N"}, id, {"Z"}, "unsupported operand signature");
+    check_call({"CRESULT"}, id, {"R"}, "wrong destination type");
+    if (id != function::arctan)
+      check_call({"R:N"}, id, {"R:N"}, std::string{bra::classical_function_name(id)}
+                 + " domain error: real input outside [-1, 1]");
+  }
   state.invoke_apply_operation({"RESULT"}, function::log, {"R:N"});
   check_close("RESULT", std::log(bra::real_type{7}));
   state.invoke_apply_operation({"RESULT"}, function::log, {"RESULT"});
