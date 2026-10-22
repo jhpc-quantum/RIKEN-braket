@@ -166,7 +166,7 @@ def main() -> None:
             ('uint a = uint(-1); int b = int(a);', 'UINT to INT conversion out of range'),
             ('int b = int(uint(-1));', 'UINT to INT conversion out of range'),
             ('uint a = 7; a /= uint(0);', 'integer division by zero in LET'),
-            ('uint[8] a = 7; a %= uint[8](0);', 'integer division by zero in LET')):
+            ('uint[8] a = 7; a %= uint[8](0);', 'integer remainder by zero in LET')):
         check_error(bra, source, diagnostic)
     check_integration(bra)
     print('qasm2qcx native and narrow UINT numerical tests passed')

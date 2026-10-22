@@ -150,8 +150,9 @@ def main() -> None:
     check_error(bra, '''int stride = 2;
         for int s in {stride, 0} { for int i in [0:s:3] {} }''', r'(evaluated: 0 \= 0)')
     for expression in ('value / stride', 'value % stride'):
+        operation = 'remainder' if '%' in expression else 'division'
         check_error(bra, f'''int value = 3; int stride = 0;
-            for int i in [3:{expression}:0] {{}}''', 'integer division by zero in LET')
+            for int i in [3:{expression}:0] {{}}''', f'integer {operation} by zero in LET')
 
     minimum, maximum = qasm2qcx.QASM2QCXConverter.QCX_INT_MIN, qasm2qcx.QASM2QCXConverter.QCX_INT_MAX
     for first, last, step in (

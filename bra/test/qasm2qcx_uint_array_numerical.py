@@ -103,8 +103,9 @@ def main() -> None:
             check_error(bra, f'array[uint[4], 2] values; int i = {index}; ' + statement,
                         'assertion failed in ASSERT')
     for operator in ('/=', '%='):
+        operation = 'division' if operator == '/=' else 'remainder'
         check_error(bra, 'array[uint[4], 2] values = {3, 4}; int i = 0; int zero = 0; '
-                    f'values[i] {operator} zero;', 'integer division by zero in LET')
+                    f'values[i] {operator} zero;', f'integer {operation} by zero in LET')
     for operator in ('<<=', '>>='):
         for count in (-1, 4):
             check_error(bra, f'array[uint[4], 2] values = {{1, 2}}; int i = 0; int count = {count}; '
