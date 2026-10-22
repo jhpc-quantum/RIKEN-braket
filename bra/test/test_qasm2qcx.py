@@ -339,6 +339,14 @@ class BuiltinFunctionRuntimeTests(unittest.TestCase):
     def clean(self, source):
         return InverseModifierLoweringTests.assert_clean_conversion(self, source)
 
+    def test_documented_mathematical_function_example(self):
+        document = CONVERTER_PATH.with_suffix('.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- math-function-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        lines = self.clean(examples[0].split('\n', 1)[1])
+        self.assertEqual(sum(' <- EXP ' in line for line in lines), 1)
+
     def test_input_types_select_exp_overload_and_promotions_are_explicit(self):
         for declaration, operand in (('int n = 1;', ':REAL:N1'), ('uint n = 1;', ':REAL:N1'),
                                      ('bool n = true;', ':REAL:N1'), ('float n = 1;', 'N1'),

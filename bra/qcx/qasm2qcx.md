@@ -99,6 +99,8 @@ The converter currently covers:
 - scalar integer shift expressions (`<<`, `>>`) and compound assignments
   (`<<=`, `>>=`), with checked counts and signed left-shift overflow;
 - scalar constants, variables, assignments, and numeric casts;
+- scalar built-in `exp`, `real`, and `imag` calls in constant and runtime
+  expressions, including nested calls;
 - fixed-size, one-dimensional `int`, `uint`, `float`, `bool`, and `complex` arrays
   with static and runtime element reads and writes;
 - scalar and register `bit` values, including bit-string initialization;
@@ -131,6 +133,74 @@ have the explicit width restrictions documented below.
 OpenQASM `bit` values are represented by QCX `INT` variables whose elements
 are restricted to zero or one by the converter. A measurement is emitted as a
 QCX `M` operation followed immediately by assignment from `:OUTCOME`.
+
+### Mathematical function calls
+
+The following unary OpenQASM built-ins are supported. Overloads are selected
+from the input type, never from the assignment destination:
+
+| OpenQASM call | Input type | Result type | Runtime QCX operation |
+| --- | --- | --- | --- |
+| `exp(x)` | `float` | `float` | `APPLY result <- EXP operand` |
+| `exp(z)` | `complex` | `complex` | `APPLY result <- EXP operand` |
+| `real(z)` | `complex` | `float` | `LET result := :REAL:operand` |
+| `imag(z)` | `complex` | `float` | `LET result := :IMAG:operand` |
+
+`real` and `imag` extract the real and imaginary components; they reuse bra's
+existing component operators rather than introducing new native functions.
+Standard scalar `bool`, `int`, and `uint` arguments promote to `float` for
+`exp`, or to `complex` for component extraction. A `float` argument to `real`
+or `imag` also promotes to `complex`, with a zero imaginary component. Thus
+`complex z = exp(1);` evaluates the real exponential first, then converts its
+result to complex. Use `exp(complex(1))` to select the complex overload.
+Scalar `bit` arguments require an explicit numeric cast.
+
+Calls can be nested and used in assignments, indexed array elements and
+initializers, gate parameters, numeric comparisons, explicit casts, and
+supported loop expressions. Whole arrays and bit registers are not scalar
+arguments. A floating-point result is not itself a Boolean condition: compare
+it with a number or use `bool(...)`.
+
+Constant expressions, such as `const float E = exp(1);`, are evaluated by the
+converter using Python's `float`/`complex` precision. Supported constant calls
+can also supply declaration sizes, loop bounds, and modifier arguments where
+their result type is accepted (use an integer cast when required). In
+executable expressions, even literal calls such as `float x = exp(1);` use
+native bra evaluation, not host exponential folding. Runtime promotion and
+evaluation therefore use bra's configured `REAL`/`COMPLEX` precision; declared
+OpenQASM floating-point widths remain unenforced.
+
+`exp` requires a finite argument (both components for complex inputs) and a
+finite result. Invalid evaluated constant calls are conversion errors; reached
+runtime failures are native `EXP` errors, currently uncaught by the bra CLI.
+Underflow follows the applicable host or backend floating-point environment.
+Component extraction does not add these finiteness checks. Classical branches,
+short-circuit operators, and empty loops can skip runtime evaluation and its
+failures; names, arity, and types are still validated in skipped code.
+
+This example uses a constant exponential, a runtime complex exponential, and
+both component extractors. The two rotations use the real and imaginary parts
+of the unit complex value:
+
+<!-- math-function-example -->
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+qubit q;
+const float SCALE = exp(-0.7);
+float theta = 0.7;
+complex unit = exp(theta * 1im);
+float cosine = real(unit);
+float sine = imag(unit);
+rx(SCALE * cosine) q;
+rz(sine) q;
+```
+
+Use a bra version with native `APPLY` and `EXP` support; see
+[classical functions in bra](../../docs/bra.md#classical-function-invocation).
+Other OpenQASM mathematical built-ins, user-defined functions, extern calls,
+and discarded function-call statements remain unsupported. Native bra `ABS`
+and `ARG` are not exposed as OpenQASM function extensions by this converter.
 
 ### Unsigned integers
 
@@ -1795,8 +1865,9 @@ temporary declarations may be hoisted out of a skipped body. The existing
 integer-only and fixed-family power paths are unchanged.
 
 The generated program uses `REAL` and `COMPLEX` temporaries, `APPLY`, component
-extraction, and ordinary QCX branches; no arbitrary-matrix instruction or
-OpenQASM classical-function support is added. Use a bra version with `APPLY`,
+extraction, and ordinary QCX branches; no arbitrary-matrix instruction is
+required. This gate-power lowering is separate from the scalar OpenQASM
+function calls described above. Use a bra version with `APPLY`,
 `EXP`, and `ARG` support; see
 [classical functions in bra](../../docs/bra.md#classical-function-invocation).
 There is no repetition proportional to the exponent's magnitude. For this
@@ -3132,7 +3203,8 @@ The current prototype does not reliably support:
   declarations;
 - scalar-bit shifts and runtime-dependent register selections,
   ordered bit-register comparisons, whole-array bitwise operations, direct
-  Boolean bitwise operations, or classical functions; or
+  Boolean bitwise operations, or classical functions other than the
+  `exp`/`real`/`imag` subset above; or
 - arithmetic operators other than `+`, `-`, `*`, `/`, and integer `%` and `**`.
 
 Integer limitations additionally include `uint[n]` widths above native `UINT`,
@@ -3149,6 +3221,15 @@ self-referencing assignments, short-circuit evaluation, and temporary reuse.
 It also executes the complete Boolean example above. These tests cover the
 converter's supported Boolean subset; the limitations above remain explicit
 future work.
+
+`bra/test/qasm2qcx_math_function_numerical.py` compares constant, executable
+literal, and variable calls, with independent trigonometric references for
+complex exponentials. It checks promotions, component extraction, nesting,
+source preservation, arrays, loops, short-circuiting, reached failures, gate
+parameters with and without fusion, and the mathematical-function example
+above. Without `--bra`, its two reference tests require only the standard
+library. Unit tests additionally check overload selection, diagnostics,
+empty-loop validation, once-only argument evaluation, and temporary cleanup.
 
 `bra/test/qasm2qcx_u_phase_numerical.py` independently transcribes the published
 built-in `U` matrix and the mathematical active block of `cu`. It verifies the
@@ -3559,6 +3640,7 @@ python3 bra/test/integer_division_numerical.py --bra bra/bin/bra
 python3 bra/test/integer_bitwise_numerical.py --bra bra/bin/bra
 python3 bra/test/integer_shift_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_if_else_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_math_function_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_u_phase_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_inverse_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_control_numerical.py --bra bra/bin/bra
