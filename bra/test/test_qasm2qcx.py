@@ -519,6 +519,16 @@ class TrigonometricRuntimeTests(unittest.TestCase):
     def clean(self, source):
         return InverseModifierLoweringTests.assert_clean_conversion(self, source)
 
+    def test_documented_trigonometric_example(self):
+        document = CONVERTER_PATH.with_suffix('.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- trigonometric-function-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        lines = self.clean(examples[0].split('\n', 1)[1])
+        for name in ('SIN', 'TAN'):
+            self.assertEqual(sum(f' <- {name} ' in line for line in lines), 1)
+        self.assertFalse(any(' <- COS ' in line for line in lines))
+
     def test_input_selected_real_signatures_and_explicit_promotions(self):
         for name in self.names:
             for declaration, operand in (('int x = 1;', ':REAL:X1'), ('uint x = 2;', ':REAL:X1'),

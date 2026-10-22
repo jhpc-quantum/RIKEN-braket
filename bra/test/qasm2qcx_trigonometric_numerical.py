@@ -13,6 +13,7 @@ import decimal
 import functools
 import math
 import pathlib
+import re
 import resource
 import unittest
 
@@ -182,6 +183,19 @@ class BackendTests(unittest.TestCase):
                 lines = self.program(f'include "stdgates.inc"; qubit q; float x = 0.5; '
                                      f'rx({name}(x)) q; rz({name}(-0.5)) q;', fused=fused)
                 BackendAuditTests.check(self, lines, expected)
+
+    def test_documented_trigonometric_example(self):
+        from qasm2qcx_u_power_numerical import BackendAuditTests
+        document = (pathlib.Path(__file__).parents[1] / 'qcx/qasm2qcx.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- trigonometric-function-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        theta = trigonometric('sin', 0.5)
+        phi = trigonometric('cos', 0.5) + trigonometric('tan', 0.5)
+        expected = (cmath.exp(-0.5j * phi) * math.cos(theta / 2),
+                    -1j * cmath.exp(0.5j * phi) * math.sin(theta / 2))
+        for fused in (False, True):
+            BackendAuditTests.check(self, self.program(examples[0], fused=fused), expected)
 
     def test_skipped_calls_and_reached_errors(self):
         for name in ('sin', 'cos', 'tan'):
