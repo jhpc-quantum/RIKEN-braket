@@ -1,3 +1,6 @@
+// Classify stored representations even when this translation unit is built
+// without fast-math but the process enables DAZ/FTZ (for example with UBSan).
+#define BOOST_MATH_DISABLE_STD_FPCLASSIFY
 #include <array>
 #include <cmath>
 #include <complex>

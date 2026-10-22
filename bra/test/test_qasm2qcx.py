@@ -668,9 +668,109 @@ class ModConstantTests(unittest.TestCase):
             self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
             self.assertEqual(converter._QASM2QCXConverter__qcx_lines, lines)
 
-    def test_runtime_calls_fail_safely_until_lowering_is_added(self):
-        with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'runtime function mod'):
-            convert('OPENQASM 3; int a = 7; int result = mod(a, 3);')
+class ModRuntimeTests(unittest.TestCase):
+    expression = staticmethod(BuiltinFunctionSignatureTests.expression)
+    converter = staticmethod(BuiltinFunctionSignatureTests.converter)
+
+    def test_integer_calls_use_native_remainder_not_apply(self):
+        self.assertEqual(convert('OPENQASM 3; int a = 7; int b = 3; int out = mod(a, b);'), [
+            'QUBITS 0', 'VAR A1 INT', 'LET A1 := 7', 'VAR B1 INT', 'LET B1 := 3',
+            'VAR OUT7 INT', 'VAR QASM2QCX_INT_0 INT', 'LET QASM2QCX_INT_0 := A1',
+            'LET QASM2QCX_INT_0 %= B1', 'LET OUT7 := QASM2QCX_INT_0'])
+        lines = convert('OPENQASM 3; float out = mod(7, 3);')
+        self.assertIn('LET QASM2QCX_INT_0 %= 3', lines)
+        self.assertFalse(any(line.startswith('APPLY ') for line in lines))
+        self.assertFalse(any(line.startswith('VAR QASM2QCX_REAL_') for line in lines))
+
+    def test_real_calls_use_two_explicitly_promoted_apply_operands(self):
+        lines = convert('OPENQASM 3; float a = 7.5; int b = 3; float out = mod(a, b);')
+        self.assertIn('APPLY QASM2QCX_REAL_0 <- MOD A1 :REAL:B1', lines)
+        lines = convert('OPENQASM 3; float out = mod(7, 3.0);')
+        self.assertIn('LET QASM2QCX_REAL_0 := :REAL:7', lines)
+        self.assertIn('LET QASM2QCX_REAL_1 := :REAL:3.0', lines)
+        self.assertIn('APPLY QASM2QCX_REAL_2 <- MOD QASM2QCX_REAL_0 QASM2QCX_REAL_1', lines)
+
+    def test_unsigned_and_boolean_inputs_keep_signed_overload(self):
+        lines = convert('OPENQASM 3; uint a = 7; bool b = true; int out = mod(a, b);')
+        self.assertIn('LET QASM2QCX_INT_0 := :INT:A1', lines)
+        self.assertIn('LET QASM2QCX_INT_0 %= B1', lines)
+        maximum = qasm2qcx.QASM2QCXConverter.QCX_UINT_MAX
+        lines = convert('OPENQASM 3; int out = mod(uint(-1), 3);')
+        self.assertIn(f'LET QASM2QCX_INT_0 := :INT::UINT:{maximum}', lines)
+        self.assertFalse(any(' <- MOD ' in line for line in lines))
+
+    def test_both_nested_arguments_are_evaluated_once_and_temporaries_stay_live(self):
+        converter = self.converter('int a = 17; int b = 7; int c = 3;')
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        expression = self.expression('mod(mod(a, b), mod(b, c) + 1)')
+        with patch.object(converter, 'visit', wraps=converter.visit) as visit:
+            converter.visit(expression)
+        for argument in expression.arguments:
+            self.assertEqual(sum(call.args[0] is argument for call in visit.call_args_list), 1)
+        lines = converter._QASM2QCXConverter__qcx_lines
+        self.assertEqual(sum(' %= ' in line for line in lines), 3)
+        result = converter._QASM2QCXConverter__value
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {result})
+
+    def test_self_references_and_captured_array_indices_release_storage(self):
+        for source in (
+                'int a = 7; a = mod(a, a);',
+                'float a = 7.5; a = mod(a, a + 1.0);',
+                'array[int, 3] a = {7, 3, 2}; int i = 0; a[i % 2] = mod(a[i] + 1, a[a[2] - 1]);',
+                'array[float, 2] a = {7.5, 3}; int i = 0; a[i] += mod(a[i], a[i + 1]);'):
+            with self.subTest(source=source):
+                program = qasm2qcx.openqasm3.parser.parse('OPENQASM 3; ' + source)
+                converter = qasm2qcx.QASM2QCXConverter(program)
+                converter.visit(program)
+                self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, set())
+                self.assertIsNone(converter._QASM2QCXConverter__expression_kind)
+
+    def test_zero_and_nonfinite_operations_remain_in_short_circuited_paths(self):
+        for expression in ('flag && mod(7, 0) == 0', 'flag && mod(7.0, 0.0) == 0',
+                           'flag && mod(7.0, 1e309) == 0'):
+            lines = convert('OPENQASM 3; bool flag = false; bool out = ' + expression + ';')
+            start = lines.index('@QASM2QCX_CONDITION_0')
+            computation = next(i for i, line in enumerate(lines) if ' %= ' in line or ' <- MOD ' in line)
+            self.assertGreater(computation, start)
+            self.assertTrue(all(i < start for i, line in enumerate(lines) if line.startswith('VAR QASM2QCX_')))
+
+    def test_failure_restores_expression_state_and_preserves_caller_storage(self):
+        converter = self.converter('array[float, 1] a = {1}; float f = 7.5;')
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        fields = ('__expression_kind', '__value', '__value_type', '__value_kind', '__evaluate_constant')
+        before = [getattr(converter, '_QASM2QCXConverter' + field) for field in fields]
+        argument = self.expression('mod(exp(f), a[2])')
+        with self.assertRaises(qasm2qcx.QASM2QCXError):
+            converter.visit(argument)
+        self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], before)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+
+    def test_second_operand_lowering_failure_releases_first_operand_storage(self):
+        converter = self.converter('float a = 7.5; float b = 3.0;')
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        original = converter._QASM2QCXConverter__runtime_function_operand
+        def lower(value, *arguments):
+            if value == 'B1':
+                raise qasm2qcx.UnsupportedOpenQASMError('injected second operand failure')
+            return original(value, *arguments)
+        fields = ('__expression_kind', '__value', '__value_type', '__value_kind', '__evaluate_constant')
+        before = [getattr(converter, '_QASM2QCXConverter' + field) for field in fields]
+        with patch.object(converter, '_QASM2QCXConverter__runtime_function_operand', side_effect=lower):
+            with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'second operand failure'):
+                converter.visit(self.expression('mod(exp(a), b)'))
+        self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], before)
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+
+    def test_repeated_calls_reuse_temporaries(self):
+        for source_type in ('int', 'float'):
+            prefix = f'OPENQASM 3; {source_type} a = 7; {source_type} b = 3; '
+            statement = 'a = mod(a + 1, b + 2);'
+            single = convert(prefix + statement)
+            repeated = convert(prefix + statement * 10)
+            self.assertEqual([line for line in single if line.startswith('VAR QASM2QCX_')],
+                             [line for line in repeated if line.startswith('VAR QASM2QCX_')])
 
 
 class RoundingConstantTests(unittest.TestCase):

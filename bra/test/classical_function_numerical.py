@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 
-"""Build/run standalone APPLY math tests in all precisions, debug and release.
+"""Build/run standalone APPLY math tests in all precisions and build modes.
 
   python3 bra/test/classical_function_numerical.py
   python3 bra/test/classical_function_numerical.py --sanitize
 
 Only a C++14 compiler, Boost, and repository headers are required; no simulator
 build or MPI is needed. Evaluator and link flags mirror the existing Makefile.
+An additional mixed mode checks unoptimized code with release startup's
+floating-point environment, as occurs in partly instrumented simulator builds.
 """
 
 import argparse
@@ -39,14 +41,15 @@ def main():
             # evaluator flags, so optimizations cannot hide failed checks.
             run(flags + ['-O2', '-c', str(root / 'bra/test/classical_function_numerical.cpp'),
                          '-o', str(test_object)])
-            for mode in ('debug', 'release'):
-                optimization = ['-O0'] if mode == 'debug' else ['-Ofast', '-DNDEBUG']
+            for mode in ('debug', 'release', 'mixed-release'):
+                optimization = ['-Ofast', '-DNDEBUG'] if mode == 'release' else ['-O0']
+                link_optimization = ['-O0'] if mode == 'debug' else ['-Ofast', '-DNDEBUG']
                 evaluator = build / f'{precision}-{mode}.o'
                 executable = build / f'{precision}-{mode}'
                 run(flags + optimization + ['-c', str(root / 'bra/src/classical_function.cpp'),
                                             '-o', str(evaluator)])
                 run([options.cxx, str(test_object), str(evaluator), '-o', str(executable)]
-                    + optimization + sanitizer)
+                    + link_optimization + sanitizer)
                 run([str(executable)])
                 print(f'{precision} {mode}: passed', flush=True)
 

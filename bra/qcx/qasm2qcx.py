@@ -4827,6 +4827,11 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def __runtime_function_operand(
             self, value: str | int | float | complex, value_type: ValueType,
             value_kind: ValueKind, target_type: ValueType) -> str:
+        if target_type == ValueType.INT:
+            # Do not narrow integers through REAL. UINT-to-INT casts stay in
+            # the reached QCX path, where they are checked before use.
+            operand, _ = self.__converted_operand(value, value_type, value_kind, target_type)
+            return operand
         if value_kind == ValueKind.LITERAL:
             if value_type != ValueType.COMPLEX:
                 scalar = self.__add_new_temporary_variable(ValueType.FLOAT)
@@ -4844,11 +4849,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         return operand
 
     def __visit_runtime_function(self, expression: ast.FunctionCall, signature: _BuiltinFunctionSignature) -> None:
-        if len(signature.operand_types) != 1:
-            raise UnsupportedOpenQASMError(f'runtime function {expression.name.name}')
-        # Every initial built-in is unary. Keep argument/conversion storage
-        # reserved until the result is allocated, so nested calls and indexed
-        # assignment destinations cannot alias or be overwritten by the result.
+        # Keep all argument/conversion storage reserved until the result is
+        # allocated. Later arguments, nested calls, and indexed destinations
+        # must not alias or overwrite earlier operands.
         previous = (self.__expression_kind, self.__value, self.__value_type,
                     self.__value_kind, self.__evaluate_constant)
         previous_used = self.__used_temporary_variables.copy()
@@ -4856,28 +4859,31 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         keep = False
         try:
             self.__expression_kind = ExpressionKind.ARITHMETIC
-            self.visit(expression.arguments[0])
-            value, value_type, value_kind = self.__value, self.__value_type, self.__value_kind
-            if value_kind is None or value_type is None:
-                raise UninitializedValueException
-            if signature.component is not None and value_kind == ValueKind.LITERAL:
-                # Selecting a stored literal component is exact, not a host
-                # mathematical evaluation. Avoid constructing a complex value
-                # with arithmetic that could contaminate a finite component
-                # with the other component's NaN/Inf or discard a signed zero.
-                if value_type == ValueType.COMPLEX:
-                    component = value.real if signature.component == 'REAL' else value.imag
+            operands = []
+            for argument, target_type in zip(expression.arguments, signature.operand_types):
+                self.visit(argument)
+                value, value_type, value_kind = self.__value, self.__value_type, self.__value_kind
+                if value_kind is None or value_type is None:
+                    raise UninitializedValueException
+                if signature.component is not None and value_kind == ValueKind.LITERAL:
+                    # Literal component selection is exact, not arithmetic that
+                    # could contaminate finite components or discard zero signs.
+                    if value_type == ValueType.COMPLEX:
+                        component = value.real if signature.component == 'REAL' else value.imag
+                    else:
+                        component = value if signature.component == 'REAL' else 0.0
+                    result = self.__add_new_temporary_variable(signature.result_type)
+                    self.__emit_function_real_literal(result, component)
                 else:
-                    component = value if signature.component == 'REAL' else 0.0
-                result = self.__add_new_temporary_variable(signature.result_type)
-                self.__emit_function_real_literal(result, component)
-            else:
-                operand = self.__runtime_function_operand(value, value_type, value_kind, signature.operand_types[0])
+                    operands.append(self.__runtime_function_operand(value, value_type, value_kind, target_type))
+            if signature.integer_remainder:
+                result = self.__emit_integer_remainder(*operands)
+            elif result is None:
                 result = self.__add_new_temporary_variable(signature.result_type)
                 if signature.component is not None:
-                    self.__qcx_lines.append(f'LET {result} := :{signature.component}:{operand}')
+                    self.__qcx_lines.append(f'LET {result} := :{signature.component}:{operands[0]}')
                 else:
-                    self.__qcx_lines.append(f'APPLY {result} <- {signature.qcx_function} {operand}')
+                    self.__qcx_lines.append(f'APPLY {result} <- {signature.qcx_function} {" ".join(operands)}')
             self.__expression_kind = previous[0]
             self.__value, self.__value_type, self.__value_kind = result, signature.result_type, ValueKind.TEMPORARY
             keep = True
