@@ -10,6 +10,7 @@ import argparse
 from fractions import Fraction
 import math
 import pathlib
+import re
 import resource
 import unittest
 
@@ -152,6 +153,15 @@ class BackendTests(unittest.TestCase):
         source = 'include "stdgates.inc"; qubit q; float x = 7.5; float y = 3; rx(mod(x, y)) q;'
         for fused in (False, True):
             BackendAuditTests.check(self, self.program(source, fused=fused), expected)
+
+    def test_documented_mod_example(self):
+        from qasm2qcx_u_power_numerical import BackendAuditTests
+        document = (pathlib.Path(__file__).parents[1] / 'qcx/qasm2qcx.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- mod-function-example -->\s*```qasm\n(.*?)\n```', document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        expected = (complex(math.cos(0.75)), 0j, -1j * math.sin(0.75), 0j)
+        for fused in (False, True):
+            BackendAuditTests.check(self, self.program(examples[0], fused=fused), expected)
 
 
 def main():
