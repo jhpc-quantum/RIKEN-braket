@@ -503,6 +503,14 @@ class LogRuntimeTests(unittest.TestCase):
     def clean(self, source):
         return InverseModifierLoweringTests.assert_clean_conversion(self, source)
 
+    def test_documented_logarithm_example(self):
+        document = CONVERTER_PATH.with_suffix('.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- log-function-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        lines = self.clean(examples[0].split('\n', 1)[1])
+        self.assertEqual(sum(' <- LOG ' in line for line in lines), 1)
+
     def test_input_based_signature_and_promotions(self):
         for declaration, operand in (('int x = 2;', ':REAL:X1'), ('uint x = 2;', ':REAL:X1'),
                                      ('bool x = true;', ':REAL:X1'), ('float x = 2;', 'X1')):

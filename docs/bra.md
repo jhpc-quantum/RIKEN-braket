@@ -252,6 +252,7 @@ not literals, casts, or built-in constants.
 | `ABS` | `COMPLEX` | `REAL` |
 | `SQRT` | `REAL` | `REAL` |
 | `SQRT` | `COMPLEX` | `COMPLEX` |
+| `LOG` | `REAL` | `REAL` |
 | `COMPLEX` | `REAL`, `REAL` | `COMPLEX` |
 
 Only operand types select an overload. Destination types must then match the
@@ -282,6 +283,7 @@ APPLY Y <- EXP :REAL:N
 APPLY Z <- EXP :COMPLEX:X
 APPLY Y <- ARG Z
 APPLY Y <- ABS Z
+APPLY Y <- LOG X
 APPLY Z <- COMPLEX X -0.0
 APPLY X <- EXP X
 ```
@@ -350,6 +352,17 @@ zero complex inputs return real `+0` with the input imaginary zero sign.
 Nearby inputs are not snapped to the cut. Scaled library evaluation avoids
 unnecessary overflow for large finite components; subnormal arithmetic
 still inherits the existing floating-point environment.
+
+`LOG` computes the natural logarithm of a strictly positive finite `REAL`.
+Both signs of zero, negative inputs (including stored negative subnormals),
+and nonfinite inputs are errors. There is no complex overload. A failure
+leaves the destination unchanged, including when input and destination alias.
+For IEEE binary `REAL` representations, positive stored subnormals are
+normalized before library evaluation, so they remain valid even when the
+environment treats subnormal arithmetic operands as zero. This does not
+change compiler flags or floating-point control modes. With other `REAL`
+representations, subnormal inputs are explicitly rejected with a domain
+error; positive normal inputs remain supported.
 
 `ARG` computes the complex argument in radians and rejects zero, including all
 combinations of signed-zero components. For a negative real component,
