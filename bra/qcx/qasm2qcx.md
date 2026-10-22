@@ -99,8 +99,9 @@ The converter currently covers:
 - scalar integer shift expressions (`<<`, `>>`) and compound assignments
   (`<<=`, `>>=`), with checked counts and signed left-shift overflow;
 - scalar constants, variables, assignments, and numeric casts;
-- scalar built-in `exp`, `sqrt`, `log`, `sin`, `cos`, `tan`, `real`, and `imag`
-  calls in constant and runtime expressions, including nested calls;
+- scalar built-in `exp`, `sqrt`, `log`, `sin`, `cos`, `tan`, `arcsin`, `arccos`,
+  `arctan`, `real`, and `imag` calls in constant and runtime expressions,
+  including nested calls;
 - fixed-size, one-dimensional `int`, `uint`, `float`, `bool`, and `complex` arrays
   with static and runtime element reads and writes;
 - scalar and register `bit` values, including bit-string initialization;
@@ -149,14 +150,18 @@ from the input type, never from the assignment destination:
 | `sin(x)` | `float` | `float` | `APPLY result <- SIN operand` |
 | `cos(x)` | `float` | `float` | `APPLY result <- COS operand` |
 | `tan(x)` | `float` | `float` | `APPLY result <- TAN operand` |
+| `arcsin(x)` | `float` | `float` | `APPLY result <- ARCSIN operand` |
+| `arccos(x)` | `float` | `float` | `APPLY result <- ARCCOS operand` |
+| `arctan(x)` | `float` | `float` | `APPLY result <- ARCTAN operand` |
 | `real(z)` | `complex` | `float` | `LET result := :REAL:operand` |
 | `imag(z)` | `complex` | `float` | `LET result := :IMAG:operand` |
 
 `real` and `imag` extract the real and imaginary components; they reuse bra's
 existing component operators rather than introducing new native functions.
 Standard scalar `bool`, `int`, and `uint` arguments promote to `float` for
-`exp`, `sqrt`, `log`, `sin`, `cos`, and `tan`, or to `complex` for component
-extraction. A `float` argument to `real` or `imag` also promotes to `complex`,
+`exp`, `sqrt`, `log`, `sin`, `cos`, `tan`, `arcsin`, `arccos`, and `arctan`,
+or to `complex` for component extraction. A `float` argument to `real` or
+`imag` also promotes to `complex`,
 with a zero imaginary component. Thus
 `complex z = exp(1);` evaluates the real exponential first, then converts its
 result to complex. Use `exp(complex(1))` to select the complex overload.
@@ -240,6 +245,28 @@ not snapped: an approximation of π/2 is not an exact pole, so its large
 finite tangent is accepted. Constant and runtime results can differ because
 their precisions and floating-point environments can differ.
 
+`arcsin`, `arccos`, and `arctan` accept real-valued arguments and return
+principal `float` values in radians, not `angle` values. Complex arguments
+are rejected even if their imaginary component is zero or the destination
+is complex; use `real(z)` explicitly when appropriate. Constant calls use
+Python's `math.asin`, `math.acos`, and `math.atan`. Executable calls, including
+literal arguments, use native `ARCSIN`, `ARCCOS`, and `ARCTAN`. The OpenQASM
+function names are `arcsin`, `arccos`, and `arctan`, not the Python spellings.
+
+Both paths require finite inputs and results. `arcsin` and `arccos` require
+inputs in `[-1, 1]`, including the endpoints; values immediately outside the
+domain are errors and are never clamped. `arctan` accepts every finite real
+input. Principal result ranges are [-π/2, π/2], [0, π], and (-π/2, π/2),
+respectively; rounding can produce ±π/2 for large finite `arctan` arguments.
+`arcsin` and `arctan` preserve signed zero, `arccos(±0)` returns π/2, and
+`arccos(1)` returns positive zero. Invalid evaluated constants fail conversion;
+native runtime checks occur only when reached, so short-circuiting, branches,
+and empty loops can skip failures. Input types and arity are still validated
+in skipped expressions. Native calls preserve the existing build flags and
+floating-point control modes; subnormal arithmetic follows the applicable
+host or backend environment. General complex inverse functions and `atan2`
+remain unsupported.
+
 The converter uses native `APPLY ... <- COMPLEX real imaginary` to construct
 nontrivial complex literals directly, preserving component signs and avoiding
 arithmetic assembly that could discard zeros or subnormals. This also applies
@@ -311,8 +338,22 @@ rx(sin(x)) q;
 rz(SHIFT + tan(x)) q;
 ```
 
+This example combines a constant inverse cosine with runtime inverse sine
+and inverse tangent calls:
+
+<!-- inverse-trigonometric-function-example -->
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+qubit q;
+const float SHIFT = arccos(0.5);
+float x = 0.5;
+rx(arcsin(x)) q;
+rz(SHIFT + arctan(x)) q;
+```
+
 Use a bra version with native `APPLY`, `EXP`, `SQRT`, `LOG`, `SIN`, `COS`, `TAN`,
-and `COMPLEX` support; see
+`ARCSIN`, `ARCCOS`, `ARCTAN`, and `COMPLEX` support; see
 [classical functions in bra](../../docs/bra.md#classical-function-invocation).
 `COMPLEX` is also needed for general complex-literal construction in programs
 without `sqrt` calls.
@@ -3322,7 +3363,8 @@ The current prototype does not reliably support:
 - scalar-bit shifts and runtime-dependent register selections,
   ordered bit-register comparisons, whole-array bitwise operations, direct
   Boolean bitwise operations, or classical functions other than the
-  `exp`/`sqrt`/`log`/`sin`/`cos`/`tan`/`real`/`imag` subset above;
+  `exp`/`sqrt`/`log`/`sin`/`cos`/`tan`/`arcsin`/`arccos`/`arctan`/`real`/`imag`
+  subset above;
 - `angle` declarations and `angle`-typed trigonometric arguments; or
 - arithmetic operators other than `+`, `-`, `*`, `/`, and integer `%` and `**`.
 
@@ -3383,6 +3425,18 @@ preservation, fusion, and the trigonometric example above. Without `--bra`,
 its two reference tests require only the standard library. Native tests also
 check all three precisions against a separately compiled non-fast-math
 library oracle and verify destination preservation and unchanged control modes.
+
+`bra/test/qasm2qcx_inverse_trigonometric_numerical.py` checks constant,
+executable literal, and variable calls against independent Decimal square-root
+and arctangent-series references, with half-angle reduction. It does not reuse
+binary libm inverse-trigonometric functions as the reference. Cases include
+domain endpoints and their neighbors, signed zeros, subnormals, large finite
+arctangents, promotions, nesting, arrays, loops, source preservation,
+reached/skipped errors, gate parameters with and without fusion, and the
+inverse-trigonometric example above. Without `--bra`, its two reference tests
+require only the standard library. Native tests additionally verify strict
+domain checks, principal ranges, captured inputs, and unchanged destinations
+on failure in all three precisions, debug/release builds, and UBSan.
 
 `bra/test/qasm2qcx_u_phase_numerical.py` independently transcribes the published
 built-in `U` matrix and the mathematical active block of `cu`. It verifies the
@@ -3797,6 +3851,7 @@ python3 bra/test/qasm2qcx_math_function_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_sqrt_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_log_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_trigonometric_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_inverse_trigonometric_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_u_phase_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_inverse_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_control_numerical.py --bra bra/bin/bra

@@ -12,7 +12,10 @@
 namespace bra
 {
   enum class classical_function_id : int
-  { exp = 0, arg = 1, abs = 2, sqrt = 3, complex_ = 4, log = 5, sin = 6, cos = 7, tan = 8 };
+  {
+    exp = 0, arg = 1, abs = 2, sqrt = 3, complex_ = 4, log = 5, sin = 6, cos = 7, tan = 8,
+    arcsin = 9, arccos = 10, arctan = 11
+  };
 
   struct classical_function_signature
   {
@@ -35,6 +38,9 @@ namespace bra
     case ::bra::classical_function_id::sin: return "SIN";
     case ::bra::classical_function_id::cos: return "COS";
     case ::bra::classical_function_id::tan: return "TAN";
+    case ::bra::classical_function_id::arcsin: return "ARCSIN";
+    case ::bra::classical_function_id::arccos: return "ARCCOS";
+    case ::bra::classical_function_id::arctan: return "ARCTAN";
     }
     throw std::invalid_argument{"unknown classical function identifier"};
   }
@@ -42,9 +48,9 @@ namespace bra
   // Overload lookup must compare operand types only. Result types are checked
   // against destinations after selecting the signature, never used to select it.
   inline auto classical_function_signatures()
-    -> std::array< ::bra::classical_function_signature, 11u > const&
+    -> std::array< ::bra::classical_function_signature, 14u > const&
   {
-    static auto const signatures = std::array< ::bra::classical_function_signature, 11u >{{
+    static auto const signatures = std::array< ::bra::classical_function_signature, 14u >{{
       {::bra::classical_function_id::exp, {::bra::variable_type::real}, {::bra::variable_type::real}},
       {::bra::classical_function_id::exp, {::bra::variable_type::complex_}, {::bra::variable_type::complex_}},
       {::bra::classical_function_id::arg, {::bra::variable_type::complex_}, {::bra::variable_type::real}},
@@ -56,7 +62,10 @@ namespace bra
       {::bra::classical_function_id::log, {::bra::variable_type::real}, {::bra::variable_type::real}},
       {::bra::classical_function_id::sin, {::bra::variable_type::real}, {::bra::variable_type::real}},
       {::bra::classical_function_id::cos, {::bra::variable_type::real}, {::bra::variable_type::real}},
-      {::bra::classical_function_id::tan, {::bra::variable_type::real}, {::bra::variable_type::real}}
+      {::bra::classical_function_id::tan, {::bra::variable_type::real}, {::bra::variable_type::real}},
+      {::bra::classical_function_id::arcsin, {::bra::variable_type::real}, {::bra::variable_type::real}},
+      {::bra::classical_function_id::arccos, {::bra::variable_type::real}, {::bra::variable_type::real}},
+      {::bra::classical_function_id::arctan, {::bra::variable_type::real}, {::bra::variable_type::real}}
     }};
     return signatures;
   }

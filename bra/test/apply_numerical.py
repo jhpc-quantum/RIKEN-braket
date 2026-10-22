@@ -113,6 +113,30 @@ def main():
     bra = parser.parse_args().bra.resolve()
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     calls = 0
+    for name, function in (('ARCSIN', math.asin), ('ARCCOS', math.acos), ('ARCTAN', math.atan)):
+        profiles = [('R:0', 0.25), ('R:N:N', 0.75), (':REAL:N:0', 1), (':REAL:U', 2),
+                    (':REAL:Z:0', 0.25), (':IMAG:Z:0', 1), ('1.0', 1), ('-1.0', -1), ('-0.5', -0.5),
+                    (repr(math.nextafter(1.0, 0)), math.nextafter(1.0, 0)),
+                    (repr(math.nextafter(-1.0, 0)), math.nextafter(-1.0, 0))]
+        if name == 'ARCTAN':
+            profiles.extend((('1e20', 1e20), ('-1e20', -1e20), ('1e308', 1e308), ('-1e308', -1e308)))
+        for source, value in profiles:
+            if name != 'ARCTAN' and abs(value) > 1:
+                continue
+            check_values(bra, SETUP + f'APPLY OUT <- {name} {source}\nPRINTLN OUT R:0 R:1 R:2 N:1 U\n',
+                         [function(value), 0.25, -0.5, 0.75, 2, 2])
+            calls += 1
+        check_values(bra, SETUP + f'apply r:n:n <- {name.lower()} r:n:n\nPRINTLN R:0 R:1 R:2\n',
+                     [0.25, -0.5, function(0.75)])
+        calls += 1
+        for value in (0.0, -0.0):
+            result = run(bra, SETUP + f'APPLY OUT <- {name} {value!r}\nPRINTLN OUT\n')
+            if result.returncode:
+                raise RuntimeError(f'{name} failed for zero: {result}')
+            actual, expected = float(result.stdout), function(value)
+            if not math.isclose(actual, expected, rel_tol=1e-5, abs_tol=0) or math.copysign(1, actual) != math.copysign(1, expected):
+                raise RuntimeError(f'{name} lost zero behavior: {actual!r} != {expected!r}')
+            calls += 1
     for name, function in (('SIN', math.sin), ('COS', math.cos), ('TAN', math.tan)):
         for source, value in (('R:0', 0.25), ('R:N:N', 0.75), (':REAL:N:1', 2),
                               (':REAL:U', 2), (':REAL:Z:0', 0.25), (':IMAG:Z:0', 1),
@@ -233,7 +257,8 @@ def main():
         if any(not cmath.isclose(a, e, rel_tol=1e-5, abs_tol=2e-6) for a, e in zip(actual, expected)):
             raise RuntimeError(f'LOG gate parameter mismatch: {fused=}, {actual=}, {expected=}')
         calls += 1
-        for name, function in (('SIN', math.sin), ('COS', math.cos), ('TAN', math.tan)):
+        for name, function in (('SIN', math.sin), ('COS', math.cos), ('TAN', math.tan),
+                               ('ARCSIN', math.asin), ('ARCCOS', math.acos), ('ARCTAN', math.atan)):
             program = (SETUP + 'H 0\nH 1\n' + begin
                        + f'APPLY OUT <- {name} 0.5\nU1 0 OUT\n' + end)
             expected = [cmath.exp(1j * function(0.5) * bool(index & 1)) / 2 for index in range(4)]
@@ -303,7 +328,7 @@ def main():
         ('APPLY OUT <- EXP 1000000.0', 'overflow/nonfinite result', ''),
         ('APPLY COUT <- EXP :COMPLEX:1000000.0', 'overflow/nonfinite result', ''),
     ]
-    for name in ('SIN', 'COS', 'TAN'):
+    for name in ('SIN', 'COS', 'TAN', 'ARCSIN', 'ARCCOS', 'ARCTAN'):
         failures.extend((
             (f'APPLY OUT <- {name} 1', 'unsupported operand signature', ''),
             (f'APPLY OUT <- {name} U', 'unsupported operand signature', ''),
@@ -314,10 +339,13 @@ def main():
             (f'APPLY R:999 <- {name} R:0', 'index out of range', ''),
             (f'APPLY OUT <- {name} R:999', 'index out of range', ''),
         ))
+    for name in ('ARCSIN', 'ARCCOS'):
+        for value in (2.0, -2.0, math.nextafter(1.0, math.inf), math.nextafter(-1.0, -math.inf)):
+            failures.append((f'APPLY R:0 <- {name} {value!r}', 'real input outside [-1, 1]', ''))
     for numerator in ('1.0', '-1.0', '0.0'):
         preparation = f'LET OUT := {numerator}\nLET OUT /= 0.0\nLET COUT := :COMPLEX:OUT\n'
         failures.extend((f'APPLY R:0 <- {name} OUT', 'nonfinite input', preparation)
-                        for name in ('SIN', 'COS', 'TAN'))
+                        for name in ('SIN', 'COS', 'TAN', 'ARCSIN', 'ARCCOS', 'ARCTAN'))
         failures.extend((
             ('APPLY R:0 <- LOG OUT', 'nonfinite input', preparation),
             ('APPLY Z:0 <- COMPLEX OUT R:0', 'nonfinite input', preparation),

@@ -256,6 +256,9 @@ not literals, casts, or built-in constants.
 | `SIN` | `REAL` | `REAL` |
 | `COS` | `REAL` | `REAL` |
 | `TAN` | `REAL` | `REAL` |
+| `ARCSIN` | `REAL` | `REAL` |
+| `ARCCOS` | `REAL` | `REAL` |
+| `ARCTAN` | `REAL` | `REAL` |
 | `COMPLEX` | `REAL`, `REAL` | `COMPLEX` |
 
 Only operand types select an overload. Destination types must then match the
@@ -290,6 +293,9 @@ APPLY Y <- LOG X
 APPLY Y <- SIN X
 APPLY Y <- COS :REAL:N
 APPLY Y <- TAN X
+APPLY Y <- ARCSIN 0.5
+APPLY Y <- ARCCOS 0.5
+APPLY Y <- ARCTAN X
 APPLY Z <- COMPLEX X -0.0
 APPLY X <- EXP X
 ```
@@ -385,6 +391,23 @@ of C++ wrappers in optimized long-double builds. Values near zeros or tangent
 poles are not snapped: a floating-point approximation of π/2 is not treated
 as an exact pole, and a large finite tangent is valid. Library accuracy and
 argument reduction determine the result for each stored finite operand.
+
+`ARCSIN`, `ARCCOS`, and `ARCTAN` compute principal real inverse trigonometric
+values in radians. Their only signatures are `REAL -> REAL`, with finite
+inputs and results required. `ARCSIN` and `ARCCOS` require an input in
+`[-1, 1]`, including both endpoints. Values outside the domain, even the
+immediately adjacent representable values, are rejected rather than clamped.
+`ARCTAN` accepts every finite real input, including large magnitudes.
+
+The principal ranges are [-π/2, π/2] for `ARCSIN`, [0, π] for `ARCCOS`, and
+(-π/2, π/2) for `ARCTAN`; floating-point rounding can produce either endpoint
+for large finite `ARCTAN` arguments. `ARCSIN` and `ARCTAN` preserve signed
+zero, `ARCCOS(±0)` returns π/2, and `ARCCOS(1)` returns positive zero.
+These functions use direct C-library entry points at the configured precision,
+without build-option or floating-point-control-mode changes. Subnormal
+arithmetic follows that library and environment. Invalid domains and
+nonfinite inputs/results leave the destination unchanged, including in-place
+calls. Skipped instructions do not evaluate their operands or domain checks.
 
 `ARG` computes the complex argument in radians and rejects zero, including all
 combinations of signed-zero components. For a negative real component,

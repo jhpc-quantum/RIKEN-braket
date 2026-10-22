@@ -310,6 +310,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         'sin': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='SIN'),),
         'cos': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='COS'),),
         'tan': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='TAN'),),
+        'arcsin': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='ARCSIN'),),
+        'arccos': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='ARCCOS'),),
+        'arctan': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='ARCTAN'),),
         'real': (_BuiltinFunctionSignature((ValueType.COMPLEX,), ValueType.FLOAT, component='REAL'),),
         'imag': (_BuiltinFunctionSignature((ValueType.COMPLEX,), ValueType.FLOAT, component='IMAG'),),
     }
@@ -4890,6 +4893,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             'SIN': {ValueType.FLOAT: math.sin},
             'COS': {ValueType.FLOAT: math.cos},
             'TAN': {ValueType.FLOAT: math.tan},
+            'ARCSIN': {ValueType.FLOAT: math.asin},
+            'ARCCOS': {ValueType.FLOAT: math.acos},
+            'ARCTAN': {ValueType.FLOAT: math.atan},
         }
         operand_type = signature.operand_types[0]
         function = functions.get(signature.qcx_function, {}).get(operand_type)
@@ -4901,6 +4907,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             raise InvalidConstantFunctionException(f'Function {name}: negative real input')
         if signature.qcx_function == 'LOG' and value <= 0:
             raise InvalidConstantFunctionException(f'Function {name}: nonpositive real input')
+        if signature.qcx_function in ('ARCSIN', 'ARCCOS') and not -1 <= value <= 1:
+            raise InvalidConstantFunctionException(f'Function {name}: real input outside [-1, 1]')
         try:
             result = function(value)
         except (OverflowError, ValueError) as error:
