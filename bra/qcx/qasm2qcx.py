@@ -4753,9 +4753,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def visit_FunctionCall(self, expression: ast.FunctionCall) -> None:
         signature, runtime = self.__function_call_info(expression)
         if self.__expression_kind != ExpressionKind.CONST_ARITHMETIC:
-            # Even literal arguments in executable code need native evaluation:
-            # host folding would change precision and reached-path failures.
-            raise UnsupportedOpenQASMError(f'runtime evaluation of function {expression.name.name}')
+            if self.__expression_kind not in (ExpressionKind.ARITHMETIC, ExpressionKind.CONDITIONAL):
+                raise UnsupportedOpenQASMError('function call outside a value expression')
+            self.__visit_runtime_function(expression, signature)
+            return
         if runtime:
             raise NoConstantExpressionException
         previous = (self.__expression_kind, self.__value, self.__value_type,
@@ -4787,6 +4788,80 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         finally:
             for temporary in self.__used_temporary_variables - previous_used:
                 self.__release_temporary_variable(temporary)
+
+    def __emit_function_real_literal(self, destination: str, value: int | float) -> None:
+        # QCX has no portable inf/nan literal. Materialize nonfinite values
+        # inside the reached path, leaving EXP to perform its native checks.
+        # Do not narrow integer literals through Python float first.
+        if isinstance(value, float) and not math.isfinite(value):
+            numerator = 0.0 if math.isnan(value) else math.copysign(1.0, value)
+            self.__qcx_lines.extend([f'LET {destination} := {numerator!r}', f'LET {destination} /= 0.0'])
+        else:
+            self.__qcx_lines.append(f'LET {destination} := :REAL:{value}')
+
+    def __runtime_function_operand(
+            self, value: str | int | float | complex, value_type: ValueType,
+            value_kind: ValueKind, target_type: ValueType) -> str:
+        if value_kind == ValueKind.LITERAL:
+            if value_type != ValueType.COMPLEX:
+                scalar = self.__add_new_temporary_variable(ValueType.FLOAT)
+                self.__emit_function_real_literal(scalar, value)
+                return scalar if target_type == ValueType.FLOAT else f':COMPLEX:{scalar}'
+            if not cmath.isfinite(value):
+                # Literal component extraction is handled directly by the
+                # caller. EXP must reject either nonfinite component; using
+                # a typed nonfinite operand avoids unparseable QCX literals.
+                scalar = self.__add_new_temporary_variable(ValueType.FLOAT)
+                component = value.real if not math.isfinite(value.real) else value.imag
+                self.__emit_function_real_literal(scalar, component)
+                return f':COMPLEX:{scalar}'
+        operand, _ = self.__converted_operand(value, value_type, value_kind, target_type)
+        return operand
+
+    def __visit_runtime_function(self, expression: ast.FunctionCall, signature: _BuiltinFunctionSignature) -> None:
+        # Every initial built-in is unary. Keep argument/conversion storage
+        # reserved until the result is allocated, so nested calls and indexed
+        # assignment destinations cannot alias or be overwritten by the result.
+        previous = (self.__expression_kind, self.__value, self.__value_type,
+                    self.__value_kind, self.__evaluate_constant)
+        previous_used = self.__used_temporary_variables.copy()
+        result = None
+        keep = False
+        try:
+            self.__expression_kind = ExpressionKind.ARITHMETIC
+            self.visit(expression.arguments[0])
+            value, value_type, value_kind = self.__value, self.__value_type, self.__value_kind
+            if value_kind is None or value_type is None:
+                raise UninitializedValueException
+            if signature.component is not None and value_kind == ValueKind.LITERAL:
+                # Selecting a stored literal component is exact, not a host
+                # mathematical evaluation. Avoid constructing a complex value
+                # with arithmetic that could contaminate a finite component
+                # with the other component's NaN/Inf or discard a signed zero.
+                if value_type == ValueType.COMPLEX:
+                    component = value.real if signature.component == 'REAL' else value.imag
+                else:
+                    component = value if signature.component == 'REAL' else 0.0
+                result = self.__add_new_temporary_variable(signature.result_type)
+                self.__emit_function_real_literal(result, component)
+            else:
+                operand = self.__runtime_function_operand(value, value_type, value_kind, signature.operand_types[0])
+                result = self.__add_new_temporary_variable(signature.result_type)
+                if signature.component is not None:
+                    self.__qcx_lines.append(f'LET {result} := :{signature.component}:{operand}')
+                else:
+                    self.__qcx_lines.append(f'APPLY {result} <- {signature.qcx_function} {operand}')
+            self.__expression_kind = previous[0]
+            self.__value, self.__value_type, self.__value_kind = result, signature.result_type, ValueKind.TEMPORARY
+            keep = True
+        except Exception:
+            (self.__expression_kind, self.__value, self.__value_type,
+             self.__value_kind, self.__evaluate_constant) = previous
+            raise
+        finally:
+            for temporary in self.__used_temporary_variables - previous_used:
+                if not keep or temporary != result:
+                    self.__release_temporary_variable(temporary)
 
     @staticmethod
     def __fold_builtin_function(
