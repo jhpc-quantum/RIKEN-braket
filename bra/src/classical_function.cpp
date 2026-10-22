@@ -1,3 +1,4 @@
+#include <array>
 #include <cmath>
 #include <complex>
 #include <cstring>
@@ -37,6 +38,38 @@ namespace bra
       auto const bound = static_cast< ::bra::real_type >(limits::min_exponent - limits::digits - 2)
         * std::log(static_cast< ::bra::real_type >(limits::radix));
       return value < bound ? bound : value;
+    }
+
+    // Select C entry points, not C++ overload wrappers: an address-taken
+    // std::sin(long double) wrapper can itself contain an x87 FSIN under
+    // fast-math, defeating the indirect-call boundary.
+    inline auto trigonometric_functions(float) -> std::array<float (*)(float), 3u>
+    { return {{&::sinf, &::cosf, &::tanf}}; }
+
+    inline auto trigonometric_functions(double) -> std::array<double (*)(double), 3u>
+    { return {{&::sin, &::cos, &::tan}}; }
+
+    inline auto trigonometric_functions(long double) -> std::array<long double (*)(long double), 3u>
+    { return {{&::sinl, &::cosl, &::tanl}}; }
+
+    auto library_real_trigonometric(::bra::classical_function_id const id, ::bra::real_type const value)
+      -> ::bra::real_type
+    {
+      // Keep the library boundary: optimized inline x87 trigonometric
+      // instructions can fail range reduction for large finite operands.
+      // The library also retains signed-zero semantics. Do not pre-reduce
+      // the argument or change floating-point control modes.
+      auto const functions = trigonometric_functions(::bra::real_type{});
+      using function_type = ::bra::real_type (*)(::bra::real_type);
+      function_type volatile function = nullptr;
+      switch (id)
+      {
+      case ::bra::classical_function_id::sin: function = functions[0u]; break;
+      case ::bra::classical_function_id::cos: function = functions[1u]; break;
+      case ::bra::classical_function_id::tan: function = functions[2u]; break;
+      default: throw std::invalid_argument{"unsupported trigonometric function evaluation"};
+      }
+      return function(value);
     }
 
     auto library_real_log(::bra::real_type const value) -> ::bra::real_type
@@ -146,6 +179,16 @@ namespace bra
     {
       if (not boost::math::isfinite(*value))
         throw std::domain_error{"nonfinite input to " + std::string{::bra::classical_function_name(signature.function)}};
+      if (signature.function == ::bra::classical_function_id::sin
+          or signature.function == ::bra::classical_function_id::cos
+          or signature.function == ::bra::classical_function_id::tan)
+      {
+        auto const result = library_real_trigonometric(signature.function, *value);
+        if (not boost::math::isfinite(result))
+          throw std::overflow_error{"overflow/nonfinite result from "
+            + std::string{::bra::classical_function_name(signature.function)}};
+        return {result};
+      }
       if (signature.function == ::bra::classical_function_id::log)
       {
         // Test the representation: DAZ must not turn a stored positive

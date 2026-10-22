@@ -132,6 +132,17 @@ int main()
   check_close("RESULT", 7);
   state.invoke_apply_operation({"RESULT"}, function::sqrt, {"R:N"});
   check_close("RESULT", std::sqrt(bra::real_type{7}));
+  for (auto const id: {function::sin, function::cos, function::tan})
+  {
+    state.invoke_apply_operation({"RESULT"}, id, {"R:N"});
+    auto const input = bra::real_type{7};
+    auto const expected = id == function::sin ? std::sin(input)
+      : id == function::cos ? std::cos(input) : std::tan(input);
+    check_close("RESULT", expected);
+    check_call({"R:N"}, id, {"N"}, "unsupported operand signature");
+    check_call({"R:N"}, id, {"Z"}, "unsupported operand signature");
+    check_call({"CRESULT"}, id, {"R"}, "wrong destination type");
+  }
   state.invoke_apply_operation({"RESULT"}, function::log, {"R:N"});
   check_close("RESULT", std::log(bra::real_type{7}));
   state.invoke_apply_operation({"RESULT"}, function::log, {"RESULT"});

@@ -99,8 +99,8 @@ The converter currently covers:
 - scalar integer shift expressions (`<<`, `>>`) and compound assignments
   (`<<=`, `>>=`), with checked counts and signed left-shift overflow;
 - scalar constants, variables, assignments, and numeric casts;
-- scalar built-in `exp`, `sqrt`, `log`, `real`, and `imag` calls in constant and runtime
-  expressions, including nested calls;
+- scalar built-in `exp`, `sqrt`, `log`, `sin`, `cos`, `tan`, `real`, and `imag`
+  calls in constant and runtime expressions, including nested calls;
 - fixed-size, one-dimensional `int`, `uint`, `float`, `bool`, and `complex` arrays
   with static and runtime element reads and writes;
 - scalar and register `bit` values, including bit-string initialization;
@@ -146,14 +146,18 @@ from the input type, never from the assignment destination:
 | `sqrt(x)` | `float` | `float` | `APPLY result <- SQRT operand` |
 | `sqrt(z)` | `complex` | `complex` | `APPLY result <- SQRT operand` |
 | `log(x)` | `float` | `float` | `APPLY result <- LOG operand` |
+| `sin(x)` | `float` | `float` | `APPLY result <- SIN operand` |
+| `cos(x)` | `float` | `float` | `APPLY result <- COS operand` |
+| `tan(x)` | `float` | `float` | `APPLY result <- TAN operand` |
 | `real(z)` | `complex` | `float` | `LET result := :REAL:operand` |
 | `imag(z)` | `complex` | `float` | `LET result := :IMAG:operand` |
 
 `real` and `imag` extract the real and imaginary components; they reuse bra's
 existing component operators rather than introducing new native functions.
 Standard scalar `bool`, `int`, and `uint` arguments promote to `float` for
-`exp`, `sqrt`, and `log`, or to `complex` for component extraction. A `float` argument
-to `real` or `imag` also promotes to `complex`, with a zero imaginary component. Thus
+`exp`, `sqrt`, `log`, `sin`, `cos`, and `tan`, or to `complex` for component
+extraction. A `float` argument to `real` or `imag` also promotes to `complex`,
+with a zero imaginary component. Thus
 `complex z = exp(1);` evaluates the real exponential first, then converts its
 result to complex. Use `exp(complex(1))` to select the complex overload.
 Scalar `bit` arguments require an explicit numeric cast.
@@ -217,6 +221,25 @@ Other `REAL` representations reject subnormal inputs explicitly; normal
 positive inputs remain supported. Arithmetic that has already flushed an
 argument to zero is not repaired by `log`.
 
+`sin`, `cos`, and `tan` currently accept only real-valued arguments, interpreted
+in radians. Complex arguments are rejected, even with a zero imaginary part
+or a complex assignment destination. `angle`-typed arguments remain
+unsupported. Constant expressions use Python's `math.sin`, `math.cos`, and
+`math.tan`; executable calls, including literal arguments, use native bra
+`SIN`, `COS`, and `TAN`. Both paths reject nonfinite inputs and nonfinite
+results. Invalid evaluated constants fail conversion; executable failures
+occur only when reached, including in conditions and loop expressions.
+
+For exact zero, `sin` and `tan` preserve its sign and `cos` returns positive
+one. Subnormal arithmetic follows the host or backend floating-point
+environment and may flush to zero. Native calls use the C library at the
+configured precision, without preliminary angle reduction or changes to
+build flags or floating-point control modes. Large finite arguments remain
+valid, subject to library accuracy. Values near zeros and tangent poles are
+not snapped: an approximation of π/2 is not an exact pole, so its large
+finite tangent is accepted. Constant and runtime results can differ because
+their precisions and floating-point environments can differ.
+
 The converter uses native `APPLY ... <- COMPLEX real imaginary` to construct
 nontrivial complex literals directly, preserving component signs and avoiding
 arithmetic assembly that could discard zeros or subnormals. This also applies
@@ -275,7 +298,21 @@ rx(theta) q;
 rz(HALF_LOG) q;
 ```
 
-Use a bra version with native `APPLY`, `EXP`, `SQRT`, `LOG`, and `COMPLEX` support; see
+This example combines a constant cosine with runtime sine and tangent calls:
+
+<!-- trigonometric-function-example -->
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+qubit q;
+const float SHIFT = cos(0.5);
+float x = 0.5;
+rx(sin(x)) q;
+rz(SHIFT + tan(x)) q;
+```
+
+Use a bra version with native `APPLY`, `EXP`, `SQRT`, `LOG`, `SIN`, `COS`, `TAN`,
+and `COMPLEX` support; see
 [classical functions in bra](../../docs/bra.md#classical-function-invocation).
 `COMPLEX` is also needed for general complex-literal construction in programs
 without `sqrt` calls.
@@ -3285,7 +3322,8 @@ The current prototype does not reliably support:
 - scalar-bit shifts and runtime-dependent register selections,
   ordered bit-register comparisons, whole-array bitwise operations, direct
   Boolean bitwise operations, or classical functions other than the
-  `exp`/`sqrt`/`log`/`real`/`imag` subset above; or
+  `exp`/`sqrt`/`log`/`sin`/`cos`/`tan`/`real`/`imag` subset above;
+- `angle` declarations and `angle`-typed trigonometric arguments; or
 - arithmetic operators other than `+`, `-`, `*`, `/`, and integer `%` and `**`.
 
 Integer limitations additionally include `uint[n]` widths above native `UINT`,
@@ -3319,7 +3357,7 @@ endpoints, nearby and extreme values, stored subnormal components, nesting,
 self-assignment, arrays, source preservation, loops, reached/skipped failures,
 complex negation, fusion, and the square-root example above. Without `--bra`,
 its two reference tests require only the standard library. Native
-`bra/test/classical_function_numerical.py` checks `SQRT`, `LOG`, and `COMPLEX` in float,
+`bra/test/classical_function_numerical.py` checks the native functions in float,
 double, and long-double debug/release builds; `--sanitize` additionally runs
 UBSan checks. These tests do not change the existing build flags or
 floating-point control modes.
@@ -3333,6 +3371,18 @@ fusion, including the logarithm example above. Without `--bra`, its two
 reference tests require only the standard library. Native LOG tests also
 cover stored negative subnormals, destination preservation on failure, and
 unchanged floating-point control modes in all three configured precisions.
+
+`bra/test/qasm2qcx_trigonometric_numerical.py` checks constant, executable
+literal, and variable calls against independent Decimal Taylor-series
+references. High-precision argument reduction uses Machin's formula for π
+and retains over 100 digits even for maximum-double inputs; it does not
+reuse binary libm trigonometric functions as the reference. The audit covers
+large arguments, zero and tangent-pole neighbors, signed zeros, subnormals,
+promotions, nesting, arrays, loops, reached/skipped failures, source
+preservation, fusion, and the trigonometric example above. Without `--bra`,
+its two reference tests require only the standard library. Native tests also
+check all three precisions against a separately compiled non-fast-math
+library oracle and verify destination preservation and unchanged control modes.
 
 `bra/test/qasm2qcx_u_phase_numerical.py` independently transcribes the published
 built-in `U` matrix and the mathematical active block of `cu`. It verifies the
@@ -3746,6 +3796,7 @@ python3 bra/test/qasm2qcx_if_else_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_math_function_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_sqrt_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_log_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_trigonometric_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_u_phase_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_inverse_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_control_numerical.py --bra bra/bin/bra

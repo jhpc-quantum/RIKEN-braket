@@ -253,6 +253,9 @@ not literals, casts, or built-in constants.
 | `SQRT` | `REAL` | `REAL` |
 | `SQRT` | `COMPLEX` | `COMPLEX` |
 | `LOG` | `REAL` | `REAL` |
+| `SIN` | `REAL` | `REAL` |
+| `COS` | `REAL` | `REAL` |
+| `TAN` | `REAL` | `REAL` |
 | `COMPLEX` | `REAL`, `REAL` | `COMPLEX` |
 
 Only operand types select an overload. Destination types must then match the
@@ -284,6 +287,9 @@ APPLY Z <- EXP :COMPLEX:X
 APPLY Y <- ARG Z
 APPLY Y <- ABS Z
 APPLY Y <- LOG X
+APPLY Y <- SIN X
+APPLY Y <- COS :REAL:N
+APPLY Y <- TAN X
 APPLY Z <- COMPLEX X -0.0
 APPLY X <- EXP X
 ```
@@ -363,6 +369,22 @@ environment treats subnormal arithmetic operands as zero. This does not
 change compiler flags or floating-point control modes. With other `REAL`
 representations, subnormal inputs are explicitly rejected with a domain
 error; positive normal inputs remain supported.
+
+`SIN`, `COS`, and `TAN` compute real trigonometric functions with arguments
+in radians. They require finite `REAL` inputs and reject nonfinite results
+before changing the destination. There are no complex overloads or implicit
+integer promotions. `SIN` and `TAN` preserve the sign of zero; `COS` returns
+positive one for either sign of zero. Subnormal arithmetic follows the native
+library and existing floating-point environment, including possible flushing
+to zero.
+
+These functions call the C-library entry points for the configured precision,
+without preliminary angle reduction, build-option changes, or changes to
+floating-point control modes. This avoids restricted-range x87 expansions
+of C++ wrappers in optimized long-double builds. Values near zeros or tangent
+poles are not snapped: a floating-point approximation of π/2 is not treated
+as an exact pole, and a large finite tangent is valid. Library accuracy and
+argument reduction determine the result for each stored finite operand.
 
 `ARG` computes the complex argument in radians and rejects zero, including all
 combinations of signed-zero components. For a negative real component,
