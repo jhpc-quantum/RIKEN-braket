@@ -30,6 +30,8 @@ apply missing:n:999 <- exp nonexistent
 APPLY R:N:999 <- ARG R
 APPLY R R <- EXP 1
 APPLY R:N:999 <- ABS nonexistent
+APPLY R:N:999 <- SQRT nonexistent
+APPLY missing <- COMPLEX nonexistent R:N:999
 @DONE
 PRINTLN R
 ''')

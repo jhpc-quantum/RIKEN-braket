@@ -99,7 +99,7 @@ The converter currently covers:
 - scalar integer shift expressions (`<<`, `>>`) and compound assignments
   (`<<=`, `>>=`), with checked counts and signed left-shift overflow;
 - scalar constants, variables, assignments, and numeric casts;
-- scalar built-in `exp`, `real`, and `imag` calls in constant and runtime
+- scalar built-in `exp`, `sqrt`, `real`, and `imag` calls in constant and runtime
   expressions, including nested calls;
 - fixed-size, one-dimensional `int`, `uint`, `float`, `bool`, and `complex` arrays
   with static and runtime element reads and writes;
@@ -143,14 +143,16 @@ from the input type, never from the assignment destination:
 | --- | --- | --- | --- |
 | `exp(x)` | `float` | `float` | `APPLY result <- EXP operand` |
 | `exp(z)` | `complex` | `complex` | `APPLY result <- EXP operand` |
+| `sqrt(x)` | `float` | `float` | `APPLY result <- SQRT operand` |
+| `sqrt(z)` | `complex` | `complex` | `APPLY result <- SQRT operand` |
 | `real(z)` | `complex` | `float` | `LET result := :REAL:operand` |
 | `imag(z)` | `complex` | `float` | `LET result := :IMAG:operand` |
 
 `real` and `imag` extract the real and imaginary components; they reuse bra's
 existing component operators rather than introducing new native functions.
 Standard scalar `bool`, `int`, and `uint` arguments promote to `float` for
-`exp`, or to `complex` for component extraction. A `float` argument to `real`
-or `imag` also promotes to `complex`, with a zero imaginary component. Thus
+`exp` and `sqrt`, or to `complex` for component extraction. A `float` argument
+to `real` or `imag` also promotes to `complex`, with a zero imaginary component. Thus
 `complex z = exp(1);` evaluates the real exponential first, then converts its
 result to complex. Use `exp(complex(1))` to select the complex overload.
 Scalar `bit` arguments require an explicit numeric cast.
@@ -166,8 +168,8 @@ converter using Python's `float`/`complex` precision. Supported constant calls
 can also supply declaration sizes, loop bounds, and modifier arguments where
 their result type is accepted (use an integer cast when required). In
 executable expressions, even literal calls such as `float x = exp(1);` use
-native bra evaluation, not host exponential folding. Runtime promotion and
-evaluation therefore use bra's configured `REAL`/`COMPLEX` precision; declared
+native bra evaluation, not host mathematical-function folding. Runtime
+promotion and evaluation therefore use bra's configured `REAL`/`COMPLEX` precision; declared
 OpenQASM floating-point widths remain unenforced.
 
 `exp` requires a finite argument (both components for complex inputs) and a
@@ -177,6 +179,51 @@ Underflow follows the applicable host or backend floating-point environment.
 Component extraction does not add these finiteness checks. Classical branches,
 short-circuit operators, and empty loops can skip runtime evaluation and its
 failures; names, arity, and types are still validated in skipped code.
+
+`sqrt` returns the principal square root. Its real overload requires a
+nonnegative input, accepting real `-0` and preserving its sign. Negative
+nonzero real inputs are errors, including stored negative subnormals. A
+complex destination does not change this rule: `complex z = sqrt(-1);` is
+invalid when reached. Use `sqrt(complex(-1))` to select the complex overload
+and obtain `0 + 1im`. Constant calls use Python's `math.sqrt` or `cmath.sqrt`;
+executable calls, including literal arguments, use native `SQRT`. Both paths
+reject nonfinite inputs and nonfinite results, with the same distinction
+between conversion-time errors and reached runtime errors as for `exp`.
+
+The complex overload has a nonnegative real result component. The
+converter/native signed-zero policy distinguishes the two sides of the
+negative-real branch cut: input imaginary `+0` selects the positive imaginary
+root, while `-0` selects the negative imaginary root. For example,
+`sqrt(complex(-4))` is `0 + 2im`, whereas `sqrt(-complex(4))` has imaginary
+component `-2`. On the nonnegative real axis, the imaginary zero sign is
+preserved. Complex zero inputs return real `+0` and retain the imaginary zero
+sign. Nearby nonzero components are not snapped to the cut; subnormal
+arithmetic still follows the applicable floating-point environment.
+
+The converter uses native `APPLY ... <- COMPLEX real imaginary` to construct
+nontrivial complex literals directly, preserving component signs and avoiding
+arithmetic assembly that could discard zeros or subnormals. This also applies
+to variable and array initializers and constants copied into runtime storage.
+Runtime complex negation uses a negative-zero seed and componentwise
+subtraction instead of complex multiplication by `-1`, so `sqrt(-z)` retains
+the branch-cut side. The constructor is native QCX functionality, not an
+additional OpenQASM function: `complex(value)` remains the existing
+one-argument OpenQASM cast.
+
+This example combines a constant real root and a runtime complex root. The
+complex root is `1 + 2im`, so the rotation angles are approximately `0.7` and `2`:
+
+<!-- sqrt-function-example -->
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+qubit q;
+const float SCALE = sqrt(0.49);
+complex z = -3 + 4im;
+complex root = sqrt(z);
+rx(SCALE * real(root)) q;
+rz(imag(root)) q;
+```
 
 This example uses a constant exponential, a runtime complex exponential, and
 both component extractors. The two rotations use the real and imaginary parts
@@ -196,8 +243,10 @@ rx(SCALE * cosine) q;
 rz(sine) q;
 ```
 
-Use a bra version with native `APPLY` and `EXP` support; see
+Use a bra version with native `APPLY`, `EXP`, `SQRT`, and `COMPLEX` support; see
 [classical functions in bra](../../docs/bra.md#classical-function-invocation).
+`COMPLEX` is also needed for general complex-literal construction in programs
+without `sqrt` calls.
 Other OpenQASM mathematical built-ins, user-defined functions, extern calls,
 and discarded function-call statements remain unsupported. Native bra `ABS`
 and `ARG` are not exposed as OpenQASM function extensions by this converter.
@@ -3204,7 +3253,7 @@ The current prototype does not reliably support:
 - scalar-bit shifts and runtime-dependent register selections,
   ordered bit-register comparisons, whole-array bitwise operations, direct
   Boolean bitwise operations, or classical functions other than the
-  `exp`/`real`/`imag` subset above; or
+  `exp`/`sqrt`/`real`/`imag` subset above; or
 - arithmetic operators other than `+`, `-`, `*`, `/`, and integer `%` and `**`.
 
 Integer limitations additionally include `uint[n]` widths above native `UINT`,
@@ -3230,6 +3279,18 @@ parameters with and without fusion, and the mathematical-function example
 above. Without `--bra`, its two reference tests require only the standard
 library. Unit tests additionally check overload selection, diagnostics,
 empty-loop validation, once-only argument evaluation, and temporary cleanup.
+
+`bra/test/qasm2qcx_sqrt_numerical.py` checks real and complex roots using
+independent scaled Cartesian complex-root references, not `cmath.sqrt`.
+It covers constant/literal/variable calls, promotions, signed zeros and branch
+endpoints, nearby and extreme values, stored subnormal components, nesting,
+self-assignment, arrays, source preservation, loops, reached/skipped failures,
+complex negation, fusion, and the square-root example above. Without `--bra`,
+its two reference tests require only the standard library. Native
+`bra/test/classical_function_numerical.py` checks `SQRT` and `COMPLEX` in float,
+double, and long-double debug/release builds; `--sanitize` additionally runs
+UBSan checks. These tests do not change the existing build flags or
+floating-point control modes.
 
 `bra/test/qasm2qcx_u_phase_numerical.py` independently transcribes the published
 built-in `U` matrix and the mathematical active block of `cu`. It verifies the
@@ -3641,6 +3702,7 @@ python3 bra/test/integer_bitwise_numerical.py --bra bra/bin/bra
 python3 bra/test/integer_shift_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_if_else_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_math_function_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_sqrt_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_u_phase_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_inverse_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_control_numerical.py --bra bra/bin/bra

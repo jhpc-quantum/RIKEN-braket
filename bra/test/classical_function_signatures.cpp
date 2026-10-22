@@ -19,7 +19,7 @@ int main()
   using type = bra::variable_type;
   using function = bra::classical_function_id;
   auto const& signatures = bra::classical_function_signatures();
-  require(signatures.size() == 4u);
+  require(signatures.size() == 7u);
   require(signatures[0u].function == function::exp);
   require(signatures[0u].operand_types == std::vector<type>{type::real});
   require(signatures[0u].result_types == std::vector<type>{type::real});
@@ -37,6 +37,33 @@ int main()
   require(std::string{bra::classical_function_name(function::abs)} == "ABS");
   require(bra::classical_function_from_name("ABS") == function::abs);
   require(&bra::resolve_classical_function(function::abs, {type::complex_}) == &signatures[3u]);
+  require(std::string{bra::classical_function_name(function::sqrt)} == "SQRT");
+  require(bra::classical_function_from_name("SQRT") == function::sqrt);
+  require(bra::classical_function_from_name("COMPLEX") == function::complex_);
+  auto const& constructor = bra::resolve_classical_function(function::complex_, {type::real, type::real});
+  require(constructor.result_types == std::vector<type>{type::complex_});
+  for (auto const& operands: {std::vector<type>{type::real}, std::vector<type>{type::real, type::integer},
+                             std::vector<type>{type::complex_, type::real},
+                             std::vector<type>{type::real, type::real, type::real}})
+  {
+    auto rejected = false;
+    try { bra::resolve_classical_function(function::complex_, operands); }
+    catch (std::invalid_argument const&) { rejected = true; }
+    require(rejected);
+  }
+  for (auto const operand: {type::real, type::complex_})
+  {
+    auto const& signature = bra::resolve_classical_function(function::sqrt, {operand});
+    require(signature.result_types == std::vector<type>{operand});
+  }
+  for (auto const& operands: {std::vector<type>{}, std::vector<type>{type::integer},
+                            std::vector<type>{type::unsigned_integer}, std::vector<type>{type::real, type::real}})
+  {
+    auto rejected = false;
+    try { bra::resolve_classical_function(function::sqrt, operands); }
+    catch (std::invalid_argument const&) { rejected = true; }
+    require(rejected);
+  }
   for (auto first = signatures.begin(); first != signatures.end(); ++first)
     for (auto second = first + 1; second != signatures.end(); ++second)
       require(first->function != second->function or first->operand_types != second->operand_types);

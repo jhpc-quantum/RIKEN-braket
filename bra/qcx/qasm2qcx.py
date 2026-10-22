@@ -304,6 +304,8 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     builtin_function_signatures: dict[str, tuple[_BuiltinFunctionSignature, ...]] = {
         'exp': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='EXP'),
                 _BuiltinFunctionSignature((ValueType.COMPLEX,), ValueType.COMPLEX, qcx_function='EXP')),
+        'sqrt': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='SQRT'),
+                 _BuiltinFunctionSignature((ValueType.COMPLEX,), ValueType.COMPLEX, qcx_function='SQRT')),
         'real': (_BuiltinFunctionSignature((ValueType.COMPLEX,), ValueType.FLOAT, component='REAL'),),
         'imag': (_BuiltinFunctionSignature((ValueType.COMPLEX,), ValueType.FLOAT, component='IMAG'),),
     }
@@ -718,10 +720,17 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         if self.__value_type == ValueType.UINT:
             self.__uint_expression_types[id(expression)] = (expression, uint_type)
         temporary_variable = self.__add_new_temporary_variable(self.__value_type, uint_type)
-        self.__qcx_lines.append(f'LET {temporary_variable} := {operand}')
-        multiplier = (':COMPLEX:-1.0' if self.__value_type == ValueType.COMPLEX
-                      else ':UINT:-1' if self.__value_type == ValueType.UINT else '-1')
-        self.__qcx_lines.append(f'LET {temporary_variable} *= {multiplier}')
+        if self.__value_type == ValueType.COMPLEX:
+            # (-0,-0) - z flips both component signs, unlike complex
+            # multiplication by -1, whose cross terms can erase signed zeros.
+            # Only the finite zero seed goes through APPLY, so LET retains its
+            # existing nonfinite propagation for the actual operand.
+            self.__qcx_lines.extend([f'APPLY {temporary_variable} <- COMPLEX -0.0 -0.0',
+                                     f'LET {temporary_variable} -= {operand}'])
+        else:
+            self.__qcx_lines.append(f'LET {temporary_variable} := {operand}')
+            multiplier = ':UINT:-1' if self.__value_type == ValueType.UINT else '-1'
+            self.__qcx_lines.append(f'LET {temporary_variable} *= {multiplier}')
         if uint_type is not None:
             self.__normalize_uint_storage(temporary_variable, uint_type)
         if operand_kind == ValueKind.TEMPORARY:
@@ -1091,24 +1100,20 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 return str(float(value)), set()
 
             complex_value = complex(value)
-            if complex_value.imag == 0.0:
+            if complex_value.imag == 0.0 and math.copysign(1.0, complex_value.imag) > 0:
                 return f':COMPLEX:{complex_value.real}', set()
-            if complex_value.real == 0.0 and complex_value.imag == 1.0:
+            positive_real_zero = complex_value.real == 0.0 and math.copysign(1.0, complex_value.real) > 0
+            if positive_real_zero and complex_value.imag == 1.0:
                 return ':I', set()
-            if complex_value.real == 0.0 and complex_value.imag == -1.0:
+            if positive_real_zero and complex_value.imag == -1.0:
                 return ':MINUS_I', set()
 
+            # Shared literal conversion covers function arguments, variables,
+            # constants copied into runtime storage, and array initializers.
+            # Arithmetic assembly loses signed zeros and tiny components.
             temporary = self.__add_new_temporary_variable(ValueType.COMPLEX)
             self.__qcx_lines.append(
-                f'LET {temporary} := :COMPLEX:{complex_value.real}')
-            imaginary = self.__add_new_temporary_variable(ValueType.COMPLEX)
-            imaginary_unit = ':I' if complex_value.imag > 0.0 else ':MINUS_I'
-            self.__qcx_lines.append(f'LET {imaginary} := {imaginary_unit}')
-            if abs(complex_value.imag) != 1.0:
-                self.__qcx_lines.append(
-                    f'LET {imaginary} *= :COMPLEX:{abs(complex_value.imag)}')
-            self.__qcx_lines.append(f'LET {temporary} += {imaginary}')
-            self.__release_temporary_variable(imaginary)
+                f'APPLY {temporary} <- COMPLEX :REAL:{complex_value.real} :REAL:{complex_value.imag}')
             return temporary, {temporary}
 
         if value_type == result_type:
@@ -4791,7 +4796,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
 
     def __emit_function_real_literal(self, destination: str, value: int | float) -> None:
         # QCX has no portable inf/nan literal. Materialize nonfinite values
-        # inside the reached path, leaving EXP to perform its native checks.
+        # inside the reached path, leaving native math to perform its checks.
         # Do not narrow integer literals through Python float first.
         if isinstance(value, float) and not math.isfinite(value):
             numerator = 0.0 if math.isnan(value) else math.copysign(1.0, value)
@@ -4809,7 +4814,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 return scalar if target_type == ValueType.FLOAT else f':COMPLEX:{scalar}'
             if not cmath.isfinite(value):
                 # Literal component extraction is handled directly by the
-                # caller. EXP must reject either nonfinite component; using
+                # caller. Native math rejects either nonfinite component; using
                 # a typed nonfinite operand avoids unparseable QCX literals.
                 scalar = self.__add_new_temporary_variable(ValueType.FLOAT)
                 component = value.real if not math.isfinite(value.real) else value.imag
@@ -4874,13 +4879,17 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # Component extraction is LET, not APPLY: preserve its IEEE values
             # (including signed zeros/nonfinite components), without EXP checks.
             return value.real if signature.component == 'REAL' else value.imag
-        if signature.qcx_function != 'EXP':
+        functions = {'EXP': (math.exp, cmath.exp), 'SQRT': (math.sqrt, cmath.sqrt)}
+        if signature.qcx_function not in functions:
             raise UnsupportedOpenQASMError(f'constant evaluation of function {name}')
         is_complex = signature.operand_types[0] == ValueType.COMPLEX
         if not cmath.isfinite(value):
             raise InvalidConstantFunctionException(f'Function {name}: nonfinite input')
+        if signature.qcx_function == 'SQRT' and not is_complex and value < 0:
+            raise InvalidConstantFunctionException(f'Function {name}: negative real input')
         try:
-            result = cmath.exp(value) if is_complex else math.exp(value)
+            real_function, complex_function = functions[signature.qcx_function]
+            result = complex_function(value) if is_complex else real_function(value)
         except (OverflowError, ValueError) as error:
             raise InvalidConstantFunctionException(f'Function {name}: overflow/nonfinite result') from error
         if not cmath.isfinite(result):

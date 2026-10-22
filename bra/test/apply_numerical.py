@@ -113,6 +113,34 @@ def main():
     bra = parser.parse_args().bra.resolve()
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     calls = 0
+    for re_part in (0.0, -0.0, 3.0, -3.0):
+        for im_part in (0.0, -0.0, 4.0, -4.0):
+            result = run(bra, SETUP + f'APPLY COUT <- COMPLEX {re_part!r} {im_part!r}\n'
+                         'PRINTLN :REAL:COUT :IMAG:COUT\n')
+            if result.returncode:
+                raise RuntimeError(f'COMPLEX construction failed: {result}')
+            actual = list(map(float, result.stdout.split()))
+            if len(actual) != 2 or any(a != e or math.copysign(1, a) != math.copysign(1, e)
+                                      for a, e in zip(actual, (re_part, im_part))):
+                raise RuntimeError(f'COMPLEX changed components: {actual} != {(re_part, im_part)}')
+            calls += 1
+    check_values(bra, SETUP + 'LET COUT := :I\nLET COUT += :COMPLEX:2.0\n'
+                 'apply cout <- complex :imag:cout :real:cout\nPRINTLN :REAL:COUT :IMAG:COUT\n', [1, 2])
+    calls += 1
+    for source, value in (('R:0', 0.25), ('R:N:N', 0.75), ('4.0', 4), ('-0.0', -0.0),
+                          (':REAL:N:1', 2), (':REAL:U', 2), ('1e308', 1e308), ('1e-300', 1e-300)):
+        check_values(bra, SETUP + f'APPLY R:N:N <- SQRT {source}\nPRINTLN R:2 R:0 R:1 N:1 U\n',
+                     [math.sqrt(value), 0.25, -0.5, 2, 2])
+        calls += 1
+    for source, value in (('Z:0', complex(0.25, 1)), ('Z:1', complex(-0.5, -1)),
+                          ('Z:N:N:N:0', complex(0.25, 1)), (':COMPLEX:-4.0', -4+0j),
+                          (':I', 1j), (':MINUS_I', -1j), (':COMPLEX:1e308', 1e308+0j)):
+        expected = cmath.sqrt(value)
+        check_values(bra, SETUP + f'APPLY COUT <- SQRT {source}\nPRINTLN :REAL:COUT :IMAG:COUT\n',
+                     [expected.real, expected.imag])
+        check_values(bra, SETUP + f'LET COUT := {source}\nAPPLY COUT <- SQRT COUT\nPRINTLN :REAL:COUT :IMAG:COUT\n',
+                     [expected.real, expected.imag])
+        calls += 2
     for source, value in (('R:0', 0.25), ('R:N:N', 0.75), ('1.0', 1), ('1.', 1),
                           ('1E+0', 1), ('.5', 0.5), ('-0.0', -0.0), (':REAL:N:1', 2),
                           (':REAL:U', 2), (':REAL:Z:0', 0.25), (':IMAG:Z:0', 1),
@@ -155,6 +183,15 @@ def main():
         if any(not cmath.isclose(a, e, rel_tol=1e-5, abs_tol=2e-6) for a, e in zip(actual, expected)):
             raise RuntimeError(f'ABS gate parameter mismatch: {fused=}, {actual=}, {expected=}')
         calls += 1
+        program = (SETUP + 'H 0\nH 1\n' + begin
+                   + 'APPLY OUT <- SQRT 0.25\nU1 0 OUT\n'
+                   'APPLY COUT <- SQRT :COMPLEX:-4.0\nLET OUT := :IMAG:COUT\nU1 1 OUT\n' + end)
+        expected = [cmath.exp(1j * (0.5 * bool(index & 1) + 2 * bool(index & 2))) / 2
+                    for index in range(4)]
+        actual = amplitudes(bra, program)
+        if any(not cmath.isclose(a, e, rel_tol=1e-5, abs_tol=2e-6) for a, e in zip(actual, expected)):
+            raise RuntimeError(f'SQRT gate parameter mismatch: {fused=}, {actual=}, {expected=}')
+        calls += 1
     check_values(bra, SETUP + 'APPLY R:N:N <- EXP R:N:N\nPRINTLN R:0 R:1 R:2 N:0 N:1 N:2\n',
                  [0.25, -0.5, math.exp(0.75), 1, 2, 0])
     check_values(bra, SETUP + 'APPLY OUT <- ARG :COMPLEX:-1\nPRINTLN OUT\n', [math.pi])
@@ -163,6 +200,21 @@ def main():
     calls += 3
 
     failures = [
+        ('APPLY OUT <- COMPLEX R:0 R:1', 'wrong destination type', ''),
+        ('APPLY COUT <- COMPLEX N:0 R:0', 'unsupported operand signature', ''),
+        ('APPLY COUT <- COMPLEX R:0 U', 'unsupported operand signature', ''),
+        ('APPLY COUT <- COMPLEX R:0', 'wrong operand count', ''),
+        ('APPLY COUT <- COMPLEX R:0 R:1 R:2', 'wrong operand count', ''),
+        ('APPLY COUT <- COMPLEX R:0 R:999', 'index out of range', ''),
+        ('APPLY OUT <- SQRT -1.0', 'negative real input', ''),
+        ('APPLY OUT <- SQRT 1', 'unsupported operand signature', ''),
+        ('APPLY OUT <- SQRT U', 'unsupported operand signature', ''),
+        ('APPLY COUT <- SQRT R:0', 'wrong destination type', ''),
+        ('APPLY OUT <- SQRT Z:0', 'wrong destination type', ''),
+        ('APPLY OUT OUT <- SQRT R:0', 'wrong destination count', ''),
+        ('APPLY OUT <- SQRT R:0 R:1', 'wrong operand count', ''),
+        ('APPLY R:999 <- SQRT R:0', 'index out of range', ''),
+        ('APPLY OUT <- SQRT R:999', 'index out of range', ''),
         ('APPLY OUT <- EXP 1', 'unsupported operand signature', ''),
         ('APPLY OUT <- EXP U', 'unsupported operand signature', ''),
         ('APPLY COUT <- EXP R:0', 'wrong destination type', ''),
@@ -193,6 +245,10 @@ def main():
     for numerator in ('1.0', '-1.0', '0.0'):
         preparation = f'LET OUT := {numerator}\nLET OUT /= 0.0\nLET COUT := :COMPLEX:OUT\n'
         failures.extend((
+            ('APPLY Z:0 <- COMPLEX OUT R:0', 'nonfinite input', preparation),
+            ('APPLY Z:0 <- COMPLEX R:0 OUT', 'nonfinite input', preparation),
+            ('APPLY R:0 <- SQRT OUT', 'nonfinite input', preparation),
+            ('APPLY Z:0 <- SQRT COUT', 'nonfinite input', preparation),
             ('APPLY R:0 <- EXP OUT', 'nonfinite input', preparation),
             ('APPLY Z:0 <- EXP COUT', 'nonfinite input', preparation),
             ('APPLY R:0 <- ARG COUT', 'nonfinite input', preparation),

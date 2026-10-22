@@ -250,6 +250,9 @@ not literals, casts, or built-in constants.
 | `EXP` | `COMPLEX` | `COMPLEX` |
 | `ARG` | `COMPLEX` | `REAL` |
 | `ABS` | `COMPLEX` | `REAL` |
+| `SQRT` | `REAL` | `REAL` |
+| `SQRT` | `COMPLEX` | `COMPLEX` |
+| `COMPLEX` | `REAL`, `REAL` | `COMPLEX` |
 
 Only operand types select an overload. Destination types must then match the
 result types exactly; they never select an overload. There is no implicit
@@ -279,6 +282,7 @@ APPLY Y <- EXP :REAL:N
 APPLY Z <- EXP :COMPLEX:X
 APPLY Y <- ARG Z
 APPLY Y <- ABS Z
+APPLY Z <- COMPLEX X -0.0
 APPLY X <- EXP X
 ```
 
@@ -327,6 +331,25 @@ result; the imaginary argument is not changed.
 For imaginary operands, `EXP` evaluates the complex exponential directly,
 including large finite angles; it does not first reduce the angle modulo a
 machine approximation of $2\pi$.
+
+`COMPLEX` constructs a complex value directly from its real and imaginary
+`REAL` operands, in that order. It preserves the stored components, including
+both signs of zero and subnormal values, without arithmetic assembly. Like
+the other `APPLY` functions, it rejects a nonfinite operand before changing
+the destination. Integer operands need explicit `:REAL:` casts. This is a
+native QCX constructor, not a new OpenQASM built-in function or a replacement
+for the one-operand `:COMPLEX:` cast.
+
+`SQRT` computes the real or complex principal square root. Real negative
+nonzero inputs are domain errors (including stored negative subnormals);
+real `-0` is valid and returns `-0`. Complex roots have a nonnegative real
+component. On the negative real axis, imaginary `+0` selects the positive
+imaginary root, while imaginary `-0` selects the negative imaginary root.
+On the nonnegative real axis the imaginary zero sign is preserved, and
+zero complex inputs return real `+0` with the input imaginary zero sign.
+Nearby inputs are not snapped to the cut. Scaled library evaluation avoids
+unnecessary overflow for large finite components; subnormal arithmetic
+still inherits the existing floating-point environment.
 
 `ARG` computes the complex argument in radians and rejects zero, including all
 combinations of signed-zero components. For a negative real component,
