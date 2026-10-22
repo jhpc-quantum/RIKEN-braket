@@ -32,7 +32,7 @@ class BuiltinFunctionSignatureTests(unittest.TestCase):
 
     def test_registry_records_input_selected_signatures_and_native_operations(self):
         registry = qasm2qcx.QASM2QCXConverter.builtin_function_signatures
-        self.assertEqual(set(registry), {'exp', 'sqrt', 'real', 'imag'})
+        self.assertEqual(set(registry), {'exp', 'sqrt', 'log', 'real', 'imag'})
         resolve = qasm2qcx.QASM2QCXConverter._QASM2QCXConverter__resolve_builtin_function
         real_exp = resolve('exp', (qasm2qcx.ValueType.FLOAT,))
         complex_exp = resolve('exp', (qasm2qcx.ValueType.COMPLEX,))
@@ -330,6 +330,173 @@ class BuiltinFunctionConstantTests(unittest.TestCase):
             with self.assertRaisesRegex(SystemExit, 'exp.*overflow/nonfinite result'):
                 qasm2qcx.main(['functions.qasm'])
             output.assert_not_called()
+
+
+class LogConstantTests(unittest.TestCase):
+    expression = staticmethod(BuiltinFunctionSignatureTests.expression)
+    converter = staticmethod(BuiltinFunctionSignatureTests.converter)
+    evaluate = BuiltinFunctionConstantTests.evaluate
+    value = BuiltinFunctionConstantTests.value
+
+    def test_signature_and_standard_scalar_promotions(self):
+        resolve = qasm2qcx.QASM2QCXConverter._QASM2QCXConverter__resolve_builtin_function
+        for operand in (qasm2qcx.ValueType.FLOAT, qasm2qcx.ValueType.INT,
+                        qasm2qcx.ValueType.UINT, qasm2qcx.ValueType.BOOL):
+            signature = resolve('log', (operand,))
+            self.assertEqual((signature.operand_types, signature.result_type, signature.qcx_function, signature.component),
+                             ((qasm2qcx.ValueType.FLOAT,), qasm2qcx.ValueType.FLOAT, 'LOG', None))
+        for operand in (qasm2qcx.ValueType.COMPLEX, qasm2qcx.ValueType.BIT):
+            with self.assertRaises(qasm2qcx.InvalidFunctionCallException):
+                resolve('log', (operand,))
+        converter = self.converter('float x = 2; const float C = 2;')
+        for source, runtime in (('log(2)', False), ('log(C)', False), ('log(x)', True),
+                                ('sqrt(log(x))', True), ('log(real(2im))', False)):
+            self.assertEqual(converter._QASM2QCXConverter__loop_expression_info(self.expression(source)),
+                             (qasm2qcx.ValueType.FLOAT, runtime))
+
+    def test_real_values_and_promoted_arguments(self):
+        for source, expected in (('log(1)', 0), ('log(2)', math.log(2)), ('log(0.5)', -math.log(2)),
+                                 ('log(true)', 0), ('log(uint[3](10))', math.log(2)),
+                                 ('log(float(bit(true)))', 0), ('log(real(complex(2)))', math.log(2))):
+            with self.subTest(source=source):
+                value, value_type = self.value(source)
+                self.assertEqual(value_type, qasm2qcx.ValueType.FLOAT)
+                self.assertIsInstance(value, float)
+                self.assertAlmostEqual(value, expected)
+        value, _ = self.value('log(1)')
+        self.assertEqual(math.copysign(1, value), 1)
+
+    def test_nested_functions_and_component_extraction(self):
+        for source, expected in (('exp(log(2))', 2), ('log(exp(1))', 1), ('log(sqrt(4))', math.log(2)),
+                                 ('sqrt(log(exp(4)))', 2), ('real(log(2))', math.log(2)), ('imag(log(2))', 0),
+                                 ('log(imag(sqrt(complex(-4))))', math.log(2))):
+            with self.subTest(source=source):
+                self.assertAlmostEqual(self.value(source)[0], expected)
+
+    def test_extreme_magnitudes_and_positive_subnormals(self):
+        for exponent in (-1074, -1022, -100, 0, 100, 1023):
+            number = math.ldexp(1.0, exponent)
+            self.assertAlmostEqual(self.value(f'log({number!r})')[0], exponent * math.log(2))
+        for number in (float.fromhex('0x1.fffffffffffffp+1023'),
+                       math.nextafter(float.fromhex('0x1p-1022'), 0.0), 1e-310):
+            self.assertAlmostEqual(self.value(f'log({number!r})')[0], math.log(number))
+
+    def test_accuracy_near_one(self):
+        for number in (math.nextafter(1.0, 0.0), math.nextafter(1.0, 2.0), 0.999999, 1.000001):
+            value, _ = self.value(f'log({number!r})')
+            self.assertNotEqual(value, 0)
+            self.assertAlmostEqual(value / math.log1p(number - 1), 1)
+
+    def test_nonpositive_arguments_have_function_specific_domain_errors(self):
+        for source in ('log(0)', 'log(0.0)', 'log(-0.0)', 'log(-1)', 'log(-5e-324)', 'log(false)'):
+            with self.subTest(source=source), self.assertRaisesRegex(
+                    qasm2qcx.InvalidConstantFunctionException, 'log.*nonpositive real input'):
+                self.value(source)
+
+    def test_nonfinite_and_unrepresentable_inputs(self):
+        for source in ('log(1e309)', 'log(-1e309)', 'log(1e308 * 1e308)'):
+            with self.subTest(source=source), self.assertRaisesRegex(
+                    qasm2qcx.InvalidConstantFunctionException, 'log.*nonfinite input'):
+                self.value(source)
+        call = qasm2qcx.ast.FunctionCall(qasm2qcx.ast.Identifier('log'), [qasm2qcx.ast.FloatLiteral(math.nan)])
+        with self.assertRaisesRegex(qasm2qcx.InvalidConstantFunctionException, 'log.*nonfinite input'):
+            self.value(call)
+        with self.assertRaisesRegex(qasm2qcx.InvalidConstantFunctionException, 'log.*outside supported constant precision'):
+            self.value('log(' + str(10 ** 400) + ')')
+        for result in (math.inf, math.nan):
+            with patch.object(qasm2qcx.math, 'log', return_value=result):
+                with self.assertRaisesRegex(qasm2qcx.InvalidConstantFunctionException, 'log.*overflow/nonfinite result'):
+                    self.value('log(2)')
+
+    def test_complex_values_are_rejected_independently_of_destination(self):
+        for source in ('log(complex(1))', 'log(1im)', 'log(sqrt(complex(4)))'):
+            with self.subTest(source=source), self.assertRaises(qasm2qcx.InvalidFunctionCallException):
+                self.value(source)
+        expected = complex(math.log(2))
+        with patch.object(qasm2qcx.math, 'log', wraps=math.log) as real_log:
+            converter = self.converter('const complex Z = log(2);')
+            self.assertEqual(converter._QASM2QCXConverter__const_complex_variable_name_values_map['Z'], [expected])
+            real_log.assert_called_once_with(2.0)
+        with self.assertRaises(qasm2qcx.InvalidFunctionCallException):
+            self.converter('const complex Z = log(complex(2));')
+
+    def test_arity_types_and_names_are_validated_before_evaluation(self):
+        for source, error in (('log()', qasm2qcx.InvalidFunctionCallException),
+                              ('log(1, missing)', qasm2qcx.InvalidFunctionCallException),
+                              ('log(bit(true))', qasm2qcx.InvalidFunctionCallException),
+                              ('LOG(1)', qasm2qcx.UnsupportedOpenQASMError),
+                              ('ln(missing)', qasm2qcx.UnsupportedOpenQASMError),
+                              ('log10(1)', qasm2qcx.UnsupportedOpenQASMError)):
+            with self.subTest(source=source), self.assertRaises(error):
+                self.value(source)
+        converter = self.converter('array[float, 1] values = {2}; bit[1] register;')
+        for source in ('log(values)', 'log(register)'):
+            with self.assertRaises(qasm2qcx.QASM2QCXError):
+                converter._QASM2QCXConverter__function_call_info(self.expression(source))
+        self.assertEqual(converter._QASM2QCXConverter__loop_bound_names(self.expression('log(values[i])')), {'values', 'i'})
+
+    def test_constants_feed_declarations_loops_and_gate_modifiers(self):
+        self.assertEqual(convert('OPENQASM 3; include "stdgates.inc"; const float ZERO = log(1); '
+            'const float L = log(2); qubit[int(ZERO) + 2] q; '
+            'for int i in [0:int(ZERO) + 1] { x q[i]; } pow(int(ZERO)) @ x q[0]; rz(L) q[0];'),
+            ['QUBITS 2', 'X 0', 'X 1', f'EZ 0 {-0.5 * math.log(2)}'])
+        # Array element initializers are executable expressions, not constant
+        # contexts, so use a declared constant when initializing runtime data.
+        lines = convert('OPENQASM 3; const float L = log(2); array[float, int(log(1)) + 1] values = {L};')
+        self.assertIn('VAR VALUES63 REAL', lines)
+        self.assertFalse(any(' <- LOG ' in line for line in lines))
+
+    def test_nonconstant_inputs_are_rejected_in_constant_declarations(self):
+        for call in ('log(x)', 'log(real(z))', 'log(values[0])'):
+            with self.subTest(call=call), self.assertRaises(qasm2qcx.NoConstantExpressionException):
+                self.converter('float x = 2; complex z = 2; array[float, 1] values = {2}; const float C = ' + call + ';')
+
+    def test_short_circuited_constants_validate_without_coercion_or_math(self):
+        huge = str(10 ** 400)
+        for expression in ('false && (log(0) > 0)', 'true || (log(-1) > 0)',
+                           'false && (log(1e309) > 0)', f'true || (log({huge}) > 0)',
+                           'true || (sqrt(log(-1)) > 0)'):
+            with patch.object(qasm2qcx.math, 'log', side_effect=AssertionError('evaluated')):
+                converter = self.converter('const bool C = ' + expression + ';')
+            self.assertEqual(converter._QASM2QCXConverter__const_bool_variable_values_map['C'], int(expression.startswith('true')))
+        for expression in ('false && (log(missing) > 0)', 'true || (log(complex(1)) > 0)', 'false && (log(1, 2) > 0)'):
+            with self.assertRaises(qasm2qcx.QASM2QCXError):
+                self.converter('const bool C = ' + expression + ';')
+        lines = convert('OPENQASM 3; float x = 0; for int i in [1:0] { x = log(0); }')
+        self.assertFalse(any(' <- LOG ' in line for line in lines))
+        with self.assertRaises(qasm2qcx.InvalidFunctionCallException):
+            convert('OPENQASM 3; float x = 0; for int i in [1:0] { x = log(complex(1)); }')
+
+    def test_once_only_evaluation_and_failure_cleanup(self):
+        converter = self.converter()
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.CONST_ARITHMETIC
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        before_lines = converter._QASM2QCXConverter__qcx_lines.copy()
+        expression = self.expression('sqrt(log(exp(4)))')
+        arguments = (expression.arguments[0], expression.arguments[0].arguments[0],
+                     expression.arguments[0].arguments[0].arguments[0])
+        with patch.object(converter, 'visit', wraps=converter.visit) as visit:
+            converter.visit(expression)
+            for argument in arguments:
+                self.assertEqual(sum(call.args[0] is argument for call in visit.call_args_list), 1)
+        self.assertEqual(converter._QASM2QCXConverter__value, 2)
+        fields = ('__expression_kind', '__value', '__value_type', '__value_kind', '__evaluate_constant')
+        before = [getattr(converter, '_QASM2QCXConverter' + field) for field in fields]
+        for source in ('log(0)', 'sqrt(log(-1))', 'log(1.0 / 0.0)'):
+            with self.assertRaises(qasm2qcx.QASM2QCXError):
+                converter.visit(self.expression(source))
+            self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], before)
+            self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+            self.assertEqual(converter._QASM2QCXConverter__qcx_lines, before_lines)
+
+    def test_cli_errors_are_atomic_and_runtime_lowering_is_staged(self):
+        with patch('builtins.open', mock_open(read_data='OPENQASM 3; qubit q; const float C = log(0);')):
+            with patch('builtins.print') as output, self.assertRaisesRegex(SystemExit, 'log.*nonpositive real input'):
+                qasm2qcx.main(['log.qasm'])
+            output.assert_not_called()
+        for source in ('float x = log(2);', 'float x = 2; float y = log(x);'):
+            with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'runtime evaluation of function log'):
+                self.converter(source)
 
 
 class SquareRootConstantTests(unittest.TestCase):

@@ -306,6 +306,7 @@ class QASM2QCXConverter(visitor.QASMVisitor):
                 _BuiltinFunctionSignature((ValueType.COMPLEX,), ValueType.COMPLEX, qcx_function='EXP')),
         'sqrt': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='SQRT'),
                  _BuiltinFunctionSignature((ValueType.COMPLEX,), ValueType.COMPLEX, qcx_function='SQRT')),
+        'log': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='LOG'),),
         'real': (_BuiltinFunctionSignature((ValueType.COMPLEX,), ValueType.FLOAT, component='REAL'),),
         'imag': (_BuiltinFunctionSignature((ValueType.COMPLEX,), ValueType.FLOAT, component='IMAG'),),
     }
@@ -4758,6 +4759,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def visit_FunctionCall(self, expression: ast.FunctionCall) -> None:
         signature, runtime = self.__function_call_info(expression)
         if self.__expression_kind != ExpressionKind.CONST_ARITHMETIC:
+            # Executable LOG lowering and its reached-path checks are verified
+            # in the next integration stage, separately from constant folding.
+            if signature.qcx_function == 'LOG':
+                raise UnsupportedOpenQASMError('runtime evaluation of function log')
             if self.__expression_kind not in (ExpressionKind.ARITHMETIC, ExpressionKind.CONDITIONAL):
                 raise UnsupportedOpenQASMError('function call outside a value expression')
             self.__visit_runtime_function(expression, signature)
@@ -4879,17 +4884,23 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             # Component extraction is LET, not APPLY: preserve its IEEE values
             # (including signed zeros/nonfinite components), without EXP checks.
             return value.real if signature.component == 'REAL' else value.imag
-        functions = {'EXP': (math.exp, cmath.exp), 'SQRT': (math.sqrt, cmath.sqrt)}
-        if signature.qcx_function not in functions:
+        functions = {
+            'EXP': {ValueType.FLOAT: math.exp, ValueType.COMPLEX: cmath.exp},
+            'SQRT': {ValueType.FLOAT: math.sqrt, ValueType.COMPLEX: cmath.sqrt},
+            'LOG': {ValueType.FLOAT: math.log},
+        }
+        operand_type = signature.operand_types[0]
+        function = functions.get(signature.qcx_function, {}).get(operand_type)
+        if function is None:
             raise UnsupportedOpenQASMError(f'constant evaluation of function {name}')
-        is_complex = signature.operand_types[0] == ValueType.COMPLEX
         if not cmath.isfinite(value):
             raise InvalidConstantFunctionException(f'Function {name}: nonfinite input')
-        if signature.qcx_function == 'SQRT' and not is_complex and value < 0:
+        if signature.qcx_function == 'SQRT' and operand_type == ValueType.FLOAT and value < 0:
             raise InvalidConstantFunctionException(f'Function {name}: negative real input')
+        if signature.qcx_function == 'LOG' and value <= 0:
+            raise InvalidConstantFunctionException(f'Function {name}: nonpositive real input')
         try:
-            real_function, complex_function = functions[signature.qcx_function]
-            result = complex_function(value) if is_complex else real_function(value)
+            result = function(value)
         except (OverflowError, ValueError) as error:
             raise InvalidConstantFunctionException(f'Function {name}: overflow/nonfinite result') from error
         if not cmath.isfinite(result):
