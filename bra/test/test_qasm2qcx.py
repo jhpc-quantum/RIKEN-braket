@@ -506,6 +506,15 @@ class SquareRootRuntimeTests(unittest.TestCase):
     def clean(self, source):
         return InverseModifierLoweringTests.assert_clean_conversion(self, source)
 
+    def test_documented_square_root_example(self):
+        document = CONVERTER_PATH.with_suffix('.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- sqrt-function-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        lines = self.clean(examples[0].split('\n', 1)[1])
+        self.assertEqual(sum(' <- SQRT ' in line for line in lines), 1)
+        self.assertTrue(any(' <- COMPLEX ' in line for line in lines))
+
     def test_runtime_overload_selection_and_explicit_promotions(self):
         for declaration, operand in (('int x = 4;', ':REAL:X1'), ('uint x = 4;', ':REAL:X1'),
                                      ('bool x = true;', ':REAL:X1'), ('float x = 4;', 'X1'),
