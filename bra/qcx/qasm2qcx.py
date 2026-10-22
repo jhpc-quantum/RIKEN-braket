@@ -4767,9 +4767,6 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def visit_FunctionCall(self, expression: ast.FunctionCall) -> None:
         signature, runtime = self.__function_call_info(expression)
         if self.__expression_kind != ExpressionKind.CONST_ARITHMETIC:
-            # Runtime rounding calls are enabled and verified in Stage 3.
-            if signature.qcx_function in ('CEILING', 'FLOOR'):
-                raise UnsupportedOpenQASMError(f'runtime evaluation of function {expression.name.name}')
             if self.__expression_kind not in (ExpressionKind.ARITHMETIC, ExpressionKind.CONDITIONAL):
                 raise UnsupportedOpenQASMError('function call outside a value expression')
             self.__visit_runtime_function(expression, signature)
