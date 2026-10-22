@@ -307,6 +307,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
         'sqrt': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='SQRT'),
                  _BuiltinFunctionSignature((ValueType.COMPLEX,), ValueType.COMPLEX, qcx_function='SQRT')),
         'log': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='LOG'),),
+        'sin': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='SIN'),),
+        'cos': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='COS'),),
+        'tan': (_BuiltinFunctionSignature((ValueType.FLOAT,), ValueType.FLOAT, qcx_function='TAN'),),
         'real': (_BuiltinFunctionSignature((ValueType.COMPLEX,), ValueType.FLOAT, component='REAL'),),
         'imag': (_BuiltinFunctionSignature((ValueType.COMPLEX,), ValueType.FLOAT, component='IMAG'),),
     }
@@ -4759,6 +4762,10 @@ class QASM2QCXConverter(visitor.QASMVisitor):
     def visit_FunctionCall(self, expression: ast.FunctionCall) -> None:
         signature, runtime = self.__function_call_info(expression)
         if self.__expression_kind != ExpressionKind.CONST_ARITHMETIC:
+            # Runtime trigonometric lowering is verified separately in the
+            # next integration stage; this stage enables constant calls only.
+            if signature.qcx_function in ('SIN', 'COS', 'TAN'):
+                raise UnsupportedOpenQASMError(f'runtime evaluation of function {expression.name.name}')
             if self.__expression_kind not in (ExpressionKind.ARITHMETIC, ExpressionKind.CONDITIONAL):
                 raise UnsupportedOpenQASMError('function call outside a value expression')
             self.__visit_runtime_function(expression, signature)
@@ -4884,6 +4891,9 @@ class QASM2QCXConverter(visitor.QASMVisitor):
             'EXP': {ValueType.FLOAT: math.exp, ValueType.COMPLEX: cmath.exp},
             'SQRT': {ValueType.FLOAT: math.sqrt, ValueType.COMPLEX: cmath.sqrt},
             'LOG': {ValueType.FLOAT: math.log},
+            'SIN': {ValueType.FLOAT: math.sin},
+            'COS': {ValueType.FLOAT: math.cos},
+            'TAN': {ValueType.FLOAT: math.tan},
         }
         operand_type = signature.operand_types[0]
         function = functions.get(signature.qcx_function, {}).get(operand_type)
