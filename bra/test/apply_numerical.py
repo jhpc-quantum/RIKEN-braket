@@ -113,6 +113,17 @@ def main():
     bra = parser.parse_args().bra.resolve()
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     calls = 0
+    for source, value in (('R:0', 0.25), ('R:N:N', 0.75), ('1.0', 1), (':REAL:N:1', 2),
+                          (':REAL:U', 2), (':REAL:Z:0', 0.25), (':IMAG:Z:0', 1),
+                          ('1e308', 1e308), ('1e-300', 1e-300), ('5e-324', 5e-324),
+                          ('1e-310', 1e-310), (repr(math.nextafter(1.0, 0.0)), math.nextafter(1.0, 0.0)),
+                          (repr(math.nextafter(1.0, 2.0)), math.nextafter(1.0, 2.0))):
+        check_values(bra, SETUP + f'APPLY OUT <- LOG {source}\nPRINTLN OUT R:0 R:1 R:2 N:1 U\n',
+                     [math.log(value), 0.25, -0.5, 0.75, 2, 2])
+        calls += 1
+    check_values(bra, SETUP + 'apply r:n:n <- log r:n:n\nPRINTLN R:0 R:1 R:2\n',
+                 [0.25, -0.5, math.log(0.75)])
+    calls += 1
     for re_part in (0.0, -0.0, 3.0, -3.0):
         for im_part in (0.0, -0.0, 4.0, -4.0):
             result = run(bra, SETUP + f'APPLY COUT <- COMPLEX {re_part!r} {im_part!r}\n'
@@ -192,6 +203,14 @@ def main():
         if any(not cmath.isclose(a, e, rel_tol=1e-5, abs_tol=2e-6) for a, e in zip(actual, expected)):
             raise RuntimeError(f'SQRT gate parameter mismatch: {fused=}, {actual=}, {expected=}')
         calls += 1
+        program = (SETUP + 'H 0\nH 1\n' + begin
+                   + 'APPLY OUT <- LOG 2.0\nU1 0 OUT\nAPPLY OUT <- LOG 0.5\nU1 1 OUT\n' + end)
+        expected = [cmath.exp(1j * math.log(2) * (bool(index & 1) - bool(index & 2))) / 2
+                    for index in range(4)]
+        actual = amplitudes(bra, program)
+        if any(not cmath.isclose(a, e, rel_tol=1e-5, abs_tol=2e-6) for a, e in zip(actual, expected)):
+            raise RuntimeError(f'LOG gate parameter mismatch: {fused=}, {actual=}, {expected=}')
+        calls += 1
     check_values(bra, SETUP + 'APPLY R:N:N <- EXP R:N:N\nPRINTLN R:0 R:1 R:2 N:0 N:1 N:2\n',
                  [0.25, -0.5, math.exp(0.75), 1, 2, 0])
     check_values(bra, SETUP + 'APPLY OUT <- ARG :COMPLEX:-1\nPRINTLN OUT\n', [math.pi])
@@ -200,6 +219,18 @@ def main():
     calls += 3
 
     failures = [
+        ('APPLY OUT <- LOG -1.0', 'nonpositive real input', ''),
+        ('APPLY OUT <- LOG 0.0', 'nonpositive real input', ''),
+        ('APPLY OUT <- LOG -0.0', 'nonpositive real input', ''),
+        ('APPLY OUT <- LOG -5e-324', 'nonpositive real input', ''),
+        ('APPLY OUT <- LOG 1', 'unsupported operand signature', ''),
+        ('APPLY OUT <- LOG U', 'unsupported operand signature', ''),
+        ('APPLY OUT <- LOG Z:0', 'unsupported operand signature', ''),
+        ('APPLY COUT <- LOG R:0', 'wrong destination type', ''),
+        ('APPLY OUT OUT <- LOG R:0', 'wrong destination count', ''),
+        ('APPLY OUT <- LOG R:0 R:1', 'wrong operand count', ''),
+        ('APPLY R:999 <- LOG R:0', 'index out of range', ''),
+        ('APPLY OUT <- LOG R:999', 'index out of range', ''),
         ('APPLY OUT <- COMPLEX R:0 R:1', 'wrong destination type', ''),
         ('APPLY COUT <- COMPLEX N:0 R:0', 'unsupported operand signature', ''),
         ('APPLY COUT <- COMPLEX R:0 U', 'unsupported operand signature', ''),
@@ -245,6 +276,7 @@ def main():
     for numerator in ('1.0', '-1.0', '0.0'):
         preparation = f'LET OUT := {numerator}\nLET OUT /= 0.0\nLET COUT := :COMPLEX:OUT\n'
         failures.extend((
+            ('APPLY R:0 <- LOG OUT', 'nonfinite input', preparation),
             ('APPLY Z:0 <- COMPLEX OUT R:0', 'nonfinite input', preparation),
             ('APPLY Z:0 <- COMPLEX R:0 OUT', 'nonfinite input', preparation),
             ('APPLY R:0 <- SQRT OUT', 'nonfinite input', preparation),

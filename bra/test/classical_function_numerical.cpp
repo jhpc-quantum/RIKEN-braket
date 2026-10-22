@@ -108,6 +108,15 @@ namespace
     return result;
   }
 
+  auto natural_log(real const input) -> real
+  {
+    auto result = real{-77};
+    auto const& signature = bra::resolve_classical_function(function::log, {type::real});
+    auto const call = bra::classical_function_call{signature, {&result}, {input}};
+    call.commit_results(bra::evaluate_classical_function(call));
+    return result;
+  }
+
   template <typename Exception, typename T>
   void expect_failure(function const id, T const input, std::string const& reason)
   {
@@ -142,6 +151,38 @@ int main()
   auto const positive_zero = real{0};
   auto const negative_zero = std::copysign(real{0}, real{-1});
   auto const maximum = std::numeric_limits<real>::max();
+  for (auto const input: {real{0.25}, real{0.5}, real{1}, real{2}, real{10},
+                         std::numeric_limits<real>::min(), maximum})
+    require(close(natural_log(input), std::log(input)), "wrong real LOG");
+  auto const logarithm_zero = natural_log(real{1});
+  require(boost::math::fpclassify(logarithm_zero) == FP_ZERO and not boost::math::signbit(logarithm_zero),
+          "LOG(1) must be positive zero");
+  for (auto const input: {std::nextafter(real{1}, real{0}), std::nextafter(real{1}, real{2})})
+    require(close(natural_log(input) / (input - real{1}), real{1}), "LOG lost precision near one");
+  auto const log_two = std::log(real{2});
+  for (auto const exponent: {std::numeric_limits<real>::min_exponent - 1, -4, 0, 4,
+                            std::numeric_limits<real>::max_exponent - 1})
+    require(close(natural_log(std::ldexp(real{1}, exponent)), exponent * log_two), "LOG lost a power of two");
+  auto const smallest = std::numeric_limits<real>::denorm_min();
+  if (boost::math::fpclassify(smallest) != FP_ZERO)
+  {
+    // Analytic references do not pass a subnormal through the same libm LOG
+    // path as the evaluator: DAZ could make both return the same wrong value.
+    auto const expected = (std::numeric_limits<real>::min_exponent - std::numeric_limits<real>::digits) * log_two;
+    require(close(natural_log(smallest), expected), "LOG lost the smallest positive subnormal");
+    constexpr auto half_minimum = std::numeric_limits<real>::min() / real{2};
+    constexpr auto three_quarters = std::numeric_limits<real>::min() * real{0.75};
+    require(close(natural_log(half_minimum), (std::numeric_limits<real>::min_exponent - 2) * log_two),
+            "LOG lost a subnormal power of two");
+    require(close(natural_log(three_quarters), (std::numeric_limits<real>::min_exponent - 1) * log_two + std::log(real{0.75})),
+            "LOG lost a subnormal significand");
+    auto const largest = std::nextafter(std::numeric_limits<real>::min(), real{0});
+    auto const expected_largest = std::log(std::numeric_limits<real>::min()) - std::numeric_limits<real>::epsilon();
+    require(close(natural_log(largest), expected_largest), "LOG lost the largest positive subnormal");
+    expect_failure<std::domain_error>(function::log, -smallest, "nonpositive real input");
+  }
+  for (auto const invalid: {positive_zero, negative_zero, real{-1}, -std::numeric_limits<real>::min(), -maximum})
+    expect_failure<std::domain_error>(function::log, invalid, "nonpositive real input");
   auto const& constructor = bra::resolve_classical_function(function::complex_, {type::real, type::real});
   for (auto const re: {positive_zero, negative_zero, real{3}, real{-3}, maximum, -maximum,
                       std::numeric_limits<real>::min(), std::numeric_limits<real>::denorm_min()})
@@ -344,6 +385,7 @@ int main()
     }
     expect_failure<std::domain_error>(function::exp, invalid, "nonfinite input");
     expect_failure<std::domain_error>(function::sqrt, invalid, "nonfinite input");
+    expect_failure<std::domain_error>(function::log, invalid, "nonfinite input");
     for (auto const z: {complex{invalid, 0}, complex{0, invalid}, complex{invalid, invalid}})
     {
       expect_failure<std::domain_error>(function::exp, z, "nonfinite input");
@@ -398,6 +440,12 @@ int main()
   z = complex{0, 0};
   sqrt_call.commit_results(bra::evaluate_classical_function(sqrt_call));
   require(z == complex{1, -2}, "SQRT did not use captured input for in-place evaluation");
+  x = real{2};
+  auto const log_call = bra::classical_function_call{
+    bra::resolve_classical_function(function::log, {type::real}), {&x}, {x}};
+  x = real{7};
+  log_call.commit_results(bra::evaluate_classical_function(log_call));
+  require(close(x, log_two), "LOG did not use captured input for in-place evaluation");
   require(std::fegetround() == rounding, "APPLY changed rounding mode");
 #if defined(__SSE__) && (defined(__i386__) || defined(__x86_64__))
   require((_mm_getcsr() & ~0x3fu) == control_mode, "APPLY changed floating-point control mode");

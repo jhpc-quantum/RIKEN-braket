@@ -132,6 +132,15 @@ int main()
   check_close("RESULT", 7);
   state.invoke_apply_operation({"RESULT"}, function::sqrt, {"R:N"});
   check_close("RESULT", std::sqrt(bra::real_type{7}));
+  state.invoke_apply_operation({"RESULT"}, function::log, {"R:N"});
+  check_close("RESULT", std::log(bra::real_type{7}));
+  state.invoke_apply_operation({"RESULT"}, function::log, {"RESULT"});
+  check_close("RESULT", std::log(std::log(bra::real_type{7})));
+  check_call({"R:N"}, function::log, {":REAL:-1"}, "LOG domain error: nonpositive real input");
+  check_call({"R:N"}, function::log, {":REAL:-0.0"}, "LOG domain error: nonpositive real input");
+  check_call({"R:N"}, function::log, {"N"}, "unsupported operand signature");
+  check_call({"R:N"}, function::log, {"Z"}, "unsupported operand signature");
+  check_call({"CRESULT"}, function::log, {"R"}, "wrong destination type");
   state.invoke_apply_operation({"CRESULT"}, function::sqrt, {":COMPLEX:-4.0"});
   state.invoke_assign_operation("RESULT", bra::assign_operation_type::assign, ":REAL:CRESULT");
   check_close("RESULT", 0);
@@ -211,6 +220,9 @@ int main()
   expect_failure([&] { state.invoke_apply_operation({"RESULT"}, function::sqrt, {"RESULT"}); },
                  "APPLY RESULT <- SQRT RESULT: SQRT domain error");
   state.invoke_assert_operation("RESULT", bra::compare_operation_type::equal_to, "-4");
+  expect_failure([&] { state.invoke_apply_operation({"RESULT"}, function::log, {"RESULT"}); },
+                 "APPLY RESULT <- LOG RESULT: LOG domain error: nonpositive real input");
+  state.invoke_assert_operation("RESULT", bra::compare_operation_type::equal_to, "-4");
   auto maximum = std::ostringstream{};
   maximum << std::setprecision(std::numeric_limits<bra::real_type>::max_digits10)
           << std::numeric_limits<bra::real_type>::max();
@@ -234,6 +246,10 @@ int main()
   auto const sqrt_interpreter = bra::interpreter{sqrt_stream};
   require(tokens(sqrt_interpreter.back_circuit().back()->representation()) == std::vector<std::string>{
     "APPLY", "RESULT:INDEX", "<-", "SQRT", "SOURCE:INDEX"});
+  auto log_stream = std::istringstream{"QUBITS 1\napply result:index <- log source:index\n"};
+  auto const log_interpreter = bra::interpreter{log_stream};
+  require(tokens(log_interpreter.back_circuit().back()->representation()) == std::vector<std::string>{
+    "APPLY", "RESULT:INDEX", "<-", "LOG", "SOURCE:INDEX"});
   for (auto const& malformed: {"APPLY", "APPLY R", "APPLY <- EXP R", "APPLY R <-", "APPLY R <- EXP", "APPLY R := EXP R",
                                "APPLY R <- EXP <- R", "APPLY R<-EXP R"})
     expect_failure([&] { auto input = std::istringstream{std::string{"QUBITS 1\n"} + malformed + "\n"};
