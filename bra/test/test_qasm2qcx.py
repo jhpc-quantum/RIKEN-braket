@@ -776,6 +776,16 @@ class InverseTrigonometricRuntimeTests(unittest.TestCase):
     test_indexed_assignments_reserve_array_indices = TrigonometricRuntimeTests.test_indexed_assignments_reserve_array_indices
     test_failure_restores_expression_state_and_caller_temporaries = TrigonometricRuntimeTests.test_failure_restores_expression_state_and_caller_temporaries
 
+    def test_documented_inverse_trigonometric_example(self):
+        document = CONVERTER_PATH.with_suffix('.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- inverse-trigonometric-function-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        lines = self.clean(examples[0].split('\n', 1)[1])
+        for name in ('ARCSIN', 'ARCTAN'):
+            self.assertEqual(sum(f' <- {name} ' in line for line in lines), 1)
+        self.assertFalse(any(' <- ARCCOS ' in line for line in lines))
+
     def test_literals_use_native_math_even_for_domain_errors(self):
         for name, host_name in (('arcsin', 'asin'), ('arccos', 'acos'), ('arctan', 'atan')):
             for argument in ('0.0', '-0.0', '0.5', '1', '2', '-2', '1e308', '1e309', '-1e309', '0.0 / 0.0'):
