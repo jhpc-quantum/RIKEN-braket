@@ -2134,7 +2134,9 @@ namespace bra
                         ? ::bra::assign_operation_type::left_shift_assign
                         : op_str == ">>="
                           ? ::bra::assign_operation_type::right_shift_assign
-                          : throw 1;
+                          : op_str == "%="
+                            ? ::bra::assign_operation_type::modulus_assign
+                            : throw 1;
 
     circuits_[circuit_index_].push_back(std::make_unique< ::bra::gate::let_op >(lhs_variable_name, op, rhs_literal_or_variable_name));
   }
