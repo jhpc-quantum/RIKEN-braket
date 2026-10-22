@@ -664,15 +664,12 @@ class InverseTrigonometricConstantTests(unittest.TestCase):
             self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
             self.assertEqual(converter._QASM2QCXConverter__qcx_lines, lines)
 
-    def test_cli_errors_are_atomic_and_runtime_lowering_remains_staged(self):
+    def test_cli_errors_are_atomic(self):
         for name in self.names:
             with patch('builtins.open', mock_open(read_data=f'OPENQASM 3; const float C = {name}(1e309);')):
                 with patch('builtins.print') as output, self.assertRaisesRegex(SystemExit, name + '.*nonfinite input'):
                     qasm2qcx.main(['inverse-trig.qasm'])
                 output.assert_not_called()
-            for source in (f'float x = {name}(0.5);', f'float x = 0.5; float out = {name}(x);'):
-                with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'runtime evaluation of function ' + name):
-                    self.converter(source)
 
 
 class TrigonometricRuntimeTests(unittest.TestCase):
@@ -768,6 +765,59 @@ class TrigonometricRuntimeTests(unittest.TestCase):
                     converter.visit(self.expression(f'{name}(x + 1)'))
             self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
             self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], before)
+
+
+class InverseTrigonometricRuntimeTests(unittest.TestCase):
+    converter = staticmethod(BuiltinFunctionSignatureTests.converter)
+    expression = staticmethod(BuiltinFunctionSignatureTests.expression)
+    names = ('arcsin', 'arccos', 'arctan')
+    clean = TrigonometricRuntimeTests.clean
+    test_input_selected_real_signatures_and_explicit_promotions = TrigonometricRuntimeTests.test_input_selected_real_signatures_and_explicit_promotions
+    test_indexed_assignments_reserve_array_indices = TrigonometricRuntimeTests.test_indexed_assignments_reserve_array_indices
+    test_failure_restores_expression_state_and_caller_temporaries = TrigonometricRuntimeTests.test_failure_restores_expression_state_and_caller_temporaries
+
+    def test_literals_use_native_math_even_for_domain_errors(self):
+        for name, host_name in (('arcsin', 'asin'), ('arccos', 'acos'), ('arctan', 'atan')):
+            for argument in ('0.0', '-0.0', '0.5', '1', '2', '-2', '1e308', '1e309', '-1e309', '0.0 / 0.0'):
+                with self.subTest(name=name, argument=argument), patch.object(
+                        qasm2qcx.math, host_name, side_effect=AssertionError('host inverse trigonometry')):
+                    lines = self.clean(f'float out = {name}({argument});')
+                self.assertEqual(sum(f' <- {name.upper()} ' in line for line in lines), 1)
+                self.assertFalse(any(re.search(r'\b(?:inf|nan)\b', line, re.IGNORECASE) for line in lines))
+            number = (1 << 60) + 1
+            self.assertTrue(any(line.endswith(f':= :REAL:{number}')
+                                for line in self.clean(f'float out = {name}({number});')))
+
+    def test_nested_calls_visit_once_and_preserve_caller_temporaries(self):
+        converter = self.converter('float x = 1;')
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        expression = self.expression('arcsin(arccos(arctan(x)))')
+        arguments = (expression.arguments[0], expression.arguments[0].arguments[0],
+                     expression.arguments[0].arguments[0].arguments[0])
+        start = len(converter._QASM2QCXConverter__qcx_lines)
+        with patch.object(converter, 'visit', wraps=converter.visit) as visit:
+            converter.visit(expression)
+        for argument in arguments:
+            self.assertEqual(sum(call.args[0] is argument for call in visit.call_args_list), 1)
+        result = converter._QASM2QCXConverter__value
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller, result})
+        self.assertEqual(converter._QASM2QCXConverter__value_type, qasm2qcx.ValueType.FLOAT)
+        lines = converter._QASM2QCXConverter__qcx_lines[start:]
+        for name in self.names:
+            self.assertEqual(sum(f' <- {name.upper()} ' in line for line in lines), 1)
+        self.assertFalse(any(line.startswith((f'LET {caller} ', 'LET X1 ')) for line in lines))
+
+    def test_gate_loop_expressions_and_skipped_domain_checks(self):
+        self.clean('include "stdgates.inc"; qubit q; float x = 0.5; '
+                   'while (arcsin(x) > 0) { x -= 0.5; } '
+                   'for int i in [0:int(arccos(x)) + 1] { rx(arctan(x)) q; } '
+                   'for int j in {int(arcsin(x)), int(arccos(x))} { rz(float(j)) q; }')
+        for name in self.names:
+            for argument in ('2', '1e309'):
+                lines = self.clean(f'bool out = true || bool({name}({argument}));')
+                self.assertTrue(any(f' <- {name.upper()} ' in line for line in lines))
+                ForLoopControlLoweringTests.assert_resolved_jumps(lines)
 
 
 class LogConstantTests(unittest.TestCase):
