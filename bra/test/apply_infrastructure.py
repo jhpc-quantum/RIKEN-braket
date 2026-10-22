@@ -33,6 +33,9 @@ APPLY R:N:999 <- ABS nonexistent
 APPLY R:N:999 <- SQRT nonexistent
 APPLY missing <- COMPLEX nonexistent R:N:999
 APPLY R:N:999 <- LOG nonexistent
+APPLY R:N:999 <- SIN nonexistent
+APPLY R:N:999 <- COS nonexistent
+APPLY R:N:999 <- TAN nonexistent
 @DONE
 PRINTLN R
 ''')

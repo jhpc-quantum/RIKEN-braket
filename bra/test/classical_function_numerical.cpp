@@ -108,6 +108,34 @@ namespace
     return result;
   }
 
+  auto trigonometric(function const id, real const input) -> real
+  {
+    auto result = real{-77};
+    auto const& signature = bra::resolve_classical_function(id, {type::real});
+    auto const call = bra::classical_function_call{signature, {&result}, {input}};
+    try { call.commit_results(bra::evaluate_classical_function(call)); }
+    catch (std::exception const& error)
+    {
+      auto diagnostic = std::ostringstream{};
+      diagnostic << error.what() << " for " << bra::classical_function_name(id)
+                 << '(' << std::hexfloat << input << ')';
+      throw std::runtime_error{diagnostic.str()};
+    }
+    return result;
+  }
+
+  auto reference_trigonometric(function const id, real const input) -> real
+  {
+    // This translation unit is compiled independently, without fast-math.
+    switch (id)
+    {
+    case function::sin: return std::sin(input);
+    case function::cos: return std::cos(input);
+    case function::tan: return std::tan(input);
+    default: throw std::invalid_argument{"not a trigonometric function"};
+    }
+  }
+
   auto natural_log(real const input) -> real
   {
     auto result = real{-77};
@@ -151,6 +179,62 @@ int main()
   auto const positive_zero = real{0};
   auto const negative_zero = std::copysign(real{0}, real{-1});
   auto const maximum = std::numeric_limits<real>::max();
+  for (auto const id: {function::sin, function::cos, function::tan})
+  {
+    for (auto const input: {positive_zero, negative_zero})
+    {
+      auto const result = trigonometric(id, input);
+      if (id == function::cos) require(result == 1, "COS of zero must be one");
+      else
+        require(boost::math::fpclassify(result) == FP_ZERO
+                and boost::math::signbit(result) == boost::math::signbit(input),
+                std::string{bra::classical_function_name(id)} + " lost signed zero: input sign "
+                  + std::to_string(boost::math::signbit(input)) + ", result sign "
+                  + std::to_string(boost::math::signbit(result)));
+    }
+    auto const half_pi = pi / real{2};
+    for (auto const input: {real{0.25}, real{-0.5}, real{1}, real{-2}, pi, -pi,
+                           half_pi, -half_pi, std::nextafter(half_pi, real{0}),
+                           std::nextafter(half_pi, maximum), std::nextafter(pi, real{0}),
+                           std::nextafter(pi, maximum), real{1e10}, real{-1e10},
+                           real{1e20}, real{-1e20}, real{1e30}, real{-1e30}, maximum, -maximum,
+                           std::numeric_limits<real>::min(), -std::numeric_limits<real>::min()})
+    {
+      auto const result = trigonometric(id, input);
+      auto const expected = reference_trigonometric(id, input);
+      require(close(result, expected), std::string{bra::classical_function_name(id)} + " differs from native reference");
+      // Near zeros, an absolute tolerance alone could hide snapping to zero.
+      if (expected != 0)
+      {
+        auto diagnostic = std::ostringstream{};
+        diagnostic << bra::classical_function_name(id) << " lost relative accuracy at " << std::hexfloat
+                   << input << ": " << result << " != " << expected;
+        require(close(result / expected, real{1}), diagnostic.str());
+      }
+    }
+    for (auto const input: {std::numeric_limits<real>::denorm_min(), -std::numeric_limits<real>::denorm_min()})
+    {
+      auto const result = trigonometric(id, input);
+      auto const expected = reference_trigonometric(id, input);
+      // Subnormal arithmetic follows the existing library/environment. Check
+      // stored classes and signs, not comparisons that DAZ treats as zero.
+      require(boost::math::fpclassify(result) == boost::math::fpclassify(expected)
+              and boost::math::signbit(result) == boost::math::signbit(expected),
+              "trigonometric subnormal behavior differs from native library");
+    }
+    for (auto const invalid: {std::numeric_limits<real>::infinity(), -std::numeric_limits<real>::infinity(),
+                             std::numeric_limits<real>::quiet_NaN()})
+      expect_failure<std::domain_error>(id, invalid, "nonfinite input");
+    auto in_place = real{0.5};
+    auto const captured = bra::classical_function_call{
+      bra::resolve_classical_function(id, {type::real}), {&in_place}, {in_place}};
+    in_place = real{2};
+    captured.commit_results(bra::evaluate_classical_function(captured));
+    require(close(in_place, reference_trigonometric(id, real{0.5})), "trigonometric function lost captured input");
+  }
+  require(close(trigonometric(function::sin, pi / real{6}), real{0.5}), "wrong known SIN");
+  require(close(trigonometric(function::cos, pi / real{3}), real{0.5}), "wrong known COS");
+  require(close(trigonometric(function::tan, pi / real{4}), real{1}), "wrong known TAN");
   for (auto const input: {real{0.25}, real{0.5}, real{1}, real{2}, real{10},
                          std::numeric_limits<real>::min(), maximum})
     require(close(natural_log(input), std::log(input)), "wrong real LOG");
