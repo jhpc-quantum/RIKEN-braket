@@ -32,7 +32,8 @@ class BuiltinFunctionSignatureTests(unittest.TestCase):
 
     def test_registry_records_input_selected_signatures_and_native_operations(self):
         registry = qasm2qcx.QASM2QCXConverter.builtin_function_signatures
-        self.assertEqual(set(registry), {'exp', 'sqrt', 'log', 'sin', 'cos', 'tan', 'real', 'imag'})
+        self.assertEqual(set(registry), {'exp', 'sqrt', 'log', 'sin', 'cos', 'tan',
+                                        'arcsin', 'arccos', 'arctan', 'real', 'imag'})
         resolve = qasm2qcx.QASM2QCXConverter._QASM2QCXConverter__resolve_builtin_function
         real_exp = resolve('exp', (qasm2qcx.ValueType.FLOAT,))
         complex_exp = resolve('exp', (qasm2qcx.ValueType.COMPLEX,))
@@ -509,6 +510,169 @@ class TrigonometricConstantTests(unittest.TestCase):
                 with patch('builtins.print') as output, self.assertRaisesRegex(SystemExit, name + '.*nonfinite input'):
                     qasm2qcx.main(['trig.qasm'])
                 output.assert_not_called()
+
+
+class InverseTrigonometricConstantTests(unittest.TestCase):
+    expression = staticmethod(BuiltinFunctionSignatureTests.expression)
+    converter = staticmethod(BuiltinFunctionSignatureTests.converter)
+    evaluate = BuiltinFunctionConstantTests.evaluate
+    value = BuiltinFunctionConstantTests.value
+    names = ('arcsin', 'arccos', 'arctan')
+    functions = {'arcsin': math.asin, 'arccos': math.acos, 'arctan': math.atan}
+
+    test_real_only_signatures_and_scalar_promotions = TrigonometricConstantTests.test_real_only_signatures_and_scalar_promotions
+    test_type_information_is_non_evaluating_and_excludes_callee_dependencies = TrigonometricConstantTests.test_type_information_is_non_evaluating_and_excludes_callee_dependencies
+    test_names_arity_arrays_bits_and_angles_are_validated = TrigonometricConstantTests.test_names_arity_arrays_bits_and_angles_are_validated
+
+    def test_skipped_constants_and_empty_loops_validate_without_evaluation(self):
+        for name, host_name in (('arcsin', 'asin'), ('arccos', 'acos'), ('arctan', 'atan')):
+            for argument in ('1e309', str(10 ** 400)):
+                with patch.object(qasm2qcx.math, host_name, side_effect=AssertionError('evaluated')):
+                    self.converter(f'const bool C = false && ({name}({argument}) > 0);')
+            for call in (f'{name}(missing)', f'{name}(complex(1))', f'{name}(1, 2)'):
+                with self.assertRaises(qasm2qcx.QASM2QCXError):
+                    self.converter(f'const bool C = true || ({call} > 0);')
+            lines = convert(f'OPENQASM 3; float x; for int i in [1:0] {{ x = {name}(1e309); }}')
+            self.assertFalse(any(line.startswith('APPLY ') for line in lines))
+            with self.assertRaises(qasm2qcx.InvalidFunctionCallException):
+                convert(f'OPENQASM 3; float x; for int i in [1:0] {{ x = {name}(complex(1)); }}')
+
+    def test_known_values_and_promoted_arguments(self):
+        for name, function in self.functions.items():
+            for source, number in (('0', 0), ('1', 1), ('-1', -1), ('true', 1), ('false', 0),
+                                    ('uint[1](3)', 1), ('float(bit(true))', 1), ('real(0.5 + 2im)', 0.5)):
+                with self.subTest(name=name, source=source):
+                    result, result_type = self.value(f'{name}({source})')
+                    self.assertIsInstance(result, float)
+                    self.assertEqual(result_type, qasm2qcx.ValueType.FLOAT)
+                    self.assertEqual(result, function(number))
+        for source, expected in (('arcsin(0.5)', math.pi / 6), ('arccos(0.5)', math.pi / 3),
+                                  ('arctan(1)', math.pi / 4), ('arcsin(-1)', -math.pi / 2),
+                                  ('arcsin(1)', math.pi / 2), ('arccos(-1)', math.pi), ('arccos(1)', 0)):
+            self.assertAlmostEqual(self.value(source)[0], expected)
+
+    def test_signed_zero_and_small_values(self):
+        for name in self.names:
+            for number in (0.0, -0.0, 5e-324, -5e-324, 1e-300, -1e-300, 1e-12, -1e-12):
+                result, _ = self.value(f'{name}({number!r})')
+                if name == 'arccos':
+                    self.assertAlmostEqual(result, math.pi / 2)
+                elif number == 0:
+                    self.assertEqual(result, 0)
+                    self.assertEqual(math.copysign(1, result), math.copysign(1, number))
+                else:
+                    self.assertNotEqual(result, 0)
+                    self.assertAlmostEqual(result / number, 1)
+        self.assertEqual(math.copysign(1, self.value('arccos(1)')[0]), 1)
+
+    def test_endpoint_neighbors_are_not_clamped(self):
+        for name in ('arcsin', 'arccos'):
+            function = self.functions[name]
+            host_name = 'asin' if name == 'arcsin' else 'acos'
+            for number in (math.nextafter(1.0, 0), math.nextafter(-1.0, 0)):
+                expected = function(number)
+                result, _ = self.value(f'{name}({number!r})')
+                self.assertEqual(result, expected)
+                self.assertNotEqual(result, function(math.copysign(1, number)))
+            for number in (math.nextafter(1.0, math.inf), math.nextafter(-1.0, -math.inf), 2, -2, 1e308, -1e308):
+                with self.subTest(name=name, number=number), patch.object(
+                        qasm2qcx.math, host_name,
+                        side_effect=AssertionError('out-of-domain call reached host math')):
+                    with self.assertRaisesRegex(qasm2qcx.InvalidConstantFunctionException,
+                                                name + r'.*real input outside \[-1, 1\]'):
+                        self.value(f'{name}({number!r})')
+
+    def test_arctan_accepts_large_finite_arguments(self):
+        for number in (2, -2, 1e20, -1e20, 1e308, -1e308, float.fromhex('0x1.fffffffffffffp1023')):
+            result, _ = self.value(f'arctan({number!r})')
+            self.assertEqual(result, math.atan(number))
+            self.assertLessEqual(abs(result), math.pi / 2)
+        self.assertEqual(self.value('arctan(uint(-1))')[0], math.atan(qasm2qcx.QASM2QCXConverter.QCX_UINT_MAX))
+
+    def test_nonfinite_unrepresentable_inputs_and_library_failures(self):
+        for name in self.names:
+            for source in ('1e309', '-1e309', '1e308 * 1e308'):
+                with self.assertRaisesRegex(qasm2qcx.InvalidConstantFunctionException, name + '.*nonfinite input'):
+                    self.value(f'{name}({source})')
+            expression = qasm2qcx.ast.FunctionCall(qasm2qcx.ast.Identifier(name), [qasm2qcx.ast.FloatLiteral(math.nan)])
+            with self.assertRaisesRegex(qasm2qcx.InvalidConstantFunctionException, name + '.*nonfinite input'):
+                self.value(expression)
+            with self.assertRaisesRegex(qasm2qcx.InvalidConstantFunctionException, name + '.*outside supported constant precision'):
+                self.value(name + '(' + str(10 ** 400) + ')')
+            host_name = {'arcsin': 'asin', 'arccos': 'acos', 'arctan': 'atan'}[name]
+            for result in (math.inf, math.nan):
+                with patch.object(qasm2qcx.math, host_name, return_value=result):
+                    with self.assertRaisesRegex(qasm2qcx.InvalidConstantFunctionException, name + '.*overflow/nonfinite result'):
+                        self.value(f'{name}(0.5)')
+            for error in (ValueError('domain'), OverflowError('overflow')):
+                with patch.object(qasm2qcx.math, host_name, side_effect=error):
+                    with self.assertRaisesRegex(qasm2qcx.InvalidConstantFunctionException, name + '.*overflow/nonfinite result'):
+                        self.value(f'{name}(0.5)')
+
+    def test_input_selected_results_and_complex_rejection(self):
+        for name, function in self.functions.items():
+            expected = complex(function(0.5))
+            host_name = {'arcsin': 'asin', 'arccos': 'acos', 'arctan': 'atan'}[name]
+            with patch.object(qasm2qcx.math, host_name, wraps=function) as call:
+                converter = self.converter(f'const complex C = {name}(0.5);')
+            self.assertEqual(converter._QASM2QCXConverter__const_complex_variable_name_values_map['C'], [expected])
+            call.assert_called_once_with(0.5)
+            for source in ('complex(0.5)', '0im', 'sqrt(complex(1))'):
+                for destination in ('float', 'complex'):
+                    with self.assertRaises(qasm2qcx.InvalidFunctionCallException):
+                        self.converter(f'const {destination} C = {name}({source});')
+
+    def test_nested_functions_and_constant_contexts(self):
+        for source, expected in (('sin(arcsin(0.5))', 0.5), ('cos(arccos(0.5))', 0.5),
+                                  ('tan(arctan(0.5))', 0.5), ('arctan(log(exp(1)))', math.pi / 4),
+                                  ('arcsin(real(0.5 + 1im))', math.pi / 6), ('imag(arccos(0.5))', 0)):
+            self.assertAlmostEqual(self.value(source)[0], expected)
+        lines = convert('OPENQASM 3; include "stdgates.inc"; const float ZERO = arcsin(0); '
+                        'const int ONE = int(arctan(1)) + 1; const float PHI = arccos(0); '
+                        'qubit[ONE + 1] q; for int i in [int(ZERO):ONE] { x q[i]; } '
+                        'pow(ONE) @ x q[0]; rz(PHI) q[1];')
+        self.assertEqual(lines, ['QUBITS 2', 'X 0', 'X 1', 'X 0', f'EZ 1 {-math.pi / 4}'])
+        lines = convert('OPENQASM 3; const float C = arccos(1); array[float, int(C) + 1] values = {C};')
+        self.assertFalse(any(line.startswith('APPLY ') for line in lines))
+        for name in self.names:
+            with self.assertRaises(qasm2qcx.NoConstantExpressionException):
+                self.converter(f'float x = 0.5; const float C = {name}(x);')
+            with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+                self.value({'arcsin': 'asin', 'arccos': 'acos', 'arctan': 'atan'}[name] + '(0.5)')
+
+    def test_skipped_domain_errors_and_failure_cleanup(self):
+        for name, host_name in (('arcsin', 'asin'), ('arccos', 'acos')):
+            with patch.object(qasm2qcx.math, host_name, side_effect=AssertionError('evaluated')):
+                self.converter(f'const bool C = true || ({name}(2) > 0);')
+        converter = self.converter()
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.CONST_ARITHMETIC
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        expression = self.expression('arcsin(arccos(arctan(1)))')
+        arguments = (expression.arguments[0], expression.arguments[0].arguments[0],
+                     expression.arguments[0].arguments[0].arguments[0])
+        with patch.object(converter, 'visit', wraps=converter.visit) as visit:
+            converter.visit(expression)
+        for argument in arguments:
+            self.assertEqual(sum(call.args[0] is argument for call in visit.call_args_list), 1)
+        fields = ('__expression_kind', '__value', '__value_type', '__value_kind', '__evaluate_constant')
+        before = [getattr(converter, '_QASM2QCXConverter' + field) for field in fields]
+        lines = converter._QASM2QCXConverter__qcx_lines.copy()
+        for source in ('arcsin(2)', 'arccos(-2)', 'arctan(1e309)'):
+            with self.assertRaises(qasm2qcx.InvalidConstantFunctionException):
+                converter.visit(self.expression(source))
+            self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], before)
+            self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+            self.assertEqual(converter._QASM2QCXConverter__qcx_lines, lines)
+
+    def test_cli_errors_are_atomic_and_runtime_lowering_remains_staged(self):
+        for name in self.names:
+            with patch('builtins.open', mock_open(read_data=f'OPENQASM 3; const float C = {name}(1e309);')):
+                with patch('builtins.print') as output, self.assertRaisesRegex(SystemExit, name + '.*nonfinite input'):
+                    qasm2qcx.main(['inverse-trig.qasm'])
+                output.assert_not_called()
+            for source in (f'float x = {name}(0.5);', f'float x = 0.5; float out = {name}(x);'):
+                with self.assertRaisesRegex(qasm2qcx.UnsupportedOpenQASMError, 'runtime evaluation of function ' + name):
+                    self.converter(source)
 
 
 class TrigonometricRuntimeTests(unittest.TestCase):
