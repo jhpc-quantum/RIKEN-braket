@@ -32,6 +32,7 @@ APPLY R R <- EXP 1
 APPLY R:N:999 <- ABS nonexistent
 APPLY R:N:999 <- SQRT nonexistent
 APPLY missing <- COMPLEX nonexistent R:N:999
+APPLY R:N:999 <- LOG nonexistent
 @DONE
 PRINTLN R
 ''')
@@ -54,6 +55,9 @@ PRINTLN R
     result = run(setup + 'apply r <- exp r\nPRINTLN R\n')
     if result.returncode != 0 or not math.isclose(float(result.stdout.strip()), math.exp(2), rel_tol=1e-5):
         raise RuntimeError(f'in-place EXP failed: {result}')
+    result = run(setup + 'apply r <- log r\nPRINTLN R\n')
+    if result.returncode != 0 or not math.isclose(float(result.stdout.strip()), math.log(2), rel_tol=1e-5):
+        raise RuntimeError(f'in-place LOG failed: {result}')
     print('APPLY infrastructure CLI checks passed')
 
 

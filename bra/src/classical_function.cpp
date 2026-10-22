@@ -1,5 +1,6 @@
 #include <cmath>
 #include <complex>
+#include <cstring>
 #include <limits>
 #include <stdexcept>
 
@@ -36,6 +37,37 @@ namespace bra
       auto const bound = static_cast< ::bra::real_type >(limits::min_exponent - limits::digits - 2)
         * std::log(static_cast< ::bra::real_type >(limits::radix));
       return value < bound ? bound : value;
+    }
+
+    auto library_real_log(::bra::real_type const value) -> ::bra::real_type
+    {
+      auto argument = value;
+      auto offset = ::bra::real_type{0};
+      if (boost::math::fpclassify(value) == FP_SUBNORMAL)
+      {
+        using limits = std::numeric_limits< ::bra::real_type >;
+        if (not limits::is_iec559 or limits::radix != 2)
+          throw std::domain_error{"LOG cannot normalize subnormal input with this REAL representation"};
+        // An IEEE binary subnormal is f * 2^(min_exponent-1). OR its
+        // representation with 1.0 to obtain the normal value 1+f (also
+        // setting the explicit integer bit on x87). Subtracting 1 is exact
+        // and yields a normal f; unlike multiplication/frexp on the original
+        // subnormal, none of this arithmetic can lose the input under DAZ.
+        // Bytewise copies avoid aliasing, alignment, and byte-order assumptions.
+        auto const unit = ::bra::real_type{1};
+        unsigned char value_bits[sizeof(value)], unit_bits[sizeof(unit)];
+        std::memcpy(value_bits, &value, sizeof(value));
+        std::memcpy(unit_bits, &unit, sizeof(unit));
+        for (auto index = std::size_t{0u}; index < sizeof(value); ++index)
+          value_bits[index] |= unit_bits[index];
+        std::memcpy(&argument, value_bits, sizeof(argument));
+        argument -= unit;
+        offset = static_cast< ::bra::real_type >(limits::min_exponent - 1)
+          * boost::math::constants::ln_two< ::bra::real_type >();
+      }
+      using function_type = ::bra::real_type (*)(::bra::real_type);
+      function_type volatile function = &std::log;
+      return function(argument) + offset;
     }
 
     auto library_complex_exp(::bra::complex_type const& value) -> ::bra::complex_type
@@ -114,6 +146,18 @@ namespace bra
     {
       if (not boost::math::isfinite(*value))
         throw std::domain_error{"nonfinite input to " + std::string{::bra::classical_function_name(signature.function)}};
+      if (signature.function == ::bra::classical_function_id::log)
+      {
+        // Test the representation: DAZ must not turn a stored positive
+        // subnormal into an exact-zero domain error.
+        volatile auto const negative = boost::math::signbit(*value);
+        if (zero(*value) or negative)
+          throw std::domain_error{"LOG domain error: nonpositive real input"};
+        auto const result = library_real_log(*value);
+        if (not boost::math::isfinite(result))
+          throw std::overflow_error{"overflow/nonfinite result from LOG"};
+        return {result};
+      }
       if (signature.function == ::bra::classical_function_id::sqrt)
       {
         // -0 is a valid input and retains its sign. Negative stored subnormals

@@ -12,7 +12,7 @@
 namespace bra
 {
   enum class classical_function_id : int
-  { exp = 0, arg = 1, abs = 2, sqrt = 3, complex_ = 4 };
+  { exp = 0, arg = 1, abs = 2, sqrt = 3, complex_ = 4, log = 5 };
 
   struct classical_function_signature
   {
@@ -31,6 +31,7 @@ namespace bra
     case ::bra::classical_function_id::abs: return "ABS";
     case ::bra::classical_function_id::sqrt: return "SQRT";
     case ::bra::classical_function_id::complex_: return "COMPLEX";
+    case ::bra::classical_function_id::log: return "LOG";
     }
     throw std::invalid_argument{"unknown classical function identifier"};
   }
@@ -38,9 +39,9 @@ namespace bra
   // Overload lookup must compare operand types only. Result types are checked
   // against destinations after selecting the signature, never used to select it.
   inline auto classical_function_signatures()
-    -> std::array< ::bra::classical_function_signature, 7u > const&
+    -> std::array< ::bra::classical_function_signature, 8u > const&
   {
-    static auto const signatures = std::array< ::bra::classical_function_signature, 7u >{{
+    static auto const signatures = std::array< ::bra::classical_function_signature, 8u >{{
       {::bra::classical_function_id::exp, {::bra::variable_type::real}, {::bra::variable_type::real}},
       {::bra::classical_function_id::exp, {::bra::variable_type::complex_}, {::bra::variable_type::complex_}},
       {::bra::classical_function_id::arg, {::bra::variable_type::complex_}, {::bra::variable_type::real}},
@@ -48,7 +49,8 @@ namespace bra
       {::bra::classical_function_id::sqrt, {::bra::variable_type::real}, {::bra::variable_type::real}},
       {::bra::classical_function_id::sqrt, {::bra::variable_type::complex_}, {::bra::variable_type::complex_}},
       {::bra::classical_function_id::complex_, {::bra::variable_type::real, ::bra::variable_type::real},
-                                            {::bra::variable_type::complex_}}
+                                            {::bra::variable_type::complex_}},
+      {::bra::classical_function_id::log, {::bra::variable_type::real}, {::bra::variable_type::real}}
     }};
     return signatures;
   }
