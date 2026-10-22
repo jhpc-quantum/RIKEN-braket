@@ -33,7 +33,7 @@ class BuiltinFunctionSignatureTests(unittest.TestCase):
     def test_registry_records_input_selected_signatures_and_native_operations(self):
         registry = qasm2qcx.QASM2QCXConverter.builtin_function_signatures
         self.assertEqual(set(registry), {'exp', 'sqrt', 'log', 'sin', 'cos', 'tan',
-                                        'arcsin', 'arccos', 'arctan', 'real', 'imag'})
+                                        'arcsin', 'arccos', 'arctan', 'ceiling', 'floor', 'real', 'imag'})
         resolve = qasm2qcx.QASM2QCXConverter._QASM2QCXConverter__resolve_builtin_function
         real_exp = resolve('exp', (qasm2qcx.ValueType.FLOAT,))
         complex_exp = resolve('exp', (qasm2qcx.ValueType.COMPLEX,))
@@ -512,6 +512,148 @@ class TrigonometricConstantTests(unittest.TestCase):
                 output.assert_not_called()
 
 
+class RoundingConstantTests(unittest.TestCase):
+    expression = staticmethod(BuiltinFunctionSignatureTests.expression)
+    converter = staticmethod(BuiltinFunctionSignatureTests.converter)
+    evaluate = BuiltinFunctionConstantTests.evaluate
+    value = BuiltinFunctionConstantTests.value
+    names = ('ceiling', 'floor')
+    host_names = {'ceiling': 'ceil', 'floor': 'floor'}
+
+    test_real_only_signatures_and_scalar_promotions = TrigonometricConstantTests.test_real_only_signatures_and_scalar_promotions
+    test_type_information_is_non_evaluating_and_excludes_callee_dependencies = TrigonometricConstantTests.test_type_information_is_non_evaluating_and_excludes_callee_dependencies
+    test_names_arity_arrays_bits_and_angles_are_validated = TrigonometricConstantTests.test_names_arity_arrays_bits_and_angles_are_validated
+
+    def test_fractions_and_promotions_return_floats(self):
+        for name in self.names:
+            for source, expected in (('0.25', 1 if name == 'ceiling' else 0),
+                                      ('-0.25', 0 if name == 'ceiling' else -1),
+                                      ('1.5', 2 if name == 'ceiling' else 1),
+                                      ('-1.5', -1 if name == 'ceiling' else -2),
+                                      ('2', 2), ('-2', -2), ('true', 1), ('false', 0),
+                                      ('uint[3](10)', 2), ('float(bit(true))', 1), ('real(2 + 3im)', 2)):
+                with self.subTest(name=name, source=source):
+                    result, result_type = self.value(f'{name}({source})')
+                    self.assertEqual(result, expected)
+                    self.assertIsInstance(result, float)
+                    self.assertEqual(result_type, qasm2qcx.ValueType.FLOAT)
+
+    def test_signed_zeros_and_stored_subnormals(self):
+        for name in self.names:
+            for value in (0.0, -0.0, 0.25, -0.25, 5e-324, -5e-324, 1e-310, -1e-310):
+                result, _ = self.value(f'{name}({value!r})')
+                expected = (1 if value > 0 else 0) if name == 'ceiling' else (-1 if value < 0 else 0)
+                self.assertEqual(result, expected)
+                self.assertEqual(math.copysign(1, result), math.copysign(1, value))
+
+    def test_boundary_neighbors_and_large_values_against_exact_fractions(self):
+        values = [math.nextafter(boundary, direction) for boundary in (-2.0, -1.0, 0.0, 1.0, 2.0)
+                  for direction in (-math.inf, math.inf)]
+        values += [2147483648.5, -2147483648.5, 1e20, -1e20, 1e308, -1e308,
+                   float.fromhex('0x1.fffffffffffffp1023'), -float.fromhex('0x1.fffffffffffffp1023')]
+        for name in self.names:
+            for number in values:
+                fraction = Fraction.from_float(number)
+                n, d = fraction.numerator, fraction.denominator
+                expected = float(-(-n // d) if name == 'ceiling' else n // d)
+                if expected == 0:
+                    expected = math.copysign(expected, number)
+                result, _ = self.value(f'{name}({number!r})')
+                self.assertEqual(result, expected)
+                self.assertEqual(math.copysign(1, result), math.copysign(1, expected))
+
+    def test_nonfinite_inputs_and_invalid_library_results(self):
+        for name in self.names:
+            for argument in ('1e309', '-1e309', '1e308 * 1e308'):
+                with self.assertRaisesRegex(qasm2qcx.InvalidConstantFunctionException, name + '.*nonfinite input'):
+                    self.value(f'{name}({argument})')
+            call = qasm2qcx.ast.FunctionCall(qasm2qcx.ast.Identifier(name), [qasm2qcx.ast.FloatLiteral(math.nan)])
+            with self.assertRaisesRegex(qasm2qcx.InvalidConstantFunctionException, name + '.*nonfinite input'):
+                self.value(call)
+            with self.assertRaisesRegex(qasm2qcx.InvalidConstantFunctionException, name + '.*outside supported constant precision'):
+                self.value(name + '(' + str(10 ** 400) + ')')
+            for result in (math.inf, math.nan, 10 ** 400):
+                with patch.object(qasm2qcx.math, self.host_names[name], return_value=result):
+                    with self.assertRaisesRegex(qasm2qcx.InvalidConstantFunctionException, name + '.*overflow/nonfinite result'):
+                        self.value(f'{name}(0.5)')
+            for error in (ValueError('domain'), OverflowError('overflow')):
+                with patch.object(qasm2qcx.math, self.host_names[name], side_effect=error):
+                    with self.assertRaisesRegex(qasm2qcx.InvalidConstantFunctionException, name + '.*overflow/nonfinite result'):
+                        self.value(f'{name}(0.5)')
+
+    def test_input_selected_results_and_complex_rejection(self):
+        for name in self.names:
+            function = getattr(math, self.host_names[name])
+            expected = complex(function(0.5))
+            with patch.object(qasm2qcx.math, self.host_names[name], wraps=function) as call:
+                converter = self.converter(f'const complex C = {name}(0.5);')
+            self.assertEqual(converter._QASM2QCXConverter__const_complex_variable_name_values_map['C'], [expected])
+            call.assert_called_once_with(0.5)
+            for source in ('complex(0.5)', '0im', 'sqrt(complex(1))'):
+                for destination in ('float', 'complex'):
+                    with self.assertRaises(qasm2qcx.InvalidFunctionCallException):
+                        self.converter(f'const {destination} C = {name}({source});')
+        with self.assertRaises(qasm2qcx.UnsupportedOpenQASMError):
+            self.value('ceil(0.5)')
+
+    def test_nested_calls_sizes_ranges_modifiers_and_gate_parameters(self):
+        for source, expected in (('floor(ceiling(0.5))', 1), ('ceiling(floor(-0.5))', -1),
+                                  ('sqrt(ceiling(3.1))', 2), ('log(ceiling(0.5))', 0),
+                                  ('floor(arccos(0))', 1), ('real(ceiling(0.5))', 1), ('imag(floor(0.5))', 0)):
+            self.assertEqual(self.value(source)[0], expected)
+        self.assertEqual(convert('OPENQASM 3; include "stdgates.inc"; const float C = ceiling(0.5); '
+            'const float ZERO = floor(0.5); qubit[int(C) + 1] q; '
+            'for int i in [int(ZERO):int(C)] { x q[i]; } pow(int(C)) @ x q[0]; rz(C) q[1];'),
+            ['QUBITS 2', 'X 0', 'X 1', 'X 0', 'EZ 1 -0.5'])
+        lines = convert('OPENQASM 3; const float C = ceiling(0.5); array[float, int(C)] values = {C};')
+        self.assertFalse(any(line.startswith('APPLY ') for line in lines))
+        for name in self.names:
+            with self.assertRaises(qasm2qcx.NoConstantExpressionException):
+                self.converter(f'float x = 0.5; const float C = {name}(x);')
+
+    def test_skipped_constants_and_empty_loops_validate_without_evaluation(self):
+        for name in self.names:
+            for argument in ('1e309', str(10 ** 400)):
+                with patch.object(qasm2qcx.math, self.host_names[name], side_effect=AssertionError('evaluated')):
+                    self.converter(f'const bool C = false && ({name}({argument}) > 0);')
+            for call in (f'{name}(missing)', f'{name}(complex(1))', f'{name}(1, 2)'):
+                with self.assertRaises(qasm2qcx.QASM2QCXError):
+                    self.converter(f'const bool C = true || ({call} > 0);')
+            lines = convert(f'OPENQASM 3; float x; for int i in [1:0] {{ x = {name}(1e309); }}')
+            self.assertFalse(any(line.startswith('APPLY ') for line in lines))
+            with self.assertRaises(qasm2qcx.InvalidFunctionCallException):
+                convert(f'OPENQASM 3; float x; for int i in [1:0] {{ x = {name}(complex(1)); }}')
+
+    def test_once_only_evaluation_and_failure_cleanup(self):
+        converter = self.converter()
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.CONST_ARITHMETIC
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        expression = self.expression('floor(ceiling(exp(0)))')
+        arguments = (expression.arguments[0], expression.arguments[0].arguments[0],
+                     expression.arguments[0].arguments[0].arguments[0])
+        with patch.object(converter, 'visit', wraps=converter.visit) as visit:
+            converter.visit(expression)
+        for argument in arguments:
+            self.assertEqual(sum(call.args[0] is argument for call in visit.call_args_list), 1)
+        self.assertEqual(converter._QASM2QCXConverter__value, 1)
+        fields = ('__expression_kind', '__value', '__value_type', '__value_kind', '__evaluate_constant')
+        before = [getattr(converter, '_QASM2QCXConverter' + field) for field in fields]
+        lines = converter._QASM2QCXConverter__qcx_lines.copy()
+        for name in self.names:
+            with self.assertRaises(qasm2qcx.InvalidConstantFunctionException):
+                converter.visit(self.expression(f'{name}(1e309)'))
+            self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], before)
+            self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
+            self.assertEqual(converter._QASM2QCXConverter__qcx_lines, lines)
+
+    def test_cli_errors_are_atomic(self):
+        for name in self.names:
+            with patch('builtins.open', mock_open(read_data=f'OPENQASM 3; const float C = {name}(1e309);')):
+                with patch('builtins.print') as output, self.assertRaisesRegex(SystemExit, name + '.*nonfinite input'):
+                    qasm2qcx.main(['rounding.qasm'])
+                output.assert_not_called()
+
+
 class InverseTrigonometricConstantTests(unittest.TestCase):
     expression = staticmethod(BuiltinFunctionSignatureTests.expression)
     converter = staticmethod(BuiltinFunctionSignatureTests.converter)
@@ -765,6 +907,68 @@ class TrigonometricRuntimeTests(unittest.TestCase):
                     converter.visit(self.expression(f'{name}(x + 1)'))
             self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller})
             self.assertEqual([getattr(converter, '_QASM2QCXConverter' + field) for field in fields], before)
+
+
+class RoundingRuntimeTests(unittest.TestCase):
+    converter = staticmethod(BuiltinFunctionSignatureTests.converter)
+    expression = staticmethod(BuiltinFunctionSignatureTests.expression)
+    names = ('ceiling', 'floor')
+    clean = TrigonometricRuntimeTests.clean
+    test_input_selected_real_signatures_and_explicit_promotions = TrigonometricRuntimeTests.test_input_selected_real_signatures_and_explicit_promotions
+    test_indexed_assignments_reserve_array_indices = TrigonometricRuntimeTests.test_indexed_assignments_reserve_array_indices
+    test_failure_restores_expression_state_and_caller_temporaries = TrigonometricRuntimeTests.test_failure_restores_expression_state_and_caller_temporaries
+
+    def test_documented_rounding_example(self):
+        document = CONVERTER_PATH.with_suffix('.md').read_text(encoding='utf-8')
+        examples = re.findall(r'<!-- rounding-function-example -->\s*```qasm\n(.*?)\n```',
+                              document, flags=re.DOTALL)
+        self.assertEqual(len(examples), 1)
+        lines = self.clean(examples[0].split('\n', 1)[1])
+        for name in ('CEILING', 'FLOOR'):
+            self.assertEqual(sum(f' <- {name} ' in line for line in lines), 1)
+
+    def test_literals_use_native_rounding_without_host_evaluation(self):
+        for name, host_name in (('ceiling', 'ceil'), ('floor', 'floor')):
+            for argument in ('0.0', '-0.0', '0.5', '-0.5', '5e-324', '-5e-324',
+                             '1e308', '-1e308', '1e309', '-1e309', '0.0 / 0.0'):
+                with self.subTest(name=name, argument=argument), patch.object(
+                        qasm2qcx.math, host_name, side_effect=AssertionError('host rounding')):
+                    lines = self.clean(f'float out = {name}({argument});')
+                self.assertEqual(sum(f' <- {name.upper()} ' in line for line in lines), 1)
+                self.assertFalse(any(re.search(r'\b(?:inf|nan)\b', line, re.IGNORECASE) for line in lines))
+            number = (1 << 60) + 1
+            self.assertTrue(any(line.endswith(f':= :REAL:{number}')
+                                for line in self.clean(f'float out = {name}({number});')))
+
+    def test_nested_calls_visit_once_and_preserve_caller_temporaries(self):
+        converter = self.converter('float x = 0.5;')
+        caller = converter._QASM2QCXConverter__add_new_temporary_variable(qasm2qcx.ValueType.FLOAT)
+        converter._QASM2QCXConverter__expression_kind = qasm2qcx.ExpressionKind.ARITHMETIC
+        expression = self.expression('ceiling(floor(exp(x)))')
+        arguments = (expression.arguments[0], expression.arguments[0].arguments[0],
+                     expression.arguments[0].arguments[0].arguments[0])
+        start = len(converter._QASM2QCXConverter__qcx_lines)
+        with patch.object(converter, 'visit', wraps=converter.visit) as visit:
+            converter.visit(expression)
+        for argument in arguments:
+            self.assertEqual(sum(call.args[0] is argument for call in visit.call_args_list), 1)
+        result = converter._QASM2QCXConverter__value
+        self.assertEqual(converter._QASM2QCXConverter__used_temporary_variables, {caller, result})
+        self.assertEqual(converter._QASM2QCXConverter__value_type, qasm2qcx.ValueType.FLOAT)
+        lines = converter._QASM2QCXConverter__qcx_lines[start:]
+        for name in ('CEILING', 'FLOOR', 'EXP'):
+            self.assertEqual(sum(f' <- {name} ' in line for line in lines), 1)
+        self.assertFalse(any(line.startswith((f'LET {caller} ', 'LET X1 ')) for line in lines))
+
+    def test_gates_loop_expressions_and_skipped_errors(self):
+        self.clean('include "stdgates.inc"; qubit q; float x = 2.5; '
+                   'while (floor(x) > 0) { x -= 1; } '
+                   'for int i in [0:int(ceiling(x)):3] { rx(floor(x)) q; } '
+                   'for int j in {int(floor(x)), int(ceiling(x))} { rz(float(j)) q; }')
+        for name in self.names:
+            lines = self.clean(f'bool out = true || bool({name}(1e309));')
+            self.assertTrue(any(f' <- {name.upper()} ' in line for line in lines))
+            ForLoopControlLoweringTests.assert_resolved_jumps(lines)
 
 
 class InverseTrigonometricRuntimeTests(unittest.TestCase):

@@ -100,8 +100,8 @@ The converter currently covers:
   (`<<=`, `>>=`), with checked counts and signed left-shift overflow;
 - scalar constants, variables, assignments, and numeric casts;
 - scalar built-in `exp`, `sqrt`, `log`, `sin`, `cos`, `tan`, `arcsin`, `arccos`,
-  `arctan`, `real`, and `imag` calls in constant and runtime expressions,
-  including nested calls;
+  `arctan`, `ceiling`, `floor`, `real`, and `imag` calls in constant and runtime
+  expressions, including nested calls;
 - fixed-size, one-dimensional `int`, `uint`, `float`, `bool`, and `complex` arrays
   with static and runtime element reads and writes;
 - scalar and register `bit` values, including bit-string initialization;
@@ -153,15 +153,17 @@ from the input type, never from the assignment destination:
 | `arcsin(x)` | `float` | `float` | `APPLY result <- ARCSIN operand` |
 | `arccos(x)` | `float` | `float` | `APPLY result <- ARCCOS operand` |
 | `arctan(x)` | `float` | `float` | `APPLY result <- ARCTAN operand` |
+| `ceiling(x)` | `float` | `float` | `APPLY result <- CEILING operand` |
+| `floor(x)` | `float` | `float` | `APPLY result <- FLOOR operand` |
 | `real(z)` | `complex` | `float` | `LET result := :REAL:operand` |
 | `imag(z)` | `complex` | `float` | `LET result := :IMAG:operand` |
 
 `real` and `imag` extract the real and imaginary components; they reuse bra's
 existing component operators rather than introducing new native functions.
 Standard scalar `bool`, `int`, and `uint` arguments promote to `float` for
-`exp`, `sqrt`, `log`, `sin`, `cos`, `tan`, `arcsin`, `arccos`, and `arctan`,
-or to `complex` for component extraction. A `float` argument to `real` or
-`imag` also promotes to `complex`,
+`exp`, `sqrt`, `log`, `sin`, `cos`, `tan`, `arcsin`, `arccos`, `arctan`,
+`ceiling`, and `floor`, or to `complex` for component extraction. A `float`
+argument to `real` or `imag` also promotes to `complex`,
 with a zero imaginary component. Thus
 `complex z = exp(1);` evaluates the real exponential first, then converts its
 result to complex. Use `exp(complex(1))` to select the complex overload.
@@ -267,6 +269,32 @@ floating-point control modes; subnormal arithmetic follows the applicable
 host or backend environment. General complex inverse functions and `atan2`
 remain unsupported.
 
+`ceiling` rounds toward positive infinity and `floor` toward negative infinity.
+Both accept real-valued arguments and return `float`, not `int`; use an
+explicit cast such as `int(floor(x))` where an integer is required. The
+OpenQASM spelling is `ceiling`, not Python's `ceil`. Complex arguments are
+rejected, independently of the assignment destination. Finite inputs and
+results are required. Large finite values outside native integer ranges are
+supported; native evaluation does not round through `INT` or `UINT`.
+
+Both functions preserve exact `+0` and `-0`. In addition, `ceiling` returns
+`-0` for values in (-1, 0), and `floor` returns `+0` for values in (0, 1).
+Positive stored subnormals round to `1`/`+0`, and negative stored subnormals
+to `-0`/`-1`, for `ceiling`/`floor` respectively, even under DAZ. Native calls
+classify stored values and use same-sign normal representatives for subnormal
+inputs without changing floating-point modes. Earlier arithmetic that has
+already flushed an argument to zero is not repaired by these functions.
+
+Constant calls use Python's `math.ceil`/`math.floor`, convert their arbitrary-
+precision integer results back to `float`, and restore the appropriate zero
+sign. Executable calls, including literal arguments, use native `CEILING` and
+`FLOOR` at bra's configured precision. Invalid evaluated constants fail
+conversion; native checks occur only when reached, so branches, short-circuit
+operators, and empty loops can skip failures. Names, arity, and operand types
+are still validated in skipped code. Native results are independent of the
+caller's rounding direction, and build flags and floating-point control modes
+remain unchanged.
+
 The converter uses native `APPLY ... <- COMPLEX real imaginary` to construct
 nontrivial complex literals directly, preserving component signs and avoiding
 arithmetic assembly that could discard zeros or subnormals. This also applies
@@ -352,8 +380,22 @@ rx(arcsin(x)) q;
 rz(SHIFT + arctan(x)) q;
 ```
 
+This example combines a constant floor with runtime ceiling and floor calls.
+The rotations use angles `1` and `-1` radians:
+
+<!-- rounding-function-example -->
+```qasm
+OPENQASM 3.0;
+include "stdgates.inc";
+qubit q;
+const float SHIFT = floor(-0.25);
+float x = 0.25;
+rx(ceiling(x)) q;
+rz(SHIFT + floor(x)) q;
+```
+
 Use a bra version with native `APPLY`, `EXP`, `SQRT`, `LOG`, `SIN`, `COS`, `TAN`,
-`ARCSIN`, `ARCCOS`, `ARCTAN`, and `COMPLEX` support; see
+`ARCSIN`, `ARCCOS`, `ARCTAN`, `CEILING`, `FLOOR`, and `COMPLEX` support; see
 [classical functions in bra](../../docs/bra.md#classical-function-invocation).
 `COMPLEX` is also needed for general complex-literal construction in programs
 without `sqrt` calls.
@@ -3363,8 +3405,8 @@ The current prototype does not reliably support:
 - scalar-bit shifts and runtime-dependent register selections,
   ordered bit-register comparisons, whole-array bitwise operations, direct
   Boolean bitwise operations, or classical functions other than the
-  `exp`/`sqrt`/`log`/`sin`/`cos`/`tan`/`arcsin`/`arccos`/`arctan`/`real`/`imag`
-  subset above;
+  `exp`/`sqrt`/`log`/`sin`/`cos`/`tan`/`arcsin`/`arccos`/`arctan`/`ceiling`/`floor`/
+  `real`/`imag` subset above;
 - `angle` declarations and `angle`-typed trigonometric arguments; or
 - arithmetic operators other than `+`, `-`, `*`, `/`, and integer `%` and `**`.
 
@@ -3437,6 +3479,17 @@ inverse-trigonometric example above. Without `--bra`, its two reference tests
 require only the standard library. Native tests additionally verify strict
 domain checks, principal ranges, captured inputs, and unchanged destinations
 on failure in all three precisions, debug/release builds, and UBSan.
+
+`bra/test/qasm2qcx_rounding_numerical.py` checks constant, executable literal,
+and variable calls against exact integer-ratio references, not `math.ceil`
+or `math.floor`. Cases cover fractions, integer-boundary neighbors, signed
+zeros, stored subnormals, large finite values outside native integer ranges,
+promotions, nesting, arrays, loops, source preservation, reached/skipped
+errors, gate parameters with and without fusion, and the rounding example
+above. Without `--bra`, its two reference tests require only the standard
+library. Native tests also check every supported precision in debug/release
+builds and UBSan, captured inputs, destination preservation, independence
+from the caller's rounding direction, and unchanged floating-point modes.
 
 `bra/test/qasm2qcx_u_phase_numerical.py` independently transcribes the published
 built-in `U` matrix and the mathematical active block of `cu`. It verifies the
@@ -3852,6 +3905,7 @@ python3 bra/test/qasm2qcx_sqrt_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_log_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_trigonometric_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_inverse_trigonometric_numerical.py --bra bra/bin/bra
+python3 bra/test/qasm2qcx_rounding_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_u_phase_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_inverse_numerical.py --bra bra/bin/bra
 python3 bra/test/qasm2qcx_control_numerical.py --bra bra/bin/bra

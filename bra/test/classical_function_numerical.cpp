@@ -139,6 +139,15 @@ namespace
     }
   }
 
+  auto rounded(function const id, real const input) -> real
+  {
+    auto result = real{-77};
+    auto const& signature = bra::resolve_classical_function(id, {type::real});
+    auto const call = bra::classical_function_call{signature, {&result}, {input}};
+    call.commit_results(bra::evaluate_classical_function(call));
+    return result;
+  }
+
   auto natural_log(real const input) -> real
   {
     auto result = real{-77};
@@ -182,6 +191,55 @@ int main()
   auto const positive_zero = real{0};
   auto const negative_zero = std::copysign(real{0}, real{-1});
   auto const maximum = std::numeric_limits<real>::max();
+  for (auto const id: {function::ceiling, function::floor})
+  {
+    for (auto const input: {positive_zero, negative_zero, real{0.25}, real{-0.25}, real{1.5}, real{-1.5},
+                           real{1}, real{-1}, real{2}, real{-2},
+                           std::nextafter(real{1}, real{0}), std::nextafter(real{1}, maximum),
+                           std::nextafter(real{-1}, real{0}), std::nextafter(real{-1}, -maximum),
+                           real{2147483648.5}, real{-2147483648.5}, real{1e20}, real{-1e20}, maximum, -maximum,
+                           std::numeric_limits<real>::min(), -std::numeric_limits<real>::min()})
+    {
+      auto const expected = id == function::ceiling ? std::ceil(input) : std::floor(input);
+      auto const result = rounded(id, input);
+      require(result == expected and boost::math::signbit(result) == boost::math::signbit(expected),
+              std::string{bra::classical_function_name(id)} + " changed rounding value or zero sign");
+    }
+    auto const smallest = std::numeric_limits<real>::denorm_min();
+    if (boost::math::fpclassify(smallest) != FP_ZERO)
+    {
+      constexpr auto half_minimum = std::numeric_limits<real>::min() / real{2};
+      for (auto const tiny: {smallest, half_minimum, std::nextafter(std::numeric_limits<real>::min(), real{0})})
+        for (auto const negative: {false, true})
+        {
+          auto const input = negative ? boost::math::changesign(tiny) : tiny;
+          auto const result = rounded(id, input);
+          auto const expected = id == function::ceiling ? (negative ? negative_zero : real{1})
+            : (negative ? real{-1} : positive_zero);
+          require(result == expected and boost::math::signbit(result) == boost::math::signbit(expected),
+                  "rounding lost stored subnormal sign or treated it as exact zero");
+        }
+    }
+    for (auto const invalid: {std::numeric_limits<real>::infinity(), -std::numeric_limits<real>::infinity(),
+                             std::numeric_limits<real>::quiet_NaN()})
+      expect_failure<std::domain_error>(id, invalid, "nonfinite input");
+    auto in_place = real{-0.25};
+    auto const captured = bra::classical_function_call{
+      bra::resolve_classical_function(id, {type::real}), {&in_place}, {in_place}};
+    in_place = real{100};
+    captured.commit_results(bra::evaluate_classical_function(captured));
+    auto const expected = id == function::ceiling ? negative_zero : real{-1};
+    require(in_place == expected and boost::math::signbit(in_place) == boost::math::signbit(expected),
+            "rounding did not use captured input or lost its zero sign");
+  }
+  for (auto const mode: {FE_TONEAREST, FE_DOWNWARD, FE_UPWARD, FE_TOWARDZERO})
+    if (std::fesetround(mode) == 0)
+    {
+      require(rounded(function::ceiling, real{0.25}) == 1, "CEILING depends on ambient rounding direction");
+      require(rounded(function::floor, real{-0.25}) == -1, "FLOOR depends on ambient rounding direction");
+      require(std::fegetround() == mode, "rounding function changed ambient rounding direction");
+    }
+  require(std::fesetround(rounding) == 0, "could not restore test rounding direction");
   for (auto const id: {function::sin, function::cos, function::tan})
   {
     for (auto const input: {positive_zero, negative_zero})
