@@ -60,6 +60,34 @@ namespace bra
       function_type volatile function = &std::hypot;
       return function(value.real(), value.imag());
     }
+
+    auto principal_sqrt(::bra::complex_type const& value) -> ::bra::complex_type
+    {
+      // Observe signs before zero classification, as for ARG below. Explicit
+      // axis handling preserves the two sides of the cut even under fast-math.
+      volatile auto const real_negative = boost::math::signbit(value.real());
+      volatile auto const imag_negative = boost::math::signbit(value.imag());
+      volatile auto const imaginary_component = value.imag();
+      if (zero(value.imag()))
+      {
+        if (zero(value.real()))
+          return {::bra::real_type{0}, static_cast< ::bra::real_type >(imaginary_component)};
+        if (real_negative)
+        {
+          auto const magnitude = std::sqrt(boost::math::changesign(value.real()));
+          return {::bra::real_type{0}, imag_negative ? boost::math::changesign(magnitude) : magnitude};
+        }
+        return {std::sqrt(value.real()), static_cast< ::bra::real_type >(imaginary_component)};
+      }
+      // Keep the scaled complex library algorithm across the optimization
+      // boundary; directly forming abs(z) or squaring components can overflow
+      // even though every finite complex input has a representable root.
+      using function_type = ::bra::complex_type (*)(::bra::complex_type const&);
+      function_type volatile function = &std::sqrt< ::bra::real_type >;
+      auto const result = function(value);
+      auto const imaginary_magnitude = std::abs(result.imag());
+      return {std::abs(result.real()), imag_negative ? boost::math::changesign(imaginary_magnitude) : imaginary_magnitude};
+    }
   }
 
   auto evaluate_classical_function(::bra::classical_function_call const& call)
@@ -74,10 +102,24 @@ namespace bra
     auto const& operand = call.operands().front();
     if (auto const value = boost::get< ::bra::real_type >(&operand))
     {
+      if (not boost::math::isfinite(*value))
+        throw std::domain_error{"nonfinite input to " + std::string{::bra::classical_function_name(signature.function)}};
+      if (signature.function == ::bra::classical_function_id::sqrt)
+      {
+        // -0 is a valid input and retains its sign. Negative stored subnormals
+        // are invalid even when DAZ would compare them equal to zero.
+        volatile auto const stored_value = *value;
+        volatile auto const negative = boost::math::signbit(*value);
+        if (zero(*value)) return {static_cast< ::bra::real_type >(stored_value)};
+        if (negative)
+          throw std::domain_error{"SQRT domain error: negative real input"};
+        auto const result = std::sqrt(*value);
+        if (not boost::math::isfinite(result))
+          throw std::overflow_error{"overflow/nonfinite result from SQRT"};
+        return {result};
+      }
       if (signature.function != ::bra::classical_function_id::exp)
         throw std::invalid_argument{"unsupported real function evaluation"};
-      if (not boost::math::isfinite(*value))
-        throw std::domain_error{"nonfinite input to EXP"};
       auto const result = std::exp(bounded_exp_argument(*value));
       if (not boost::math::isfinite(result))
         throw std::overflow_error{"overflow/nonfinite result from EXP"};
@@ -86,6 +128,13 @@ namespace bra
     auto const value = boost::get< ::bra::complex_type >(operand);
     if (not finite(value))
       throw std::domain_error{"nonfinite input to " + std::string{::bra::classical_function_name(signature.function)}};
+    if (signature.function == ::bra::classical_function_id::sqrt)
+    {
+      auto const result = principal_sqrt(value);
+      if (not finite(result))
+        throw std::overflow_error{"overflow/nonfinite result from SQRT"};
+      return {result};
+    }
     if (signature.function == ::bra::classical_function_id::abs)
     {
       auto const result = library_complex_abs(value);

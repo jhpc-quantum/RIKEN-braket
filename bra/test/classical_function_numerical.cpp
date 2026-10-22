@@ -97,6 +97,17 @@ namespace
     return result;
   }
 
+  template <typename T>
+  auto square_root(T const input) -> T
+  {
+    auto result = T{-77};
+    auto const operand_type = bra::classical_function_detail::value_type(bra::classical_function_value{input}.which());
+    auto const& signature = bra::resolve_classical_function(function::sqrt, {operand_type});
+    auto const call = bra::classical_function_call{signature, {&result}, {input}};
+    call.commit_results(bra::evaluate_classical_function(call));
+    return result;
+  }
+
   template <typename Exception, typename T>
   void expect_failure(function const id, T const input, std::string const& reason)
   {
@@ -131,6 +142,79 @@ int main()
   auto const positive_zero = real{0};
   auto const negative_zero = std::copysign(real{0}, real{-1});
   auto const maximum = std::numeric_limits<real>::max();
+  for (auto const input: {real{0.25}, real{1}, real{4}, std::numeric_limits<real>::min(), maximum})
+    require(close(square_root(input) / std::sqrt(input), real{1}), "wrong real SQRT");
+  for (auto const re: {positive_zero, negative_zero})
+  {
+    auto const root = square_root(re);
+    require(boost::math::fpclassify(root) == FP_ZERO and boost::math::signbit(root) == boost::math::signbit(re),
+            "real SQRT lost signed zero");
+    for (auto const im: {positive_zero, negative_zero})
+    {
+      auto const result = square_root(complex{re, im});
+      require(boost::math::fpclassify(result.real()) == FP_ZERO and not boost::math::signbit(result.real()),
+              "complex SQRT zero real component must be positive zero");
+      require(boost::math::fpclassify(result.imag()) == FP_ZERO and boost::math::signbit(result.imag()) == boost::math::signbit(im),
+              "complex SQRT lost imaginary zero sign");
+    }
+  }
+  for (auto const scale: {std::numeric_limits<real>::min(), real{1}, maximum / real{8}})
+    for (auto const re_sign: {real{1}, real{-1}})
+      for (auto const im_sign: {real{1}, real{-1}})
+      {
+        auto const root = square_root(complex{re_sign * real{3} * scale, im_sign * real{4} * scale});
+        auto const expected_re = re_sign > 0 ? real{2} : real{1};
+        auto const expected_im = im_sign * (re_sign > 0 ? real{1} : real{2});
+        auto const unit = std::sqrt(scale);
+        require(close(root.real() / unit, expected_re) and close(root.imag() / unit, expected_im),
+                "SQRT lost a scaled 3-4-5 root");
+      }
+  for (auto const re_sign: {real{1}, real{-1}})
+    for (auto const im_sign: {real{1}, real{-1}})
+    {
+      auto const root = square_root(complex{re_sign * maximum, im_sign * maximum});
+      auto const unit = std::sqrt(maximum);
+      auto const diagonal = std::sqrt(real{2});
+      require(close(root.real() / unit, std::sqrt((diagonal + re_sign) / real{2}))
+              and close(root.imag() / unit, im_sign * std::sqrt((diagonal - re_sign) / real{2})),
+              "SQRT unnecessarily overflowed for maximum finite components");
+    }
+  for (auto const magnitude: {std::numeric_limits<real>::min(), real{4}, maximum})
+    for (auto const imaginary: {positive_zero, negative_zero})
+    {
+      auto const positive = square_root(complex{magnitude, imaginary});
+      auto const negative = square_root(complex{-magnitude, imaginary});
+      require(close(positive.real() / std::sqrt(magnitude), real{1})
+              and boost::math::fpclassify(positive.imag()) == FP_ZERO
+              and boost::math::signbit(positive.imag()) == boost::math::signbit(imaginary),
+              "SQRT lost positive-axis root or imaginary zero sign");
+      require(boost::math::fpclassify(negative.real()) == FP_ZERO and not boost::math::signbit(negative.real())
+              and close(std::abs(negative.imag()) / std::sqrt(magnitude), real{1})
+              and boost::math::signbit(negative.imag()) == boost::math::signbit(imaginary),
+              "SQRT lost negative-axis branch endpoint");
+    }
+  for (auto const tiny: {std::numeric_limits<real>::min(), std::numeric_limits<real>::denorm_min()})
+    if (boost::math::fpclassify(tiny) != FP_ZERO)
+    {
+      expect_failure<std::domain_error>(function::sqrt, -tiny, "negative real input");
+      for (auto const input: {complex{-1, tiny}, complex{-1, -tiny}, complex{tiny, tiny}, complex{-tiny, -tiny}})
+      {
+        using sqrt_function = complex (*)(complex const&);
+        sqrt_function volatile native_sqrt = &std::sqrt<real>;
+        auto const expected = native_sqrt(input);
+        auto const actual = square_root(input);
+        require(close(actual.real(), expected.real()) and close(actual.imag(), expected.imag()),
+                "SQRT differs from native tiny-component behavior");
+        require(boost::math::signbit(actual.imag()) == boost::math::signbit(input.imag()),
+                "SQRT lost the side of the branch cut");
+      }
+      using sqrt_function = real (*)(real);
+      sqrt_function volatile native_sqrt = &std::sqrt;
+      auto const expected = native_sqrt(tiny);
+      require(square_root(tiny) == expected, "SQRT differs from native subnormal behavior");
+    }
+  for (auto const input: {real{-1}, -maximum})
+    expect_failure<std::domain_error>(function::sqrt, input, "negative real input");
   for (auto const scale: {real{1}, std::numeric_limits<real>::min(), maximum / real{8}})
     for (auto const sign_re: {real{1}, real{-1}})
       for (auto const sign_im: {real{1}, real{-1}})
@@ -227,11 +311,13 @@ int main()
   for (auto const invalid: {infinity, -infinity, nan})
   {
     expect_failure<std::domain_error>(function::exp, invalid, "nonfinite input");
+    expect_failure<std::domain_error>(function::sqrt, invalid, "nonfinite input");
     for (auto const z: {complex{invalid, 0}, complex{0, invalid}, complex{invalid, invalid}})
     {
       expect_failure<std::domain_error>(function::exp, z, "nonfinite input");
       expect_failure<std::domain_error>(function::arg, z, "nonfinite input");
       expect_failure<std::domain_error>(function::abs, z, "nonfinite input");
+      expect_failure<std::domain_error>(function::sqrt, z, "nonfinite input");
     }
   }
   for (auto const re: {positive_zero, negative_zero})
@@ -274,6 +360,12 @@ int main()
   z = complex{0, 0};
   abs_call.commit_results(bra::evaluate_classical_function(abs_call));
   require(x == 5, "ABS did not use captured input");
+  z = complex{-3, -4};
+  auto const sqrt_call = bra::classical_function_call{
+    bra::resolve_classical_function(function::sqrt, {type::complex_}), {&z}, {z}};
+  z = complex{0, 0};
+  sqrt_call.commit_results(bra::evaluate_classical_function(sqrt_call));
+  require(z == complex{1, -2}, "SQRT did not use captured input for in-place evaluation");
   require(std::fegetround() == rounding, "APPLY changed rounding mode");
 #if defined(__SSE__) && (defined(__i386__) || defined(__x86_64__))
   require((_mm_getcsr() & ~0x3fu) == control_mode, "APPLY changed floating-point control mode");

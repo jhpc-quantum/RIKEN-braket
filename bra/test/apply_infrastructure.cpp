@@ -130,6 +130,17 @@ int main()
   state.invoke_assign_operation("R:1", bra::assign_operation_type::assign, "7");
   state.invoke_apply_operation({"RESULT"}, function::abs, {":COMPLEX:R:N"});
   check_close("RESULT", 7);
+  state.invoke_apply_operation({"RESULT"}, function::sqrt, {"R:N"});
+  check_close("RESULT", std::sqrt(bra::real_type{7}));
+  state.invoke_apply_operation({"CRESULT"}, function::sqrt, {":COMPLEX:-4.0"});
+  state.invoke_assign_operation("RESULT", bra::assign_operation_type::assign, ":REAL:CRESULT");
+  check_close("RESULT", 0);
+  state.invoke_assign_operation("RESULT", bra::assign_operation_type::assign, ":IMAG:CRESULT");
+  check_close("RESULT", 2);
+  check_call({"RESULT"}, function::sqrt, {"N"}, "unsupported operand signature");
+  check_call({"CRESULT"}, function::sqrt, {"R:N"}, "wrong destination type");
+  check_call({"RESULT"}, function::sqrt, {"Z"}, "wrong destination type");
+  check_call({"R:N"}, function::sqrt, {":REAL:-1"}, "SQRT domain error: negative real input");
   state.invoke_assign_operation("RESULT", bra::assign_operation_type::assign, "-7");
   state.invoke_apply_operation({"RESULT"}, function::abs, {":COMPLEX:RESULT"});
   check_close("RESULT", 7);
@@ -187,6 +198,10 @@ int main()
   expect_failure([&] { state.invoke_apply_operation({"RESULT"}, function::exp, {"RESULT"}); },
                  "APPLY RESULT <- EXP RESULT: overflow/nonfinite result");
   state.invoke_assert_operation("RESULT", bra::compare_operation_type::equal_to, "1000000");
+  state.invoke_assign_operation("RESULT", bra::assign_operation_type::assign, "-4");
+  expect_failure([&] { state.invoke_apply_operation({"RESULT"}, function::sqrt, {"RESULT"}); },
+                 "APPLY RESULT <- SQRT RESULT: SQRT domain error");
+  state.invoke_assert_operation("RESULT", bra::compare_operation_type::equal_to, "-4");
   auto maximum = std::ostringstream{};
   maximum << std::setprecision(std::numeric_limits<bra::real_type>::max_digits10)
           << std::numeric_limits<bra::real_type>::max();
@@ -206,6 +221,10 @@ int main()
   auto const abs_interpreter = bra::interpreter{abs_stream};
   require(tokens(abs_interpreter.back_circuit().back()->representation()) == std::vector<std::string>{
     "APPLY", "RESULT:INDEX", "<-", "ABS", "SOURCE:INDEX"});
+  auto sqrt_stream = std::istringstream{"QUBITS 1\napply result:index <- sqrt source:index\n"};
+  auto const sqrt_interpreter = bra::interpreter{sqrt_stream};
+  require(tokens(sqrt_interpreter.back_circuit().back()->representation()) == std::vector<std::string>{
+    "APPLY", "RESULT:INDEX", "<-", "SQRT", "SOURCE:INDEX"});
   for (auto const& malformed: {"APPLY", "APPLY R", "APPLY <- EXP R", "APPLY R <-", "APPLY R <- EXP", "APPLY R := EXP R",
                                "APPLY R <- EXP <- R", "APPLY R<-EXP R"})
     expect_failure([&] { auto input = std::istringstream{std::string{"QUBITS 1\n"} + malformed + "\n"};
